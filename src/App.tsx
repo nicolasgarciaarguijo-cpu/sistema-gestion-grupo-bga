@@ -11,12 +11,22 @@ const COMPANY_OPTIONS = [
     short: "BGA",
     primary: "#14213d",
     soft: "#dbe7f7",
+    taxId: "30-71527468-6",
+    bankName: "",
+    bankAlias: "",
+    bankCbu: "",
+    bankAccount: "",
   },
   {
     value: "De raiz s.r.l",
     short: "De raiz",
     primary: "#b7791f",
     soft: "#fef3c7",
+    taxId: "30-71769540-9",
+    bankName: "Banco Patagonia",
+    bankAlias: "DERAIZSRL",
+    bankCbu: "0340041800419997078004",
+    bankAccount: "CC $ 041-419997078-000",
   },
 ] as const;
 
@@ -263,6 +273,7 @@ type BudgetData = {
   number: string;
   date: string;
   client: string;
+  clientTaxId: string;
   contactName: string;
   contactPhone: string;
   contactEmail: string;
@@ -753,10 +764,33 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const getCompanyMeta = (company: CompanyName) =>
   COMPANY_OPTIONS.find((item) => item.value === company) ?? COMPANY_OPTIONS[0];
 
-const getCompanyTaxId = (company: CompanyName) =>
-  company === "BGA estudio de diseño y produccion industrial s.r.l"
-    ? "30-71527468-6"
-    : "30-71769540-9";
+const getCompanyTaxId = (company: CompanyName) => getCompanyMeta(company).taxId;
+
+const getCompanyBankingLines = (company: CompanyName) => {
+  const companyMeta = getCompanyMeta(company);
+  return [
+    companyMeta.bankName ? `Banco: ${companyMeta.bankName}` : "",
+    companyMeta.bankAlias ? `Alias: ${companyMeta.bankAlias}` : "",
+    companyMeta.bankCbu ? `CBU: ${companyMeta.bankCbu}` : "",
+    companyMeta.bankAccount ? `Cuenta: ${companyMeta.bankAccount}` : "",
+    companyMeta.taxId ? `CUIT: ${companyMeta.taxId}` : "",
+  ].filter(Boolean);
+};
+
+const buildBudgetNumberFromParts = (prefix: string, value: number, width: number) =>
+  `${prefix}${String(Math.max(0, value)).padStart(width, "0")}`;
+
+const getNextBudgetNumber = (existingNumbers: string[], currentNumber: string) => {
+  const currentMatch = (currentNumber || "").trim().match(/^(.*?)(\d+)$/);
+  const prefix = currentMatch?.[1] ?? "P-";
+  const width = currentMatch?.[2]?.length ?? 4;
+  const candidates = [...existingNumbers, currentNumber]
+    .map((item) => (item || "").trim().match(/^(.*?)(\d+)$/))
+    .filter((match): match is RegExpMatchArray => !!match && match[1] === prefix)
+    .map((match) => Number(match[2] || 0));
+  const maxNumber = candidates.reduce((acc, value) => Math.max(acc, value), 0);
+  return buildBudgetNumberFromParts(prefix, maxNumber + 1, width);
+};
 
 const parseLeadDays = (deliveryTerm: string) => {
   const cleaned = (deliveryTerm || "").replace(/[^0-9]/g, " ").trim();
@@ -848,6 +882,7 @@ const defaultBudget: BudgetData = {
   number: "P-4001",
   date: new Date().toISOString().slice(0, 10),
   client: "Cliente Demo",
+  clientTaxId: "",
   contactName: "",
   contactPhone: "",
   contactEmail: "",
@@ -1245,6 +1280,36 @@ const cloneBudget = (budget: BudgetData): BudgetData => ({
   referenceImages: budget.referenceImages.map((image) => ({ ...image })),
 });
 
+const buildBlankBudgetDraft = (input: {
+  company: CompanyName;
+  workType: WorkTypeName;
+  number: string;
+}): BudgetData => ({
+  ...cloneBudget(defaultBudget),
+  company: input.company,
+  workType: input.workType,
+  number: input.number,
+  date: todayIso(),
+  client: "",
+  clientTaxId: "",
+  contactName: "",
+  contactPhone: "",
+  contactEmail: "",
+  clientNotes: "",
+  cuit: getCompanyTaxId(input.company),
+  project: "",
+  notes: "",
+  scope: "",
+  deliveryDestination: "",
+  projectManager: "",
+  maxRequirementDate: "",
+  billedPct: 100,
+  isUpdate: false,
+  updateLabel: "",
+  logos: [],
+  referenceImages: [],
+});
+
 const cloneBudgetDiscounts = (items: BudgetDiscount[]) =>
   items.map((item) => ({ ...item }));
 
@@ -1492,7 +1557,6 @@ type PersistedAppStateData = {
   bankStatementEntries: BankStatementEntry[];
   stockItems: StockItem[];
   companyAssets: CompanyAsset[];
-  users: AppUser[];
   employees: Employee[];
   employeeBaseConfig: EmployeeBaseConfig;
   scaleRows: ScaleRow[];
@@ -1513,7 +1577,6 @@ type PersistedAppStateData = {
   commissionPct: number;
   stockIncreasePct: number;
   editingBudgetId: number | null;
-  currentUserId: number | null;
 };
 
 type PersistedAppState = {
@@ -1736,7 +1799,6 @@ export default function App() {
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
   const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>(defaultCompanyAssets);
-  const [users, setUsers] = useState<AppUser[]>(defaultAppUsers);
   const [employees, setEmployees] = useState<Employee[]>(defaultEmployees);
   const [employeeBaseConfig, setEmployeeBaseConfig] = useState<EmployeeBaseConfig>(defaultBaseConfig);
   const [scaleRows, setScaleRows] = useState<ScaleRow[]>(seededScaleRows);
@@ -1766,24 +1828,9 @@ export default function App() {
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [isPersistenceReady, setIsPersistenceReady] = useState(false);
   const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
-  const [loginName, setLoginName] = useState("Administrador");
-  const [loginPassword, setLoginPassword] = useState("");
-  const [authMessage, setAuthMessage] = useState("");
   const [supabaseLoginEmail, setSupabaseLoginEmail] = useState("");
   const [supabaseLoginPassword, setSupabaseLoginPassword] = useState("");
   const [supabaseAuthMessage, setSupabaseAuthMessage] = useState("");
-  const [newUserDraft, setNewUserDraft] = useState<{
-    name: string;
-    password: string;
-    allowedTabs: TabKey[];
-    allowedCompanies: CompanyName[];
-  }>({
-    name: "",
-    password: "",
-    allowedTabs: ["presupuesto"],
-    allowedCompanies: [COMPANY_OPTIONS[0].value],
-  });
   const lastMarkerSourceKeyRef = useRef("");
   const isSupabaseLoggedIn = !!supabaseSession?.user;
 
@@ -1889,14 +1936,8 @@ export default function App() {
     [materials]
   );
 
-  const currentUser = useMemo(
-    () => users.find((item) => item.id === currentUserId) || null,
-    [users, currentUserId]
-  );
-
-  const isAdminUser = !!currentUser?.isAdmin;
   const isSupabaseAdmin = !!supabaseProfile?.is_superadmin;
-  const effectiveIsAdmin = isSupabaseLoggedIn ? isSupabaseAdmin : isAdminUser;
+  const effectiveIsAdmin = isSupabaseLoggedIn && isSupabaseAdmin;
 
   const supabaseAllowedCompanies = useMemo<CompanyName[]>(() => {
     if (!isSupabaseLoggedIn) return [];
@@ -1925,12 +1966,12 @@ export default function App() {
         ? COMPANY_OPTIONS.map((item) => item.value)
         : isSupabaseLoggedIn
         ? supabaseAllowedCompanies
-        : currentUser?.allowedCompanies || [],
-    [currentUser, effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedCompanies]
+        : [],
+    [effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedCompanies]
   );
 
   const canAccessCompany = (company: CompanyName | "General") =>
-    (isSupabaseLoggedIn || !!currentUser) &&
+    isSupabaseLoggedIn &&
     (effectiveIsAdmin ||
       company === "General" ||
       allowedCompaniesForSession.includes(company as CompanyName));
@@ -1942,7 +1983,7 @@ export default function App() {
         ? [accessTab, ...items.filter((item) => item.key !== "acceso")]
         : items;
 
-    if (!currentUser && !isSupabaseLoggedIn) {
+    if (!isSupabaseLoggedIn) {
       return accessTab ? [accessTab] : [];
     }
 
@@ -1956,64 +1997,62 @@ export default function App() {
       );
     }
 
-    return withAccess(
-      TAB_OPTIONS.filter((item) => item.key === "acceso" || currentUser?.allowedTabs.includes(item.key))
-    );
-  }, [currentUser, effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedTabs]);
+    return withAccess(TAB_OPTIONS.filter((item) => item.key === "acceso"));
+  }, [effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedTabs]);
 
   const visibleSavedBudgets = useMemo(
     () => savedBudgets.filter((item) => canAccessCompany(item.company)),
-    [savedBudgets, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [savedBudgets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleApprovedJobs = useMemo(
     () => approvedJobs.filter((item) => canAccessCompany(item.company)),
-    [approvedJobs, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [approvedJobs, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleFinancialItems = useMemo(
     () => financialItems.filter((item) => canAccessCompany(item.company)),
-    [financialItems, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [financialItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visiblePurchaseInvoices = useMemo(
     () => purchaseInvoices.filter((item) => canAccessCompany(item.company)),
-    [purchaseInvoices, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [purchaseInvoices, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visiblePettyCashFunds = useMemo(
     () => pettyCashFunds.filter((item) => canAccessCompany(item.company)),
-    [pettyCashFunds, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [pettyCashFunds, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visiblePettyCashExpenses = useMemo(
     () => pettyCashExpenses.filter((item) => canAccessCompany(item.company)),
-    [pettyCashExpenses, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [pettyCashExpenses, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleDebtPlans = useMemo(
     () => debtPlans.filter((item) => canAccessCompany(item.company)),
-    [debtPlans, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [debtPlans, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleBankStatementEntries = useMemo(
     () => bankStatementEntries.filter((item) => canAccessCompany(item.company)),
-    [bankStatementEntries, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [bankStatementEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleStockItems = useMemo(
     () => stockItems.filter((item) => canAccessCompany(item.company)),
-    [stockItems, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [stockItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleCompanyAssets = useMemo(
     () => companyAssets.filter((item) => canAccessCompany(item.company)),
-    [companyAssets, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [companyAssets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleEmployees = useMemo(
     () => employees.filter((item) => canAccessCompany(item.company)),
-    [employees, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [employees, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const totalBasicSupplies = useMemo(
@@ -2117,7 +2156,7 @@ export default function App() {
           if (groupCompare !== 0) return groupCompare;
           return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
         }),
-    [stockItems, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [stockItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const displayedMaterials = useMemo(
@@ -2595,6 +2634,7 @@ export default function App() {
       {
         key: string;
         client: string;
+        clientTaxId: string;
         contactName: string;
         contactPhone: string;
         contactEmail: string;
@@ -2614,6 +2654,7 @@ export default function App() {
       const current = grouped.get(key) || {
         key,
         client: item.client,
+        clientTaxId: item.snapshot.budget.clientTaxId || "",
         contactName: item.snapshot.budget.contactName,
         contactPhone: item.snapshot.budget.contactPhone,
         contactEmail: item.snapshot.budget.contactEmail,
@@ -2625,6 +2666,7 @@ export default function App() {
       };
 
       current.quotes.push(item);
+      if (!current.clientTaxId) current.clientTaxId = item.snapshot.budget.clientTaxId || "";
       if (!current.contactName) current.contactName = item.snapshot.budget.contactName;
       if (!current.contactPhone) current.contactPhone = item.snapshot.budget.contactPhone;
       if (!current.contactEmail) current.contactEmail = item.snapshot.budget.contactEmail;
@@ -2704,6 +2746,7 @@ export default function App() {
       const crmRows = crmClientRows.map((row) => ({
         client_key: row.key,
         client_name: row.client,
+        tax_id: row.clientTaxId || "",
         contact_name: row.contactName || "",
         contact_phone: row.contactPhone || "",
         contact_email: row.contactEmail || "",
@@ -3234,10 +3277,7 @@ export default function App() {
         if (cancelled) return;
         if (persisted) {
           applyPersistedAppData(persisted.data);
-          if (!hasSupabaseSession) {
-            setCurrentUserId(null);
-            setActiveTab("acceso");
-          }
+          if (!hasSupabaseSession) setActiveTab("acceso");
           setLastSavedAt(persisted.savedAt);
           setStorageMessage(
             hasSupabaseSession
@@ -3266,17 +3306,17 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!currentUser && !isSupabaseLoggedIn) {
+    if (!isSupabaseLoggedIn) {
       if (activeTab !== "acceso") setActiveTab("acceso");
       return;
     }
     if (!visibleTabOptions.some((item) => item.key === activeTab)) {
       setActiveTab(visibleTabOptions[0]?.key || "acceso");
     }
-  }, [activeTab, currentUser, isSupabaseLoggedIn, visibleTabOptions]);
+  }, [activeTab, isSupabaseLoggedIn, visibleTabOptions]);
 
   useEffect(() => {
-    if ((!currentUser && !isSupabaseLoggedIn) || effectiveIsAdmin) return;
+    if (!isSupabaseLoggedIn || effectiveIsAdmin) return;
     if (!allowedCompaniesForSession.includes(budget.company)) {
       const fallbackCompany = allowedCompaniesForSession[0];
       if (!fallbackCompany) return;
@@ -3286,7 +3326,7 @@ export default function App() {
         cuit: getCompanyTaxId(fallbackCompany),
       }));
     }
-  }, [budget.company, currentUser, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]);
+  }, [budget.company, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]);
 
   useEffect(() => {
     if (visibleEmployees.length > 0 && !visibleEmployees.some((item) => item.id === selectedEmployeeId)) {
@@ -3481,117 +3521,41 @@ export default function App() {
     setActiveTab("presupuesto");
   };
 
-  const resetBudgetEditingState = () => {
-    setEditingBudgetId(null);
-    setBudget((prev) => ({
-      ...prev,
-      date: todayIso(),
-      isUpdate: false,
-      updateLabel: "",
-    }));
-  };
-
-  const loginUser = () => {
-    const foundUser = users.find(
-      (item) =>
-        item.active &&
-        item.name.trim().toLowerCase() === loginName.trim().toLowerCase() &&
-        item.password === loginPassword
-    );
-    if (!foundUser) {
-      setAuthMessage("No encontre un usuario activo con esos datos.");
-      return;
-    }
-    setCurrentUserId(foundUser.id);
-    setActiveTab("acceso");
-    setAuthMessage(`Sesion iniciada como ${foundUser.name}.`);
-    setLoginPassword("");
-  };
-
-  const logoutUser = () => {
-    setCurrentUserId(null);
-    setActiveTab("acceso");
-    setAuthMessage("Sesion local cerrada.");
-  };
-
-  const createAppUser = () => {
-    if (!newUserDraft.name.trim() || !newUserDraft.password.trim()) {
-      setAuthMessage("Completa nombre y contrasena para crear el usuario.");
-      return;
-    }
-    if (newUserDraft.allowedTabs.length === 0 || newUserDraft.allowedCompanies.length === 0) {
-      setAuthMessage("Asigna al menos una solapa y una empresa.");
-      return;
-    }
-    const nextUser: AppUser = {
-      id: Date.now(),
-      name: newUserDraft.name.trim(),
-      password: newUserDraft.password,
-      isAdmin: false,
-      active: true,
-      allowedTabs: [...newUserDraft.allowedTabs],
-      allowedCompanies: [...newUserDraft.allowedCompanies],
-    };
-    setUsers((prev) => [...prev, nextUser]);
-    setNewUserDraft({
-      name: "",
-      password: "",
-      allowedTabs: ["presupuesto"],
-      allowedCompanies: [COMPANY_OPTIONS[0].value],
+  const resetBudgetWorkspace = (nextNumber?: string) => {
+    const generatedNumber = nextNumber
+      ? nextNumber
+      : getNextBudgetNumber(
+          savedBudgets.map((item) => item.number),
+          budget.number
+        );
+    const nextBudget = buildBlankBudgetDraft({
+      company: budget.company,
+      workType: budget.workType,
+      number: generatedNumber,
     });
-    setAuthMessage(`Usuario ${nextUser.name} creado.`);
+
+    setEditingBudgetId(null);
+    setBudget(nextBudget);
+    setMaterials([]);
+    setBasicSupplies([]);
+    setLabor([]);
+    setFixedCosts([]);
+    setBudgetIncreases(defaultBudgetIncreases.map((item) => ({ ...item })));
+    setBudgetDiscounts(cloneBudgetDiscounts(defaultBudgetDiscounts));
+    setSubBudgets([]);
+    setSubBudgetTitle("");
+    setSubBudgetNotes("");
+    setDeviationPct(5);
+    setMarkupPct(30);
+    setVatPct(21);
+    setAllocationMode("auto");
+    setManualAllocationPct(18.75);
+    setLaborDeviationPct(0);
+    setCommissionPct(0);
   };
 
-  const updateAppUserField = <K extends keyof AppUser>(
-    userId: number,
-    field: K,
-    value: AppUser[K]
-  ) => {
-    setUsers((prev) =>
-      prev.map((item) => (item.id === userId ? { ...item, [field]: value } : item))
-    );
-  };
-
-  const toggleUserTabPermission = (userId: number, tabKey: TabKey) => {
-    setUsers((prev) =>
-      prev.map((item) =>
-        item.id !== userId
-          ? item
-          : {
-              ...item,
-              allowedTabs: item.allowedTabs.includes(tabKey)
-                ? item.allowedTabs.filter((entry) => entry !== tabKey)
-                : [...item.allowedTabs, tabKey],
-            }
-      )
-    );
-  };
-
-  const toggleUserCompanyPermission = (userId: number, company: CompanyName) => {
-    setUsers((prev) =>
-      prev.map((item) =>
-        item.id !== userId
-          ? item
-          : {
-              ...item,
-              allowedCompanies: item.allowedCompanies.includes(company)
-                ? item.allowedCompanies.filter((entry) => entry !== company)
-                : [...item.allowedCompanies, company],
-            }
-      )
-    );
-  };
-
-  const removeAppUser = (userId: number) => {
-    const target = users.find((item) => item.id === userId);
-    if (!target || target.isAdmin) {
-      setAuthMessage("El administrador principal no se puede eliminar.");
-      return;
-    }
-    setUsers((prev) => prev.filter((item) => item.id !== userId));
-    if (currentUserId === userId) {
-      setCurrentUserId(null);
-    }
+  const resetBudgetEditingState = () => {
+    resetBudgetWorkspace();
   };
 
   const buildPersistedAppData = (): PersistedAppStateData => ({
@@ -3629,7 +3593,6 @@ export default function App() {
     bankStatementEntries: bankStatementEntries.map((item) => ({ ...item })),
     stockItems: stockItems.map((item) => ({ ...item })),
     companyAssets: companyAssets.map((item) => ({ ...item })),
-    users: users.map((item) => ({ ...item })),
     employees: employees.map((item) => ({ ...item })),
     employeeBaseConfig: {
       ...employeeBaseConfig,
@@ -3654,7 +3617,6 @@ export default function App() {
     commissionPct,
     stockIncreasePct,
     editingBudgetId,
-    currentUserId: null,
   });
 
   const applyPersistedAppData = (data: Partial<PersistedAppStateData>) => {
@@ -3713,7 +3675,6 @@ export default function App() {
     );
     setStockItems((data.stockItems || defaultStockItems).map((item) => ({ ...item })));
     setCompanyAssets((data.companyAssets || defaultCompanyAssets).map((item) => ({ ...item })));
-    setUsers((data.users || defaultAppUsers).map((item) => ({ ...item })));
     setEmployees((data.employees || defaultEmployees).map((item) => ({ ...item })));
     setEmployeeBaseConfig({
       ...defaultBaseConfig,
@@ -4001,8 +3962,11 @@ export default function App() {
       )
     );
 
-    setBudget(nextBudgetData);
-    setEditingBudgetId(next.id);
+    const nextDraftNumber = getNextBudgetNumber(
+      [...savedBudgets.map((item) => item.number), next.number],
+      next.number
+    );
+    resetBudgetWorkspace(nextDraftNumber);
   };
 
   const approveBudget = (item: SavedBudget) => {
@@ -4967,7 +4931,6 @@ export default function App() {
     bankStatementEntries,
     stockItems,
     companyAssets,
-    users,
     employees,
     employeeBaseConfig,
     scaleRows,
@@ -4987,7 +4950,6 @@ export default function App() {
     commissionPct,
     stockIncreasePct,
     editingBudgetId,
-    currentUserId,
     isPersistenceReady,
     isSupabaseLoggedIn,
   ]);
@@ -6861,10 +6823,6 @@ export default function App() {
               <ButtonLike onClick={logoutSupabaseTest} secondary>
                 Cerrar sesion Supabase
               </ButtonLike>
-            ) : currentUser && !currentUser.isAdmin ? (
-              <ButtonLike onClick={logoutUser} secondary>
-                Volver a administrador
-              </ButtonLike>
             ) : null}
           </div>
         }
@@ -6877,7 +6835,7 @@ export default function App() {
               <strong>
                 {isSupabaseLoggedIn
                   ? supabaseSession?.user?.email || "Usuario Supabase"
-                  : currentUser?.name || "Sin sesion"}
+                  : "Sin sesion"}
               </strong>
             </div>
             <div style={{ ...styles.muted, marginTop: 6 }}>
@@ -6886,25 +6844,19 @@ export default function App() {
                 ? supabaseProfile?.is_superadmin
                   ? "Administrador Supabase"
                   : "Usuario Supabase"
-                : currentUser?.isAdmin
-                ? "Administrador"
-                : "Operativo"}
+                : "-"}
             </div>
             <div style={{ ...styles.muted, marginTop: 6 }}>
               Empresas habilitadas:{" "}
               {isSupabaseLoggedIn
                 ? supabaseAllowedCompanies.map((item) => getCompanyMeta(item).short).join(", ") || "-"
-                : effectiveIsAdmin
-                ? "Todas"
-                : currentUser?.allowedCompanies.map((item) => getCompanyMeta(item).short).join(", ") || "-"}
+                : "-"}
             </div>
             <div style={{ ...styles.muted, marginTop: 6 }}>
               Solapas habilitadas:{" "}
               {isSupabaseLoggedIn
                 ? visibleTabOptions.map((item) => item.label).join(", ") || "-"
-                : effectiveIsAdmin
-                ? "Todas"
-                : visibleTabOptions.map((item) => item.label).join(", ") || "-"}
+                : "-"}
             </div>
           </div>
           <div>
@@ -6932,35 +6884,7 @@ export default function App() {
               </ButtonLike>
             </div>
             <div style={{ ...styles.muted, marginTop: 8 }}>
-              Este es el acceso recomendado para compartir el sistema con otros usuarios.
-            </div>
-            <div style={styles.inlineForm}>
-              <input
-                style={styles.input}
-                value={loginName}
-                onChange={(e) => setLoginName(e.target.value)}
-                placeholder="Usuario"
-                disabled={isSupabaseLoggedIn}
-              />
-              <input
-                style={styles.input}
-                type="password"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-                placeholder="Contrasena"
-                disabled={isSupabaseLoggedIn}
-              />
-              <ButtonLike onClick={loginUser} secondary={isSupabaseLoggedIn}>
-                Ingresar
-              </ButtonLike>
-            </div>
-            <div style={{ ...styles.muted, marginTop: 8 }}>
-              El ingreso local queda solo como respaldo mientras terminamos de migrar todo el sistema.
-            </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
-              <button style={styles.smallBtn} onClick={logoutSupabaseTest}>
-                Cerrar sesion Supabase
-              </button>
+              Este es el unico acceso habilitado para usar y guardar en el sistema compartido.
             </div>
             <div style={{ marginTop: 12, fontSize: 13, color: "#334155" }}>
               <div>
@@ -6982,155 +6906,11 @@ export default function App() {
               <div style={{ ...styles.muted, marginTop: 8 }}>{supabaseAuthMessage}</div>
             )}
             <div style={{ ...styles.muted, marginTop: 8 }}>
-              Solo el administrador puede crear usuarios, elegir empresas y definir solapas.
+              Los permisos de usuarios se administran en Supabase.
             </div>
-            {authMessage && <div style={{ ...styles.muted, marginTop: 8 }}>{authMessage}</div>}
           </div>
         </div>
       </Panel>
-
-      {effectiveIsAdmin && !isSupabaseLoggedIn && (
-        <Panel title="Administracion de usuarios y permisos">
-          <div style={styles.grid2}>
-            <Panel title="Crear usuario operativo" nested>
-              <div style={styles.inlineForm}>
-                <input
-                  style={styles.input}
-                  value={newUserDraft.name}
-                  onChange={(e) => setNewUserDraft((prev) => ({ ...prev, name: e.target.value }))}
-                  placeholder="Nombre de usuario"
-                />
-                <input
-                  style={styles.input}
-                  value={newUserDraft.password}
-                  onChange={(e) => setNewUserDraft((prev) => ({ ...prev, password: e.target.value }))}
-                  placeholder="Contrasena"
-                />
-                <ButtonLike onClick={createAppUser}>Crear usuario</ButtonLike>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <div style={styles.label}>Empresas habilitadas</div>
-                <div style={styles.permissionsGrid}>
-                  {COMPANY_OPTIONS.map((company) => (
-                    <label key={company.value} style={styles.checkboxRow}>
-                      <input
-                        type="checkbox"
-                        checked={newUserDraft.allowedCompanies.includes(company.value)}
-                        onChange={() =>
-                          setNewUserDraft((prev) => ({
-                            ...prev,
-                            allowedCompanies: prev.allowedCompanies.includes(company.value)
-                              ? prev.allowedCompanies.filter((item) => item !== company.value)
-                              : [...prev.allowedCompanies, company.value],
-                          }))
-                        }
-                      />
-                      {company.short}
-                    </label>
-                  ))}
-                </div>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <div style={styles.label}>Solapas habilitadas</div>
-                <div style={styles.permissionsGrid}>
-                  {TAB_OPTIONS.map((tab) => (
-                    <label key={tab.key} style={styles.checkboxRow}>
-                      <input
-                        type="checkbox"
-                        checked={newUserDraft.allowedTabs.includes(tab.key)}
-                        onChange={() =>
-                          setNewUserDraft((prev) => ({
-                            ...prev,
-                            allowedTabs: prev.allowedTabs.includes(tab.key)
-                              ? prev.allowedTabs.filter((item) => item !== tab.key)
-                              : [...prev.allowedTabs, tab.key],
-                          }))
-                        }
-                      />
-                      {tab.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
-            </Panel>
-
-            <Panel title="Usuarios creados" nested>
-              {users.length === 0 ? (
-                <div style={styles.empty}>No hay usuarios cargados.</div>
-              ) : (
-                users.map((user) => (
-                  <div key={user.id} style={styles.subCard}>
-                    <div style={styles.inlineActions}>
-                      <strong>{user.name}</strong>
-                      <span style={{ ...styles.statusPill, ...(user.isAdmin ? styles.statusBlue : styles.statusGray) }}>
-                        {user.isAdmin ? "Administrador" : "Operativo"}
-                      </span>
-                      {!user.isAdmin && (
-                        <button style={styles.smallBtn} onClick={() => removeAppUser(user.id)}>
-                          Quitar
-                        </button>
-                      )}
-                    </div>
-                    <div style={{ ...styles.grid2, marginTop: 10 }}>
-                      <Field label="Contrasena">
-                        <input
-                          style={styles.input}
-                          value={user.password}
-                          onChange={(e) => updateAppUserField(user.id, "password", e.target.value)}
-                          disabled={user.isAdmin}
-                        />
-                      </Field>
-                      <Field label="Activo">
-                        <label style={styles.checkboxRow}>
-                          <input
-                            type="checkbox"
-                            checked={user.active}
-                            onChange={(e) => updateAppUserField(user.id, "active", e.target.checked)}
-                            disabled={user.isAdmin}
-                          />
-                          Usuario habilitado
-                        </label>
-                      </Field>
-                    </div>
-                    {!user.isAdmin && (
-                      <>
-                        <div style={styles.label}>Empresas habilitadas</div>
-                        <div style={styles.permissionsGrid}>
-                          {COMPANY_OPTIONS.map((company) => (
-                            <label key={`${user.id}-${company.value}`} style={styles.checkboxRow}>
-                              <input
-                                type="checkbox"
-                                checked={user.allowedCompanies.includes(company.value)}
-                                onChange={() => toggleUserCompanyPermission(user.id, company.value)}
-                              />
-                              {company.short}
-                            </label>
-                          ))}
-                        </div>
-                        <div style={{ ...styles.label, marginTop: 12 }}>Solapas habilitadas</div>
-                        <div style={styles.permissionsGrid}>
-                          {TAB_OPTIONS.map((tab) => (
-                            <label key={`${user.id}-${tab.key}`} style={styles.checkboxRow}>
-                              <input
-                                type="checkbox"
-                                checked={user.allowedTabs.includes(tab.key)}
-                                onChange={() => toggleUserTabPermission(user.id, tab.key)}
-                              />
-                              {tab.label}
-                            </label>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
-            </Panel>
-          </div>
-        </Panel>
-      )}
-        </div>
-      )}
 
       {activeTab === "cashflow" && (
         <div style={styles.column}>
@@ -8066,7 +7846,14 @@ export default function App() {
                     onChange={(e) => setBudget({ ...budget, contactEmail: e.target.value })}
                   />
                 </Field>
-                <Field label="CUIT">
+                <Field label="CUIT/CUIL cliente">
+                  <input
+                    style={styles.input}
+                    value={budget.clientTaxId}
+                    onChange={(e) => setBudget({ ...budget, clientTaxId: e.target.value })}
+                  />
+                </Field>
+                <Field label="CUIT empresa">
                   <input
                     style={styles.input}
                     value={budget.cuit}
@@ -8150,6 +7937,17 @@ export default function App() {
                   />
                 </Field>
               </TwoCol>
+
+              <Field label="Datos bancarios empresa">
+                <textarea
+                  style={{ ...styles.textarea, minHeight: 96 }}
+                  value={
+                    getCompanyBankingLines(budget.company).join("\n") ||
+                    "Sin datos bancarios cargados para esta empresa."
+                  }
+                  readOnly
+                />
+              </Field>
 
               <Field label="Descripcion">
                 <textarea
@@ -9713,6 +9511,7 @@ export default function App() {
                     <th>Contacto</th>
                     <th>Telefono</th>
                     <th>Email</th>
+                    <th>CUIT/CUIL</th>
                     <th>Presupuestos</th>
                     <th>Pend. exportar</th>
                     <th>Compro</th>
@@ -9740,6 +9539,7 @@ export default function App() {
                       <td>{row.contactName || "-"}</td>
                       <td>{row.contactPhone || "-"}</td>
                       <td>{row.contactEmail || "-"}</td>
+                      <td>{row.clientTaxId || "-"}</td>
                       <td>{row.quotes.length}</td>
                       <td>
                         <span
@@ -9790,6 +9590,7 @@ export default function App() {
                   <div><strong>Persona:</strong> {selectedCrmClient.contactName || "-"}</div>
                   <div style={{ marginTop: 8 }}><strong>Telefono:</strong> {selectedCrmClient.contactPhone || "-"}</div>
                   <div style={{ marginTop: 8 }}><strong>Email:</strong> {selectedCrmClient.contactEmail || "-"}</div>
+                  <div style={{ marginTop: 8 }}><strong>CUIT/CUIL:</strong> {selectedCrmClient.clientTaxId || "-"}</div>
                   <div style={{ marginTop: 8 }}><strong>Notas:</strong> {selectedCrmClient.clientNotes || "-"}</div>
                 </Panel>
                 <Panel title="Empresas vinculadas" nested>
@@ -12970,6 +12771,8 @@ function BudgetDocument({
   companyTheme: { short: string; primary: string; soft: string };
 }) {
   const mainLogo = budget.logos[0] || null;
+  const companyMetaInfo = getCompanyMeta(budget.company);
+  const companyBankingLines = getCompanyBankingLines(budget.company);
   const accentBlockStyle: React.CSSProperties = {
     ...styles.printBlock,
     borderColor: companyTheme.primary,
@@ -13018,8 +12821,13 @@ function BudgetDocument({
           )}
           <h1 style={{ margin: "12px 0 4px 0" }}>{budget.project}</h1>
           <div>{budget.client}</div>
+          {budget.clientTaxId && (
+            <div style={{ marginTop: 6 }}>CUIT/CUIL cliente: {budget.clientTaxId}</div>
+          )}
         </div>
         <div style={styles.previewMeta}>
+          <div><strong>Empresa:</strong> {companyMetaInfo.short}</div>
+          <div><strong>CUIT empresa:</strong> {budget.cuit}</div>
           <div><strong>Nro:</strong> {budget.number}</div>
           <div><strong>Fecha:</strong> {formatDateDisplay(budget.date)}</div>
           <div><strong>Entrega:</strong> {formatDateDisplay(estimatedDeliveryDate)}</div>
@@ -13052,6 +12860,15 @@ function BudgetDocument({
         <div style={styles.label}>Alcance</div>
         <div>{budget.scope}</div>
       </div>
+
+      {companyBankingLines.length > 0 && (
+        <div style={accentBlockStyle}>
+          <div style={styles.label}>Datos para transferencia</div>
+          {companyBankingLines.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      )}
 
       {sections.map((section, index) => (
         <div key={section.id} style={accentBlockStyle}>
