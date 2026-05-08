@@ -71,6 +71,7 @@ const STOCK_GROUP_CODE_PREFIX: Record<StockGeneralGroupName, string> = {
 };
 
 type TabKey =
+  | "acceso"
   | "cashflow"
   | "compras"
   | "cajaChica"
@@ -83,6 +84,7 @@ type TabKey =
   | "personal";
 
 const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
+  { key: "acceso", label: "Acceso" },
   { key: "cashflow", label: "Cash flow y resultados" },
   { key: "facturacion", label: "Facturacion y cobranzas" },
   { key: "aprobados", label: "Trabajos aprobados" },
@@ -1709,7 +1711,7 @@ export default function App() {
   const [supabaseCompaniesCatalog, setSupabaseCompaniesCatalog] = useState<any[]>([]);
   const [supabaseCompanyPermissions, setSupabaseCompanyPermissions] = useState<any[]>([]);
   const [supabaseTabPermissions, setSupabaseTabPermissions] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<TabKey>("cashflow");
+  const [activeTab, setActiveTab] = useState<TabKey>("acceso");
   const [budget, setBudget] = useState<BudgetData>(defaultBudget);
   const [materials, setMaterials] = useState<Material[]>(defaultMaterials);
   const [basicSupplies, setBasicSupplies] = useState<Material[]>(defaultBasicSupplies);
@@ -1764,7 +1766,7 @@ export default function App() {
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [isPersistenceReady, setIsPersistenceReady] = useState(false);
   const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
-  const [currentUserId, setCurrentUserId] = useState<number | null>(1);
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [loginName, setLoginName] = useState("Administrador");
   const [loginPassword, setLoginPassword] = useState("");
   const [authMessage, setAuthMessage] = useState("");
@@ -1933,17 +1935,31 @@ export default function App() {
       company === "General" ||
       allowedCompaniesForSession.includes(company as CompanyName));
 
-  const visibleTabOptions = useMemo(
-    () =>
-      !currentUser && !isSupabaseLoggedIn
-        ? []
-        : effectiveIsAdmin
-        ? TAB_OPTIONS
-        : isSupabaseLoggedIn
-        ? TAB_OPTIONS.filter((item) => supabaseAllowedTabs.includes(item.key))
-        : TAB_OPTIONS.filter((item) => currentUser?.allowedTabs.includes(item.key)),
-    [currentUser, effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedTabs]
-  );
+  const visibleTabOptions = useMemo(() => {
+    const accessTab = TAB_OPTIONS.find((item) => item.key === "acceso");
+    const withAccess = (items: Array<{ key: TabKey; label: string }>) =>
+      accessTab
+        ? [accessTab, ...items.filter((item) => item.key !== "acceso")]
+        : items;
+
+    if (!currentUser && !isSupabaseLoggedIn) {
+      return accessTab ? [accessTab] : [];
+    }
+
+    if (effectiveIsAdmin) {
+      return withAccess(TAB_OPTIONS);
+    }
+
+    if (isSupabaseLoggedIn) {
+      return withAccess(
+        TAB_OPTIONS.filter((item) => item.key === "acceso" || supabaseAllowedTabs.includes(item.key))
+      );
+    }
+
+    return withAccess(
+      TAB_OPTIONS.filter((item) => item.key === "acceso" || currentUser?.allowedTabs.includes(item.key))
+    );
+  }, [currentUser, effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedTabs]);
 
   const visibleSavedBudgets = useMemo(
     () => savedBudgets.filter((item) => canAccessCompany(item.company)),
@@ -3218,6 +3234,10 @@ export default function App() {
         if (cancelled) return;
         if (persisted) {
           applyPersistedAppData(persisted.data);
+          if (!hasSupabaseSession) {
+            setCurrentUserId(null);
+            setActiveTab("acceso");
+          }
           setLastSavedAt(persisted.savedAt);
           setStorageMessage(
             hasSupabaseSession
@@ -3246,11 +3266,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!currentUser) return;
-    if (!visibleTabOptions.some((item) => item.key === activeTab)) {
-      setActiveTab(visibleTabOptions[0]?.key || "presupuesto");
+    if (!currentUser && !isSupabaseLoggedIn) {
+      if (activeTab !== "acceso") setActiveTab("acceso");
+      return;
     }
-  }, [activeTab, currentUser, visibleTabOptions]);
+    if (!visibleTabOptions.some((item) => item.key === activeTab)) {
+      setActiveTab(visibleTabOptions[0]?.key || "acceso");
+    }
+  }, [activeTab, currentUser, isSupabaseLoggedIn, visibleTabOptions]);
 
   useEffect(() => {
     if ((!currentUser && !isSupabaseLoggedIn) || effectiveIsAdmin) return;
@@ -3480,13 +3503,15 @@ export default function App() {
       return;
     }
     setCurrentUserId(foundUser.id);
+    setActiveTab("acceso");
     setAuthMessage(`Sesion iniciada como ${foundUser.name}.`);
     setLoginPassword("");
   };
 
   const logoutUser = () => {
-    setCurrentUserId(1);
-    setAuthMessage("Volviste a la sesion administradora.");
+    setCurrentUserId(null);
+    setActiveTab("acceso");
+    setAuthMessage("Sesion local cerrada.");
   };
 
   const createAppUser = () => {
@@ -3629,7 +3654,7 @@ export default function App() {
     commissionPct,
     stockIncreasePct,
     editingBudgetId,
-    currentUserId,
+    currentUserId: null,
   });
 
   const applyPersistedAppData = (data: Partial<PersistedAppStateData>) => {
@@ -3722,7 +3747,7 @@ export default function App() {
     setCommissionPct(data.commissionPct ?? 0);
     setStockIncreasePct(data.stockIncreasePct ?? 0);
     setEditingBudgetId(data.editingBudgetId ?? null);
-    setCurrentUserId(data.currentUserId ?? 1);
+    setCurrentUserId(null);
   };
 
   const restoreFromLocalSave = async () => {
@@ -6712,45 +6737,63 @@ export default function App() {
           <div style={styles.muted}>Fechas visibles en formato dia-mes-año</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <ButtonLike onClick={saveBudgetSnapshot}>
-            {editingBudgetId ? "Actualizar presupuesto" : "Guardar presupuesto"}
-          </ButtonLike>
-          {editingBudgetId && (
-            <ButtonLike onClick={resetBudgetEditingState} secondary>
-              Salir de edicion
-            </ButtonLike>
+          {activeTab !== "acceso" && (
+            <>
+              <ButtonLike onClick={saveBudgetSnapshot}>
+                {editingBudgetId ? "Actualizar presupuesto" : "Guardar presupuesto"}
+              </ButtonLike>
+              {editingBudgetId && (
+                <ButtonLike onClick={resetBudgetEditingState} secondary>
+                  Salir de edicion
+                </ButtonLike>
+              )}
+              <ButtonLike
+                onClick={() =>
+                  exportPrint(
+                    activeTab === "cashflow"
+                      ? "report-cashflow"
+                      : activeTab === "compras"
+                      ? "report-compras"
+                      : activeTab === "cajaChica"
+                      ? "report-caja-chica"
+                      : activeTab === "presupuesto"
+                      ? "client-budget"
+                      : activeTab === "marcadores"
+                      ? "report-marcadores"
+                      : activeTab === "historial"
+                      ? "report-historial"
+                      : activeTab === "aprobados"
+                      ? "report-aprobados"
+                      : activeTab === "stock"
+                      ? "report-stock"
+                      : activeTab === "facturacion"
+                      ? "report-facturacion"
+                      : "report-personal"
+                  )
+                }
+                secondary
+              >
+                Reporte
+              </ButtonLike>
+            </>
           )}
-          <ButtonLike
-            onClick={() =>
-              exportPrint(
-                activeTab === "cashflow"
-                  ? "report-cashflow"
-                  : activeTab === "compras"
-                  ? "report-compras"
-                  : activeTab === "cajaChica"
-                  ? "report-caja-chica"
-                  : activeTab === "presupuesto"
-                  ? "client-budget"
-                  : activeTab === "marcadores"
-                  ? "report-marcadores"
-                  : activeTab === "historial"
-                  ? "report-historial"
-                  : activeTab === "aprobados"
-                  ? "report-aprobados"
-                  : activeTab === "stock"
-                  ? "report-stock"
-                  : activeTab === "facturacion"
-                  ? "report-facturacion"
-                  : "report-personal"
-              )
-            }
-            secondary
-          >
-            Reporte
-          </ButtonLike>
         </div>
       </div>
 
+      <div style={styles.tabsRow}>
+        {visibleTabOptions.map((tab) => (
+          <button
+            key={tab.key}
+            style={activeTab === tab.key ? styles.tabActive : styles.tab}
+            onClick={() => setActiveTab(tab.key as TabKey)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "acceso" && (
+        <div style={styles.column}>
       <Panel
         title="Datos y backup"
         actions={
@@ -7086,18 +7129,8 @@ export default function App() {
           </div>
         </Panel>
       )}
-
-      <div style={styles.tabsRow}>
-        {visibleTabOptions.map((tab) => (
-          <button
-            key={tab.key}
-            style={activeTab === tab.key ? styles.tabActive : styles.tab}
-            onClick={() => setActiveTab(tab.key as TabKey)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+        </div>
+      )}
 
       {activeTab === "cashflow" && (
         <div style={styles.column}>
