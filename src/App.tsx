@@ -6758,8 +6758,8 @@ export default function App() {
           <div style={styles.accessShell}>
             <div style={styles.accessCard}>
               <div style={styles.accessBrand}>
-                {budget.logoDataUrl ? (
-                  <img src={budget.logoDataUrl} alt="Logo Grupo BGA" style={styles.accessLogo} />
+                {budget.logos[0]?.preview ? (
+                  <img src={budget.logos[0].preview} alt="Logo Grupo BGA" style={styles.accessLogo} />
                 ) : (
                   <div style={styles.accessLogoPlaceholder}>BGA</div>
                 )}
