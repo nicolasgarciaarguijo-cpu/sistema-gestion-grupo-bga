@@ -3708,7 +3708,6 @@ export default function App() {
     setCommissionPct(data.commissionPct ?? 0);
     setStockIncreasePct(data.stockIncreasePct ?? 0);
     setEditingBudgetId(data.editingBudgetId ?? null);
-    setCurrentUserId(null);
   };
 
   const restoreFromLocalSave = async () => {
