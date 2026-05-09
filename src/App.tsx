@@ -6755,162 +6755,150 @@ export default function App() {
       </div>
 
       {activeTab === "acceso" && (
-        <div style={styles.column}>
-      <Panel
-        title="Datos y backup"
-        actions={
-          <>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <ButtonLike onClick={restoreFromLocalSave} secondary>
-                Restaurar guardado local
-              </ButtonLike>
-              {isSupabaseLoggedIn && (
-                <>
+        !isSupabaseLoggedIn ? (
+          <div style={styles.accessShell}>
+            <div style={styles.accessCard}>
+              <div style={styles.accessBrand}>
+                {budget.logoDataUrl ? (
+                  <img src={budget.logoDataUrl} alt="Logo Grupo BGA" style={styles.accessLogo} />
+                ) : (
+                  <div style={styles.accessLogoPlaceholder}>BGA</div>
+                )}
+                <div style={styles.accessTitle}>Grupo BGA</div>
+                <div style={styles.accessSubtitle}>Acceso al sistema</div>
+                <div style={styles.accessSubcompaniesHint}>
+                  Luego agregaremos aqui los logos de las subempresas.
+                </div>
+              </div>
+
+              <div style={styles.accessFormCard}>
+                <div style={styles.accessFormTitle}>Iniciar sesion con Supabase</div>
+                <div style={styles.accessFormText}>
+                  Usa tu mail y contrasena habilitados en Supabase para entrar al sistema compartido.
+                </div>
+                <div style={styles.accessInputStack}>
+                  <input
+                    style={styles.accessInput}
+                    value={supabaseLoginEmail}
+                    onChange={(e) => setSupabaseLoginEmail(e.target.value)}
+                    placeholder="Mail de Supabase"
+                    autoComplete="username"
+                  />
+                  <input
+                    style={styles.accessInput}
+                    type="password"
+                    value={supabaseLoginPassword}
+                    onChange={(e) => setSupabaseLoginPassword(e.target.value)}
+                    placeholder="Contrasena de Supabase"
+                    autoComplete="current-password"
+                  />
+                </div>
+                <button style={styles.accessSubmitBtn} onClick={loginSupabaseTest}>
+                  Ingresar al sistema
+                </button>
+                <div style={styles.accessHelpText}>
+                  El acceso local fue deshabilitado. Todo el sistema usa autenticacion por Supabase.
+                </div>
+                {supabaseAuthMessage && (
+                  <div style={styles.accessFeedback}>{supabaseAuthMessage}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={styles.column}>
+            <Panel
+              title="Sesion Supabase"
+              actions={
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <ButtonLike onClick={logoutSupabaseTest} secondary>
+                    Cerrar sesion Supabase
+                  </ButtonLike>
+                </div>
+              }
+            >
+              <div style={styles.grid2}>
+                <div>
+                  <div style={styles.label}>Sesion actual</div>
+                  <div style={styles.muted}>
+                    Usuario: <strong>{supabaseSession?.user?.email || "Usuario Supabase"}</strong>
+                  </div>
+                  <div style={{ ...styles.muted, marginTop: 6 }}>
+                    Rol: {supabaseProfile?.is_superadmin ? "Administrador Supabase" : "Usuario Supabase"}
+                  </div>
+                </div>
+                <div>
+                  <div style={styles.label}>Permisos cargados</div>
+                  <div style={styles.muted}>
+                    Empresas: {supabaseAllowedCompanies.map((item) => getCompanyMeta(item).short).join(", ") || "-"}
+                  </div>
+                  <div style={{ ...styles.muted, marginTop: 6 }}>
+                    Solapas: {visibleTabOptions.map((item) => item.label).join(", ") || "-"}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+
+            <Panel
+              title="Datos y guardado"
+              actions={
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <ButtonLike onClick={restoreFromLocalSave} secondary>
+                    Restaurar guardado local
+                  </ButtonLike>
                   <ButtonLike onClick={restoreFromSupabaseSave} secondary>
                     Restaurar Supabase
                   </ButtonLike>
                   <ButtonLike onClick={saveToSupabaseNow} secondary>
                     Guardar en Supabase
                   </ButtonLike>
-                </>
-              )}
-              <ButtonLike onClick={downloadBackupFile} secondary>
-                Descargar backup
-              </ButtonLike>
-              <label style={styles.buttonLikeLabel}>
-                Cargar backup
-                <input
-                  type="file"
-                  accept="application/json,.json,.txt"
-                  style={{ display: "none" }}
-                  onChange={(e) => importBackupFile(e.target.files?.[0] || null)}
-                />
-              </label>
-              <ButtonLike onClick={clearLocalSave} secondary>
-                Borrar guardado local
-              </ButtonLike>
-            </div>
-          </>
-        }
-      >
-        <div style={styles.grid2}>
-          <div>
-            <div style={styles.label}>Guardado automatico</div>
-            <div style={styles.muted}>
-              {isPersistenceReady
-                ? "Activo en este navegador. Cada cambio importante queda guardado automaticamente."
-                : "Preparando el guardado automatico local..."}
-            </div>
-            <div style={{ ...styles.muted, marginTop: 6 }}>
-              Ultimo guardado: {formatDateTimeDisplay(lastSavedAt)}
-            </div>
-          </div>
-          <div>
-            <div style={styles.label}>Uso recomendado</div>
-            <div style={styles.muted}>
-              Trabaja normalmente, y cada tanto descarga un backup JSON para tener una copia externa antes de nuevas mejoras.
-            </div>
-            {storageMessage && <div style={{ ...styles.muted, marginTop: 6 }}>{storageMessage}</div>}
-          </div>
-        </div>
-      </Panel>
-
-      <Panel
-        title="Sesion y permisos"
-        actions={
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {isSupabaseLoggedIn ? (
-              <ButtonLike onClick={logoutSupabaseTest} secondary>
-                Cerrar sesion Supabase
-              </ButtonLike>
-            ) : null}
-          </div>
-        }
-      >
-        <div style={styles.grid2}>
-          <div>
-            <div style={styles.label}>Sesion actual</div>
-            <div style={styles.muted}>
-              Usuario:{" "}
-              <strong>
-                {isSupabaseLoggedIn
-                  ? supabaseSession?.user?.email || "Usuario Supabase"
-                  : "Sin sesion"}
-              </strong>
-            </div>
-            <div style={{ ...styles.muted, marginTop: 6 }}>
-              Rol:{" "}
-              {isSupabaseLoggedIn
-                ? supabaseProfile?.is_superadmin
-                  ? "Administrador Supabase"
-                  : "Usuario Supabase"
-                : "-"}
-            </div>
-            <div style={{ ...styles.muted, marginTop: 6 }}>
-              Empresas habilitadas:{" "}
-              {isSupabaseLoggedIn
-                ? supabaseAllowedCompanies.map((item) => getCompanyMeta(item).short).join(", ") || "-"
-                : "-"}
-            </div>
-            <div style={{ ...styles.muted, marginTop: 6 }}>
-              Solapas habilitadas:{" "}
-              {isSupabaseLoggedIn
-                ? visibleTabOptions.map((item) => item.label).join(", ") || "-"
-                : "-"}
-            </div>
-          </div>
-          <div>
-            <div style={styles.label}>
-              {isSupabaseLoggedIn ? "Sesion Supabase activa" : "Acceso principal por Supabase"}
-            </div>
-            <div style={styles.inlineForm}>
-              <input
-                style={styles.input}
-                value={supabaseLoginEmail}
-                onChange={(e) => setSupabaseLoginEmail(e.target.value)}
-                placeholder="Mail de Supabase"
-                disabled={isSupabaseLoggedIn}
-              />
-              <input
-                style={styles.input}
-                type="password"
-                value={supabaseLoginPassword}
-                onChange={(e) => setSupabaseLoginPassword(e.target.value)}
-                placeholder="Contrasena de Supabase"
-                disabled={isSupabaseLoggedIn}
-              />
-              <ButtonLike onClick={loginSupabaseTest} secondary={isSupabaseLoggedIn}>
-                Ingresar con Supabase
-              </ButtonLike>
-            </div>
-            <div style={{ ...styles.muted, marginTop: 8 }}>
-              Este es el unico acceso habilitado para usar y guardar en el sistema compartido.
-            </div>
-            <div style={{ marginTop: 12, fontSize: 13, color: "#334155" }}>
-              <div>
-                <strong>Sesion Supabase:</strong>{" "}
-                {supabaseSession?.user?.email || "Sin iniciar sesion"}
+                  <ButtonLike onClick={downloadBackupFile} secondary>
+                    Descargar backup
+                  </ButtonLike>
+                  <label style={styles.buttonLikeLabel}>
+                    Cargar backup
+                    <input
+                      type="file"
+                      accept="application/json,.json,.txt"
+                      style={{ display: "none" }}
+                      onChange={(e) => importBackupFile(e.target.files?.[0] || null)}
+                    />
+                  </label>
+                  <ButtonLike onClick={clearLocalSave} secondary>
+                    Borrar guardado local
+                  </ButtonLike>
+                </div>
+              }
+            >
+              <div style={styles.grid2}>
+                <div>
+                  <div style={styles.label}>Guardado automatico</div>
+                  <div style={styles.muted}>
+                    {isPersistenceReady
+                      ? "Activo en este navegador y sincronizado con Supabase mientras la sesion este iniciada."
+                      : "Preparando el guardado automatico..."}
+                  </div>
+                  <div style={{ ...styles.muted, marginTop: 6 }}>
+                    Ultimo guardado: {formatDateTimeDisplay(lastSavedAt)}
+                  </div>
+                </div>
+                <div>
+                  <div style={styles.label}>Uso recomendado</div>
+                  <div style={styles.muted}>
+                    Trabaja normalmente y usa Guardar en Supabase para confirmar cambios importantes antes de cerrar.
+                  </div>
+                  {storageMessage && (
+                    <div style={{ ...styles.muted, marginTop: 6 }}>{storageMessage}</div>
+                  )}
+                  {supabaseAuthMessage && (
+                    <div style={{ ...styles.muted, marginTop: 6 }}>{supabaseAuthMessage}</div>
+                  )}
+                </div>
               </div>
-              <div>
-                <strong>Perfil:</strong>{" "}
-                {supabaseProfile?.full_name || "Sin perfil cargado"}
-              </div>
-              <div>
-                <strong>Empresas permitidas:</strong> {supabaseCompanyPermissions.length}
-              </div>
-              <div>
-                <strong>Solapas permitidas:</strong> {supabaseTabPermissions.length}
-              </div>
-            </div>
-            {supabaseAuthMessage && (
-              <div style={{ ...styles.muted, marginTop: 8 }}>{supabaseAuthMessage}</div>
-            )}
-            <div style={{ ...styles.muted, marginTop: 8 }}>
-              Los permisos de usuarios se administran en Supabase.
-            </div>
+            </Panel>
           </div>
-        </div>
-      </Panel>
+        )
+      )}
 
       {activeTab === "cashflow" && (
         <div style={styles.column}>
@@ -13318,6 +13306,137 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     fontSize: 12,
     fontWeight: 700,
+  },
+  accessShell: {
+    minHeight: "70vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "24px 0 40px",
+  },
+  accessCard: {
+    width: "100%",
+    maxWidth: 980,
+    display: "grid",
+    gridTemplateColumns: "1.1fr 0.9fr",
+    gap: 24,
+    alignItems: "stretch",
+  },
+  accessBrand: {
+    minHeight: 520,
+    borderRadius: 28,
+    padding: 34,
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    background:
+      "radial-gradient(circle at top, rgba(59,130,246,0.22), rgba(255,255,255,0.96) 42%), linear-gradient(145deg, #ffffff, #eff6ff)",
+    border: "1px solid #bfdbfe",
+    boxShadow: "0 20px 50px rgba(15,23,42,0.08)",
+  },
+  accessLogo: {
+    width: 140,
+    maxHeight: 110,
+    objectFit: "contain",
+    marginBottom: 22,
+  },
+  accessLogoPlaceholder: {
+    width: 112,
+    height: 112,
+    borderRadius: 26,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 22,
+    background: "linear-gradient(145deg, #1d4ed8, #0f172a)",
+    color: "white",
+    fontSize: 30,
+    fontWeight: 800,
+    letterSpacing: 1,
+    boxShadow: "0 18px 40px rgba(29,78,216,0.28)",
+  },
+  accessTitle: {
+    fontSize: 40,
+    fontWeight: 800,
+    color: "#0f172a",
+    marginBottom: 8,
+  },
+  accessSubtitle: {
+    fontSize: 18,
+    fontWeight: 600,
+    color: "#1d4ed8",
+    marginBottom: 12,
+  },
+  accessSubcompaniesHint: {
+    maxWidth: 420,
+    fontSize: 14,
+    lineHeight: 1.5,
+    color: "#64748b",
+  },
+  accessFormCard: {
+    borderRadius: 28,
+    padding: 30,
+    background: "#ffffff",
+    border: "1px solid #e2e8f0",
+    boxShadow: "0 20px 50px rgba(15,23,42,0.08)",
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "center",
+  },
+  accessFormTitle: {
+    fontSize: 26,
+    fontWeight: 800,
+    color: "#0f172a",
+    marginBottom: 8,
+  },
+  accessFormText: {
+    fontSize: 14,
+    lineHeight: 1.5,
+    color: "#64748b",
+    marginBottom: 18,
+  },
+  accessInputStack: {
+    display: "grid",
+    gap: 12,
+    marginBottom: 14,
+  },
+  accessInput: {
+    width: "100%",
+    padding: "13px 14px",
+    borderRadius: 14,
+    border: "1px solid #cbd5e1",
+    boxSizing: "border-box",
+    fontSize: 15,
+    background: "#f8fafc",
+  },
+  accessSubmitBtn: {
+    width: "100%",
+    padding: "13px 16px",
+    borderRadius: 14,
+    border: "none",
+    background: "linear-gradient(145deg, #0f172a, #1d4ed8)",
+    color: "white",
+    fontWeight: 700,
+    fontSize: 15,
+    cursor: "pointer",
+    boxShadow: "0 18px 35px rgba(29,78,216,0.22)",
+  },
+  accessHelpText: {
+    marginTop: 12,
+    fontSize: 13,
+    lineHeight: 1.5,
+    color: "#64748b",
+  },
+  accessFeedback: {
+    marginTop: 12,
+    padding: "10px 12px",
+    borderRadius: 12,
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    color: "#1e3a8a",
+    fontSize: 13,
   },
   statusGreen: { background: "#dcfce7", color: "#166534" },
   statusYellow: { background: "#fef3c7", color: "#92400e" },
