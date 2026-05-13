@@ -3,7 +3,6 @@ import { supabase } from "./lib/supabase";
 
 const APP_TITLE = "Sistema de Gestion Grupo BGA";
 const INVOICE_VAT_PCT = 21;
-const ADMIN_MASTER_PASSWORD = "BGAadmin2026";
 
 const COMPANY_OPTIONS = [
   {
@@ -12,10 +11,10 @@ const COMPANY_OPTIONS = [
     primary: "#14213d",
     soft: "#dbe7f7",
     taxId: "30-71527468-6",
-    bankName: "",
-    bankAlias: "",
-    bankCbu: "",
-    bankAccount: "",
+    bankName: "Santander",
+    bankAlias: "GRUPOBGA",
+    bankCbu: "0720082320000000448536",
+    bankAccount: "CC$ 082-004485/3",
   },
   {
     value: "De raiz s.r.l",
@@ -128,6 +127,7 @@ type Material = {
   unitPrice: number;
   stockCode?: string;
   stockGroup?: string;
+  stockLocation?: string;
   sortOrder?: number;
   sourceMarkerId?: number;
   sourceCompany?: CompanyName;
@@ -595,6 +595,7 @@ type StockItem = {
   kind: "general" | "EPP" | "Insumos";
   shared: boolean;
   group: string;
+  location: string;
   sortOrder: number;
   code: string;
   description: string;
@@ -1066,13 +1067,13 @@ const defaultPersonalProvisionMarkers: PersonalProvisionMarker[] = [
 ];
 
 const defaultStockItems: StockItem[] = [
-  { id: 1, company: "General", kind: "general", shared: true, group: "Melaminas", sortOrder: 1, code: "MEL-001", description: "Melamina blanca", unit: "placas", quantity: 3, unitPrice: 43000, periodicityMonths: 0, active: true },
-  { id: 2, company: "General", kind: "general", shared: true, group: "Herrajes", sortOrder: 2, code: "HER-001", description: "Herrajes Hafele", unit: "set", quantity: 2, unitPrice: 140000, periodicityMonths: 0, active: true },
-  { id: 3, company: "General", kind: "general", shared: true, group: "Pinturas", sortOrder: 3, code: "PIN-001", description: "Laca poliuretanica", unit: "lt", quantity: 0, unitPrice: 18500, periodicityMonths: 0, active: true },
-  { id: 4, company: "General", kind: "EPP", shared: true, group: "EPP", sortOrder: 4, code: "EPP-001", description: "Ropa de trabajo", unit: "equipo", quantity: 10, unitPrice: 0, periodicityMonths: 6, active: true },
-  { id: 5, company: "General", kind: "EPP", shared: true, group: "EPP", sortOrder: 5, code: "EPP-002", description: "Zapatos de seguridad", unit: "par", quantity: 10, unitPrice: 0, periodicityMonths: 6, active: true },
-  { id: 6, company: "General", kind: "Insumos", shared: true, group: "Insumos", sortOrder: 6, code: "INS-001", description: "Guantes", unit: "pack", quantity: 20, unitPrice: 0, periodicityMonths: 6, active: true },
-  { id: 7, company: "General", kind: "Insumos", shared: true, group: "Insumos", sortOrder: 7, code: "INS-002", description: "Mascarillas", unit: "pack", quantity: 20, unitPrice: 0, periodicityMonths: 6, active: true },
+  { id: 1, company: "General", kind: "general", shared: true, group: "Melaminas", location: "Deposito general", sortOrder: 1, code: "MEL-001", description: "Melamina blanca", unit: "placas", quantity: 3, unitPrice: 43000, periodicityMonths: 0, active: true },
+  { id: 2, company: "General", kind: "general", shared: true, group: "Herrajes", location: "Sector herrajes", sortOrder: 2, code: "HER-001", description: "Herrajes Hafele", unit: "set", quantity: 2, unitPrice: 140000, periodicityMonths: 0, active: true },
+  { id: 3, company: "General", kind: "general", shared: true, group: "Pinturas", location: "Deposito pinturas", sortOrder: 3, code: "PIN-001", description: "Laca poliuretanica", unit: "lt", quantity: 0, unitPrice: 18500, periodicityMonths: 0, active: true },
+  { id: 4, company: "General", kind: "EPP", shared: true, group: "EPP", location: "Vestuario", sortOrder: 4, code: "EPP-001", description: "Ropa de trabajo", unit: "equipo", quantity: 10, unitPrice: 0, periodicityMonths: 6, active: true },
+  { id: 5, company: "General", kind: "EPP", shared: true, group: "EPP", location: "Vestuario", sortOrder: 5, code: "EPP-002", description: "Zapatos de seguridad", unit: "par", quantity: 10, unitPrice: 0, periodicityMonths: 6, active: true },
+  { id: 6, company: "General", kind: "Insumos", shared: true, group: "Insumos", location: "Deposito insumos", sortOrder: 6, code: "INS-001", description: "Guantes", unit: "pack", quantity: 20, unitPrice: 0, periodicityMonths: 6, active: true },
+  { id: 7, company: "General", kind: "Insumos", shared: true, group: "Insumos", location: "Deposito insumos", sortOrder: 7, code: "INS-002", description: "Mascarillas", unit: "pack", quantity: 20, unitPrice: 0, periodicityMonths: 6, active: true },
 ];
 
 const defaultBaseConfig: EmployeeBaseConfig = {
@@ -1239,17 +1240,7 @@ const defaultCompanyAssets: CompanyAsset[] = [
   },
 ];
 
-const defaultAppUsers: AppUser[] = [
-  {
-    id: 1,
-    name: "Administrador",
-    password: ADMIN_MASTER_PASSWORD,
-    isAdmin: true,
-    active: true,
-    allowedTabs: TAB_OPTIONS.map((item) => item.key),
-    allowedCompanies: COMPANY_OPTIONS.map((item) => item.value),
-  },
-];
+const defaultAppUsers: AppUser[] = [];
 
 const LEGACY_APPROVED_IMPORT_ROWS: LegacyApprovedImportRow[] = [
   { budgetNumber: "3162", client: "CONTRACT RENT SA", project: "REVESTIMIENTO OFICINA", approvalDate: "2026-08-20", deliveryTerm: "90 DIAS", paymentTerms: "TRANSFERENCIA", commissionAmount: 0, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 81764066.38, businessName: "CONTRACT RENT SA", taxId: "30-69115033-6", invoiceNumber: "A 347/356/359", invoices: [{ invoiceDate: "2026-01-12", subtotal: 12264609.94, vat: 2575568.0874, total: 14840178.0274 }, { invoiceDate: "2026-02-02", subtotal: 8176406.63, vat: 1717045.3923, total: 9893452.0223 }, { invoiceDate: "2026-08-20", subtotal: 57234846.4, vat: 12019317.744, total: 69254164.144 }, { invoiceDate: "2026-01-12", subtotal: 1155108.4, vat: 242572.764, total: 1397681.164 }, { invoiceDate: "2026-02-02", subtotal: 886688.45, vat: 186204.5745, total: 1072893.0245 }], payments: [], retentions: [], additionals: [{ description: "AJUSTE CAC", amount: 2041796.85, date: "2026-01-12" }] },
@@ -1280,10 +1271,24 @@ const cloneBudget = (budget: BudgetData): BudgetData => ({
   referenceImages: budget.referenceImages.map((image) => ({ ...image })),
 });
 
+const buildBudgetSummaryLabel = (input: {
+  number: string;
+  client?: string;
+  project?: string;
+}) => {
+  const parts = [input.number, input.client || "", input.project || ""]
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return parts.length > 0 ? parts.join(" - ") : "Presupuesto";
+};
+
 const buildBlankBudgetDraft = (input: {
   company: CompanyName;
   workType: WorkTypeName;
   number: string;
+  scope?: string;
+  projectManager?: string;
+  logos?: BudgetImage[];
 }): BudgetData => ({
   ...cloneBudget(defaultBudget),
   company: input.company,
@@ -1299,14 +1304,14 @@ const buildBlankBudgetDraft = (input: {
   cuit: getCompanyTaxId(input.company),
   project: "",
   notes: "",
-  scope: "",
+  scope: input.scope ?? defaultBudget.scope,
   deliveryDestination: "",
-  projectManager: "",
+  projectManager: input.projectManager ?? defaultBudget.projectManager,
   maxRequirementDate: "",
   billedPct: 100,
   isUpdate: false,
   updateLabel: "",
-  logos: [],
+  logos: (input.logos || []).map((image) => ({ ...image })),
   referenceImages: [],
 });
 
@@ -1428,14 +1433,24 @@ const normalizeClientKey = (text: string) => text.trim().toLowerCase();
 
 const getSavedBudgetDisplayLabel = (item: {
   number: string;
+  client?: string;
+  project?: string;
   isUpdate?: boolean;
   revisionNumber?: number;
   snapshot?: BudgetSnapshot;
-}) =>
-  item.isUpdate || item.snapshot?.budget.isUpdate
-    ? `${item.number} · ${item.snapshot?.budget.updateLabel || `Actualizacion ${item.revisionNumber ?? ""}`.trim()}`
-    : item.number;
+}) => {
+  const baseLabel = buildBudgetSummaryLabel({
+    number: item.number,
+    client: item.client || item.snapshot?.budget.client || "",
+    project: item.project || item.snapshot?.budget.project || "",
+  });
 
+  return item.isUpdate || item.snapshot?.budget.isUpdate
+    ? `${baseLabel} � ${
+        item.snapshot?.budget.updateLabel || `Actualizacion ${item.revisionNumber ?? ""}`.trim()
+      }`
+    : baseLabel;
+};
 const getApprovedJobSourceLabel = (job: Pick<ApprovedJob, "sourceType">) =>
   job.sourceType === "from_budget"
     ? "Desde presupuesto"
@@ -3467,11 +3482,20 @@ export default function App() {
         )
       );
     }
+    const previousTitle = document.title;
+    if (mode === "client-budget") {
+      document.title = buildBudgetSummaryLabel({
+        number: budget.number,
+        client: budget.client,
+        project: budget.project,
+      });
+    }
     setPrintMode(mode);
     document.body.setAttribute("data-print-mode", mode);
     window.print();
     document.body.removeAttribute("data-print-mode");
     setPrintMode("");
+    document.title = previousTitle;
   };
 
   const loadBudgetFromSnapshot = (snapshot: BudgetSnapshot, budgetId?: number | null) => {
@@ -3532,6 +3556,9 @@ export default function App() {
       company: budget.company,
       workType: budget.workType,
       number: generatedNumber,
+      scope: budget.scope || defaultBudget.scope,
+      projectManager: budget.projectManager || defaultBudget.projectManager,
+      logos: budget.logos,
     });
 
     setEditingBudgetId(null);
@@ -3673,7 +3700,12 @@ export default function App() {
     setBankStatementEntries(
       (data.bankStatementEntries || defaultBankStatementEntries).map((item) => ({ ...item }))
     );
-    setStockItems((data.stockItems || defaultStockItems).map((item) => ({ ...item })));
+    setStockItems(
+      (data.stockItems || defaultStockItems).map((item) => ({
+        ...item,
+        location: item.location || "",
+      }))
+    );
     setCompanyAssets((data.companyAssets || defaultCompanyAssets).map((item) => ({ ...item })));
     setEmployees((data.employees || defaultEmployees).map((item) => ({ ...item })));
     setEmployeeBaseConfig({
@@ -4624,6 +4656,7 @@ export default function App() {
             description: rawValue,
             stockCode: undefined,
             stockGroup: undefined,
+            stockLocation: undefined,
           };
         }
 
@@ -4632,6 +4665,7 @@ export default function App() {
           description: stockMatch.description,
           stockCode: stockMatch.code,
           stockGroup: stockMatch.group,
+          stockLocation: stockMatch.location,
           unit: stockMatch.unit || item.unit,
           unitPrice: Number(stockMatch.unitPrice || 0),
           sortOrder:
@@ -4661,6 +4695,7 @@ export default function App() {
       kind: "general",
       shared: true,
       group: nextGroup,
+      location: source.stockLocation || "",
       sortOrder: nextSortOrder,
       code: getNextStockCode(stockItems, nextGroup),
       description: source.description,
@@ -4679,6 +4714,7 @@ export default function App() {
               ...item,
               stockCode: newStockItem.code,
               stockGroup: newStockItem.group,
+              stockLocation: newStockItem.location,
               sortOrder: item.sortOrder ?? newStockItem.sortOrder,
             }
           : item
@@ -4988,6 +5024,7 @@ export default function App() {
         kind: "general",
         shared: true,
         group: "Melaminas",
+        location: "",
         sortOrder:
           Math.max(
             0,
@@ -5250,6 +5287,7 @@ export default function App() {
         kind,
         shared: true,
         group: kind,
+        location: "",
         sortOrder:
           Math.max(0, ...prev.map((item) => Number(item.sortOrder || 0))) + 1,
         code: `${kind === "EPP" ? "EPP" : "INS"}-${prev.length + 1}`,
@@ -7761,8 +7799,8 @@ export default function App() {
       )}
 
       {activeTab === "presupuesto" && (
-        <div style={styles.grid3}>
-          <div style={styles.column}>
+        <div style={styles.budgetLayout}>
+          <div style={styles.budgetMainTop}>
             <Panel title="Datos del presupuesto">
               <TwoCol>
                 <Field label="Empresa">
@@ -7786,6 +7824,13 @@ export default function App() {
                       </option>
                     ))}
                   </select>
+                </Field>
+                <Field label="CUIT empresa">
+                  <input
+                    style={styles.input}
+                    value={budget.cuit}
+                    readOnly
+                  />
                 </Field>
                 <Field label="Numero">
                   <input
@@ -7838,13 +7883,6 @@ export default function App() {
                     style={styles.input}
                     value={budget.clientTaxId}
                     onChange={(e) => setBudget({ ...budget, clientTaxId: e.target.value })}
-                  />
-                </Field>
-                <Field label="CUIT empresa">
-                  <input
-                    style={styles.input}
-                    value={budget.cuit}
-                    readOnly
                   />
                 </Field>
                 <Field label="Proyecto">
@@ -7959,6 +7997,7 @@ export default function App() {
               </Field>
             </Panel>
 
+            {false && (
             <Panel title="Imagenes">
               <div style={styles.grid2}>
                 <Field label="Logos">
@@ -8047,6 +8086,7 @@ export default function App() {
                 </div>
               )}
             </Panel>
+            )}
 
             <Panel title="CRM del cliente">
               {budget.client.trim() === "" ? (
@@ -8110,6 +8150,8 @@ export default function App() {
               )}
             </Panel>
 
+            {false && (
+            <>
             <Panel
               title="Parametros economicos"
               actions={<ButtonLike onClick={restoreAllBudgetBlocksFromMarkers}>Restaurar todo desde marcadores</ButtonLike>}
@@ -8317,9 +8359,10 @@ export default function App() {
                 <MiniMetric label="Circuito negro" value={money(budgetBlackTotal)} />
               </div>
             </Panel>
+            </>)}
           </div>
 
-          <div style={styles.column}>
+          <div style={styles.budgetMainBottom}>
             <Panel title="Materiales" actions={<ButtonLike onClick={addMaterial}>Agregar</ButtonLike>}>
               <datalist id="materials-stock-options">
                 {stockSearchOptions.flatMap((stockItem) => [
@@ -8331,6 +8374,11 @@ export default function App() {
                   <option key={`${stockItem.id}-desc`} value={stockItem.description} />,
                 ])}
               </datalist>
+              <datalist id="stock-general-group-options">
+                {STOCK_GENERAL_GROUP_OPTIONS.map((group) => (
+                  <option key={group} value={group} />
+                ))}
+              </datalist>
               <table style={styles.table}>
                 <thead>
                   <tr>
@@ -8338,6 +8386,7 @@ export default function App() {
                     <th>Descripcion</th>
                     <th>Grupo</th>
                     <th>Stock</th>
+                    <th>Ubicacion</th>
                     <th>Cant.</th>
                     <th>Unidad</th>
                     <th>$ Unit.</th>
@@ -8370,8 +8419,19 @@ export default function App() {
                             onChange={(e) => applyStockSuggestionToMaterial(item.id, e.target.value)}
                           />
                         </td>
-                        <td>{stockMatch?.group || item.stockGroup || "-"}</td>
+                        <td>
+                          <input
+                            style={styles.input}
+                            list="stock-general-group-options"
+                            value={item.stockGroup || stockMatch?.group || ""}
+                            onChange={(e) =>
+                              updateArrayItem(setMaterials, item.id, "stockGroup", e.target.value)
+                            }
+                            placeholder="Grupo"
+                          />
+                        </td>
                         <td>{stockMatch ? `${stockMatch.quantity} ${stockMatch.unit}` : "-"}</td>
+                        <td>{stockMatch?.location || item.stockLocation || "-"}</td>
                         <td>
                           <input
                             style={styles.input}
@@ -8700,7 +8760,7 @@ export default function App() {
             </Panel>
           </div>
 
-          <div style={styles.column}>
+          <div style={styles.budgetAside}>
             <Panel
               title="Subpresupuestos dentro de esta cotizacion"
               actions={
@@ -8789,7 +8849,215 @@ export default function App() {
               )}
             </Panel>
 
-            <Panel title="Resumen">
+            <Panel
+              title="Parametros economicos"
+              actions={<ButtonLike onClick={restoreAllBudgetBlocksFromMarkers}>Restaurar todo desde marcadores</ButtonLike>}
+            >
+              <TwoCol>
+                <Field label="Desvio %">
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={deviationPct}
+                    onChange={(e) => setDeviationPct(Number(e.target.value))}
+                  />
+                </Field>
+                <Field label="Markup %">
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={markupPct}
+                    onChange={(e) => setMarkupPct(Number(e.target.value))}
+                  />
+                </Field>
+                <Field label="IVA %">
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={vatPct}
+                    onChange={(e) => setVatPct(Number(e.target.value))}
+                  />
+                </Field>
+                <Field label="Desvio mano de obra %">
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={laborDeviationPct}
+                    onChange={(e) => setLaborDeviationPct(Number(e.target.value))}
+                  />
+                </Field>
+                <Field label="Costo fijo">
+                  <select
+                    style={styles.input}
+                    value={allocationMode}
+                    onChange={(e) => setAllocationMode(e.target.value as "auto" | "manual")}
+                  >
+                    <option value="auto">Automatico por ocupacion</option>
+                    <option value="manual">Manual</option>
+                  </select>
+                </Field>
+                {allocationMode === "manual" && (
+                  <Field label="% costo fijo manual">
+                    <input
+                      style={styles.input}
+                      type="number"
+                      value={manualAllocationPct}
+                      onChange={(e) => setManualAllocationPct(Number(e.target.value))}
+                    />
+                  </Field>
+                )}
+              </TwoCol>
+              <div style={styles.metricGrid}>
+                <MiniMetric label="% ocupacion real" value={pct(occupancyPct)} />
+                <MiniMetric label="% imputado" value={pct(allocationPctUsed)} />
+                <MiniMetric label="Desvio MO" value={money(totalLaborDeviationAmount)} />
+                <MiniMetric label="Desvio" value={money(deviationAmount)} />
+                <MiniMetric label="Resultado markup" value={money(markupAmount)} />
+                <MiniMetric label="Costo fijo imputado" value={money(fixedCostsApplied)} />
+              </div>
+            </Panel>
+
+            <Panel
+              title="Comisiones y descuentos"
+              actions={
+                <div style={styles.inlineActions}>
+                  <ButtonLike onClick={addBudgetIncrease} secondary>Agregar aumento</ButtonLike>
+                  <ButtonLike onClick={addBudgetDiscount}>Agregar descuento</ButtonLike>
+                </div>
+              }
+            >
+              {editingBudgetId && (
+                <div style={styles.noticeBox}>
+                  EstÃ¡s editando un presupuesto ya guardado. Al actualizarlo tambiÃ©n se refresca el trabajo aprobado vinculado.
+                </div>
+              )}
+              <TwoCol>
+                <Field label="Comision % sobre neto">
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={commissionPct}
+                    onChange={(e) => setCommissionPct(Number(e.target.value))}
+                  />
+                </Field>
+                <Field label="Comision total presupuesto">
+                  <input style={styles.input} value={money(consolidatedCommissionAmount)} readOnly />
+                </Field>
+              </TwoCol>
+              {budgetIncreases.length === 0 ? (
+                <div style={styles.empty}>No hay aumentos cargados para esta actualizacion.</div>
+              ) : (
+                <table style={{ ...styles.table, marginBottom: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>Descripcion interna</th>
+                      <th>% aumento</th>
+                      <th>Resultado</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {budgetIncreases.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <input
+                            style={styles.input}
+                            value={item.description}
+                            onChange={(e) =>
+                              updateArrayItem(setBudgetIncreases, item.id, "description", e.target.value)
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            style={styles.input}
+                            type="number"
+                            value={item.pct}
+                            onChange={(e) =>
+                              updateArrayItem(setBudgetIncreases, item.id, "pct", Number(e.target.value))
+                            }
+                          />
+                        </td>
+                        <td>{money(preDiscountNetPrice * (Number(item.pct || 0) / 100))}</td>
+                        <td>
+                          <button style={styles.smallBtn} onClick={() => removeBudgetIncrease(item.id)}>
+                            Quitar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              {budgetDiscounts.length === 0 ? (
+                <div style={styles.empty}>No hay descuentos cargados.</div>
+              ) : (
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Descripcion visible</th>
+                      <th>Monto</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {budgetDiscounts.map((item) => (
+                      <tr key={item.id}>
+                        <td>
+                          <input
+                            style={styles.input}
+                            value={item.description}
+                            onChange={(e) =>
+                              updateArrayItem(
+                                setBudgetDiscounts,
+                                item.id,
+                                "description",
+                                e.target.value
+                              )
+                            }
+                          />
+                        </td>
+                        <td>
+                          <input
+                            style={styles.input}
+                            type="number"
+                            value={item.amount}
+                            onChange={(e) =>
+                              updateArrayItem(
+                                setBudgetDiscounts,
+                                item.id,
+                                "amount",
+                                Number(e.target.value)
+                              )
+                            }
+                          />
+                        </td>
+                        <td>
+                          <button
+                            style={styles.smallBtn}
+                            onClick={() => removeBudgetDiscount(item.id)}
+                          >
+                            Quitar
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div style={styles.metricGrid}>
+                <MiniMetric label="Neto base bloque" value={money(preDiscountNetPrice)} />
+                <MiniMetric label="Aumentos internos" value={money(totalIncreaseAmount)} />
+                <MiniMetric label="Descuentos bloque" value={money(totalDiscountAmount)} />
+                <MiniMetric label="Neto total" value={money(consolidatedBudgetTotals.netPrice)} />
+                <MiniMetric label="Comision total" value={money(consolidatedCommissionAmount)} />
+                <MiniMetric label="% blanco" value={pct(billedPctNormalized)} />
+                <MiniMetric label="Circuito blanco" value={money(budgetWhiteTotal)} />
+                <MiniMetric label="Circuito negro" value={money(budgetBlackTotal)} />
+              </div>
+            </Panel>
+
+            <Panel title="Resumen economico">
               <div style={styles.previewBlock}>
                 <strong>Bloque en edicion</strong>
                 <SummaryRow label="Valor neto bloque" value={money(currentWorkingSectionTotals.netPrice)} />
@@ -8817,6 +9085,95 @@ export default function App() {
                 <MiniMetric label="Horas disponibles" value={String(Number(consolidatedBudgetTotals.totalAvailableHours.toFixed(2)))} />
                 <MiniMetric label="Entrega" value={formatDateDisplay(budgetEstimatedDeliveryDate)} />
               </div>
+            </Panel>
+
+            <Panel title="Imagenes">
+              <div style={styles.grid2}>
+                <Field label="Logos">
+                  <input
+                    style={styles.input}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+                      const images = await Promise.all(files.map((file) => readImage(file)));
+                      setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
+                    }}
+                  />
+                </Field>
+                <Field label="Referencias">
+                  <input
+                    style={styles.input}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={async (e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+                      const images = await Promise.all(files.map((file) => readImage(file)));
+                      setBudget((prev) => ({
+                        ...prev,
+                        referenceImages: [...prev.referenceImages, ...images],
+                      }));
+                    }}
+                  />
+                </Field>
+              </div>
+              {budget.referenceImages.length > 0 && (
+                <div style={styles.referenceGrid}>
+                  {budget.referenceImages.map((image, index) => (
+                    <div key={`${image.name}-${index}`} style={styles.referenceCard}>
+                      <img
+                        src={image.preview}
+                        alt={image.name}
+                        style={styles.referenceThumb}
+                      />
+                      <div style={styles.fileName}>{image.name}</div>
+                      <button
+                        style={styles.smallBtn}
+                        onClick={() =>
+                          setBudget((prev) => ({
+                            ...prev,
+                            referenceImages: prev.referenceImages.filter((_, itemIndex) => itemIndex !== index),
+                          }))
+                        }
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {budget.logos.length > 0 && (
+                <div style={styles.referenceGrid}>
+                  {budget.logos.map((image, index) => (
+                    <div key={`${image.name}-${index}`} style={styles.referenceCard}>
+                      <img
+                        src={image.preview}
+                        alt={image.name}
+                        style={styles.referenceThumb}
+                      />
+                      <div style={styles.fileName}>{image.name}</div>
+                      <div style={styles.muted}>
+                        {index === 0 ? "Logo principal / marca de agua" : "Logo adicional"}
+                      </div>
+                      <button
+                        style={styles.smallBtn}
+                        onClick={() =>
+                          setBudget((prev) => ({
+                            ...prev,
+                            logos: prev.logos.filter((_, itemIndex) => itemIndex !== index),
+                          }))
+                        }
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Panel>
 
             <Panel
@@ -9213,6 +9570,11 @@ export default function App() {
               </div>
             }
           >
+            <datalist id="stock-general-group-options-stock-tab">
+              {STOCK_GENERAL_GROUP_OPTIONS.map((group) => (
+                <option key={group} value={group} />
+              ))}
+            </datalist>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -10891,6 +11253,7 @@ export default function App() {
                   <th>Orden</th>
                   <th>Codigo</th>
                   <th>Descripcion</th>
+                  <th>Ubicacion</th>
                   <th>Unidad</th>
                   <th>Cantidad</th>
                   <th>$ Unit.</th>
@@ -10933,17 +11296,13 @@ export default function App() {
                       </select>
                     </td>
                     <td>
-                      <select
+                      <input
                         style={styles.input}
+                        list="stock-general-group-options-stock-tab"
                         value={item.group}
                         onChange={(e) => updateStockItem(item.id, "group", e.target.value)}
-                      >
-                        {STOCK_GENERAL_GROUP_OPTIONS.map((group) => (
-                          <option key={group} value={group}>
-                            {group}
-                          </option>
-                        ))}
-                      </select>
+                        placeholder="Grupo"
+                      />
                     </td>
                     <td>
                       <input
@@ -10965,6 +11324,14 @@ export default function App() {
                         style={styles.input}
                         value={item.description}
                         onChange={(e) => updateStockItem(item.id, "description", e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        value={item.location}
+                        onChange={(e) => updateStockItem(item.id, "location", e.target.value)}
+                        placeholder="Sector / estante / deposito"
                       />
                     </td>
                     <td>
@@ -11028,6 +11395,7 @@ export default function App() {
                   <th>Compartido</th>
                   <th>Codigo</th>
                   <th>Descripcion</th>
+                  <th>Ubicacion</th>
                   <th>Cantidad</th>
                   <th>$ por entrega</th>
                   <th>Valor stock</th>
@@ -11080,6 +11448,14 @@ export default function App() {
                     </td>
                     <td>
                       <input style={styles.input} value={item.description} onChange={(e) => updateStockItem(item.id, "description", e.target.value)} />
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        value={item.location}
+                        onChange={(e) => updateStockItem(item.id, "location", e.target.value)}
+                        placeholder="Sector / estante / deposito"
+                      />
                     </td>
                     <td>
                       <input style={styles.input} type="number" value={item.quantity} onChange={(e) => updateStockItem(item.id, "quantity", Number(e.target.value))} />
@@ -12848,15 +13224,6 @@ function BudgetDocument({
         <div>{budget.scope}</div>
       </div>
 
-      {companyBankingLines.length > 0 && (
-        <div style={accentBlockStyle}>
-          <div style={styles.label}>Datos para transferencia</div>
-          {companyBankingLines.map((line) => (
-            <div key={line}>{line}</div>
-          ))}
-        </div>
-      )}
-
       {sections.map((section, index) => (
         <div key={section.id} style={accentBlockStyle}>
           <div style={styles.printSectionHeader}>
@@ -12915,6 +13282,15 @@ function BudgetDocument({
         <div><strong>Valor neto total:</strong> {money(consolidatedTotals.netPrice)}</div>
         <div><strong>Total con IVA ({vatPct}%):</strong> {money(consolidatedTotals.finalPrice)}</div>
       </div>
+
+      {companyBankingLines.length > 0 && (
+        <div style={accentBlockStyle}>
+          <div style={styles.label}>Datos para transferencia</div>
+          {companyBankingLines.map((line) => (
+            <div key={line}>{line}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -12949,6 +13325,8 @@ function Panel({
   nested?: boolean;
   green?: boolean;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
     <div
       style={{
@@ -12958,10 +13336,28 @@ function Panel({
       }}
     >
       <div style={styles.panelHeader}>
-        <h3 style={{ margin: 0 }}>{title}</h3>
-        <div>{actions}</div>
+        <div style={styles.panelHeaderLeft}>
+          <button
+            type="button"
+            style={styles.panelCollapseBtn}
+            onClick={() => setCollapsed((prev) => !prev)}
+          >
+            {collapsed ? ">" : "v"}
+          </button>
+          <h3 style={{ margin: 0 }}>{title}</h3>
+        </div>
+        <div style={styles.panelHeaderRight}>
+          {actions}
+          <button
+            type="button"
+            style={styles.panelCollapseTextBtn}
+            onClick={() => setCollapsed((prev) => !prev)}
+          >
+            {collapsed ? "Expandir" : "Minimizar"}
+          </button>
+        </div>
       </div>
-      {children}
+      {!collapsed && children}
     </div>
   );
 }
@@ -13071,6 +13467,33 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 18,
     alignItems: "start",
   },
+  budgetLayout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 2fr) minmax(340px, 1fr)",
+    gap: 18,
+    alignItems: "start",
+  },
+  budgetMainTop: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+    gridColumn: "1",
+    gridRow: "1",
+  },
+  budgetMainBottom: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+    gridColumn: "1",
+    gridRow: "2",
+  },
+  budgetAside: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+    gridColumn: "2",
+    gridRow: "1 / span 2",
+  },
   grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   column: { display: "flex", flexDirection: "column", gap: 18 },
   panel: {
@@ -13092,6 +13515,41 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 14,
     gap: 8,
     flexWrap: "wrap",
+  },
+  panelHeaderLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    minWidth: 0,
+  },
+  panelHeaderRight: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    marginLeft: "auto",
+  },
+  panelCollapseBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#334155",
+    cursor: "pointer",
+    fontWeight: 700,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  panelCollapseTextBtn: {
+    padding: "7px 10px",
+    borderRadius: 10,
+    border: "1px solid #cbd5e1",
+    background: "#f8fafc",
+    color: "#334155",
+    cursor: "pointer",
+    fontWeight: 600,
   },
   label: { fontSize: 12, color: "#475569", marginBottom: 6, fontWeight: 600 },
   input: {
