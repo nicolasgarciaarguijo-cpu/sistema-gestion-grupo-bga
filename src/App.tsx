@@ -1986,8 +1986,19 @@ export default function App() {
   const [supabaseLoginEmail, setSupabaseLoginEmail] = useState("");
   const [supabaseLoginPassword, setSupabaseLoginPassword] = useState("");
   const [supabaseAuthMessage, setSupabaseAuthMessage] = useState("");
+  const [isSupabaseRecoveryMode, setIsSupabaseRecoveryMode] = useState(false);
+  const [supabaseNewPassword, setSupabaseNewPassword] = useState("");
+  const [supabaseNewPasswordConfirm, setSupabaseNewPasswordConfirm] = useState("");
   const lastMarkerSourceKeyRef = useRef("");
   const isSupabaseLoggedIn = !!supabaseSession?.user;
+
+  const getSupabaseAuthRedirectUrl = () =>
+    typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
+
+  const clearSupabasePasswordDrafts = () => {
+    setSupabaseNewPassword("");
+    setSupabaseNewPasswordConfirm("");
+  };
 
   const refreshSupabaseAccess = async () => {
     const sessionResult = await supabase.auth.getSession();
@@ -2058,11 +2069,70 @@ export default function App() {
     setIsSupabaseSnapshotReady(true);
   };
 
+  const sendSupabasePasswordRecovery = async () => {
+    if (!supabaseLoginEmail.trim()) {
+      setSupabaseAuthMessage("Escribe primero tu mail de Supabase para enviarte el cambio de contrasena.");
+      return;
+    }
+
+    const result = await supabase.auth.resetPasswordForEmail(supabaseLoginEmail.trim(), {
+      redirectTo: getSupabaseAuthRedirectUrl(),
+    });
+
+    if (result.error) {
+      setSupabaseAuthMessage(
+        result.error.message || "No se pudo enviar el mail para cambiar la contrasena."
+      );
+      return;
+    }
+
+    setSupabaseAuthMessage(
+      "Te enviamos un mail para cambiar la contrasena. Abre ese link y volveras a esta misma pantalla."
+    );
+  };
+
+  const updateSupabasePassword = async () => {
+    if (!supabaseNewPassword || !supabaseNewPasswordConfirm) {
+      setSupabaseAuthMessage("Completa la nueva contrasena en ambos campos.");
+      return;
+    }
+
+    if (supabaseNewPassword !== supabaseNewPasswordConfirm) {
+      setSupabaseAuthMessage("Las contrasenas no coinciden.");
+      return;
+    }
+
+    if (supabaseNewPassword.length < 8) {
+      setSupabaseAuthMessage("La nueva contrasena debe tener al menos 8 caracteres.");
+      return;
+    }
+
+    const result = await supabase.auth.updateUser({
+      password: supabaseNewPassword,
+    });
+
+    if (result.error) {
+      setSupabaseAuthMessage(
+        result.error.message || "No se pudo actualizar la contrasena."
+      );
+      return;
+    }
+
+    clearSupabasePasswordDrafts();
+    setIsSupabaseRecoveryMode(false);
+    setSupabaseAuthMessage("La contrasena se actualizo correctamente.");
+    if (typeof window !== "undefined") {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  };
+
   const logoutSupabaseTest = async () => {
     const result = await supabase.auth.signOut();
     console.log("LOGOUT RESULT:", result.error);
 
     setSupabaseAuthMessage("Sesion Supabase cerrada.");
+    setIsSupabaseRecoveryMode(false);
+    clearSupabasePasswordDrafts();
     setIsSupabaseSnapshotReady(false);
     await refreshSupabaseAccess();
   };
@@ -2076,13 +2146,29 @@ export default function App() {
       console.log("APP TABS:", tabsResult.data, tabsResult.error);
 
       await refreshSupabaseAccess();
+
+      if (typeof window !== "undefined") {
+        const authPayload = `${window.location.hash}${window.location.search}`.toLowerCase();
+        if (authPayload.includes("type=recovery")) {
+          setActiveTab("acceso");
+          setIsSupabaseRecoveryMode(true);
+          setSupabaseAuthMessage(
+            "Ingresa tu nueva contrasena para completar el cambio."
+          );
+        }
+      }
     };
 
     testSupabase();
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(() => {
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setActiveTab("acceso");
+        setIsSupabaseRecoveryMode(true);
+        setSupabaseAuthMessage("Ingresa tu nueva contrasena para completar el cambio.");
+      }
       refreshSupabaseAccess();
     });
 
@@ -7326,30 +7412,76 @@ export default function App() {
               </div>
 
               <div style={styles.accessFormCard}>
-                <div style={styles.accessFormTitle}>Iniciar sesion con Supabase</div>
+                <div style={styles.accessFormTitle}>
+                  {isSupabaseRecoveryMode
+                    ? "Definir nueva contrasena"
+                    : "Iniciar sesion con Supabase"}
+                </div>
                 <div style={styles.accessFormText}>
-                  Usa tu mail y contrasena habilitados en Supabase para entrar al sistema compartido.
+                  {isSupabaseRecoveryMode
+                    ? "Estas dentro del flujo de recuperacion. Escribe tu nueva contrasena para terminar el cambio."
+                    : "Usa tu mail y contrasena habilitados en Supabase para entrar al sistema compartido."}
                 </div>
-                <div style={styles.accessInputStack}>
-                  <input
-                    style={styles.accessInput}
-                    value={supabaseLoginEmail}
-                    onChange={(e) => setSupabaseLoginEmail(e.target.value)}
-                    placeholder="Mail de Supabase"
-                    autoComplete="username"
-                  />
-                  <input
-                    style={styles.accessInput}
-                    type="password"
-                    value={supabaseLoginPassword}
-                    onChange={(e) => setSupabaseLoginPassword(e.target.value)}
-                    placeholder="Contrasena de Supabase"
-                    autoComplete="current-password"
-                  />
-                </div>
-                <button style={styles.accessSubmitBtn} onClick={loginSupabaseTest}>
-                  Ingresar al sistema
-                </button>
+                {isSupabaseRecoveryMode ? (
+                  <>
+                    <div style={styles.accessInputStack}>
+                      <input
+                        style={styles.accessInput}
+                        type="password"
+                        value={supabaseNewPassword}
+                        onChange={(e) => setSupabaseNewPassword(e.target.value)}
+                        placeholder="Nueva contrasena"
+                        autoComplete="new-password"
+                      />
+                      <input
+                        style={styles.accessInput}
+                        type="password"
+                        value={supabaseNewPasswordConfirm}
+                        onChange={(e) => setSupabaseNewPasswordConfirm(e.target.value)}
+                        placeholder="Repetir nueva contrasena"
+                        autoComplete="new-password"
+                      />
+                    </div>
+                    <button style={styles.accessSubmitBtn} onClick={updateSupabasePassword}>
+                      Guardar nueva contrasena
+                    </button>
+                    <button
+                      style={styles.accessSecondaryBtn}
+                      onClick={() => {
+                        setIsSupabaseRecoveryMode(false);
+                        clearSupabasePasswordDrafts();
+                      }}
+                    >
+                      Volver al ingreso
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div style={styles.accessInputStack}>
+                      <input
+                        style={styles.accessInput}
+                        value={supabaseLoginEmail}
+                        onChange={(e) => setSupabaseLoginEmail(e.target.value)}
+                        placeholder="Mail de Supabase"
+                        autoComplete="username"
+                      />
+                      <input
+                        style={styles.accessInput}
+                        type="password"
+                        value={supabaseLoginPassword}
+                        onChange={(e) => setSupabaseLoginPassword(e.target.value)}
+                        placeholder="Contrasena de Supabase"
+                        autoComplete="current-password"
+                      />
+                    </div>
+                    <button style={styles.accessSubmitBtn} onClick={loginSupabaseTest}>
+                      Ingresar al sistema
+                    </button>
+                    <button style={styles.accessSecondaryBtn} onClick={sendSupabasePasswordRecovery}>
+                      Olvide mi contrasena
+                    </button>
+                  </>
+                )}
                 <div style={styles.accessHelpText}>
                   El acceso local fue deshabilitado. Todo el sistema usa autenticacion por Supabase.
                 </div>
@@ -7388,6 +7520,38 @@ export default function App() {
                   </div>
                   <div style={{ ...styles.muted, marginTop: 6 }}>
                     Solapas: {visibleTabOptions.map((item) => item.label).join(", ") || "-"}
+                  </div>
+                </div>
+              </div>
+            </Panel>
+
+            <Panel title="Seguridad de acceso">
+              <div style={styles.grid2}>
+                <div>
+                  <div style={styles.label}>Cambiar contrasena</div>
+                  <div style={styles.muted}>
+                    Puedes actualizarla directamente desde aqui, sin salir del sistema.
+                  </div>
+                </div>
+                <div style={{ display: "grid", gap: 10 }}>
+                  <input
+                    style={styles.input}
+                    type="password"
+                    value={supabaseNewPassword}
+                    onChange={(e) => setSupabaseNewPassword(e.target.value)}
+                    placeholder="Nueva contrasena"
+                    autoComplete="new-password"
+                  />
+                  <input
+                    style={styles.input}
+                    type="password"
+                    value={supabaseNewPasswordConfirm}
+                    onChange={(e) => setSupabaseNewPasswordConfirm(e.target.value)}
+                    placeholder="Repetir nueva contrasena"
+                    autoComplete="new-password"
+                  />
+                  <div>
+                    <ButtonLike onClick={updateSupabasePassword}>Actualizar contrasena</ButtonLike>
                   </div>
                 </div>
               </div>
@@ -14871,6 +15035,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 15,
     cursor: "pointer",
     boxShadow: "0 18px 35px rgba(29,78,216,0.22)",
+  },
+  accessSecondaryBtn: {
+    width: "100%",
+    marginTop: 10,
+    padding: "12px 16px",
+    borderRadius: 14,
+    border: "1px solid #cbd5e1",
+    background: "#f8fafc",
+    color: "#0f172a",
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: "pointer",
   },
   accessHelpText: {
     marginTop: 12,
