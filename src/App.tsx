@@ -6,7 +6,7 @@ const INVOICE_VAT_PCT = 21;
 
 const COMPANY_OPTIONS = [
   {
-    value: "BGA estudio de diseño y produccion industrial s.r.l",
+    value: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     short: "BGA",
     primary: "#14213d",
     soft: "#dbe7f7",
@@ -30,6 +30,7 @@ const COMPANY_OPTIONS = [
 ] as const;
 
 type CompanyName = (typeof COMPANY_OPTIONS)[number]["value"];
+type CompanyScope = CompanyName | "General";
 
 const WORK_TYPE_OPTIONS = [
   "General",
@@ -100,8 +101,8 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "compras", label: "Compras" },
   { key: "cajaChica", label: "Caja chica" },
   { key: "presupuesto", label: "Presupuesto actual" },
-  { key: "historial", label: "CRM" },
-  { key: "stock", label: "Stock y agenda" },
+  { key: "historial", label: "Historial y CRM" },
+  { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
   { key: "marcadores", label: "Marcadores" },
 ];
@@ -152,12 +153,7 @@ type FixedCost = {
   sourceCompany?: CompanyName;
 };
 
-type MarkerFixedGroup =
-  | "Administrativos"
-  | "Comerciales"
-  | "Financieros"
-  | "Edilicios"
-  | "Operativos";
+type MarkerFixedGroup = string;
 
 type FixedMarker = {
   id: number;
@@ -617,6 +613,47 @@ type CompanyAsset = {
   notes: string;
 };
 
+type CostAnalysisGroup = {
+  id: number;
+  name: string;
+  company: CompanyScope;
+  active: boolean;
+  notes: string;
+};
+
+type CostAnalysisEntry = {
+  id: number;
+  groupId: number;
+  company: CompanyScope;
+  description: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  active: boolean;
+  notes: string;
+};
+
+type RemitoDraftRow = {
+  id: number;
+  company: CompanyScope;
+  description: string;
+  group: string;
+  location: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  matchedStockId: number | null;
+};
+
+type RemitoDraft = {
+  id: number;
+  fileName: string;
+  sourceType: "pdf" | "excel" | "otro";
+  company: CompanyScope;
+  notes: string;
+  rows: RemitoDraftRow[];
+};
+
 type AppUser = {
   id: number;
   name: string;
@@ -765,6 +802,21 @@ const todayIso = () => new Date().toISOString().slice(0, 10);
 const getCompanyMeta = (company: CompanyName) =>
   COMPANY_OPTIONS.find((item) => item.value === company) ?? COMPANY_OPTIONS[0];
 
+const getCompanyScopeLabel = (company: CompanyScope) =>
+  company === "General" ? "General" : getCompanyMeta(company).short;
+
+const buildBlankRemitoDraftRow = (company: CompanyScope): RemitoDraftRow => ({
+  id: Date.now() + Math.floor(Math.random() * 1000),
+  company,
+  description: "",
+  group: "",
+  location: "",
+  unit: "u",
+  quantity: 0,
+  unitPrice: 0,
+  matchedStockId: null,
+});
+
 const getCompanyTaxId = (company: CompanyName) => getCompanyMeta(company).taxId;
 
 const getCompanyBankingLines = (company: CompanyName) => {
@@ -834,6 +886,62 @@ const readImage = (file: File) =>
     reader.readAsDataURL(file);
   });
 
+const readTextFile = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = reject;
+    reader.readAsText(file, "utf-8");
+  });
+
+const inferRemitoSourceType = (fileName: string): RemitoDraft["sourceType"] => {
+  const lowered = fileName.toLowerCase();
+  if (lowered.endsWith(".pdf")) return "pdf";
+  if (
+    lowered.endsWith(".xlsx") ||
+    lowered.endsWith(".xls") ||
+    lowered.endsWith(".csv") ||
+    lowered.endsWith(".tsv")
+  ) {
+    return "excel";
+  }
+  return "otro";
+};
+
+const parseDelimitedRemitoRows = (text: string, company: CompanyScope): RemitoDraftRow[] => {
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) return [];
+
+  const separator = lines.some((line) => line.includes(";"))
+    ? ";"
+    : lines.some((line) => line.includes("\t"))
+    ? "\t"
+    : ",";
+
+  const parsedRows = lines
+    .map((line) => line.split(separator).map((cell) => cell.trim()))
+    .filter((cells) => cells.length > 0)
+    .slice(1)
+    .map((cells, index) => ({
+      id: Date.now() + index,
+      company,
+      description: cells[0] || "",
+      group: cells[1] || "",
+      location: cells[2] || "",
+      unit: cells[3] || "u",
+      quantity: Number(String(cells[4] || "0").replace(",", ".")) || 0,
+      unitPrice: Number(String(cells[5] || "0").replace(",", ".")) || 0,
+      matchedStockId: null,
+    }))
+    .filter((row) => row.description || row.quantity || row.unitPrice);
+
+  return parsedRows;
+};
+
 const monthLabel = (month: string) => {
   if (!month) return "-";
   const [year, mm] = month.split("-");
@@ -878,7 +986,7 @@ const seededScaleRows: ScaleRow[] = [
 ];
 
 const defaultBudget: BudgetData = {
-  company: "BGA estudio de diseño y produccion industrial s.r.l",
+  company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
   workType: "General",
   number: "P-4001",
   date: new Date().toISOString().slice(0, 10),
@@ -931,10 +1039,18 @@ const defaultFixedCosts: FixedCost[] = [
   { id: 3, description: "Administracion", amount: 180000 },
 ];
 
+const DEFAULT_FIXED_MARKER_GROUPS: MarkerFixedGroup[] = [
+  "Administrativos",
+  "Comerciales",
+  "Financieros",
+  "Edilicios",
+  "Operativos",
+];
+
 const defaultFixedMarkers: FixedMarker[] = [
   {
     id: 1,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     group: "Administrativos",
     description: "Administracion general",
@@ -944,7 +1060,7 @@ const defaultFixedMarkers: FixedMarker[] = [
   },
   {
     id: 2,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     group: "Edilicios",
     description: "Alquiler taller",
@@ -967,7 +1083,7 @@ const defaultFixedMarkers: FixedMarker[] = [
 const defaultSupplyMarkers: SupplyMarker[] = [
   {
     id: 1,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     subtype: "Insumos basicos",
     description: "Insumos basicos",
@@ -979,7 +1095,7 @@ const defaultSupplyMarkers: SupplyMarker[] = [
   },
   {
     id: 2,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     subtype: "Flete",
     description: "Flete",
@@ -1006,7 +1122,7 @@ const defaultSupplyMarkers: SupplyMarker[] = [
 const defaultLaborMarkers: LaborMarker[] = [
   {
     id: 1,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     category: "Oficial multiple",
     employees: 1,
@@ -1018,7 +1134,7 @@ const defaultLaborMarkers: LaborMarker[] = [
   },
   {
     id: 2,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     category: "Ayudante",
     employees: 1,
@@ -1075,6 +1191,19 @@ const defaultStockItems: StockItem[] = [
   { id: 6, company: "General", kind: "Insumos", shared: true, group: "Insumos", location: "Deposito insumos", sortOrder: 6, code: "INS-001", description: "Guantes", unit: "pack", quantity: 20, unitPrice: 0, periodicityMonths: 6, active: true },
   { id: 7, company: "General", kind: "Insumos", shared: true, group: "Insumos", location: "Deposito insumos", sortOrder: 7, code: "INS-002", description: "Mascarillas", unit: "pack", quantity: 20, unitPrice: 0, periodicityMonths: 6, active: true },
 ];
+
+const defaultCostAnalysisGroups: CostAnalysisGroup[] = DEFAULT_FIXED_MARKER_GROUPS.map(
+  (name, index) => ({
+    id: index + 1,
+    name,
+    company: "General",
+    active: true,
+    notes: "",
+  })
+);
+
+const defaultCostAnalysisEntries: CostAnalysisEntry[] = [];
+const defaultRemitoDrafts: RemitoDraft[] = [];
 
 const defaultBaseConfig: EmployeeBaseConfig = {
   category: "Ayudante",
@@ -1150,7 +1279,7 @@ const defaultEmployees: Employee[] = [
 const defaultFinancialItems: FinancialCalendarItem[] = [
   {
     id: 1,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     date: "2026-04-28",
     type: "facturacion",
     status: "pendiente",
@@ -1261,7 +1390,7 @@ const LEGACY_APPROVED_IMPORT_ROWS: LegacyApprovedImportRow[] = [
   { budgetNumber: "3043", client: "FACUNDO RIOS", project: "VARIOS REFORMA YEBAL", approvalDate: "2026-03-27", deliveryTerm: "360 DIAS", paymentTerms: "50% FACTURADO ", commissionAmount: 0, observations: "FALTARIA ACTUALIZAR EL VALOR ", notes: "", executionStatus: "en_curso", soldNetPrice: 30046830, businessName: "RAS DESARROLLADORA", taxId: "30-71700076-1", invoiceNumber: "A 75", invoices: [{ invoiceDate: "2026-08-01", subtotal: 13719730.23, vat: 2881143.3483, total: 16600873.5783 }], payments: [{ paymentDate: "2026-03-27", amount: 16600873.58 }, { paymentDate: "2026-05-12", amount: 8300436.79 }], retentions: [], additionals: [] },
   { budgetNumber: "3305", client: "ERI JOSEVICH(GUIDO Y STEFI)", project: "VESTIDOR STEFI", approvalDate: "2026-02-26", deliveryTerm: "60 DIAS", paymentTerms: "50% FACTURADO ", commissionAmount: 1637790, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 16377931.9, businessName: "TECNE OBRAS SA", taxId: "30-71574043-1", invoiceNumber: "A118", invoices: [{ invoiceDate: "2026-04-01", subtotal: 8188965.95, vat: 1719682.8495, total: 9908648.7995 }], payments: [{ paymentDate: "2026-02-27", amount: 11000000 }, { paymentDate: "2026-04-01", amount: 2000000 }], retentions: [], additionals: [] },
   { budgetNumber: "3261", client: "JAVIER MADARIAGA", project: "VARIOS KIRI ENCHAPADO", approvalDate: "2026-03-23", deliveryTerm: "90 DIAS", paymentTerms: "100% NEGRO", commissionAmount: 0, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 59286815, businessName: "JAVIER MADARIAGA", taxId: "", invoiceNumber: "", invoices: [], payments: [{ paymentDate: "2026-03-27", amount: 41500000 }], retentions: [], additionals: [] },
-  { budgetNumber: "3366", client: "CANDE ARQ (CRISTINA)", project: "LIJADA + LUSTRE DE MUEBLE + PUERTAS NUEVAS ´ ZOCALOS", approvalDate: "", deliveryTerm: "", paymentTerms: "FALTA LOS ZOCALOS ", commissionAmount: 0, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 732800, businessName: "CANDE ARQ (CRISTINA)", taxId: "", invoiceNumber: "", invoices: [{ invoiceDate: "", subtotal: 366400, vat: 76944, total: 443344 }], payments: [], retentions: [], additionals: [] },
+  { budgetNumber: "3366", client: "CANDE ARQ (CRISTINA)", project: "LIJADA + LUSTRE DE MUEBLE + PUERTAS NUEVAS Â´ ZOCALOS", approvalDate: "", deliveryTerm: "", paymentTerms: "FALTA LOS ZOCALOS ", commissionAmount: 0, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 732800, businessName: "CANDE ARQ (CRISTINA)", taxId: "", invoiceNumber: "", invoices: [{ invoiceDate: "", subtotal: 366400, vat: 76944, total: 443344 }], payments: [], retentions: [], additionals: [] },
   { budgetNumber: "3365", client: "GUILLERMO OZORES", project: "ETAPA 2", approvalDate: "2026-04-14", deliveryTerm: "45", paymentTerms: "25% FACTURADO RESTO NEGRO ", commissionAmount: 0, observations: "ENTREGARON 10.000 USD (1380)", notes: "", executionStatus: "en_curso", soldNetPrice: 41098257.68, businessName: "UTECH", taxId: "30-71640674-8", invoiceNumber: "", invoices: [{ invoiceDate: "", subtotal: 10274564.42, vat: 2157658.5282, total: 12432222.9482 }], payments: [{ paymentDate: "2026-04-14", amount: 138000 }, { paymentDate: "", amount: 17126438.9042 }], retentions: [], additionals: [] },
 ];
 
@@ -1322,12 +1451,12 @@ const normalizePdfText = (text: string) =>
   text
     .replace(/\0/g, " ")
     .replace(/\s+/g, " ")
-    .replace(/Á/g, "A")
-    .replace(/É/g, "E")
-    .replace(/Í/g, "I")
-    .replace(/Ó/g, "O")
-    .replace(/Ú/g, "U")
-    .replace(/Ñ/g, "N")
+    .replace(/Ã/g, "A")
+    .replace(/Ã‰/g, "E")
+    .replace(/Ã/g, "I")
+    .replace(/Ã“/g, "O")
+    .replace(/Ãš/g, "U")
+    .replace(/Ã‘/g, "N")
     .toUpperCase();
 
 const monthMap: Record<string, string> = {
@@ -1446,7 +1575,7 @@ const getSavedBudgetDisplayLabel = (item: {
   });
 
   return item.isUpdate || item.snapshot?.budget.isUpdate
-    ? `${baseLabel} � ${
+    ? `${baseLabel} · ${
         item.snapshot?.budget.updateLabel || `Actualizacion ${item.revisionNumber ?? ""}`.trim()
       }`
     : baseLabel;
@@ -1571,6 +1700,9 @@ type PersistedAppStateData = {
   debtPlans: DebtPlan[];
   bankStatementEntries: BankStatementEntry[];
   stockItems: StockItem[];
+  costAnalysisGroups: CostAnalysisGroup[];
+  costAnalysisEntries: CostAnalysisEntry[];
+  remitoDrafts: RemitoDraft[];
   companyAssets: CompanyAsset[];
   employees: Employee[];
   employeeBaseConfig: EmployeeBaseConfig;
@@ -1813,6 +1945,13 @@ export default function App() {
   const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
+  const [costAnalysisGroups, setCostAnalysisGroups] = useState<CostAnalysisGroup[]>(
+    defaultCostAnalysisGroups
+  );
+  const [costAnalysisEntries, setCostAnalysisEntries] = useState<CostAnalysisEntry[]>(
+    defaultCostAnalysisEntries
+  );
+  const [remitoDrafts, setRemitoDrafts] = useState<RemitoDraft[]>(defaultRemitoDrafts);
   const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>(defaultCompanyAssets);
   const [employees, setEmployees] = useState<Employee[]>(defaultEmployees);
   const [employeeBaseConfig, setEmployeeBaseConfig] = useState<EmployeeBaseConfig>(defaultBaseConfig);
@@ -1842,6 +1981,7 @@ export default function App() {
   const [storageMessage, setStorageMessage] = useState("");
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [isPersistenceReady, setIsPersistenceReady] = useState(false);
+  const [isSupabaseSnapshotReady, setIsSupabaseSnapshotReady] = useState(false);
   const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
   const [supabaseLoginEmail, setSupabaseLoginEmail] = useState("");
   const [supabaseLoginPassword, setSupabaseLoginPassword] = useState("");
@@ -1856,6 +1996,7 @@ export default function App() {
     setSupabaseSession(session);
 
     if (!session?.user) {
+      setIsSupabaseSnapshotReady(false);
       setSupabaseProfile(null);
       setSupabaseCompaniesCatalog([]);
       setSupabaseCompanyPermissions([]);
@@ -1896,6 +2037,8 @@ export default function App() {
       return;
     }
 
+    setIsSupabaseSnapshotReady(false);
+
     const result = await supabase.auth.signInWithPassword({
       email: supabaseLoginEmail.trim(),
       password: supabaseLoginPassword,
@@ -1912,6 +2055,7 @@ export default function App() {
     setSupabaseLoginPassword("");
     await refreshSupabaseAccess();
     await restoreFromSupabaseSave();
+    setIsSupabaseSnapshotReady(true);
   };
 
   const logoutSupabaseTest = async () => {
@@ -1919,6 +2063,7 @@ export default function App() {
     console.log("LOGOUT RESULT:", result.error);
 
     setSupabaseAuthMessage("Sesion Supabase cerrada.");
+    setIsSupabaseSnapshotReady(false);
     await refreshSupabaseAccess();
   };
 
@@ -3300,6 +3445,9 @@ export default function App() {
               : "Guardado local restaurado. Ya puedes seguir trabajando."
           );
         }
+        if (hasSupabaseSession) {
+          setIsSupabaseSnapshotReady(true);
+        }
       } catch (error) {
         if (!cancelled) {
           setStorageMessage(
@@ -3454,22 +3602,87 @@ export default function App() {
     jobHours: item.hoursBase,
   });
 
+  const fixedMarkerGroupOptions = useMemo(
+    () =>
+      Array.from(
+        new Set([
+          ...DEFAULT_FIXED_MARKER_GROUPS,
+          ...fixedMarkers.map((item) => item.group.trim()).filter(Boolean),
+          ...costAnalysisGroups.map((item) => item.name.trim()).filter(Boolean),
+        ])
+      ),
+    [fixedMarkers, costAnalysisGroups]
+  );
+
+  const activeCostAnalysisEntriesForBudget = useMemo(
+    () =>
+      costAnalysisEntries
+        .map((item) => ({
+          ...item,
+          groupMeta: costAnalysisGroups.find((group) => group.id === item.groupId) || null,
+        }))
+        .filter(
+          (item) =>
+            item.active &&
+            item.groupMeta?.active &&
+            (item.company === budget.company || item.company === "General") &&
+            item.groupMeta.name.trim()
+        ),
+    [costAnalysisEntries, costAnalysisGroups, budget.company]
+  );
+
+  const derivedCostAnalysisFixedCostsForBudget = useMemo(() => {
+    const grouped = new Map<string, number>();
+
+    activeCostAnalysisEntriesForBudget.forEach((item) => {
+      const groupName = item.groupMeta?.name?.trim() || "Analisis de costos";
+      const current = grouped.get(groupName) || 0;
+      grouped.set(
+        groupName,
+        current + Number(item.quantity || 0) * Number(item.unitCost || 0)
+      );
+    });
+
+    return Array.from(grouped.entries()).map(([group, amount], index) => ({
+      id: -100000 - index,
+      description: `${group} - Analisis de costos`,
+      amount,
+    }));
+  }, [activeCostAnalysisEntriesForBudget]);
+
+  const activeFixedCostsFromSourcesForBudget = useMemo(
+    () => [
+      ...activeFixedMarkersForBudget.map(mapFixedMarkerToBudgetRow),
+      ...derivedCostAnalysisFixedCostsForBudget,
+    ],
+    [activeFixedMarkersForBudget, derivedCostAnalysisFixedCostsForBudget]
+  );
+
   const fixedMarkersByGroup = useMemo(
     () =>
-      ["Administrativos", "Comerciales", "Financieros", "Edilicios", "Operativos"].map(
-        (group) => ({
-          group: group as MarkerFixedGroup,
-          total: fixedMarkers
-            .filter(
-              (item) =>
-                item.group === group &&
-                item.active &&
-                (item.workType === budget.workType || item.workType === "General")
-            )
-            .reduce((acc, item) => acc + Number(item.amount || 0), 0),
-        })
-      ),
-    [fixedMarkers, budget.workType]
+      fixedMarkerGroupOptions.map((group) => {
+        const markerTotal = fixedMarkers
+          .filter(
+            (item) =>
+              item.group === group &&
+              item.active &&
+              (item.workType === budget.workType || item.workType === "General")
+          )
+          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+
+        const analysisTotal = activeCostAnalysisEntriesForBudget
+          .filter((item) => item.groupMeta?.name === group)
+          .reduce(
+            (acc, item) => acc + Number(item.quantity || 0) * Number(item.unitCost || 0),
+            0
+          );
+
+        return {
+          group,
+          total: markerTotal + analysisTotal,
+        };
+      }),
+    [fixedMarkerGroupOptions, fixedMarkers, budget.workType, activeCostAnalysisEntriesForBudget]
   );
 
   const exportPrint = (mode: PrintMode) => {
@@ -3619,6 +3832,12 @@ export default function App() {
     debtPlans: debtPlans.map((item) => ({ ...item })),
     bankStatementEntries: bankStatementEntries.map((item) => ({ ...item })),
     stockItems: stockItems.map((item) => ({ ...item })),
+    costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
+    costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
+    remitoDrafts: remitoDrafts.map((draft) => ({
+      ...draft,
+      rows: draft.rows.map((row) => ({ ...row })),
+    })),
     companyAssets: companyAssets.map((item) => ({ ...item })),
     employees: employees.map((item) => ({ ...item })),
     employeeBaseConfig: {
@@ -3706,6 +3925,18 @@ export default function App() {
         location: item.location || "",
       }))
     );
+    setCostAnalysisGroups(
+      (data.costAnalysisGroups || defaultCostAnalysisGroups).map((item) => ({ ...item }))
+    );
+    setCostAnalysisEntries(
+      (data.costAnalysisEntries || defaultCostAnalysisEntries).map((item) => ({ ...item }))
+    );
+    setRemitoDrafts(
+      (data.remitoDrafts || defaultRemitoDrafts).map((draft) => ({
+        ...draft,
+        rows: draft.rows.map((row) => ({ ...row })),
+      }))
+    );
     setCompanyAssets((data.companyAssets || defaultCompanyAssets).map((item) => ({ ...item })));
     setEmployees((data.employees || defaultEmployees).map((item) => ({ ...item })));
     setEmployeeBaseConfig({
@@ -3763,13 +3994,16 @@ export default function App() {
     try {
       const persisted = await readSupabasePersistedAppState();
       if (!persisted) {
+        setIsSupabaseSnapshotReady(true);
         setStorageMessage("Todavia no hay un guardado de Supabase para restaurar.");
         return;
       }
       applyPersistedAppData(persisted.data);
       setLastSavedAt(persisted.savedAt);
+      setIsSupabaseSnapshotReady(true);
       setStorageMessage("Datos restaurados desde Supabase.");
     } catch (error) {
+      setIsSupabaseSnapshotReady(false);
       setStorageMessage(
         error instanceof Error ? error.message : "No pude restaurar los datos desde Supabase."
       );
@@ -3853,7 +4087,7 @@ export default function App() {
 
   const clearLocalSave = async () => {
     const confirmed = window.confirm(
-      "Esto borra el guardado local de este navegador. La pantalla actual no se borra, pero si recargas ya no se restaurara automaticamente. ¿Quieres continuar?"
+      "Esto borra el guardado local de este navegador. La pantalla actual no se borra, pero si recargas ya no se restaurara automaticamente. Â¿Quieres continuar?"
     );
     if (!confirmed) return;
 
@@ -4767,6 +5001,33 @@ export default function App() {
       { id: Date.now(), description: "", qty: 1, unit: "u", unitPrice: 0 },
     ]);
 
+  const promptAndCreateCostAnalysisGroup = (company: CompanyScope = "General") => {
+    const name = window.prompt("Nombre del nuevo grupo o categoria:");
+    const normalized = (name || "").trim();
+    if (!normalized) return null;
+
+    const existing = costAnalysisGroups.find(
+      (item) => item.name.trim().toLowerCase() === normalized.toLowerCase()
+    );
+
+    if (existing) {
+      return existing;
+    }
+
+    const createdGroup: CostAnalysisGroup = {
+      id: Date.now(),
+      name: normalized,
+      company,
+      active: true,
+      notes: "",
+    };
+    setCostAnalysisGroups((prev) => [
+      ...prev,
+      createdGroup,
+    ]);
+    return createdGroup;
+  };
+
   const addFixedMarker = () =>
     setFixedMarkers((prev) => [
       ...prev,
@@ -4774,7 +5035,7 @@ export default function App() {
         id: Date.now(),
         company: budget.company,
         workType: budget.workType,
-        group: "Administrativos",
+        group: fixedMarkerGroupOptions[0] || "Administrativos",
         description: "",
         amount: 0,
         active: true,
@@ -4832,6 +5093,258 @@ export default function App() {
       },
     ]);
 
+  const addCostAnalysisGroup = () => {
+    promptAndCreateCostAnalysisGroup("General");
+  };
+
+  const addCostAnalysisEntry = () => {
+    const fallbackGroup =
+      costAnalysisGroups[0] ?? promptAndCreateCostAnalysisGroup("General");
+    if (!fallbackGroup) return;
+
+    setCostAnalysisEntries((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        groupId: fallbackGroup.id,
+        company: "General",
+        description: "",
+        unit: "u",
+        quantity: 0,
+        unitCost: 0,
+        active: true,
+        notes: "",
+      },
+    ]);
+  };
+
+  const updateCostAnalysisGroup = (
+    groupId: number,
+    field: keyof CostAnalysisGroup,
+    value: string | boolean
+  ) => {
+    setCostAnalysisGroups((prev) =>
+      prev.map((item) => (item.id === groupId ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const removeCostAnalysisGroup = (groupId: number) => {
+    setCostAnalysisGroups((prev) => prev.filter((item) => item.id !== groupId));
+    setCostAnalysisEntries((prev) => prev.filter((item) => item.groupId !== groupId));
+  };
+
+  const updateCostAnalysisEntry = (
+    entryId: number,
+    field: keyof CostAnalysisEntry,
+    value: string | number | boolean
+  ) => {
+    setCostAnalysisEntries((prev) =>
+      prev.map((item) => (item.id === entryId ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const removeCostAnalysisEntry = (entryId: number) => {
+    setCostAnalysisEntries((prev) => prev.filter((item) => item.id !== entryId));
+  };
+
+  const addRemitoDraftRow = (draftId: number) => {
+    setRemitoDrafts((prev) =>
+      prev.map((draft) =>
+        draft.id === draftId
+          ? {
+              ...draft,
+              rows: [...draft.rows, buildBlankRemitoDraftRow(draft.company)],
+            }
+          : draft
+      )
+    );
+  };
+
+  const removeRemitoDraft = (draftId: number) => {
+    setRemitoDrafts((prev) => prev.filter((draft) => draft.id !== draftId));
+  };
+
+  const updateRemitoDraft = (
+    draftId: number,
+    field: keyof Omit<RemitoDraft, "id" | "rows" | "sourceType">,
+    value: string
+  ) => {
+    setRemitoDrafts((prev) =>
+      prev.map((draft) =>
+        draft.id === draftId
+          ? {
+              ...draft,
+              [field]: value,
+              rows:
+                field === "company"
+                  ? draft.rows.map((row) => ({ ...row, company: value as CompanyScope }))
+                  : draft.rows,
+            }
+          : draft
+      )
+    );
+  };
+
+  const updateRemitoDraftRow = (
+    draftId: number,
+    rowId: number,
+    field: keyof RemitoDraftRow,
+    value: string | number | null
+  ) => {
+    setRemitoDrafts((prev) =>
+      prev.map((draft) =>
+        draft.id === draftId
+          ? {
+              ...draft,
+              rows: draft.rows.map((row) =>
+                row.id === rowId ? { ...row, [field]: value } : row
+              ),
+            }
+          : draft
+      )
+    );
+  };
+
+  const removeRemitoDraftRow = (draftId: number, rowId: number) => {
+    setRemitoDrafts((prev) =>
+      prev.map((draft) =>
+        draft.id === draftId
+          ? {
+              ...draft,
+              rows: draft.rows.filter((row) => row.id !== rowId),
+            }
+          : draft
+      )
+    );
+  };
+
+  const handleRemitoFiles = async (files: FileList | null) => {
+    const selectedFiles = Array.from(files || []);
+    if (selectedFiles.length === 0) return;
+
+    const drafts: RemitoDraft[] = [];
+
+    for (const file of selectedFiles) {
+      const sourceType = inferRemitoSourceType(file.name);
+      let rows: RemitoDraftRow[] = [];
+      let notes = "";
+
+      if (/\.(csv|tsv|txt)$/i.test(file.name)) {
+        try {
+          const text = await readTextFile(file);
+          rows = parseDelimitedRemitoRows(text, budget.company);
+          if (rows.length === 0) {
+            notes =
+              "No se detectaron filas claras en el archivo. Revise y complete manualmente antes de cargar al stock.";
+          }
+        } catch (error) {
+          notes =
+            "No se pudo leer el archivo automaticamente. Revise y complete manualmente antes de cargar al stock.";
+        }
+      } else {
+        notes =
+          "Archivo cargado para revision manual. Controle descripcion, grupo, ubicacion, unidad, cantidad y precio antes de pasarlo al stock.";
+      }
+
+      drafts.push({
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        fileName: file.name,
+        sourceType,
+        company: budget.company,
+        notes,
+        rows: rows.length > 0 ? rows : [buildBlankRemitoDraftRow(budget.company)],
+      });
+    }
+
+    setRemitoDrafts((prev) => [...drafts, ...prev]);
+  };
+
+  const commitRemitoDraftToStock = (draftId: number) => {
+    const draft = remitoDrafts.find((item) => item.id === draftId);
+    if (!draft) return;
+
+    const validRows = draft.rows.filter(
+      (row) => row.description.trim() || Number(row.quantity || 0) || Number(row.unitPrice || 0)
+    );
+
+    if (validRows.length === 0) {
+      window.alert("No hay filas validas para cargar al stock.");
+      return;
+    }
+
+    setStockItems((prev) => {
+      const nextStock = [...prev];
+
+      validRows.forEach((row) => {
+        const normalizedDescription = row.description.trim().toLowerCase();
+        const matchedIndex =
+          row.matchedStockId != null
+            ? nextStock.findIndex((item) => item.id === row.matchedStockId)
+            : nextStock.findIndex(
+                (item) =>
+                  item.kind === "general" &&
+                  item.description.trim().toLowerCase() === normalizedDescription &&
+                  (item.company === row.company ||
+                    item.company === "General" ||
+                    row.company === "General")
+              );
+
+        if (matchedIndex >= 0) {
+          const existing = nextStock[matchedIndex];
+          const incomingQuantity = Number(row.quantity || 0);
+          const existingQuantity = Number(existing.quantity || 0);
+          const incomingPrice = Number(row.unitPrice || 0);
+          const existingPrice = Number(existing.unitPrice || 0);
+          const totalQuantity = existingQuantity + incomingQuantity;
+          const weightedPrice =
+            totalQuantity > 0
+              ? (existingQuantity * existingPrice + incomingQuantity * incomingPrice) / totalQuantity
+              : existingPrice;
+
+          nextStock[matchedIndex] = {
+            ...existing,
+            company: row.company === "General" ? existing.company : row.company,
+            group: row.group || existing.group,
+            location: row.location || existing.location,
+            unit: row.unit || existing.unit,
+            quantity: totalQuantity,
+            unitPrice: Number(weightedPrice.toFixed(2)),
+            active: true,
+          };
+          return;
+        }
+
+        const nextGroup = row.group.trim() || "Melaminas";
+        nextStock.push({
+          id: Date.now() + Math.floor(Math.random() * 1000),
+          company: row.company,
+          kind: "general",
+          shared: row.company === "General",
+          group: nextGroup,
+          location: row.location,
+          sortOrder:
+            Math.max(
+              0,
+              ...nextStock
+                .filter((item) => item.kind === "general")
+                .map((item) => Number(item.sortOrder || 0))
+            ) + 1,
+          code: getNextStockCode(nextStock, nextGroup as StockGeneralGroupName),
+          description: row.description.trim(),
+          unit: row.unit || "u",
+          quantity: Number(row.quantity || 0),
+          unitPrice: Number(row.unitPrice || 0),
+          periodicityMonths: 0,
+          active: true,
+        });
+      });
+
+      return nextStock;
+    });
+
+    setRemitoDrafts((prev) => prev.filter((item) => item.id !== draftId));
+  };
+
   const removeFixedMarker = (markerId: number) => {
     setFixedMarkers((prev) => prev.filter((item) => item.id !== markerId));
   };
@@ -4855,7 +5368,7 @@ export default function App() {
   const restoreFixedCostsFromMarkers = () => {
     setFixedCosts((prev) => {
       const manualRows = prev.filter((item) => !item.sourceMarkerId);
-      return [...activeFixedMarkersForBudget.map(mapFixedMarkerToBudgetRow), ...manualRows];
+      return [...activeFixedCostsFromSourcesForBudget, ...manualRows];
     });
   };
 
@@ -4874,7 +5387,7 @@ export default function App() {
   };
 
   const restoreAllBudgetBlocksFromMarkers = () => {
-    setFixedCosts(activeFixedMarkersForBudget.map(mapFixedMarkerToBudgetRow));
+    setFixedCosts(activeFixedCostsFromSourcesForBudget);
     setBasicSupplies(activeSupplyMarkersForBudget.map(mapSupplyMarkerToBudgetRow));
     setLabor(activeLaborMarkersForBudget.map(mapLaborMarkerToBudgetRow));
   };
@@ -4926,7 +5439,7 @@ export default function App() {
           data: buildPersistedAppData(),
         };
         await writePersistedAppState(payload);
-        if (isSupabaseLoggedIn) {
+        if (isSupabaseLoggedIn && isSupabaseSnapshotReady) {
           await writeSupabasePersistedAppState(payload);
         }
         setLastSavedAt(payload.savedAt);
@@ -4965,6 +5478,9 @@ export default function App() {
     debtPlans,
     bankStatementEntries,
     stockItems,
+    costAnalysisGroups,
+    costAnalysisEntries,
+    remitoDrafts,
     companyAssets,
     employees,
     employeeBaseConfig,
@@ -4987,6 +5503,7 @@ export default function App() {
     editingBudgetId,
     isPersistenceReady,
     isSupabaseLoggedIn,
+    isSupabaseSnapshotReady,
   ]);
 
   const updateArrayItem = <T extends { id: number }>(
@@ -5314,11 +5831,11 @@ export default function App() {
       prev.map((item) => {
         if (item.id !== itemId) return item;
         if (field === "group" && item.kind === "general") {
-          const nextGroup = String(value) as StockGeneralGroupName;
+          const nextGroup = String(value);
           return {
             ...item,
             group: nextGroup,
-            code: getNextStockCode(prev, nextGroup, itemId),
+            code: getNextStockCode(prev, nextGroup as StockGeneralGroupName, itemId),
           };
         }
         return { ...item, [field]: value };
@@ -5331,7 +5848,7 @@ export default function App() {
     if (!target) return;
 
     const confirmed = window.confirm(
-      `Vas a quitar ${getSavedBudgetDisplayLabel(target)} del historial y del CRM. ¿Quieres continuar?`
+      `Vas a quitar ${getSavedBudgetDisplayLabel(target)} del historial y del CRM. Â¿Quieres continuar?`
     );
     if (!confirmed) return;
 
@@ -5757,7 +6274,7 @@ export default function App() {
         id: `bank-${item.id}`,
         date: item.date,
         company: item.company,
-        title: `${item.bank || "Banco"} · ${item.concept || "Movimiento"}`,
+        title: `${item.bank || "Banco"} Â· ${item.concept || "Movimiento"}`,
         kind: "banco",
         amount: Number(item.amount || 0),
         statusLabel: item.movementType,
@@ -5771,7 +6288,7 @@ export default function App() {
         id: `job-${item.id}`,
         date: relevantDate,
         company: item.company,
-        title: `${item.budgetNumber} · ${item.client}`,
+        title: `${item.budgetNumber} Â· ${item.client}`,
         kind: "trabajo",
         amount: Number(item.soldNetPrice || 0),
         statusLabel: item.executionStatus,
@@ -6733,7 +7250,7 @@ export default function App() {
             {companyTheme.short}
           </div>
           <h1 style={{ margin: "8px 0 0 0" }}>{APP_TITLE}</h1>
-          <div style={styles.muted}>Fechas visibles en formato dia-mes-año</div>
+          <div style={styles.muted}>Fechas visibles en formato dia-mes-aÃ±o</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {activeTab !== "acceso" && (
@@ -6972,7 +7489,7 @@ export default function App() {
 
           <Panel title={`Calendario anual unificado ${analysisYear}`}>
             <div style={styles.metricGrid}>
-              <MiniMetric label="Eventos del año" value={String(annualCashFlowEntries.length)} />
+              <MiniMetric label="Eventos del aÃ±o" value={String(annualCashFlowEntries.length)} />
               <MiniMetric label="Mov. bancarios" value={String(bankStatementEntries.length)} />
               <MiniMetric label="Compromisos deuda" value={String(annualDebtRows.length)} />
               <MiniMetric label="Ultimo saldo banco" value={money(bankStatementSummary.lastBalance)} />
@@ -6996,11 +7513,11 @@ export default function App() {
                           }}
                         >
                           <div style={styles.yearCalendarEventTitle}>
-                            {formatDateDisplay(item.date)} · {item.title}
+                            {formatDateDisplay(item.date)} Â· {item.title}
                           </div>
                           <div style={styles.calendarItemMeta}>
-                            {item.kind} · {item.statusLabel}
-                            {item.amount ? ` · ${money(item.amount)}` : ""}
+                            {item.kind} Â· {item.statusLabel}
+                            {item.amount ? ` Â· ${money(item.amount)}` : ""}
                           </div>
                         </div>
                       );
@@ -7096,7 +7613,7 @@ export default function App() {
               {annualDebtByMonth.map((month) => (
                 <div key={month.key} style={styles.yearCalendarCard}>
                   <div style={styles.yearCalendarTitle}>
-                    {month.label} · {money(month.total)}
+                    {month.label} Â· {money(month.total)}
                   </div>
                   {month.items.length === 0 ? (
                     <div style={styles.calendarEmpty}>Sin cuotas</div>
@@ -7113,10 +7630,10 @@ export default function App() {
                           }}
                         >
                           <div style={styles.yearCalendarEventTitle}>
-                            {formatDateDisplay(item.date)} · {item.concept}
+                            {formatDateDisplay(item.date)} Â· {item.concept}
                           </div>
                           <div style={styles.calendarItemMeta}>
-                            Cuota {item.installmentNumber}/{item.totalInstallments} · {money(item.amount)}
+                            Cuota {item.installmentNumber}/{item.totalInstallments} Â· {money(item.amount)}
                           </div>
                         </div>
                       );
@@ -7138,7 +7655,7 @@ export default function App() {
               <MiniMetric label="Ultimo saldo" value={money(bankStatementSummary.lastBalance)} />
             </div>
             <div style={styles.noticeBox}>
-              Este bloque queda preparado para replicar la lógica de sus planillas auxiliares de bancos: fecha, banco, crédito/débito, concepto, monto y saldo. También alimenta el calendario anual de cash flow.
+              Este bloque queda preparado para replicar la lÃ³gica de sus planillas auxiliares de bancos: fecha, banco, crÃ©dito/dÃ©bito, concepto, monto y saldo. TambiÃ©n alimenta el calendario anual de cash flow.
             </div>
             {bankStatementEntries.length === 0 ? (
               <div style={styles.empty}>Todavia no hay movimientos bancarios cargados.</div>
@@ -7299,7 +7816,7 @@ export default function App() {
               <MiniMetric label="Caja chica blanco" value={money(pettyCashSummary.whiteTotal)} />
             </div>
             <div style={styles.noticeBox}>
-              Este bloque ya queda armado siguiendo la lógica de sus planillas auxiliares: proveedor, comprobante, moneda, neto gravado, exento e IVA separado para luego exportar al estudio contable.
+              Este bloque ya queda armado siguiendo la lÃ³gica de sus planillas auxiliares: proveedor, comprobante, moneda, neto gravado, exento e IVA separado para luego exportar al estudio contable.
             </div>
           </Panel>
 
@@ -7442,7 +7959,7 @@ export default function App() {
             actions={<ButtonLike onClick={addPurchaseInvoice}>Agregar factura</ButtonLike>}
           >
             <div style={styles.noticeBox}>
-              Puedes cargar una imagen o PDF y dejar que el sistema precomplete una base editable. Después podremos mejorar esta lectura automática con OCR más fino.
+              Puedes cargar una imagen o PDF y dejar que el sistema precomplete una base editable. DespuÃ©s podremos mejorar esta lectura automÃ¡tica con OCR mÃ¡s fino.
             </div>
             {purchaseInvoices.length === 0 ? (
               <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
@@ -8231,7 +8748,7 @@ export default function App() {
             >
               {editingBudgetId && (
                 <div style={styles.noticeBox}>
-                  Estás editando un presupuesto ya guardado. Al actualizarlo también se refresca el trabajo aprobado vinculado.
+                  EstÃ¡s editando un presupuesto ya guardado. Al actualizarlo tambiÃ©n se refresca el trabajo aprobado vinculado.
                 </div>
               )}
               <TwoCol>
@@ -8404,10 +8921,10 @@ export default function App() {
                         <td>
                           <div style={styles.inlineActions}>
                             <button style={styles.smallBtn} onClick={() => moveMaterial(item.id, -1)}>
-                              ↑
+                              â†‘
                             </button>
                             <button style={styles.smallBtn} onClick={() => moveMaterial(item.id, 1)}>
-                              ↓
+                              â†“
                             </button>
                           </div>
                         </td>
@@ -8805,7 +9322,7 @@ export default function App() {
               {subBudgets.length === 0 ? (
                 <div style={styles.empty}>
                   Todavia no guardaste subpresupuestos parciales. Cuando cierres un bloque,
-                  guÃ¡rdalo y luego sigue cargando el siguiente.
+                  guÃƒÂ¡rdalo y luego sigue cargando el siguiente.
                 </div>
               ) : (
                 <div style={{ marginTop: 12 }}>
@@ -8928,7 +9445,7 @@ export default function App() {
             >
               {editingBudgetId && (
                 <div style={styles.noticeBox}>
-                  EstÃ¡s editando un presupuesto ya guardado. Al actualizarlo tambiÃ©n se refresca el trabajo aprobado vinculado.
+                  EstÃƒÂ¡s editando un presupuesto ya guardado. Al actualizarlo tambiÃƒÂ©n se refresca el trabajo aprobado vinculado.
                 </div>
               )}
               <TwoCol>
@@ -9207,7 +9724,7 @@ export default function App() {
                     <div>{budget.client}</div>
                   </div>
                   <div style={styles.previewMeta}>
-                    <div><strong>N°:</strong> {budget.number}</div>
+                    <div><strong>NÂ°:</strong> {budget.number}</div>
                     <div><strong>Fecha:</strong> {formatDateDisplay(budget.date)}</div>
                     <div><strong>Entrega:</strong> {formatDateDisplay(budgetEstimatedDeliveryDate)}</div>
                   </div>
@@ -9384,15 +9901,33 @@ export default function App() {
                       <select
                         style={styles.input}
                         value={item.group}
-                        onChange={(e) =>
-                          updateArrayItem(setFixedMarkers, item.id, "group", e.target.value as MarkerFixedGroup)
-                        }
+                        onChange={(e) => {
+                          if (e.target.value === "__add_group__") {
+                            const createdGroup = promptAndCreateCostAnalysisGroup("General");
+                            if (createdGroup) {
+                              updateArrayItem(
+                                setFixedMarkers,
+                                item.id,
+                                "group",
+                                createdGroup.name as MarkerFixedGroup
+                              );
+                            }
+                            return;
+                          }
+                          updateArrayItem(
+                            setFixedMarkers,
+                            item.id,
+                            "group",
+                            e.target.value as MarkerFixedGroup
+                          );
+                        }}
                       >
-                        {["Administrativos", "Comerciales", "Financieros", "Edilicios", "Operativos"].map((group) => (
+                        {fixedMarkerGroupOptions.map((group) => (
                           <option key={group} value={group}>
                             {group}
                           </option>
                         ))}
+                        <option value="__add_group__">+ Agregar grupo...</option>
                       </select>
                     </td>
                     <td>
@@ -9570,11 +10105,6 @@ export default function App() {
               </div>
             }
           >
-            <datalist id="stock-general-group-options-stock-tab">
-              {STOCK_GENERAL_GROUP_OPTIONS.map((group) => (
-                <option key={group} value={group} />
-              ))}
-            </datalist>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -10008,7 +10538,7 @@ export default function App() {
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th>N°</th>
+                    <th>NÂ°</th>
                     <th>Fecha</th>
                     <th>Cliente</th>
                     <th>Proyecto</th>
@@ -10032,7 +10562,7 @@ export default function App() {
                               borderColor: group.primary,
                             }}
                           >
-                            {group.short} · {group.value}
+                            {group.short} Â· {group.value}
                           </div>
                         </td>
                       </tr>
@@ -10208,13 +10738,13 @@ export default function App() {
                               borderColor: group.primary,
                             }}
                           >
-                            {group.short} · {group.value}
+                            {group.short} Â· {group.value}
                           </div>
                         </td>
                       </tr>
                       {group.items.map((job) => (
                         <tr key={job.id} style={job.executionStatus === "finalizado" ? styles.rowGreen : undefined}>
-                          <td>{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
+                          <td>{job.isUpdate ? `${job.budgetNumber} Â· Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
                           <td>
                             <span
                               style={{
@@ -10283,7 +10813,7 @@ export default function App() {
                     return (
                       <tr key={`timeline-${row.id}`} style={{ background: `${companyMetaRow.soft}33` }}>
                         <td>{companyMetaRow.short}</td>
-                        <td>{row.isUpdate ? `${row.budgetNumber} · Act. ${row.revisionNumber - 1}` : row.budgetNumber}</td>
+                        <td>{row.isUpdate ? `${row.budgetNumber} Â· Act. ${row.revisionNumber - 1}` : row.budgetNumber}</td>
                         <td>{row.client}</td>
                         <td>{formatDateDisplay(row.start)}</td>
                         <td>{formatDateDisplay(row.end)}</td>
@@ -10342,7 +10872,7 @@ export default function App() {
 
           {selectedApprovedJob && (
             <Panel
-              title={`Detalle ${selectedApprovedJob.isUpdate ? `${selectedApprovedJob.budgetNumber} · Act. ${selectedApprovedJob.revisionNumber - 1}` : selectedApprovedJob.budgetNumber}`}
+              title={`Detalle ${selectedApprovedJob.isUpdate ? `${selectedApprovedJob.budgetNumber} Â· Act. ${selectedApprovedJob.revisionNumber - 1}` : selectedApprovedJob.budgetNumber}`}
               green={selectedApprovedJob.executionStatus === "finalizado"}
               actions={<ButtonLike onClick={() => setSelectedApprovedJobId(null)} secondary>Cerrar detalle</ButtonLike>}
             >
@@ -11020,7 +11550,7 @@ export default function App() {
                             </div>
                             <div>{item.title || "Sin titulo"}</div>
                             <div style={styles.calendarItemMeta}>
-                              {getFinancialTypeLabel(item.type)} · {money(item.amount)}
+                              {getFinancialTypeLabel(item.type)} Â· {money(item.amount)}
                             </div>
                           </button>
                         );
@@ -11137,7 +11667,7 @@ export default function App() {
                 </Field>
                 {selectedFinancialItem.autoGenerated && (
                   <div style={styles.noticeBox}>
-                    Este item se genera automaticamente desde un trabajo aprobado. Si cambias aprobación, plazo o porcentaje facturado, fechas y montos se actualizan solos.
+                    Este item se genera automaticamente desde un trabajo aprobado. Si cambias aprobaciÃ³n, plazo o porcentaje facturado, fechas y montos se actualizan solos.
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -11225,6 +11755,21 @@ export default function App() {
               </tbody>
             </table>
           </Panel>
+
+          <datalist id="stock-general-group-options-stock-tab">
+            {Array.from(
+              new Set([
+                ...STOCK_GENERAL_GROUP_OPTIONS,
+                ...fixedMarkerGroupOptions,
+                ...visibleStockItems
+                  .filter((item) => item.kind === "general")
+                  .map((item) => item.group.trim())
+                  .filter(Boolean),
+              ])
+            ).map((group) => (
+              <option key={group} value={group} />
+            ))}
+          </datalist>
 
           <Panel
             title="Inventario y alertas"
@@ -11371,6 +11916,445 @@ export default function App() {
               <MiniMetric label="Valor stock general" value={money(visibleStockItems.filter((item) => item.kind === "general" && item.active).reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0))} />
               <MiniMetric label="Valor total stock" value={money(totalStockValue)} />
             </div>
+          </Panel>
+
+          <Panel
+            title="Analisis de costos"
+            actions={
+              <div style={styles.inlineActions}>
+                <ButtonLike onClick={addCostAnalysisGroup} secondary>
+                  Agregar grupo
+                </ButtonLike>
+                <ButtonLike onClick={addCostAnalysisEntry}>Agregar item de costo</ButtonLike>
+              </div>
+            }
+          >
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Grupos activos" value={String(costAnalysisGroups.filter((item) => item.active).length)} />
+              <MiniMetric label="Items activos" value={String(costAnalysisEntries.filter((item) => item.active).length)} />
+              <MiniMetric
+                label="Costo analizado total"
+                value={money(
+                  costAnalysisEntries
+                    .filter((item) => item.active)
+                    .reduce(
+                      (acc, item) => acc + Number(item.quantity || 0) * Number(item.unitCost || 0),
+                      0
+                    )
+                )}
+              />
+            </div>
+
+            <div style={styles.sectionHeader}>Grupos y categorias</div>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th>Activo</th>
+                  <th>Empresa</th>
+                  <th>Grupo / categoria</th>
+                  <th>Notas</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {costAnalysisGroups.map((group) => (
+                  <tr key={group.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={group.active}
+                        onChange={(e) =>
+                          updateCostAnalysisGroup(group.id, "active", e.target.checked)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <select
+                        style={styles.input}
+                        value={group.company}
+                        onChange={(e) =>
+                          updateCostAnalysisGroup(group.id, "company", e.target.value)
+                        }
+                      >
+                        <option value="General">General</option>
+                        {COMPANY_OPTIONS.map((company) => (
+                          <option key={company.value} value={company.value}>
+                            {company.short}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        value={group.name}
+                        onChange={(e) =>
+                          updateCostAnalysisGroup(group.id, "name", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        value={group.notes}
+                        onChange={(e) =>
+                          updateCostAnalysisGroup(group.id, "notes", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <button
+                        style={styles.smallBtn}
+                        onClick={() => removeCostAnalysisGroup(group.id)}
+                      >
+                        Quitar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            <div style={styles.sectionHeader}>Items del analisis</div>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th>Activo</th>
+                  <th>Empresa</th>
+                  <th>Grupo</th>
+                  <th>Descripcion</th>
+                  <th>Unidad</th>
+                  <th>Cantidad</th>
+                  <th>$ Unit.</th>
+                  <th>Subtotal</th>
+                  <th>Notas</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {costAnalysisEntries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>
+                      <input
+                        type="checkbox"
+                        checked={entry.active}
+                        onChange={(e) =>
+                          updateCostAnalysisEntry(entry.id, "active", e.target.checked)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <select
+                        style={styles.input}
+                        value={entry.company}
+                        onChange={(e) =>
+                          updateCostAnalysisEntry(entry.id, "company", e.target.value)
+                        }
+                      >
+                        <option value="General">General</option>
+                        {COMPANY_OPTIONS.map((company) => (
+                          <option key={company.value} value={company.value}>
+                            {company.short}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        style={styles.input}
+                        value={entry.groupId}
+                        onChange={(e) =>
+                          updateCostAnalysisEntry(entry.id, "groupId", Number(e.target.value))
+                        }
+                      >
+                        {costAnalysisGroups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name} - {getCompanyScopeLabel(group.company)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        value={entry.description}
+                        onChange={(e) =>
+                          updateCostAnalysisEntry(entry.id, "description", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        value={entry.unit}
+                        onChange={(e) =>
+                          updateCostAnalysisEntry(entry.id, "unit", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        type="number"
+                        value={entry.quantity}
+                        onChange={(e) =>
+                          updateCostAnalysisEntry(entry.id, "quantity", Number(e.target.value))
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        type="number"
+                        value={entry.unitCost}
+                        onChange={(e) =>
+                          updateCostAnalysisEntry(entry.id, "unitCost", Number(e.target.value))
+                        }
+                      />
+                    </td>
+                    <td>{money(Number(entry.quantity || 0) * Number(entry.unitCost || 0))}</td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        value={entry.notes}
+                        onChange={(e) =>
+                          updateCostAnalysisEntry(entry.id, "notes", e.target.value)
+                        }
+                      />
+                    </td>
+                    <td>
+                      <button
+                        style={styles.smallBtn}
+                        onClick={() => removeCostAnalysisEntry(entry.id)}
+                      >
+                        Quitar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div style={styles.noticeBox}>
+              Los grupos activos de este bloque alimentan automaticamente la solapa de
+              marcadores y luego pueden restaurarse dentro del presupuesto.
+            </div>
+          </Panel>
+
+          <Panel
+            title="Remitos a cargar"
+            actions={
+              <label style={styles.buttonLikeLabel}>
+                Subir PDF / Excel / CSV
+                <input
+                  type="file"
+                  accept=".pdf,.xlsx,.xls,.csv,.tsv,.txt"
+                  multiple
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    void handleRemitoFiles(e.target.files);
+                    e.currentTarget.value = "";
+                  }}
+                />
+              </label>
+            }
+          >
+            {remitoDrafts.length === 0 ? (
+              <div style={styles.empty}>
+                Todavia no hay remitos cargados para revisar. Primero subes el archivo, lo
+                corriges aca y despues lo pasas al stock.
+              </div>
+            ) : (
+              remitoDrafts.map((draft) => (
+                <div key={draft.id} style={styles.nestedCard}>
+                  <div style={styles.sectionHeader}>
+                    {draft.fileName} - {draft.sourceType.toUpperCase()}
+                  </div>
+                  <div style={styles.grid2}>
+                    <Field label="Empresa">
+                      <select
+                        style={styles.input}
+                        value={draft.company}
+                        onChange={(e) =>
+                          updateRemitoDraft(draft.id, "company", e.target.value)
+                        }
+                      >
+                        <option value="General">General</option>
+                        {COMPANY_OPTIONS.map((company) => (
+                          <option key={company.value} value={company.value}>
+                            {company.short}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Notas de revision">
+                      <input
+                        style={styles.input}
+                        value={draft.notes}
+                        onChange={(e) =>
+                          updateRemitoDraft(draft.id, "notes", e.target.value)
+                        }
+                      />
+                    </Field>
+                  </div>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Empresa</th>
+                        <th>Descripcion</th>
+                        <th>Grupo</th>
+                        <th>Ubicacion</th>
+                        <th>Unidad</th>
+                        <th>Cantidad</th>
+                        <th>$ Unit.</th>
+                        <th>Relacionar con stock</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {draft.rows.map((row) => (
+                        <tr key={row.id}>
+                          <td>
+                            <select
+                              style={styles.input}
+                              value={row.company}
+                              onChange={(e) =>
+                                updateRemitoDraftRow(draft.id, row.id, "company", e.target.value)
+                              }
+                            >
+                              <option value="General">General</option>
+                              {COMPANY_OPTIONS.map((company) => (
+                                <option key={company.value} value={company.value}>
+                                  {company.short}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <input
+                              style={styles.input}
+                              value={row.description}
+                              onChange={(e) =>
+                                updateRemitoDraftRow(
+                                  draft.id,
+                                  row.id,
+                                  "description",
+                                  e.target.value
+                                )
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              style={styles.input}
+                              list="stock-general-group-options-stock-tab"
+                              value={row.group}
+                              onChange={(e) =>
+                                updateRemitoDraftRow(draft.id, row.id, "group", e.target.value)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              style={styles.input}
+                              value={row.location}
+                              onChange={(e) =>
+                                updateRemitoDraftRow(
+                                  draft.id,
+                                  row.id,
+                                  "location",
+                                  e.target.value
+                                )
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              style={styles.input}
+                              value={row.unit}
+                              onChange={(e) =>
+                                updateRemitoDraftRow(draft.id, row.id, "unit", e.target.value)
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              style={styles.input}
+                              type="number"
+                              value={row.quantity}
+                              onChange={(e) =>
+                                updateRemitoDraftRow(
+                                  draft.id,
+                                  row.id,
+                                  "quantity",
+                                  Number(e.target.value)
+                                )
+                              }
+                            />
+                          </td>
+                          <td>
+                            <input
+                              style={styles.input}
+                              type="number"
+                              value={row.unitPrice}
+                              onChange={(e) =>
+                                updateRemitoDraftRow(
+                                  draft.id,
+                                  row.id,
+                                  "unitPrice",
+                                  Number(e.target.value)
+                                )
+                              }
+                            />
+                          </td>
+                          <td>
+                            <select
+                              style={styles.input}
+                              value={row.matchedStockId ?? ""}
+                              onChange={(e) =>
+                                updateRemitoDraftRow(
+                                  draft.id,
+                                  row.id,
+                                  "matchedStockId",
+                                  e.target.value ? Number(e.target.value) : null
+                                )
+                              }
+                            >
+                              <option value="">Nuevo item</option>
+                              {visibleStockItems
+                                .filter((item) => item.kind === "general")
+                                .map((item) => (
+                                  <option key={item.id} value={item.id}>
+                                    {item.description} - {item.group} - {item.location || "Sin ubicacion"}
+                                  </option>
+                                ))}
+                            </select>
+                          </td>
+                          <td>
+                            <button
+                              style={styles.smallBtn}
+                              onClick={() => removeRemitoDraftRow(draft.id, row.id)}
+                            >
+                              Quitar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div style={styles.inlineActions}>
+                    <ButtonLike onClick={() => addRemitoDraftRow(draft.id)} secondary>
+                      Agregar fila
+                    </ButtonLike>
+                    <ButtonLike onClick={() => commitRemitoDraftToStock(draft.id)}>
+                      Cargar a stock
+                    </ButtonLike>
+                    <ButtonLike onClick={() => removeRemitoDraft(draft.id)} secondary>
+                      Descartar borrador
+                    </ButtonLike>
+                  </div>
+                </div>
+              ))
+            )}
           </Panel>
 
           <Panel
@@ -11885,7 +12869,7 @@ export default function App() {
                       onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, insurancePct: Number(e.target.value) })}
                     />
                   </Field>
-                  <Field label="Aguinaldo (sueldos/año)">
+                  <Field label="Aguinaldo (sueldos/aÃ±o)">
                     <input
                       style={styles.input}
                       type="number"
@@ -12406,7 +13390,7 @@ export default function App() {
                               ))}
                             </select>
                           </Field>
-                          <Field label="Antiguedad años">
+                          <Field label="Antiguedad aÃ±os">
                             <input
                               style={styles.input}
                               type="number"
@@ -12750,7 +13734,7 @@ export default function App() {
 
                       <Panel title="Sueldo e impacto empresa" nested>
                         <div style={styles.metricGrid}>
-                          <MiniMetric label="Escala mes" value={payrollSummary.scale ? `${payrollSummary.scale.category} · ${monthLabel(payrollSummary.scale.month)}` : "Manual"} />
+                          <MiniMetric label="Escala mes" value={payrollSummary.scale ? `${payrollSummary.scale.category} Â· ${monthLabel(payrollSummary.scale.month)}` : "Manual"} />
                           <MiniMetric label="Hora base" value={money(payrollSummary.baseHourly)} />
                           <MiniMetric label="No remun./hora" value={money(payrollSummary.nonRemHourly)} />
                           <MiniMetric label="Hora neta ref." value={money(payrollSummary.netHourly)} />
@@ -12810,7 +13794,7 @@ export default function App() {
           <MiniMetric label="Resultado blanco" value={money(cashFlowSummary.operatingResultWhite)} />
           <MiniMetric label="Resultado negro" value={money(cashFlowSummary.operatingResultBlack)} />
           <MiniMetric
-            label="Compromisos año"
+            label="Compromisos aÃ±o"
             value={money(annualDebtRows.reduce((acc, item) => acc + Number(item.amount || 0), 0))}
           />
         </div>
@@ -12953,7 +13937,7 @@ export default function App() {
             {approvedJobsSummary.map((job) => (
               <tr key={job.id}>
                 <td>{getCompanyMeta(job.company).short}</td>
-                <td>{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
+                <td>{job.isUpdate ? `${job.budgetNumber} Â· Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
                 <td>{job.client}</td>
                 <td>{formatDateDisplay(job.approvalDate)}</td>
                 <td>{formatDateDisplay(job.deliveryDate)}</td>
@@ -13609,6 +14593,14 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #93c5fd",
     color: "#1e3a8a",
     marginBottom: 12,
+  },
+  nestedCard: {
+    border: "1px solid #cbd5e1",
+    borderRadius: 16,
+    padding: 14,
+    background: "#ffffff",
+    marginTop: 12,
+    boxShadow: "0 10px 24px rgba(15,23,42,0.05)",
   },
   button: {
     padding: "9px 12px",
