@@ -654,6 +654,25 @@ type RemitoDraft = {
   rows: RemitoDraftRow[];
 };
 
+type SupabaseActiveSession = {
+  session_id: string;
+  user_id: string;
+  email: string;
+  full_name: string;
+  active_tab: string;
+  current_company: string;
+  last_seen_at: string;
+};
+
+type SupabaseInternalChatMessage = {
+  id: number;
+  user_id: string;
+  email: string;
+  full_name: string;
+  message: string;
+  created_at: string;
+};
+
 type AppUser = {
   id: number;
   name: string;
@@ -804,6 +823,9 @@ const getCompanyMeta = (company: CompanyName) =>
 
 const getCompanyScopeLabel = (company: CompanyScope) =>
   company === "General" ? "General" : getCompanyMeta(company).short;
+
+const getTabLabel = (tabKey: string) =>
+  TAB_OPTIONS.find((item) => item.key === tabKey)?.label || tabKey;
 
 const buildBlankRemitoDraftRow = (company: CompanyScope): RemitoDraftRow => ({
   id: Date.now() + Math.floor(Math.random() * 1000),
@@ -1674,6 +1696,9 @@ const SUPABASE_APP_STATE_TABLE = "app_state_snapshots";
 const SUPABASE_APP_STATE_RECORD_KEY = "main";
 const SUPABASE_CRM_CLIENTS_TABLE = "crm_clients";
 const SUPABASE_BUDGETS_TABLE = "crm_budgets";
+const SUPABASE_AUTH_REDIRECT_URL = "https://sistema-gestion-grupo-bga-59bq.vercel.app";
+const SUPABASE_ACTIVE_SESSIONS_TABLE = "app_active_sessions";
+const SUPABASE_INTERNAL_CHAT_TABLE = "app_internal_chat_messages";
 
 type PersistedAppStateData = {
   activeTab: TabKey;
@@ -1810,12 +1835,27 @@ const clearPersistedAppState = async () => {
 };
 
 const readSupabasePersistedAppState = async (): Promise<PersistedAppState | null> => {
+  const record = await readSupabasePersistedAppStateRecord();
+  if (!record?.payload) return null;
+
+  return normalizePersistedAppState({
+    ...(record.payload as Record<string, unknown>),
+    savedAt:
+      typeof record.saved_at === "string" ? record.saved_at : new Date().toISOString(),
+  });
+};
+
+const readSupabasePersistedAppStateRecord = async (): Promise<{
+  payload: unknown;
+  saved_at: string;
+  updated_by: string | null;
+} | null> => {
   const sessionResult = await supabase.auth.getSession();
   if (!sessionResult.data.session?.user) return null;
 
   const { data, error } = await supabase
     .from(SUPABASE_APP_STATE_TABLE)
-    .select("payload,saved_at")
+    .select("payload,saved_at,updated_by")
     .eq("id", SUPABASE_APP_STATE_RECORD_KEY)
     .maybeSingle();
 
@@ -1825,11 +1865,11 @@ const readSupabasePersistedAppState = async (): Promise<PersistedAppState | null
 
   if (!data?.payload) return null;
 
-  return normalizePersistedAppState({
-    ...(data.payload as Record<string, unknown>),
-    savedAt:
-      typeof data.saved_at === "string" ? data.saved_at : new Date().toISOString(),
-  });
+  return {
+    payload: data.payload,
+    saved_at: typeof data.saved_at === "string" ? data.saved_at : new Date().toISOString(),
+    updated_by: typeof data.updated_by === "string" ? data.updated_by : null,
+  };
 };
 
 const writeSupabasePersistedAppState = async (payload: PersistedAppState) => {
@@ -1989,15 +2029,135 @@ export default function App() {
   const [isSupabaseRecoveryMode, setIsSupabaseRecoveryMode] = useState(false);
   const [supabaseNewPassword, setSupabaseNewPassword] = useState("");
   const [supabaseNewPasswordConfirm, setSupabaseNewPasswordConfirm] = useState("");
+  const [supabaseActiveSessions, setSupabaseActiveSessions] = useState<SupabaseActiveSession[]>([]);
+  const [supabaseChatMessages, setSupabaseChatMessages] = useState<SupabaseInternalChatMessage[]>([]);
+  const [supabaseChatDraft, setSupabaseChatDraft] = useState("");
+  const [lastSupabaseSnapshotSavedAt, setLastSupabaseSnapshotSavedAt] = useState("");
   const lastMarkerSourceKeyRef = useRef("");
+  const collaborationSessionIdRef = useRef(
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `session-${Date.now()}`
+  );
   const isSupabaseLoggedIn = !!supabaseSession?.user;
 
-  const getSupabaseAuthRedirectUrl = () =>
-    typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
+  const getSupabaseAuthRedirectUrl = () => {
+    if (typeof window !== "undefined") {
+      const origin = window.location.origin || "";
+      const isCodeSandboxOrigin =
+        origin.includes("codesandbox.io") || origin.includes("csb.app");
+
+      if (origin && !isCodeSandboxOrigin) {
+        return origin;
+      }
+    }
+
+    return SUPABASE_AUTH_REDIRECT_URL;
+  };
 
   const clearSupabasePasswordDrafts = () => {
     setSupabaseNewPassword("");
     setSupabaseNewPasswordConfirm("");
+  };
+
+  const loadSupabaseActiveSessions = async () => {
+    const { data, error } = await supabase
+      .from(SUPABASE_ACTIVE_SESSIONS_TABLE)
+      .select("*")
+      .order("last_seen_at", { ascending: false });
+
+    if (error) {
+      throw new Error(`No pude leer los usuarios activos: ${error.message}`);
+    }
+
+    const threshold = Date.now() - 1000 * 90;
+    setSupabaseActiveSessions(
+      (data || []).filter((item) => {
+        const lastSeen = new Date(item.last_seen_at || 0).getTime();
+        return Number.isFinite(lastSeen) && lastSeen >= threshold;
+      }) as SupabaseActiveSession[]
+    );
+  };
+
+  const syncSupabasePresence = async () => {
+    const sessionResult = await supabase.auth.getSession();
+    const user = sessionResult.data.session?.user;
+
+    if (!user) return;
+
+    const { error } = await supabase.from(SUPABASE_ACTIVE_SESSIONS_TABLE).upsert(
+      {
+        session_id: collaborationSessionIdRef.current,
+        user_id: user.id,
+        email: user.email || "",
+        full_name: supabaseProfile?.full_name || user.email || "Usuario",
+        active_tab: activeTab,
+        current_company: budget.company || "General",
+        last_seen_at: new Date().toISOString(),
+      },
+      { onConflict: "session_id" }
+    );
+
+    if (error) {
+      throw new Error(`No pude actualizar presencia de usuarios: ${error.message}`);
+    }
+  };
+
+  const clearSupabasePresence = async () => {
+    try {
+      const { error } = await supabase
+        .from(SUPABASE_ACTIVE_SESSIONS_TABLE)
+        .delete()
+        .eq("session_id", collaborationSessionIdRef.current);
+
+      if (error) {
+        console.log("CLEAR PRESENCE ERROR:", error);
+      }
+    } catch (error) {
+      console.log("CLEAR PRESENCE ERROR:", error);
+    }
+  };
+
+  const loadSupabaseChatMessages = async () => {
+    const { data, error } = await supabase
+      .from(SUPABASE_INTERNAL_CHAT_TABLE)
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(40);
+
+    if (error) {
+      throw new Error(`No pude leer el chat interno: ${error.message}`);
+    }
+
+    setSupabaseChatMessages(((data || []) as SupabaseInternalChatMessage[]).reverse());
+  };
+
+  const sendSupabaseChatMessage = async () => {
+    const message = supabaseChatDraft.trim();
+    if (!message) return;
+
+    const sessionResult = await supabase.auth.getSession();
+    const user = sessionResult.data.session?.user;
+
+    if (!user) {
+      setStorageMessage("Necesitas iniciar sesion para escribir en el chat.");
+      return;
+    }
+
+    const { error } = await supabase.from(SUPABASE_INTERNAL_CHAT_TABLE).insert({
+      user_id: user.id,
+      email: user.email || "",
+      full_name: supabaseProfile?.full_name || user.email || "Usuario",
+      message,
+    });
+
+    if (error) {
+      setStorageMessage(`No pude enviar el mensaje interno: ${error.message}`);
+      return;
+    }
+
+    setSupabaseChatDraft("");
+    await loadSupabaseChatMessages();
   };
 
   const refreshSupabaseAccess = async () => {
@@ -2012,6 +2172,8 @@ export default function App() {
       setSupabaseCompaniesCatalog([]);
       setSupabaseCompanyPermissions([]);
       setSupabaseTabPermissions([]);
+      setSupabaseActiveSessions([]);
+      setSupabaseChatMessages([]);
       return;
     }
 
@@ -2028,6 +2190,12 @@ export default function App() {
     setSupabaseProfile(profileResult.data?.[0] || null);
     setSupabaseCompanyPermissions(companyPermissionsResult.data || []);
     setSupabaseTabPermissions(tabPermissionsResult.data || []);
+    try {
+      await loadSupabaseActiveSessions();
+      await loadSupabaseChatMessages();
+    } catch (error) {
+      console.log("COLLAB LOAD ERROR:", error);
+    }
 
     console.log("PROFILE:", profileResult.data, profileResult.error);
     console.log(
@@ -2127,6 +2295,7 @@ export default function App() {
   };
 
   const logoutSupabaseTest = async () => {
+    await clearSupabasePresence();
     const result = await supabase.auth.signOut();
     console.log("LOGOUT RESULT:", result.error);
 
@@ -2176,6 +2345,67 @@ export default function App() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!isSupabaseLoggedIn) return;
+
+    const runCollaborationSync = async () => {
+      try {
+        await syncSupabasePresence();
+        await loadSupabaseActiveSessions();
+        await loadSupabaseChatMessages();
+
+        const remoteRecord = await readSupabasePersistedAppStateRecord();
+        if (!remoteRecord?.payload || !remoteRecord.saved_at) return;
+
+        const remoteSavedAt = new Date(remoteRecord.saved_at).getTime();
+        const localSavedAt = lastSupabaseSnapshotSavedAt
+          ? new Date(lastSupabaseSnapshotSavedAt).getTime()
+          : 0;
+
+        if (
+          remoteSavedAt > localSavedAt &&
+          remoteRecord.updated_by &&
+          remoteRecord.updated_by !== supabaseSession?.user?.id
+        ) {
+          const normalized = normalizePersistedAppState({
+            ...(remoteRecord.payload as Record<string, unknown>),
+            savedAt: remoteRecord.saved_at,
+          });
+
+          if (normalized) {
+            applyPersistedAppData(normalized.data);
+            setLastSavedAt(normalized.savedAt);
+            setLastSupabaseSnapshotSavedAt(normalized.savedAt);
+            setStorageMessage("Se actualizaron cambios compartidos desde Supabase.");
+          }
+        }
+      } catch (error) {
+        console.log("COLLAB SYNC ERROR:", error);
+      }
+    };
+
+    runCollaborationSync();
+    const intervalId = window.setInterval(runCollaborationSync, 3000);
+    const handleBeforeUnload = () => {
+      void clearSupabasePresence();
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      void clearSupabasePresence();
+    };
+  }, [
+    isSupabaseLoggedIn,
+    activeTab,
+    budget.company,
+    supabaseProfile?.full_name,
+    supabaseSession?.user?.id,
+    lastSupabaseSnapshotSavedAt,
+  ]);
 
   const totalMaterials = useMemo(
     () => materials.reduce((acc, item) => acc + Number(item.qty || 0) * Number(item.unitPrice || 0), 0),
@@ -2251,6 +2481,14 @@ export default function App() {
     [savedBudgets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
+  const otherActiveSessions = useMemo(
+    () =>
+      supabaseActiveSessions.filter(
+        (item) => item.session_id !== collaborationSessionIdRef.current
+      ),
+    [supabaseActiveSessions]
+  );
+
   const visibleApprovedJobs = useMemo(
     () => approvedJobs.filter((item) => canAccessCompany(item.company)),
     [approvedJobs, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
@@ -2274,6 +2512,28 @@ export default function App() {
   const visiblePettyCashExpenses = useMemo(
     () => pettyCashExpenses.filter((item) => canAccessCompany(item.company)),
     [pettyCashExpenses, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  const pettyCashTrackingRows = useMemo(
+    () =>
+      visiblePettyCashExpenses
+        .map((expense) => {
+          const fund = visiblePettyCashFunds.find((item) => item.id === expense.fundId) || null;
+          return {
+            id: expense.id,
+            company: expense.company,
+            responsible: fund?.responsible || "Sin responsable asignado",
+            amount: Number(expense.amount || 0),
+            date: expense.date,
+            administration: expense.administration,
+            description: expense.description,
+          };
+        })
+        .sort((a, b) => {
+          const dateCompare = (b.date || "").localeCompare(a.date || "");
+          return dateCompare !== 0 ? dateCompare : b.id - a.id;
+        }),
+    [visiblePettyCashExpenses, visiblePettyCashFunds]
   );
 
   const visibleDebtPlans = useMemo(
@@ -4086,6 +4346,7 @@ export default function App() {
       }
       applyPersistedAppData(persisted.data);
       setLastSavedAt(persisted.savedAt);
+      setLastSupabaseSnapshotSavedAt(persisted.savedAt);
       setIsSupabaseSnapshotReady(true);
       setStorageMessage("Datos restaurados desde Supabase.");
     } catch (error) {
@@ -4106,6 +4367,7 @@ export default function App() {
       await writePersistedAppState(payload);
       await writeSupabasePersistedAppState(payload);
       setLastSavedAt(payload.savedAt);
+      setLastSupabaseSnapshotSavedAt(payload.savedAt);
       setStorageMessage("Datos guardados en Supabase y en este navegador.");
     } catch (error) {
       setStorageMessage(
@@ -4157,6 +4419,7 @@ export default function App() {
           ...normalized,
           savedAt: new Date().toISOString(),
         });
+        setLastSupabaseSnapshotSavedAt(new Date().toISOString());
       }
       setLastSavedAt(new Date().toISOString());
       setStorageMessage(
@@ -5527,6 +5790,7 @@ export default function App() {
         await writePersistedAppState(payload);
         if (isSupabaseLoggedIn && isSupabaseSnapshotReady) {
           await writeSupabasePersistedAppState(payload);
+          setLastSupabaseSnapshotSavedAt(payload.savedAt);
         }
         setLastSavedAt(payload.savedAt);
       } catch (error) {
@@ -7394,6 +7658,24 @@ export default function App() {
         ))}
       </div>
 
+      {isSupabaseLoggedIn && (
+        <div style={styles.collaborationBanner}>
+          <div>
+            <strong>Operacion compartida:</strong>{" "}
+            {otherActiveSessions.length === 0
+              ? "No hay otros usuarios activos en este momento."
+              : `${otherActiveSessions.length} usuario(s) trabajando ahora.`}
+          </div>
+          {otherActiveSessions.length > 0 && (
+            <div style={styles.collaborationBannerMeta}>
+              {otherActiveSessions
+                .map((item) => `${item.full_name || item.email} en ${getTabLabel(item.active_tab)}`)
+                .join(" | ")}
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === "acceso" && (
         !isSupabaseLoggedIn ? (
           <div style={styles.accessShell}>
@@ -7611,6 +7893,63 @@ export default function App() {
                   {supabaseAuthMessage && (
                     <div style={{ ...styles.muted, marginTop: 6 }}>{supabaseAuthMessage}</div>
                   )}
+                </div>
+              </div>
+            </Panel>
+
+            <Panel
+              title="Chat interno"
+              actions={
+                <div style={styles.chatStatus}>
+                  {otherActiveSessions.length === 0
+                    ? "Sin otros usuarios activos ahora"
+                    : `${otherActiveSessions.length} usuario(s) activo(s)`}
+                </div>
+              }
+            >
+              <div style={styles.chatPanel}>
+                <div style={styles.chatMessages}>
+                  {supabaseChatMessages.length === 0 ? (
+                    <div style={styles.empty}>
+                      Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo.
+                    </div>
+                  ) : (
+                    supabaseChatMessages.map((message) => {
+                      const isOwnMessage =
+                        message.user_id && message.user_id === supabaseSession?.user?.id;
+                      return (
+                        <div
+                          key={`chat-${message.id}`}
+                          style={{
+                            ...styles.chatMessage,
+                            ...(isOwnMessage ? styles.chatMessageOwn : styles.chatMessageOther),
+                          }}
+                        >
+                          <div style={styles.chatMessageHeader}>
+                            <strong>{message.full_name || message.email}</strong>
+                            <span style={styles.chatTimestamp}>
+                              {formatDateTimeDisplay(message.created_at)}
+                            </span>
+                          </div>
+                          <div>{message.message}</div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                <div style={styles.chatComposer}>
+                  <textarea
+                    style={styles.chatTextarea}
+                    value={supabaseChatDraft}
+                    onChange={(e) => setSupabaseChatDraft(e.target.value)}
+                    placeholder="Escribe un mensaje rapido para el equipo..."
+                  />
+                  <div style={styles.chatActions}>
+                    <ButtonLike onClick={loadSupabaseChatMessages} secondary>
+                      Actualizar chat
+                    </ButtonLike>
+                    <ButtonLike onClick={sendSupabaseChatMessage}>Enviar mensaje</ButtonLike>
+                  </div>
                 </div>
               </div>
             </Panel>
@@ -8474,6 +8813,39 @@ export default function App() {
                   </div>
                 </div>
               ))
+            )}
+          </Panel>
+
+          <Panel title="Seguimiento de gastos aplicados">
+            {pettyCashTrackingRows.length === 0 ? (
+              <div style={styles.empty}>
+                Todavia no hay gastos aplicados para seguir.
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Empresa</th>
+                    <th>Responsable asignado</th>
+                    <th>Monto</th>
+                    <th>Fecha de pago</th>
+                    <th>Administracion</th>
+                    <th>Descripcion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pettyCashTrackingRows.map((row) => (
+                    <tr key={`pc-track-${row.id}`}>
+                      <td>{getCompanyMeta(row.company).short}</td>
+                      <td>{row.responsible}</td>
+                      <td>{money(row.amount)}</td>
+                      <td>{formatDateDisplay(row.date)}</td>
+                      <td>{row.administration === "blanco" ? "Blanco" : "Negro"}</td>
+                      <td>{row.description || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </Panel>
         </div>
@@ -15062,6 +15434,80 @@ const styles: Record<string, React.CSSProperties> = {
     border: "1px solid #bfdbfe",
     color: "#1e3a8a",
     fontSize: 13,
+  },
+  collaborationBanner: {
+    padding: "12px 14px",
+    borderRadius: 14,
+    background: "#ecfeff",
+    border: "1px solid #a5f3fc",
+    color: "#155e75",
+    marginBottom: 18,
+    display: "grid",
+    gap: 6,
+  },
+  collaborationBannerMeta: {
+    fontSize: 13,
+    color: "#0f766e",
+  },
+  chatPanel: {
+    display: "grid",
+    gap: 14,
+  },
+  chatMessages: {
+    display: "grid",
+    gap: 10,
+    maxHeight: 340,
+    overflowY: "auto",
+    paddingRight: 4,
+  },
+  chatMessage: {
+    borderRadius: 14,
+    padding: "12px 14px",
+    border: "1px solid #e2e8f0",
+  },
+  chatMessageOwn: {
+    background: "#dbeafe",
+    borderColor: "#93c5fd",
+  },
+  chatMessageOther: {
+    background: "#f8fafc",
+    borderColor: "#cbd5e1",
+  },
+  chatMessageHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 6,
+    fontSize: 13,
+  },
+  chatTimestamp: {
+    color: "#64748b",
+    fontSize: 12,
+  },
+  chatComposer: {
+    display: "grid",
+    gap: 10,
+  },
+  chatTextarea: {
+    width: "100%",
+    minHeight: 84,
+    padding: "11px 12px",
+    borderRadius: 12,
+    border: "1px solid #cbd5e1",
+    boxSizing: "border-box",
+    resize: "vertical",
+  },
+  chatActions: {
+    display: "flex",
+    justifyContent: "flex-end",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  chatStatus: {
+    fontSize: 12,
+    color: "#64748b",
+    fontWeight: 600,
   },
   statusGreen: { background: "#dcfce7", color: "#166534" },
   statusYellow: { background: "#fef3c7", color: "#92400e" },
