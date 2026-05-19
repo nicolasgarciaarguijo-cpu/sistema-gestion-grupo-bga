@@ -1,6 +1,34 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
 
+declare global {
+  interface Window {
+    pdfjsLib?: {
+      getDocument: (input: { data: ArrayBuffer }) => {
+        promise: Promise<{
+          numPages: number;
+          getPage: (pageNumber: number) => Promise<{
+            getTextContent: () => Promise<{
+              items: Array<{ str?: string }>;
+            }>;
+          }>;
+        }>;
+      };
+      GlobalWorkerOptions: {
+        workerSrc: string;
+      };
+    };
+    Tesseract?: {
+      recognize: (
+        file: File,
+        languages: string,
+        options?: { logger?: (event: unknown) => void }
+      ) => Promise<{ data: { text: string } }>;
+    };
+    __externalScriptPromises?: Record<string, Promise<void>>;
+  }
+}
+
 const APP_TITLE = "Sistema de Gestion Grupo BGA";
 const INVOICE_VAT_PCT = 21;
 
@@ -671,6 +699,12 @@ type SupabaseInternalChatMessage = {
   full_name: string;
   message: string;
   created_at: string;
+};
+
+type SupabaseSnapshotRecord = {
+  payload: unknown;
+  saved_at: string;
+  updated_by: string | null;
 };
 
 type InternalAssistantMessage = {
@@ -1720,6 +1754,7 @@ const SUPABASE_BUDGETS_TABLE = "crm_budgets";
 const SUPABASE_AUTH_REDIRECT_URL = "https://sistema-gestion-grupo-bga-59bq.vercel.app";
 const SUPABASE_ACTIVE_SESSIONS_TABLE = "app_active_sessions";
 const SUPABASE_INTERNAL_CHAT_TABLE = "app_internal_chat_messages";
+const SUPABASE_COLLAB_CHANNEL = "grupo-bga-collaboration";
 
 type PersistedAppStateData = {
   activeTab: TabKey;
@@ -2072,6 +2107,11 @@ export default function App() {
       ? crypto.randomUUID()
       : `session-${Date.now()}`
   );
+  const collaborationChannelRef = useRef<any | null>(null);
+  const lastAppliedRemoteSnapshotAtRef = useRef(0);
+  const lastSnapshotEventKeyRef = useRef("");
+  const presenceAnnouncementReadyRef = useRef(false);
+  const knownOtherSessionIdsRef = useRef<string[]>([]);
   const isSupabaseLoggedIn = !!supabaseSession?.user;
 
   const getSupabaseAuthRedirectUrl = () => {
@@ -2389,37 +2429,14 @@ export default function App() {
         await loadSupabaseChatMessages();
 
         const remoteRecord = await readSupabasePersistedAppStateRecord();
-        if (!remoteRecord?.payload || !remoteRecord.saved_at) return;
-
-        const remoteSavedAt = new Date(remoteRecord.saved_at).getTime();
-        const localSavedAt = lastSupabaseSnapshotSavedAt
-          ? new Date(lastSupabaseSnapshotSavedAt).getTime()
-          : 0;
-
-        if (
-          remoteSavedAt > localSavedAt &&
-          remoteRecord.updated_by &&
-          remoteRecord.updated_by !== supabaseSession?.user?.id
-        ) {
-          const normalized = normalizePersistedAppState({
-            ...(remoteRecord.payload as Record<string, unknown>),
-            savedAt: remoteRecord.saved_at,
-          });
-
-          if (normalized) {
-            applyPersistedAppData(normalized.data);
-            setLastSavedAt(normalized.savedAt);
-            setLastSupabaseSnapshotSavedAt(normalized.savedAt);
-            setStorageMessage("Se actualizaron cambios compartidos desde Supabase.");
-          }
-        }
+        applyIncomingSupabaseSnapshot(remoteRecord, "poll");
       } catch (error) {
         console.log("COLLAB SYNC ERROR:", error);
       }
     };
 
     runCollaborationSync();
-    const intervalId = window.setInterval(runCollaborationSync, 3000);
+    const intervalId = window.setInterval(runCollaborationSync, 15000);
     const handleBeforeUnload = () => {
       void clearSupabasePresence();
     };
@@ -2429,7 +2446,6 @@ export default function App() {
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener("beforeunload", handleBeforeUnload);
-      void clearSupabasePresence();
     };
   }, [
     isSupabaseLoggedIn,
@@ -2439,6 +2455,73 @@ export default function App() {
     supabaseSession?.user?.id,
     lastSupabaseSnapshotSavedAt,
   ]);
+
+  useEffect(() => {
+    if (!isSupabaseLoggedIn || !supabaseSession?.user?.id) {
+      presenceAnnouncementReadyRef.current = false;
+      knownOtherSessionIdsRef.current = [];
+      if (collaborationChannelRef.current) {
+        void supabase.removeChannel(collaborationChannelRef.current);
+        collaborationChannelRef.current = null;
+      }
+      return;
+    }
+
+    const channel = supabase
+      .channel(`${SUPABASE_COLLAB_CHANNEL}-${collaborationSessionIdRef.current}`)
+      .on(
+        "postgres_changes" as any,
+        {
+          event: "*",
+          schema: "public",
+          table: SUPABASE_ACTIVE_SESSIONS_TABLE,
+        },
+        () => {
+          void loadSupabaseActiveSessions().catch((error) =>
+            console.log("ACTIVE SESSIONS REALTIME ERROR:", error)
+          );
+        }
+      )
+      .on(
+        "postgres_changes" as any,
+        {
+          event: "INSERT",
+          schema: "public",
+          table: SUPABASE_INTERNAL_CHAT_TABLE,
+        },
+        () => {
+          void loadSupabaseChatMessages().catch((error) =>
+            console.log("CHAT REALTIME ERROR:", error)
+          );
+        }
+      )
+      .on(
+        "postgres_changes" as any,
+        {
+          event: "*",
+          schema: "public",
+          table: SUPABASE_APP_STATE_TABLE,
+          filter: `id=eq.${SUPABASE_APP_STATE_RECORD_KEY}`,
+        },
+        (payload: any) => {
+          const nextRecord = payload?.new as SupabaseSnapshotRecord | undefined;
+          if (!nextRecord?.payload) return;
+          applyIncomingSupabaseSnapshot(nextRecord, "realtime");
+        }
+      )
+      .subscribe((status: string) => {
+        console.log("COLLAB REALTIME STATUS:", status);
+      });
+
+    collaborationChannelRef.current = channel;
+
+    return () => {
+      if (collaborationChannelRef.current) {
+        void supabase.removeChannel(collaborationChannelRef.current);
+        collaborationChannelRef.current = null;
+      }
+    };
+  }, [isSupabaseLoggedIn, supabaseSession?.user?.id]);
 
   const totalMaterials = useMemo(
     () => materials.reduce((acc, item) => acc + Number(item.qty || 0) * Number(item.unitPrice || 0), 0),
@@ -2521,6 +2604,43 @@ export default function App() {
       ),
     [supabaseActiveSessions]
   );
+
+  useEffect(() => {
+    if (!isSupabaseLoggedIn) {
+      presenceAnnouncementReadyRef.current = false;
+      knownOtherSessionIdsRef.current = [];
+      return;
+    }
+
+    const nextIds = otherActiveSessions.map((item) => item.session_id).sort();
+
+    if (!presenceAnnouncementReadyRef.current) {
+      presenceAnnouncementReadyRef.current = true;
+      knownOtherSessionIdsRef.current = nextIds;
+      return;
+    }
+
+    const previousIds = new Set(knownOtherSessionIdsRef.current);
+    const currentIds = new Set(nextIds);
+    const joinedUsers = otherActiveSessions.filter((item) => !previousIds.has(item.session_id));
+    const disconnectedCount = knownOtherSessionIdsRef.current.filter((id) => !currentIds.has(id)).length;
+
+    joinedUsers.forEach((item) => {
+      announceAssistantEvent(
+        `${item.full_name || item.email} se conecto y esta operando en ${getTabLabel(item.active_tab)}.`
+      );
+    });
+
+    if (disconnectedCount > 0) {
+      announceAssistantEvent(
+        disconnectedCount === 1
+          ? "Un usuario dejo de operar en simultaneo."
+          : `${disconnectedCount} usuarios dejaron de operar en simultaneo.`
+      );
+    }
+
+    knownOtherSessionIdsRef.current = nextIds;
+  }, [isSupabaseLoggedIn, otherActiveSessions]);
 
   const visibleApprovedJobs = useMemo(
     () => approvedJobs.filter((item) => canAccessCompany(item.company)),
@@ -3547,6 +3667,79 @@ export default function App() {
         created_at: new Date().toISOString(),
       },
     ]);
+  };
+
+  const announceAssistantEvent = (text: string) => {
+    setWorkspaceWidgetMode("assistant");
+    setWorkspaceWidgetOpen(true);
+    appendAssistantMessage("assistant", text);
+  };
+
+  const describeCollaboratorContext = (userId: string | null | undefined) => {
+    const session = supabaseActiveSessions.find((item) => item.user_id === userId);
+    const actorName =
+      session?.full_name || session?.email || (userId === supabaseSession?.user?.id ? "Tu usuario" : "Otro usuario");
+
+    if (!session) {
+      return { actorName, location: "en el sistema" };
+    }
+
+    const tabLabel = getTabLabel(session.active_tab);
+    const companyLabel =
+      typeof session.current_company === "string" &&
+      session.current_company &&
+      session.current_company !== "General"
+        ? ` (${getCompanyMeta(session.current_company as CompanyName).short})`
+        : "";
+
+    return {
+      actorName,
+      location: `en ${tabLabel}${companyLabel}`,
+    };
+  };
+
+  const applyIncomingSupabaseSnapshot = (
+    record: SupabaseSnapshotRecord | null,
+    source: "realtime" | "poll"
+  ) => {
+    if (!record?.payload || !record.saved_at) return;
+
+    const eventKey = `${record.updated_by || "sin-usuario"}__${record.saved_at}`;
+    if (lastSnapshotEventKeyRef.current === eventKey) return;
+
+    const remoteSavedAt = new Date(record.saved_at).getTime();
+    const localSavedAt = lastSupabaseSnapshotSavedAt
+      ? new Date(lastSupabaseSnapshotSavedAt).getTime()
+      : 0;
+
+    if (!Number.isFinite(remoteSavedAt) || remoteSavedAt < localSavedAt) return;
+
+    lastSnapshotEventKeyRef.current = eventKey;
+
+    if (record.updated_by && record.updated_by === supabaseSession?.user?.id) {
+      setLastSupabaseSnapshotSavedAt(record.saved_at);
+      return;
+    }
+
+    const normalized = normalizePersistedAppState({
+      ...(record.payload as Record<string, unknown>),
+      savedAt: record.saved_at,
+    });
+
+    if (!normalized) return;
+
+    lastAppliedRemoteSnapshotAtRef.current = Date.now();
+    applyPersistedAppData(normalized.data);
+    setLastSavedAt(normalized.savedAt);
+    setLastSupabaseSnapshotSavedAt(normalized.savedAt);
+    setStorageMessage("Se actualizaron cambios compartidos desde Supabase.");
+
+    const collaborator = describeCollaboratorContext(record.updated_by);
+    announceAssistantEvent(
+      `${collaborator.actorName} actualizo informacion ${collaborator.location}. Cambio recibido ${
+        source === "realtime" ? "en tiempo real" : "desde la sincronizacion de respaldo"
+      }.`
+    );
   };
 
   const buildSystemAssistantReply = (question: string) => {
@@ -5914,7 +6107,11 @@ export default function App() {
           data: buildPersistedAppData(),
         };
         await writePersistedAppState(payload);
-        if (isSupabaseLoggedIn && isSupabaseSnapshotReady) {
+        if (
+          isSupabaseLoggedIn &&
+          isSupabaseSnapshotReady &&
+          Date.now() - lastAppliedRemoteSnapshotAtRef.current > 1500
+        ) {
           await writeSupabasePersistedAppState(payload);
           setLastSupabaseSnapshotSavedAt(payload.savedAt);
         }
@@ -8020,7 +8217,7 @@ export default function App() {
                   <div style={styles.label}>Guardado automatico</div>
                   <div style={styles.muted}>
                     {isPersistenceReady
-                      ? "Activo en este navegador y sincronizado con Supabase mientras la sesion este iniciada."
+                      ? "Activo en este navegador y sincronizado con Supabase en tiempo real mientras la sesion este iniciada."
                       : "Preparando el guardado automatico..."}
                   </div>
                   <div style={{ ...styles.muted, marginTop: 6 }}>
@@ -8030,7 +8227,7 @@ export default function App() {
                 <div>
                   <div style={styles.label}>Uso recomendado</div>
                   <div style={styles.muted}>
-                    Trabaja normalmente y usa Guardar en Supabase para confirmar cambios importantes antes de cerrar.
+                    Los cambios ahora se comparten en tiempo real. Usa Guardar en Supabase como confirmacion manual adicional antes de cerrar.
                   </div>
                   {storageMessage && (
                     <div style={{ ...styles.muted, marginTop: 6 }}>{storageMessage}</div>
