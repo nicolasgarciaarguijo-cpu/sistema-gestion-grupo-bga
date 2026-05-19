@@ -673,6 +673,13 @@ type SupabaseInternalChatMessage = {
   created_at: string;
 };
 
+type InternalAssistantMessage = {
+  id: number;
+  role: "user" | "assistant";
+  text: string;
+  created_at: string;
+};
+
 type AppUser = {
   id: number;
   name: string;
@@ -826,6 +833,20 @@ const getCompanyScopeLabel = (company: CompanyScope) =>
 
 const getTabLabel = (tabKey: string) =>
   TAB_OPTIONS.find((item) => item.key === tabKey)?.label || tabKey;
+
+const TAB_SHORT_LABELS: Record<TabKey, string> = {
+  acceso: "AC",
+  cashflow: "CF",
+  compras: "CP",
+  cajaChica: "CC",
+  presupuesto: "PR",
+  marcadores: "MK",
+  historial: "HC",
+  aprobados: "TA",
+  facturacion: "FC",
+  stock: "SA",
+  personal: "PE",
+};
 
 const buildBlankRemitoDraftRow = (company: CompanyScope): RemitoDraftRow => ({
   id: Date.now() + Math.floor(Math.random() * 1000),
@@ -2032,6 +2053,18 @@ export default function App() {
   const [supabaseActiveSessions, setSupabaseActiveSessions] = useState<SupabaseActiveSession[]>([]);
   const [supabaseChatMessages, setSupabaseChatMessages] = useState<SupabaseInternalChatMessage[]>([]);
   const [supabaseChatDraft, setSupabaseChatDraft] = useState("");
+  const [workspaceWidgetOpen, setWorkspaceWidgetOpen] = useState(false);
+  const [workspaceWidgetMode, setWorkspaceWidgetMode] = useState<"chat" | "assistant">("chat");
+  const [assistantDraft, setAssistantDraft] = useState("");
+  const [assistantMessages, setAssistantMessages] = useState<InternalAssistantMessage[]>([
+    {
+      id: 1,
+      role: "assistant",
+      text: "Puedo ayudarte con reportes rapidos del sistema: presupuestos, stock, caja chica, compras, usuarios activos y guardado compartido.",
+      created_at: new Date().toISOString(),
+    },
+  ]);
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [lastSupabaseSnapshotSavedAt, setLastSupabaseSnapshotSavedAt] = useState("");
   const lastMarkerSourceKeyRef = useRef("");
   const collaborationSessionIdRef = useRef(
@@ -3503,6 +3536,99 @@ export default function App() {
       pendingBalance: assignedTotal - renderedTotal,
     };
   }, [visiblePettyCashFunds, visiblePettyCashExpenses]);
+
+  const appendAssistantMessage = (role: "user" | "assistant", text: string) => {
+    setAssistantMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        role,
+        text,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+  };
+
+  const buildSystemAssistantReply = (question: string) => {
+    const normalized = question.trim().toLowerCase();
+
+    if (!normalized) {
+      return "Escribe una consulta y te doy un resumen del sistema.";
+    }
+
+    if (
+      normalized.includes("guardado") ||
+      normalized.includes("supabase") ||
+      normalized.includes("sincron")
+    ) {
+      return `El ultimo guardado visible figura en ${formatDateTimeDisplay(lastSavedAt)}. ${
+        storageMessage || "No hay alertas de guardado en este momento."
+      }`;
+    }
+
+    if (
+      normalized.includes("usuario") ||
+      normalized.includes("simult") ||
+      normalized.includes("operando") ||
+      normalized.includes("equipo")
+    ) {
+      return otherActiveSessions.length === 0
+        ? "Ahora no detecto otros usuarios operando en simultaneo."
+        : `Hay ${otherActiveSessions.length} usuario(s) operando: ${otherActiveSessions
+            .map((item) => `${item.full_name || item.email} en ${getTabLabel(item.active_tab)}`)
+            .join(", ")}.`;
+    }
+
+    if (normalized.includes("presupuesto") || normalized.includes("presupuestos")) {
+      return `Hoy tienes ${visibleSavedBudgets.length} presupuesto(s) visibles para esta sesion. El presupuesto actual esta configurado para ${getCompanyMeta(
+        budget.company
+      ).short} y cliente ${budget.client || "sin cliente cargado"}.`;
+    }
+
+    if (normalized.includes("stock") || normalized.includes("material")) {
+      const stockValue = visibleStockItems.reduce(
+        (acc, item) => acc + Number(item.quantity || 0) * Number(item.unitPrice || 0),
+        0
+      );
+      return `Hay ${visibleStockItems.length} item(s) de stock visibles. El valor estimado total del stock visible es ${money(
+        stockValue
+      )}.`;
+    }
+
+    if (normalized.includes("caja") || normalized.includes("chica")) {
+      return `Caja chica muestra ${pettyCashTrackingRows.length} gasto(s) aplicado(s). Monto asignado ${money(
+        pettyCashSummary.assignedTotal
+      )}, rendido ${money(pettyCashSummary.renderedTotal)} y saldo pendiente ${money(
+        pettyCashSummary.pendingBalance
+      )}.`;
+    }
+
+    if (
+      normalized.includes("compra") ||
+      normalized.includes("compras") ||
+      normalized.includes("factura")
+    ) {
+      return `Hay ${visiblePurchaseInvoices.length} factura(s) de compra visibles en esta sesion. Si quieres, puedo ayudarte a revisar pendientes y fechas de pago.`;
+    }
+
+    if (
+      normalized.includes("crm") ||
+      normalized.includes("historial") ||
+      normalized.includes("cliente")
+    ) {
+      return `El Historial y CRM muestra ${crmClientRows.length} cliente(s) consolidados en esta sesion. Puedes revisar proyectos, compras y presupuestos relacionados.`;
+    }
+
+    return "Puedo darte un resumen rapido de presupuestos, stock, caja chica, compras, Historial y CRM, guardado compartido y usuarios activos. Prueba con una pregunta concreta.";
+  };
+
+  const sendAssistantQuestion = () => {
+    const trimmed = assistantDraft.trim();
+    if (!trimmed) return;
+    appendAssistantMessage("user", trimmed);
+    appendAssistantMessage("assistant", buildSystemAssistantReply(trimmed));
+    setAssistantDraft("");
+  };
 
   const purchaseInvoicesWithPettyCashWhite = useMemo(() => {
     const linkedWhiteInvoices: PurchaseInvoice[] = visiblePettyCashExpenses
@@ -7646,35 +7772,54 @@ export default function App() {
         </div>
       </div>
 
-      <div style={styles.tabsRow}>
-        {visibleTabOptions.map((tab) => (
-          <button
-            key={tab.key}
-            style={activeTab === tab.key ? styles.tabActive : styles.tab}
-            onClick={() => setActiveTab(tab.key as TabKey)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {isSupabaseLoggedIn && (
-        <div style={styles.collaborationBanner}>
-          <div>
-            <strong>Operacion compartida:</strong>{" "}
-            {otherActiveSessions.length === 0
-              ? "No hay otros usuarios activos en este momento."
-              : `${otherActiveSessions.length} usuario(s) trabajando ahora.`}
+      <div style={styles.workspaceShell}>
+        <aside
+          style={{
+            ...styles.sidebar,
+            width: isSidebarExpanded ? 270 : 84,
+          }}
+          onMouseEnter={() => setIsSidebarExpanded(true)}
+          onMouseLeave={() => setIsSidebarExpanded(false)}
+        >
+          <div style={styles.sidebarTitle}>
+            {isSidebarExpanded ? "Menu del sistema" : "Menu"}
           </div>
-          {otherActiveSessions.length > 0 && (
-            <div style={styles.collaborationBannerMeta}>
-              {otherActiveSessions
-                .map((item) => `${item.full_name || item.email} en ${getTabLabel(item.active_tab)}`)
-                .join(" | ")}
+          <div style={styles.sidebarTabs}>
+            {visibleTabOptions.map((tab) => (
+              <button
+                key={tab.key}
+                style={{
+                  ...styles.sidebarTab,
+                  ...(activeTab === tab.key ? styles.sidebarTabActive : {}),
+                }}
+                onClick={() => setActiveTab(tab.key as TabKey)}
+                title={tab.label}
+              >
+                <span style={styles.sidebarTabBadge}>{TAB_SHORT_LABELS[tab.key]}</span>
+                {isSidebarExpanded && <span>{tab.label}</span>}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <div style={styles.workspaceMain}>
+          {isSupabaseLoggedIn && (
+            <div style={styles.collaborationBanner}>
+              <div>
+                <strong>Operacion compartida:</strong>{" "}
+                {otherActiveSessions.length === 0
+                  ? "No hay otros usuarios activos en este momento."
+                  : `${otherActiveSessions.length} usuario(s) trabajando ahora.`}
+              </div>
+              {otherActiveSessions.length > 0 && (
+                <div style={styles.collaborationBannerMeta}>
+                  {otherActiveSessions
+                    .map((item) => `${item.full_name || item.email} en ${getTabLabel(item.active_tab)}`)
+                    .join(" | ")}
+                </div>
+              )}
             </div>
           )}
-        </div>
-      )}
 
       {activeTab === "acceso" && (
         !isSupabaseLoggedIn ? (
@@ -7897,62 +8042,6 @@ export default function App() {
               </div>
             </Panel>
 
-            <Panel
-              title="Chat interno"
-              actions={
-                <div style={styles.chatStatus}>
-                  {otherActiveSessions.length === 0
-                    ? "Sin otros usuarios activos ahora"
-                    : `${otherActiveSessions.length} usuario(s) activo(s)`}
-                </div>
-              }
-            >
-              <div style={styles.chatPanel}>
-                <div style={styles.chatMessages}>
-                  {supabaseChatMessages.length === 0 ? (
-                    <div style={styles.empty}>
-                      Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo.
-                    </div>
-                  ) : (
-                    supabaseChatMessages.map((message) => {
-                      const isOwnMessage =
-                        message.user_id && message.user_id === supabaseSession?.user?.id;
-                      return (
-                        <div
-                          key={`chat-${message.id}`}
-                          style={{
-                            ...styles.chatMessage,
-                            ...(isOwnMessage ? styles.chatMessageOwn : styles.chatMessageOther),
-                          }}
-                        >
-                          <div style={styles.chatMessageHeader}>
-                            <strong>{message.full_name || message.email}</strong>
-                            <span style={styles.chatTimestamp}>
-                              {formatDateTimeDisplay(message.created_at)}
-                            </span>
-                          </div>
-                          <div>{message.message}</div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-                <div style={styles.chatComposer}>
-                  <textarea
-                    style={styles.chatTextarea}
-                    value={supabaseChatDraft}
-                    onChange={(e) => setSupabaseChatDraft(e.target.value)}
-                    placeholder="Escribe un mensaje rapido para el equipo..."
-                  />
-                  <div style={styles.chatActions}>
-                    <ButtonLike onClick={loadSupabaseChatMessages} secondary>
-                      Actualizar chat
-                    </ButtonLike>
-                    <ButtonLike onClick={sendSupabaseChatMessage}>Enviar mensaje</ButtonLike>
-                  </div>
-                </div>
-              </div>
-            </Panel>
           </div>
         )
       )}
@@ -14301,6 +14390,169 @@ export default function App() {
         </div>
       )}
 
+        {isSupabaseLoggedIn && (
+          <>
+            <button
+              type="button"
+              style={styles.workspaceWidgetToggle}
+              onClick={() => setWorkspaceWidgetOpen((prev) => !prev)}
+            >
+              <span>
+                {workspaceWidgetOpen ? "Cerrar asistente" : "Asistente y chat"}
+              </span>
+              {otherActiveSessions.length > 0 && (
+                <span style={styles.workspaceWidgetBadge}>{otherActiveSessions.length}</span>
+              )}
+            </button>
+
+            {workspaceWidgetOpen && (
+              <div style={styles.workspaceWidget}>
+                <div style={styles.workspaceWidgetHeader}>
+                  <div>
+                    <div style={styles.workspaceWidgetTitle}>Centro colaborativo</div>
+                    <div style={styles.chatStatus}>
+                      {otherActiveSessions.length === 0
+                        ? "Sin otros usuarios activos ahora"
+                        : `${otherActiveSessions.length} usuario(s) operando`}
+                    </div>
+                  </div>
+                  <div style={styles.workspaceWidgetTabs}>
+                    <button
+                      type="button"
+                      style={{
+                        ...styles.workspaceWidgetTab,
+                        ...(workspaceWidgetMode === "chat"
+                          ? styles.workspaceWidgetTabActive
+                          : {}),
+                      }}
+                      onClick={() => setWorkspaceWidgetMode("chat")}
+                    >
+                      Chat
+                    </button>
+                    <button
+                      type="button"
+                      style={{
+                        ...styles.workspaceWidgetTab,
+                        ...(workspaceWidgetMode === "assistant"
+                          ? styles.workspaceWidgetTabActive
+                          : {}),
+                      }}
+                      onClick={() => setWorkspaceWidgetMode("assistant")}
+                    >
+                      Asistente
+                    </button>
+                    <button
+                      type="button"
+                      style={styles.workspaceWidgetClose}
+                      onClick={() => setWorkspaceWidgetOpen(false)}
+                    >
+                      Cerrar
+                    </button>
+                  </div>
+                </div>
+
+                <div style={styles.workspaceWidgetBody}>
+                  {workspaceWidgetMode === "chat" ? (
+                    <div style={styles.chatPanel}>
+                      <div style={styles.chatMessages}>
+                        {supabaseChatMessages.length === 0 ? (
+                          <div style={styles.empty}>
+                            Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo.
+                          </div>
+                        ) : (
+                          supabaseChatMessages.map((message) => {
+                            const isOwnMessage =
+                              message.user_id && message.user_id === supabaseSession?.user?.id;
+                            return (
+                              <div
+                                key={`chat-${message.id}`}
+                                style={{
+                                  ...styles.chatMessage,
+                                  ...(isOwnMessage
+                                    ? styles.chatMessageOwn
+                                    : styles.chatMessageOther),
+                                }}
+                              >
+                                <div style={styles.chatMessageHeader}>
+                                  <strong>{message.full_name || message.email}</strong>
+                                  <span style={styles.chatTimestamp}>
+                                    {formatDateTimeDisplay(message.created_at)}
+                                  </span>
+                                </div>
+                                <div>{message.message}</div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                      <div style={styles.chatComposer}>
+                        <textarea
+                          style={styles.chatTextarea}
+                          value={supabaseChatDraft}
+                          onChange={(e) => setSupabaseChatDraft(e.target.value)}
+                          placeholder="Escribe un mensaje rapido para el equipo..."
+                        />
+                        <div style={styles.chatActions}>
+                          <ButtonLike onClick={loadSupabaseChatMessages} secondary>
+                            Actualizar
+                          </ButtonLike>
+                          <ButtonLike onClick={sendSupabaseChatMessage}>Enviar</ButtonLike>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={styles.chatPanel}>
+                      <div style={styles.assistantHint}>
+                        Preguntale por presupuestos, stock, caja chica, compras, Historial y CRM, usuarios activos o guardado compartido.
+                      </div>
+                      <div style={styles.assistantMessages}>
+                        {assistantMessages.map((message) => (
+                          <div
+                            key={`assistant-${message.id}`}
+                            style={{
+                              ...styles.assistantMessage,
+                              ...(message.role === "assistant"
+                                ? styles.assistantMessageBot
+                                : styles.assistantMessageUser),
+                            }}
+                          >
+                            <div style={styles.chatMessageHeader}>
+                              <strong>
+                                {message.role === "assistant"
+                                  ? "Asistente del sistema"
+                                  : "Tu consulta"}
+                              </strong>
+                              <span style={styles.chatTimestamp}>
+                                {formatDateTimeDisplay(message.created_at)}
+                              </span>
+                            </div>
+                            <div>{message.text}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={styles.assistantComposer}>
+                        <textarea
+                          style={styles.chatTextarea}
+                          value={assistantDraft}
+                          onChange={(e) => setAssistantDraft(e.target.value)}
+                          placeholder="Ejemplo: decime cuantos presupuestos hay, quien esta operando o como esta caja chica..."
+                        />
+                        <div style={styles.chatActions}>
+                          <ButtonLike onClick={sendAssistantQuestion}>
+                            Consultar asistente
+                          </ButtonLike>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+        </div>
+      </div>
+
       <div id="client-budget-pdf" style={{ display: "none" }}>
         <BudgetDocument
           budget={budget}
@@ -14856,25 +15108,16 @@ function Panel({
       }}
     >
       <div style={styles.panelHeader}>
-        <div style={styles.panelHeaderLeft}>
-          <button
-            type="button"
-            style={styles.panelCollapseBtn}
-            onClick={() => setCollapsed((prev) => !prev)}
-          >
-            {collapsed ? ">" : "v"}
-          </button>
-          <h3 style={{ margin: 0 }}>{title}</h3>
-        </div>
+        <button
+          type="button"
+          style={styles.panelTitleToggle}
+          onClick={() => setCollapsed((prev) => !prev)}
+        >
+          <span style={styles.panelCollapseBadge}>{collapsed ? "+" : "-"}</span>
+          <span>{title}</span>
+        </button>
         <div style={styles.panelHeaderRight}>
           {actions}
-          <button
-            type="button"
-            style={styles.panelCollapseTextBtn}
-            onClick={() => setCollapsed((prev) => !prev)}
-          >
-            {collapsed ? "Expandir" : "Minimizar"}
-          </button>
         </div>
       </div>
       {!collapsed && children}
@@ -14960,6 +15203,77 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
   },
   tabsRow: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 },
+  workspaceShell: {
+    display: "grid",
+    gridTemplateColumns: "auto minmax(0, 1fr)",
+    gap: 18,
+    alignItems: "start",
+  },
+  workspaceMain: {
+    minWidth: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 18,
+  },
+  sidebar: {
+    position: "sticky",
+    top: 20,
+    alignSelf: "start",
+    minHeight: "calc(100vh - 48px)",
+    borderRadius: 24,
+    padding: 14,
+    background: "linear-gradient(180deg, #0f172a 0%, #1e293b 100%)",
+    boxShadow: "0 18px 40px rgba(15,23,42,0.18)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    overflow: "hidden",
+  },
+  sidebarTitle: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    padding: "6px 8px 2px",
+  },
+  sidebarTabs: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  sidebarTab: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    width: "100%",
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.04)",
+    color: "#e2e8f0",
+    borderRadius: 16,
+    padding: "10px 12px",
+    cursor: "pointer",
+    textAlign: "left",
+    fontWeight: 600,
+  },
+  sidebarTabActive: {
+    background: "linear-gradient(135deg, #dbeafe 0%, #ffffff 100%)",
+    color: "#0f172a",
+    borderColor: "#bfdbfe",
+    boxShadow: "0 10px 24px rgba(59,130,246,0.18)",
+  },
+  sidebarTabBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(255,255,255,0.12)",
+    fontSize: 11,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
   inlineForm: {
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
@@ -15036,6 +15350,36 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     flexWrap: "wrap",
   },
+  panelTitleToggle: {
+    flex: "1 1 auto",
+    minWidth: 240,
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 14px",
+    borderRadius: 16,
+    border: "1px solid #bfdbfe",
+    background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)",
+    color: "#0f172a",
+    cursor: "pointer",
+    fontWeight: 800,
+    fontSize: 18,
+    textAlign: "left",
+    boxShadow: "0 8px 20px rgba(148,163,184,0.12)",
+  },
+  panelCollapseBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#0f172a",
+    color: "white",
+    fontSize: 18,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
   panelHeaderLeft: {
     display: "flex",
     alignItems: "center",
@@ -15048,28 +15392,6 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 8,
     flexWrap: "wrap",
     marginLeft: "auto",
-  },
-  panelCollapseBtn: {
-    width: 30,
-    height: 30,
-    borderRadius: 10,
-    border: "1px solid #cbd5e1",
-    background: "#ffffff",
-    color: "#334155",
-    cursor: "pointer",
-    fontWeight: 700,
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  panelCollapseTextBtn: {
-    padding: "7px 10px",
-    borderRadius: 10,
-    border: "1px solid #cbd5e1",
-    background: "#f8fafc",
-    color: "#334155",
-    cursor: "pointer",
-    fontWeight: 600,
   },
   label: { fontSize: 12, color: "#475569", marginBottom: 6, fontWeight: 600 },
   input: {
@@ -15508,6 +15830,135 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "#64748b",
     fontWeight: 600,
+  },
+  workspaceWidgetToggle: {
+    position: "fixed",
+    right: 24,
+    bottom: 24,
+    zIndex: 40,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "14px 18px",
+    borderRadius: 18,
+    border: "1px solid #0f172a",
+    background: "#0f172a",
+    color: "white",
+    boxShadow: "0 18px 36px rgba(15,23,42,0.28)",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  workspaceWidgetBadge: {
+    minWidth: 26,
+    height: 26,
+    borderRadius: 999,
+    padding: "0 8px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#dbeafe",
+    color: "#1d4ed8",
+    fontSize: 12,
+    fontWeight: 800,
+  },
+  workspaceWidget: {
+    position: "fixed",
+    right: 24,
+    bottom: 86,
+    width: 420,
+    maxWidth: "calc(100vw - 48px)",
+    maxHeight: "calc(100vh - 120px)",
+    zIndex: 39,
+    borderRadius: 22,
+    border: "1px solid #cbd5e1",
+    background: "rgba(255,255,255,0.98)",
+    boxShadow: "0 22px 48px rgba(15,23,42,0.24)",
+    display: "grid",
+    overflow: "hidden",
+  },
+  workspaceWidgetHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    padding: 16,
+    borderBottom: "1px solid #e2e8f0",
+    background: "linear-gradient(135deg, #eff6ff 0%, #ffffff 100%)",
+  },
+  workspaceWidgetTitle: {
+    fontSize: 18,
+    fontWeight: 800,
+    color: "#0f172a",
+    marginBottom: 4,
+  },
+  workspaceWidgetTabs: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+  },
+  workspaceWidgetTab: {
+    padding: "8px 12px",
+    borderRadius: 12,
+    border: "1px solid #cbd5e1",
+    background: "white",
+    color: "#334155",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  workspaceWidgetTabActive: {
+    background: "#0f172a",
+    color: "white",
+    borderColor: "#0f172a",
+  },
+  workspaceWidgetClose: {
+    padding: "8px 12px",
+    borderRadius: 12,
+    border: "1px solid #fecaca",
+    background: "#fff1f2",
+    color: "#be123c",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  workspaceWidgetBody: {
+    padding: 16,
+    minHeight: 300,
+    maxHeight: "calc(100vh - 220px)",
+    overflow: "hidden",
+  },
+  assistantMessages: {
+    display: "grid",
+    gap: 10,
+    maxHeight: 340,
+    overflowY: "auto",
+    paddingRight: 4,
+  },
+  assistantMessage: {
+    borderRadius: 14,
+    padding: "12px 14px",
+    border: "1px solid #e2e8f0",
+  },
+  assistantMessageBot: {
+    background: "#eff6ff",
+    borderColor: "#bfdbfe",
+  },
+  assistantMessageUser: {
+    background: "#f8fafc",
+    borderColor: "#cbd5e1",
+  },
+  assistantComposer: {
+    display: "grid",
+    gap: 10,
+  },
+  assistantHint: {
+    fontSize: 13,
+    lineHeight: 1.5,
+    color: "#475569",
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 14,
+    padding: 12,
   },
   statusGreen: { background: "#dcfce7", color: "#166534" },
   statusYellow: { background: "#fef3c7", color: "#92400e" },
