@@ -32,7 +32,19 @@ declare global {
 const APP_TITLE = "Sistema de Gestion Grupo BGA";
 const INVOICE_VAT_PCT = 21;
 
-const COMPANY_OPTIONS = [
+type CompanyOption = {
+  value: string;
+  short: string;
+  primary: string;
+  soft: string;
+  taxId: string;
+  bankName: string;
+  bankAlias: string;
+  bankCbu: string;
+  bankAccount: string;
+};
+
+const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
   {
     value: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     short: "BGA",
@@ -57,7 +69,10 @@ const COMPANY_OPTIONS = [
   },
 ] as const;
 
-type CompanyName = (typeof COMPANY_OPTIONS)[number]["value"];
+let runtimeCompanyOptions: CompanyOption[] = [...DEFAULT_COMPANY_OPTIONS];
+const COMPANY_OPTIONS = DEFAULT_COMPANY_OPTIONS;
+
+type CompanyName = string;
 type CompanyScope = CompanyName | "General";
 
 const WORK_TYPE_OPTIONS = [
@@ -111,6 +126,7 @@ const STOCK_GROUP_CODE_PREFIX: Record<StockGeneralGroupName, string> = {
 type TabKey =
   | "acceso"
   | "cashflow"
+  | "fabricacion"
   | "compras"
   | "cajaChica"
   | "presupuesto"
@@ -126,6 +142,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "cashflow", label: "Cash flow y resultados" },
   { key: "facturacion", label: "Facturacion y cobranzas" },
   { key: "aprobados", label: "Trabajos aprobados" },
+  { key: "fabricacion", label: "Fabricacion" },
   { key: "compras", label: "Compras" },
   { key: "cajaChica", label: "Caja chica" },
   { key: "presupuesto", label: "Presupuesto actual" },
@@ -139,6 +156,7 @@ type PrintMode =
   | ""
   | "client-budget"
   | "report-cashflow"
+  | "report-fabricacion"
   | "report-compras"
   | "report-caja-chica"
   | "report-marcadores"
@@ -698,6 +716,10 @@ type SupabaseInternalChatMessage = {
   email: string;
   full_name: string;
   message: string;
+  recipient_user_id?: string | null;
+  recipient_email?: string | null;
+  recipient_full_name?: string | null;
+  read_by?: string[] | null;
   created_at: string;
 };
 
@@ -712,6 +734,13 @@ type InternalAssistantMessage = {
   role: "user" | "assistant";
   text: string;
   created_at: string;
+};
+
+type WorkspaceNotification = {
+  id: number;
+  text: string;
+  created_at: string;
+  read: boolean;
 };
 
 type AppUser = {
@@ -860,10 +889,12 @@ const formatDateDisplay = (dateText: string) => {
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
 const getCompanyMeta = (company: CompanyName) =>
-  COMPANY_OPTIONS.find((item) => item.value === company) ?? COMPANY_OPTIONS[0];
+  runtimeCompanyOptions.find((item) => item.value === company) ?? runtimeCompanyOptions[0];
 
 const getCompanyScopeLabel = (company: CompanyScope) =>
   company === "General" ? "General" : getCompanyMeta(company).short;
+
+const getAllCompanyOptions = () => runtimeCompanyOptions;
 
 const getTabLabel = (tabKey: string) =>
   TAB_OPTIONS.find((item) => item.key === tabKey)?.label || tabKey;
@@ -871,6 +902,7 @@ const getTabLabel = (tabKey: string) =>
 const TAB_SHORT_LABELS: Record<TabKey, string> = {
   acceso: "AC",
   cashflow: "CF",
+  fabricacion: "FB",
   compras: "CP",
   cajaChica: "CC",
   presupuesto: "PR",
@@ -1758,6 +1790,8 @@ const SUPABASE_COLLAB_CHANNEL = "grupo-bga-collaboration";
 
 type PersistedAppStateData = {
   activeTab: TabKey;
+  companyCatalog: CompanyOption[];
+  workspaceCompanyScope: CompanyScope;
   budget: BudgetData;
   subBudgets: BudgetSection[];
   subBudgetTitle: string;
@@ -2017,6 +2051,19 @@ export default function App() {
   const [supabaseCompaniesCatalog, setSupabaseCompaniesCatalog] = useState<any[]>([]);
   const [supabaseCompanyPermissions, setSupabaseCompanyPermissions] = useState<any[]>([]);
   const [supabaseTabPermissions, setSupabaseTabPermissions] = useState<any[]>([]);
+  const [companyCatalog, setCompanyCatalog] = useState<CompanyOption[]>(DEFAULT_COMPANY_OPTIONS);
+  const [workspaceCompanyScope, setWorkspaceCompanyScope] = useState<CompanyScope>("General");
+  const [newCompanyDraft, setNewCompanyDraft] = useState<CompanyOption>({
+    value: "",
+    short: "",
+    primary: "#1d4ed8",
+    soft: "#dbeafe",
+    taxId: "",
+    bankName: "",
+    bankAlias: "",
+    bankCbu: "",
+    bankAccount: "",
+  });
   const [activeTab, setActiveTab] = useState<TabKey>("acceso");
   const [budget, setBudget] = useState<BudgetData>(defaultBudget);
   const [materials, setMaterials] = useState<Material[]>(defaultMaterials);
@@ -2088,8 +2135,13 @@ export default function App() {
   const [supabaseActiveSessions, setSupabaseActiveSessions] = useState<SupabaseActiveSession[]>([]);
   const [supabaseChatMessages, setSupabaseChatMessages] = useState<SupabaseInternalChatMessage[]>([]);
   const [supabaseChatDraft, setSupabaseChatDraft] = useState("");
+  const [selectedChatRecipientId, setSelectedChatRecipientId] = useState<string | null>(null);
+  const [selectedChatRecipientName, setSelectedChatRecipientName] = useState<string>("Canal general");
   const [workspaceWidgetOpen, setWorkspaceWidgetOpen] = useState(false);
   const [workspaceWidgetMode, setWorkspaceWidgetMode] = useState<"chat" | "assistant">("chat");
+  const [showChatContacts, setShowChatContacts] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<WorkspaceNotification[]>([]);
   const [assistantDraft, setAssistantDraft] = useState("");
   const [assistantMessages, setAssistantMessages] = useState<InternalAssistantMessage[]>([
     {
@@ -2113,6 +2165,8 @@ export default function App() {
   const presenceAnnouncementReadyRef = useRef(false);
   const knownOtherSessionIdsRef = useRef<string[]>([]);
   const isSupabaseLoggedIn = !!supabaseSession?.user;
+  runtimeCompanyOptions = companyCatalog.length > 0 ? companyCatalog : DEFAULT_COMPANY_OPTIONS;
+  const COMPANY_OPTIONS = companyCatalog.length > 0 ? companyCatalog : DEFAULT_COMPANY_OPTIONS;
 
   const getSupabaseAuthRedirectUrl = () => {
     if (typeof window !== "undefined") {
@@ -2222,6 +2276,9 @@ export default function App() {
       email: user.email || "",
       full_name: supabaseProfile?.full_name || user.email || "Usuario",
       message,
+      recipient_user_id: selectedChatRecipientId,
+      recipient_full_name: selectedChatRecipientId ? selectedChatRecipientName : null,
+      read_by: [user.id],
     });
 
     if (error) {
@@ -2231,6 +2288,27 @@ export default function App() {
 
     setSupabaseChatDraft("");
     await loadSupabaseChatMessages();
+  };
+
+  const markChatThreadAsRead = async (peerUserId: string) => {
+    const currentUserId = supabaseSession?.user?.id;
+    if (!currentUserId) return;
+
+    const unreadRows = supabaseChatMessages.filter(
+      (message) =>
+        message.recipient_user_id === currentUserId &&
+        message.user_id === peerUserId &&
+        !(message.read_by || []).includes(currentUserId)
+    );
+
+    await Promise.all(
+      unreadRows.map((message) =>
+        supabase
+          .from(SUPABASE_INTERNAL_CHAT_TABLE)
+          .update({ read_by: [...new Set([...(message.read_by || []), currentUserId])] })
+          .eq("id", message.id)
+      )
+    );
   };
 
   const refreshSupabaseAccess = async () => {
@@ -2489,7 +2567,21 @@ export default function App() {
           schema: "public",
           table: SUPABASE_INTERNAL_CHAT_TABLE,
         },
-        () => {
+        (payload: any) => {
+          const nextMessage = payload?.new as SupabaseInternalChatMessage | undefined;
+          if (
+            nextMessage &&
+            nextMessage.user_id !== supabaseSession?.user?.id &&
+            (!nextMessage.recipient_user_id ||
+              nextMessage.recipient_user_id === supabaseSession?.user?.id)
+          ) {
+            announceAssistantEvent(
+              nextMessage.recipient_user_id
+                ? `${nextMessage.full_name || nextMessage.email} te envio un mensaje privado.`
+                : `${nextMessage.full_name || nextMessage.email} escribio en el chat grupal.`
+            );
+          }
+
           void loadSupabaseChatMessages().catch((error) =>
             console.log("CHAT REALTIME ERROR:", error)
           );
@@ -2540,10 +2632,8 @@ export default function App() {
     return supabaseCompaniesCatalog
       .filter((item) => allowedIds.has(Number(item.id)))
       .map((item) => item.name)
-      .filter((name): name is CompanyName =>
-        COMPANY_OPTIONS.some((option) => option.value === name)
-      );
-  }, [isSupabaseLoggedIn, supabaseCompanyPermissions, supabaseCompaniesCatalog]);
+      .filter((name) => companyCatalog.some((option) => option.value === name));
+  }, [isSupabaseLoggedIn, supabaseCompanyPermissions, supabaseCompaniesCatalog, companyCatalog]);
 
   const supabaseAllowedTabs = useMemo<TabKey[]>(() => {
     if (!isSupabaseLoggedIn) return [];
@@ -2555,18 +2645,26 @@ export default function App() {
   const allowedCompaniesForSession = useMemo(
     () =>
       effectiveIsAdmin
-        ? COMPANY_OPTIONS.map((item) => item.value)
+        ? companyCatalog.map((item) => item.value)
         : isSupabaseLoggedIn
         ? supabaseAllowedCompanies
         : [],
-    [effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedCompanies]
+    [companyCatalog, effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedCompanies]
   );
 
-  const canAccessCompany = (company: CompanyName | "General") =>
-    isSupabaseLoggedIn &&
-    (effectiveIsAdmin ||
+  const canAccessCompany = (company: CompanyName | "General") => {
+    if (!isSupabaseLoggedIn) return false;
+    const hasPermission =
+      effectiveIsAdmin ||
       company === "General" ||
-      allowedCompaniesForSession.includes(company as CompanyName));
+      allowedCompaniesForSession.includes(company as CompanyName);
+
+    if (!hasPermission) return false;
+
+    if (workspaceCompanyScope === "General") return true;
+
+    return company === "General" || company === workspaceCompanyScope;
+  };
 
   const visibleTabOptions = useMemo(() => {
     const accessTab = TAB_OPTIONS.find((item) => item.key === "acceso");
@@ -2605,6 +2703,96 @@ export default function App() {
     [supabaseActiveSessions]
   );
 
+  const visibleChatMessages = useMemo(() => {
+    if (!selectedChatRecipientId) {
+      return supabaseChatMessages.filter((item) => !item.recipient_user_id);
+    }
+
+    return supabaseChatMessages.filter((item) => {
+      const senderIsPeer = item.user_id === selectedChatRecipientId;
+      const receiverIsPeer = item.recipient_user_id === selectedChatRecipientId;
+      const senderIsMe = item.user_id === supabaseSession?.user?.id;
+      const receiverIsMe = item.recipient_user_id === supabaseSession?.user?.id;
+      return (senderIsPeer && receiverIsMe) || (senderIsMe && receiverIsPeer);
+    });
+  }, [selectedChatRecipientId, supabaseChatMessages, supabaseSession?.user?.id]);
+
+  const privateUnreadByUser = useMemo(() => {
+    const currentUserId = supabaseSession?.user?.id;
+    const summary: Record<string, number> = {};
+    if (!currentUserId) return summary;
+
+    supabaseChatMessages.forEach((message) => {
+      if (
+        message.recipient_user_id === currentUserId &&
+        message.user_id !== currentUserId &&
+        !(message.read_by || []).includes(currentUserId)
+      ) {
+        summary[message.user_id] = (summary[message.user_id] || 0) + 1;
+      }
+    });
+
+    return summary;
+  }, [supabaseChatMessages, supabaseSession?.user?.id]);
+
+  const unreadNotificationCount = useMemo(
+    () => notifications.filter((item) => !item.read).length,
+    [notifications]
+  );
+
+  const chatPeers = useMemo(() => {
+    const currentUserId = supabaseSession?.user?.id;
+    const peers = new Map<
+      string,
+      {
+        user_id: string;
+        full_name: string;
+        email: string;
+        isActive: boolean;
+        last_seen_at: string;
+      }
+    >();
+
+    otherActiveSessions.forEach((session) => {
+      peers.set(session.user_id, {
+        user_id: session.user_id,
+        full_name: session.full_name,
+        email: session.email,
+        isActive: true,
+        last_seen_at: session.last_seen_at,
+      });
+    });
+
+    supabaseChatMessages.forEach((message) => {
+      const peerUserId =
+        message.user_id === currentUserId
+          ? message.recipient_user_id
+          : message.user_id;
+
+      if (!peerUserId || peerUserId === currentUserId) return;
+      if (peers.has(peerUserId)) return;
+
+      peers.set(peerUserId, {
+        user_id: peerUserId,
+        full_name:
+          message.user_id === peerUserId
+            ? message.full_name || message.email || "Usuario"
+            : message.recipient_full_name || message.recipient_email || "Usuario",
+        email:
+          message.user_id === peerUserId
+            ? message.email || ""
+            : message.recipient_email || "",
+        isActive: false,
+        last_seen_at: message.created_at,
+      });
+    });
+
+    return Array.from(peers.values()).sort((a, b) => {
+      if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+      return (b.last_seen_at || "").localeCompare(a.last_seen_at || "");
+    });
+  }, [otherActiveSessions, supabaseChatMessages, supabaseSession?.user?.id]);
+
   useEffect(() => {
     if (!isSupabaseLoggedIn) {
       presenceAnnouncementReadyRef.current = false;
@@ -2641,6 +2829,12 @@ export default function App() {
 
     knownOtherSessionIdsRef.current = nextIds;
   }, [isSupabaseLoggedIn, otherActiveSessions]);
+
+  useEffect(() => {
+    if (notificationsOpen) {
+      markNotificationsAsRead();
+    }
+  }, [notificationsOpen]);
 
   const visibleApprovedJobs = useMemo(
     () => approvedJobs.filter((item) => canAccessCompany(item.company)),
@@ -3669,10 +3863,57 @@ export default function App() {
     ]);
   };
 
+  const pushNotification = (text: string) => {
+    setNotifications((prev) => [
+      {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        text,
+        created_at: new Date().toISOString(),
+        read: false,
+      },
+      ...prev,
+    ]);
+  };
+
   const announceAssistantEvent = (text: string) => {
-    setWorkspaceWidgetMode("assistant");
-    setWorkspaceWidgetOpen(true);
-    appendAssistantMessage("assistant", text);
+    pushNotification(text);
+  };
+
+  const markNotificationsAsRead = () => {
+    setNotifications((prev) => prev.map((item) => ({ ...item, read: true })));
+  };
+
+  const addCompanyCatalogEntry = () => {
+    const value = newCompanyDraft.value.trim();
+    const short = newCompanyDraft.short.trim();
+
+    if (!value || !short) {
+      setStorageMessage("Para agregar una empresa nueva, completa razon social y nombre corto.");
+      return;
+    }
+
+    if (companyCatalog.some((item) => item.value.toLowerCase() === value.toLowerCase())) {
+      setStorageMessage("Esa empresa ya existe en el sistema.");
+      return;
+    }
+
+    const nextCatalog = [...companyCatalog, { ...newCompanyDraft, value, short }];
+    setCompanyCatalog(nextCatalog);
+    runtimeCompanyOptions = nextCatalog;
+    setNewCompanyDraft({
+      value: "",
+      short: "",
+      primary: "#1d4ed8",
+      soft: "#dbeafe",
+      taxId: "",
+      bankName: "",
+      bankAlias: "",
+      bankCbu: "",
+      bankAccount: "",
+    });
+    setStorageMessage(
+      "Empresa agregada al sistema. Recuerda darla de alta tambien en Supabase para permisos y seguridad."
+    );
   };
 
   const describeCollaboratorContext = (userId: string | null | undefined) => {
@@ -3999,6 +4240,45 @@ export default function App() {
     activeAssetsMonthlyDepreciation,
     visibleBankStatementEntries,
   ]);
+
+  const fabricationPendingPurchases = useMemo(
+    () => stockNeedRows.filter((row) => Number(row.missing || 0) > 0),
+    [stockNeedRows]
+  );
+
+  const fabricationCompletedPurchases = useMemo(
+    () =>
+      [...visiblePurchaseInvoices].sort((a, b) => {
+        const byDate = (b.invoiceDate || "").localeCompare(a.invoiceDate || "");
+        if (byDate !== 0) return byDate;
+        return String(b.invoiceNumber || "").localeCompare(String(a.invoiceNumber || ""));
+      }),
+    [visiblePurchaseInvoices]
+  );
+
+  const fabricationCalendarRows = useMemo(
+    () =>
+      [...approvedJobsTimelineRows].sort((a, b) => {
+        const aDate = a.start || a.approvalDate || "";
+        const bDate = b.start || b.approvalDate || "";
+        return aDate.localeCompare(bDate);
+      }),
+    [approvedJobsTimelineRows]
+  );
+
+  const fabricationOpenJobsCount = fabricationCalendarRows.filter(
+    (job) => job.executionStatus !== "finalizado"
+  ).length;
+
+  const fabricationInProgressCount = fabricationCalendarRows.filter(
+    (job) => job.executionStatus === "en_curso"
+  ).length;
+
+  const fabricationUpcomingDeliveries = fabricationCalendarRows.filter(
+    (job) => job.executionStatus !== "finalizado" && !!job.deliveryDate
+  ).length;
+
+  const fabricationOccupancyAvailablePct = Math.max(0, 100 - Number(occupancyPct || 0));
 
   const selectedBudget = selectedHistoryId
     ? visibleSavedBudgets.find((item) => item.id === selectedHistoryId) || null
@@ -4465,6 +4745,8 @@ export default function App() {
 
   const buildPersistedAppData = (): PersistedAppStateData => ({
     activeTab,
+    companyCatalog: companyCatalog.map((item) => ({ ...item })),
+    workspaceCompanyScope,
     budget: cloneBudget(budget),
     subBudgets: subBudgets.map((item) => ({
       ...item,
@@ -4539,6 +4821,12 @@ export default function App() {
     lastMarkerSourceKeyRef.current = `${nextBudget.company}__${nextBudget.workType}`;
 
     setActiveTab((data.activeTab as TabKey) || "cashflow");
+    const nextCompanyCatalog = (data.companyCatalog || DEFAULT_COMPANY_OPTIONS).map((item) => ({
+      ...item,
+    }));
+    setCompanyCatalog(nextCompanyCatalog);
+    runtimeCompanyOptions = nextCompanyCatalog;
+    setWorkspaceCompanyScope(data.workspaceCompanyScope || "General");
     setBudget(nextBudget);
     setSubBudgets(
       (data.subBudgets || []).map((item) => ({
@@ -8018,6 +8306,31 @@ export default function App() {
             </div>
           )}
 
+          {isSupabaseLoggedIn && (
+            <div style={styles.workspaceToolbar}>
+              <div style={styles.workspaceToolbarBlock}>
+                <div style={styles.label}>Vista operativa por empresa</div>
+                <select
+                  style={styles.input}
+                  value={workspaceCompanyScope}
+                  onChange={(e) => setWorkspaceCompanyScope(e.target.value)}
+                >
+                  <option value="General">General / todo el grupo</option>
+                  {COMPANY_OPTIONS.map((company) => (
+                    <option key={`scope-${company.value}`} value={company.value}>
+                      {company.short}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div style={styles.workspaceToolbarInfo}>
+                {workspaceCompanyScope === "General"
+                  ? "Estas viendo informacion general y compartida entre empresas."
+                  : `Estas trabajando enfocado en ${getCompanyMeta(workspaceCompanyScope).short}, pero los registros generales siguen visibles.`}
+              </div>
+            </div>
+          )}
+
       {activeTab === "acceso" && (
         !isSupabaseLoggedIn ? (
           <div style={styles.accessShell}>
@@ -8180,6 +8493,122 @@ export default function App() {
                 </div>
               </div>
             </Panel>
+
+            {effectiveIsAdmin && (
+              <Panel title="Empresas del sistema">
+                <div style={styles.grid2}>
+                  <div>
+                    <div style={styles.label}>Empresas activas</div>
+                    <div style={styles.column}>
+                      {COMPANY_OPTIONS.map((company) => (
+                        <div key={`company-card-${company.value}`} style={styles.subCard}>
+                          <div style={styles.inlineActions}>
+                            <div
+                              style={{
+                                ...styles.companyRibbonMini,
+                                background: company.soft,
+                                color: company.primary,
+                              }}
+                            >
+                              {company.short}
+                            </div>
+                            <strong>{company.value}</strong>
+                          </div>
+                          <div style={styles.muted}>CUIT: {company.taxId || "-"}</div>
+                          <div style={styles.muted}>Banco: {company.bankName || "-"}</div>
+                          <div style={styles.muted}>Alias: {company.bankAlias || "-"}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={styles.label}>Agregar nueva empresa</div>
+                    <div style={styles.grid2}>
+                      <input
+                        style={styles.input}
+                        value={newCompanyDraft.value}
+                        onChange={(e) =>
+                          setNewCompanyDraft((prev) => ({ ...prev, value: e.target.value }))
+                        }
+                        placeholder="Razon social"
+                      />
+                      <input
+                        style={styles.input}
+                        value={newCompanyDraft.short}
+                        onChange={(e) =>
+                          setNewCompanyDraft((prev) => ({ ...prev, short: e.target.value }))
+                        }
+                        placeholder="Nombre corto"
+                      />
+                      <input
+                        style={styles.input}
+                        value={newCompanyDraft.taxId}
+                        onChange={(e) =>
+                          setNewCompanyDraft((prev) => ({ ...prev, taxId: e.target.value }))
+                        }
+                        placeholder="CUIT"
+                      />
+                      <input
+                        style={styles.input}
+                        value={newCompanyDraft.bankName}
+                        onChange={(e) =>
+                          setNewCompanyDraft((prev) => ({ ...prev, bankName: e.target.value }))
+                        }
+                        placeholder="Banco"
+                      />
+                      <input
+                        style={styles.input}
+                        value={newCompanyDraft.bankAlias}
+                        onChange={(e) =>
+                          setNewCompanyDraft((prev) => ({ ...prev, bankAlias: e.target.value }))
+                        }
+                        placeholder="Alias"
+                      />
+                      <input
+                        style={styles.input}
+                        value={newCompanyDraft.bankCbu}
+                        onChange={(e) =>
+                          setNewCompanyDraft((prev) => ({ ...prev, bankCbu: e.target.value }))
+                        }
+                        placeholder="CBU"
+                      />
+                      <input
+                        style={styles.input}
+                        value={newCompanyDraft.bankAccount}
+                        onChange={(e) =>
+                          setNewCompanyDraft((prev) => ({ ...prev, bankAccount: e.target.value }))
+                        }
+                        placeholder="Cuenta"
+                      />
+                      <div style={styles.inlineActions}>
+                        <input
+                          style={{ ...styles.input, width: "100%" }}
+                          type="color"
+                          value={newCompanyDraft.primary}
+                          onChange={(e) =>
+                            setNewCompanyDraft((prev) => ({ ...prev, primary: e.target.value }))
+                          }
+                        />
+                        <input
+                          style={{ ...styles.input, width: "100%" }}
+                          type="color"
+                          value={newCompanyDraft.soft}
+                          onChange={(e) =>
+                            setNewCompanyDraft((prev) => ({ ...prev, soft: e.target.value }))
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div style={{ marginTop: 12 }}>
+                      <ButtonLike onClick={addCompanyCatalogEntry}>Agregar empresa</ButtonLike>
+                    </div>
+                    <div style={{ ...styles.muted, marginTop: 10 }}>
+                      Esto la suma al sistema publicado. Despues hay que darla de alta tambien en Supabase para permisos y seguridad.
+                    </div>
+                  </div>
+                </div>
+              </Panel>
+            )}
 
             <Panel
               title="Datos y guardado"
@@ -12508,6 +12937,267 @@ export default function App() {
         </div>
       )}
 
+      {activeTab === "fabricacion" && (
+        <div style={styles.column}>
+          <Panel
+            title="Tablero general de fabricacion"
+            actions={<ButtonLike onClick={() => exportPrint("report-fabricacion")} secondary>Reporte</ButtonLike>}
+          >
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Trabajos activos" value={String(fabricationOpenJobsCount)} />
+              <MiniMetric label="En curso" value={String(fabricationInProgressCount)} />
+              <MiniMetric label="Compras pendientes" value={String(fabricationPendingPurchases.length)} />
+              <MiniMetric label="Compras realizadas" value={String(fabricationCompletedPurchases.length)} />
+              <MiniMetric label="Entregas a coordinar" value={String(fabricationUpcomingDeliveries)} />
+              <MiniMetric label="Ocupacion usada" value={`${occupancyPct.toFixed(1)}%`} />
+              <MiniMetric label="Ocupacion disponible" value={`${fabricationOccupancyAvailablePct.toFixed(1)}%`} />
+              <MiniMetric label="Horas disponibles" value={totalAvailableHours.toFixed(1)} />
+              <MiniMetric label="Horas comprometidas" value={totalJobHours.toFixed(1)} />
+            </div>
+            <div style={styles.noticeBox}>
+              Esta solapa concentra seguimiento de fabricacion: compras necesarias,
+              compras realizadas, estado de stock, ocupacion disponible, calendario y
+              coordinacion de entregas.
+            </div>
+          </Panel>
+
+          <Panel title="Compras pendientes para fabricacion">
+            {fabricationPendingPurchases.length === 0 ? (
+              <div style={styles.empty}>No hay faltantes pendientes para trabajos activos.</div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Alerta</th>
+                    <th>Material</th>
+                    <th>Empresas</th>
+                    <th>Trabajos</th>
+                    <th>Requerido</th>
+                    <th>Stock</th>
+                    <th>Faltante</th>
+                    <th>Costo estimado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fabricationPendingPurchases.map((row) => (
+                    <tr key={row.description}>
+                      <td>
+                        <span
+                          style={{
+                            ...styles.statusPill,
+                            ...(row.available > 0 ? styles.statusYellow : styles.statusRed),
+                          }}
+                        >
+                          {row.available > 0 ? "Parcial" : "Comprar"}
+                        </span>
+                      </td>
+                      <td>{row.description}</td>
+                      <td>{row.companyLabels.join(", ")}</td>
+                      <td>{row.jobs.join(", ")}</td>
+                      <td>{row.required} {row.unit}</td>
+                      <td>{row.available} {row.unit}</td>
+                      <td>{row.missing} {row.unit}</td>
+                      <td>{money(row.estimatedCost)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+
+          <Panel title="Compras realizadas">
+            {fabricationCompletedPurchases.length === 0 ? (
+              <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Empresa</th>
+                    <th>Fecha</th>
+                    <th>Proveedor</th>
+                    <th>Comprobante</th>
+                    <th>Numero</th>
+                    <th>Total</th>
+                    <th>Origen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fabricationCompletedPurchases.map((item) => (
+                    <tr key={item.id}>
+                      <td>{getCompanyMeta(item.company).short}</td>
+                      <td>{formatDateDisplay(item.invoiceDate)}</td>
+                      <td>{item.supplier}</td>
+                      <td>{[item.receiptKind, item.receiptLetter].filter(Boolean).join(" ") || "-"}</td>
+                      <td>{item.invoiceNumber || "-"}</td>
+                      <td>{money(item.total)}</td>
+                      <td>{item.source === "caja_chica" ? "Caja chica" : "Compras"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+
+          <Panel title="Estado de stock para fabricacion">
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Items visibles" value={String(visibleStockItems.filter((item) => item.kind === "general").length)} />
+              <MiniMetric label="Items sin stock" value={String(visibleStockItems.filter((item) => item.kind === "general" && Number(item.quantity || 0) <= 0).length)} />
+              <MiniMetric label="Valor stock general" value={money(visibleStockItems.filter((item) => item.kind === "general" && item.active).reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0))} />
+              <MiniMetric label="Necesidad estimada" value={money(totalPurchaseNeed)} />
+            </div>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th>Empresa</th>
+                  <th>Grupo</th>
+                  <th>Codigo</th>
+                  <th>Descripcion</th>
+                  <th>Ubicacion</th>
+                  <th>Cantidad</th>
+                  <th>Unidad</th>
+                  <th>$ Unit.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleStockItems
+                  .filter((item) => item.kind === "general")
+                  .sort((a, b) => {
+                    const stockCompare = Number(a.quantity || 0) - Number(b.quantity || 0);
+                    if (stockCompare !== 0) return stockCompare;
+                    return a.description.localeCompare(b.description);
+                  })
+                  .slice(0, 20)
+                  .map((item) => (
+                    <tr key={item.id}>
+                      <td>{getCompanyScopeLabel(item.company)}</td>
+                      <td>{item.group || "-"}</td>
+                      <td>{item.code || "-"}</td>
+                      <td>{item.description}</td>
+                      <td>{item.location || "Sin ubicar"}</td>
+                      <td>{item.quantity}</td>
+                      <td>{item.unit}</td>
+                      <td>{money(item.unitPrice)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </Panel>
+
+          <Panel title="Calendario de fabricacion y entregas">
+            {fabricationCalendarRows.length === 0 ? (
+              <div style={styles.empty}>Todavia no hay trabajos aprobados para fabricar.</div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Empresa</th>
+                    <th>Presupuesto</th>
+                    <th>Cliente</th>
+                    <th>Inicio</th>
+                    <th>Entrega</th>
+                    <th>Encargado</th>
+                    <th>Estado</th>
+                    <th>Tiempo</th>
+                    <th>Ocupacion</th>
+                    <th>Faltantes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fabricationCalendarRows.map((job) => (
+                    <tr key={job.id}>
+                      <td>{getCompanyMeta(job.company).short}</td>
+                      <td>{job.budgetNumber}</td>
+                      <td>{job.client}</td>
+                      <td>
+                        <input
+                          style={{ ...styles.input, minWidth: 140 }}
+                          type="date"
+                          value={job.startDate}
+                          onChange={(e) => updateApprovedJob(job.id, "startDate", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={{ ...styles.input, minWidth: 140 }}
+                          type="date"
+                          value={job.deliveryDate}
+                          onChange={(e) => updateApprovedJob(job.id, "deliveryDate", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={job.projectManager}
+                          onChange={(e) => updateApprovedJob(job.id, "projectManager", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={job.executionStatus}
+                          onChange={(e) => updateApprovedJob(job.id, "executionStatus", e.target.value)}
+                        >
+                          <option value="pendiente">Pendiente</option>
+                          <option value="en_curso">En curso</option>
+                          <option value="finalizado">Finalizado</option>
+                        </select>
+                      </td>
+                      <td>
+                        <div style={styles.timelineBlock}>
+                          <div style={styles.timelineLabel}>
+                            {job.elapsedDays}/{job.totalDays} dias
+                          </div>
+                          <div style={styles.progressTrack}>
+                            <div
+                              style={{
+                                ...styles.progressFill,
+                                width: `${job.timeProgressPct}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <div style={styles.timelineBlock}>
+                          <div style={styles.timelineLabel}>
+                            {job.statusProgressPct.toFixed(0)}%
+                          </div>
+                          <div style={styles.progressTrack}>
+                            <div
+                              style={{
+                                ...styles.progressFill,
+                                width: `${job.statusProgressPct}%`,
+                                background: "#0f766e",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            ...styles.statusPill,
+                            ...(job.materialMissingCount === 0
+                              ? styles.statusGreen
+                              : job.materialMissingCount <= 2
+                              ? styles.statusYellow
+                              : styles.statusRed),
+                          }}
+                        >
+                          {job.materialMissingCount === 0
+                            ? "Completo"
+                            : `${job.materialMissingCount} faltantes`}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+        </div>
+      )}
+
       {activeTab === "stock" && (
         <div style={styles.column}>
           <Panel title="Agenda de fabricacion" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
@@ -14591,16 +15281,130 @@ export default function App() {
           <>
             <button
               type="button"
+              style={styles.notificationsToggle}
+              onClick={() => setNotificationsOpen((prev) => !prev)}
+            >
+              <span>Notificaciones</span>
+              {unreadNotificationCount > 0 && (
+                <span style={styles.workspaceWidgetBadge}>{unreadNotificationCount}</span>
+              )}
+            </button>
+
+            {notificationsOpen && (
+              <div style={styles.notificationsPanel}>
+                <div style={styles.workspaceWidgetHeader}>
+                  <div>
+                    <div style={styles.workspaceWidgetTitle}>Notificaciones del sistema</div>
+                    <div style={styles.chatStatus}>
+                      Cambios en tiempo real, accesos y avisos de operacion.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    style={styles.workspaceWidgetClose}
+                    onClick={() => setNotificationsOpen(false)}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+                <div style={styles.notificationsList}>
+                  {notifications.length === 0 ? (
+                    <div style={styles.empty}>Todavia no hay notificaciones.</div>
+                  ) : (
+                    notifications.map((notification) => (
+                      <div
+                        key={`notification-${notification.id}`}
+                        style={{
+                          ...styles.notificationItem,
+                          ...(notification.read ? {} : styles.notificationItemUnread),
+                        }}
+                      >
+                        <div>{notification.text}</div>
+                        <div style={styles.chatTimestamp}>
+                          {formatDateTimeDisplay(notification.created_at)}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div
+              style={styles.chatLauncherRail}
+              onMouseEnter={() => setShowChatContacts(true)}
+              onMouseLeave={() => setShowChatContacts(false)}
+            >
+              {showChatContacts && (
+                <div style={styles.chatContactsPopover}>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.chatContactBubble,
+                      ...(selectedChatRecipientId === null ? styles.chatContactBubbleActive : {}),
+                    }}
+                    onClick={() => {
+                      setSelectedChatRecipientId(null);
+                      setSelectedChatRecipientName("Canal general");
+                      setWorkspaceWidgetMode("chat");
+                      setWorkspaceWidgetOpen(true);
+                    }}
+                    title="Canal general"
+                  >
+                    GR
+                  </button>
+                  {chatPeers.map((peer) => {
+                    const unreadCount = privateUnreadByUser[peer.user_id] || 0;
+                    const initials = (peer.full_name || peer.email || "U")
+                      .split(" ")
+                      .map((item) => item[0] || "")
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase();
+                    return (
+                      <button
+                        key={`peer-bubble-${peer.user_id}`}
+                        type="button"
+                        style={{
+                          ...styles.chatContactBubble,
+                          ...(selectedChatRecipientId === peer.user_id
+                            ? styles.chatContactBubbleActive
+                            : {}),
+                        }}
+                        onClick={() => {
+                          setSelectedChatRecipientId(peer.user_id);
+                          setSelectedChatRecipientName(peer.full_name || peer.email || "Usuario");
+                          void markChatThreadAsRead(peer.user_id).then(() => {
+                            void loadSupabaseChatMessages();
+                          });
+                          setWorkspaceWidgetMode("chat");
+                          setWorkspaceWidgetOpen(true);
+                        }}
+                        title={peer.full_name || peer.email}
+                      >
+                        {initials}
+                        {unreadCount > 0 && (
+                          <span style={styles.chatContactUnread}>{unreadCount}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+            <button
+              type="button"
               style={styles.workspaceWidgetToggle}
               onClick={() => setWorkspaceWidgetOpen((prev) => !prev)}
             >
               <span>
-                {workspaceWidgetOpen ? "Cerrar asistente" : "Asistente y chat"}
+                {workspaceWidgetOpen ? "Cerrar chat" : "Chat y asistente"}
               </span>
               {otherActiveSessions.length > 0 && (
                 <span style={styles.workspaceWidgetBadge}>{otherActiveSessions.length}</span>
               )}
             </button>
+            </div>
 
             {workspaceWidgetOpen && (
               <div style={styles.workspaceWidget}>
@@ -14608,7 +15412,11 @@ export default function App() {
                   <div>
                     <div style={styles.workspaceWidgetTitle}>Centro colaborativo</div>
                     <div style={styles.chatStatus}>
-                      {otherActiveSessions.length === 0
+                      {workspaceWidgetMode === "chat"
+                        ? selectedChatRecipientId
+                          ? `Chat privado con ${selectedChatRecipientName}`
+                          : "Canal grupal del sistema"
+                        : otherActiveSessions.length === 0
                         ? "Sin otros usuarios activos ahora"
                         : `${otherActiveSessions.length} usuario(s) operando`}
                     </div>
@@ -14652,12 +15460,14 @@ export default function App() {
                   {workspaceWidgetMode === "chat" ? (
                     <div style={styles.chatPanel}>
                       <div style={styles.chatMessages}>
-                        {supabaseChatMessages.length === 0 ? (
+                        {visibleChatMessages.length === 0 ? (
                           <div style={styles.empty}>
-                            Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo.
+                            {selectedChatRecipientId
+                              ? "Todavia no hay mensajes privados en esta conversacion."
+                              : "Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo."}
                           </div>
                         ) : (
-                          supabaseChatMessages.map((message) => {
+                          visibleChatMessages.map((message) => {
                             const isOwnMessage =
                               message.user_id && message.user_id === supabaseSession?.user?.id;
                             return (
@@ -14671,7 +15481,12 @@ export default function App() {
                                 }}
                               >
                                 <div style={styles.chatMessageHeader}>
-                                  <strong>{message.full_name || message.email}</strong>
+                                  <strong>
+                                    {message.full_name || message.email}
+                                    {message.recipient_user_id
+                                      ? ` -> ${message.recipient_full_name || "Privado"}`
+                                      : ""}
+                                  </strong>
                                   <span style={styles.chatTimestamp}>
                                     {formatDateTimeDisplay(message.created_at)}
                                   </span>
@@ -14683,16 +15498,34 @@ export default function App() {
                         )}
                       </div>
                       <div style={styles.chatComposer}>
+                        <div style={styles.chatStatus}>
+                          Destino: {selectedChatRecipientId ? selectedChatRecipientName : "Canal general"}
+                        </div>
                         <textarea
                           style={styles.chatTextarea}
                           value={supabaseChatDraft}
                           onChange={(e) => setSupabaseChatDraft(e.target.value)}
-                          placeholder="Escribe un mensaje rapido para el equipo..."
+                          placeholder={
+                            selectedChatRecipientId
+                              ? "Escribe un mensaje privado..."
+                              : "Escribe un mensaje rapido para el equipo..."
+                          }
                         />
                         <div style={styles.chatActions}>
                           <ButtonLike onClick={loadSupabaseChatMessages} secondary>
                             Actualizar
                           </ButtonLike>
+                          {selectedChatRecipientId && (
+                            <ButtonLike
+                              onClick={() => {
+                                setSelectedChatRecipientId(null);
+                                setSelectedChatRecipientName("Canal general");
+                              }}
+                              secondary
+                            >
+                              Volver al grupal
+                            </ButtonLike>
+                          )}
                           <ButtonLike onClick={sendSupabaseChatMessage}>Enviar</ButtonLike>
                         </div>
                       </div>
@@ -14936,6 +15769,77 @@ export default function App() {
             ))}
           </tbody>
         </table>
+      </PrintReport>
+
+      <PrintReport id="report-fabricacion" title="Reporte - Fabricacion">
+        <div style={styles.metricGrid}>
+          <MiniMetric label="Trabajos activos" value={String(fabricationOpenJobsCount)} />
+          <MiniMetric label="En curso" value={String(fabricationInProgressCount)} />
+          <MiniMetric label="Compras pendientes" value={String(fabricationPendingPurchases.length)} />
+          <MiniMetric label="Compras realizadas" value={String(fabricationCompletedPurchases.length)} />
+          <MiniMetric label="Ocupacion usada" value={`${occupancyPct.toFixed(1)}%`} />
+          <MiniMetric label="Ocupacion disponible" value={`${fabricationOccupancyAvailablePct.toFixed(1)}%`} />
+        </div>
+        <div style={{ marginTop: 20 }}>
+          <strong>Calendario y seguimiento</strong>
+          <table style={{ ...styles.table, marginTop: 8 }}>
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Presupuesto</th>
+                <th>Cliente</th>
+                <th>Inicio</th>
+                <th>Entrega</th>
+                <th>Encargado</th>
+                <th>Estado</th>
+                <th>Faltantes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fabricationCalendarRows.map((job) => (
+                <tr key={job.id}>
+                  <td>{getCompanyMeta(job.company).short}</td>
+                  <td>{job.budgetNumber}</td>
+                  <td>{job.client}</td>
+                  <td>{formatDateDisplay(job.startDate)}</td>
+                  <td>{formatDateDisplay(job.deliveryDate)}</td>
+                  <td>{job.projectManager || "-"}</td>
+                  <td>{job.executionStatus}</td>
+                  <td>{job.materialMissingCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ marginTop: 20 }}>
+          <strong>Compras pendientes</strong>
+          <table style={{ ...styles.table, marginTop: 8 }}>
+            <thead>
+              <tr>
+                <th>Material</th>
+                <th>Empresas</th>
+                <th>Trabajos</th>
+                <th>Requerido</th>
+                <th>Stock</th>
+                <th>Faltante</th>
+                <th>Costo estimado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {fabricationPendingPurchases.map((row) => (
+                <tr key={row.description}>
+                  <td>{row.description}</td>
+                  <td>{row.companyLabels.join(", ")}</td>
+                  <td>{row.jobs.join(", ")}</td>
+                  <td>{row.required} {row.unit}</td>
+                  <td>{row.available} {row.unit}</td>
+                  <td>{row.missing} {row.unit}</td>
+                  <td>{money(row.estimatedCost)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </PrintReport>
 
         <PrintReport id="report-stock" title="Reporte - Stock y agenda">
@@ -15967,6 +16871,137 @@ const styles: Record<string, React.CSSProperties> = {
   collaborationBannerMeta: {
     fontSize: 13,
     color: "#0f766e",
+  },
+  workspaceToolbar: {
+    display: "grid",
+    gridTemplateColumns: "minmax(280px, 360px) minmax(0, 1fr)",
+    gap: 16,
+    alignItems: "end",
+    background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+    border: "1px solid #dbeafe",
+    borderRadius: 18,
+    padding: 16,
+    boxShadow: "0 12px 30px rgba(15,23,42,0.06)",
+  },
+  workspaceToolbarBlock: {
+    display: "grid",
+    gap: 6,
+  },
+  workspaceToolbarInfo: {
+    fontSize: 13,
+    lineHeight: 1.5,
+    color: "#475569",
+    background: "#eff6ff",
+    border: "1px solid #bfdbfe",
+    borderRadius: 14,
+    padding: "10px 12px",
+  },
+  notificationsToggle: {
+    position: "fixed",
+    right: 24,
+    bottom: 92,
+    zIndex: 42,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "12px 16px",
+    borderRadius: 16,
+    border: "1px solid #0f172a",
+    background: "#ffffff",
+    color: "#0f172a",
+    boxShadow: "0 18px 36px rgba(15,23,42,0.18)",
+    cursor: "pointer",
+    fontWeight: 700,
+  },
+  notificationsPanel: {
+    position: "fixed",
+    right: 24,
+    bottom: 150,
+    width: 360,
+    maxWidth: "calc(100vw - 48px)",
+    maxHeight: "calc(100vh - 180px)",
+    zIndex: 41,
+    borderRadius: 22,
+    border: "1px solid #cbd5e1",
+    background: "rgba(255,255,255,0.98)",
+    boxShadow: "0 22px 48px rgba(15,23,42,0.22)",
+    display: "grid",
+    overflow: "hidden",
+  },
+  notificationsList: {
+    display: "grid",
+    gap: 10,
+    maxHeight: "calc(100vh - 280px)",
+    overflowY: "auto",
+    padding: 16,
+  },
+  notificationItem: {
+    borderRadius: 14,
+    padding: "12px 14px",
+    border: "1px solid #e2e8f0",
+    background: "#ffffff",
+    display: "grid",
+    gap: 8,
+  },
+  notificationItemUnread: {
+    background: "#eff6ff",
+    borderColor: "#93c5fd",
+  },
+  chatLauncherRail: {
+    position: "fixed",
+    left: 20,
+    bottom: 28,
+    zIndex: 43,
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+  },
+  chatContactsPopover: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    padding: "10px 12px",
+    borderRadius: 18,
+    background: "rgba(255,255,255,0.98)",
+    border: "1px solid #cbd5e1",
+    boxShadow: "0 16px 36px rgba(15,23,42,0.18)",
+  },
+  chatContactBubble: {
+    width: 44,
+    height: 44,
+    borderRadius: 999,
+    border: "1px solid #cbd5e1",
+    background: "#ffffff",
+    color: "#0f172a",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontWeight: 800,
+    cursor: "pointer",
+    position: "relative",
+    boxShadow: "0 8px 16px rgba(15,23,42,0.08)",
+  },
+  chatContactBubbleActive: {
+    background: "#0f172a",
+    color: "#ffffff",
+    borderColor: "#0f172a",
+  },
+  chatContactUnread: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 20,
+    height: 20,
+    borderRadius: 999,
+    padding: "0 5px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#dc2626",
+    color: "#ffffff",
+    fontSize: 11,
+    fontWeight: 800,
+    border: "2px solid #ffffff",
   },
   chatPanel: {
     display: "grid",
