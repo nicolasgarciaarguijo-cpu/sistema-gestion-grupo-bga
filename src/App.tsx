@@ -723,6 +723,13 @@ type SupabaseInternalChatMessage = {
   created_at: string;
 };
 
+type SupabaseDirectoryUser = {
+  id: string;
+  full_name: string;
+  is_superadmin?: boolean | null;
+  active?: boolean | null;
+};
+
 type SupabaseSnapshotRecord = {
   payload: unknown;
   saved_at: string;
@@ -2132,6 +2139,7 @@ export default function App() {
   const [isSupabaseRecoveryMode, setIsSupabaseRecoveryMode] = useState(false);
   const [supabaseNewPassword, setSupabaseNewPassword] = useState("");
   const [supabaseNewPasswordConfirm, setSupabaseNewPasswordConfirm] = useState("");
+  const [supabaseUserDirectory, setSupabaseUserDirectory] = useState<SupabaseDirectoryUser[]>([]);
   const [supabaseActiveSessions, setSupabaseActiveSessions] = useState<SupabaseActiveSession[]>([]);
   const [supabaseChatMessages, setSupabaseChatMessages] = useState<SupabaseInternalChatMessage[]>([]);
   const [supabaseChatDraft, setSupabaseChatDraft] = useState("");
@@ -2302,16 +2310,16 @@ export default function App() {
     );
 
     await Promise.all(
-      unreadRows.map((message) =>
-        supabase
+      unreadRows.map((message) => {
+        const nextReadBy = [...(message.read_by || []), currentUserId].filter(
+          (value, index, array) => array.indexOf(value) === index
+        );
+
+        return supabase
           .from(SUPABASE_INTERNAL_CHAT_TABLE)
-          .update({
-            read_by: Array.from(
-              new Set([...(message.read_by || []), currentUserId])
-            ),
-          })
-          .eq("id", message.id)
-      )
+          .update({ read_by: nextReadBy })
+          .eq("id", message.id);
+      })
     );
   };
 
@@ -2327,13 +2335,17 @@ export default function App() {
       setSupabaseCompaniesCatalog([]);
       setSupabaseCompanyPermissions([]);
       setSupabaseTabPermissions([]);
+      setSupabaseUserDirectory([]);
       setSupabaseActiveSessions([]);
       setSupabaseChatMessages([]);
       return;
     }
 
     const companiesCatalogResult = await supabase.from("companies").select("*");
-    const profileResult = await supabase.from("profiles").select("*");
+    const profileResult = await supabase
+      .from("profiles")
+      .select("id, full_name, is_superadmin, active")
+      .order("full_name", { ascending: true });
     const companyPermissionsResult = await supabase
       .from("user_company_permissions")
       .select("*");
@@ -2342,7 +2354,11 @@ export default function App() {
       .select("*");
 
     setSupabaseCompaniesCatalog(companiesCatalogResult.data || []);
-    setSupabaseProfile(profileResult.data?.[0] || null);
+    const profileDirectory = (profileResult.data || []) as SupabaseDirectoryUser[];
+    setSupabaseUserDirectory(profileDirectory);
+    setSupabaseProfile(
+      profileDirectory.find((item) => item.id === session.user.id) || null
+    );
     setSupabaseCompanyPermissions(companyPermissionsResult.data || []);
     setSupabaseTabPermissions(tabPermissionsResult.data || []);
     try {
@@ -2791,11 +2807,28 @@ export default function App() {
       });
     });
 
+    supabaseUserDirectory.forEach((user) => {
+      if (!user.id || user.id === currentUserId || peers.has(user.id)) return;
+
+      peers.set(user.id, {
+        user_id: user.id,
+        full_name: user.full_name || "Usuario",
+        email: "",
+        isActive: false,
+        last_seen_at: "",
+      });
+    });
+
     return Array.from(peers.values()).sort((a, b) => {
       if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
       return (b.last_seen_at || "").localeCompare(a.last_seen_at || "");
     });
-  }, [otherActiveSessions, supabaseChatMessages, supabaseSession?.user?.id]);
+  }, [
+    otherActiveSessions,
+    supabaseChatMessages,
+    supabaseSession?.user?.id,
+    supabaseUserDirectory,
+  ]);
 
   useEffect(() => {
     if (!isSupabaseLoggedIn) {
@@ -8499,6 +8532,45 @@ export default function App() {
             </Panel>
 
             {effectiveIsAdmin && (
+              <Panel title="Usuarios creados en Supabase">
+                {supabaseUserDirectory.length === 0 ? (
+                  <div style={styles.empty}>
+                    No pude leer perfiles todavia. Si esto sigue vacio, corre el SQL de
+                    colaboracion actualizado para habilitar el directorio interno.
+                  </div>
+                ) : (
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Nombre</th>
+                        <th>Rol</th>
+                        <th>Estado</th>
+                        <th>En linea</th>
+                        <th>ID</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {supabaseUserDirectory.map((user) => {
+                        const activeSession = supabaseActiveSessions.find(
+                          (session) => session.user_id === user.id
+                        );
+                        return (
+                          <tr key={`directory-user-${user.id}`}>
+                            <td>{user.full_name || "Usuario sin nombre"}</td>
+                            <td>{user.is_superadmin ? "Administrador" : "Operativo"}</td>
+                            <td>{user.active === false ? "Inactivo" : "Activo"}</td>
+                            <td>{activeSession ? "Conectado" : "Sin sesion"}</td>
+                            <td>{user.id.slice(0, 8)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                )}
+              </Panel>
+            )}
+
+            {effectiveIsAdmin && (
               <Panel title="Empresas del sistema">
                 <div style={styles.grid2}>
                   <div>
@@ -9264,16 +9336,11 @@ export default function App() {
                     <textarea style={styles.textarea} value={invoice.notes} onChange={(e) => updatePurchaseInvoice(invoice.id, "notes", e.target.value)} />
                   </Field>
                   <div style={styles.uploadActions}>
-                    <label style={styles.buttonLikeLabel}>
-                      Cargar imagen o PDF
-                      <input
-                        type="file"
-                        accept="image/*,.pdf,application/pdf"
-                        style={{ display: "none" }}
-                        onChange={(e) => uploadPurchaseInvoiceFile(invoice.id, e.target.files?.[0] || null)}
-                      />
-                    </label>
-                    {invoice.attachmentName && <div style={styles.fileName}>{invoice.attachmentName}</div>}
+                    <FileDropButton
+                      label="Cargar imagen o PDF"
+                      fileName={invoice.attachmentName}
+                      onFileSelected={(file) => uploadPurchaseInvoiceFile(invoice.id, file)}
+                    />
                   </div>
                 </div>
               ))
@@ -9519,16 +9586,11 @@ export default function App() {
                     />
                   </Field>
                   <div style={styles.uploadActions}>
-                    <label style={styles.buttonLikeLabel}>
-                      Cargar factura / ticket
-                      <input
-                        type="file"
-                        accept="image/*,.pdf,application/pdf"
-                        style={{ display: "none" }}
-                        onChange={(e) => uploadPettyCashFile(expense.id, e.target.files?.[0] || null)}
-                      />
-                    </label>
-                    {expense.attachmentName && <div style={styles.fileName}>{expense.attachmentName}</div>}
+                    <FileDropButton
+                      label="Cargar factura / ticket"
+                      fileName={expense.attachmentName}
+                      onFileSelected={(file) => uploadPettyCashFile(expense.id, file)}
+                    />
                   </div>
                 </div>
               ))
@@ -12253,36 +12315,30 @@ export default function App() {
 
               <Panel title="Planos y archivos de referencia" nested>
                 <div style={styles.uploadActions}>
-                  <label style={styles.buttonLikeLabel}>
-                    Cargar planos
-                    <input
-                      type="file"
-                      multiple
-                      style={{ display: "none" }}
-                      onChange={(e) =>
-                        uploadApprovedJobWorkFiles(
-                          selectedApprovedJob.id,
-                          "plano",
-                          e.target.files
-                        )
-                      }
-                    />
-                  </label>
-                  <label style={styles.buttonLikeLabel}>
-                    Cargar referencias
-                    <input
-                      type="file"
-                      multiple
-                      style={{ display: "none" }}
-                      onChange={(e) =>
-                        uploadApprovedJobWorkFiles(
-                          selectedApprovedJob.id,
-                          "referencia",
-                          e.target.files
-                        )
-                      }
-                    />
-                  </label>
+                  <FileDropButton
+                    label="Cargar planos"
+                    allowMultiple
+                    accept="image/*,.pdf,application/pdf"
+                    onFilesSelected={(files) =>
+                      uploadApprovedJobWorkFiles(
+                        selectedApprovedJob.id,
+                        "plano",
+                        files
+                      )
+                    }
+                  />
+                  <FileDropButton
+                    label="Cargar referencias"
+                    allowMultiple
+                    accept="image/*,.pdf,application/pdf"
+                    onFilesSelected={(files) =>
+                      uploadApprovedJobWorkFiles(
+                        selectedApprovedJob.id,
+                        "referencia",
+                        files
+                      )
+                    }
+                  />
                 </div>
                 {selectedApprovedJob.workFiles.length === 0 ? (
                   <div style={styles.empty}>No hay archivos vinculados a este trabajo.</div>
@@ -15175,23 +15231,18 @@ export default function App() {
 
                               {status === "ausente_justificado" && (
                                 <div style={{ marginTop: 8 }}>
-                                  <label style={styles.buttonLikeLabel}>
-                                    Cargar justificativo
-                                    <input
-                                      type="file"
-                                      style={{ display: "none" }}
-                                      onChange={(e) =>
-                                        handleAttendanceAttachment(
-                                          selectedEmployee.id,
-                                          day.key,
-                                          e.target.files?.[0] || null
-                                        )
-                                      }
-                                    />
-                                  </label>
-                                  {record?.attachmentName && (
-                                    <div style={styles.fileName}>{record.attachmentName}</div>
-                                  )}
+                                  <FileDropButton
+                                    label="Cargar justificativo"
+                                    fileName={record?.attachmentName}
+                                    accept="image/*,.pdf,application/pdf"
+                                    onFileSelected={(file) =>
+                                      handleAttendanceAttachment(
+                                        selectedEmployee.id,
+                                        day.key,
+                                        file
+                                      )
+                                    }
+                                  />
                                 </div>
                               )}
                             </div>
@@ -15227,21 +15278,18 @@ export default function App() {
                               </TwoCol>
                               <div style={styles.uploadActions}>
                                 <span style={{ ...styles.statusPill, ...docTone }}>{docState}</span>
-                                <label style={styles.buttonLikeLabel}>
-                                  Cargar documento
-                                  <input
-                                    type="file"
-                                    style={{ display: "none" }}
-                                    onChange={(e) =>
-                                      handleEmployeeDocumentUpload(
-                                        selectedEmployee.id,
-                                        doc.id,
-                                        e.target.files?.[0] || null
-                                      )
-                                    }
-                                  />
-                                </label>
-                                {doc.attachmentName && <div style={styles.fileName}>{doc.attachmentName}</div>}
+                                <FileDropButton
+                                  label="Cargar documento"
+                                  fileName={doc.attachmentName}
+                                  accept="image/*,.pdf,application/pdf"
+                                  onFileSelected={(file) =>
+                                    handleEmployeeDocumentUpload(
+                                      selectedEmployee.id,
+                                      doc.id,
+                                      file
+                                    )
+                                  }
+                                />
                               </div>
                             </div>
                           );
@@ -16288,6 +16336,81 @@ function ButtonLike({
   );
 }
 
+function FileDropButton({
+  label,
+  fileName,
+  onFileSelected,
+  onFilesSelected,
+  accept = "image/*,.pdf,application/pdf",
+  allowMultiple = false,
+}: {
+  label: string;
+  fileName?: string;
+  onFileSelected?: (file: File | null) => void;
+  onFilesSelected?: (files: FileList | null) => void;
+  accept?: string;
+  allowMultiple?: boolean;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const inputId = useMemo(
+    () =>
+      `upload-${label.replace(/\s+/g, "-").toLowerCase()}-${Math.random()
+        .toString(36)
+        .slice(2, 9)}`,
+    [label]
+  );
+
+  const handleFiles = (files: FileList | null) => {
+    if (onFilesSelected) {
+      onFilesSelected(files);
+      return;
+    }
+    if (onFileSelected) {
+      onFileSelected(files?.[0] || null);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        ...styles.fileDropZone,
+        ...(isDragging ? styles.fileDropZoneActive : {}),
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setIsDragging(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+        handleFiles(event.dataTransfer.files);
+      }}
+    >
+      <label htmlFor={inputId} style={styles.fileDropLabel}>
+        {label}
+      </label>
+      <input
+        id={inputId}
+        type="file"
+        accept={accept}
+        multiple={allowMultiple}
+        capture={accept.includes("image/*") ? ("environment" as any) : undefined}
+        style={{ display: "none" }}
+        onChange={(event) => handleFiles(event.target.files)}
+      />
+      <div style={styles.fileDropHint}>
+        Arrastra archivo{allowMultiple ? "s" : ""} aqui o toca para elegir
+        {accept.includes("image/*") ? " / sacar foto" : ""}.
+      </div>
+      {fileName && <div style={styles.fileName}>{fileName}</div>}
+    </div>
+  );
+}
+
 const styles: Record<string, React.CSSProperties> = {
   page: {
     padding: 24,
@@ -16951,18 +17074,49 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#eff6ff",
     borderColor: "#93c5fd",
   },
+  fileDropZone: {
+    display: "grid",
+    gap: 8,
+    padding: 12,
+    borderRadius: 14,
+    border: "1px dashed #94a3b8",
+    background: "#f8fafc",
+    minWidth: 220,
+  },
+  fileDropZoneActive: {
+    borderColor: "#1d4ed8",
+    background: "#eff6ff",
+  },
+  fileDropLabel: {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "10px 14px",
+    borderRadius: 12,
+    background: "#0f172a",
+    color: "#ffffff",
+    fontWeight: 700,
+    cursor: "pointer",
+  },
+  fileDropHint: {
+    fontSize: 12,
+    color: "#475569",
+    lineHeight: 1.4,
+  },
   chatLauncherRail: {
     position: "fixed",
-    left: 20,
+    right: 24,
     bottom: 28,
     zIndex: 43,
     display: "flex",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "flex-end",
     gap: 10,
   },
   chatContactsPopover: {
     display: "flex",
-    alignItems: "center",
+    flexDirection: "column",
+    alignItems: "flex-end",
     gap: 10,
     padding: "10px 12px",
     borderRadius: 18,
