@@ -2305,7 +2305,11 @@ export default function App() {
       unreadRows.map((message) =>
         supabase
           .from(SUPABASE_INTERNAL_CHAT_TABLE)
-          .update({ read_by: [...new Set([...(message.read_by || []), currentUserId])] })
+          .update({
+            read_by: Array.from(
+              new Set([...(message.read_by || []), currentUserId])
+            ),
+          })
           .eq("id", message.id)
       )
     );
