@@ -67,7 +67,7 @@ const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
     bankCbu: "0340041800419997078004",
     bankAccount: "CC $ 041-419997078-000",
   },
-] as const;
+];
 
 let runtimeCompanyOptions: CompanyOption[] = [...DEFAULT_COMPANY_OPTIONS];
 const COMPANY_OPTIONS = DEFAULT_COMPANY_OPTIONS;
