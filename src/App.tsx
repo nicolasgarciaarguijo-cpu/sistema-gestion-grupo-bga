@@ -895,6 +895,55 @@ const formatDateDisplay = (dateText: string) => {
 
 const todayIso = () => new Date().toISOString().slice(0, 10);
 
+const normalizeCompanyText = (value: string) =>
+  (value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const resolveCompanyNameFromCatalogItem = (
+  item: { code?: string | null; name?: string | null; label?: string | null },
+  options: CompanyOption[]
+): CompanyName | null => {
+  const code = normalizeCompanyText(item.code || "");
+  const name = normalizeCompanyText(item.name || "");
+  const label = normalizeCompanyText(item.label || "");
+
+  const exactCodeMatch = options.find((option) => {
+    const short = normalizeCompanyText(option.short);
+    const value = normalizeCompanyText(option.value);
+
+    return (
+      code === short ||
+      code === value ||
+      code === short.replace(/\s+/g, "") ||
+      code === value.replace(/\s+/g, "")
+    );
+  });
+
+  if (exactCodeMatch) return exactCodeMatch.value;
+
+  const nameMatch = options.find((option) => {
+    const optionValue = normalizeCompanyText(option.value);
+    const optionShort = normalizeCompanyText(option.short);
+
+    return (
+      name === optionValue ||
+      name === optionShort ||
+      label === optionValue ||
+      label === optionShort ||
+      (name && optionValue.includes(name)) ||
+      (name && name.includes(optionValue)) ||
+      (label && optionValue.includes(label)) ||
+      (label && label.includes(optionValue))
+    );
+  });
+
+  return nameMatch?.value || null;
+};
+
 const getCompanyMeta = (company: CompanyName) =>
   runtimeCompanyOptions.find((item) => item.value === company) ?? runtimeCompanyOptions[0];
 
@@ -2649,10 +2698,14 @@ export default function App() {
       supabaseCompanyPermissions.map((item) => Number(item.company_id))
     );
 
-    return supabaseCompaniesCatalog
+    return Array.from(
+      new Set(
+        supabaseCompaniesCatalog
       .filter((item) => allowedIds.has(Number(item.id)))
-      .map((item) => item.name)
-      .filter((name) => companyCatalog.some((option) => option.value === name));
+          .map((item) => resolveCompanyNameFromCatalogItem(item, companyCatalog))
+          .filter((name): name is CompanyName => !!name)
+      )
+    );
   }, [isSupabaseLoggedIn, supabaseCompanyPermissions, supabaseCompaniesCatalog, companyCatalog]);
 
   const supabaseAllowedTabs = useMemo<TabKey[]>(() => {
