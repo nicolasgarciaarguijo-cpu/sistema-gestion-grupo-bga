@@ -152,6 +152,17 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "marcadores", label: "Marcadores" },
 ];
 
+const NETA_TAB_KEYS: TabKey[] = ["presupuesto", "historial", "stock", "marcadores"];
+const BRUTA_TAB_KEYS: TabKey[] = [
+  "cashflow",
+  "facturacion",
+  "aprobados",
+  "fabricacion",
+  "compras",
+  "cajaChica",
+  "personal",
+];
+
 type PrintMode =
   | ""
   | "client-budget"
@@ -582,6 +593,7 @@ type PurchaseInvoice = {
 type PettyCashFund = {
   id: number;
   company: CompanyName;
+  description: string;
   responsible: string;
   assignedAmount: number;
   deliveredDate: string;
@@ -951,6 +963,20 @@ const getCompanyScopeLabel = (company: CompanyScope) =>
   company === "General" ? "General" : getCompanyMeta(company).short;
 
 const getAllCompanyOptions = () => runtimeCompanyOptions;
+
+const getPettyCashAdministration = (
+  expense: Pick<PettyCashExpense, "invoiceNumber" | "attachmentName">
+) =>
+  String(expense.invoiceNumber || "").trim() ||
+  String(expense.attachmentName || "").trim()
+    ? "blanco"
+    : "negro";
+
+const getTabAdministrationType = (tab: TabKey) => {
+  if (tab === "acceso") return "Sistema";
+  if (NETA_TAB_KEYS.includes(tab)) return "Administracion neta";
+  return "Administracion bruta";
+};
 
 const getTabLabel = (tabKey: string) =>
   TAB_OPTIONS.find((item) => item.key === tabKey)?.label || tabKey;
@@ -1474,6 +1500,7 @@ const defaultPettyCashFunds: PettyCashFund[] = [
   {
     id: 1,
     company: COMPANY_OPTIONS[0].value,
+    description: "Caja operativa principal",
     responsible: "Encargado taller",
     assignedAmount: 250000,
     deliveredDate: todayIso(),
@@ -1845,9 +1872,7 @@ const SUPABASE_INTERNAL_CHAT_TABLE = "app_internal_chat_messages";
 const SUPABASE_COLLAB_CHANNEL = "grupo-bga-collaboration";
 
 type PersistedAppStateData = {
-  activeTab: TabKey;
   companyCatalog: CompanyOption[];
-  workspaceCompanyScope: CompanyScope;
   budget: BudgetData;
   subBudgets: BudgetSection[];
   subBudgetTitle: string;
@@ -1878,14 +1903,6 @@ type PersistedAppStateData = {
   employees: Employee[];
   employeeBaseConfig: EmployeeBaseConfig;
   scaleRows: ScaleRow[];
-  selectedHistoryId: number | null;
-  selectedApprovedJobId: number | null;
-  selectedCrmClientKey: string | null;
-  selectedFinancialItemId: number | null;
-  selectedEmployeeId: number | null;
-  financialMonth: string;
-  purchaseMonth: string;
-  payrollMonth: string;
   allocationMode: "auto" | "manual";
   manualAllocationPct: number;
   deviationPct: number;
@@ -2065,6 +2082,23 @@ function normalizePersistedAppState(value: unknown): PersistedAppState | null {
   return null;
 }
 
+const buildPersistedDataSignature = (data: PersistedAppStateData) =>
+  JSON.stringify(data);
+
+const hexToRgba = (hex: string, alpha: number) => {
+  const normalized = hex.replace("#", "");
+  const safe = normalized.length === 3
+    ? normalized
+        .split("")
+        .map((char) => `${char}${char}`)
+        .join("")
+    : normalized.padEnd(6, "0").slice(0, 6);
+  const red = Number.parseInt(safe.slice(0, 2), 16);
+  const green = Number.parseInt(safe.slice(2, 4), 16);
+  const blue = Number.parseInt(safe.slice(4, 6), 16);
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+};
+
 const formatDateTimeDisplay = (dateText: string) => {
   if (!dateText) return "-";
   const date = new Date(dateText);
@@ -2141,6 +2175,7 @@ export default function App() {
   const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(defaultPurchaseInvoices);
   const [pettyCashFunds, setPettyCashFunds] = useState<PettyCashFund[]>(defaultPettyCashFunds);
   const [pettyCashExpenses, setPettyCashExpenses] = useState<PettyCashExpense[]>(defaultPettyCashExpenses);
+  const [pettyCashRechargeDrafts, setPettyCashRechargeDrafts] = useState<Record<number, string>>({});
   const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
@@ -2199,6 +2234,10 @@ export default function App() {
   const [showChatContacts, setShowChatContacts] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [notifications, setNotifications] = useState<WorkspaceNotification[]>([]);
+  const [pendingRealtimeRefresh, setPendingRealtimeRefresh] = useState<{
+    text: string;
+    savedAt: string;
+  } | null>(null);
   const [assistantDraft, setAssistantDraft] = useState("");
   const [assistantMessages, setAssistantMessages] = useState<InternalAssistantMessage[]>([
     {
@@ -2219,6 +2258,7 @@ export default function App() {
   const collaborationChannelRef = useRef<any | null>(null);
   const lastAppliedRemoteSnapshotAtRef = useRef(0);
   const lastSnapshotEventKeyRef = useRef("");
+  const lastPersistedDataSignatureRef = useRef("");
   const presenceAnnouncementReadyRef = useRef(false);
   const knownOtherSessionIdsRef = useRef<string[]>([]);
   const isSupabaseLoggedIn = !!supabaseSession?.user;
@@ -2355,6 +2395,31 @@ export default function App() {
       (message) =>
         message.recipient_user_id === currentUserId &&
         message.user_id === peerUserId &&
+        !(message.read_by || []).includes(currentUserId)
+    );
+
+    await Promise.all(
+      unreadRows.map((message) => {
+        const nextReadBy = [...(message.read_by || []), currentUserId].filter(
+          (value, index, array) => array.indexOf(value) === index
+        );
+
+        return supabase
+          .from(SUPABASE_INTERNAL_CHAT_TABLE)
+          .update({ read_by: nextReadBy })
+          .eq("id", message.id);
+      })
+    );
+  };
+
+  const markGroupChatAsRead = async () => {
+    const currentUserId = supabaseSession?.user?.id;
+    if (!currentUserId) return;
+
+    const unreadRows = supabaseChatMessages.filter(
+      (message) =>
+        !message.recipient_user_id &&
+        message.user_id !== currentUserId &&
         !(message.read_by || []).includes(currentUserId)
     );
 
@@ -2636,21 +2701,7 @@ export default function App() {
           schema: "public",
           table: SUPABASE_INTERNAL_CHAT_TABLE,
         },
-        (payload: any) => {
-          const nextMessage = payload?.new as SupabaseInternalChatMessage | undefined;
-          if (
-            nextMessage &&
-            nextMessage.user_id !== supabaseSession?.user?.id &&
-            (!nextMessage.recipient_user_id ||
-              nextMessage.recipient_user_id === supabaseSession?.user?.id)
-          ) {
-            announceAssistantEvent(
-              nextMessage.recipient_user_id
-                ? `${nextMessage.full_name || nextMessage.email} te envio un mensaje privado.`
-                : `${nextMessage.full_name || nextMessage.email} escribio en el chat grupal.`
-            );
-          }
-
+        () => {
           void loadSupabaseChatMessages().catch((error) =>
             console.log("CHAT REALTIME ERROR:", error)
           );
@@ -2664,10 +2715,14 @@ export default function App() {
           table: SUPABASE_APP_STATE_TABLE,
           filter: `id=eq.${SUPABASE_APP_STATE_RECORD_KEY}`,
         },
-        (payload: any) => {
-          const nextRecord = payload?.new as SupabaseSnapshotRecord | undefined;
-          if (!nextRecord?.payload) return;
-          applyIncomingSupabaseSnapshot(nextRecord, "realtime");
+        () => {
+          void readSupabasePersistedAppStateRecord()
+            .then((nextRecord) => {
+              applyIncomingSupabaseSnapshot(nextRecord, "realtime");
+            })
+            .catch((error) => {
+              console.log("COLLAB REALTIME SNAPSHOT ERROR:", error);
+            });
         }
       )
       .subscribe((status: string) => {
@@ -2763,6 +2818,18 @@ export default function App() {
     return withAccess(TAB_OPTIONS.filter((item) => item.key === "acceso"));
   }, [effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedTabs]);
 
+  const sidebarSections = useMemo(() => {
+    const accessTabs = visibleTabOptions.filter((item) => item.key === "acceso");
+    const brutaTabs = visibleTabOptions.filter((item) => BRUTA_TAB_KEYS.includes(item.key));
+    const netaTabs = visibleTabOptions.filter((item) => NETA_TAB_KEYS.includes(item.key));
+
+    return [
+      { title: "Sistema", hint: "Acceso y seguridad", tabs: accessTabs },
+      { title: "Administracion bruta", hint: "Operacion y resultados", tabs: brutaTabs },
+      { title: "Administracion neta", hint: "Costos y presupuestacion", tabs: netaTabs },
+    ].filter((section) => section.tabs.length > 0);
+  }, [visibleTabOptions]);
+
   const visibleSavedBudgets = useMemo(
     () => savedBudgets.filter((item) => canAccessCompany(item.company)),
     [savedBudgets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
@@ -2806,6 +2873,18 @@ export default function App() {
     });
 
     return summary;
+  }, [supabaseChatMessages, supabaseSession?.user?.id]);
+
+  const groupUnreadCount = useMemo(() => {
+    const currentUserId = supabaseSession?.user?.id;
+    if (!currentUserId) return 0;
+
+    return supabaseChatMessages.filter(
+      (message) =>
+        !message.recipient_user_id &&
+        message.user_id !== currentUserId &&
+        !(message.read_by || []).includes(currentUserId)
+    ).length;
   }, [supabaseChatMessages, supabaseSession?.user?.id]);
 
   const unreadNotificationCount = useMemo(
@@ -2898,25 +2977,6 @@ export default function App() {
       return;
     }
 
-    const previousIds = new Set(knownOtherSessionIdsRef.current);
-    const currentIds = new Set(nextIds);
-    const joinedUsers = otherActiveSessions.filter((item) => !previousIds.has(item.session_id));
-    const disconnectedCount = knownOtherSessionIdsRef.current.filter((id) => !currentIds.has(id)).length;
-
-    joinedUsers.forEach((item) => {
-      announceAssistantEvent(
-        `${item.full_name || item.email} se conecto y esta operando en ${getTabLabel(item.active_tab)}.`
-      );
-    });
-
-    if (disconnectedCount > 0) {
-      announceAssistantEvent(
-        disconnectedCount === 1
-          ? "Un usuario dejo de operar en simultaneo."
-          : `${disconnectedCount} usuarios dejaron de operar en simultaneo.`
-      );
-    }
-
     knownOtherSessionIdsRef.current = nextIds;
   }, [isSupabaseLoggedIn, otherActiveSessions]);
 
@@ -2946,9 +3006,18 @@ export default function App() {
     [pettyCashFunds, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
+  const normalizedPettyCashExpenses = useMemo(
+    () =>
+      pettyCashExpenses.map((item) => ({
+        ...item,
+        administration: getPettyCashAdministration(item),
+      })),
+    [pettyCashExpenses]
+  );
+
   const visiblePettyCashExpenses = useMemo(
-    () => pettyCashExpenses.filter((item) => canAccessCompany(item.company)),
-    [pettyCashExpenses, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    () => normalizedPettyCashExpenses.filter((item) => canAccessCompany(item.company)),
+    [normalizedPettyCashExpenses, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const pettyCashTrackingRows = useMemo(
@@ -2958,7 +3027,8 @@ export default function App() {
           const fund = visiblePettyCashFunds.find((item) => item.id === expense.fundId) || null;
           return {
             id: expense.id,
-            company: expense.company,
+            company: fund?.company || expense.company,
+            fundDescription: fund?.description || "Caja chica sin descripcion",
             responsible: fund?.responsible || "Sin responsable asignado",
             amount: Number(expense.amount || 0),
             date: expense.date,
@@ -3941,6 +4011,31 @@ export default function App() {
     };
   }, [visiblePettyCashFunds, visiblePettyCashExpenses]);
 
+  const pettyCashFundSummaries = useMemo(
+    () =>
+      visiblePettyCashFunds.map((fund) => {
+        const expenses = visiblePettyCashExpenses
+          .filter((item) => item.fundId === fund.id)
+          .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
+        const renderedTotal = expenses.reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        const whiteTotal = expenses
+          .filter((item) => item.administration === "blanco")
+          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        const blackTotal = expenses
+          .filter((item) => item.administration === "negro")
+          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        return {
+          fund,
+          expenses,
+          renderedTotal,
+          whiteTotal,
+          blackTotal,
+          remainingBalance: Number(fund.assignedAmount || 0) - renderedTotal,
+        };
+      }),
+    [visiblePettyCashExpenses, visiblePettyCashFunds]
+  );
+
   const appendAssistantMessage = (role: "user" | "assistant", text: string) => {
     setAssistantMessages((prev) => [
       ...prev,
@@ -3965,7 +4060,7 @@ export default function App() {
     ]);
   };
 
-  const announceAssistantEvent = (text: string) => {
+  const announceSystemChange = (text: string) => {
     pushNotification(text);
   };
 
@@ -4059,17 +4154,31 @@ export default function App() {
 
     if (!normalized) return;
 
+    const incomingSignature = buildPersistedDataSignature(normalized.data);
+    if (incomingSignature === lastPersistedDataSignatureRef.current) {
+      setLastSupabaseSnapshotSavedAt(normalized.savedAt);
+      return;
+    }
+
     lastAppliedRemoteSnapshotAtRef.current = Date.now();
     applyPersistedAppData(normalized.data);
+    lastPersistedDataSignatureRef.current = incomingSignature;
     setLastSavedAt(normalized.savedAt);
     setLastSupabaseSnapshotSavedAt(normalized.savedAt);
-    setStorageMessage("Se actualizaron cambios compartidos desde Supabase.");
+    const changeText = `${describeCollaboratorContext(record.updated_by).actorName} guardo cambios en el sistema.`;
+    setPendingRealtimeRefresh({
+      text: changeText,
+      savedAt: normalized.savedAt,
+    });
+    setStorageMessage("Se detectaron cambios compartidos desde Supabase.");
 
     const collaborator = describeCollaboratorContext(record.updated_by);
-    announceAssistantEvent(
-      `${collaborator.actorName} actualizo informacion ${collaborator.location}. Cambio recibido ${
-        source === "realtime" ? "en tiempo real" : "desde la sincronizacion de respaldo"
-      }.`
+    announceSystemChange(
+      `${collaborator.actorName} guardo cambios ${collaborator.location}. ${
+        source === "realtime"
+          ? "Pulsa refresh para confirmar la ultima version compartida."
+          : "Se recupero una version mas nueva desde la sincronizacion."
+      }`
     );
   };
 
@@ -4472,6 +4581,9 @@ export default function App() {
         if (cancelled) return;
         if (persisted) {
           applyPersistedAppData(persisted.data);
+          lastPersistedDataSignatureRef.current = buildPersistedDataSignature(
+            persisted.data
+          );
           if (!hasSupabaseSession) setActiveTab("acceso");
           setLastSavedAt(persisted.savedAt);
           setStorageMessage(
@@ -4563,6 +4675,49 @@ export default function App() {
   }, [approvedJobs]);
 
   const companyTheme = getCompanyMeta(budget.company);
+  const workspaceTheme = useMemo(() => {
+    if (workspaceCompanyScope === "General") {
+      return {
+        short: "General",
+        primary: "#475569",
+        soft: "#e2e8f0",
+        pageBackground:
+          "linear-gradient(180deg, #f1f5f9 0%, #e2e8f0 45%, #f8fafc 100%)",
+        sidebarGradient:
+          "linear-gradient(180deg, #334155 0%, #475569 100%)",
+        sidebarActiveBackground:
+          "linear-gradient(135deg, #f8fafc 0%, #ffffff 100%)",
+        sidebarActiveBorder: "#cbd5e1",
+        sidebarActiveShadow: "0 10px 24px rgba(71,85,105,0.18)",
+        toolbarBackground: "#f8fafc",
+        toolbarBorder: "#cbd5e1",
+        bannerBackground: "#f8fafc",
+        bannerBorder: "#cbd5e1",
+      };
+    }
+
+    const meta = getCompanyMeta(workspaceCompanyScope);
+    return {
+      short: meta.short,
+      primary: meta.primary,
+      soft: meta.soft,
+      pageBackground: `linear-gradient(180deg, ${hexToRgba(meta.soft, 0.78)} 0%, ${hexToRgba(
+        meta.primary,
+        0.08
+      )} 52%, #f8fafc 100%)`,
+      sidebarGradient: `linear-gradient(180deg, ${hexToRgba(meta.primary, 0.98)} 0%, ${hexToRgba(
+        meta.primary,
+        0.84
+      )} 100%)`,
+      sidebarActiveBackground: `linear-gradient(135deg, ${meta.soft} 0%, #ffffff 100%)`,
+      sidebarActiveBorder: hexToRgba(meta.primary, 0.26),
+      sidebarActiveShadow: `0 10px 24px ${hexToRgba(meta.primary, 0.2)}`,
+      toolbarBackground: hexToRgba(meta.soft, 0.85),
+      toolbarBorder: hexToRgba(meta.primary, 0.18),
+      bannerBackground: hexToRgba(meta.soft, 0.78),
+      bannerBorder: hexToRgba(meta.primary, 0.2),
+    };
+  }, [workspaceCompanyScope, companyCatalog]);
 
   const activeFixedMarkersForBudget = useMemo(
     () =>
@@ -4834,9 +4989,7 @@ export default function App() {
   };
 
   const buildPersistedAppData = (): PersistedAppStateData => ({
-    activeTab,
     companyCatalog: companyCatalog.map((item) => ({ ...item })),
-    workspaceCompanyScope,
     budget: cloneBudget(budget),
     subBudgets: subBudgets.map((item) => ({
       ...item,
@@ -4883,14 +5036,6 @@ export default function App() {
       provisionTemplates: employeeBaseConfig.provisionTemplates.map((item) => ({ ...item })),
     },
     scaleRows: scaleRows.map((item) => ({ ...item })),
-    selectedHistoryId,
-    selectedApprovedJobId,
-    selectedCrmClientKey,
-    selectedFinancialItemId,
-    selectedEmployeeId,
-    financialMonth,
-    purchaseMonth,
-    payrollMonth,
     allocationMode,
     manualAllocationPct,
     deviationPct,
@@ -4910,13 +5055,11 @@ export default function App() {
 
     lastMarkerSourceKeyRef.current = `${nextBudget.company}__${nextBudget.workType}`;
 
-    setActiveTab((data.activeTab as TabKey) || "cashflow");
     const nextCompanyCatalog = (data.companyCatalog || DEFAULT_COMPANY_OPTIONS).map((item) => ({
       ...item,
     }));
     setCompanyCatalog(nextCompanyCatalog);
     runtimeCompanyOptions = nextCompanyCatalog;
-    setWorkspaceCompanyScope(data.workspaceCompanyScope || "General");
     setBudget(nextBudget);
     setSubBudgets(
       (data.subBudgets || []).map((item) => ({
@@ -4956,7 +5099,12 @@ export default function App() {
     );
     setFinancialItems((data.financialItems || defaultFinancialItems).map((item) => ({ ...item })));
     setPurchaseInvoices((data.purchaseInvoices || defaultPurchaseInvoices).map((item) => ({ ...item })));
-    setPettyCashFunds((data.pettyCashFunds || defaultPettyCashFunds).map((item) => ({ ...item })));
+    setPettyCashFunds(
+      (data.pettyCashFunds || defaultPettyCashFunds).map((item) => ({
+        ...item,
+        description: item.description || "",
+      }))
+    );
     setPettyCashExpenses((data.pettyCashExpenses || defaultPettyCashExpenses).map((item) => ({ ...item })));
     setDebtPlans((data.debtPlans || defaultDebtPlans).map((item) => ({ ...item })));
     setBankStatementEntries(
@@ -4993,18 +5141,6 @@ export default function App() {
         defaultBaseConfig.provisionTemplates.map((item) => ({ ...item })),
     });
     setScaleRows((data.scaleRows || seededScaleRows).map((item) => ({ ...item })));
-    setSelectedHistoryId(data.selectedHistoryId ?? null);
-    setSelectedApprovedJobId(data.selectedApprovedJobId ?? null);
-    setSelectedCrmClientKey(data.selectedCrmClientKey ?? null);
-    setSelectedFinancialItemId(
-      data.selectedFinancialItemId ?? data.financialItems?.[0]?.id ?? defaultFinancialItems[0]?.id ?? null
-    );
-    setSelectedEmployeeId(
-      data.selectedEmployeeId ?? data.employees?.[0]?.id ?? defaultEmployees[0]?.id ?? null
-    );
-    setFinancialMonth(data.financialMonth || new Date().toISOString().slice(0, 7));
-    setPurchaseMonth(data.purchaseMonth || new Date().toISOString().slice(0, 7));
-    setPayrollMonth(data.payrollMonth || "2026-04");
     setAllocationMode(data.allocationMode || "auto");
     setManualAllocationPct(data.manualAllocationPct ?? 18.75);
     setDeviationPct(data.deviationPct ?? 5);
@@ -5024,6 +5160,9 @@ export default function App() {
         return;
       }
       applyPersistedAppData(persisted.data);
+      lastPersistedDataSignatureRef.current = buildPersistedDataSignature(
+        persisted.data
+      );
       setLastSavedAt(persisted.savedAt);
       setStorageMessage("Datos restaurados desde el guardado local del navegador.");
     } catch (error) {
@@ -5042,9 +5181,13 @@ export default function App() {
         return;
       }
       applyPersistedAppData(persisted.data);
+      lastPersistedDataSignatureRef.current = buildPersistedDataSignature(
+        persisted.data
+      );
       setLastSavedAt(persisted.savedAt);
       setLastSupabaseSnapshotSavedAt(persisted.savedAt);
       setIsSupabaseSnapshotReady(true);
+      setPendingRealtimeRefresh(null);
       setStorageMessage("Datos restaurados desde Supabase.");
     } catch (error) {
       setIsSupabaseSnapshotReady(false);
@@ -5061,10 +5204,12 @@ export default function App() {
         savedAt: new Date().toISOString(),
         data: buildPersistedAppData(),
       };
+      lastPersistedDataSignatureRef.current = buildPersistedDataSignature(payload.data);
       await writePersistedAppState(payload);
       await writeSupabasePersistedAppState(payload);
       setLastSavedAt(payload.savedAt);
       setLastSupabaseSnapshotSavedAt(payload.savedAt);
+      setPendingRealtimeRefresh(null);
       setStorageMessage("Datos guardados en Supabase y en este navegador.");
     } catch (error) {
       setStorageMessage(
@@ -6484,6 +6629,11 @@ export default function App() {
           savedAt: new Date().toISOString(),
           data: buildPersistedAppData(),
         };
+        const payloadSignature = buildPersistedDataSignature(payload.data);
+        if (payloadSignature === lastPersistedDataSignatureRef.current) {
+          return;
+        }
+        lastPersistedDataSignatureRef.current = payloadSignature;
         await writePersistedAppState(payload);
         if (
           isSupabaseLoggedIn &&
@@ -6505,7 +6655,6 @@ export default function App() {
 
     return () => window.clearTimeout(timeoutId);
   }, [
-    activeTab,
     budget,
     subBudgets,
     subBudgetTitle,
@@ -6536,13 +6685,6 @@ export default function App() {
     employees,
     employeeBaseConfig,
     scaleRows,
-    selectedHistoryId,
-    selectedApprovedJobId,
-    selectedCrmClientKey,
-    selectedFinancialItemId,
-    selectedEmployeeId,
-    financialMonth,
-    payrollMonth,
     allocationMode,
     manualAllocationPct,
     deviationPct,
@@ -6662,6 +6804,7 @@ export default function App() {
       {
         id: Date.now(),
         company: budget.company,
+        description: "",
         responsible: "",
         assignedAmount: 0,
         deliveredDate: todayIso(),
@@ -6674,6 +6817,11 @@ export default function App() {
 
   const removePettyCashFund = (fundId: number) => {
     setPettyCashFunds((prev) => prev.filter((item) => item.id !== fundId));
+    setPettyCashRechargeDrafts((prev) => {
+      const next = { ...prev };
+      delete next[fundId];
+      return next;
+    });
     setPettyCashExpenses((prev) =>
       prev.map((item) =>
         item.fundId === fundId ? { ...item, fundId: null } : item
@@ -6681,12 +6829,16 @@ export default function App() {
     );
   };
 
-  const addPettyCashExpense = () => {
+  const addPettyCashExpense = (fundId?: number | null) => {
+    const selectedFund =
+      typeof fundId === "number"
+        ? pettyCashFunds.find((item) => item.id === fundId) || null
+        : visiblePettyCashFunds[0] || null;
     setPettyCashExpenses((prev) => [
       {
         id: Date.now(),
-        company: budget.company,
-        fundId: visiblePettyCashFunds[0]?.id ?? null,
+        company: selectedFund?.company || budget.company,
+        fundId: selectedFund?.id ?? null,
         date: todayIso(),
         category: "Gasto operativo",
         description: "",
@@ -6708,9 +6860,12 @@ export default function App() {
     value: string | number | null
   ) => {
     setPettyCashExpenses((prev) =>
-      prev.map((item) =>
-        item.id === expenseId ? ({ ...item, [field]: value } as PettyCashExpense) : item
-      )
+      prev.map((item) => {
+        if (item.id !== expenseId) return item;
+        const next = { ...item, [field]: value } as PettyCashExpense;
+        next.administration = getPettyCashAdministration(next);
+        return next;
+      })
     );
   };
 
@@ -6724,10 +6879,39 @@ export default function App() {
   const uploadPettyCashFile = (expenseId: number, file: File | null) => {
     if (!file) return;
     setPettyCashExpenses((prev) =>
+      prev.map((item) => {
+        if (item.id !== expenseId) return item;
+        const next = {
+          ...item,
+          attachmentName: file.name,
+        };
+        return {
+          ...next,
+          administration: getPettyCashAdministration(next),
+        };
+      })
+    );
+  };
+
+  const rechargePettyCashFund = (fundId: number) => {
+    const amount = Number(pettyCashRechargeDrafts[fundId] || 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setStorageMessage("Para recargar un fondo, carga un importe mayor a cero.");
+      return;
+    }
+    setPettyCashFunds((prev) =>
       prev.map((item) =>
-        item.id === expenseId ? { ...item, attachmentName: file.name } : item
+        item.id === fundId
+          ? {
+              ...item,
+              assignedAmount: Number(item.assignedAmount || 0) + amount,
+              deliveredDate: todayIso(),
+            }
+          : item
       )
     );
+    setPettyCashRechargeDrafts((prev) => ({ ...prev, [fundId]: "" }));
+    setStorageMessage("Fondo de caja chica recargado correctamente.");
   };
 
   const addDebtPlan = () => {
@@ -8249,7 +8433,7 @@ export default function App() {
   const companyApprovedSections = groupedApprovedJobs.length > 0 ? groupedApprovedJobs : [];
 
   return (
-    <div style={styles.page}>
+    <div style={{ ...styles.page, background: workspaceTheme.pageBackground }}>
       <style>{`
         table th, table td { border-bottom: 1px solid #e2e8f0; padding: 8px; vertical-align: top; }
         @media print {
@@ -8295,10 +8479,10 @@ export default function App() {
           }
         }
       `}</style>
-      <div style={{ ...styles.headerBar, borderTop: `8px solid ${companyTheme.primary}` }}>
+      <div style={{ ...styles.headerBar, borderTop: `8px solid ${workspaceTheme.primary}` }}>
         <div>
-          <div style={{ ...styles.companyRibbon, background: companyTheme.soft, color: companyTheme.primary }}>
-            {companyTheme.short}
+          <div style={{ ...styles.companyRibbon, background: workspaceTheme.soft, color: workspaceTheme.primary }}>
+            {workspaceTheme.short}
           </div>
           <h1 style={{ margin: "8px 0 0 0" }}>{APP_TITLE}</h1>
           <div style={styles.muted}>Fechas visibles en formato dia-mes-aÃ±o</div>
@@ -8352,6 +8536,7 @@ export default function App() {
           style={{
             ...styles.sidebar,
             width: isSidebarExpanded ? 270 : 84,
+            background: workspaceTheme.sidebarGradient,
           }}
           onMouseEnter={() => setIsSidebarExpanded(true)}
           onMouseLeave={() => setIsSidebarExpanded(false)}
@@ -8360,32 +8545,72 @@ export default function App() {
             {isSidebarExpanded ? "Menu del sistema" : "Menu"}
           </div>
           <div style={styles.sidebarTabs}>
-            {visibleTabOptions.map((tab) => (
-              <button
-                key={tab.key}
-                style={{
-                  ...styles.sidebarTab,
-                  ...(activeTab === tab.key ? styles.sidebarTabActive : {}),
-                }}
-                onClick={() => setActiveTab(tab.key as TabKey)}
-                title={tab.label}
-              >
-                <span style={styles.sidebarTabBadge}>{TAB_SHORT_LABELS[tab.key]}</span>
-                {isSidebarExpanded && <span>{tab.label}</span>}
-              </button>
+            {sidebarSections.map((section) => (
+              <div key={section.title} style={styles.sidebarSection}>
+                {isSidebarExpanded && (
+                  <div style={styles.sidebarSectionTitleWrap}>
+                    <div style={styles.sidebarSectionTitle}>{section.title}</div>
+                    <div style={styles.sidebarSectionHint}>{section.hint}</div>
+                  </div>
+                )}
+                {section.tabs.map((tab) => (
+                  <button
+                    key={tab.key}
+                    style={{
+                      ...styles.sidebarTab,
+                      ...(activeTab === tab.key
+                        ? {
+                            ...styles.sidebarTabActive,
+                            background: workspaceTheme.sidebarActiveBackground,
+                            borderColor: workspaceTheme.sidebarActiveBorder,
+                            boxShadow: workspaceTheme.sidebarActiveShadow,
+                          }
+                        : {}),
+                    }}
+                    onClick={() => setActiveTab(tab.key as TabKey)}
+                    title={tab.label}
+                  >
+                    <span style={styles.sidebarTabBadge}>{TAB_SHORT_LABELS[tab.key]}</span>
+                    {isSidebarExpanded && (
+                      <span style={styles.sidebarTabTextWrap}>
+                        <span>{tab.label}</span>
+                        <span style={styles.sidebarTabCaption}>
+                          {getTabAdministrationType(tab.key)}
+                        </span>
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
             ))}
           </div>
         </aside>
 
         <div style={styles.workspaceMain}>
           {isSupabaseLoggedIn && (
-            <div style={styles.collaborationBanner}>
-              <div>
+            <div
+              style={{
+                ...styles.collaborationBanner,
+                background: workspaceTheme.bannerBackground,
+                borderColor: workspaceTheme.bannerBorder,
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
                 <strong>Operacion compartida:</strong>{" "}
                 {otherActiveSessions.length === 0
                   ? "No hay otros usuarios activos en este momento."
                   : `${otherActiveSessions.length} usuario(s) trabajando ahora.`}
               </div>
+              {pendingRealtimeRefresh && (
+                <div style={styles.collaborationBannerActions}>
+                  <div style={styles.collaborationBannerMeta}>
+                    {pendingRealtimeRefresh.text}
+                  </div>
+                  <ButtonLike onClick={restoreFromSupabaseSave} secondary>
+                    Refresh
+                  </ButtonLike>
+                </div>
+              )}
               {otherActiveSessions.length > 0 && (
                 <div style={styles.collaborationBannerMeta}>
                   {otherActiveSessions
@@ -8397,7 +8622,13 @@ export default function App() {
           )}
 
           {isSupabaseLoggedIn && (
-            <div style={styles.workspaceToolbar}>
+            <div
+              style={{
+                ...styles.workspaceToolbar,
+                background: workspaceTheme.toolbarBackground,
+                borderColor: workspaceTheme.toolbarBorder,
+              }}
+            >
               <div style={styles.workspaceToolbarBlock}>
                 <div style={styles.label}>Vista operativa por empresa</div>
                 <select
@@ -9419,8 +9650,8 @@ export default function App() {
           </Panel>
 
           <Panel
-            title="Responsables y fondos"
-            actions={<ButtonLike onClick={addPettyCashFund}>Agregar responsable</ButtonLike>}
+            title="Responsabilidad y fondos"
+            actions={<ButtonLike onClick={addPettyCashFund}>Agregar caja chica</ButtonLike>}
           >
             {visiblePettyCashFunds.length === 0 ? (
               <div style={styles.empty}>Todavia no hay fondos de caja chica cargados.</div>
@@ -9430,6 +9661,7 @@ export default function App() {
                   <tr>
                     <th>Activo</th>
                     <th>Empresa</th>
+                    <th>Descripcion caja chica</th>
                     <th>Responsable</th>
                     <th>Monto asignado</th>
                     <th>Entrega</th>
@@ -9465,6 +9697,14 @@ export default function App() {
                               </option>
                             ))}
                           </select>
+                        </td>
+                        <td>
+                          <input
+                            style={styles.input}
+                            value={fund.description}
+                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "description", e.target.value)}
+                            placeholder="Ej: Caja montaje, Caja compras chicas"
+                          />
                         </td>
                         <td>
                           <input
@@ -9511,142 +9751,151 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel
-            title="Rendicion de gastos"
-            actions={<ButtonLike onClick={addPettyCashExpense}>Agregar gasto</ButtonLike>}
-          >
-            {visiblePettyCashExpenses.length === 0 ? (
-              <div style={styles.empty}>Todavia no hay gastos de caja chica cargados.</div>
+          <Panel title="Fondos operativos y rendicion">
+            {pettyCashFundSummaries.length === 0 ? (
+              <div style={styles.empty}>Agrega una caja chica para empezar a rendir gastos.</div>
             ) : (
-              visiblePettyCashExpenses.map((expense) => (
-                <div key={expense.id} style={styles.subCard}>
-                  <div style={styles.inlineActions}>
-                    <button style={styles.smallBtn} onClick={() => removePettyCashExpense(expense.id)}>
-                      Quitar gasto
-                    </button>
+              <div style={styles.pettyCashFundGrid}>
+                {pettyCashFundSummaries.map(({ fund, expenses, renderedTotal, whiteTotal, blackTotal, remainingBalance }) => (
+                  <div key={fund.id} style={styles.pettyCashFundCard}>
+                    <div style={styles.pettyCashFundHeader}>
+                      <div style={styles.pettyCashFundTitle}>
+                        <strong>{fund.description || "Caja chica sin descripcion"}</strong>
+                        <span style={styles.muted}>
+                          {fund.responsible || "Sin responsable"} · {getCompanyMeta(fund.company).short}
+                        </span>
+                      </div>
+                      <div style={styles.inlineActions}>
+                        <button style={styles.smallBtn} onClick={() => addPettyCashExpense(fund.id)}>
+                          Agregar gasto
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={styles.pettyCashFundSummary}>
+                      <div style={styles.pettyCashFundMetric}>
+                        <div style={styles.label}>Saldo restante</div>
+                        <strong>{money(remainingBalance)}</strong>
+                      </div>
+                      <div style={styles.pettyCashFundMetric}>
+                        <div style={styles.label}>Comprado en blanco</div>
+                        <strong>{money(whiteTotal)}</strong>
+                      </div>
+                      <div style={styles.pettyCashFundMetric}>
+                        <div style={styles.label}>Comprado en negro</div>
+                        <strong>{money(blackTotal)}</strong>
+                      </div>
+                      <div style={styles.pettyCashFundMetric}>
+                        <div style={styles.label}>Rendido total</div>
+                        <strong>{money(renderedTotal)}</strong>
+                      </div>
+                    </div>
+
+                    <div style={styles.inlineForm}>
+                      <Field label="Recargar fondo">
+                        <input
+                          style={styles.input}
+                          type="number"
+                          value={pettyCashRechargeDrafts[fund.id] || ""}
+                          onChange={(e) =>
+                            setPettyCashRechargeDrafts((prev) => ({
+                              ...prev,
+                              [fund.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Importe de recarga"
+                        />
+                      </Field>
+                      <div style={styles.inlineActions}>
+                        <button style={styles.smallBtn} onClick={() => rechargePettyCashFund(fund.id)}>
+                          Recargar fondo
+                        </button>
+                      </div>
+                    </div>
+
+                    {expenses.length === 0 ? (
+                      <div style={styles.empty}>Todavia no hay gastos cargados para esta caja chica.</div>
+                    ) : (
+                      expenses.map((expense) => (
+                        <div key={expense.id} style={styles.pettyCashInlineBubble}>
+                          <div style={styles.inlineActions}>
+                            <span style={styles.muted}>
+                              Fecha {formatDateDisplay(expense.date)} · {expense.administration === "blanco" ? "Compra en blanco" : "Compra en negro"}
+                            </span>
+                            <button style={styles.smallBtn} onClick={() => removePettyCashExpense(expense.id)}>
+                              Quitar gasto
+                            </button>
+                          </div>
+                          <div style={styles.grid2}>
+                            <Field label="Descripcion">
+                              <input
+                                style={styles.input}
+                                value={expense.description}
+                                onChange={(e) => updatePettyCashExpense(expense.id, "description", e.target.value)}
+                              />
+                            </Field>
+                            <Field label="Proveedor">
+                              <input
+                                style={styles.input}
+                                value={expense.supplier}
+                                onChange={(e) => updatePettyCashExpense(expense.id, "supplier", e.target.value)}
+                              />
+                            </Field>
+                            <Field label="Monto">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={expense.amount}
+                                onChange={(e) => updatePettyCashExpense(expense.id, "amount", Number(e.target.value))}
+                              />
+                            </Field>
+                            <Field label="Categoria">
+                              <input
+                                style={styles.input}
+                                value={expense.category}
+                                onChange={(e) => updatePettyCashExpense(expense.id, "category", e.target.value)}
+                              />
+                            </Field>
+                            <Field label="Fecha">
+                              <input
+                                style={styles.input}
+                                type="date"
+                                value={expense.date}
+                                onChange={(e) => updatePettyCashExpense(expense.id, "date", e.target.value)}
+                              />
+                            </Field>
+                            <Field label="Factura / comprobante">
+                              <input
+                                style={styles.input}
+                                value={expense.invoiceNumber}
+                                onChange={(e) => updatePettyCashExpense(expense.id, "invoiceNumber", e.target.value)}
+                                placeholder="Si hay factura, la compra pasa a blanco"
+                              />
+                            </Field>
+                          </div>
+                          <Field label="Notas">
+                            <textarea
+                              style={styles.textarea}
+                              value={expense.notes}
+                              onChange={(e) => updatePettyCashExpense(expense.id, "notes", e.target.value)}
+                            />
+                          </Field>
+                          <div style={styles.uploadActions}>
+                            <FileDropButton
+                              label="Adjuntar factura o ticket"
+                              fileName={expense.attachmentName}
+                              onFileSelected={(file) => uploadPettyCashFile(expense.id, file)}
+                            />
+                          </div>
+                          <div style={styles.noticeBox}>
+                            Salida de dinero: siempre administracion negra. Compra: {expense.administration === "blanco" ? "blanca (hay factura/adjunto)." : "negra (sin factura)." }
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
-                  <TwoCol>
-                    <Field label="Empresa">
-                      <select
-                        style={styles.input}
-                        value={expense.company}
-                        onChange={(e) =>
-                          updatePettyCashExpense(expense.id, "company", e.target.value as CompanyName)
-                        }
-                      >
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Responsable / fondo">
-                      <select
-                        style={styles.input}
-                        value={expense.fundId ?? ""}
-                        onChange={(e) =>
-                          updatePettyCashExpense(
-                            expense.id,
-                            "fundId",
-                            e.target.value ? Number(e.target.value) : null
-                          )
-                        }
-                      >
-                        <option value="">Sin fondo asignado</option>
-                        {visiblePettyCashFunds
-                          .filter((item) => item.company === expense.company)
-                          .map((fund) => (
-                            <option key={fund.id} value={fund.id}>
-                              {fund.responsible}
-                            </option>
-                          ))}
-                      </select>
-                    </Field>
-                    <Field label="Fecha">
-                      <input
-                        style={styles.input}
-                        type="date"
-                        value={expense.date}
-                        onChange={(e) => updatePettyCashExpense(expense.id, "date", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Categoria">
-                      <input
-                        style={styles.input}
-                        value={expense.category}
-                        onChange={(e) => updatePettyCashExpense(expense.id, "category", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Descripcion">
-                      <input
-                        style={styles.input}
-                        value={expense.description}
-                        onChange={(e) => updatePettyCashExpense(expense.id, "description", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Monto">
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={expense.amount}
-                        onChange={(e) => updatePettyCashExpense(expense.id, "amount", Number(e.target.value))}
-                      />
-                    </Field>
-                    <Field label="Administracion">
-                      <select
-                        style={styles.input}
-                        value={expense.administration}
-                        onChange={(e) =>
-                          updatePettyCashExpense(
-                            expense.id,
-                            "administration",
-                            e.target.value as "blanco" | "negro"
-                          )
-                        }
-                      >
-                        <option value="negro">Negro</option>
-                        <option value="blanco">Blanco</option>
-                      </select>
-                    </Field>
-                    <Field label="Proveedor">
-                      <input
-                        style={styles.input}
-                        value={expense.supplier}
-                        onChange={(e) => updatePettyCashExpense(expense.id, "supplier", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Factura / comprobante">
-                      <input
-                        style={styles.input}
-                        value={expense.invoiceNumber}
-                        onChange={(e) => updatePettyCashExpense(expense.id, "invoiceNumber", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Vinculo con compras">
-                      <input
-                        style={styles.input}
-                        value={expense.administration === "blanco" ? "Si, visible en compras" : "Solo caja chica"}
-                        readOnly
-                      />
-                    </Field>
-                  </TwoCol>
-                  <Field label="Notas">
-                    <textarea
-                      style={styles.textarea}
-                      value={expense.notes}
-                      onChange={(e) => updatePettyCashExpense(expense.id, "notes", e.target.value)}
-                    />
-                  </Field>
-                  <div style={styles.uploadActions}>
-                    <FileDropButton
-                      label="Cargar factura / ticket"
-                      fileName={expense.attachmentName}
-                      onFileSelected={(file) => uploadPettyCashFile(expense.id, file)}
-                    />
-                  </div>
-                </div>
-              ))
+                ))}
+              </div>
             )}
           </Panel>
 
@@ -9660,6 +9909,7 @@ export default function App() {
                 <thead>
                   <tr>
                     <th>Empresa</th>
+                    <th>Caja chica</th>
                     <th>Responsable asignado</th>
                     <th>Monto</th>
                     <th>Fecha de pago</th>
@@ -9671,6 +9921,7 @@ export default function App() {
                   {pettyCashTrackingRows.map((row) => (
                     <tr key={`pc-track-${row.id}`}>
                       <td>{getCompanyMeta(row.company).short}</td>
+                      <td>{row.fundDescription}</td>
                       <td>{row.responsible}</td>
                       <td>{money(row.amount)}</td>
                       <td>{formatDateDisplay(row.date)}</td>
@@ -13068,9 +13319,9 @@ export default function App() {
               <MiniMetric label="Horas comprometidas" value={totalJobHours.toFixed(1)} />
             </div>
             <div style={styles.noticeBox}>
-              Esta solapa concentra seguimiento de fabricacion: compras necesarias,
+              Esta solapa concentra seguimiento de fabricacion sin precios: compras necesarias,
               compras realizadas, estado de stock, ocupacion disponible, calendario y
-              coordinacion de entregas.
+              coordinacion de entregas para trabajar capacidad y faltantes.
             </div>
           </Panel>
 
@@ -13088,7 +13339,6 @@ export default function App() {
                     <th>Requerido</th>
                     <th>Stock</th>
                     <th>Faltante</th>
-                    <th>Costo estimado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -13110,7 +13360,6 @@ export default function App() {
                       <td>{row.required} {row.unit}</td>
                       <td>{row.available} {row.unit}</td>
                       <td>{row.missing} {row.unit}</td>
-                      <td>{money(row.estimatedCost)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -13130,7 +13379,6 @@ export default function App() {
                     <th>Proveedor</th>
                     <th>Comprobante</th>
                     <th>Numero</th>
-                    <th>Total</th>
                     <th>Origen</th>
                   </tr>
                 </thead>
@@ -13142,7 +13390,6 @@ export default function App() {
                       <td>{item.supplier}</td>
                       <td>{[item.receiptKind, item.receiptLetter].filter(Boolean).join(" ") || "-"}</td>
                       <td>{item.invoiceNumber || "-"}</td>
-                      <td>{money(item.total)}</td>
                       <td>{item.source === "caja_chica" ? "Caja chica" : "Compras"}</td>
                     </tr>
                   ))}
@@ -13155,8 +13402,8 @@ export default function App() {
             <div style={styles.metricGrid}>
               <MiniMetric label="Items visibles" value={String(visibleStockItems.filter((item) => item.kind === "general").length)} />
               <MiniMetric label="Items sin stock" value={String(visibleStockItems.filter((item) => item.kind === "general" && Number(item.quantity || 0) <= 0).length)} />
-              <MiniMetric label="Valor stock general" value={money(visibleStockItems.filter((item) => item.kind === "general" && item.active).reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0))} />
-              <MiniMetric label="Necesidad estimada" value={money(totalPurchaseNeed)} />
+              <MiniMetric label="Items activos" value={String(visibleStockItems.filter((item) => item.kind === "general" && item.active).length)} />
+              <MiniMetric label="Materiales con faltante" value={String(fabricationPendingPurchases.length)} />
             </div>
             <table style={styles.table}>
               <thead>
@@ -13168,7 +13415,6 @@ export default function App() {
                   <th>Ubicacion</th>
                   <th>Cantidad</th>
                   <th>Unidad</th>
-                  <th>$ Unit.</th>
                 </tr>
               </thead>
               <tbody>
@@ -13189,7 +13435,6 @@ export default function App() {
                       <td>{item.location || "Sin ubicar"}</td>
                       <td>{item.quantity}</td>
                       <td>{item.unit}</td>
-                      <td>{money(item.unitPrice)}</td>
                     </tr>
                   ))}
               </tbody>
@@ -15401,7 +15646,7 @@ export default function App() {
                   <div>
                     <div style={styles.workspaceWidgetTitle}>Notificaciones del sistema</div>
                     <div style={styles.chatStatus}>
-                      Cambios en tiempo real, accesos y avisos de operacion.
+                      Solo avisos de cambios guardados en el sistema compartido.
                     </div>
                   </div>
                   <button
@@ -15451,12 +15696,19 @@ export default function App() {
                     onClick={() => {
                       setSelectedChatRecipientId(null);
                       setSelectedChatRecipientName("Canal general");
+                      void markGroupChatAsRead().then(() => {
+                        void loadSupabaseChatMessages();
+                      });
                       setWorkspaceWidgetMode("chat");
                       setWorkspaceWidgetOpen(true);
                     }}
                     title="Canal general"
                   >
-                    GR
+                    <span style={styles.chatContactAvatar}>GR</span>
+                    <span style={styles.chatContactLabel}>Canal general</span>
+                    {groupUnreadCount > 0 && (
+                      <span style={styles.chatContactUnread}>{groupUnreadCount}</span>
+                    )}
                   </button>
                   {chatPeers.map((peer) => {
                     const unreadCount = privateUnreadByUser[peer.user_id] || 0;
@@ -15487,7 +15739,10 @@ export default function App() {
                         }}
                         title={peer.full_name || peer.email}
                       >
-                        {initials}
+                        <span style={styles.chatContactAvatar}>{initials}</span>
+                        <span style={styles.chatContactLabel}>
+                          {peer.full_name || peer.email || "Usuario"}
+                        </span>
                         {unreadCount > 0 && (
                           <span style={styles.chatContactUnread}>{unreadCount}</span>
                         )}
@@ -15763,6 +16018,7 @@ export default function App() {
             <tr>
               <th>Empresa</th>
               <th>Fecha</th>
+              <th>Caja chica</th>
               <th>Responsable</th>
               <th>Descripcion</th>
               <th>Admin.</th>
@@ -15777,6 +16033,7 @@ export default function App() {
                 <tr key={item.id}>
                   <td>{getCompanyMeta(item.company).short}</td>
                   <td>{formatDateDisplay(item.date)}</td>
+                  <td>{fund?.description || "-"}</td>
                   <td>{fund?.responsible || "-"}</td>
                   <td>{item.description}</td>
                   <td>{item.administration}</td>
@@ -15927,7 +16184,6 @@ export default function App() {
                 <th>Requerido</th>
                 <th>Stock</th>
                 <th>Faltante</th>
-                <th>Costo estimado</th>
               </tr>
             </thead>
             <tbody>
@@ -15939,7 +16195,6 @@ export default function App() {
                   <td>{row.required} {row.unit}</td>
                   <td>{row.available} {row.unit}</td>
                   <td>{row.missing} {row.unit}</td>
-                  <td>{money(row.estimatedCost)}</td>
                 </tr>
               ))}
             </tbody>
@@ -16523,6 +16778,26 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: "column",
     gap: 8,
   },
+  sidebarSection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  sidebarSectionTitleWrap: {
+    padding: "8px 10px 2px",
+  },
+  sidebarSectionTitle: {
+    color: "rgba(255,255,255,0.92)",
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+  },
+  sidebarSectionHint: {
+    marginTop: 2,
+    color: "rgba(255,255,255,0.62)",
+    fontSize: 11,
+  },
   sidebarTab: {
     display: "flex",
     alignItems: "center",
@@ -16554,6 +16829,61 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 800,
     flexShrink: 0,
+  },
+  sidebarTabTextWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 2,
+    minWidth: 0,
+  },
+  sidebarTabCaption: {
+    color: "rgba(148,163,184,0.95)",
+    fontSize: 11,
+    fontWeight: 600,
+  },
+  pettyCashFundGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+    gap: 16,
+  },
+  pettyCashFundCard: {
+    border: "1px solid #d6d3d1",
+    borderRadius: 18,
+    padding: 16,
+    background: "#fffbeb",
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  },
+  pettyCashFundHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  pettyCashFundTitle: {
+    display: "grid",
+    gap: 4,
+  },
+  pettyCashFundSummary: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+    gap: 10,
+  },
+  pettyCashFundMetric: {
+    border: "1px solid #e7e5e4",
+    borderRadius: 14,
+    padding: 12,
+    background: "white",
+  },
+  pettyCashInlineBubble: {
+    border: "1px solid #fde68a",
+    borderRadius: 16,
+    padding: 14,
+    background: "#fff7d6",
+    display: "grid",
+    gap: 12,
   },
   inlineForm: {
     display: "grid",
@@ -17051,6 +17381,14 @@ const styles: Record<string, React.CSSProperties> = {
   collaborationBannerMeta: {
     fontSize: 13,
     color: "#0f766e",
+    lineHeight: 1.45,
+  },
+  collaborationBannerActions: {
+    display: "flex",
+    gap: 10,
+    justifyContent: "space-between",
+    alignItems: "center",
+    flexWrap: "wrap",
   },
   workspaceToolbar: {
     display: "grid",
@@ -17159,7 +17497,7 @@ const styles: Record<string, React.CSSProperties> = {
   chatLauncherRail: {
     position: "fixed",
     right: 24,
-    bottom: 28,
+    bottom: 154,
     zIndex: 43,
     display: "flex",
     flexDirection: "column",
@@ -17178,15 +17516,17 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 16px 36px rgba(15,23,42,0.18)",
   },
   chatContactBubble: {
-    width: 44,
-    height: 44,
-    borderRadius: 999,
+    minWidth: 220,
+    minHeight: 58,
+    borderRadius: 18,
     border: "1px solid #cbd5e1",
     background: "#ffffff",
     color: "#0f172a",
     display: "inline-flex",
     alignItems: "center",
-    justifyContent: "center",
+    justifyContent: "flex-start",
+    gap: 10,
+    padding: "10px 14px",
     fontWeight: 800,
     cursor: "pointer",
     position: "relative",
@@ -17199,8 +17539,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   chatContactUnread: {
     position: "absolute",
-    top: -4,
-    right: -4,
+    top: -6,
+    right: -6,
     minWidth: 20,
     height: 20,
     borderRadius: 999,
@@ -17213,6 +17553,26 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 11,
     fontWeight: 800,
     border: "2px solid #ffffff",
+  },
+  chatContactAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(15,23,42,0.08)",
+    fontSize: 12,
+    fontWeight: 800,
+    flexShrink: 0,
+  },
+  chatContactLabel: {
+    fontSize: 13,
+    fontWeight: 700,
+    maxWidth: 138,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   chatPanel: {
     display: "grid",
