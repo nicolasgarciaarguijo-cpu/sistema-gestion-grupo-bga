@@ -12489,6 +12489,7 @@ export default function App() {
         <div style={styles.column}>
           <Panel
             title="Trabajos aprobados por empresa"
+            span="full"
             actions={
               <div style={styles.inlineActions}>
                 <ButtonLike onClick={createDirectApprovedJob}>Nuevo trabajo directo</ButtonLike>
@@ -12588,7 +12589,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Evolucion de trabajos">
+          <Panel title="Evolucion de trabajos" span="wide">
             {approvedJobsTimelineRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay trabajos aprobados para mostrar en la linea de tiempo.</div>
             ) : (
@@ -13502,7 +13503,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="Compras pendientes para fabricacion">
+          <Panel title="Compras pendientes para fabricacion" span="wide">
             {fabricationPendingPurchases.length === 0 ? (
               <div style={styles.empty}>No hay faltantes pendientes para trabajos activos.</div>
             ) : (
@@ -13575,7 +13576,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Estado de stock para fabricacion">
+          <Panel title="Estado de stock para fabricacion" span="wide">
             <div style={styles.metricGrid}>
               <MiniMetric label="Items visibles" value={String(visibleStockItems.filter((item) => item.kind === "general").length)} />
               <MiniMetric label="Items sin stock" value={String(visibleStockItems.filter((item) => item.kind === "general" && Number(item.quantity || 0) <= 0).length)} />
@@ -13618,7 +13619,7 @@ export default function App() {
             </table>
           </Panel>
 
-          <Panel title="Calendario de fabricacion y entregas">
+          <Panel title="Calendario de fabricacion y entregas" span="full">
             {fabricationCalendarRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay trabajos aprobados para fabricar.</div>
             ) : (
@@ -13731,7 +13732,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Gantt operativo de fabricacion">
+          <Panel title="Gantt operativo de fabricacion" span="full">
             {fabricationCalendarRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay trabajos suficientes para mostrar el Gantt.</div>
             ) : (
@@ -15890,7 +15891,7 @@ export default function App() {
           <aside
             style={{
               ...styles.communicationRail,
-              width: isCommunicationExpanded ? 380 : 88,
+              width: isCommunicationExpanded ? 460 : 88,
               background: workspaceTheme.sidebarGradient,
             }}
             onMouseEnter={() => setIsCommunicationExpanded(true)}
@@ -16799,12 +16800,14 @@ function Panel({
   actions,
   nested = false,
   green = false,
+  span = "auto",
 }: {
   title: string;
   children: React.ReactNode;
   actions?: React.ReactNode;
   nested?: boolean;
   green?: boolean;
+  span?: "auto" | "wide" | "full";
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -16812,6 +16815,8 @@ function Panel({
     <div
       style={{
         ...styles.panel,
+        ...(span === "wide" ? styles.panelWide : {}),
+        ...(span === "full" ? styles.panelFull : {}),
         ...(nested ? styles.nestedPanel : {}),
         ...(green ? styles.greenPanel : {}),
       }}
@@ -17275,6 +17280,12 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     padding: 14,
     boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+  },
+  panelWide: {
+    gridColumn: "span 2",
+  },
+  panelFull: {
+    gridColumn: "1 / -1",
   },
   nestedPanel: {
     boxShadow: "none",
@@ -17788,7 +17799,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: "grid",
     gap: 10,
     paddingRight: 2,
-    maxHeight: 260,
+    maxHeight: 420,
     overflowY: "auto",
   },
   communicationCard: {
@@ -17902,7 +17913,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   chatContactBubble: {
     width: "100%",
-    minHeight: 68,
+    minHeight: 78,
     borderRadius: 18,
     border: "1px solid #cbd5e1",
     background: "#ffffff",
@@ -17910,8 +17921,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "flex-start",
-    gap: 10,
-    padding: "12px 16px",
+    gap: 12,
+    padding: "14px 16px",
     fontWeight: 800,
     cursor: "pointer",
     position: "relative",
@@ -17940,25 +17951,25 @@ const styles: Record<string, React.CSSProperties> = {
     border: "2px solid #ffffff",
   },
   chatContactAvatar: {
-    width: 40,
-    height: 40,
+    width: 46,
+    height: 46,
     borderRadius: 999,
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
     background: "rgba(15,23,42,0.08)",
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: 800,
     flexShrink: 0,
   },
   chatContactLabel: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: 700,
     flex: 1,
     minWidth: 0,
     whiteSpace: "normal",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+    overflow: "visible",
+    textOverflow: "initial",
     lineHeight: 1.3,
   },
   chatPanel: {
