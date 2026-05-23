@@ -597,8 +597,11 @@ type PettyCashFund = {
   responsible: string;
   assignedAmount: number;
   deliveredDate: string;
+  rechargeDate: string;
   notes: string;
   active: boolean;
+  closed: boolean;
+  closedDate: string;
 };
 
 type PettyCashExpense = {
@@ -1504,8 +1507,11 @@ const defaultPettyCashFunds: PettyCashFund[] = [
     responsible: "Encargado taller",
     assignedAmount: 250000,
     deliveredDate: todayIso(),
+    rechargeDate: "",
     notes: "Fondo operativo inicial",
     active: true,
+    closed: false,
+    closedDate: "",
   },
 ];
 
@@ -2176,6 +2182,7 @@ export default function App() {
   const [pettyCashFunds, setPettyCashFunds] = useState<PettyCashFund[]>(defaultPettyCashFunds);
   const [pettyCashExpenses, setPettyCashExpenses] = useState<PettyCashExpense[]>(defaultPettyCashExpenses);
   const [pettyCashRechargeDrafts, setPettyCashRechargeDrafts] = useState<Record<number, string>>({});
+  const [pettyCashRechargeDateDrafts, setPettyCashRechargeDateDrafts] = useState<Record<number, string>>({});
   const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
@@ -2248,6 +2255,7 @@ export default function App() {
     },
   ]);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+  const [isCommunicationExpanded, setIsCommunicationExpanded] = useState(false);
   const [lastSupabaseSnapshotSavedAt, setLastSupabaseSnapshotSavedAt] = useState("");
   const lastMarkerSourceKeyRef = useRef("");
   const collaborationSessionIdRef = useRef(
@@ -4036,6 +4044,32 @@ export default function App() {
     [visiblePettyCashExpenses, visiblePettyCashFunds]
   );
 
+  useEffect(() => {
+    setPettyCashFunds((prev) => {
+      let changed = false;
+      const next = prev.map((fund) => {
+        const renderedTotal = pettyCashExpenses
+          .filter((item) => item.fundId === fund.id)
+          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        const remainingBalance = Number(fund.assignedAmount || 0) - renderedTotal;
+
+        if (remainingBalance <= 0 && !fund.closed) {
+          changed = true;
+          return {
+            ...fund,
+            active: false,
+            closed: true,
+            closedDate: todayIso(),
+          };
+        }
+
+        return fund;
+      });
+
+      return changed ? next : prev;
+    });
+  }, [pettyCashExpenses]);
+
   const appendAssistantMessage = (role: "user" | "assistant", text: string) => {
     setAssistantMessages((prev) => [
       ...prev,
@@ -5149,6 +5183,9 @@ export default function App() {
       (data.pettyCashFunds || defaultPettyCashFunds).map((item) => ({
         ...item,
         description: item.description || "",
+        rechargeDate: item.rechargeDate || "",
+        closed: Boolean(item.closed),
+        closedDate: item.closedDate || "",
       }))
     );
     setPettyCashExpenses((data.pettyCashExpenses || defaultPettyCashExpenses).map((item) => ({ ...item })));
@@ -6854,8 +6891,11 @@ export default function App() {
         responsible: "",
         assignedAmount: 0,
         deliveredDate: todayIso(),
+        rechargeDate: "",
         notes: "",
         active: true,
+        closed: false,
+        closedDate: "",
       },
       ...prev,
     ]);
@@ -6864,6 +6904,11 @@ export default function App() {
   const removePettyCashFund = (fundId: number) => {
     setPettyCashFunds((prev) => prev.filter((item) => item.id !== fundId));
     setPettyCashRechargeDrafts((prev) => {
+      const next = { ...prev };
+      delete next[fundId];
+      return next;
+    });
+    setPettyCashRechargeDateDrafts((prev) => {
       const next = { ...prev };
       delete next[fundId];
       return next;
@@ -6941,6 +6986,7 @@ export default function App() {
 
   const rechargePettyCashFund = (fundId: number) => {
     const amount = Number(pettyCashRechargeDrafts[fundId] || 0);
+    const rechargeDate = pettyCashRechargeDateDrafts[fundId] || todayIso();
     if (!Number.isFinite(amount) || amount <= 0) {
       setStorageMessage("Para recargar un fondo, carga un importe mayor a cero.");
       return;
@@ -6951,13 +6997,28 @@ export default function App() {
           ? {
               ...item,
               assignedAmount: Number(item.assignedAmount || 0) + amount,
-              deliveredDate: todayIso(),
+              rechargeDate,
+              active: true,
+              closed: false,
+              closedDate: "",
             }
           : item
       )
     );
     setPettyCashRechargeDrafts((prev) => ({ ...prev, [fundId]: "" }));
+    setPettyCashRechargeDateDrafts((prev) => ({ ...prev, [fundId]: todayIso() }));
     setStorageMessage("Fondo de caja chica recargado correctamente.");
+  };
+
+  const reopenPettyCashFund = (fundId: number) => {
+    setPettyCashFunds((prev) =>
+      prev.map((item) =>
+        item.id === fundId
+          ? { ...item, active: true, closed: false, closedDate: "" }
+          : item
+      )
+    );
+    setStorageMessage("Caja chica reabierta para continuar operando.");
   };
 
   const addDebtPlan = () => {
@@ -8630,6 +8691,30 @@ export default function App() {
               </div>
             ))}
           </div>
+          {isSupabaseLoggedIn && (
+            <div style={styles.sidebarFooter}>
+              <button
+                type="button"
+                style={styles.assistantDockButton}
+                onClick={() => {
+                  setWorkspaceWidgetMode("assistant");
+                  setWorkspaceWidgetOpen(true);
+                  setIsCommunicationExpanded(true);
+                }}
+                title="Abrir asistente del sistema"
+              >
+                <span style={styles.assistantDockIcon}>AI</span>
+                {isSidebarExpanded && (
+                  <span style={styles.assistantDockTextWrap}>
+                    <span>Asistente del sistema</span>
+                    <span style={styles.assistantDockCaption}>
+                      Consultas, avisos y soporte operativo
+                    </span>
+                  </span>
+                )}
+              </button>
+            </div>
+          )}
         </aside>
 
         <div style={styles.workspaceMain}>
@@ -9711,8 +9796,10 @@ export default function App() {
                     <th>Responsable</th>
                     <th>Monto asignado</th>
                     <th>Entrega</th>
+                    <th>Recarga</th>
                     <th>Rendido</th>
                     <th>Saldo</th>
+                    <th>Estado</th>
                     <th>Notas</th>
                     <th></th>
                   </tr>
@@ -9775,8 +9862,14 @@ export default function App() {
                             onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "deliveredDate", e.target.value)}
                           />
                         </td>
+                        <td>{fund.rechargeDate ? formatDateDisplay(fund.rechargeDate) : "-"}</td>
                         <td>{money(rendered)}</td>
                         <td>{money(Number(fund.assignedAmount || 0) - rendered)}</td>
+                        <td>
+                          {fund.closed || Number(fund.assignedAmount || 0) - rendered <= 0
+                            ? `Cerrada${fund.closedDate ? ` · ${formatDateDisplay(fund.closedDate)}` : ""}`
+                            : "Activa"}
+                        </td>
                         <td>
                           <input
                             style={styles.input}
@@ -9810,11 +9903,21 @@ export default function App() {
                         <span style={styles.muted}>
                           {fund.responsible || "Sin responsable"} · {getCompanyMeta(fund.company).short}
                         </span>
+                        <span style={styles.pettyCashFundState}>
+                          {(fund.closed || remainingBalance <= 0)
+                            ? `Caja cerrada${fund.closedDate ? ` el ${formatDateDisplay(fund.closedDate)}` : ""}`
+                            : "Caja activa"}
+                        </span>
                       </div>
                       <div style={styles.inlineActions}>
                         <button style={styles.smallBtn} onClick={() => addPettyCashExpense(fund.id)}>
                           Agregar gasto
                         </button>
+                        {(fund.closed || remainingBalance <= 0) && (
+                          <button style={styles.smallBtn} onClick={() => reopenPettyCashFund(fund.id)}>
+                            Reabrir caja
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -9835,6 +9938,10 @@ export default function App() {
                         <div style={styles.label}>Rendido total</div>
                         <strong>{money(renderedTotal)}</strong>
                       </div>
+                      <div style={styles.pettyCashFundMetric}>
+                        <div style={styles.label}>Ultima recarga</div>
+                        <strong>{fund.rechargeDate ? formatDateDisplay(fund.rechargeDate) : "-"}</strong>
+                      </div>
                     </div>
 
                     <div style={styles.inlineForm}>
@@ -9852,6 +9959,19 @@ export default function App() {
                           placeholder="Importe de recarga"
                         />
                       </Field>
+                      <Field label="Fecha de recarga">
+                        <input
+                          style={styles.input}
+                          type="date"
+                          value={pettyCashRechargeDateDrafts[fund.id] || fund.rechargeDate || todayIso()}
+                          onChange={(e) =>
+                            setPettyCashRechargeDateDrafts((prev) => ({
+                              ...prev,
+                              [fund.id]: e.target.value,
+                            }))
+                          }
+                        />
+                      </Field>
                       <div style={styles.inlineActions}>
                         <button style={styles.smallBtn} onClick={() => rechargePettyCashFund(fund.id)}>
                           Recargar fondo
@@ -9863,7 +9983,18 @@ export default function App() {
                       <div style={styles.empty}>Todavia no hay gastos cargados para esta caja chica.</div>
                     ) : (
                       expenses.map((expense) => (
-                        <div key={expense.id} style={styles.pettyCashInlineBubble}>
+                        <details key={expense.id} style={styles.pettyCashInlineBubble}>
+                          <summary style={styles.pettyCashExpenseSummary}>
+                            <span style={styles.pettyCashExpenseSummaryLine}>
+                              <strong>{expense.description || "Gasto sin descripcion"}</strong>
+                            </span>
+                            <span style={styles.pettyCashExpenseSummaryLine}>
+                              {money(Number(expense.amount || 0))}
+                            </span>
+                            <span style={styles.pettyCashExpenseSummaryLine}>
+                              {formatDateDisplay(expense.date)}
+                            </span>
+                          </summary>
                           <div style={styles.inlineActions}>
                             <span style={styles.muted}>
                               Fecha {formatDateDisplay(expense.date)} · {expense.administration === "blanco" ? "Compra en blanco" : "Compra en negro"}
@@ -9936,7 +10067,7 @@ export default function App() {
                           <div style={styles.noticeBox}>
                             Salida de dinero: siempre administracion negra. Compra: {expense.administration === "blanco" ? "blanca (hay factura/adjunto)." : "negra (sin factura)." }
                           </div>
-                        </div>
+                        </details>
                       ))
                     )}
                   </div>
@@ -15753,66 +15884,82 @@ export default function App() {
         </div>
       )}
 
+        </div>
+
         {isSupabaseLoggedIn && (
-          <>
-            <button
-              type="button"
-              style={styles.notificationsToggle}
-              onClick={() => setNotificationsOpen((prev) => !prev)}
-            >
-              <span>Notificaciones</span>
-              {unreadNotificationCount > 0 && (
-                <span style={styles.workspaceWidgetBadge}>{unreadNotificationCount}</span>
-              )}
-            </button>
+          <aside
+            style={{
+              ...styles.communicationRail,
+              width: isCommunicationExpanded ? 380 : 88,
+              background: workspaceTheme.sidebarGradient,
+            }}
+            onMouseEnter={() => setIsCommunicationExpanded(true)}
+            onMouseLeave={() => setIsCommunicationExpanded(false)}
+          >
+            <div style={styles.communicationRailTitle}>
+              {isCommunicationExpanded ? "Comunicacion" : "Coms"}
+            </div>
 
-            {notificationsOpen && (
-              <div style={styles.notificationsPanel}>
-                <div style={styles.workspaceWidgetHeader}>
-                  <div>
-                    <div style={styles.workspaceWidgetTitle}>Notificaciones del sistema</div>
-                    <div style={styles.chatStatus}>
-                      Solo avisos de cambios guardados en el sistema compartido.
-                    </div>
+            <div style={styles.communicationSection}>
+              <button
+                type="button"
+                style={styles.communicationSectionButton}
+                onClick={() => setNotificationsOpen((prev) => !prev)}
+              >
+                <span>Notificaciones</span>
+                {unreadNotificationCount > 0 && (
+                  <span style={styles.workspaceWidgetBadge}>{unreadNotificationCount}</span>
+                )}
+              </button>
+              {isCommunicationExpanded && notificationsOpen && (
+                <div style={styles.communicationCard}>
+                  <div style={styles.workspaceWidgetTitle}>Cambios del sistema</div>
+                  <div style={styles.chatStatus}>
+                    Solo avisos de cambios guardados en el sistema compartido.
                   </div>
-                  <button
-                    type="button"
-                    style={styles.workspaceWidgetClose}
-                    onClick={() => setNotificationsOpen(false)}
-                  >
-                    Cerrar
-                  </button>
-                </div>
-                <div style={styles.notificationsList}>
-                  {notifications.length === 0 ? (
-                    <div style={styles.empty}>Todavia no hay notificaciones.</div>
-                  ) : (
-                    notifications.map((notification) => (
-                      <div
-                        key={`notification-${notification.id}`}
-                        style={{
-                          ...styles.notificationItem,
-                          ...(notification.read ? {} : styles.notificationItemUnread),
-                        }}
-                      >
-                        <div>{notification.text}</div>
-                        <div style={styles.chatTimestamp}>
-                          {formatDateTimeDisplay(notification.created_at)}
+                  <div style={styles.notificationsList}>
+                    {notifications.length === 0 ? (
+                      <div style={styles.empty}>Todavia no hay notificaciones.</div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <div
+                          key={`notification-${notification.id}`}
+                          style={{
+                            ...styles.notificationItem,
+                            ...(notification.read ? {} : styles.notificationItemUnread),
+                          }}
+                        >
+                          <div>{notification.text}</div>
+                          <div style={styles.chatTimestamp}>
+                            {formatDateTimeDisplay(notification.created_at)}
+                          </div>
                         </div>
-                      </div>
-                    ))
-                  )}
+                      ))
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
-            <div
-              style={styles.chatLauncherRail}
-              onMouseEnter={() => setShowChatContacts(true)}
-              onMouseLeave={() => setShowChatContacts(false)}
-            >
-              {showChatContacts && (
-                <div style={styles.chatContactsPopover}>
+            <div style={styles.communicationSection}>
+              <button
+                type="button"
+                style={styles.communicationSectionButton}
+                onClick={() => {
+                  setWorkspaceWidgetMode("chat");
+                  setWorkspaceWidgetOpen((prev) => !prev);
+                }}
+              >
+                <span>{workspaceWidgetOpen && workspaceWidgetMode === "chat" ? "Ocultar chat" : "Chat"}</span>
+                {(groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)) > 0 && (
+                  <span style={styles.workspaceWidgetBadge}>
+                    {groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)}
+                  </span>
+                )}
+              </button>
+
+              {isCommunicationExpanded && (
+                <div style={styles.communicationContactsList}>
                   <button
                     type="button"
                     style={{
@@ -15878,195 +16025,170 @@ export default function App() {
                 </div>
               )}
 
-            <button
-              type="button"
-              style={styles.workspaceWidgetToggle}
-              onClick={() => setWorkspaceWidgetOpen((prev) => !prev)}
-            >
-              <span>
-                {workspaceWidgetOpen ? "Cerrar chat" : "Chat y asistente"}
-              </span>
-              {otherActiveSessions.length > 0 && (
-                <span style={styles.workspaceWidgetBadge}>{otherActiveSessions.length}</span>
-              )}
-            </button>
-            </div>
-
-            {workspaceWidgetOpen && (
-              <div style={styles.workspaceWidget}>
-                <div style={styles.workspaceWidgetHeader}>
-                  <div>
-                    <div style={styles.workspaceWidgetTitle}>Centro colaborativo</div>
-                    <div style={styles.chatStatus}>
-                      {workspaceWidgetMode === "chat"
-                        ? selectedChatRecipientId
-                          ? `Chat privado con ${selectedChatRecipientName}`
-                          : "Canal grupal del sistema"
-                        : otherActiveSessions.length === 0
-                        ? "Sin otros usuarios activos ahora"
-                        : `${otherActiveSessions.length} usuario(s) operando`}
-                    </div>
-                  </div>
-                  <div style={styles.workspaceWidgetTabs}>
-                    <button
-                      type="button"
-                      style={{
-                        ...styles.workspaceWidgetTab,
-                        ...(workspaceWidgetMode === "chat"
-                          ? styles.workspaceWidgetTabActive
-                          : {}),
-                      }}
-                      onClick={() => setWorkspaceWidgetMode("chat")}
-                    >
-                      Chat
-                    </button>
-                    <button
-                      type="button"
-                      style={{
-                        ...styles.workspaceWidgetTab,
-                        ...(workspaceWidgetMode === "assistant"
-                          ? styles.workspaceWidgetTabActive
-                          : {}),
-                      }}
-                      onClick={() => setWorkspaceWidgetMode("assistant")}
-                    >
-                      Asistente
-                    </button>
-                    <button
-                      type="button"
-                      style={styles.workspaceWidgetClose}
-                      onClick={() => setWorkspaceWidgetOpen(false)}
-                    >
-                      Cerrar
-                    </button>
-                  </div>
-                </div>
-
-                <div style={styles.workspaceWidgetBody}>
-                  {workspaceWidgetMode === "chat" ? (
-                    <div style={styles.chatPanel}>
-                      <div style={styles.chatMessages}>
-                        {visibleChatMessages.length === 0 ? (
-                          <div style={styles.empty}>
-                            {selectedChatRecipientId
-                              ? "Todavia no hay mensajes privados en esta conversacion."
-                              : "Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo."}
-                          </div>
-                        ) : (
-                          visibleChatMessages.map((message) => {
-                            const isOwnMessage =
-                              message.user_id && message.user_id === supabaseSession?.user?.id;
-                            return (
-                              <div
-                                key={`chat-${message.id}`}
-                                style={{
-                                  ...styles.chatMessage,
-                                  ...(isOwnMessage
-                                    ? styles.chatMessageOwn
-                                    : styles.chatMessageOther),
-                                }}
-                              >
-                                <div style={styles.chatMessageHeader}>
-                                  <strong>
-                                    {message.full_name || message.email}
-                                    {message.recipient_user_id
-                                      ? ` -> ${message.recipient_full_name || "Privado"}`
-                                      : ""}
-                                  </strong>
-                                  <span style={styles.chatTimestamp}>
-                                    {formatDateTimeDisplay(message.created_at)}
-                                  </span>
-                                </div>
-                                <div>{message.message}</div>
-                              </div>
-                            );
-                          })
-                        )}
+              {isCommunicationExpanded && workspaceWidgetOpen && (
+                <div style={styles.communicationCard}>
+                  <div style={styles.workspaceWidgetHeader}>
+                    <div>
+                      <div style={styles.workspaceWidgetTitle}>
+                        {workspaceWidgetMode === "assistant" ? "Asistente" : "Chat interno"}
                       </div>
-                      <div style={styles.chatComposer}>
-                        <div style={styles.chatStatus}>
-                          Destino: {selectedChatRecipientId ? selectedChatRecipientName : "Canal general"}
-                        </div>
-                        <textarea
-                          style={styles.chatTextarea}
-                          value={supabaseChatDraft}
-                          onChange={(e) => setSupabaseChatDraft(e.target.value)}
-                          placeholder={
-                            selectedChatRecipientId
-                              ? "Escribe un mensaje privado..."
-                              : "Escribe un mensaje rapido para el equipo..."
-                          }
-                        />
-                        <div style={styles.chatActions}>
-                          <ButtonLike onClick={loadSupabaseChatMessages} secondary>
-                            Actualizar
-                          </ButtonLike>
-                          {selectedChatRecipientId && (
-                            <ButtonLike
-                              onClick={() => {
-                                setSelectedChatRecipientId(null);
-                                setSelectedChatRecipientName("Canal general");
-                              }}
-                              secondary
-                            >
-                              Volver al grupal
-                            </ButtonLike>
-                          )}
-                          <ButtonLike onClick={sendSupabaseChatMessage}>Enviar</ButtonLike>
-                        </div>
+                      <div style={styles.chatStatus}>
+                        {workspaceWidgetMode === "chat"
+                          ? selectedChatRecipientId
+                            ? `Chat privado con ${selectedChatRecipientName}`
+                            : "Canal grupal del sistema"
+                          : "Consultas rapidas del sistema"}
                       </div>
                     </div>
-                  ) : (
-                    <div style={styles.chatPanel}>
-                      <div style={styles.assistantHint}>
-                        Preguntale por presupuestos, stock, caja chica, compras, Historial y CRM, usuarios activos o guardado compartido.
-                      </div>
-                      <div style={styles.assistantMessages}>
-                        {assistantMessages.map((message) => (
-                          <div
-                            key={`assistant-${message.id}`}
-                            style={{
-                              ...styles.assistantMessage,
-                              ...(message.role === "assistant"
-                                ? styles.assistantMessageBot
-                                : styles.assistantMessageUser),
-                            }}
-                          >
-                            <div style={styles.chatMessageHeader}>
-                              <strong>
-                                {message.role === "assistant"
-                                  ? "Asistente del sistema"
-                                  : "Tu consulta"}
-                              </strong>
-                              <span style={styles.chatTimestamp}>
-                                {formatDateTimeDisplay(message.created_at)}
-                              </span>
+                    <div style={styles.workspaceWidgetTabs}>
+                      <button
+                        type="button"
+                        style={{
+                          ...styles.workspaceWidgetTab,
+                          ...(workspaceWidgetMode === "chat" ? styles.workspaceWidgetTabActive : {}),
+                        }}
+                        onClick={() => setWorkspaceWidgetMode("chat")}
+                      >
+                        Chat
+                      </button>
+                      <button
+                        type="button"
+                        style={{
+                          ...styles.workspaceWidgetTab,
+                          ...(workspaceWidgetMode === "assistant" ? styles.workspaceWidgetTabActive : {}),
+                        }}
+                        onClick={() => setWorkspaceWidgetMode("assistant")}
+                      >
+                        Asistente
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={styles.workspaceWidgetBody}>
+                    {workspaceWidgetMode === "chat" ? (
+                      <div style={styles.chatPanel}>
+                        <div style={styles.chatMessages}>
+                          {visibleChatMessages.length === 0 ? (
+                            <div style={styles.empty}>
+                              {selectedChatRecipientId
+                                ? "Todavia no hay mensajes privados en esta conversacion."
+                                : "Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo."}
                             </div>
-                            <div>{message.text}</div>
+                          ) : (
+                            visibleChatMessages.map((message) => {
+                              const isOwnMessage =
+                                message.user_id && message.user_id === supabaseSession?.user?.id;
+                              return (
+                                <div
+                                  key={`chat-${message.id}`}
+                                  style={{
+                                    ...styles.chatMessage,
+                                    ...(isOwnMessage
+                                      ? styles.chatMessageOwn
+                                      : styles.chatMessageOther),
+                                  }}
+                                >
+                                  <div style={styles.chatMessageHeader}>
+                                    <strong>
+                                      {message.full_name || message.email}
+                                      {message.recipient_user_id
+                                        ? ` -> ${message.recipient_full_name || "Privado"}`
+                                        : ""}
+                                    </strong>
+                                    <span style={styles.chatTimestamp}>
+                                      {formatDateTimeDisplay(message.created_at)}
+                                    </span>
+                                  </div>
+                                  <div>{message.message}</div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                        <div style={styles.chatComposer}>
+                          <div style={styles.chatStatus}>
+                            Destino: {selectedChatRecipientId ? selectedChatRecipientName : "Canal general"}
                           </div>
-                        ))}
-                      </div>
-                      <div style={styles.assistantComposer}>
-                        <textarea
-                          style={styles.chatTextarea}
-                          value={assistantDraft}
-                          onChange={(e) => setAssistantDraft(e.target.value)}
-                          placeholder="Ejemplo: decime cuantos presupuestos hay, quien esta operando o como esta caja chica..."
-                        />
-                        <div style={styles.chatActions}>
-                          <ButtonLike onClick={sendAssistantQuestion}>
-                            Consultar asistente
-                          </ButtonLike>
+                          <textarea
+                            style={styles.chatTextarea}
+                            value={supabaseChatDraft}
+                            onChange={(e) => setSupabaseChatDraft(e.target.value)}
+                            placeholder={
+                              selectedChatRecipientId
+                                ? "Escribe un mensaje privado..."
+                                : "Escribe un mensaje rapido para el equipo..."
+                            }
+                          />
+                          <div style={styles.chatActions}>
+                            <ButtonLike onClick={loadSupabaseChatMessages} secondary>
+                              Actualizar
+                            </ButtonLike>
+                            {selectedChatRecipientId && (
+                              <ButtonLike
+                                onClick={() => {
+                                  setSelectedChatRecipientId(null);
+                                  setSelectedChatRecipientName("Canal general");
+                                }}
+                                secondary
+                              >
+                                Volver al grupal
+                              </ButtonLike>
+                            )}
+                            <ButtonLike onClick={sendSupabaseChatMessage}>Enviar</ButtonLike>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  )}
+                    ) : (
+                      <div style={styles.chatPanel}>
+                        <div style={styles.assistantHint}>
+                          Preguntale por presupuestos, stock, caja chica, compras, Historial y CRM, usuarios activos o guardado compartido.
+                        </div>
+                        <div style={styles.assistantMessages}>
+                          {assistantMessages.map((message) => (
+                            <div
+                              key={`assistant-${message.id}`}
+                              style={{
+                                ...styles.assistantMessage,
+                                ...(message.role === "assistant"
+                                  ? styles.assistantMessageBot
+                                  : styles.assistantMessageUser),
+                              }}
+                            >
+                              <div style={styles.chatMessageHeader}>
+                                <strong>
+                                  {message.role === "assistant"
+                                    ? "Asistente del sistema"
+                                    : "Tu consulta"}
+                                </strong>
+                                <span style={styles.chatTimestamp}>
+                                  {formatDateTimeDisplay(message.created_at)}
+                                </span>
+                              </div>
+                              <div>{message.text}</div>
+                            </div>
+                          ))}
+                        </div>
+                        <div style={styles.assistantComposer}>
+                          <textarea
+                            style={styles.chatTextarea}
+                            value={assistantDraft}
+                            onChange={(e) => setAssistantDraft(e.target.value)}
+                            placeholder="Ejemplo: decime cuantos presupuestos hay, quien esta operando o como esta caja chica..."
+                          />
+                          <div style={styles.chatActions}>
+                            <ButtonLike onClick={sendAssistantQuestion}>
+                              Consultar asistente
+                            </ButtonLike>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </>
+              )}
+            </div>
+          </aside>
         )}
-        </div>
       </div>
 
       <div id="client-budget-pdf" style={{ display: "none" }}>
@@ -16867,7 +16989,7 @@ const styles: Record<string, React.CSSProperties> = {
   tabsRow: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 },
   workspaceShell: {
     display: "grid",
-    gridTemplateColumns: "auto minmax(0, 1fr)",
+    gridTemplateColumns: "auto minmax(0, 1fr) auto",
     gap: 18,
     alignItems: "start",
   },
@@ -16903,6 +17025,54 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "column",
     gap: 8,
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingRight: 4,
+  },
+  sidebarFooter: {
+    marginTop: "auto",
+    display: "grid",
+    gap: 10,
+    paddingTop: 12,
+    borderTop: "1px solid rgba(255,255,255,0.12)",
+  },
+  assistantDockButton: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 14px",
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.16)",
+    background: "rgba(255,255,255,0.08)",
+    color: "#ffffff",
+    cursor: "pointer",
+    fontWeight: 800,
+    textAlign: "left",
+    boxShadow: "0 8px 18px rgba(15,23,42,0.18)",
+  },
+  assistantDockIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 14,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "rgba(255,255,255,0.18)",
+    fontSize: 18,
+    fontWeight: 900,
+    flexShrink: 0,
+  },
+  assistantDockTextWrap: {
+    display: "grid",
+    gap: 2,
+    minWidth: 0,
+  },
+  assistantDockCaption: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
+    fontWeight: 600,
   },
   sidebarSection: {
     display: "flex",
@@ -17003,6 +17173,17 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12,
     background: "white",
   },
+  pettyCashFundState: {
+    display: "inline-flex",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    padding: "6px 10px",
+    borderRadius: 999,
+    background: "#292524",
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: 700,
+  },
   pettyCashInlineBubble: {
     border: "1px solid #fde68a",
     borderRadius: 16,
@@ -17010,6 +17191,18 @@ const styles: Record<string, React.CSSProperties> = {
     background: "#fff7d6",
     display: "grid",
     gap: 12,
+  },
+  pettyCashExpenseSummary: {
+    display: "grid",
+    gap: 4,
+    cursor: "pointer",
+    listStyle: "none",
+  },
+  pettyCashExpenseSummaryLine: {
+    display: "block",
+    color: "#1f2937",
+    fontSize: 13,
+    lineHeight: 1.4,
   },
   inlineForm: {
     display: "grid",
@@ -17540,6 +17733,62 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 14,
     padding: "10px 12px",
   },
+  communicationRail: {
+    position: "sticky",
+    top: 20,
+    alignSelf: "start",
+    minHeight: "calc(100vh - 48px)",
+    borderRadius: 24,
+    padding: 14,
+    color: "#ffffff",
+    boxShadow: "0 18px 40px rgba(15,23,42,0.18)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    overflow: "hidden",
+  },
+  communicationRailTitle: {
+    color: "rgba(255,255,255,0.84)",
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 1,
+    textTransform: "uppercase",
+    padding: "6px 8px 2px",
+  },
+  communicationSection: {
+    display: "grid",
+    gap: 10,
+  },
+  communicationSectionButton: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    padding: "12px 14px",
+    borderRadius: 18,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.08)",
+    color: "#ffffff",
+    cursor: "pointer",
+    fontWeight: 800,
+    textAlign: "left",
+  },
+  communicationContactsList: {
+    display: "grid",
+    gap: 10,
+    paddingRight: 2,
+    maxHeight: 260,
+    overflowY: "auto",
+  },
+  communicationCard: {
+    borderRadius: 20,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.94)",
+    color: "#0f172a",
+    boxShadow: "0 16px 36px rgba(15,23,42,0.2)",
+    overflow: "hidden",
+  },
   notificationsToggle: {
     position: "fixed",
     right: 24,
@@ -17642,8 +17891,8 @@ const styles: Record<string, React.CSSProperties> = {
     boxShadow: "0 16px 36px rgba(15,23,42,0.18)",
   },
   chatContactBubble: {
-    minWidth: 220,
-    minHeight: 58,
+    width: "100%",
+    minHeight: 68,
     borderRadius: 18,
     border: "1px solid #cbd5e1",
     background: "#ffffff",
@@ -17652,7 +17901,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "flex-start",
     gap: 10,
-    padding: "10px 14px",
+    padding: "12px 16px",
     fontWeight: 800,
     cursor: "pointer",
     position: "relative",
@@ -17681,8 +17930,8 @@ const styles: Record<string, React.CSSProperties> = {
     border: "2px solid #ffffff",
   },
   chatContactAvatar: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: 999,
     display: "inline-flex",
     alignItems: "center",
@@ -17693,12 +17942,14 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   chatContactLabel: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
-    maxWidth: 138,
-    whiteSpace: "nowrap",
+    flex: 1,
+    minWidth: 0,
+    whiteSpace: "normal",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    lineHeight: 1.3,
   },
   chatPanel: {
     display: "grid",
