@@ -12495,12 +12495,11 @@ export default function App() {
 
       {activeTab === "aprobados" && (
         <div style={styles.column}>
-          <Panel
-            span="full"
-            title="Trabajos aprobados por empresa"
-            span="full"
-            actions={
-              <div style={styles.inlineActions}>
+    <Panel
+      span="full"
+      title="Trabajos aprobados por empresa"
+      actions={
+        <div style={styles.inlineActions}>
                 <ButtonLike onClick={createDirectApprovedJob}>Nuevo trabajo directo</ButtonLike>
                 <ButtonLike onClick={importLegacyApprovedJobs} secondary>
                   Importar historicos BGA
