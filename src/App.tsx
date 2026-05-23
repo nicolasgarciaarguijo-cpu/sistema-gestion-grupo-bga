@@ -2270,6 +2270,8 @@ export default function App() {
   const presenceAnnouncementReadyRef = useRef(false);
   const knownOtherSessionIdsRef = useRef<string[]>([]);
   const isSupabaseLoggedIn = !!supabaseSession?.user;
+  const isChatWidgetVisible = workspaceWidgetOpen && workspaceWidgetMode === "chat";
+  const isAssistantWidgetVisible = workspaceWidgetOpen && workspaceWidgetMode === "assistant";
   runtimeCompanyOptions = companyCatalog.length > 0 ? companyCatalog : DEFAULT_COMPANY_OPTIONS;
   const COMPANY_OPTIONS = companyCatalog.length > 0 ? companyCatalog : DEFAULT_COMPANY_OPTIONS;
 
@@ -8699,7 +8701,6 @@ export default function App() {
                 onClick={() => {
                   setWorkspaceWidgetMode("assistant");
                   setWorkspaceWidgetOpen(true);
-                  setIsCommunicationExpanded(true);
                 }}
                 title="Abrir asistente del sistema"
               >
@@ -9196,7 +9197,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title={`Calendario anual unificado ${analysisYear}`}>
+          <Panel title={`Calendario anual unificado ${analysisYear}`} span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Eventos del aÃ±o" value={String(annualCashFlowEntries.length)} />
               <MiniMetric label="Mov. bancarios" value={String(bankStatementEntries.length)} />
@@ -9242,6 +9243,7 @@ export default function App() {
 
           <Panel
             title="Desendeudamiento"
+            span="half"
             actions={<ButtonLike onClick={addDebtPlan}>Agregar compromiso</ButtonLike>}
           >
             <div style={styles.metricGrid}>
@@ -9317,7 +9319,7 @@ export default function App() {
             </table>
           </Panel>
 
-          <Panel title={`Calendario anual de desendeudamiento ${analysisYear}`}>
+          <Panel title={`Calendario anual de desendeudamiento ${analysisYear}`} span="half">
             <div style={styles.yearCalendarGrid}>
               {annualDebtByMonth.map((month) => (
                 <div key={month.key} style={styles.yearCalendarCard}>
@@ -9355,6 +9357,7 @@ export default function App() {
 
           <Panel
             title="Resumen bancario"
+            span="full"
             actions={<ButtonLike onClick={addBankStatementEntry}>Agregar movimiento</ButtonLike>}
           >
             <div style={styles.metricGrid}>
@@ -9476,7 +9479,7 @@ export default function App() {
 
       {activeTab === "compras" && (
         <div style={styles.column}>
-          <Panel title="Resumen de compras pendientes">
+          <Panel title="Resumen de compras pendientes" span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
               <MiniMetric label="Costo estimado" value={money(totalPurchaseNeed)} />
@@ -9514,7 +9517,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Resumen administrativo de compras">
+          <Panel title="Resumen administrativo de compras" span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturas cargadas" value={String(purchaseInvoiceSummary.invoicesCount)} />
               <MiniMetric label="Carga asistida" value={String(purchaseInvoiceSummary.autoLoadedCount)} />
@@ -9529,7 +9532,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="Facturas blancas vinculadas desde caja chica">
+          <Panel title="Facturas blancas vinculadas desde caja chica" span="half">
             {visiblePettyCashExpenses.filter((item) => item.administration === "blanco").length === 0 ? (
               <div style={styles.empty}>No hay gastos de caja chica en blanco para levantar dentro de compras.</div>
             ) : (
@@ -9564,6 +9567,7 @@ export default function App() {
 
           <Panel
             title="Calendario de fechas limite de compra"
+            span="half"
             actions={
               <div style={styles.monthToolbar}>
                 <ButtonLike onClick={() => shiftPurchaseMonth(-1)} secondary>Mes anterior</ButtonLike>
@@ -9619,7 +9623,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="Gantt de compras">
+          <Panel title="Gantt de compras" span="full">
             {purchaseCalendarRows.length === 0 ? (
               <div style={styles.empty}>Carga fechas de inicio de fabricacion para ver el avance de compras.</div>
             ) : (
@@ -9782,6 +9786,7 @@ export default function App() {
 
           <Panel
             title="Responsabilidad y fondos"
+            span="half"
             actions={<ButtonLike onClick={addPettyCashFund}>Agregar caja chica</ButtonLike>}
           >
             {visiblePettyCashFunds.length === 0 ? (
@@ -10076,7 +10081,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Seguimiento de gastos aplicados">
+          <Panel title="Seguimiento de gastos aplicados" span="half">
             {pettyCashTrackingRows.length === 0 ? (
               <div style={styles.empty}>
                 Todavia no hay gastos aplicados para seguir.
@@ -11631,7 +11636,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="Costos fijos por grupo" actions={<ButtonLike onClick={addFixedMarker}>Agregar marcador</ButtonLike>}>
+          <Panel title="Costos fijos por grupo" span="half" actions={<ButtonLike onClick={addFixedMarker}>Agregar marcador</ButtonLike>}>
             <div style={styles.metricGrid}>
               {fixedMarkersByGroup.map((row) => (
                 <MiniMetric key={row.group} label={row.group} value={money(row.total)} />
@@ -11761,7 +11766,7 @@ export default function App() {
             </table>
           </Panel>
 
-          <Panel title="Insumos y fletes base" actions={<ButtonLike onClick={addSupplyMarker}>Agregar marcador</ButtonLike>}>
+          <Panel title="Insumos y fletes base" span="half" actions={<ButtonLike onClick={addSupplyMarker}>Agregar marcador</ButtonLike>}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -11893,6 +11898,7 @@ export default function App() {
           </Panel>
 
           <Panel
+            span="half"
             title="Mano de obra base"
             actions={
               <div style={styles.inlineActions}>
@@ -12025,6 +12031,7 @@ export default function App() {
           </Panel>
 
           <Panel
+            span="half"
             title="Informacion de personal: EPP e insumos"
             actions={
               <div style={styles.inlineActions}>
@@ -12176,7 +12183,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="CRM de clientes" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
+          <Panel title="CRM de clientes" span="half" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
             {crmClientRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay clientes en CRM porque no hay presupuestos guardados.</div>
             ) : (
@@ -12253,6 +12260,7 @@ export default function App() {
 
           {selectedCrmClient && (
             <Panel
+              span="half"
               title={`CRM ${selectedCrmClient.client}`}
               actions={<ButtonLike onClick={() => setSelectedCrmClientKey(null)} secondary>Cerrar CRM</ButtonLike>}
             >
@@ -12329,7 +12337,7 @@ export default function App() {
             </Panel>
           )}
 
-          <Panel title="Historial de presupuestos por empresa" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
+          <Panel title="Historial de presupuestos por empresa" span="half" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
             {savedBudgets.length === 0 ? (
               <div style={styles.empty}>Todavia no hay presupuestos guardados.</div>
             ) : (
@@ -12488,6 +12496,7 @@ export default function App() {
       {activeTab === "aprobados" && (
         <div style={styles.column}>
           <Panel
+            span="full"
             title="Trabajos aprobados por empresa"
             span="full"
             actions={
@@ -12589,7 +12598,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Evolucion de trabajos" span="wide">
+          <Panel title="Evolucion de trabajos" span="full">
             {approvedJobsTimelineRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay trabajos aprobados para mostrar en la linea de tiempo.</div>
             ) : (
@@ -14757,6 +14766,7 @@ export default function App() {
         <div style={styles.column}>
           <div style={{ order: 5 }}>
           <Panel
+            span="half"
             title="Alta, configuracion base y escalas"
             actions={
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -15315,7 +15325,7 @@ export default function App() {
           </div>
 
           <div style={{ order: 2 }}>
-          <Panel title="Empleados">
+          <Panel title="Empleados" span="half">
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -15426,6 +15436,7 @@ export default function App() {
           {selectedEmployee && (
             <div style={{ order: 3 }}>
             <Panel
+              span="half"
               title={`Ficha del empleado: ${selectedEmployee.name || "Empleado"}`}
               actions={<ButtonLike onClick={() => setSelectedEmployeeId(null)} secondary>Cerrar ficha</ButtonLike>}
             >
@@ -15891,14 +15902,14 @@ export default function App() {
           <aside
             style={{
               ...styles.communicationRail,
-              width: isCommunicationExpanded ? 460 : 88,
+              width: isCommunicationExpanded ? 284 : 88,
               background: workspaceTheme.sidebarGradient,
             }}
             onMouseEnter={() => setIsCommunicationExpanded(true)}
             onMouseLeave={() => setIsCommunicationExpanded(false)}
           >
             <div style={styles.communicationRailTitle}>
-              {isCommunicationExpanded ? "Comunicacion" : "Coms"}
+              {isCommunicationExpanded ? "Comunicacion" : "MSJ"}
             </div>
 
             <div style={styles.communicationSection}>
@@ -15907,7 +15918,7 @@ export default function App() {
                 style={styles.communicationSectionButton}
                 onClick={() => setNotificationsOpen((prev) => !prev)}
               >
-                <span>Notificaciones</span>
+                <span>{isCommunicationExpanded ? "Notificaciones" : "NT"}</span>
                 {unreadNotificationCount > 0 && (
                   <span style={styles.workspaceWidgetBadge}>{unreadNotificationCount}</span>
                 )}
@@ -15947,11 +15958,13 @@ export default function App() {
                 type="button"
                 style={styles.communicationSectionButton}
                 onClick={() => {
+                  setSelectedChatRecipientId(null);
+                  setSelectedChatRecipientName("Canal general");
                   setWorkspaceWidgetMode("chat");
-                  setWorkspaceWidgetOpen((prev) => !prev);
+                  setWorkspaceWidgetOpen(true);
                 }}
               >
-                <span>{workspaceWidgetOpen && workspaceWidgetMode === "chat" ? "Ocultar chat" : "Chat"}</span>
+                <span>{isCommunicationExpanded ? "Chats" : "CH"}</span>
                 {(groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)) > 0 && (
                   <span style={styles.workspaceWidgetBadge}>
                     {groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)}
@@ -15975,6 +15988,7 @@ export default function App() {
                       });
                       setWorkspaceWidgetMode("chat");
                       setWorkspaceWidgetOpen(true);
+                      setShowChatContacts(true);
                     }}
                     title="Canal general"
                   >
@@ -16010,6 +16024,7 @@ export default function App() {
                           });
                           setWorkspaceWidgetMode("chat");
                           setWorkspaceWidgetOpen(true);
+                          setShowChatContacts(true);
                         }}
                         title={peer.full_name || peer.email}
                       >
@@ -16025,172 +16040,181 @@ export default function App() {
                   })}
                 </div>
               )}
-
-              {isCommunicationExpanded && workspaceWidgetOpen && (
-                <div style={styles.communicationCard}>
-                  <div style={styles.workspaceWidgetHeader}>
-                    <div>
-                      <div style={styles.workspaceWidgetTitle}>
-                        {workspaceWidgetMode === "assistant" ? "Asistente" : "Chat interno"}
-                      </div>
-                      <div style={styles.chatStatus}>
-                        {workspaceWidgetMode === "chat"
-                          ? selectedChatRecipientId
-                            ? `Chat privado con ${selectedChatRecipientName}`
-                            : "Canal grupal del sistema"
-                          : "Consultas rapidas del sistema"}
-                      </div>
-                    </div>
-                    <div style={styles.workspaceWidgetTabs}>
-                      <button
-                        type="button"
-                        style={{
-                          ...styles.workspaceWidgetTab,
-                          ...(workspaceWidgetMode === "chat" ? styles.workspaceWidgetTabActive : {}),
-                        }}
-                        onClick={() => setWorkspaceWidgetMode("chat")}
-                      >
-                        Chat
-                      </button>
-                      <button
-                        type="button"
-                        style={{
-                          ...styles.workspaceWidgetTab,
-                          ...(workspaceWidgetMode === "assistant" ? styles.workspaceWidgetTabActive : {}),
-                        }}
-                        onClick={() => setWorkspaceWidgetMode("assistant")}
-                      >
-                        Asistente
-                      </button>
-                    </div>
-                  </div>
-
-                  <div style={styles.workspaceWidgetBody}>
-                    {workspaceWidgetMode === "chat" ? (
-                      <div style={styles.chatPanel}>
-                        <div style={styles.chatMessages}>
-                          {visibleChatMessages.length === 0 ? (
-                            <div style={styles.empty}>
-                              {selectedChatRecipientId
-                                ? "Todavia no hay mensajes privados en esta conversacion."
-                                : "Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo."}
-                            </div>
-                          ) : (
-                            visibleChatMessages.map((message) => {
-                              const isOwnMessage =
-                                message.user_id && message.user_id === supabaseSession?.user?.id;
-                              return (
-                                <div
-                                  key={`chat-${message.id}`}
-                                  style={{
-                                    ...styles.chatMessage,
-                                    ...(isOwnMessage
-                                      ? styles.chatMessageOwn
-                                      : styles.chatMessageOther),
-                                  }}
-                                >
-                                  <div style={styles.chatMessageHeader}>
-                                    <strong>
-                                      {message.full_name || message.email}
-                                      {message.recipient_user_id
-                                        ? ` -> ${message.recipient_full_name || "Privado"}`
-                                        : ""}
-                                    </strong>
-                                    <span style={styles.chatTimestamp}>
-                                      {formatDateTimeDisplay(message.created_at)}
-                                    </span>
-                                  </div>
-                                  <div>{message.message}</div>
-                                </div>
-                              );
-                            })
-                          )}
-                        </div>
-                        <div style={styles.chatComposer}>
-                          <div style={styles.chatStatus}>
-                            Destino: {selectedChatRecipientId ? selectedChatRecipientName : "Canal general"}
-                          </div>
-                          <textarea
-                            style={styles.chatTextarea}
-                            value={supabaseChatDraft}
-                            onChange={(e) => setSupabaseChatDraft(e.target.value)}
-                            placeholder={
-                              selectedChatRecipientId
-                                ? "Escribe un mensaje privado..."
-                                : "Escribe un mensaje rapido para el equipo..."
-                            }
-                          />
-                          <div style={styles.chatActions}>
-                            <ButtonLike onClick={loadSupabaseChatMessages} secondary>
-                              Actualizar
-                            </ButtonLike>
-                            {selectedChatRecipientId && (
-                              <ButtonLike
-                                onClick={() => {
-                                  setSelectedChatRecipientId(null);
-                                  setSelectedChatRecipientName("Canal general");
-                                }}
-                                secondary
-                              >
-                                Volver al grupal
-                              </ButtonLike>
-                            )}
-                            <ButtonLike onClick={sendSupabaseChatMessage}>Enviar</ButtonLike>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <div style={styles.chatPanel}>
-                        <div style={styles.assistantHint}>
-                          Preguntale por presupuestos, stock, caja chica, compras, Historial y CRM, usuarios activos o guardado compartido.
-                        </div>
-                        <div style={styles.assistantMessages}>
-                          {assistantMessages.map((message) => (
-                            <div
-                              key={`assistant-${message.id}`}
-                              style={{
-                                ...styles.assistantMessage,
-                                ...(message.role === "assistant"
-                                  ? styles.assistantMessageBot
-                                  : styles.assistantMessageUser),
-                              }}
-                            >
-                              <div style={styles.chatMessageHeader}>
-                                <strong>
-                                  {message.role === "assistant"
-                                    ? "Asistente del sistema"
-                                    : "Tu consulta"}
-                                </strong>
-                                <span style={styles.chatTimestamp}>
-                                  {formatDateTimeDisplay(message.created_at)}
-                                </span>
-                              </div>
-                              <div>{message.text}</div>
-                            </div>
-                          ))}
-                        </div>
-                        <div style={styles.assistantComposer}>
-                          <textarea
-                            style={styles.chatTextarea}
-                            value={assistantDraft}
-                            onChange={(e) => setAssistantDraft(e.target.value)}
-                            placeholder="Ejemplo: decime cuantos presupuestos hay, quien esta operando o como esta caja chica..."
-                          />
-                          <div style={styles.chatActions}>
-                            <ButtonLike onClick={sendAssistantQuestion}>
-                              Consultar asistente
-                            </ButtonLike>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </aside>
         )}
       </div>
+
+      {isSupabaseLoggedIn && isChatWidgetVisible && (
+        <div style={styles.chatOverlay}>
+          <div style={styles.workspaceWidgetHeader}>
+            <div>
+              <div style={styles.workspaceWidgetTitle}>Chat interno</div>
+              <div style={styles.chatStatus}>
+                {selectedChatRecipientId
+                  ? `Chat privado con ${selectedChatRecipientName}`
+                  : "Canal grupal del sistema"}
+              </div>
+            </div>
+            <div style={styles.workspaceWidgetTabs}>
+              {selectedChatRecipientId && (
+                <ButtonLike
+                  onClick={() => {
+                    setSelectedChatRecipientId(null);
+                    setSelectedChatRecipientName("Canal general");
+                  }}
+                  secondary
+                >
+                  Volver al grupal
+                </ButtonLike>
+              )}
+              <button
+                type="button"
+                style={styles.workspaceWidgetClose}
+                onClick={() => setWorkspaceWidgetOpen(false)}
+              >
+                Minimizar
+              </button>
+            </div>
+          </div>
+          <div style={styles.workspaceWidgetBody}>
+            <div style={styles.chatPanel}>
+              <div style={styles.chatMessagesLarge}>
+                {visibleChatMessages.length === 0 ? (
+                  <div style={styles.empty}>
+                    {selectedChatRecipientId
+                      ? "Todavia no hay mensajes privados en esta conversacion."
+                      : "Todavia no hay mensajes internos. Puedes usar este chat para coordinar cambios mientras varias personas trabajan al mismo tiempo."}
+                  </div>
+                ) : (
+                  visibleChatMessages.map((message) => {
+                    const isOwnMessage =
+                      message.user_id && message.user_id === supabaseSession?.user?.id;
+                    return (
+                      <div
+                        key={`chat-${message.id}`}
+                        style={{
+                          ...styles.chatMessage,
+                          ...(isOwnMessage ? styles.chatMessageOwn : styles.chatMessageOther),
+                        }}
+                      >
+                        <div style={styles.chatMessageHeader}>
+                          <strong>
+                            {message.full_name || message.email}
+                            {message.recipient_user_id
+                              ? ` -> ${message.recipient_full_name || "Privado"}`
+                              : ""}
+                          </strong>
+                          <span style={styles.chatTimestamp}>
+                            {formatDateTimeDisplay(message.created_at)}
+                          </span>
+                        </div>
+                        <div>{message.message}</div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <div style={styles.chatComposer}>
+                <div style={styles.chatStatus}>
+                  Destino: {selectedChatRecipientId ? selectedChatRecipientName : "Canal general"}
+                </div>
+                <textarea
+                  style={styles.chatTextarea}
+                  value={supabaseChatDraft}
+                  onChange={(e) => setSupabaseChatDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendSupabaseChatMessage();
+                    }
+                  }}
+                  placeholder={
+                    selectedChatRecipientId
+                      ? "Escribe un mensaje privado..."
+                      : "Escribe un mensaje rapido para el equipo..."
+                  }
+                />
+                <div style={styles.chatActions}>
+                  <ButtonLike onClick={loadSupabaseChatMessages} secondary>
+                    Actualizar
+                  </ButtonLike>
+                  <ButtonLike onClick={sendSupabaseChatMessage}>Enviar</ButtonLike>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isSupabaseLoggedIn && isAssistantWidgetVisible && (
+        <div style={styles.assistantOverlay}>
+          <div style={styles.workspaceWidgetHeader}>
+            <div>
+              <div style={styles.workspaceWidgetTitle}>Asistente del sistema</div>
+              <div style={styles.chatStatus}>Consultas, avisos y soporte operativo</div>
+            </div>
+            <button
+              type="button"
+              style={styles.workspaceWidgetClose}
+              onClick={() => setWorkspaceWidgetOpen(false)}
+            >
+              Minimizar
+            </button>
+          </div>
+          <div style={styles.workspaceWidgetBody}>
+            <div style={styles.chatPanel}>
+              <div style={styles.assistantHint}>
+                Preguntale por presupuestos, stock, caja chica, compras, Historial y CRM, usuarios activos o guardado compartido.
+              </div>
+              <div style={styles.assistantMessages}>
+                {assistantMessages.map((message) => (
+                  <div
+                    key={`assistant-${message.id}`}
+                    style={{
+                      ...styles.assistantMessage,
+                      ...(message.role === "assistant"
+                        ? styles.assistantMessageBot
+                        : styles.assistantMessageUser),
+                    }}
+                  >
+                    <div style={styles.chatMessageHeader}>
+                      <strong>
+                        {message.role === "assistant"
+                          ? "Asistente del sistema"
+                          : "Tu consulta"}
+                      </strong>
+                      <span style={styles.chatTimestamp}>
+                        {formatDateTimeDisplay(message.created_at)}
+                      </span>
+                    </div>
+                    <div>{message.text}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={styles.assistantComposer}>
+                <textarea
+                  style={styles.chatTextarea}
+                  value={assistantDraft}
+                  onChange={(e) => setAssistantDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      sendAssistantQuestion();
+                    }
+                  }}
+                  placeholder="Ejemplo: decime cuantos presupuestos hay, quien esta operando o como esta caja chica..."
+                />
+                <div style={styles.chatActions}>
+                  <ButtonLike onClick={sendAssistantQuestion}>
+                    Consultar asistente
+                  </ButtonLike>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div id="client-budget-pdf" style={{ display: "none" }}>
         <BudgetDocument
@@ -16807,7 +16831,7 @@ function Panel({
   actions?: React.ReactNode;
   nested?: boolean;
   green?: boolean;
-  span?: "auto" | "wide" | "full";
+  span?: "auto" | "half" | "wide" | "full";
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -16815,6 +16839,7 @@ function Panel({
     <div
       style={{
         ...styles.panel,
+        ...(span === "half" ? styles.panelHalf : {}),
         ...(span === "wide" ? styles.panelWide : {}),
         ...(span === "full" ? styles.panelFull : {}),
         ...(nested ? styles.nestedPanel : {}),
@@ -17271,7 +17296,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   column: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))",
+    gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
     gap: 14,
     alignItems: "start",
   },
@@ -17280,9 +17305,14 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 18,
     padding: 14,
     boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+    gridColumn: "span 4",
+    minWidth: 0,
+  },
+  panelHalf: {
+    gridColumn: "span 6",
   },
   panelWide: {
-    gridColumn: "span 2",
+    gridColumn: "span 8",
   },
   panelFull: {
     gridColumn: "1 / -1",
@@ -17797,9 +17827,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   communicationContactsList: {
     display: "grid",
-    gap: 10,
+    gap: 8,
     paddingRight: 2,
-    maxHeight: 420,
+    maxHeight: "calc(100vh - 220px)",
     overflowY: "auto",
   },
   communicationCard: {
@@ -17913,8 +17943,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   chatContactBubble: {
     width: "100%",
-    minHeight: 78,
-    borderRadius: 18,
+    minHeight: 64,
+    borderRadius: 16,
     border: "1px solid #cbd5e1",
     background: "#ffffff",
     color: "#0f172a",
@@ -17922,7 +17952,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: "center",
     justifyContent: "flex-start",
     gap: 12,
-    padding: "14px 16px",
+    padding: "12px 14px",
     fontWeight: 800,
     cursor: "pointer",
     position: "relative",
@@ -17951,8 +17981,8 @@ const styles: Record<string, React.CSSProperties> = {
     border: "2px solid #ffffff",
   },
   chatContactAvatar: {
-    width: 46,
-    height: 46,
+    width: 42,
+    height: 42,
     borderRadius: 999,
     display: "inline-flex",
     alignItems: "center",
@@ -17963,14 +17993,50 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   chatContactLabel: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: 700,
     flex: 1,
     minWidth: 0,
     whiteSpace: "normal",
     overflow: "visible",
     textOverflow: "initial",
-    lineHeight: 1.3,
+    lineHeight: 1.25,
+  },
+  chatOverlay: {
+    position: "fixed",
+    right: 96,
+    top: 84,
+    bottom: 18,
+    width: "min(440px, calc(100vw - 180px))",
+    zIndex: 52,
+    borderRadius: 22,
+    border: "1px solid #cbd5e1",
+    background: "rgba(255,255,255,0.98)",
+    boxShadow: "0 22px 48px rgba(15,23,42,0.24)",
+    display: "grid",
+    overflow: "hidden",
+  },
+  assistantOverlay: {
+    position: "fixed",
+    left: 104,
+    bottom: 24,
+    width: "min(420px, calc(100vw - 180px))",
+    maxHeight: "calc(100vh - 140px)",
+    zIndex: 51,
+    borderRadius: 22,
+    border: "1px solid #cbd5e1",
+    background: "rgba(255,255,255,0.98)",
+    boxShadow: "0 22px 48px rgba(15,23,42,0.24)",
+    display: "grid",
+    overflow: "hidden",
+  },
+  chatMessagesLarge: {
+    display: "grid",
+    gap: 10,
+    flex: 1,
+    minHeight: 0,
+    overflowY: "auto",
+    paddingRight: 4,
   },
   chatPanel: {
     display: "grid",
@@ -18477,6 +18543,7 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(255,255,255,0.96)",
   },
 };
+
 
 
 
