@@ -4465,6 +4465,52 @@ export default function App() {
     [approvedJobsTimelineRows]
   );
 
+  const fabricationGanttTimeline = useMemo(() => {
+    if (fabricationCalendarRows.length === 0) {
+      return {
+        start: todayIso(),
+        end: todayIso(),
+        dayLabels: [] as Array<{ key: string; label: string; weekend: boolean }>,
+        totalDays: 1,
+      };
+    }
+
+    const starts = fabricationCalendarRows.map((job) => new Date(job.start || job.approvalDate || todayIso()).getTime());
+    const ends = fabricationCalendarRows.map((job) => new Date(job.end || job.deliveryDate || job.start || todayIso()).getTime());
+    const minTime = Math.min(...starts);
+    const maxTime = Math.max(...ends);
+    const startDate = new Date(minTime);
+    const endDate = new Date(maxTime);
+
+    startDate.setDate(startDate.getDate() - 3);
+    endDate.setDate(endDate.getDate() + 3);
+
+    const totalDays = Math.max(
+      1,
+      Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1
+    );
+
+    const dayLabels = Array.from({ length: totalDays }).map((_, index) => {
+      const current = new Date(startDate);
+      current.setDate(startDate.getDate() + index);
+      const weekday = current.getDay();
+      return {
+        key: current.toISOString().slice(0, 10),
+        label: `${String(current.getDate()).padStart(2, "0")}/${String(
+          current.getMonth() + 1
+        ).padStart(2, "0")}`,
+        weekend: weekday === 0 || weekday === 6,
+      };
+    });
+
+    return {
+      start: startDate.toISOString().slice(0, 10),
+      end: endDate.toISOString().slice(0, 10),
+      dayLabels,
+      totalDays,
+    };
+  }, [fabricationCalendarRows]);
+
   const fabricationOpenJobsCount = fabricationCalendarRows.filter(
     (job) => job.executionStatus !== "finalizado"
   ).length;
@@ -13553,6 +13599,86 @@ export default function App() {
               </table>
             )}
           </Panel>
+
+          <Panel title="Gantt operativo de fabricacion">
+            {fabricationCalendarRows.length === 0 ? (
+              <div style={styles.empty}>Todavia no hay trabajos suficientes para mostrar el Gantt.</div>
+            ) : (
+              <div style={styles.fabricationGanttWrap}>
+                <div style={styles.fabricationGanttHeader}>
+                  <div style={styles.fabricationGanttMeta}>
+                    Ventana visible: {formatDateDisplay(fabricationGanttTimeline.start)} al{" "}
+                    {formatDateDisplay(fabricationGanttTimeline.end)}
+                  </div>
+                  <div style={styles.fabricationGanttLegend}>
+                    <span style={styles.fabricationGanttLegendItem}>Barra: plazo comprometido</span>
+                    <span style={styles.fabricationGanttLegendItem}>Color: empresa</span>
+                  </div>
+                </div>
+                <div style={styles.fabricationGanttGrid}>
+                  <div style={styles.fabricationGanttDays}>
+                    {fabricationGanttTimeline.dayLabels.map((day) => (
+                      <div
+                        key={`gantt-day-${day.key}`}
+                        style={{
+                          ...styles.fabricationGanttDay,
+                          ...(day.weekend ? styles.fabricationGanttDayWeekend : {}),
+                        }}
+                      >
+                        {day.label}
+                      </div>
+                    ))}
+                  </div>
+                  {fabricationCalendarRows.map((job) => {
+                    const companyMeta = getCompanyMeta(job.company);
+                    const startTime = new Date(job.start || job.approvalDate || fabricationGanttTimeline.start).getTime();
+                    const endTime = new Date(job.end || job.deliveryDate || job.start || fabricationGanttTimeline.end).getTime();
+                    const timelineStart = new Date(fabricationGanttTimeline.start).getTime();
+                    const totalRange = Math.max(
+                      1,
+                      new Date(fabricationGanttTimeline.end).getTime() - timelineStart
+                    );
+                    const leftPct = Math.max(0, ((startTime - timelineStart) / totalRange) * 100);
+                    const widthPct = Math.max(
+                      2,
+                      ((Math.max(endTime, startTime) - startTime + 1000 * 60 * 60 * 24) / totalRange) * 100
+                    );
+                    return (
+                      <div key={`gantt-row-${job.id}`} style={styles.fabricationGanttRow}>
+                        <div style={styles.fabricationGanttJobMeta}>
+                          <strong>
+                            {job.budgetNumber} · {job.client}
+                          </strong>
+                          <span style={styles.muted}>
+                            {companyMeta.short} · {job.projectManager || "Sin encargado"} ·{" "}
+                            {job.executionStatus === "finalizado"
+                              ? "Finalizado"
+                              : job.executionStatus === "en_curso"
+                              ? "En curso"
+                              : "Pendiente"}
+                          </span>
+                        </div>
+                        <div style={styles.fabricationGanttTrack}>
+                          <div
+                            style={{
+                              ...styles.fabricationGanttBar,
+                              left: `${leftPct}%`,
+                              width: `${widthPct}%`,
+                              background: `linear-gradient(90deg, ${companyMeta.primary}, ${companyMeta.primary}CC)`,
+                            }}
+                          >
+                            <span style={styles.fabricationGanttBarLabel}>
+                              {formatDateDisplay(job.start || job.approvalDate)} → {formatDateDisplay(job.end || job.deliveryDate)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </Panel>
         </div>
       )}
 
@@ -17860,6 +17986,97 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: "#475569",
     textTransform: "capitalize",
+  },
+  fabricationGanttWrap: {
+    display: "grid",
+    gap: 12,
+  },
+  fabricationGanttHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  fabricationGanttMeta: {
+    fontSize: 13,
+    color: "#475569",
+  },
+  fabricationGanttLegend: {
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  fabricationGanttLegendItem: {
+    fontSize: 12,
+    color: "#64748b",
+    background: "#f8fafc",
+    border: "1px solid #e2e8f0",
+    borderRadius: 999,
+    padding: "6px 10px",
+  },
+  fabricationGanttGrid: {
+    display: "grid",
+    gap: 10,
+    overflowX: "auto",
+  },
+  fabricationGanttDays: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(52px, 1fr))",
+    gap: 4,
+    minWidth: 760,
+  },
+  fabricationGanttDay: {
+    textAlign: "center",
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#334155",
+    padding: "6px 4px",
+    borderRadius: 8,
+    background: "#eff6ff",
+    border: "1px solid #dbeafe",
+  },
+  fabricationGanttDayWeekend: {
+    background: "#f8fafc",
+    borderColor: "#e2e8f0",
+    color: "#64748b",
+  },
+  fabricationGanttRow: {
+    display: "grid",
+    gap: 8,
+    minWidth: 760,
+  },
+  fabricationGanttJobMeta: {
+    display: "grid",
+    gap: 4,
+  },
+  fabricationGanttTrack: {
+    position: "relative",
+    height: 36,
+    borderRadius: 12,
+    background:
+      "repeating-linear-gradient(90deg, #f8fafc 0px, #f8fafc 48px, #e2e8f0 48px, #e2e8f0 52px)",
+    border: "1px solid #e2e8f0",
+    overflow: "hidden",
+  },
+  fabricationGanttBar: {
+    position: "absolute",
+    top: 5,
+    bottom: 5,
+    borderRadius: 10,
+    display: "flex",
+    alignItems: "center",
+    padding: "0 10px",
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: 700,
+    boxShadow: "0 10px 22px rgba(15, 23, 42, 0.18)",
+    minWidth: 80,
+  },
+  fabricationGanttBarLabel: {
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   attendanceGrid: {
     display: "grid",
