@@ -9166,7 +9166,7 @@ export default function App() {
 
       {activeTab === "cashflow" && (
         <div style={styles.column}>
-          <Panel title="Cash flow y estado de resultados">
+          <Panel title="Cash flow y estado de resultados" span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturado bruto" value={money(cashFlowSummary.billedGross)} />
               <MiniMetric label="Cobrado" value={money(cashFlowSummary.collected)} />
@@ -9179,7 +9179,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="Resultado preliminar">
+          <Panel title="Resultado preliminar" span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Ingresos cobrados" value={money(cashFlowSummary.collected)} />
               <MiniMetric label="Compras" value={money(cashFlowSummary.purchaseInvoicesTotal)} />
@@ -9197,7 +9197,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title={`Calendario anual unificado ${analysisYear}`} span="half">
+          <Panel title={`Calendario anual unificado ${analysisYear}`} span="wide">
             <div style={styles.metricGrid}>
               <MiniMetric label="Eventos del aÃ±o" value={String(annualCashFlowEntries.length)} />
               <MiniMetric label="Mov. bancarios" value={String(bankStatementEntries.length)} />
@@ -9243,7 +9243,7 @@ export default function App() {
 
           <Panel
             title="Desendeudamiento"
-            span="half"
+            span="wide"
             actions={<ButtonLike onClick={addDebtPlan}>Agregar compromiso</ButtonLike>}
           >
             <div style={styles.metricGrid}>
@@ -9319,7 +9319,7 @@ export default function App() {
             </table>
           </Panel>
 
-          <Panel title={`Calendario anual de desendeudamiento ${analysisYear}`} span="half">
+          <Panel title={`Calendario anual de desendeudamiento ${analysisYear}`} span="wide">
             <div style={styles.yearCalendarGrid}>
               {annualDebtByMonth.map((month) => (
                 <div key={month.key} style={styles.yearCalendarCard}>
@@ -12183,7 +12183,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="CRM de clientes" span="half" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
+          <Panel title="CRM de clientes" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
             {crmClientRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay clientes en CRM porque no hay presupuestos guardados.</div>
             ) : (
@@ -12337,7 +12337,7 @@ export default function App() {
             </Panel>
           )}
 
-          <Panel title="Historial de presupuestos por empresa" span="half" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
+          <Panel title="Historial de presupuestos por empresa" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
             {savedBudgets.length === 0 ? (
               <div style={styles.empty}>Todavia no hay presupuestos guardados.</div>
             ) : (
@@ -13824,7 +13824,7 @@ export default function App() {
 
       {activeTab === "stock" && (
         <div style={styles.column}>
-          <Panel title="Agenda de fabricacion" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
+          <Panel title="Agenda de fabricacion" span="half" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -13909,6 +13909,7 @@ export default function App() {
 
           <Panel
             title="Inventario y alertas"
+            span="wide"
             actions={
               <div style={styles.inlineActions}>
                 <span style={styles.muted}>Aumento %</span>
@@ -14056,6 +14057,7 @@ export default function App() {
 
           <Panel
             title="Analisis de costos"
+            span="half"
             actions={
               <div style={styles.inlineActions}>
                 <ButtonLike onClick={addCostAnalysisGroup} secondary>
@@ -14765,8 +14767,8 @@ export default function App() {
         <div style={styles.column}>
           <div style={{ order: 5 }}>
           <Panel
-            span="half"
             title="Alta, configuracion base y escalas"
+            span="wide"
             actions={
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <ButtonLike onClick={applyBaseConfigToAllEmployees}>Aplicar base</ButtonLike>
@@ -15305,7 +15307,7 @@ export default function App() {
           </div>
 
           <div style={{ order: 1 }}>
-          <Panel title="Resumen por empresa">
+          <Panel title="Resumen por empresa" span="half">
             <div style={styles.metricGrid}>
               {totalCompanyPayroll.map((row) => {
                 const meta = getCompanyMeta(row.company);
@@ -15324,7 +15326,7 @@ export default function App() {
           </div>
 
           <div style={{ order: 2 }}>
-          <Panel title="Empleados" span="half">
+          <Panel title="Empleados" span="full">
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -15435,7 +15437,7 @@ export default function App() {
           {selectedEmployee && (
             <div style={{ order: 3 }}>
             <Panel
-              span="half"
+              span="wide"
               title={`Ficha del empleado: ${selectedEmployee.name || "Empleado"}`}
               actions={<ButtonLike onClick={() => setSelectedEmployeeId(null)} secondary>Cerrar ficha</ButtonLike>}
             >
@@ -15972,7 +15974,7 @@ export default function App() {
               </button>
 
               {isCommunicationExpanded && (
-                <div style={styles.communicationContactsList}>
+                <div className="communication-contacts-list" style={styles.communicationContactsList}>
                   <button
                     type="button"
                     style={{
@@ -17830,6 +17832,9 @@ const styles: Record<string, React.CSSProperties> = {
     paddingRight: 2,
     maxHeight: "calc(100vh - 220px)",
     overflowY: "auto",
+    overflowX: "hidden",
+    scrollbarWidth: "none",
+    msOverflowStyle: "none",
   },
   communicationCard: {
     borderRadius: 20,
