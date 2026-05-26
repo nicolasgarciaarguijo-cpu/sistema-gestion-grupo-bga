@@ -2204,7 +2204,7 @@ export default function App() {
     defaultFinancialItems[0]?.id ?? null
   );
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(
-    defaultEmployees[0]?.id ?? null
+    null
   );
   const [financialMonth, setFinancialMonth] = useState(new Date().toISOString().slice(0, 7));
   const [purchaseMonth, setPurchaseMonth] = useState(new Date().toISOString().slice(0, 7));
@@ -4721,8 +4721,11 @@ export default function App() {
   }, [budget.company, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]);
 
   useEffect(() => {
-    if (visibleEmployees.length > 0 && !visibleEmployees.some((item) => item.id === selectedEmployeeId)) {
-      setSelectedEmployeeId(visibleEmployees[0].id);
+    if (
+      selectedEmployeeId !== null &&
+      !visibleEmployees.some((item) => item.id === selectedEmployeeId)
+    ) {
+      setSelectedEmployeeId(null);
     }
   }, [visibleEmployees, selectedEmployeeId]);
 
@@ -14765,13 +14768,13 @@ export default function App() {
 
       {activeTab === "personal" && (
         <div style={styles.column}>
-          <div style={{ order: 5 }}>
-          <Panel
-            title="Alta, configuracion base y escalas"
-            span="wide"
-            actions={
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <ButtonLike onClick={applyBaseConfigToAllEmployees}>Aplicar base</ButtonLike>
+          <div style={{ order: 5, gridColumn: "1 / -1" }}>
+            <Panel
+              title="Alta, configuracion base y escalas"
+              span="full"
+              actions={
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <ButtonLike onClick={applyBaseConfigToAllEmployees}>Aplicar base</ButtonLike>
                 <ButtonLike onClick={addEmployee}>Agregar empleado</ButtonLike>
                 <ButtonLike onClick={() => exportPrint("report-personal")} secondary>Reporte</ButtonLike>
               </div>
@@ -15900,29 +15903,33 @@ export default function App() {
         </div>
 
         {isSupabaseLoggedIn && (
-          <aside
-            style={{
-              ...styles.communicationRail,
-              width: isCommunicationExpanded ? 284 : 88,
-              background: workspaceTheme.sidebarGradient,
-            }}
-            onMouseEnter={() => setIsCommunicationExpanded(true)}
-            onMouseLeave={() => setIsCommunicationExpanded(false)}
-          >
-            <div style={styles.communicationRailTitle}>
-              {isCommunicationExpanded ? "Comunicacion" : "MSJ"}
-            </div>
+        <aside
+          style={{
+            ...styles.communicationRail,
+            width: isCommunicationExpanded ? 252 : 88,
+            background: workspaceTheme.sidebarGradient,
+          }}
+          onMouseEnter={() => setIsCommunicationExpanded(true)}
+          onMouseLeave={() => setIsCommunicationExpanded(false)}
+        >
+          <div style={styles.communicationRailTitle}>
+            {isCommunicationExpanded ? "💬" : "💬"}
+          </div>
 
-            <div style={styles.communicationSection}>
-              <button
-                type="button"
-                style={styles.communicationSectionButton}
-                onClick={() => setNotificationsOpen((prev) => !prev)}
-              >
-                <span>{isCommunicationExpanded ? "Notificaciones" : "NT"}</span>
-                {unreadNotificationCount > 0 && (
-                  <span style={styles.workspaceWidgetBadge}>{unreadNotificationCount}</span>
-                )}
+          <div style={styles.communicationSection}>
+            <button
+              type="button"
+              style={{
+                ...styles.communicationSectionButton,
+                justifyContent: isCommunicationExpanded ? "space-between" : "center",
+                padding: isCommunicationExpanded ? "12px 14px" : "12px 10px",
+              }}
+              onClick={() => setNotificationsOpen((prev) => !prev)}
+            >
+              <span>{isCommunicationExpanded ? "🔔 Notificaciones" : "🔔"}</span>
+              {unreadNotificationCount > 0 && (
+                <span style={styles.workspaceWidgetBadge}>{unreadNotificationCount}</span>
+              )}
               </button>
               {isCommunicationExpanded && notificationsOpen && (
                 <div style={styles.communicationCard}>
@@ -15954,21 +15961,25 @@ export default function App() {
               )}
             </div>
 
-            <div style={styles.communicationSection}>
-              <button
-                type="button"
-                style={styles.communicationSectionButton}
-                onClick={() => {
-                  setSelectedChatRecipientId(null);
-                  setSelectedChatRecipientName("Canal general");
-                  setWorkspaceWidgetMode("chat");
-                  setWorkspaceWidgetOpen(true);
-                }}
-              >
-                <span>{isCommunicationExpanded ? "Chats" : "CH"}</span>
-                {(groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)) > 0 && (
-                  <span style={styles.workspaceWidgetBadge}>
-                    {groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)}
+          <div style={styles.communicationSection}>
+            <button
+              type="button"
+              style={{
+                ...styles.communicationSectionButton,
+                justifyContent: isCommunicationExpanded ? "space-between" : "center",
+                padding: isCommunicationExpanded ? "12px 14px" : "12px 10px",
+              }}
+              onClick={() => {
+                setSelectedChatRecipientId(null);
+                setSelectedChatRecipientName("Canal general");
+                setWorkspaceWidgetMode("chat");
+                setWorkspaceWidgetOpen(true);
+              }}
+            >
+              <span>{isCommunicationExpanded ? "💬 Chats" : "💬"}</span>
+              {(groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)) > 0 && (
+                <span style={styles.workspaceWidgetBadge}>
+                  {groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)}
                   </span>
                 )}
               </button>
@@ -16832,7 +16843,7 @@ function Panel({
   actions?: React.ReactNode;
   nested?: boolean;
   green?: boolean;
-  span?: "auto" | "half" | "wide" | "full";
+  span?: "auto" | "half" | "wide" | "full" | "third";
 }) {
   const [collapsed, setCollapsed] = useState(false);
 
@@ -16840,6 +16851,7 @@ function Panel({
     <div
       style={{
         ...styles.panel,
+        ...(span === "third" ? styles.panelThird : {}),
         ...(span === "half" ? styles.panelHalf : {}),
         ...(span === "wide" ? styles.panelWide : {}),
         ...(span === "full" ? styles.panelFull : {}),
@@ -17300,6 +17312,7 @@ const styles: Record<string, React.CSSProperties> = {
     gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
     gap: 14,
     alignItems: "start",
+    gridAutoFlow: "dense",
   },
   panel: {
     background: "white",
@@ -17801,11 +17814,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   communicationRailTitle: {
     color: "rgba(255,255,255,0.84)",
-    fontSize: 12,
+    fontSize: 18,
     fontWeight: 800,
-    letterSpacing: 1,
-    textTransform: "uppercase",
-    padding: "6px 8px 2px",
+    letterSpacing: 0.5,
+    textTransform: "none",
+    padding: "6px 8px 4px",
+    textAlign: "center",
   },
   communicationSection: {
     display: "grid",
@@ -17829,7 +17843,7 @@ const styles: Record<string, React.CSSProperties> = {
   communicationContactsList: {
     display: "grid",
     gap: 8,
-    paddingRight: 2,
+    paddingRight: 0,
     maxHeight: "calc(100vh - 220px)",
     overflowY: "auto",
     overflowX: "hidden",
@@ -17997,14 +18011,14 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   chatContactLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: 700,
     flex: 1,
     minWidth: 0,
-    whiteSpace: "normal",
-    overflow: "visible",
-    textOverflow: "initial",
-    lineHeight: 1.25,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    lineHeight: 1.2,
   },
   chatOverlay: {
     position: "fixed",
