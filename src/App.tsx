@@ -2267,6 +2267,7 @@ export default function App() {
   const lastAppliedRemoteSnapshotAtRef = useRef(0);
   const lastSnapshotEventKeyRef = useRef("");
   const lastPersistedDataSignatureRef = useRef("");
+  const pendingRemoteSnapshotRef = useRef<PersistedAppState | null>(null);
   const presenceAnnouncementReadyRef = useRef(false);
   const knownOtherSessionIdsRef = useRef<string[]>([]);
   const isSupabaseLoggedIn = !!supabaseSession?.user;
@@ -4192,28 +4193,50 @@ export default function App() {
 
     const incomingSignature = buildPersistedDataSignature(normalized.data);
     if (incomingSignature === lastPersistedDataSignatureRef.current) {
+      pendingRemoteSnapshotRef.current = null;
+      setPendingRealtimeRefresh(null);
       setLastSupabaseSnapshotSavedAt(normalized.savedAt);
       return;
     }
 
+    setLastSupabaseSnapshotSavedAt(normalized.savedAt);
+    const currentSignature = buildPersistedDataSignature(buildPersistedAppData());
+    const hasLocalUnsyncedChanges =
+      currentSignature !== lastPersistedDataSignatureRef.current;
+    const changeText = `${describeCollaboratorContext(record.updated_by).actorName} guardo cambios en el sistema.`;
+    const collaborator = describeCollaboratorContext(record.updated_by);
+
+    if (hasLocalUnsyncedChanges) {
+      pendingRemoteSnapshotRef.current = normalized;
+      setPendingRealtimeRefresh({
+        text: changeText,
+        savedAt: normalized.savedAt,
+      });
+      setStorageMessage(
+        "Hay una version mas nueva guardada en Supabase. Pulsa Refresh antes de seguir para no perder tus cambios locales."
+      );
+      announceSystemChange(
+        `${collaborator.actorName} guardo cambios ${collaborator.location}. Pulsa refresh para cargar la ultima version compartida sin pisar tus cambios locales.`
+      );
+      return;
+    }
+
+    pendingRemoteSnapshotRef.current = null;
     lastAppliedRemoteSnapshotAtRef.current = Date.now();
     applyPersistedAppData(normalized.data);
     lastPersistedDataSignatureRef.current = incomingSignature;
     setLastSavedAt(normalized.savedAt);
-    setLastSupabaseSnapshotSavedAt(normalized.savedAt);
-    const changeText = `${describeCollaboratorContext(record.updated_by).actorName} guardo cambios en el sistema.`;
-    setPendingRealtimeRefresh({
-      text: changeText,
-      savedAt: normalized.savedAt,
-    });
-    setStorageMessage("Se detectaron cambios compartidos desde Supabase.");
-
-    const collaborator = describeCollaboratorContext(record.updated_by);
+    setPendingRealtimeRefresh(null);
+    setStorageMessage(
+      source === "realtime"
+        ? "Se actualizo automaticamente la ultima version compartida desde Supabase."
+        : "Se recupero automaticamente una version mas nueva desde Supabase."
+    );
     announceSystemChange(
       `${collaborator.actorName} guardo cambios ${collaborator.location}. ${
         source === "realtime"
-          ? "Pulsa refresh para confirmar la ultima version compartida."
-          : "Se recupero una version mas nueva desde la sincronizacion."
+          ? "La version compartida ya se aplico automaticamente."
+          : "La sincronizacion recupero una version mas nueva."
       }`
     );
   };
@@ -5272,6 +5295,8 @@ export default function App() {
       lastPersistedDataSignatureRef.current = buildPersistedDataSignature(
         persisted.data
       );
+      pendingRemoteSnapshotRef.current = null;
+      lastAppliedRemoteSnapshotAtRef.current = Date.now();
       setLastSavedAt(persisted.savedAt);
       setLastSupabaseSnapshotSavedAt(persisted.savedAt);
       setIsSupabaseSnapshotReady(true);
@@ -5287,6 +5312,12 @@ export default function App() {
 
   const saveToSupabaseNow = async () => {
     try {
+      if (pendingRemoteSnapshotRef.current) {
+        setStorageMessage(
+          "Hay una version remota pendiente. Pulsa Refresh antes de guardar en Supabase para no sobreescribir cambios de otro usuario."
+        );
+        return;
+      }
       const payload: PersistedAppState = {
         version: APP_PERSISTENCE_VERSION,
         savedAt: new Date().toISOString(),
@@ -6726,6 +6757,7 @@ export default function App() {
         if (
           isSupabaseLoggedIn &&
           isSupabaseSnapshotReady &&
+          !pendingRemoteSnapshotRef.current &&
           Date.now() - lastAppliedRemoteSnapshotAtRef.current > 1500
         ) {
           await writeSupabasePersistedAppState(payload);
