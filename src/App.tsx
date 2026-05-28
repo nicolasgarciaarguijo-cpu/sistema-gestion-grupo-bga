@@ -2206,6 +2206,7 @@ export default function App() {
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<number | null>(
     null
   );
+  const [isEmployeeSetupModalOpen, setIsEmployeeSetupModalOpen] = useState(false);
   const [financialMonth, setFinancialMonth] = useState(new Date().toISOString().slice(0, 7));
   const [purchaseMonth, setPurchaseMonth] = useState(new Date().toISOString().slice(0, 7));
   const [payrollMonth, setPayrollMonth] = useState("2026-04");
@@ -14883,23 +14884,21 @@ export default function App() {
       )}
 
       {activeTab === "personal" && (
-        <div style={styles.column}>
+        <div style={styles.personalStack}>
           <div style={{ order: 5, gridColumn: "1 / -1" }}>
             <Panel
-              title="Alta, configuracion base y escalas"
+              title="Alta de empleados y costo base por categoria"
               span="full"
               actions={
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <ButtonLike onClick={applyBaseConfigToAllEmployees}>Aplicar base</ButtonLike>
-                <ButtonLike onClick={addEmployee}>Agregar empleado</ButtonLike>
-                <ButtonLike onClick={() => exportPrint("report-personal")} secondary>Reporte</ButtonLike>
-              </div>
-            }
-          >
-            <Panel
-              title="Alta de empleados y costo base por categoria"
-              nested
-              actions={<ButtonLike onClick={addEmployee}>Agregar empleado</ButtonLike>}
+                <div style={styles.inlineActions}>
+                  <ButtonLike onClick={() => setIsEmployeeSetupModalOpen(true)}>
+                    Agregar empleado
+                  </ButtonLike>
+                  <ButtonLike onClick={() => exportPrint("report-personal")} secondary>
+                    Reporte
+                  </ButtonLike>
+                </div>
+              }
             >
               <div style={styles.muted}>
                 Esta tabla muestra cuanto cobraria una persona nueva por empresa y categoria, sin
@@ -14963,7 +14962,7 @@ export default function App() {
 
             <Panel
               title="Costo real por empresa y categoria"
-              nested
+              span="full"
               actions={
                 <ButtonLike onClick={syncLaborMarkersFromPersonal}>
                   Volcar a mano de obra base
@@ -15042,8 +15041,34 @@ export default function App() {
               )}
             </Panel>
 
-            <div style={styles.grid2}>
-              <Panel title="Configuracion base" nested>
+            {isEmployeeSetupModalOpen && (
+              <div style={styles.modalBackdrop}>
+                <div style={styles.employeeSetupModal}>
+                  <Panel
+                    title="Configuracion base para nuevo empleado"
+                    span="full"
+                    actions={
+                      <div style={styles.inlineActions}>
+                        <ButtonLike onClick={applyBaseConfigToAllEmployees} secondary>
+                          Aplicar base
+                        </ButtonLike>
+                        <ButtonLike
+                          onClick={() => {
+                            addEmployee();
+                            setIsEmployeeSetupModalOpen(false);
+                          }}
+                        >
+                          Crear empleado
+                        </ButtonLike>
+                        <ButtonLike
+                          onClick={() => setIsEmployeeSetupModalOpen(false)}
+                          secondary
+                        >
+                          Cancelar
+                        </ButtonLike>
+                      </div>
+                    }
+                  >
                 <div style={{ ...styles.muted, marginBottom: 10 }}>
                   Los costos de EPP e insumos del personal se toman prioritariamente desde
                   Marcadores. Los campos de esta seccion quedan como respaldo por si todavia no
@@ -15311,9 +15336,12 @@ export default function App() {
                     Agregar documento
                   </button>
                 </div>
-              </Panel>
+                  </Panel>
+                </div>
+              </div>
+            )}
 
-              <Panel title="Escalas salariales" nested>
+              <Panel title="Escalas salariales" span="full">
                 <div style={styles.uploadActions}>
                   <label style={styles.buttonLikeLabel}>
                     Cargar PDF de escala
@@ -15421,8 +15449,6 @@ export default function App() {
                   </tbody>
                 </table>
               </Panel>
-            </div>
-          </Panel>
           </div>
 
           <div style={{ order: 1 }}>
@@ -15444,7 +15470,8 @@ export default function App() {
           </Panel>
           </div>
 
-          <div style={{ order: 2 }}>
+          {!selectedEmployee && (
+          <div style={{ order: 2, gridColumn: "1 / -1" }}>
           <Panel title="Empleados" span="full">
             <table style={styles.table}>
               <thead>
@@ -15552,11 +15579,12 @@ export default function App() {
             </table>
           </Panel>
           </div>
+          )}
 
           {selectedEmployee && (
-            <div style={{ order: 3 }}>
+            <div style={{ order: 2, gridColumn: "1 / -1" }}>
             <Panel
-              span="wide"
+              span="full"
               title={`Ficha del empleado: ${selectedEmployee.name || "Empleado"}`}
               actions={<ButtonLike onClick={() => setSelectedEmployeeId(null)} secondary>Cerrar ficha</ButtonLike>}
             >
@@ -15578,6 +15606,13 @@ export default function App() {
                 const payrollSummary = getEmployeePayrollSummary(selectedEmployee);
                 const eppSummary = getEmployeeProvisionSummary(selectedEmployee, "EPP");
                 const suppliesSummary = getEmployeeProvisionSummary(selectedEmployee, "Insumos");
+                const attendanceWeekSize = Math.ceil(attendanceMonthData.length / 4);
+                const attendanceWeeks = Array.from({ length: 4 }, (_, index) =>
+                  attendanceMonthData.slice(
+                    index * attendanceWeekSize,
+                    (index + 1) * attendanceWeekSize
+                  )
+                );
 
                 return (
                   <>
@@ -15606,7 +15641,7 @@ export default function App() {
                       <span>Categoria: {selectedEmployee.category}</span>
                     </div>
 
-                    <div style={styles.grid2}>
+                    <div style={styles.personalFichaStack}>
                       <Panel title="Datos basicos" nested>
                         <TwoCol>
                           <Field label="Empresa">
@@ -15821,124 +15856,127 @@ export default function App() {
                     </div>
 
                     <Panel title="Presentismo y ausencias" nested>
-                      <div style={styles.attendanceGrid}>
-                        {attendanceMonthData.map((day) => {
-                          const record = getAttendanceRecord(selectedEmployee, day.key);
-                          const status = record?.status || "sin_cargar";
-                          const statusStyle =
-                            status === "presente"
-                              ? styles.statusGreen
-                              : status === "ausente_injustificado"
-                              ? styles.statusRed
-                              : status === "ausente_justificado"
-                              ? styles.statusYellow
-                              : status === "vacaciones"
-                              ? styles.statusBlue
-                              : styles.statusGray;
-                          return (
-                            <div key={day.key} style={styles.attendanceCard}>
-                              <div style={styles.attendanceDayTitle}>
-                                <strong>{day.day}</strong> {day.weekday}
-                              </div>
-                              <select
-                                style={styles.input}
-                                value={status}
-                                onChange={(e) =>
-                                  updateAttendanceRecord(selectedEmployee.id, day.key, "status", e.target.value)
-                                }
-                              >
-                                <option value="sin_cargar">Sin cargar</option>
-                                <option value="presente">Presente</option>
-                                <option value="ausente_injustificado">Ausente sin justificar</option>
-                                <option value="ausente_justificado">Ausente justificado</option>
-                                <option value="vacaciones">Vacaciones</option>
-                              </select>
-                              <div style={{ marginTop: 8 }}>
-                                <span style={{ ...styles.statusPill, ...statusStyle }}>
-                                  {status.replaceAll("_", " ")}
-                                </span>
-                              </div>
+                      <div style={styles.attendanceCalendar}>
+                        {attendanceWeeks.map((week, weekIndex) => (
+                          <div key={`attendance-week-${weekIndex}`} style={styles.attendanceWeek}>
+                            <div style={styles.attendanceWeekTitle}>Semana {weekIndex + 1}</div>
+                            <div style={styles.attendanceWeekGrid}>
+                              {week.map((day) => {
+                                const record = getAttendanceRecord(selectedEmployee, day.key);
+                                const status = record?.status || "sin_cargar";
+                                const statusStyle =
+                                  status === "presente"
+                                    ? styles.statusGreen
+                                    : status === "ausente_injustificado"
+                                    ? styles.statusRed
+                                    : status === "ausente_justificado"
+                                    ? styles.statusYellow
+                                    : status === "vacaciones"
+                                    ? styles.statusBlue
+                                    : styles.statusGray;
+                                return (
+                                  <div key={day.key} style={styles.attendanceCard}>
+                                    <div style={styles.attendanceDayTitle}>
+                                      <strong>{day.day}</strong> {day.weekday}
+                                    </div>
+                                    <select
+                                      style={styles.input}
+                                      value={status}
+                                      onChange={(e) =>
+                                        updateAttendanceRecord(selectedEmployee.id, day.key, "status", e.target.value)
+                                      }
+                                    >
+                                      <option value="sin_cargar">Sin cargar</option>
+                                      <option value="presente">Presente</option>
+                                      <option value="ausente_injustificado">Ausente sin justificar</option>
+                                      <option value="ausente_justificado">Ausente justificado</option>
+                                      <option value="vacaciones">Vacaciones</option>
+                                    </select>
+                                    <div style={{ marginTop: 8 }}>
+                                      <span style={{ ...styles.statusPill, ...statusStyle }}>
+                                        {status.replaceAll("_", " ")}
+                                      </span>
+                                    </div>
+                                    <div style={styles.attendanceHoursGrid}>
+                                      <Field label="Normales">
+                                        <input
+                                          style={styles.input}
+                                          type="number"
+                                          min={0}
+                                          step={0.5}
+                                          value={record?.normalHours ?? 0}
+                                          onChange={(e) =>
+                                            updateAttendanceRecord(
+                                              selectedEmployee.id,
+                                              day.key,
+                                              "normalHours",
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                        />
+                                      </Field>
+                                      <Field label="50%">
+                                        <input
+                                          style={styles.input}
+                                          type="number"
+                                          min={0}
+                                          step={0.5}
+                                          value={record?.extra50Hours ?? 0}
+                                          onChange={(e) =>
+                                            updateAttendanceRecord(
+                                              selectedEmployee.id,
+                                              day.key,
+                                              "extra50Hours",
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                        />
+                                      </Field>
+                                      <Field label="100%">
+                                        <input
+                                          style={styles.input}
+                                          type="number"
+                                          min={0}
+                                          step={0.5}
+                                          value={record?.extra100Hours ?? 0}
+                                          onChange={(e) =>
+                                            updateAttendanceRecord(
+                                              selectedEmployee.id,
+                                              day.key,
+                                              "extra100Hours",
+                                              Number(e.target.value)
+                                            )
+                                          }
+                                        />
+                                      </Field>
+                                    </div>
 
-                              <div style={{ marginTop: 8 }}>
-                                <div style={styles.label}>Horas normales</div>
-                                <input
-                                  style={styles.input}
-                                  type="number"
-                                  min={0}
-                                  step={0.5}
-                                  value={record?.normalHours ?? 0}
-                                  onChange={(e) =>
-                                    updateAttendanceRecord(
-                                      selectedEmployee.id,
-                                      day.key,
-                                      "normalHours",
-                                      Number(e.target.value)
-                                    )
-                                  }
-                                />
-                              </div>
-
-                              <div style={{ marginTop: 8 }}>
-                                <div style={styles.label}>Horas al 50</div>
-                                <input
-                                  style={styles.input}
-                                  type="number"
-                                  min={0}
-                                  step={0.5}
-                                  value={record?.extra50Hours ?? 0}
-                                  onChange={(e) =>
-                                    updateAttendanceRecord(
-                                      selectedEmployee.id,
-                                      day.key,
-                                      "extra50Hours",
-                                      Number(e.target.value)
-                                    )
-                                  }
-                                />
-                              </div>
-
-                              <div style={{ marginTop: 8 }}>
-                                <div style={styles.label}>Horas al 100</div>
-                                <input
-                                  style={styles.input}
-                                  type="number"
-                                  min={0}
-                                  step={0.5}
-                                  value={record?.extra100Hours ?? 0}
-                                  onChange={(e) =>
-                                    updateAttendanceRecord(
-                                      selectedEmployee.id,
-                                      day.key,
-                                      "extra100Hours",
-                                      Number(e.target.value)
-                                    )
-                                  }
-                                />
-                              </div>
-
-                              {status === "ausente_justificado" && (
-                                <div style={{ marginTop: 8 }}>
-                                  <FileDropButton
-                                    label="Cargar justificativo"
-                                    fileName={record?.attachmentName}
-                                    accept="image/*,.pdf,application/pdf"
-                                    onFileSelected={(file) =>
-                                      handleAttendanceAttachment(
-                                        selectedEmployee.id,
-                                        day.key,
-                                        file
-                                      )
-                                    }
-                                  />
-                                </div>
-                              )}
+                                    {status === "ausente_justificado" && (
+                                      <div style={{ marginTop: 8 }}>
+                                        <FileDropButton
+                                          label="Cargar justificativo"
+                                          fileName={record?.attachmentName}
+                                          accept="image/*,.pdf,application/pdf"
+                                          onFileSelected={(file) =>
+                                            handleAttendanceAttachment(
+                                              selectedEmployee.id,
+                                              day.key,
+                                              file
+                                            )
+                                          }
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </div>
                     </Panel>
 
-                    <div style={styles.grid2}>
+                    <div style={styles.personalFichaStack}>
                       <Panel title="Documentacion del empleado" nested actions={<ButtonLike onClick={() => addEmployeeDocument(selectedEmployee.id)}>Agregar documento</ButtonLike>}>
                         {selectedEmployee.documents.map((doc) => {
                           const docState = getEmployeeDocumentState(doc);
@@ -17423,6 +17461,37 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     alignItems: "start",
   },
+  personalStack: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 16,
+    alignItems: "start",
+    width: "100%",
+  },
+  personalFichaStack: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 14,
+    width: "100%",
+  },
+  modalBackdrop: {
+    position: "fixed",
+    inset: 0,
+    zIndex: 80,
+    display: "flex",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    padding: "48px 24px",
+    background: "rgba(15,23,42,0.45)",
+    overflowY: "auto",
+  },
+  employeeSetupModal: {
+    width: "min(1180px, calc(100vw - 48px))",
+    maxHeight: "calc(100vh - 96px)",
+    overflowY: "auto",
+    borderRadius: 24,
+    boxShadow: "0 28px 70px rgba(15,23,42,0.32)",
+  },
   column: {
     display: "grid",
     gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
@@ -18556,17 +18625,50 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     marginTop: 12,
   },
+  attendanceCalendar: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+    gap: 12,
+    marginTop: 12,
+    width: "100%",
+  },
+  attendanceWeek: {
+    border: "1px solid #dbeafe",
+    borderRadius: 16,
+    padding: 10,
+    background: "#f8fafc",
+    display: "grid",
+    gap: 10,
+    alignContent: "start",
+    minWidth: 0,
+  },
+  attendanceWeekTitle: {
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#0f172a",
+  },
+  attendanceWeekGrid: {
+    display: "grid",
+    gap: 8,
+  },
   attendanceCard: {
     border: "1px solid #e2e8f0",
     borderRadius: 12,
     padding: 10,
     background: "#fff",
+    minWidth: 0,
   },
   attendanceDayTitle: {
     fontSize: 12,
     color: "#475569",
     marginBottom: 8,
     textTransform: "capitalize",
+  },
+  attendanceHoursGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+    gap: 8,
+    marginTop: 8,
   },
   configDocRow: { display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 },
   semaphoreBanner: {
