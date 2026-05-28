@@ -5155,6 +5155,44 @@ export default function App() {
     editingBudgetId,
   });
 
+  const buildPersistedAppDataWithOverrides = (
+    overrides: Partial<PersistedAppStateData> = {}
+  ): PersistedAppStateData => ({
+    ...buildPersistedAppData(),
+    ...overrides,
+  });
+
+  const persistAppStateImmediately = async (
+    data: PersistedAppStateData,
+    options?: { saveToSupabase?: boolean }
+  ) => {
+    const payload: PersistedAppState = {
+      version: APP_PERSISTENCE_VERSION,
+      savedAt: new Date().toISOString(),
+      data,
+    };
+
+    await writePersistedAppState(payload);
+    lastPersistedDataSignatureRef.current = buildPersistedDataSignature(payload.data);
+    setLastSavedAt(payload.savedAt);
+
+    const shouldWriteSupabase =
+      options?.saveToSupabase !== false &&
+      isSupabaseLoggedIn &&
+      !pendingRemoteSnapshotRef.current;
+
+    if (shouldWriteSupabase) {
+      await writeSupabasePersistedAppState(payload);
+      setLastSupabaseSnapshotSavedAt(payload.savedAt);
+      setPendingRealtimeRefresh(null);
+    }
+
+    return {
+      savedAt: payload.savedAt,
+      savedToSupabase: shouldWriteSupabase,
+    };
+  };
+
   const applyPersistedAppData = (data: Partial<PersistedAppStateData>) => {
     const nextBudget = {
       ...cloneBudget(defaultBudget),
@@ -5412,7 +5450,7 @@ export default function App() {
     }
   };
 
-  const saveBudgetSnapshot = () => {
+  const saveBudgetSnapshot = async () => {
     const existing = editingBudgetId
       ? savedBudgets.find((item) => item.id === editingBudgetId) || null
       : null;
@@ -5503,45 +5541,91 @@ export default function App() {
       snapshot: nextSnapshot,
     };
 
-    setSavedBudgets((prev) =>
-      [next, ...prev]
-    );
-
-    setApprovedJobs((prev) =>
-      prev.map((job) =>
-        job.rootBudgetId === rootBudgetId || job.budgetId === existing?.id
-          ? {
-              ...job,
-              budgetId: next.id,
-              rootBudgetId,
-              revisionNumber,
-              isUpdate: !!existing,
-              budgetNumber: next.number,
-              company: next.company,
-              client: next.client,
-              project: next.project,
-              date: next.date,
-              deliveryTerm: next.deliveryTerm,
-              deliveryDestination: next.deliveryDestination,
-              projectManager: next.projectManager,
-              maxRequirementDate: next.maxRequirementDate,
-              soldNetPrice: next.netPrice,
-              soldGrossPrice: next.finalPrice,
-              commissionPct: next.commissionPct,
-              commissionAmount: next.commissionAmount,
-              totalDiscountAmount: next.totalDiscountAmount,
-              deliveryDate: buildDeliveryDateFromTerm(job.approvalDate, next.deliveryTerm),
-              snapshot: next.snapshot,
-            }
-          : job
-      )
+    const nextSavedBudgets = [next, ...savedBudgets];
+    const nextApprovedJobs = approvedJobs.map((job) =>
+      job.rootBudgetId === rootBudgetId || job.budgetId === existing?.id
+        ? {
+            ...job,
+            budgetId: next.id,
+            rootBudgetId,
+            revisionNumber,
+            isUpdate: !!existing,
+            budgetNumber: next.number,
+            company: next.company,
+            client: next.client,
+            project: next.project,
+            date: next.date,
+            deliveryTerm: next.deliveryTerm,
+            deliveryDestination: next.deliveryDestination,
+            projectManager: next.projectManager,
+            maxRequirementDate: next.maxRequirementDate,
+            soldNetPrice: next.netPrice,
+            soldGrossPrice: next.finalPrice,
+            commissionPct: next.commissionPct,
+            commissionAmount: next.commissionAmount,
+            totalDiscountAmount: next.totalDiscountAmount,
+            deliveryDate: buildDeliveryDateFromTerm(job.approvalDate, next.deliveryTerm),
+            snapshot: next.snapshot,
+          }
+        : job
     );
 
     const nextDraftNumber = getNextBudgetNumber(
-      [...savedBudgets.map((item) => item.number), next.number],
+      nextSavedBudgets.map((item) => item.number),
       next.number
     );
-    resetBudgetWorkspace(nextDraftNumber);
+    const nextDraftBudget = buildBlankBudgetDraft({
+      company: budget.company,
+      workType: budget.workType,
+      number: nextDraftNumber,
+      scope: budget.scope || defaultBudget.scope,
+      projectManager: budget.projectManager || defaultBudget.projectManager,
+      logos: budget.logos,
+    });
+
+    try {
+      const persistResult = await persistAppStateImmediately(
+        buildPersistedAppDataWithOverrides({
+          budget: cloneBudget(nextDraftBudget),
+          subBudgets: [],
+          subBudgetTitle: "",
+          subBudgetNotes: "",
+          materials: [],
+          basicSupplies: [],
+          labor: [],
+          fixedCosts: [],
+          budgetIncreases: defaultBudgetIncreases.map((item) => ({ ...item })),
+          budgetDiscounts: cloneBudgetDiscounts(defaultBudgetDiscounts),
+          savedBudgets: nextSavedBudgets.map((item) => ({ ...item })),
+          approvedJobs: nextApprovedJobs.map((item) => ({ ...item })),
+          allocationMode: "auto",
+          manualAllocationPct: 18.75,
+          deviationPct: 5,
+          markupPct: 30,
+          vatPct: 21,
+          laborDeviationPct: 0,
+          commissionPct: 0,
+          editingBudgetId: null,
+        })
+      );
+
+      setSavedBudgets(nextSavedBudgets);
+      setApprovedJobs(nextApprovedJobs);
+      resetBudgetWorkspace(nextDraftNumber);
+      setStorageMessage(
+        persistResult.savedToSupabase
+          ? "Presupuesto guardado y sincronizado correctamente."
+          : pendingRemoteSnapshotRef.current
+            ? "Presupuesto guardado en este navegador. Hay una version remota pendiente: pulsa Refresh antes de sincronizar en Supabase."
+            : "Presupuesto guardado en este navegador."
+      );
+    } catch (error) {
+      setStorageMessage(
+        error instanceof Error
+          ? `No pude guardar el presupuesto: ${error.message}`
+          : "No pude guardar el presupuesto."
+      );
+    }
   };
 
   const approveBudget = (item: SavedBudget) => {
