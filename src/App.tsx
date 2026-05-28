@@ -2222,7 +2222,7 @@ export default function App() {
     category: string;
     nominalHours: number;
   }>({
-    company: COMPANY_OPTIONS[0].value,
+    company: DEFAULT_COMPANY_OPTIONS[0].value,
     legajo: "",
     name: "",
     category: defaultBaseConfig.category,
