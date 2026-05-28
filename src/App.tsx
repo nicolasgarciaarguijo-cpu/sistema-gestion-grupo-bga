@@ -823,8 +823,11 @@ type EmployeePayroll = {
   justifiedAbsenceHours: number;
   vacationsDays: number;
   anticipos: number;
+  cashBonus: number;
   presentismoPctOverride: number | null;
   employerExtraPct: number;
+  manualOverride: boolean;
+  savedAt: string;
   notes: string;
 };
 
@@ -834,6 +837,7 @@ type Employee = {
   legajo: string;
   name: string;
   category: string;
+  nominalHours: number;
   seniorityYears: number;
   hourlyNetManual: number;
   hourlyGrossManual: number;
@@ -1434,6 +1438,7 @@ const defaultEmployees: Employee[] = [
     legajo: "5",
     name: "MAXIMILIANO EZEQUIEL PACIFICO",
     category: "Medio oficial",
+    nominalHours: 198,
     seniorityYears: 3,
     hourlyNetManual: 0,
     hourlyGrossManual: 0,
@@ -1462,8 +1467,11 @@ const defaultEmployees: Employee[] = [
         justifiedAbsenceHours: 0,
         vacationsDays: 0,
         anticipos: 0,
+        cashBonus: 0,
         presentismoPctOverride: 10,
         employerExtraPct: 22,
+        manualOverride: false,
+        savedAt: "",
         notes: "",
       },
     ],
@@ -2207,9 +2215,35 @@ export default function App() {
     null
   );
   const [isEmployeeSetupModalOpen, setIsEmployeeSetupModalOpen] = useState(false);
+  const [newEmployeeDraft, setNewEmployeeDraft] = useState<{
+    company: CompanyName;
+    legajo: string;
+    name: string;
+    category: string;
+    nominalHours: number;
+  }>({
+    company: COMPANY_OPTIONS[0].value,
+    legajo: "",
+    name: "",
+    category: defaultBaseConfig.category,
+    nominalHours: defaultBaseConfig.normalHoursDefault,
+  });
+  const [employeeDocumentModal, setEmployeeDocumentModal] = useState<{
+    employeeId: number;
+    name: string;
+    dueDate: string;
+  } | null>(null);
+  const [employeeProvisionModal, setEmployeeProvisionModal] = useState<{
+    employeeId: number;
+    kind: EmployeeProvisionKind;
+    title: string;
+    dueDate: string;
+    unitPrice: number;
+  } | null>(null);
   const [financialMonth, setFinancialMonth] = useState(new Date().toISOString().slice(0, 7));
   const [purchaseMonth, setPurchaseMonth] = useState(new Date().toISOString().slice(0, 7));
   const [payrollMonth, setPayrollMonth] = useState("2026-04");
+  const [personalReportCompany, setPersonalReportCompany] = useState<CompanyScope>("General");
   const [, setPrintMode] = useState<PrintMode>("");
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto");
   const [manualAllocationPct, setManualAllocationPct] = useState(18.75);
@@ -3285,26 +3319,18 @@ export default function App() {
     employee: Employee,
     kind: EmployeeProvisionKind
   ) => {
-    const requirements = employeeBaseConfig.provisionTemplates.filter(
-      (item) => item.kind === kind
-    );
-    if (requirements.length === 0) {
-      return { label: "Sin requerimientos", tone: "gray" as const };
-    }
+    const deliveredItems = employee.provisionItems.filter((item) => item.kind === kind);
+    if (deliveredItems.length === 0) return { label: "Sin cargar", tone: "red" as const };
 
     let hasMissing = false;
     let hasExpiring = false;
 
-    requirements.forEach((requirement) => {
-      const delivered = employee.provisionItems.find(
-        (item) => item.stockCode === requirement.stockCode && item.kind === requirement.kind
-      );
-
+    deliveredItems.forEach((delivered) => {
       if (
-        !delivered ||
+        !delivered.stockCode ||
         !delivered.attachmentName ||
         !delivered.dueDate ||
-        Number(delivered.quantity || 0) < Number(requirement.quantity || 0)
+        Number(delivered.quantity || 0) <= 0
       ) {
         hasMissing = true;
         return;
@@ -3313,6 +3339,10 @@ export default function App() {
       const diff =
         (new Date(delivered.dueDate).getTime() - new Date().getTime()) /
         (1000 * 60 * 60 * 24);
+      if (diff < 0) {
+        hasMissing = true;
+        return;
+      }
       if (diff <= 30) {
         hasExpiring = true;
       }
@@ -5008,6 +5038,11 @@ export default function App() {
     document.body.removeAttribute("data-print-mode");
     setPrintMode("");
     document.title = previousTitle;
+  };
+
+  const exportPersonalReport = (company: CompanyScope) => {
+    setPersonalReportCompany(company);
+    window.setTimeout(() => exportPrint("report-personal"), 0);
   };
 
   const loadBudgetFromSnapshot = (snapshot: BudgetSnapshot, budgetId?: number | null) => {
@@ -7793,33 +7828,26 @@ export default function App() {
   };
 
   const addEmployee = () => {
+    const cleanName = newEmployeeDraft.name.trim();
+    if (!cleanName) return;
+    const nominalHours = Number(
+      newEmployeeDraft.nominalHours || employeeBaseConfig.normalHoursDefault || 198
+    );
     const employee: Employee = {
       id: Date.now(),
-      company: budget.company,
-      legajo: "",
-      name: "",
-      category: employeeBaseConfig.category,
-      seniorityYears: employeeBaseConfig.seniorityYears,
-      hourlyNetManual: employeeBaseConfig.hourlyNetManual,
-      hourlyGrossManual: employeeBaseConfig.hourlyGrossManual,
+      company: newEmployeeDraft.company,
+      legajo: newEmployeeDraft.legajo.trim(),
+      name: cleanName,
+      category: newEmployeeDraft.category || employeeBaseConfig.category,
+      nominalHours,
+      seniorityYears: 0,
+      hourlyNetManual: 0,
+      hourlyGrossManual: 0,
       attendance: [],
-        documents: employeeBaseConfig.requiredDocuments.map((doc) => ({
-          id: Date.now() + Math.random(),
-          name: doc.name,
-          dueDate: "",
-          attachmentName: "",
-        })),
-        provisionItems: employeeBaseConfig.provisionTemplates.map((item) => ({
-          id: Date.now() + Math.random(),
-          stockCode: item.stockCode,
-          kind: item.kind,
-          quantity: item.quantity,
-          dueDate: "",
-          attachmentName: "",
-          notes: "",
-        })),
-        eppDueDate: "",
-        eppAttachmentName: "",
+      documents: [],
+      provisionItems: [],
+      eppDueDate: "",
+      eppAttachmentName: "",
       suppliesDueDate: "",
       suppliesAttachmentName: "",
       skills: "",
@@ -7827,7 +7855,7 @@ export default function App() {
       payrolls: [
         {
           month: payrollMonth,
-          normalHours: employeeBaseConfig.normalHoursDefault,
+          normalHours: nominalHours,
           holidayHours: 0,
           extra50Hours: 0,
           extra100Hours: 0,
@@ -7837,8 +7865,11 @@ export default function App() {
           justifiedAbsenceHours: 0,
           vacationsDays: 0,
           anticipos: 0,
+          cashBonus: 0,
           presentismoPctOverride: employeeBaseConfig.presentismoPct,
           employerExtraPct: employeeBaseConfig.employerContributionPct,
+          manualOverride: false,
+          savedAt: "",
           notes: "",
         },
       ],
@@ -7846,6 +7877,14 @@ export default function App() {
 
     setEmployees((prev) => [employee, ...prev]);
     setSelectedEmployeeId(employee.id);
+    setIsEmployeeSetupModalOpen(false);
+    setNewEmployeeDraft({
+      company: newEmployeeDraft.company,
+      legajo: "",
+      name: "",
+      category: employeeBaseConfig.category,
+      nominalHours: employeeBaseConfig.normalHoursDefault,
+    });
   };
 
   const removeEmployee = (employeeId: number) => {
@@ -7856,7 +7895,7 @@ export default function App() {
     return (
       employee.payrolls.find((item) => item.month === month) || {
         month,
-        normalHours: employeeBaseConfig.normalHoursDefault,
+        normalHours: employee.nominalHours || employeeBaseConfig.normalHoursDefault,
         holidayHours: 0,
         extra50Hours: 0,
         extra100Hours: 0,
@@ -7866,8 +7905,11 @@ export default function App() {
         justifiedAbsenceHours: 0,
         vacationsDays: 0,
         anticipos: 0,
+        cashBonus: 0,
         presentismoPctOverride: employeeBaseConfig.presentismoPct,
         employerExtraPct: employeeBaseConfig.employerContributionPct,
+        manualOverride: false,
+        savedAt: "",
         notes: "",
       }
     );
@@ -7893,7 +7935,7 @@ export default function App() {
     employeeId: number,
     month: string,
     field: keyof EmployeePayroll,
-    value: string | number | null
+    value: string | number | boolean | null
   ) => {
     setEmployees((prev) =>
       prev.map((employee) => {
@@ -7909,6 +7951,22 @@ export default function App() {
     );
   };
 
+  const updateEmployeePayrollManual = (
+    employeeId: number,
+    month: string,
+    field: keyof EmployeePayroll,
+    value: string | number | null
+  ) => {
+    updateEmployeePayroll(employeeId, month, field, value);
+    if (field !== "manualOverride" && field !== "savedAt") {
+      updateEmployeePayroll(employeeId, month, "manualOverride", true);
+    }
+  };
+
+  const saveEmployeePayrollMonth = (employeeId: number, month: string) => {
+    updateEmployeePayroll(employeeId, month, "savedAt", new Date().toISOString());
+  };
+
   const updateAttendanceRecord = (
     employeeId: number,
     date: string,
@@ -7920,7 +7978,7 @@ export default function App() {
         if (employee.id !== employeeId) return employee;
         const month = date.slice(0, 7);
         const standardDayHours = Number(
-          ((employeeBaseConfig.normalHoursDefault || 176) / 22).toFixed(2)
+          ((employee.nominalHours || employeeBaseConfig.normalHoursDefault || 176) / 22).toFixed(2)
         );
         const recalcMonthPayroll = (attendanceRows: AttendanceRecord[]) => {
           const monthAttendance = attendanceRows.filter((item) => item.date.startsWith(`${month}-`));
@@ -8018,6 +8076,7 @@ export default function App() {
                 ? {
                     ...item,
                     ...monthPayrollFromAttendance,
+                    manualOverride: false,
                   }
                 : item
             )
@@ -8026,6 +8085,7 @@ export default function App() {
               {
                 ...ensureEmployeePayroll(employee, month),
                 ...monthPayrollFromAttendance,
+                manualOverride: false,
               },
             ];
         return { ...employee, attendance: nextAttendance, payrolls: nextPayrolls };
@@ -8067,6 +8127,31 @@ export default function App() {
           : employee
       )
     );
+  };
+
+  const createEmployeeDocumentFromModal = () => {
+    if (!employeeDocumentModal) return;
+    const cleanName = employeeDocumentModal.name.trim();
+    if (!cleanName) return;
+    setEmployees((prev) =>
+      prev.map((employee) =>
+        employee.id === employeeDocumentModal.employeeId
+          ? {
+              ...employee,
+              documents: [
+                ...employee.documents,
+                {
+                  id: Date.now(),
+                  name: cleanName,
+                  dueDate: employeeDocumentModal.dueDate,
+                  attachmentName: "",
+                },
+              ],
+            }
+          : employee
+      )
+    );
+    setEmployeeDocumentModal(null);
   };
 
   const removeEmployeeDocument = (employeeId: number, documentId: number) => {
@@ -8298,7 +8383,9 @@ export default function App() {
     const sindicato = grossRem * (employeeBaseConfig.unionPct / 100);
     const seguro = grossRem * (employeeBaseConfig.insurancePct / 100);
     const descuentos = jubilacion + ley19032 + obraSocial + sindicato + seguro;
+    const cashBonus = Number(payroll.cashBonus || 0);
     const net = totalGross - descuentos - payroll.anticipos;
+    const netWithCashBonus = net + cashBonus;
     const employerContrib = grossRem * ((payroll.employerExtraPct || 0) / 100);
     const employerInsurance = grossRem * ((employeeBaseConfig.employerInsurancePct || 0) / 100);
     const monthlyProvisionCost = getMonthlyProvisionMarkerCostForCompany(company);
@@ -8339,6 +8426,8 @@ export default function App() {
       monthlySACProration,
       descuentos,
       net,
+      cashBonus,
+      netWithCashBonus,
       employerImpact,
       hourlyCost,
       netHourly,
@@ -8385,8 +8474,11 @@ export default function App() {
             justifiedAbsenceHours: 0,
             vacationsDays: 0,
             anticipos: 0,
+            cashBonus: 0,
             presentismoPctOverride: employeeBaseConfig.presentismoPct,
             employerExtraPct: employeeBaseConfig.employerContributionPct,
+            manualOverride: false,
+            savedAt: "",
             notes: "",
           };
 
@@ -8548,6 +8640,58 @@ export default function App() {
           : employee
       )
     );
+  };
+
+  const createEmployeeProvisionFromModal = () => {
+    if (!employeeProvisionModal) return;
+    const employee = employees.find((item) => item.id === employeeProvisionModal.employeeId);
+    const title = employeeProvisionModal.title.trim();
+    if (!employee || !title) return;
+    const stockId = Date.now();
+    const codePrefix = employeeProvisionModal.kind === "EPP" ? "EPP" : "INS";
+    const stockCode = `${codePrefix}-${stockId}`;
+
+    setStockItems((prev) => [
+      ...prev,
+      {
+        id: stockId,
+        company: employee.company,
+        kind: employeeProvisionModal.kind,
+        shared: false,
+        group: employeeProvisionModal.kind,
+        location: "",
+        sortOrder: Math.max(0, ...prev.map((item) => Number(item.sortOrder || 0))) + 1,
+        code: stockCode,
+        description: title,
+        unit: "u",
+        quantity: 0,
+        unitPrice: Number(employeeProvisionModal.unitPrice || 0),
+        periodicityMonths: 6,
+        active: true,
+      },
+    ]);
+    setEmployees((prev) =>
+      prev.map((row) =>
+        row.id === employee.id
+          ? {
+              ...row,
+              provisionItems: [
+                ...row.provisionItems,
+                {
+                  id: stockId + 1,
+                  stockCode,
+                  kind: employeeProvisionModal.kind,
+                  quantity: 1,
+                  dueDate: employeeProvisionModal.dueDate,
+                  attachmentName: "",
+                  notes: "",
+                },
+              ],
+            }
+          : row
+      )
+    );
+    setEmployeeProvisionModal(null);
   };
 
   const updateEmployeeProvisionItem = (
@@ -8727,34 +8871,36 @@ export default function App() {
                   Salir de edicion
                 </ButtonLike>
               )}
-              <ButtonLike
-                onClick={() =>
-                  exportPrint(
-                    activeTab === "cashflow"
-                      ? "report-cashflow"
-                      : activeTab === "compras"
-                      ? "report-compras"
-                      : activeTab === "cajaChica"
-                      ? "report-caja-chica"
-                      : activeTab === "presupuesto"
-                      ? "client-budget"
-                      : activeTab === "marcadores"
-                      ? "report-marcadores"
-                      : activeTab === "historial"
-                      ? "report-historial"
-                      : activeTab === "aprobados"
-                      ? "report-aprobados"
-                      : activeTab === "stock"
-                      ? "report-stock"
-                      : activeTab === "facturacion"
-                      ? "report-facturacion"
-                      : "report-personal"
-                  )
-                }
-                secondary
-              >
-                Reporte
-              </ButtonLike>
+              {activeTab !== "personal" && (
+                <ButtonLike
+                  onClick={() =>
+                    exportPrint(
+                      activeTab === "cashflow"
+                        ? "report-cashflow"
+                        : activeTab === "compras"
+                        ? "report-compras"
+                        : activeTab === "cajaChica"
+                        ? "report-caja-chica"
+                        : activeTab === "presupuesto"
+                        ? "client-budget"
+                        : activeTab === "marcadores"
+                        ? "report-marcadores"
+                        : activeTab === "historial"
+                        ? "report-historial"
+                        : activeTab === "aprobados"
+                        ? "report-aprobados"
+                        : activeTab === "stock"
+                        ? "report-stock"
+                        : activeTab === "facturacion"
+                        ? "report-facturacion"
+                        : "report-personal"
+                    )
+                  }
+                  secondary
+                >
+                  Reporte
+                </ButtonLike>
+              )}
             </>
           )}
         </div>
@@ -14887,80 +15033,6 @@ export default function App() {
         <div style={styles.personalStack}>
           <div style={{ order: 5, gridColumn: "1 / -1" }}>
             <Panel
-              title="Alta de empleados y costo base por categoria"
-              span="full"
-              actions={
-                <div style={styles.inlineActions}>
-                  <ButtonLike onClick={() => setIsEmployeeSetupModalOpen(true)}>
-                    Agregar empleado
-                  </ButtonLike>
-                  <ButtonLike onClick={() => exportPrint("report-personal")} secondary>
-                    Reporte
-                  </ButtonLike>
-                </div>
-              }
-            >
-              <div style={styles.muted}>
-                Esta tabla muestra cuanto cobraria una persona nueva por empresa y categoria, sin
-                faltas, con presentismo completo y antiguedad inicial cero. El costo hora ya
-                contempla sueldo, cargas, aguinaldo prorrateado y provisiones mensuales.
-              </div>
-
-              <table style={{ ...styles.table, marginTop: 12 }}>
-                <thead>
-                  <tr>
-                    <th>Empresa</th>
-                    <th>Categoria</th>
-                    <th>Mes</th>
-                    <th>Base hora</th>
-                    <th>No remun./hora</th>
-                    <th>Bruto base</th>
-                    <th>Presentismo</th>
-                    <th>Antiguedad</th>
-                    <th>Descuentos</th>
-                    <th>Cargas empresa</th>
-                    <th>Provision mensual</th>
-                    <th>SAC mensual</th>
-                    <th>Neto referencia</th>
-                    <th>Impacto empresa</th>
-                    <th>Costo hora</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {categoryBaseRows.map((row) => (
-                    <tr key={`${row.company}-${row.category}`}>
-                      <td>
-                        <span
-                          style={{
-                            ...styles.statusPill,
-                            background: getCompanyMeta(row.company).soft,
-                            color: getCompanyMeta(row.company).primary,
-                          }}
-                        >
-                          {row.companyShort}
-                        </span>
-                      </td>
-                      <td>{row.category}</td>
-                      <td>{row.summary.scale ? monthLabel(row.summary.scale.month) : monthLabel(payrollMonth)}</td>
-                      <td>{money(row.summary.baseHourly)}</td>
-                      <td>{money(row.summary.nonRemHourly)}</td>
-                      <td>{money(row.summary.totalGross)}</td>
-                      <td>{money(row.summary.presentismo)}</td>
-                      <td>{money(row.summary.seniorityBonus)}</td>
-                      <td>{money(row.summary.descuentos)}</td>
-                      <td>{money(row.summary.employerContrib + row.summary.employerInsurance)}</td>
-                      <td>{money(row.summary.monthlyProvisionCost)}</td>
-                      <td>{money(row.summary.monthlySACProration)}</td>
-                      <td>{money(row.summary.net)}</td>
-                      <td>{money(row.summary.employerImpact)}</td>
-                      <td>{money(row.summary.hourlyCost)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </Panel>
-
-            <Panel
               title="Costo real por empresa y categoria"
               span="full"
               actions={
@@ -15040,25 +15112,140 @@ export default function App() {
                 </table>
               )}
             </Panel>
+          </div>
+
+            {employeeDocumentModal && (
+              <div style={styles.modalBackdrop}>
+                <div style={styles.employeeSetupModal}>
+                  <Panel
+                    title="Agregar documentacion importante"
+                    span="full"
+                    actions={
+                      <div style={styles.inlineActions}>
+                        <ButtonLike onClick={createEmployeeDocumentFromModal}>
+                          Crear item
+                        </ButtonLike>
+                        <ButtonLike onClick={() => setEmployeeDocumentModal(null)} secondary>
+                          Cancelar
+                        </ButtonLike>
+                      </div>
+                    }
+                  >
+                    <TwoCol>
+                      <Field label="Titulo">
+                        <input
+                          style={styles.input}
+                          value={employeeDocumentModal.name}
+                          onChange={(e) =>
+                            setEmployeeDocumentModal({
+                              ...employeeDocumentModal,
+                              name: e.target.value,
+                            })
+                          }
+                          placeholder="Ej: DNI, Apto medico, Certificado"
+                        />
+                      </Field>
+                      <Field label="Vigencia / vencimiento">
+                        <input
+                          style={styles.input}
+                          type="date"
+                          value={employeeDocumentModal.dueDate}
+                          onChange={(e) =>
+                            setEmployeeDocumentModal({
+                              ...employeeDocumentModal,
+                              dueDate: e.target.value,
+                            })
+                          }
+                        />
+                      </Field>
+                    </TwoCol>
+                  </Panel>
+                </div>
+              </div>
+            )}
+
+            {employeeProvisionModal && (
+              <div style={styles.modalBackdrop}>
+                <div style={styles.employeeSetupModal}>
+                  <Panel
+                    title={`Agregar ${employeeProvisionModal.kind}`}
+                    span="full"
+                    actions={
+                      <div style={styles.inlineActions}>
+                        <ButtonLike onClick={createEmployeeProvisionFromModal}>
+                          Crear item
+                        </ButtonLike>
+                        <ButtonLike onClick={() => setEmployeeProvisionModal(null)} secondary>
+                          Cancelar
+                        </ButtonLike>
+                      </div>
+                    }
+                  >
+                    <TwoCol>
+                      <Field label="Titulo del item">
+                        <input
+                          style={styles.input}
+                          value={employeeProvisionModal.title}
+                          onChange={(e) =>
+                            setEmployeeProvisionModal({
+                              ...employeeProvisionModal,
+                              title: e.target.value,
+                            })
+                          }
+                          placeholder="Ej: Ropa de trabajo"
+                        />
+                      </Field>
+                      <Field label="Vigencia / vencimiento">
+                        <input
+                          style={styles.input}
+                          type="date"
+                          value={employeeProvisionModal.dueDate}
+                          onChange={(e) =>
+                            setEmployeeProvisionModal({
+                              ...employeeProvisionModal,
+                              dueDate: e.target.value,
+                            })
+                          }
+                        />
+                      </Field>
+                      <Field label="Costo neto">
+                        <input
+                          style={styles.input}
+                          type="number"
+                          value={employeeProvisionModal.unitPrice}
+                          onChange={(e) =>
+                            setEmployeeProvisionModal({
+                              ...employeeProvisionModal,
+                              unitPrice: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </Field>
+                    </TwoCol>
+                    <div style={{ ...styles.muted, marginTop: 10 }}>
+                      Al crear este item tambien se genera el item relacionado en Stock dentro de
+                      EPP/Insumos.
+                    </div>
+                  </Panel>
+                </div>
+              </div>
+            )}
 
             {isEmployeeSetupModalOpen && (
               <div style={styles.modalBackdrop}>
                 <div style={styles.employeeSetupModal}>
                   <Panel
-                    title="Configuracion base para nuevo empleado"
+                    title="Agregar empleado"
                     span="full"
                     actions={
                       <div style={styles.inlineActions}>
-                        <ButtonLike onClick={applyBaseConfigToAllEmployees} secondary>
-                          Aplicar base
-                        </ButtonLike>
                         <ButtonLike
                           onClick={() => {
                             addEmployee();
                             setIsEmployeeSetupModalOpen(false);
                           }}
                         >
-                          Crear empleado
+                          Agregar empleado
                         </ButtonLike>
                         <ButtonLike
                           onClick={() => setIsEmployeeSetupModalOpen(false)}
@@ -15069,6 +15256,82 @@ export default function App() {
                       </div>
                     }
                   >
+                    <TwoCol>
+                      <Field label="Empresa">
+                        <select
+                          style={styles.input}
+                          value={newEmployeeDraft.company}
+                          onChange={(e) =>
+                            setNewEmployeeDraft({
+                              ...newEmployeeDraft,
+                              company: e.target.value as CompanyName,
+                            })
+                          }
+                        >
+                          {COMPANY_OPTIONS.map((company) => (
+                            <option key={company.value} value={company.value}>
+                              {company.value}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Legajo">
+                        <input
+                          style={styles.input}
+                          value={newEmployeeDraft.legajo}
+                          onChange={(e) =>
+                            setNewEmployeeDraft({ ...newEmployeeDraft, legajo: e.target.value })
+                          }
+                          placeholder="Ej: 24"
+                        />
+                      </Field>
+                      <Field label="Nombre y apellido">
+                        <input
+                          style={styles.input}
+                          value={newEmployeeDraft.name}
+                          onChange={(e) =>
+                            setNewEmployeeDraft({ ...newEmployeeDraft, name: e.target.value })
+                          }
+                          placeholder="Nombre completo"
+                        />
+                      </Field>
+                      <Field label="Categoria base">
+                        <select
+                          style={styles.input}
+                          value={newEmployeeDraft.category}
+                          onChange={(e) =>
+                            setNewEmployeeDraft({
+                              ...newEmployeeDraft,
+                              category: e.target.value,
+                            })
+                          }
+                        >
+                          {CATEGORY_OPTIONS.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Horas nominales">
+                        <input
+                          style={styles.input}
+                          type="number"
+                          value={newEmployeeDraft.nominalHours}
+                          onChange={(e) =>
+                            setNewEmployeeDraft({
+                              ...newEmployeeDraft,
+                              nominalHours: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </Field>
+                    </TwoCol>
+                    <div style={{ ...styles.muted, marginTop: 10 }}>
+                      Con estos datos se crea el empleado. El resto se completa luego desde Abrir
+                      ficha.
+                    </div>
+                    {/* Configuracion base anterior retirada: el alta solo pide los cinco datos iniciales.
                 <div style={{ ...styles.muted, marginBottom: 10 }}>
                   Los costos de EPP e insumos del personal se toman prioritariamente desde
                   Marcadores. Los campos de esta seccion quedan como respaldo por si todavia no
@@ -15336,11 +15599,13 @@ export default function App() {
                     Agregar documento
                   </button>
                 </div>
+                    */}
                   </Panel>
                 </div>
               </div>
             )}
 
+          <div style={{ order: 6, gridColumn: "1 / -1" }}>
               <Panel title="Escalas salariales" span="full">
                 <div style={styles.uploadActions}>
                   <label style={styles.buttonLikeLabel}>
@@ -15451,8 +15716,27 @@ export default function App() {
               </Panel>
           </div>
 
-          <div style={{ order: 1 }}>
-          <Panel title="Resumen por empresa" span="half">
+          <div style={{ order: 1, gridColumn: "1 / -1" }}>
+          <Panel
+            title="Resumen por empresa"
+            span="full"
+            actions={
+              <div style={styles.inlineActions}>
+                <ButtonLike onClick={() => exportPersonalReport("General")} secondary>
+                  Reporte general
+                </ButtonLike>
+                {COMPANY_OPTIONS.filter((company) => canAccessCompany(company.value)).map((company) => (
+                  <ButtonLike
+                    key={`personal-report-${company.value}`}
+                    onClick={() => exportPersonalReport(company.value)}
+                    secondary
+                  >
+                    Reporte {company.short}
+                  </ButtonLike>
+                ))}
+              </div>
+            }
+          >
             <div style={styles.metricGrid}>
               {totalCompanyPayroll.map((row) => {
                 const meta = getCompanyMeta(row.company);
@@ -15471,15 +15755,34 @@ export default function App() {
           </div>
 
           {!selectedEmployee && (
-          <div style={{ order: 2, gridColumn: "1 / -1" }}>
+            <div style={{ order: 2, gridColumn: "1 / -1" }}>
+              <Panel
+                title="Alta de empleado"
+                span="full"
+                actions={
+                  <ButtonLike onClick={() => setIsEmployeeSetupModalOpen(true)}>
+                    Agregar empleado
+                  </ButtonLike>
+                }
+              >
+                <div style={styles.muted}>
+                  Carga rapida: empresa, legajo, nombre, categoria base y horas nominales. La
+                  ficha completa se edita luego desde el boton Abrir.
+                </div>
+              </Panel>
+            </div>
+          )}
+
+          {!selectedEmployee && (
+          <div style={{ order: 3, gridColumn: "1 / -1" }}>
           <Panel title="Empleados" span="full">
             <table style={styles.table}>
               <thead>
                 <tr>
                   <th>Empresa</th>
                   <th>Legajo</th>
-                  <th>Nombre</th>
-                  <th>Categoria</th>
+                  <th>Nombre y apellido</th>
+                  <th>Categoria base</th>
                   <th>Antig.</th>
                   <th>Asistencia</th>
                   <th>Documentacion</th>
@@ -15555,7 +15858,7 @@ export default function App() {
                       </td>
                       <td>{Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}</td>
                       <td>{money(salary.totalGross)}</td>
-                      <td>{money(salary.net)}</td>
+                      <td>{money(salary.netWithCashBonus)}</td>
                       <td>{money(salary.employerImpact)}</td>
                       <td>{money(salary.hourlyCost)}</td>
                       <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -15582,7 +15885,7 @@ export default function App() {
           )}
 
           {selectedEmployee && (
-            <div style={{ order: 2, gridColumn: "1 / -1" }}>
+            <div style={{ order: 3, gridColumn: "1 / -1" }}>
             <Panel
               span="full"
               title={`Ficha del empleado: ${selectedEmployee.name || "Empleado"}`}
@@ -15642,7 +15945,7 @@ export default function App() {
                     </div>
 
                     <div style={styles.personalFichaStack}>
-                      <Panel title="Datos basicos" nested>
+                      <Panel title="Datos basicos empleado" span="full" nested>
                         <TwoCol>
                           <Field label="Empresa">
                             <select
@@ -15664,14 +15967,14 @@ export default function App() {
                               onChange={(e) => updateEmployeeField(selectedEmployee.id, "legajo", e.target.value)}
                             />
                           </Field>
-                          <Field label="Nombre">
+                          <Field label="Nombre y apellido">
                             <input
                               style={styles.input}
                               value={selectedEmployee.name}
                               onChange={(e) => updateEmployeeField(selectedEmployee.id, "name", e.target.value)}
                             />
                           </Field>
-                          <Field label="Categoria">
+                          <Field label="Categoria base">
                             <select
                               style={styles.input}
                               value={selectedEmployee.category}
@@ -15684,40 +15987,137 @@ export default function App() {
                               ))}
                             </select>
                           </Field>
-                          <Field label="Antiguedad aÃ±os">
+                          <Field label="Horas nominales">
                             <input
                               style={styles.input}
                               type="number"
-                              value={selectedEmployee.seniorityYears}
-                              onChange={(e) => updateEmployeeField(selectedEmployee.id, "seniorityYears", Number(e.target.value))}
-                            />
-                          </Field>
-                          <Field label="Hora neta manual">
-                            <input
-                              style={styles.input}
-                              type="number"
-                              value={selectedEmployee.hourlyNetManual}
-                              onChange={(e) => updateEmployeeField(selectedEmployee.id, "hourlyNetManual", Number(e.target.value))}
-                            />
-                          </Field>
-                          <Field label="Hora bruta manual">
-                            <input
-                              style={styles.input}
-                              type="number"
-                              value={selectedEmployee.hourlyGrossManual}
-                              onChange={(e) => updateEmployeeField(selectedEmployee.id, "hourlyGrossManual", Number(e.target.value))}
+                              value={selectedEmployee.nominalHours}
+                              onChange={(e) =>
+                                updateEmployeeField(
+                                  selectedEmployee.id,
+                                  "nominalHours",
+                                  Number(e.target.value)
+                                )
+                              }
                             />
                           </Field>
                         </TwoCol>
 
-                        <div style={{ marginTop: 12 }}>
+                        <div style={styles.employeeSubsection}>
                           <div style={styles.panelHeader}>
-                            <h4 style={{ margin: 0, fontSize: 15 }}>EPP e insumos entregados</h4>
+                            <h4 style={{ margin: 0, fontSize: 15 }}>Documentacion importante</h4>
+                            <ButtonLike
+                              onClick={() =>
+                                setEmployeeDocumentModal({
+                                  employeeId: selectedEmployee.id,
+                                  name: "",
+                                  dueDate: "",
+                                })
+                              }
+                              secondary
+                            >
+                              Agregar documento
+                            </ButtonLike>
+                          </div>
+
+                          {selectedEmployee.documents.length === 0 ? (
+                            <div style={styles.empty}>Todavia no hay documentacion importante cargada.</div>
+                          ) : (
+                            selectedEmployee.documents.map((doc) => {
+                              const docState = getEmployeeDocumentState(doc);
+                              const docTone =
+                                docState === "vigente"
+                                  ? styles.statusGreen
+                                  : docState === "vence_pronto"
+                                  ? styles.statusYellow
+                                  : styles.statusRed;
+                              return (
+                                <div key={doc.id} style={styles.subCard}>
+                                  <div style={styles.inlineActions}>
+                                    <button
+                                      style={styles.smallBtn}
+                                      onClick={() => removeEmployeeDocument(selectedEmployee.id, doc.id)}
+                                    >
+                                      Quitar documento
+                                    </button>
+                                  </div>
+                                  <TwoCol>
+                                    <Field label="Documento">
+                                      <input
+                                        style={styles.input}
+                                        value={doc.name}
+                                        onChange={(e) =>
+                                          updateEmployeeDocument(
+                                            selectedEmployee.id,
+                                            doc.id,
+                                            "name",
+                                            e.target.value
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                    <Field label="Vencimiento">
+                                      <input
+                                        style={styles.input}
+                                        type="date"
+                                        value={doc.dueDate}
+                                        onChange={(e) =>
+                                          updateEmployeeDocument(
+                                            selectedEmployee.id,
+                                            doc.id,
+                                            "dueDate",
+                                            e.target.value
+                                          )
+                                        }
+                                      />
+                                    </Field>
+                                  </TwoCol>
+                                  <div style={styles.uploadActions}>
+                                    <span style={{ ...styles.statusPill, ...docTone }}>{docState}</span>
+                                    <FileDropButton
+                                      label="Cargar documento"
+                                      fileName={doc.attachmentName}
+                                      accept="image/*,.pdf,application/pdf"
+                                      onFileSelected={(file) =>
+                                        handleEmployeeDocumentUpload(selectedEmployee.id, doc.id, file)
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+
+                        <div style={styles.employeeSubsection}>
+                          <div style={styles.panelHeader}>
+                            <h4 style={{ margin: 0, fontSize: 15 }}>EPP e insumos de seguridad</h4>
                             <div style={styles.inlineActions}>
-                              <ButtonLike onClick={() => addEmployeeProvisionItem(selectedEmployee.id, "EPP")} secondary>
+                              <ButtonLike
+                                onClick={() =>
+                                  setEmployeeProvisionModal({
+                                    employeeId: selectedEmployee.id,
+                                    kind: "EPP",
+                                    title: "",
+                                    dueDate: "",
+                                    unitPrice: 0,
+                                  })
+                                }
+                                secondary
+                              >
                                 Agregar EPP
                               </ButtonLike>
-                              <ButtonLike onClick={() => addEmployeeProvisionItem(selectedEmployee.id, "Insumos")}>
+                              <ButtonLike
+                                onClick={() =>
+                                  setEmployeeProvisionModal({
+                                    employeeId: selectedEmployee.id,
+                                    kind: "Insumos",
+                                    title: "",
+                                    dueDate: "",
+                                    unitPrice: 0,
+                                  })
+                                }
+                              >
                                 Agregar insumo
                               </ButtonLike>
                             </div>
@@ -15810,52 +16210,11 @@ export default function App() {
                         </div>
                       </Panel>
 
-                      <Panel title="Liquidacion del mes" nested>
-                        <TwoCol>
-                          <Field label="Horas normales (desde calendario)">
-                            <input style={styles.inputReadOnly} type="number" value={payroll.normalHours} readOnly />
-                          </Field>
-                          <Field label="Horas feriado">
-                            <input style={styles.input} type="number" value={payroll.holidayHours} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "holidayHours", Number(e.target.value))} />
-                          </Field>
-                          <Field label="Horas extra 50 (desde calendario)">
-                            <input style={styles.inputReadOnly} type="number" value={payroll.extra50Hours} readOnly />
-                          </Field>
-                          <Field label="Horas extra 100 (desde calendario)">
-                            <input style={styles.inputReadOnly} type="number" value={payroll.extra100Hours} readOnly />
-                          </Field>
-                          <Field label="Hs nocturnas 50">
-                            <input style={styles.input} type="number" value={payroll.night50Hours} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "night50Hours", Number(e.target.value))} />
-                          </Field>
-                          <Field label="Hs nocturnas">
-                            <input style={styles.input} type="number" value={payroll.nightHours} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "nightHours", Number(e.target.value))} />
-                          </Field>
-                          <Field label="Ausencias injustificadas (hs)">
-                            <input style={styles.input} type="number" value={payroll.unjustifiedAbsenceHours} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "unjustifiedAbsenceHours", Number(e.target.value))} />
-                          </Field>
-                          <Field label="Ausencias justificadas (hs)">
-                            <input style={styles.input} type="number" value={payroll.justifiedAbsenceHours} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "justifiedAbsenceHours", Number(e.target.value))} />
-                          </Field>
-                          <Field label="Vacaciones (dias)">
-                            <input style={styles.input} type="number" value={payroll.vacationsDays} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "vacationsDays", Number(e.target.value))} />
-                          </Field>
-                          <Field label="Presentismo %">
-                            <input style={styles.input} type="number" value={payroll.presentismoPctOverride ?? 0} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "presentismoPctOverride", Number(e.target.value))} />
-                          </Field>
-                          <Field label="Anticipos">
-                            <input style={styles.input} type="number" value={payroll.anticipos} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "anticipos", Number(e.target.value))} />
-                          </Field>
-                          <Field label="Impacto empresa %">
-                            <input style={styles.input} type="number" value={payroll.employerExtraPct} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "employerExtraPct", Number(e.target.value))} />
-                          </Field>
-                        </TwoCol>
-                        <Field label="Notas de liquidacion">
-                          <textarea style={styles.textarea} value={payroll.notes} onChange={(e) => updateEmployeePayroll(selectedEmployee.id, payrollMonth, "notes", e.target.value)} />
-                        </Field>
-                      </Panel>
                     </div>
 
-                    <Panel title="Presentismo y ausencias" nested>
+                    <div style={styles.personalAttendancePayrollGrid}>
+                      <div style={styles.personalAttendancePane}>
+                    <Panel title="Presentismo y ausencias" span="full" nested>
                       <div style={styles.attendanceCalendar}>
                         {attendanceWeeks.map((week, weekIndex) => (
                           <div key={`attendance-week-${weekIndex}`} style={styles.attendanceWeek}>
@@ -15975,52 +16334,252 @@ export default function App() {
                         ))}
                       </div>
                     </Panel>
+                      </div>
+
+                      <div style={styles.personalPayrollPane}>
+                        <Panel title="Liquidacion del mes" span="full" nested>
+                          <div style={styles.liquidationColumn}>
+                            <Field label="Horas normales (desde calendario)">
+                              <input
+                                style={styles.inputReadOnly}
+                                type="number"
+                                value={payroll.normalHours}
+                                readOnly
+                              />
+                            </Field>
+                            <Field label="Horas extra 50 (desde calendario)">
+                              <input
+                                style={styles.inputReadOnly}
+                                type="number"
+                                value={payroll.extra50Hours}
+                                readOnly
+                              />
+                            </Field>
+                            <Field label="Horas extra 100 (desde calendario)">
+                              <input
+                                style={styles.inputReadOnly}
+                                type="number"
+                                value={payroll.extra100Hours}
+                                readOnly
+                              />
+                            </Field>
+                            <Field label="Horas feriado">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.holidayHours}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "holidayHours",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Hs nocturnas 50">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.night50Hours}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "night50Hours",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Hs nocturnas">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.nightHours}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "nightHours",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Ausencias injustificadas (hs)">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.unjustifiedAbsenceHours}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "unjustifiedAbsenceHours",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Ausencias justificadas (hs)">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.justifiedAbsenceHours}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "justifiedAbsenceHours",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Vacaciones (dias)">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.vacationsDays}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "vacationsDays",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Presentismo %">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.presentismoPctOverride ?? 0}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "presentismoPctOverride",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Anticipos">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.anticipos}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "anticipos",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Premio en efectivo (negro)">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.cashBonus}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "cashBonus",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Impacto empresa %">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.employerExtraPct}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "employerExtraPct",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Notas de liquidacion">
+                              <textarea
+                                style={styles.textarea}
+                                value={payroll.notes}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "notes",
+                                    e.target.value
+                                  )
+                                }
+                              />
+                            </Field>
+                          </div>
+
+                          <div style={{ ...styles.metricGrid, marginTop: 12 }}>
+                            <MiniMetric label="Neto blanco" value={money(payrollSummary.net)} />
+                            <MiniMetric label="Premio negro" value={money(payrollSummary.cashBonus)} />
+                            <MiniMetric label="Total empleado" value={money(payrollSummary.netWithCashBonus)} />
+                          </div>
+
+                          {payroll.manualOverride && (
+                            <div style={{ marginTop: 10 }}>
+                              <span style={{ ...styles.statusPill, ...styles.statusYellow }}>
+                                Corregido manualmente
+                              </span>
+                            </div>
+                          )}
+
+                          <div style={{ ...styles.inlineActions, marginTop: 12 }}>
+                            <ButtonLike
+                              onClick={() => saveEmployeePayrollMonth(selectedEmployee.id, payrollMonth)}
+                            >
+                              Guardar mes
+                            </ButtonLike>
+                            {payroll.savedAt && (
+                              <span style={styles.muted}>
+                                Guardado: {formatDateTimeDisplay(payroll.savedAt)}
+                              </span>
+                            )}
+                          </div>
+
+                          {selectedEmployee.payrolls.filter((item) => item.savedAt).length > 0 && (
+                            <div style={styles.savedMonthsList}>
+                              <strong>Meses guardados</strong>
+                              {selectedEmployee.payrolls
+                                .filter((item) => item.savedAt)
+                                .slice()
+                                .sort((a, b) => b.month.localeCompare(a.month))
+                                .map((item) => (
+                                  <button
+                                    key={`${selectedEmployee.id}-${item.month}`}
+                                    style={styles.smallBtn}
+                                    onClick={() => setPayrollMonth(item.month)}
+                                  >
+                                    {monthLabel(item.month)} -{" "}
+                                    {item.manualOverride ? "corregido manualmente" : "desde calendario"}
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </Panel>
+                      </div>
+                    </div>
 
                     <div style={styles.personalFichaStack}>
-                      <Panel title="Documentacion del empleado" nested actions={<ButtonLike onClick={() => addEmployeeDocument(selectedEmployee.id)}>Agregar documento</ButtonLike>}>
-                        {selectedEmployee.documents.map((doc) => {
-                          const docState = getEmployeeDocumentState(doc);
-                          const docTone =
-                            docState === "vigente"
-                              ? styles.statusGreen
-                              : docState === "vence_pronto"
-                              ? styles.statusYellow
-                              : styles.statusRed;
-                          return (
-                            <div key={doc.id} style={styles.subCard}>
-                              <div style={styles.inlineActions}>
-                                <button style={styles.smallBtn} onClick={() => removeEmployeeDocument(selectedEmployee.id, doc.id)}>
-                                  Quitar documento
-                                </button>
-                              </div>
-                              <TwoCol>
-                                <Field label="Documento">
-                                  <input style={styles.input} value={doc.name} onChange={(e) => updateEmployeeDocument(selectedEmployee.id, doc.id, "name", e.target.value)} />
-                                </Field>
-                                <Field label="Vencimiento">
-                                  <input style={styles.input} type="date" value={doc.dueDate} onChange={(e) => updateEmployeeDocument(selectedEmployee.id, doc.id, "dueDate", e.target.value)} />
-                                </Field>
-                              </TwoCol>
-                              <div style={styles.uploadActions}>
-                                <span style={{ ...styles.statusPill, ...docTone }}>{docState}</span>
-                                <FileDropButton
-                                  label="Cargar documento"
-                                  fileName={doc.attachmentName}
-                                  accept="image/*,.pdf,application/pdf"
-                                  onFileSelected={(file) =>
-                                    handleEmployeeDocumentUpload(
-                                      selectedEmployee.id,
-                                      doc.id,
-                                      file
-                                    )
-                                  }
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </Panel>
-
                       <Panel title="Sueldo e impacto empresa" nested>
                         <div style={styles.metricGrid}>
                           <MiniMetric label="Escala mes" value={payrollSummary.scale ? `${payrollSummary.scale.category} Â· ${monthLabel(payrollSummary.scale.month)}` : "Manual"} />
@@ -16730,20 +17289,32 @@ export default function App() {
           </div>
         </PrintReport>
 
-      <PrintReport id="report-personal" title="Reporte - Personal">
+      <PrintReport
+        id="report-personal"
+        title={`Reporte - Personal ${
+          personalReportCompany === "General"
+            ? "general"
+            : getCompanyMeta(personalReportCompany).short
+        }`}
+      >
         <table style={styles.table}>
           <thead>
             <tr>
               <th>Empresa</th>
               <th>Legajo</th>
-              <th>Empleado</th>
-              <th>Categoria</th>
+              <th>Nombre y apellido</th>
+              <th>Categoria base</th>
               <th>Neto</th>
               <th>Impacto</th>
             </tr>
           </thead>
           <tbody>
-            {employees.map((employee) => {
+            {employees
+              .filter(
+                (employee) =>
+                  personalReportCompany === "General" || employee.company === personalReportCompany
+              )
+              .map((employee) => {
               const summary = getEmployeePayrollSummary(employee);
               return (
                 <tr key={employee.id}>
@@ -17474,6 +18045,35 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14,
     width: "100%",
   },
+  personalAttendancePayrollGrid: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 3fr) minmax(280px, 1fr)",
+    gap: 14,
+    width: "100%",
+    alignItems: "start",
+  },
+  personalAttendancePane: {
+    minWidth: 0,
+  },
+  personalPayrollPane: {
+    minWidth: 0,
+  },
+  liquidationColumn: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr)",
+    gap: 10,
+  },
+  employeeSubsection: {
+    marginTop: 14,
+    paddingTop: 14,
+    borderTop: "1px solid #e2e8f0",
+  },
+  savedMonthsList: {
+    display: "grid",
+    gap: 8,
+    marginTop: 12,
+    justifyItems: "start",
+  },
   modalBackdrop: {
     position: "fixed",
     inset: 0,
@@ -17486,7 +18086,7 @@ const styles: Record<string, React.CSSProperties> = {
     overflowY: "auto",
   },
   employeeSetupModal: {
-    width: "min(1180px, calc(100vw - 48px))",
+    width: "min(620px, calc(100vw - 48px))",
     maxHeight: "calc(100vh - 96px)",
     overflowY: "auto",
     borderRadius: 24,
