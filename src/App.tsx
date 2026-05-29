@@ -749,6 +749,7 @@ type SupabaseSnapshotRecord = {
   payload: unknown;
   saved_at: string;
   updated_by: string | null;
+  module_keys?: string[];
 };
 
 type InternalAssistantMessage = {
@@ -1877,6 +1878,7 @@ const APP_PERSISTENCE_STORE_NAME = "app-state";
 const APP_PERSISTENCE_RECORD_KEY = "main";
 const APP_PERSISTENCE_VERSION = 1;
 const SUPABASE_APP_STATE_TABLE = "app_state_snapshots";
+const SUPABASE_APP_STATE_MODULES_TABLE = "app_state_modules";
 const SUPABASE_APP_STATE_RECORD_KEY = "main";
 const SUPABASE_CRM_CLIENTS_TABLE = "crm_clients";
 const SUPABASE_BUDGETS_TABLE = "crm_budgets";
@@ -1884,6 +1886,9 @@ const SUPABASE_AUTH_REDIRECT_URL = "https://sistema-gestion-grupo-bga-59bq.verce
 const SUPABASE_ACTIVE_SESSIONS_TABLE = "app_active_sessions";
 const SUPABASE_INTERNAL_CHAT_TABLE = "app_internal_chat_messages";
 const SUPABASE_COLLAB_CHANNEL = "grupo-bga-collaboration";
+const LOCAL_AUTOSAVE_DELAY_MS = 1200;
+const SUPABASE_AUTOSAVE_MIN_INTERVAL_MS = 12000;
+const COLLABORATION_POLL_INTERVAL_MS = 30000;
 
 type PersistedAppStateData = {
   companyCatalog: CompanyOption[];
@@ -1934,8 +1939,140 @@ type PersistedAppState = {
   data: PersistedAppStateData;
 };
 
+type PersistedAppStateField = keyof PersistedAppStateData;
+
+const APP_STATE_MODULE_DEFINITIONS = [
+  {
+    key: "configuracion",
+    label: "configuracion general",
+    fields: ["companyCatalog", "allocationMode", "manualAllocationPct"] as const,
+  },
+  {
+    key: "presupuestos",
+    label: "Presupuestos",
+    fields: [
+      "budget",
+      "subBudgets",
+      "subBudgetTitle",
+      "subBudgetNotes",
+      "materials",
+      "basicSupplies",
+      "labor",
+      "fixedCosts",
+      "budgetIncreases",
+      "budgetDiscounts",
+      "deviationPct",
+      "markupPct",
+      "vatPct",
+      "laborDeviationPct",
+      "commissionPct",
+      "stockIncreasePct",
+      "editingBudgetId",
+    ] as const,
+  },
+  {
+    key: "historial-crm",
+    label: "Historial y CRM",
+    fields: ["savedBudgets"] as const,
+  },
+  {
+    key: "trabajos-aprobados",
+    label: "Trabajos aprobados",
+    fields: ["approvedJobs"] as const,
+  },
+  {
+    key: "cash-flow",
+    label: "Cash flow y resultados",
+    fields: ["financialItems", "debtPlans", "bankStatementEntries"] as const,
+  },
+  {
+    key: "compras",
+    label: "Compras",
+    fields: ["purchaseInvoices", "remitoDrafts"] as const,
+  },
+  {
+    key: "caja-chica",
+    label: "Caja chica",
+    fields: ["pettyCashFunds", "pettyCashExpenses"] as const,
+  },
+  {
+    key: "stock-costos",
+    label: "Stock, agenda y analisis de costos",
+    fields: ["stockItems", "costAnalysisGroups", "costAnalysisEntries"] as const,
+  },
+  {
+    key: "personal",
+    label: "Personal",
+    fields: ["employees", "employeeBaseConfig", "scaleRows"] as const,
+  },
+  {
+    key: "marcadores",
+    label: "Marcadores",
+    fields: [
+      "fixedMarkers",
+      "supplyMarkers",
+      "laborMarkers",
+      "personalProvisionMarkers",
+    ] as const,
+  },
+  {
+    key: "archivos",
+    label: "Archivos, logos y datos de empresas",
+    fields: ["companyAssets"] as const,
+  },
+] as const satisfies readonly {
+  key: string;
+  label: string;
+  fields: readonly PersistedAppStateField[];
+}[];
+
+type AppStateModuleKey = (typeof APP_STATE_MODULE_DEFINITIONS)[number]["key"];
+
+const ALL_APP_STATE_MODULE_KEYS: AppStateModuleKey[] =
+  APP_STATE_MODULE_DEFINITIONS.map((item) => item.key);
+
+type PersistedAppStateModulePayload = {
+  version: number;
+  savedAt: string;
+  moduleKey: AppStateModuleKey;
+  moduleLabel: string;
+  data: Partial<PersistedAppStateData>;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+const normalizeStringValue = (value: unknown, fallback = "") =>
+  typeof value === "string" ? value : fallback;
+
+const normalizeSupabaseInternalChatMessage = (
+  value: unknown
+): SupabaseInternalChatMessage | null => {
+  if (!isRecord(value)) return null;
+
+  const id = Number(value.id);
+  if (!Number.isFinite(id)) return null;
+
+  return {
+    id,
+    user_id: normalizeStringValue(value.user_id),
+    email: normalizeStringValue(value.email),
+    full_name: normalizeStringValue(value.full_name, "Usuario"),
+    message: normalizeStringValue(value.message),
+    recipient_user_id:
+      typeof value.recipient_user_id === "string" ? value.recipient_user_id : null,
+    recipient_email:
+      typeof value.recipient_email === "string" ? value.recipient_email : null,
+    recipient_full_name:
+      typeof value.recipient_full_name === "string"
+        ? value.recipient_full_name
+        : null,
+    read_by: Array.isArray(value.read_by)
+      ? value.read_by.filter((item): item is string => typeof item === "string")
+      : [],
+    created_at: normalizeStringValue(value.created_at, new Date().toISOString()),
+  };
+};
 
 const openPersistenceDb = () =>
   new Promise<IDBDatabase>((resolve, reject) => {
@@ -2022,41 +2159,262 @@ const readSupabasePersistedAppState = async (): Promise<PersistedAppState | null
   });
 };
 
-const readSupabasePersistedAppStateRecord = async (): Promise<{
-  payload: unknown;
-  saved_at: string;
-  updated_by: string | null;
-} | null> => {
-  const sessionResult = await supabase.auth.getSession();
-  if (!sessionResult.data.session?.user) return null;
+const getSupabaseErrorMessage = (error: unknown) => {
+  if (isRecord(error) && typeof error.message === "string") return error.message;
+  return error instanceof Error ? error.message : "Error desconocido de Supabase.";
+};
 
-  const { data, error } = await supabase
-    .from(SUPABASE_APP_STATE_TABLE)
-    .select("payload,saved_at,updated_by")
-    .eq("id", SUPABASE_APP_STATE_RECORD_KEY)
-    .maybeSingle();
+const isSupabaseMissingTableError = (error: unknown, tableName: string) => {
+  if (!isRecord(error) && !(error instanceof Error)) return false;
+  const code = isRecord(error) && typeof error.code === "string" ? error.code : "";
+  const message = getSupabaseErrorMessage(error).toLowerCase();
+  return (
+    code === "42P01" ||
+    message.includes("does not exist") ||
+    message.includes("schema cache") ||
+    message.includes(`relation "${tableName.toLowerCase()}"`)
+  );
+};
 
-  if (error) {
-    throw new Error(`No pude leer Supabase: ${error.message}`);
-  }
+const getAppStateModuleDefinition = (moduleKey: string) =>
+  APP_STATE_MODULE_DEFINITIONS.find((item) => item.key === moduleKey);
 
-  if (!data?.payload) return null;
+const getAppStateModuleLabel = (moduleKey: string) =>
+  getAppStateModuleDefinition(moduleKey)?.label || "el sistema";
+
+const formatPersistenceModuleList = (moduleKeys?: readonly string[]) => {
+  const labels = Array.from(
+    new Set(
+      (moduleKeys || [])
+        .map((moduleKey) => getAppStateModuleLabel(moduleKey))
+        .filter(Boolean)
+    )
+  );
+
+  if (labels.length === 0) return "el sistema";
+  if (labels.length === 1) return labels[0];
+
+  return `${labels.slice(0, -1).join(", ")} y ${labels[labels.length - 1]}`;
+};
+
+const pickPersistedModuleData = (
+  data: PersistedAppStateData,
+  fields: readonly PersistedAppStateField[]
+) => {
+  const picked = {} as Partial<PersistedAppStateData>;
+  fields.forEach((field) => {
+    (picked as Record<string, unknown>)[field] = data[field];
+  });
+  return picked;
+};
+
+const buildPersistedModuleSignatures = (data: PersistedAppStateData) =>
+  APP_STATE_MODULE_DEFINITIONS.reduce<Record<string, string>>((acc, moduleDefinition) => {
+    acc[moduleDefinition.key] = JSON.stringify(
+      pickPersistedModuleData(data, moduleDefinition.fields)
+    );
+    return acc;
+  }, {});
+
+const getChangedPersistedModuleKeys = (
+  data: PersistedAppStateData,
+  previousSignatures: Record<string, string>
+) => {
+  const nextSignatures = buildPersistedModuleSignatures(data);
+  const changedModuleKeys = APP_STATE_MODULE_DEFINITIONS.filter(
+    (moduleDefinition) =>
+      nextSignatures[moduleDefinition.key] !== previousSignatures[moduleDefinition.key]
+  ).map((moduleDefinition) => moduleDefinition.key);
 
   return {
-    payload: data.payload,
-    saved_at: typeof data.saved_at === "string" ? data.saved_at : new Date().toISOString(),
-    updated_by: typeof data.updated_by === "string" ? data.updated_by : null,
+    changedModuleKeys,
+    nextSignatures,
   };
 };
 
-const writeSupabasePersistedAppState = async (payload: PersistedAppState) => {
-  const sessionResult = await supabase.auth.getSession();
-  const userId = sessionResult.data.session?.user?.id;
+const buildPersistedAppStateModules = (
+  payload: PersistedAppState,
+  moduleKeys?: AppStateModuleKey[]
+) => {
+  const allowedModuleKeys = moduleKeys ? new Set(moduleKeys) : null;
 
-  if (!userId) {
-    throw new Error("No hay una sesion de Supabase activa para guardar.");
+  return APP_STATE_MODULE_DEFINITIONS.filter(
+    (moduleDefinition) => !allowedModuleKeys || allowedModuleKeys.has(moduleDefinition.key)
+  ).map((moduleDefinition): PersistedAppStateModulePayload => ({
+    version: payload.version,
+    savedAt: payload.savedAt,
+    moduleKey: moduleDefinition.key,
+    moduleLabel: moduleDefinition.label,
+    data: pickPersistedModuleData(payload.data, moduleDefinition.fields),
+  }));
+};
+
+const normalizePersistedAppStateModule = (
+  value: unknown,
+  fallbackModuleKey: string
+): PersistedAppStateModulePayload | null => {
+  if (!isRecord(value) || !isRecord(value.data)) return null;
+
+  const typedModuleKey = getAppStateModuleDefinition(
+    typeof value.moduleKey === "string" ? value.moduleKey : fallbackModuleKey
+  )?.key;
+
+  if (!typedModuleKey) return null;
+
+  return {
+    version:
+      typeof value.version === "number" ? value.version : APP_PERSISTENCE_VERSION,
+    savedAt:
+      typeof value.savedAt === "string" ? value.savedAt : new Date().toISOString(),
+    moduleKey: typedModuleKey,
+    moduleLabel:
+      typeof value.moduleLabel === "string"
+        ? value.moduleLabel
+        : getAppStateModuleLabel(typedModuleKey),
+    data: value.data as Partial<PersistedAppStateData>,
+  };
+};
+
+const readSupabasePersistedLegacyAppStateRecord =
+  async (): Promise<SupabaseSnapshotRecord | null> => {
+    const { data, error } = await supabase
+      .from(SUPABASE_APP_STATE_TABLE)
+      .select("payload,saved_at,updated_by")
+      .eq("id", SUPABASE_APP_STATE_RECORD_KEY)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    if (!data?.payload) return null;
+
+    return {
+      payload: data.payload,
+      saved_at:
+        typeof data.saved_at === "string" ? data.saved_at : new Date().toISOString(),
+      updated_by: typeof data.updated_by === "string" ? data.updated_by : null,
+    };
+  };
+
+const readSupabasePersistedModuleRecords = async (): Promise<
+  {
+    module_key: string;
+    payload: unknown;
+    saved_at: string;
+    updated_by: string | null;
+  }[]
+> => {
+  const { data, error } = await supabase
+    .from(SUPABASE_APP_STATE_MODULES_TABLE)
+    .select("module_key,payload,saved_at,updated_by")
+    .order("module_key", { ascending: true });
+
+  if (error) {
+    throw error;
   }
 
+  return (data || []).map((item) => ({
+    module_key: String(item.module_key || ""),
+    payload: item.payload,
+    saved_at: typeof item.saved_at === "string" ? item.saved_at : new Date().toISOString(),
+    updated_by: typeof item.updated_by === "string" ? item.updated_by : null,
+  }));
+};
+
+const mergeSupabaseAppStateRecords = (
+  legacyRecord: SupabaseSnapshotRecord | null,
+  moduleRecords: Awaited<ReturnType<typeof readSupabasePersistedModuleRecords>>
+): SupabaseSnapshotRecord | null => {
+  const legacySnapshot = legacyRecord?.payload
+    ? normalizePersistedAppState({
+        ...(legacyRecord.payload as Record<string, unknown>),
+        savedAt: legacyRecord.saved_at,
+      })
+    : null;
+
+  const mergedData = legacySnapshot
+    ? ({ ...legacySnapshot.data } as Partial<PersistedAppStateData>)
+    : ({} as Partial<PersistedAppStateData>);
+  let latestSavedAt = legacyRecord?.saved_at || legacySnapshot?.savedAt || "";
+  let latestUpdatedBy = legacyRecord?.updated_by || null;
+  let latestModuleTime = 0;
+  const latestModuleKeys: string[] = [];
+
+  moduleRecords.forEach((record) => {
+    const moduleDefinition = getAppStateModuleDefinition(record.module_key);
+    if (!moduleDefinition) return;
+
+    const modulePayload = normalizePersistedAppStateModule(
+      record.payload,
+      record.module_key
+    );
+    if (!modulePayload) return;
+
+    Object.assign(mergedData, modulePayload.data);
+
+    const recordTime = new Date(record.saved_at).getTime();
+    if (Number.isFinite(recordTime)) {
+      const currentLatestTime = latestSavedAt ? new Date(latestSavedAt).getTime() : 0;
+      if (!Number.isFinite(currentLatestTime) || recordTime >= currentLatestTime) {
+        latestSavedAt = record.saved_at;
+        latestUpdatedBy = record.updated_by;
+      }
+
+      if (recordTime > latestModuleTime) {
+        latestModuleTime = recordTime;
+        latestModuleKeys.splice(0, latestModuleKeys.length, moduleDefinition.key);
+      } else if (recordTime === latestModuleTime) {
+        latestModuleKeys.push(moduleDefinition.key);
+      }
+    }
+  });
+
+  if (!legacySnapshot && Object.keys(mergedData).length === 0) return null;
+
+  const payload: PersistedAppState = {
+    version: APP_PERSISTENCE_VERSION,
+    savedAt: latestSavedAt || new Date().toISOString(),
+    data: mergedData as PersistedAppStateData,
+  };
+
+  return {
+    payload,
+    saved_at: payload.savedAt,
+    updated_by: latestUpdatedBy,
+    module_keys: latestModuleKeys,
+  };
+};
+
+const readSupabasePersistedAppStateRecord =
+  async (): Promise<SupabaseSnapshotRecord | null> => {
+  const sessionResult = await supabase.auth.getSession();
+  if (!sessionResult.data.session?.user) return null;
+
+  let legacyRecord: SupabaseSnapshotRecord | null = null;
+  let moduleRecords: Awaited<ReturnType<typeof readSupabasePersistedModuleRecords>> = [];
+
+  try {
+    legacyRecord = await readSupabasePersistedLegacyAppStateRecord();
+  } catch (error) {
+    throw new Error(`No pude leer Supabase: ${getSupabaseErrorMessage(error)}`);
+  }
+
+  try {
+    moduleRecords = await readSupabasePersistedModuleRecords();
+  } catch (error) {
+    if (!isSupabaseMissingTableError(error, SUPABASE_APP_STATE_MODULES_TABLE)) {
+      throw new Error(`No pude leer Supabase: ${getSupabaseErrorMessage(error)}`);
+    }
+  }
+
+  return mergeSupabaseAppStateRecords(legacyRecord, moduleRecords);
+};
+
+const writeSupabasePersistedLegacyAppState = async (
+  payload: PersistedAppState,
+  userId: string
+) => {
   const { error } = await supabase.from(SUPABASE_APP_STATE_TABLE).upsert(
     {
       id: SUPABASE_APP_STATE_RECORD_KEY,
@@ -2068,7 +2426,72 @@ const writeSupabasePersistedAppState = async (payload: PersistedAppState) => {
   );
 
   if (error) {
-    throw new Error(`No pude guardar en Supabase: ${error.message}`);
+    throw error;
+  }
+};
+
+const writeSupabasePersistedAppStateModules = async (
+  payload: PersistedAppState,
+  userId: string,
+  moduleKeys?: AppStateModuleKey[]
+): Promise<AppStateModuleKey[]> => {
+  const modulePayloads = buildPersistedAppStateModules(payload, moduleKeys);
+
+  if (modulePayloads.length === 0) return [];
+
+  const { error } = await supabase.from(SUPABASE_APP_STATE_MODULES_TABLE).upsert(
+    modulePayloads.map((modulePayload) => ({
+      module_key: modulePayload.moduleKey,
+      payload: modulePayload,
+      saved_at: payload.savedAt,
+      updated_by: userId,
+    })),
+    { onConflict: "module_key" }
+  );
+
+  if (error) {
+    throw error;
+  }
+
+  return modulePayloads.map((modulePayload) => modulePayload.moduleKey);
+};
+
+const writeSupabasePersistedAppState = async (
+  payload: PersistedAppState,
+  options?: { moduleKeys?: AppStateModuleKey[] }
+): Promise<{
+  mode: "modules" | "legacy";
+  moduleKeys: AppStateModuleKey[];
+}> => {
+  const sessionResult = await supabase.auth.getSession();
+  const userId = sessionResult.data.session?.user?.id;
+
+  if (!userId) {
+    throw new Error("No hay una sesion de Supabase activa para guardar.");
+  }
+
+  try {
+    const writtenModuleKeys = await writeSupabasePersistedAppStateModules(
+      payload,
+      userId,
+      options?.moduleKeys
+    );
+
+    return {
+      mode: "modules",
+      moduleKeys: writtenModuleKeys,
+    };
+  } catch (error) {
+    if (!isSupabaseMissingTableError(error, SUPABASE_APP_STATE_MODULES_TABLE)) {
+      throw new Error(`No pude guardar en Supabase: ${getSupabaseErrorMessage(error)}`);
+    }
+
+    await writeSupabasePersistedLegacyAppState(payload, userId);
+
+    return {
+      mode: "legacy",
+      moduleKeys: options?.moduleKeys || ALL_APP_STATE_MODULE_KEYS,
+    };
   }
 };
 
@@ -2291,7 +2714,7 @@ export default function App() {
   ]);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
   const [isCommunicationExpanded, setIsCommunicationExpanded] = useState(false);
-  const [lastSupabaseSnapshotSavedAt, setLastSupabaseSnapshotSavedAt] = useState("");
+  const lastSupabaseSnapshotSavedAtRef = useRef("");
   const lastMarkerSourceKeyRef = useRef("");
   const collaborationSessionIdRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -2302,6 +2725,10 @@ export default function App() {
   const lastAppliedRemoteSnapshotAtRef = useRef(0);
   const lastSnapshotEventKeyRef = useRef("");
   const lastPersistedDataSignatureRef = useRef("");
+  const lastSupabaseModuleSignaturesRef = useRef<Record<string, string>>({});
+  const lastRealtimeModuleMergeSavedAtRef = useRef("");
+  const lastRealtimeModuleMergedDataRef = useRef<PersistedAppStateData | null>(null);
+  const lastSupabaseAutosaveAtRef = useRef(0);
   const pendingRemoteSnapshotRef = useRef<PersistedAppState | null>(null);
   const presenceAnnouncementReadyRef = useRef(false);
   const knownOtherSessionIdsRef = useRef<string[]>([]);
@@ -2399,7 +2826,12 @@ export default function App() {
       throw new Error(`No pude leer el chat interno: ${error.message}`);
     }
 
-    setSupabaseChatMessages(((data || []) as SupabaseInternalChatMessage[]).reverse());
+    setSupabaseChatMessages(
+      (data || [])
+        .map((item) => normalizeSupabaseInternalChatMessage(item))
+        .filter((item): item is SupabaseInternalChatMessage => Boolean(item))
+        .reverse()
+    );
   };
 
   const sendSupabaseChatMessage = async () => {
@@ -2414,15 +2846,19 @@ export default function App() {
       return;
     }
 
-    const { error } = await supabase.from(SUPABASE_INTERNAL_CHAT_TABLE).insert({
-      user_id: user.id,
-      email: user.email || "",
-      full_name: supabaseProfile?.full_name || user.email || "Usuario",
-      message,
-      recipient_user_id: selectedChatRecipientId,
-      recipient_full_name: selectedChatRecipientId ? selectedChatRecipientName : null,
-      read_by: [user.id],
-    });
+    const { data, error } = await supabase
+      .from(SUPABASE_INTERNAL_CHAT_TABLE)
+      .insert({
+        user_id: user.id,
+        email: user.email || "",
+        full_name: supabaseProfile?.full_name || user.email || "Usuario",
+        message,
+        recipient_user_id: selectedChatRecipientId,
+        recipient_full_name: selectedChatRecipientId ? selectedChatRecipientName : null,
+        read_by: [user.id],
+      })
+      .select("*")
+      .single();
 
     if (error) {
       setStorageMessage(`No pude enviar el mensaje interno: ${error.message}`);
@@ -2430,7 +2866,17 @@ export default function App() {
     }
 
     setSupabaseChatDraft("");
-    await loadSupabaseChatMessages();
+    const insertedMessage = normalizeSupabaseInternalChatMessage(data);
+    if (insertedMessage) {
+      setSupabaseChatMessages((prev) => {
+        const withoutDuplicate = prev.filter(
+          (messageItem) => messageItem.id !== insertedMessage.id
+        );
+        return [...withoutDuplicate, insertedMessage]
+          .sort((a, b) => a.created_at.localeCompare(b.created_at))
+          .slice(-80);
+      });
+    }
   };
 
   const markChatThreadAsRead = async (peerUserId: string) => {
@@ -2694,7 +3140,10 @@ export default function App() {
     };
 
     runCollaborationSync();
-    const intervalId = window.setInterval(runCollaborationSync, 15000);
+    const intervalId = window.setInterval(
+      runCollaborationSync,
+      COLLABORATION_POLL_INTERVAL_MS
+    );
     const handleBeforeUnload = () => {
       void clearSupabasePresence();
     };
@@ -2711,7 +3160,6 @@ export default function App() {
     budget.company,
     supabaseProfile?.full_name,
     supabaseSession?.user?.id,
-    lastSupabaseSnapshotSavedAt,
   ]);
 
   useEffect(() => {
@@ -2743,14 +3191,44 @@ export default function App() {
       .on(
         "postgres_changes" as any,
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: SUPABASE_INTERNAL_CHAT_TABLE,
         },
-        () => {
-          void loadSupabaseChatMessages().catch((error) =>
-            console.log("CHAT REALTIME ERROR:", error)
-          );
+        (payload: any) => {
+          const nextMessage = normalizeSupabaseInternalChatMessage(payload?.new);
+          const oldRow = isRecord(payload?.old) ? payload.old : null;
+          const oldId = Number(oldRow?.id);
+          const eventType =
+            typeof payload?.eventType === "string" ? payload.eventType : "";
+
+          if (!nextMessage && eventType !== "DELETE") {
+            void loadSupabaseChatMessages().catch((error) =>
+              console.log("CHAT REALTIME ERROR:", error)
+            );
+            return;
+          }
+
+          setSupabaseChatMessages((prev) => {
+            if (eventType === "DELETE" && Number.isFinite(oldId)) {
+              return prev.filter((message) => message.id !== oldId);
+            }
+
+            if (!nextMessage) return prev;
+
+            const existingMessage = prev.some(
+              (message) => message.id === nextMessage.id
+            );
+            const nextMessages = existingMessage
+              ? prev.map((message) =>
+                  message.id === nextMessage.id ? nextMessage : message
+                )
+              : [...prev, nextMessage];
+
+            return nextMessages
+              .sort((a, b) => a.created_at.localeCompare(b.created_at))
+              .slice(-80);
+          });
         }
       )
       .on(
@@ -2768,6 +3246,72 @@ export default function App() {
             })
             .catch((error) => {
               console.log("COLLAB REALTIME SNAPSHOT ERROR:", error);
+            });
+        }
+      )
+      .on(
+        "postgres_changes" as any,
+        {
+          event: "*",
+          schema: "public",
+          table: SUPABASE_APP_STATE_MODULES_TABLE,
+        },
+        (payload: any) => {
+          const nextRow = isRecord(payload?.new) ? payload.new : null;
+          const moduleKey =
+            nextRow && typeof nextRow.module_key === "string"
+              ? nextRow.module_key
+              : "";
+          const modulePayload =
+            nextRow && moduleKey
+              ? normalizePersistedAppStateModule(nextRow.payload, moduleKey)
+              : null;
+
+          if (modulePayload) {
+            const savedAt =
+              typeof nextRow?.saved_at === "string"
+                ? nextRow.saved_at
+                : modulePayload.savedAt;
+            const updatedBy =
+              typeof nextRow?.updated_by === "string" ? nextRow.updated_by : null;
+            const currentData =
+              lastRealtimeModuleMergeSavedAtRef.current === savedAt &&
+              lastRealtimeModuleMergedDataRef.current
+                ? lastRealtimeModuleMergedDataRef.current
+                : buildPersistedAppData();
+            const mergedModuleData = {
+              ...currentData,
+              ...modulePayload.data,
+            } as PersistedAppStateData;
+            lastRealtimeModuleMergeSavedAtRef.current = savedAt;
+            lastRealtimeModuleMergedDataRef.current = mergedModuleData;
+            applyIncomingSupabaseSnapshot(
+              {
+                payload: {
+                  version: APP_PERSISTENCE_VERSION,
+                  savedAt,
+                  data: mergedModuleData,
+                },
+                saved_at: savedAt,
+                updated_by: updatedBy,
+                module_keys: [modulePayload.moduleKey],
+              },
+              "realtime"
+            );
+            return;
+          }
+
+          void readSupabasePersistedAppStateRecord()
+            .then((nextRecord) => {
+              applyIncomingSupabaseSnapshot(
+                nextRecord && moduleKey
+                  ? { ...nextRecord, module_keys: [moduleKey] }
+                  : nextRecord,
+                "realtime"
+              );
+            })
+            .catch((error) => {
+              console.log("COLLAB REALTIME MODULE SNAPSHOT ERROR:", error);
             });
         }
       )
@@ -4198,12 +4742,14 @@ export default function App() {
   ) => {
     if (!record?.payload || !record.saved_at) return;
 
-    const eventKey = `${record.updated_by || "sin-usuario"}__${record.saved_at}`;
+    const eventModuleKey = (record.module_keys || []).join("|");
+    const eventKey = `${record.updated_by || "sin-usuario"}__${record.saved_at}__${eventModuleKey}`;
     if (lastSnapshotEventKeyRef.current === eventKey) return;
 
     const remoteSavedAt = new Date(record.saved_at).getTime();
-    const localSavedAt = lastSupabaseSnapshotSavedAt
-      ? new Date(lastSupabaseSnapshotSavedAt).getTime()
+    const localSnapshotSavedAt = lastSupabaseSnapshotSavedAtRef.current;
+    const localSavedAt = localSnapshotSavedAt
+      ? new Date(localSnapshotSavedAt).getTime()
       : 0;
 
     if (!Number.isFinite(remoteSavedAt) || remoteSavedAt < localSavedAt) return;
@@ -4211,7 +4757,7 @@ export default function App() {
     lastSnapshotEventKeyRef.current = eventKey;
 
     if (record.updated_by && record.updated_by === supabaseSession?.user?.id) {
-      setLastSupabaseSnapshotSavedAt(record.saved_at);
+      lastSupabaseSnapshotSavedAtRef.current = record.saved_at;
       return;
     }
 
@@ -4226,16 +4772,22 @@ export default function App() {
     if (incomingSignature === lastPersistedDataSignatureRef.current) {
       pendingRemoteSnapshotRef.current = null;
       setPendingRealtimeRefresh(null);
-      setLastSupabaseSnapshotSavedAt(normalized.savedAt);
+      lastSupabaseSnapshotSavedAtRef.current = normalized.savedAt;
+      lastSupabaseModuleSignaturesRef.current = buildPersistedModuleSignatures(
+        normalized.data
+      );
+      lastRealtimeModuleMergeSavedAtRef.current = normalized.savedAt;
+      lastRealtimeModuleMergedDataRef.current = normalized.data;
       return;
     }
 
-    setLastSupabaseSnapshotSavedAt(normalized.savedAt);
+    lastSupabaseSnapshotSavedAtRef.current = normalized.savedAt;
     const currentSignature = buildPersistedDataSignature(buildPersistedAppData());
     const hasLocalUnsyncedChanges =
       currentSignature !== lastPersistedDataSignatureRef.current;
-    const changeText = `${describeCollaboratorContext(record.updated_by).actorName} guardo cambios en el sistema.`;
     const collaborator = describeCollaboratorContext(record.updated_by);
+    const moduleText = formatPersistenceModuleList(record.module_keys);
+    const changeText = `${collaborator.actorName} guardo cambios en ${moduleText}.`;
 
     if (hasLocalUnsyncedChanges) {
       pendingRemoteSnapshotRef.current = normalized;
@@ -4247,7 +4799,7 @@ export default function App() {
         "Hay una version mas nueva guardada en Supabase. Pulsa Refresh antes de seguir para no perder tus cambios locales."
       );
       announceSystemChange(
-        `${collaborator.actorName} guardo cambios ${collaborator.location}. Pulsa refresh para cargar la ultima version compartida sin pisar tus cambios locales.`
+        `${collaborator.actorName} guardo cambios en ${moduleText} ${collaborator.location}. Pulsa refresh para cargar la ultima version compartida sin pisar tus cambios locales.`
       );
       return;
     }
@@ -4256,15 +4808,20 @@ export default function App() {
     lastAppliedRemoteSnapshotAtRef.current = Date.now();
     applyPersistedAppData(normalized.data);
     lastPersistedDataSignatureRef.current = incomingSignature;
+    lastSupabaseModuleSignaturesRef.current = buildPersistedModuleSignatures(
+      normalized.data
+    );
+    lastRealtimeModuleMergeSavedAtRef.current = normalized.savedAt;
+    lastRealtimeModuleMergedDataRef.current = normalized.data;
     setLastSavedAt(normalized.savedAt);
     setPendingRealtimeRefresh(null);
     setStorageMessage(
       source === "realtime"
-        ? "Se actualizo automaticamente la ultima version compartida desde Supabase."
-        : "Se recupero automaticamente una version mas nueva desde Supabase."
+        ? `Se actualizo automaticamente ${moduleText} desde Supabase.`
+        : `Se recupero automaticamente una version mas nueva de ${moduleText} desde Supabase.`
     );
     announceSystemChange(
-      `${collaborator.actorName} guardo cambios ${collaborator.location}. ${
+      `${collaborator.actorName} guardo cambios en ${moduleText} ${collaborator.location}. ${
         source === "realtime"
           ? "La version compartida ya se aplico automaticamente."
           : "La sincronizacion recupero una version mas nueva."
@@ -5208,8 +5765,8 @@ export default function App() {
       data,
     };
 
+    const payloadSignature = buildPersistedDataSignature(payload.data);
     await writePersistedAppState(payload);
-    lastPersistedDataSignatureRef.current = buildPersistedDataSignature(payload.data);
     setLastSavedAt(payload.savedAt);
 
     const shouldWriteSupabase =
@@ -5217,15 +5774,39 @@ export default function App() {
       isSupabaseLoggedIn &&
       !pendingRemoteSnapshotRef.current;
 
+    let savedToSupabase = false;
+    let supabaseSaveMode: "modules" | "legacy" | null = null;
+    let savedModuleKeys: AppStateModuleKey[] = [];
+
     if (shouldWriteSupabase) {
-      await writeSupabasePersistedAppState(payload);
-      setLastSupabaseSnapshotSavedAt(payload.savedAt);
-      setPendingRealtimeRefresh(null);
+      const { changedModuleKeys, nextSignatures } = getChangedPersistedModuleKeys(
+        payload.data,
+        lastSupabaseModuleSignaturesRef.current
+      );
+      const shouldSeedAllModules =
+        Object.keys(lastSupabaseModuleSignaturesRef.current).length === 0;
+
+      if (shouldSeedAllModules || changedModuleKeys.length > 0) {
+        const supabaseWriteResult = await writeSupabasePersistedAppState(payload, {
+          moduleKeys: shouldSeedAllModules ? undefined : changedModuleKeys,
+        });
+        lastSupabaseAutosaveAtRef.current = Date.now();
+        lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
+        lastSupabaseModuleSignaturesRef.current = nextSignatures;
+        setPendingRealtimeRefresh(null);
+        supabaseSaveMode = supabaseWriteResult.mode;
+        savedModuleKeys = supabaseWriteResult.moduleKeys;
+        savedToSupabase = true;
+      }
     }
+
+    lastPersistedDataSignatureRef.current = payloadSignature;
 
     return {
       savedAt: payload.savedAt,
-      savedToSupabase: shouldWriteSupabase,
+      savedToSupabase,
+      supabaseSaveMode,
+      savedModuleKeys,
     };
   };
 
@@ -5348,6 +5929,9 @@ export default function App() {
       lastPersistedDataSignatureRef.current = buildPersistedDataSignature(
         persisted.data
       );
+      lastSupabaseModuleSignaturesRef.current = buildPersistedModuleSignatures(
+        persisted.data
+      );
       setLastSavedAt(persisted.savedAt);
       setStorageMessage("Datos restaurados desde el guardado local del navegador.");
     } catch (error) {
@@ -5369,10 +5953,13 @@ export default function App() {
       lastPersistedDataSignatureRef.current = buildPersistedDataSignature(
         persisted.data
       );
+      lastSupabaseModuleSignaturesRef.current = buildPersistedModuleSignatures(
+        persisted.data
+      );
       pendingRemoteSnapshotRef.current = null;
       lastAppliedRemoteSnapshotAtRef.current = Date.now();
       setLastSavedAt(persisted.savedAt);
-      setLastSupabaseSnapshotSavedAt(persisted.savedAt);
+      lastSupabaseSnapshotSavedAtRef.current = persisted.savedAt;
       setIsSupabaseSnapshotReady(true);
       setPendingRealtimeRefresh(null);
       setStorageMessage("Datos restaurados desde Supabase.");
@@ -5397,13 +5984,29 @@ export default function App() {
         savedAt: new Date().toISOString(),
         data: buildPersistedAppData(),
       };
-      lastPersistedDataSignatureRef.current = buildPersistedDataSignature(payload.data);
       await writePersistedAppState(payload);
-      await writeSupabasePersistedAppState(payload);
+      const supabaseWriteResult = await writeSupabasePersistedAppState(payload);
+      lastPersistedDataSignatureRef.current = buildPersistedDataSignature(payload.data);
+      lastSupabaseModuleSignaturesRef.current = buildPersistedModuleSignatures(
+        payload.data
+      );
+      lastSupabaseAutosaveAtRef.current = Date.now();
       setLastSavedAt(payload.savedAt);
-      setLastSupabaseSnapshotSavedAt(payload.savedAt);
+      lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
       setPendingRealtimeRefresh(null);
-      setStorageMessage("Datos guardados en Supabase y en este navegador.");
+      const savedModuleText = formatPersistenceModuleList(
+        supabaseWriteResult.moduleKeys
+      );
+      announceSystemChange(
+        supabaseWriteResult.mode === "modules"
+          ? `Guardado manual confirmado en Supabase: ${savedModuleText}.`
+          : "Guardado manual confirmado en Supabase en modo compatible. Ejecuta la query de guardado por modulos para activar la sincronizacion liviana."
+      );
+      setStorageMessage(
+        supabaseWriteResult.mode === "modules"
+          ? `Datos guardados en Supabase por modulos (${savedModuleText}) y en este navegador.`
+          : "Datos guardados en Supabase en modo compatible y en este navegador. Falta ejecutar la query de guardado por modulos para reducir la carga."
+      );
     } catch (error) {
       setStorageMessage(
         error instanceof Error ? error.message : "No pude guardar los datos en Supabase."
@@ -5445,21 +6048,33 @@ export default function App() {
         throw new Error("El archivo no tiene un formato de backup valido.");
       }
       applyPersistedAppData(normalized.data);
+      const importedSavedAt = new Date().toISOString();
       await writePersistedAppState({
         ...normalized,
-        savedAt: new Date().toISOString(),
+        savedAt: importedSavedAt,
       });
+      lastPersistedDataSignatureRef.current = buildPersistedDataSignature(
+        normalized.data
+      );
+      let importSupabaseMode: "modules" | "legacy" | null = null;
       if (isSupabaseLoggedIn) {
-        await writeSupabasePersistedAppState({
+        const supabaseWriteResult = await writeSupabasePersistedAppState({
           ...normalized,
-          savedAt: new Date().toISOString(),
+          savedAt: importedSavedAt,
         });
-        setLastSupabaseSnapshotSavedAt(new Date().toISOString());
+        importSupabaseMode = supabaseWriteResult.mode;
+        lastSupabaseAutosaveAtRef.current = Date.now();
+        lastSupabaseSnapshotSavedAtRef.current = importedSavedAt;
+        lastSupabaseModuleSignaturesRef.current = buildPersistedModuleSignatures(
+          normalized.data
+        );
       }
-      setLastSavedAt(new Date().toISOString());
+      setLastSavedAt(importedSavedAt);
       setStorageMessage(
         isSupabaseLoggedIn
-          ? "Backup importado y guardado en Supabase y localmente."
+          ? importSupabaseMode === "modules"
+            ? "Backup importado y guardado en Supabase por modulos y localmente."
+            : "Backup importado y guardado en Supabase en modo compatible. Falta ejecutar la query de guardado por modulos para reducir la carga."
           : "Backup importado y guardado localmente."
       );
     } catch (error) {
@@ -5648,9 +6263,21 @@ export default function App() {
       setSavedBudgets(nextSavedBudgets);
       setApprovedJobs(nextApprovedJobs);
       resetBudgetWorkspace(nextDraftNumber);
+      const syncedModuleText = formatPersistenceModuleList(
+        persistResult.savedModuleKeys
+      );
+      if (persistResult.savedToSupabase) {
+        announceSystemChange(
+          persistResult.supabaseSaveMode === "modules"
+            ? `Guardado confirmado en Supabase: ${syncedModuleText}.`
+            : "Guardado confirmado en Supabase en modo compatible. Ejecuta la query de guardado por modulos para activar la sincronizacion liviana."
+        );
+      }
       setStorageMessage(
         persistResult.savedToSupabase
-          ? "Presupuesto guardado y sincronizado correctamente."
+          ? persistResult.supabaseSaveMode === "modules"
+            ? `Presupuesto guardado y sincronizado por modulos: ${syncedModuleText}.`
+            : "Presupuesto guardado en Supabase en modo compatible. Falta ejecutar la query de guardado por modulos para mejorar rendimiento."
           : pendingRemoteSnapshotRef.current
             ? "Presupuesto guardado en este navegador. Hay una version remota pendiente: pulsa Refresh antes de sincronizar en Supabase."
             : "Presupuesto guardado en este navegador."
@@ -6861,6 +7488,8 @@ export default function App() {
   useEffect(() => {
     if (!isPersistenceReady) return;
 
+    let supabaseTimeoutId: number | undefined;
+
     const timeoutId = window.setTimeout(async () => {
       try {
         const payload: PersistedAppState = {
@@ -6872,18 +7501,60 @@ export default function App() {
         if (payloadSignature === lastPersistedDataSignatureRef.current) {
           return;
         }
-        lastPersistedDataSignatureRef.current = payloadSignature;
         await writePersistedAppState(payload);
-        if (
+        lastPersistedDataSignatureRef.current = payloadSignature;
+        setLastSavedAt(payload.savedAt);
+
+        const canAutosaveSupabase =
           isSupabaseLoggedIn &&
           isSupabaseSnapshotReady &&
           !pendingRemoteSnapshotRef.current &&
-          Date.now() - lastAppliedRemoteSnapshotAtRef.current > 1500
-        ) {
-          await writeSupabasePersistedAppState(payload);
-          setLastSupabaseSnapshotSavedAt(payload.savedAt);
-        }
-        setLastSavedAt(payload.savedAt);
+          Date.now() - lastAppliedRemoteSnapshotAtRef.current > 1500;
+
+        if (!canAutosaveSupabase) return;
+
+        const { changedModuleKeys, nextSignatures } = getChangedPersistedModuleKeys(
+          payload.data,
+          lastSupabaseModuleSignaturesRef.current
+        );
+        const shouldSeedAllModules =
+          Object.keys(lastSupabaseModuleSignaturesRef.current).length === 0;
+
+        if (!shouldSeedAllModules && changedModuleKeys.length === 0) return;
+
+        const msUntilRemoteSave = Math.max(
+          0,
+          SUPABASE_AUTOSAVE_MIN_INTERVAL_MS -
+            (Date.now() - lastSupabaseAutosaveAtRef.current)
+        );
+
+        supabaseTimeoutId = window.setTimeout(async () => {
+          try {
+            const supabaseWriteResult = await writeSupabasePersistedAppState(payload, {
+              moduleKeys: shouldSeedAllModules ? undefined : changedModuleKeys,
+            });
+            lastSupabaseAutosaveAtRef.current = Date.now();
+            lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
+            lastSupabaseModuleSignaturesRef.current = nextSignatures;
+            const savedModuleText = formatPersistenceModuleList(
+              supabaseWriteResult.moduleKeys
+            );
+            setStorageMessage(
+              supabaseWriteResult.mode === "modules"
+                ? shouldSeedAllModules
+                  ? "Guardado compartido inicial sincronizado por modulos."
+                  : `Guardado compartido actualizado: ${savedModuleText}.`
+                : "Guardado compartido actualizado en modo compatible. Ejecuta la query de guardado por modulos para reducir la carga."
+            );
+          } catch (error) {
+            lastPersistedDataSignatureRef.current = "";
+            setStorageMessage(
+              error instanceof Error
+                ? error.message
+                : "No pude guardar los datos automaticamente en Supabase."
+            );
+          }
+        }, msUntilRemoteSave);
       } catch (error) {
         setStorageMessage(
           error instanceof Error
@@ -6891,9 +7562,14 @@ export default function App() {
             : "No pude guardar los datos automaticamente."
         );
       }
-    }, 500);
+    }, LOCAL_AUTOSAVE_DELAY_MS);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (supabaseTimeoutId !== undefined) {
+        window.clearTimeout(supabaseTimeoutId);
+      }
+    };
   }, [
     budget,
     subBudgets,
