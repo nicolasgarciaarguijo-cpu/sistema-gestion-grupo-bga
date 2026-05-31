@@ -2062,13 +2062,13 @@ const ALL_APP_STATE_MODULE_KEYS: AppStateModuleKey[] =
 const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> = {
   cashflow: ["cash-flow"],
   facturacion: ["cash-flow", "trabajos-aprobados", "caja-chica", "compras"],
-  aprobados: ["trabajos-aprobados", "fabricacion"],
-  fabricacion: ["fabricacion", "compras", "stock-costos"],
-  compras: ["compras", "fabricacion", "caja-chica"],
+  aprobados: ["trabajos-aprobados"],
+  fabricacion: ["trabajos-aprobados", "compras", "stock-costos"],
+  compras: ["compras", "caja-chica"],
   cajaChica: ["caja-chica", "compras", "cash-flow"],
   presupuesto: ["presupuestos", "historial-crm", "trabajos-aprobados"],
   historial: ["historial-crm", "presupuestos"],
-  stock: ["stock-costos", "marcadores", "fabricacion"],
+  stock: ["stock-costos", "marcadores", "trabajos-aprobados"],
   personal: ["personal"],
   marcadores: ["marcadores", "stock-costos", "personal"],
 };
