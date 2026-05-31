@@ -913,7 +913,20 @@ const formatDateDisplay = (dateText: string) => {
   return `${day}-${month}-${year}`;
 };
 
-const todayIso = () => new Date().toISOString().slice(0, 10);
+const localDateKey = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const localMonthKey = (date = new Date()) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}`;
+};
+
+const todayIso = () => localDateKey(new Date());
 
 const normalizeCompanyText = (value: string) =>
   (value || "")
@@ -1141,13 +1154,28 @@ const parseDelimitedRemitoRows = (text: string, company: CompanyScope): RemitoDr
   return parsedRows;
 };
 
+const parseMonthKey = (month: string) => {
+  const [yearText, monthText] = (month || localMonthKey()).split("-");
+  const today = new Date();
+  const year = Number(yearText) || today.getFullYear();
+  const monthIndex = Math.min(11, Math.max(0, (Number(monthText) || today.getMonth() + 1) - 1));
+  return { year, monthIndex };
+};
+
+const shiftMonthKey = (month: string, amount: number) => {
+  const { year, monthIndex } = parseMonthKey(month);
+  return localMonthKey(new Date(year, monthIndex + amount, 1));
+};
+
+const ATTENDANCE_WEEKDAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
+
 const monthLabel = (month: string) => {
   if (!month) return "-";
-  const [year, mm] = month.split("-");
-  return new Date(Number(year), Number(mm) - 1, 1).toLocaleDateString("es-AR", {
+  const { year, monthIndex } = parseMonthKey(month);
+  const monthName = new Date(year, monthIndex, 1).toLocaleDateString("es-AR", {
     month: "long",
-    year: "numeric",
   });
+  return `${monthName} ${year}`;
 };
 
 const categoryAliases: Record<string, string> = {
@@ -2031,6 +2059,23 @@ type AppStateModuleKey = (typeof APP_STATE_MODULE_DEFINITIONS)[number]["key"];
 const ALL_APP_STATE_MODULE_KEYS: AppStateModuleKey[] =
   APP_STATE_MODULE_DEFINITIONS.map((item) => item.key);
 
+const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> = {
+  cashflow: ["cash-flow"],
+  facturacion: ["cash-flow", "trabajos-aprobados", "caja-chica", "compras"],
+  aprobados: ["trabajos-aprobados", "fabricacion"],
+  fabricacion: ["fabricacion", "compras", "stock-costos"],
+  compras: ["compras", "fabricacion", "caja-chica"],
+  cajaChica: ["caja-chica", "compras", "cash-flow"],
+  presupuesto: ["presupuestos", "historial-crm", "trabajos-aprobados"],
+  historial: ["historial-crm", "presupuestos"],
+  stock: ["stock-costos", "marcadores", "fabricacion"],
+  personal: ["personal"],
+  marcadores: ["marcadores", "stock-costos", "personal"],
+};
+
+const getPersistenceModuleKeysForTab = (tab: TabKey): AppStateModuleKey[] =>
+  TAB_PERSISTENCE_MODULE_KEYS[tab] || ALL_APP_STATE_MODULE_KEYS;
+
 type PersistedAppStateModulePayload = {
   version: number;
   savedAt: string;
@@ -2230,6 +2275,22 @@ const getChangedPersistedModuleKeys = (
     changedModuleKeys,
     nextSignatures,
   };
+};
+
+const mergePersistedModuleSignatures = (
+  previousSignatures: Record<string, string>,
+  nextSignatures: Record<string, string>,
+  moduleKeys?: readonly AppStateModuleKey[]
+) => {
+  if (!moduleKeys || moduleKeys.length === 0) return nextSignatures;
+
+  return moduleKeys.reduce<Record<string, string>>(
+    (acc, moduleKey) => {
+      acc[moduleKey] = nextSignatures[moduleKey];
+      return acc;
+    },
+    { ...previousSignatures }
+  );
 };
 
 const buildPersistedAppStateModules = (
@@ -2665,7 +2726,7 @@ export default function App() {
   } | null>(null);
   const [financialMonth, setFinancialMonth] = useState(new Date().toISOString().slice(0, 7));
   const [purchaseMonth, setPurchaseMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [payrollMonth, setPayrollMonth] = useState("2026-04");
+  const [payrollMonth, setPayrollMonth] = useState(() => localMonthKey());
   const [personalReportCompany, setPersonalReportCompany] = useState<CompanyScope>("General");
   const [, setPrintMode] = useState<PrintMode>("");
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto");
@@ -5757,7 +5818,11 @@ export default function App() {
 
   const persistAppStateImmediately = async (
     data: PersistedAppStateData,
-    options?: { saveToSupabase?: boolean }
+    options?: {
+      saveToSupabase?: boolean;
+      moduleKeys?: AppStateModuleKey[];
+      allowSupabaseWithPendingRemote?: boolean;
+    }
   ) => {
     const payload: PersistedAppState = {
       version: APP_PERSISTENCE_VERSION,
@@ -5772,7 +5837,8 @@ export default function App() {
     const shouldWriteSupabase =
       options?.saveToSupabase !== false &&
       isSupabaseLoggedIn &&
-      !pendingRemoteSnapshotRef.current;
+      (!pendingRemoteSnapshotRef.current ||
+        options?.allowSupabaseWithPendingRemote === true);
 
     let savedToSupabase = false;
     let supabaseSaveMode: "modules" | "legacy" | null = null;
@@ -5783,16 +5849,30 @@ export default function App() {
         payload.data,
         lastSupabaseModuleSignaturesRef.current
       );
+      const explicitModuleKeys = options?.moduleKeys;
       const shouldSeedAllModules =
+        !explicitModuleKeys &&
         Object.keys(lastSupabaseModuleSignaturesRef.current).length === 0;
+      const moduleKeysToSave =
+        explicitModuleKeys && explicitModuleKeys.length > 0
+          ? explicitModuleKeys
+          : shouldSeedAllModules
+            ? undefined
+            : changedModuleKeys;
 
-      if (shouldSeedAllModules || changedModuleKeys.length > 0) {
+      if (shouldSeedAllModules || (moduleKeysToSave && moduleKeysToSave.length > 0)) {
         const supabaseWriteResult = await writeSupabasePersistedAppState(payload, {
-          moduleKeys: shouldSeedAllModules ? undefined : changedModuleKeys,
+          moduleKeys: moduleKeysToSave,
         });
         lastSupabaseAutosaveAtRef.current = Date.now();
         lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
-        lastSupabaseModuleSignaturesRef.current = nextSignatures;
+        lastSupabaseModuleSignaturesRef.current = shouldSeedAllModules
+          ? nextSignatures
+          : mergePersistedModuleSignatures(
+              lastSupabaseModuleSignaturesRef.current,
+              nextSignatures,
+              supabaseWriteResult.moduleKeys
+            );
         setPendingRealtimeRefresh(null);
         supabaseSaveMode = supabaseWriteResult.mode;
         savedModuleKeys = supabaseWriteResult.moduleKeys;
@@ -5973,38 +6053,39 @@ export default function App() {
 
   const saveToSupabaseNow = async () => {
     try {
-      if (pendingRemoteSnapshotRef.current) {
+      const moduleKeys =
+        activeTab === "acceso" ? undefined : getPersistenceModuleKeysForTab(activeTab);
+      const scopeText =
+        activeTab === "acceso" ? "todo el sistema" : getTabLabel(activeTab);
+      const persistResult = await persistAppStateImmediately(buildPersistedAppData(), {
+        moduleKeys,
+        allowSupabaseWithPendingRemote: activeTab !== "acceso",
+      });
+
+      if (!persistResult.savedToSupabase) {
         setStorageMessage(
-          "Hay una version remota pendiente. Pulsa Refresh antes de guardar en Supabase para no sobreescribir cambios de otro usuario."
+          pendingRemoteSnapshotRef.current
+            ? activeTab === "acceso"
+              ? "Guardado local realizado. Hay una version remota pendiente: pulsa Refresh antes de guardar todo el sistema en Supabase."
+              : `Guardado local realizado. No hubo cambios nuevos para subir en ${scopeText}.`
+            : activeTab === "acceso"
+              ? "Guardado local realizado. No hubo cambios nuevos para subir en Supabase."
+              : `Guardado local realizado. No hubo cambios nuevos para subir en ${scopeText}.`
         );
         return;
       }
-      const payload: PersistedAppState = {
-        version: APP_PERSISTENCE_VERSION,
-        savedAt: new Date().toISOString(),
-        data: buildPersistedAppData(),
-      };
-      await writePersistedAppState(payload);
-      const supabaseWriteResult = await writeSupabasePersistedAppState(payload);
-      lastPersistedDataSignatureRef.current = buildPersistedDataSignature(payload.data);
-      lastSupabaseModuleSignaturesRef.current = buildPersistedModuleSignatures(
-        payload.data
-      );
-      lastSupabaseAutosaveAtRef.current = Date.now();
-      setLastSavedAt(payload.savedAt);
-      lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
-      setPendingRealtimeRefresh(null);
+
       const savedModuleText = formatPersistenceModuleList(
-        supabaseWriteResult.moduleKeys
+        persistResult.savedModuleKeys
       );
       announceSystemChange(
-        supabaseWriteResult.mode === "modules"
+        persistResult.supabaseSaveMode === "modules"
           ? `Guardado manual confirmado en Supabase: ${savedModuleText}.`
           : "Guardado manual confirmado en Supabase en modo compatible. Ejecuta la query de guardado por modulos para activar la sincronizacion liviana."
       );
       setStorageMessage(
-        supabaseWriteResult.mode === "modules"
-          ? `Datos guardados en Supabase por modulos (${savedModuleText}) y en este navegador.`
+        persistResult.supabaseSaveMode === "modules"
+          ? `Datos guardados en Supabase para ${scopeText}: ${savedModuleText}.`
           : "Datos guardados en Supabase en modo compatible y en este navegador. Falta ejecutar la query de guardado por modulos para reducir la carga."
       );
     } catch (error) {
@@ -6257,7 +6338,11 @@ export default function App() {
           laborDeviationPct: 0,
           commissionPct: 0,
           editingBudgetId: null,
-        })
+        }),
+        {
+          allowSupabaseWithPendingRemote: true,
+          moduleKeys: ["presupuestos", "historial-crm", "trabajos-aprobados"],
+        }
       );
 
       setSavedBudgets(nextSavedBudgets);
@@ -9441,16 +9526,37 @@ export default function App() {
   );
 
   const attendanceMonthData = useMemo(() => {
-    const [year, month] = payrollMonth.split("-").map(Number);
-    const daysInMonth = new Date(year, month, 0).getDate();
-    return Array.from({ length: daysInMonth }, (_, index) => {
-      const date = new Date(year, month - 1, index + 1);
+    const { year, monthIndex } = parseMonthKey(payrollMonth);
+    const firstDay = new Date(year, monthIndex, 1);
+    const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
+    const leadingEmptyDays = (firstDay.getDay() + 6) % 7;
+    const dayCells = Array.from({ length: daysInMonth }, (_, index) => {
+      const date = new Date(year, monthIndex, index + 1);
       return {
-        key: date.toISOString().slice(0, 10),
+        key: localDateKey(date),
         day: index + 1,
         weekday: date.toLocaleDateString("es-AR", { weekday: "short" }),
       };
     });
+    const cells: (typeof dayCells[number] | null)[] = [
+      ...Array.from({ length: leadingEmptyDays }, () => null),
+      ...dayCells,
+    ];
+
+    while (cells.length % 7 !== 0) {
+      cells.push(null);
+    }
+
+    const weeks = Array.from({ length: Math.max(1, cells.length / 7) }, (_, index) =>
+      cells.slice(index * 7, index * 7 + 7)
+    );
+
+    return {
+      label: monthLabel(payrollMonth),
+      labelUpper: monthLabel(payrollMonth).toUpperCase(),
+      weekdays: ATTENDANCE_WEEKDAY_LABELS,
+      weeks,
+    };
   }, [payrollMonth]);
 
   const getAttendanceRecord = (employee: Employee, date: string) =>
@@ -16585,13 +16691,7 @@ export default function App() {
                 const payrollSummary = getEmployeePayrollSummary(selectedEmployee);
                 const eppSummary = getEmployeeProvisionSummary(selectedEmployee, "EPP");
                 const suppliesSummary = getEmployeeProvisionSummary(selectedEmployee, "Insumos");
-                const attendanceWeekSize = Math.ceil(attendanceMonthData.length / 4);
-                const attendanceWeeks = Array.from({ length: 4 }, (_, index) =>
-                  attendanceMonthData.slice(
-                    index * attendanceWeekSize,
-                    (index + 1) * attendanceWeekSize
-                  )
-                );
+                const attendanceWeeks = attendanceMonthData.weeks;
 
                 return (
                   <>
@@ -16891,12 +16991,57 @@ export default function App() {
                     <div style={styles.personalAttendancePayrollGrid}>
                       <div style={styles.personalAttendancePane}>
                     <Panel title="Presentismo y ausencias" span="full" nested>
+                      <div style={styles.attendanceToolbar}>
+                        <div>
+                          <div style={styles.attendanceMonthTitle}>
+                            {attendanceMonthData.labelUpper}
+                          </div>
+                          <div style={styles.muted}>
+                            Al guardar el mes quedara registrado como {attendanceMonthData.label}.
+                          </div>
+                        </div>
+                        <div style={styles.inlineActions}>
+                          <button
+                            style={styles.smallBtn}
+                            onClick={() => setPayrollMonth(shiftMonthKey(payrollMonth, -1))}
+                          >
+                            Mes anterior
+                          </button>
+                          <button
+                            style={styles.smallBtn}
+                            onClick={() => setPayrollMonth(localMonthKey())}
+                          >
+                            Mes actual
+                          </button>
+                          <button
+                            style={styles.smallBtn}
+                            onClick={() => setPayrollMonth(shiftMonthKey(payrollMonth, 1))}
+                          >
+                            Mes siguiente
+                          </button>
+                        </div>
+                      </div>
+                      <div style={styles.attendanceWeekdayHeader}>
+                        {attendanceMonthData.weekdays.map((weekday) => (
+                          <div key={weekday} style={styles.attendanceWeekdayCell}>
+                            {weekday}
+                          </div>
+                        ))}
+                      </div>
                       <div style={styles.attendanceCalendar}>
                         {attendanceWeeks.map((week, weekIndex) => (
                           <div key={`attendance-week-${weekIndex}`} style={styles.attendanceWeek}>
                             <div style={styles.attendanceWeekTitle}>Semana {weekIndex + 1}</div>
                             <div style={styles.attendanceWeekGrid}>
-                              {week.map((day) => {
+                              {week.map((day, dayIndex) => {
+                                if (!day) {
+                                  return (
+                                    <div
+                                      key={`attendance-empty-${weekIndex}-${dayIndex}`}
+                                      style={styles.attendanceEmptyCard}
+                                    />
+                                  );
+                                }
                                 const record = getAttendanceRecord(selectedEmployee, day.key);
                                 const status = record?.status || "sin_cargar";
                                 const statusStyle =
@@ -18711,28 +18856,32 @@ const styles: Record<string, React.CSSProperties> = {
   personalStack: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr)",
-    gap: 16,
+    gap: 18,
     alignItems: "start",
     width: "100%",
   },
   personalFichaStack: {
     display: "grid",
     gridTemplateColumns: "minmax(0, 1fr)",
-    gap: 14,
+    gap: 16,
     width: "100%",
   },
   personalAttendancePayrollGrid: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 3fr) minmax(280px, 1fr)",
-    gap: 14,
+    gridTemplateColumns: "minmax(720px, 3fr) minmax(320px, 1fr)",
+    gap: 16,
     width: "100%",
     alignItems: "start",
+    overflowX: "auto",
+    paddingBottom: 2,
   },
   personalAttendancePane: {
     minWidth: 0,
+    width: "100%",
   },
   personalPayrollPane: {
-    minWidth: 0,
+    minWidth: 320,
+    width: "100%",
   },
   liquidationColumn: {
     display: "grid",
@@ -19903,10 +20052,39 @@ const styles: Record<string, React.CSSProperties> = {
   },
   attendanceCalendar: {
     display: "grid",
-    gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-    gap: 12,
+    gap: 10,
     marginTop: 12,
     width: "100%",
+  },
+  attendanceToolbar: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "wrap",
+    marginTop: 4,
+  },
+  attendanceMonthTitle: {
+    fontSize: 20,
+    fontWeight: 900,
+    letterSpacing: 0.4,
+    color: "#0f172a",
+  },
+  attendanceWeekdayHeader: {
+    display: "grid",
+    gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
+    gap: 8,
+    marginTop: 12,
+  },
+  attendanceWeekdayCell: {
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: 900,
+    color: "#475569",
+    background: "#eff6ff",
+    border: "1px solid #dbeafe",
+    borderRadius: 10,
+    padding: "7px 4px",
   },
   attendanceWeek: {
     border: "1px solid #dbeafe",
@@ -19917,6 +20095,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 10,
     alignContent: "start",
     minWidth: 0,
+    overflowX: "auto",
   },
   attendanceWeekTitle: {
     fontSize: 13,
@@ -19925,6 +20104,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   attendanceWeekGrid: {
     display: "grid",
+    gridTemplateColumns: "repeat(7, minmax(118px, 1fr))",
     gap: 8,
   },
   attendanceCard: {
@@ -19932,7 +20112,14 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     padding: 10,
     background: "#fff",
-    minWidth: 0,
+    minWidth: 118,
+  },
+  attendanceEmptyCard: {
+    minHeight: 132,
+    minWidth: 118,
+    border: "1px dashed #e2e8f0",
+    borderRadius: 12,
+    background: "rgba(248,250,252,0.65)",
   },
   attendanceDayTitle: {
     fontSize: 12,
