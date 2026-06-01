@@ -1918,8 +1918,39 @@ const LOCAL_AUTOSAVE_DELAY_MS = 1200;
 const SUPABASE_AUTOSAVE_MIN_INTERVAL_MS = 12000;
 const COLLABORATION_POLL_INTERVAL_MS = 30000;
 
+const MONTHLY_HISTORY_TAB_KEYS = [
+  "cashflow",
+  "facturacion",
+  "aprobados",
+  "fabricacion",
+  "compras",
+  "cajaChica",
+  "historial",
+] as const satisfies readonly TabKey[];
+
+type MonthlyManagedTabKey = (typeof MONTHLY_HISTORY_TAB_KEYS)[number];
+
+type MonthlyHistorySnapshot = {
+  id: number;
+  tabKey: MonthlyManagedTabKey;
+  tabLabel: string;
+  month: string;
+  monthLabel: string;
+  companyScope: CompanyScope;
+  savedAt: string;
+  savedBy?: string;
+  data: Record<string, unknown>;
+};
+
+const MONTHLY_HISTORY_TAB_SET = new Set<TabKey>([...MONTHLY_HISTORY_TAB_KEYS]);
+
+const isMonthlyHistoryTab = (tab: TabKey): tab is MonthlyManagedTabKey =>
+  MONTHLY_HISTORY_TAB_SET.has(tab);
+
 type PersistedAppStateData = {
   companyCatalog: CompanyOption[];
+  operationalMonth: string;
+  monthlyHistorySnapshots: MonthlyHistorySnapshot[];
   budget: BudgetData;
   subBudgets: BudgetSection[];
   subBudgetTitle: string;
@@ -1974,6 +2005,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "configuracion",
     label: "configuracion general",
     fields: ["companyCatalog", "allocationMode", "manualAllocationPct"] as const,
+  },
+  {
+    key: "mensuales",
+    label: "Periodos mensuales",
+    fields: ["operationalMonth", "monthlyHistorySnapshots"] as const,
   },
   {
     key: "presupuestos",
@@ -2060,14 +2096,14 @@ const ALL_APP_STATE_MODULE_KEYS: AppStateModuleKey[] =
   APP_STATE_MODULE_DEFINITIONS.map((item) => item.key);
 
 const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> = {
-  cashflow: ["cash-flow"],
-  facturacion: ["cash-flow", "trabajos-aprobados", "caja-chica", "compras"],
-  aprobados: ["trabajos-aprobados"],
-  fabricacion: ["trabajos-aprobados", "compras", "stock-costos"],
-  compras: ["compras", "caja-chica"],
-  cajaChica: ["caja-chica", "compras", "cash-flow"],
+  cashflow: ["mensuales", "cash-flow"],
+  facturacion: ["mensuales", "cash-flow", "trabajos-aprobados", "caja-chica", "compras"],
+  aprobados: ["mensuales", "trabajos-aprobados"],
+  fabricacion: ["mensuales", "trabajos-aprobados", "compras", "stock-costos"],
+  compras: ["mensuales", "compras", "caja-chica"],
+  cajaChica: ["mensuales", "caja-chica", "compras", "cash-flow"],
   presupuesto: ["presupuestos", "historial-crm", "trabajos-aprobados"],
-  historial: ["historial-crm", "presupuestos"],
+  historial: ["mensuales", "historial-crm", "presupuestos"],
   stock: ["stock-costos", "marcadores", "trabajos-aprobados"],
   personal: ["personal"],
   marcadores: ["marcadores", "stock-costos", "personal"],
@@ -2251,6 +2287,34 @@ const pickPersistedModuleData = (
     (picked as Record<string, unknown>)[field] = data[field];
   });
   return picked;
+};
+
+const cloneMonthlySnapshotValue = (value: unknown): unknown => {
+  if (value === undefined) return null;
+
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return value;
+  }
+};
+
+const pickMonthlySnapshotDataForTab = (
+  tab: MonthlyManagedTabKey,
+  data: PersistedAppStateData
+): Record<string, unknown> => {
+  const fields = new Set<PersistedAppStateField>();
+
+  getPersistenceModuleKeysForTab(tab).forEach((moduleKey) => {
+    if (moduleKey === "mensuales") return;
+    getAppStateModuleDefinition(moduleKey)?.fields.forEach((field) => fields.add(field));
+  });
+
+  const snapshotData: Record<string, unknown> = {};
+  fields.forEach((field) => {
+    snapshotData[field] = cloneMonthlySnapshotValue(data[field]);
+  });
+  return snapshotData;
 };
 
 const buildPersistedModuleSignatures = (data: PersistedAppStateData) =>
@@ -2724,8 +2788,10 @@ export default function App() {
     dueDate: string;
     unitPrice: number;
   } | null>(null);
-  const [financialMonth, setFinancialMonth] = useState(new Date().toISOString().slice(0, 7));
-  const [purchaseMonth, setPurchaseMonth] = useState(new Date().toISOString().slice(0, 7));
+  const [operationalMonth, setOperationalMonth] = useState(() => localMonthKey());
+  const [monthlyHistorySnapshots, setMonthlyHistorySnapshots] = useState<MonthlyHistorySnapshot[]>([]);
+  const [financialMonth, setFinancialMonth] = useState(() => localMonthKey());
+  const [purchaseMonth, setPurchaseMonth] = useState(() => localMonthKey());
   const [payrollMonth, setPayrollMonth] = useState(() => localMonthKey());
   const [personalReportCompany, setPersonalReportCompany] = useState<CompanyScope>("General");
   const [, setPrintMode] = useState<PrintMode>("");
@@ -5752,6 +5818,11 @@ export default function App() {
 
   const buildPersistedAppData = (): PersistedAppStateData => ({
     companyCatalog: companyCatalog.map((item) => ({ ...item })),
+    operationalMonth,
+    monthlyHistorySnapshots: monthlyHistorySnapshots.map((item) => ({
+      ...item,
+      data: { ...item.data },
+    })),
     budget: cloneBudget(budget),
     subBudgets: subBudgets.map((item) => ({
       ...item,
@@ -5904,6 +5975,19 @@ export default function App() {
     setCompanyCatalog(nextCompanyCatalog);
     runtimeCompanyOptions = nextCompanyCatalog;
     setBudget(nextBudget);
+    const nextOperationalMonth =
+      typeof data.operationalMonth === "string" && data.operationalMonth
+        ? data.operationalMonth
+        : localMonthKey();
+    setOperationalMonth(nextOperationalMonth);
+    setFinancialMonth(nextOperationalMonth);
+    setPurchaseMonth(nextOperationalMonth);
+    setMonthlyHistorySnapshots(
+      (data.monthlyHistorySnapshots || []).map((item) => ({
+        ...item,
+        data: { ...(item.data || {}) },
+      }))
+    );
     setSubBudgets(
       (data.subBudgets || []).map((item) => ({
         ...item,
@@ -6091,6 +6175,62 @@ export default function App() {
     } catch (error) {
       setStorageMessage(
         error instanceof Error ? error.message : "No pude guardar los datos en Supabase."
+      );
+    }
+  };
+
+  const saveMonthlyHistorySnapshot = async () => {
+    if (!isMonthlyHistoryTab(activeTab)) return;
+
+    const baseData = buildPersistedAppData();
+    const snapshot: MonthlyHistorySnapshot = {
+      id: Date.now(),
+      tabKey: activeTab,
+      tabLabel: getTabLabel(activeTab),
+      month: operationalMonth,
+      monthLabel: monthLabel(operationalMonth),
+      companyScope: workspaceCompanyScope,
+      savedAt: new Date().toISOString(),
+      savedBy: supabaseProfile?.full_name || supabaseSession?.user?.email || "Usuario",
+      data: pickMonthlySnapshotDataForTab(activeTab, baseData),
+    };
+    const nextSnapshots = [
+      snapshot,
+      ...monthlyHistorySnapshots.filter(
+        (item) =>
+          !(
+            item.tabKey === snapshot.tabKey &&
+            item.month === snapshot.month &&
+            item.companyScope === snapshot.companyScope
+          )
+      ),
+    ];
+
+    try {
+      setMonthlyHistorySnapshots(nextSnapshots);
+      const moduleKeys: AppStateModuleKey[] = Array.from(
+        new Set(["mensuales", ...getPersistenceModuleKeysForTab(activeTab)] as AppStateModuleKey[])
+      );
+      const persistResult = await persistAppStateImmediately(
+        buildPersistedAppDataWithOverrides({
+          operationalMonth,
+          monthlyHistorySnapshots: nextSnapshots,
+        }),
+        { moduleKeys, allowSupabaseWithPendingRemote: true }
+      );
+      const savedModuleText = formatPersistenceModuleList(persistResult.savedModuleKeys);
+      announceSystemChange(
+        `Mes guardado: ${snapshot.tabLabel} - ${snapshot.monthLabel} (${getCompanyScopeLabel(snapshot.companyScope)}).`
+      );
+      setStorageMessage(
+        persistResult.savedToSupabase
+          ? `Mes guardado en Supabase: ${savedModuleText}.`
+          : `Mes guardado localmente. Pulsa Guardar en Supabase para compartir ${snapshot.monthLabel}.`
+      );
+    } catch (error) {
+      setMonthlyHistorySnapshots(monthlyHistorySnapshots);
+      setStorageMessage(
+        error instanceof Error ? error.message : "No pude guardar el cierre mensual."
       );
     }
   };
@@ -7656,6 +7796,8 @@ export default function App() {
       }
     };
   }, [
+    operationalMonth,
+    monthlyHistorySnapshots,
     budget,
     subBudgets,
     subBudgetTitle,
@@ -8257,16 +8399,23 @@ export default function App() {
     );
   };
 
+  const syncOperationalMonth = (month: string) => {
+    const safeMonth = month || localMonthKey();
+    setOperationalMonth(safeMonth);
+    setFinancialMonth(safeMonth);
+    setPurchaseMonth(safeMonth);
+  };
+
+  const shiftOperationalMonth = (delta: number) => {
+    syncOperationalMonth(shiftMonthKey(operationalMonth, delta));
+  };
+
   const shiftFinancialMonth = (delta: number) => {
-    const [year, month] = financialMonth.split("-").map(Number);
-    const next = new Date(year, month - 1 + delta, 1);
-    setFinancialMonth(next.toISOString().slice(0, 7));
+    syncOperationalMonth(shiftMonthKey(financialMonth, delta));
   };
 
   const shiftPurchaseMonth = (delta: number) => {
-    const [year, month] = purchaseMonth.split("-").map(Number);
-    const next = new Date(year, month - 1 + delta, 1);
-    setPurchaseMonth(next.toISOString().slice(0, 7));
+    syncOperationalMonth(shiftMonthKey(purchaseMonth, delta));
   };
 
   const financialMonthData = useMemo(() => {
@@ -9335,47 +9484,86 @@ export default function App() {
       });
   }, [employees, payrollMonth, scaleRows, employeeBaseConfig, personalProvisionMarkers, stockItems]);
 
-  const syncLaborMarkersFromPersonal = () => {
-    setLaborMarkers((prev) => {
-      const next = [...prev];
+  const buildLaborMarkersFromPersonal = (currentMarkers: LaborMarker[]) => {
+    const sourceMonthLabel = monthLabel(payrollMonth);
+    const syncNote = `Sincronizado desde Personal - ${sourceMonthLabel}`;
+    const next = [...currentMarkers];
 
-      companyCategoryCostRows.forEach((row) => {
-        const existingIndex = next.findIndex(
-          (item) =>
-            item.company === row.company &&
-            item.workType === "General" &&
-            item.category.trim().toLowerCase() === row.category.trim().toLowerCase()
-        );
+    companyCategoryCostRows.forEach((row) => {
+      const existingIndex = next.findIndex(
+        (item) =>
+          item.company === row.company &&
+          item.workType === "General" &&
+          item.category.trim().toLowerCase() === row.category.trim().toLowerCase()
+      );
 
-        if (existingIndex >= 0) {
-          next[existingIndex] = {
-            ...next[existingIndex],
-            employees: row.employeeCount,
-            monthlyHoursPerEmployee: employeeBaseConfig.normalHoursDefault,
-            hourlyRate: Number(row.avgHourlyCost.toFixed(2)),
-            active: true,
-            notes:
-              next[existingIndex].notes || "Sincronizado desde costo real de Personal",
-          };
-          return;
-        }
-
-        next.push({
-          id: Date.now() + Math.random(),
-          company: row.company,
-          workType: "General",
-          category: row.category,
+      if (existingIndex >= 0) {
+        const previousNotes = next[existingIndex].notes || "";
+        next[existingIndex] = {
+          ...next[existingIndex],
           employees: row.employeeCount,
           monthlyHoursPerEmployee: employeeBaseConfig.normalHoursDefault,
           hourlyRate: Number(row.avgHourlyCost.toFixed(2)),
-          hoursBase: 0,
           active: true,
-          notes: "Sincronizado desde costo real de Personal",
-        });
-      });
+          notes:
+            !previousNotes || previousNotes.startsWith("Sincronizado desde Personal")
+              ? syncNote
+              : previousNotes,
+        };
+        return;
+      }
 
-      return next;
+      next.push({
+        id: Date.now() + Math.random(),
+        company: row.company,
+        workType: "General",
+        category: row.category,
+        employees: row.employeeCount,
+        monthlyHoursPerEmployee: employeeBaseConfig.normalHoursDefault,
+        hourlyRate: Number(row.avgHourlyCost.toFixed(2)),
+        hoursBase: 0,
+        active: true,
+        notes: syncNote,
+      });
     });
+
+    return next;
+  };
+
+  const syncLaborMarkersFromPersonal = async () => {
+    if (companyCategoryCostRows.length === 0) {
+      setStorageMessage("No hay costos de Personal para volcar a Marcadores.");
+      return;
+    }
+
+    const nextLaborMarkers = buildLaborMarkersFromPersonal(laborMarkers);
+    const moduleKeys: AppStateModuleKey[] = ["marcadores", "personal"];
+    setLaborMarkers(nextLaborMarkers);
+
+    try {
+      const persistResult = await persistAppStateImmediately(
+        buildPersistedAppDataWithOverrides({ laborMarkers: nextLaborMarkers }),
+        {
+          moduleKeys,
+          allowSupabaseWithPendingRemote: true,
+        }
+      );
+      const savedModuleText = formatPersistenceModuleList(persistResult.savedModuleKeys);
+      setStorageMessage(
+        persistResult.savedToSupabase
+          ? `Costo hora actualizado desde Personal y guardado en Supabase: ${savedModuleText}.`
+          : "Costo hora actualizado desde Personal. Queda local hasta reconectar Supabase."
+      );
+      announceSystemChange(
+        `Costo hora de presupuestos actualizado desde Personal (${monthLabel(payrollMonth)}).`
+      );
+    } catch (error) {
+      setStorageMessage(
+        error instanceof Error
+          ? error.message
+          : "Actualice el costo hora, pero no pude confirmarlo en Supabase."
+      );
+    }
   };
 
   const addEmployeeProvisionItem = (employeeId: number, kind: EmployeeProvisionKind) => {
@@ -9586,6 +9774,22 @@ export default function App() {
 
   const companyHistorySections = groupedSavedBudgets.length > 0 ? groupedSavedBudgets : [];
   const companyApprovedSections = groupedApprovedJobs.length > 0 ? groupedApprovedJobs : [];
+  const activeMonthlyTab = isMonthlyHistoryTab(activeTab) ? activeTab : null;
+  const activeMonthlyHistory = activeMonthlyTab
+    ? monthlyHistorySnapshots.filter(
+        (item) =>
+          item.tabKey === activeMonthlyTab &&
+          item.companyScope === workspaceCompanyScope
+      )
+    : [];
+  const latestMonthlyHistorySnapshot = activeMonthlyHistory[0];
+  const currentSystemMonth = localMonthKey();
+  const operationalMonthStatus =
+    operationalMonth === currentSystemMonth
+      ? "Mes corriente"
+      : operationalMonth < currentSystemMonth
+      ? "Mes atrasado"
+      : "Mes futuro";
 
   return (
     <div style={{ ...styles.page, background: workspaceTheme.pageBackground }}>
@@ -9828,6 +10032,54 @@ export default function App() {
                 {workspaceCompanyScope === "General"
                   ? "Estas viendo informacion general y compartida entre empresas."
                   : `Estas trabajando enfocado en ${getCompanyMeta(workspaceCompanyScope).short}, pero los registros generales siguen visibles.`}
+              </div>
+            </div>
+          )}
+
+          {isSupabaseLoggedIn && activeMonthlyTab && (
+            <div
+              style={{
+                ...styles.workspaceToolbar,
+                background: workspaceTheme.toolbarBackground,
+                borderColor: workspaceTheme.toolbarBorder,
+              }}
+            >
+              <div style={styles.workspaceToolbarBlock}>
+                <div style={styles.label}>Mes operativo</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  <ButtonLike onClick={() => shiftOperationalMonth(-1)} secondary>
+                    Mes anterior
+                  </ButtonLike>
+                  <input
+                    type="month"
+                    value={operationalMonth}
+                    onChange={(event) => syncOperationalMonth(event.target.value || localMonthKey())}
+                    style={{ ...styles.input, maxWidth: 170 }}
+                  />
+                  <ButtonLike onClick={() => shiftOperationalMonth(1)} secondary>
+                    Mes siguiente
+                  </ButtonLike>
+                  <ButtonLike onClick={() => syncOperationalMonth(localMonthKey())} secondary>
+                    Mes actual
+                  </ButtonLike>
+                </div>
+              </div>
+              <div style={styles.workspaceToolbarInfo}>
+                <strong>{monthLabel(operationalMonth)}</strong> - {operationalMonthStatus}. Este
+                periodo ordena {getTabLabel(activeMonthlyTab)} para{" "}
+                {getCompanyScopeLabel(workspaceCompanyScope)}.
+                <br />
+                Ultimo cierre:{" "}
+                {latestMonthlyHistorySnapshot
+                  ? `${latestMonthlyHistorySnapshot.monthLabel} por ${
+                      latestMonthlyHistorySnapshot.savedBy || "Usuario"
+                    }`
+                  : "sin cierre guardado todavia"}
+                .
+              </div>
+              <div style={{ display: "grid", gap: 6, justifyItems: "end" }}>
+                <ButtonLike onClick={saveMonthlyHistorySnapshot}>Guardar mes</ButtonLike>
+                <span style={styles.muted}>{activeMonthlyHistory.length} cierre(s)</span>
               </div>
             </div>
           )}
