@@ -3131,18 +3131,6 @@ export default function App() {
     } catch (error) {
       console.log("COLLAB LOAD ERROR:", error);
     }
-
-    console.log("PROFILE:", profileResult.data, profileResult.error);
-    console.log(
-      "COMPANY PERMISSIONS:",
-      companyPermissionsResult.data,
-      companyPermissionsResult.error
-    );
-    console.log(
-      "TAB PERMISSIONS:",
-      tabPermissionsResult.data,
-      tabPermissionsResult.error
-    );
   };
 
   const loginSupabaseTest = async () => {
@@ -3157,8 +3145,6 @@ export default function App() {
       email: supabaseLoginEmail.trim(),
       password: supabaseLoginPassword,
     });
-
-    console.log("LOGIN RESULT:", result.data, result.error);
 
     if (result.error) {
       setSupabaseAuthMessage(result.error.message || "No se pudo iniciar sesion en Supabase.");
@@ -3232,7 +3218,6 @@ export default function App() {
   const logoutSupabaseTest = async () => {
     await clearSupabasePresence();
     const result = await supabase.auth.signOut();
-    console.log("LOGOUT RESULT:", result.error);
 
     setSupabaseAuthMessage("Sesion Supabase cerrada.");
     setIsSupabaseRecoveryMode(false);
@@ -3243,12 +3228,6 @@ export default function App() {
 
   useEffect(() => {
     const testSupabase = async () => {
-      const companiesResult = await supabase.from("companies").select("*");
-      const tabsResult = await supabase.from("app_tabs").select("*");
-
-      console.log("COMPANIES:", companiesResult.data, companiesResult.error);
-      console.log("APP TABS:", tabsResult.data, tabsResult.error);
-
       await refreshSupabaseAccess();
 
       if (typeof window !== "undefined") {
