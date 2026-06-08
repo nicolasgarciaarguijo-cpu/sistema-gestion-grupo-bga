@@ -1940,7 +1940,8 @@ const SUPABASE_APP_STATE_MODULES_TABLE = "app_state_modules";
 const SUPABASE_APP_STATE_RECORD_KEY = "main";
 const SUPABASE_CRM_CLIENTS_TABLE = "crm_clients";
 const SUPABASE_BUDGETS_TABLE = "crm_budgets";
-const SUPABASE_AUTH_REDIRECT_URL = "https://sistema-gestion-grupo-bga-59bq.vercel.app";
+const SUPABASE_AUTH_REDIRECT_URL =
+  process.env.REACT_APP_SUPABASE_AUTH_REDIRECT_URL || "";
 const SUPABASE_ACTIVE_SESSIONS_TABLE = "app_active_sessions";
 const SUPABASE_INTERNAL_CHAT_TABLE = "app_internal_chat_messages";
 const SUPABASE_COLLAB_CHANNEL = "grupo-bga-collaboration";
