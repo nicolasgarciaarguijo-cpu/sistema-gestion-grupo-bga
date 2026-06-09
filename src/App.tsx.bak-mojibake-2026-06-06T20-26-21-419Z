@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
 
 declare global {
@@ -46,7 +46,7 @@ type CompanyOption = {
 
 const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
   {
-    value: "BGA estudio de diseño y produccion industrial s.r.l",
+    value: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     short: "BGA",
     primary: "#14213d",
     soft: "#dbe7f7",
@@ -1213,7 +1213,7 @@ const seededScaleRows: ScaleRow[] = [
 ];
 
 const defaultBudget: BudgetData = {
-  company: "BGA estudio de diseño y produccion industrial s.r.l",
+  company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
   workType: "General",
   number: "P-4001",
   date: new Date().toISOString().slice(0, 10),
@@ -1277,7 +1277,7 @@ const DEFAULT_FIXED_MARKER_GROUPS: MarkerFixedGroup[] = [
 const defaultFixedMarkers: FixedMarker[] = [
   {
     id: 1,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     group: "Administrativos",
     description: "Administracion general",
@@ -1287,7 +1287,7 @@ const defaultFixedMarkers: FixedMarker[] = [
   },
   {
     id: 2,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     group: "Edilicios",
     description: "Alquiler taller",
@@ -1310,7 +1310,7 @@ const defaultFixedMarkers: FixedMarker[] = [
 const defaultSupplyMarkers: SupplyMarker[] = [
   {
     id: 1,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     subtype: "Insumos basicos",
     description: "Insumos basicos",
@@ -1322,7 +1322,7 @@ const defaultSupplyMarkers: SupplyMarker[] = [
   },
   {
     id: 2,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     subtype: "Flete",
     description: "Flete",
@@ -1349,7 +1349,7 @@ const defaultSupplyMarkers: SupplyMarker[] = [
 const defaultLaborMarkers: LaborMarker[] = [
   {
     id: 1,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     category: "Oficial multiple",
     employees: 1,
@@ -1361,7 +1361,7 @@ const defaultLaborMarkers: LaborMarker[] = [
   },
   {
     id: 2,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     workType: "General",
     category: "Ayudante",
     employees: 1,
@@ -1510,7 +1510,7 @@ const defaultEmployees: Employee[] = [
 const defaultFinancialItems: FinancialCalendarItem[] = [
   {
     id: 1,
-    company: "BGA estudio de diseño y produccion industrial s.r.l",
+    company: "BGA estudio de diseÃ±o y produccion industrial s.r.l",
     date: "2026-04-28",
     type: "facturacion",
     status: "pendiente",
@@ -1625,7 +1625,7 @@ const LEGACY_APPROVED_IMPORT_ROWS: LegacyApprovedImportRow[] = [
   { budgetNumber: "3043", client: "FACUNDO RIOS", project: "VARIOS REFORMA YEBAL", approvalDate: "2026-03-27", deliveryTerm: "360 DIAS", paymentTerms: "50% FACTURADO ", commissionAmount: 0, observations: "FALTARIA ACTUALIZAR EL VALOR ", notes: "", executionStatus: "en_curso", soldNetPrice: 30046830, businessName: "RAS DESARROLLADORA", taxId: "30-71700076-1", invoiceNumber: "A 75", invoices: [{ invoiceDate: "2026-08-01", subtotal: 13719730.23, vat: 2881143.3483, total: 16600873.5783 }], payments: [{ paymentDate: "2026-03-27", amount: 16600873.58 }, { paymentDate: "2026-05-12", amount: 8300436.79 }], retentions: [], additionals: [] },
   { budgetNumber: "3305", client: "ERI JOSEVICH(GUIDO Y STEFI)", project: "VESTIDOR STEFI", approvalDate: "2026-02-26", deliveryTerm: "60 DIAS", paymentTerms: "50% FACTURADO ", commissionAmount: 1637790, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 16377931.9, businessName: "TECNE OBRAS SA", taxId: "30-71574043-1", invoiceNumber: "A118", invoices: [{ invoiceDate: "2026-04-01", subtotal: 8188965.95, vat: 1719682.8495, total: 9908648.7995 }], payments: [{ paymentDate: "2026-02-27", amount: 11000000 }, { paymentDate: "2026-04-01", amount: 2000000 }], retentions: [], additionals: [] },
   { budgetNumber: "3261", client: "JAVIER MADARIAGA", project: "VARIOS KIRI ENCHAPADO", approvalDate: "2026-03-23", deliveryTerm: "90 DIAS", paymentTerms: "100% NEGRO", commissionAmount: 0, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 59286815, businessName: "JAVIER MADARIAGA", taxId: "", invoiceNumber: "", invoices: [], payments: [{ paymentDate: "2026-03-27", amount: 41500000 }], retentions: [], additionals: [] },
-  { budgetNumber: "3366", client: "CANDE ARQ (CRISTINA)", project: "LIJADA + LUSTRE DE MUEBLE + PUERTAS NUEVAS ´ ZOCALOS", approvalDate: "", deliveryTerm: "", paymentTerms: "FALTA LOS ZOCALOS ", commissionAmount: 0, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 732800, businessName: "CANDE ARQ (CRISTINA)", taxId: "", invoiceNumber: "", invoices: [{ invoiceDate: "", subtotal: 366400, vat: 76944, total: 443344 }], payments: [], retentions: [], additionals: [] },
+  { budgetNumber: "3366", client: "CANDE ARQ (CRISTINA)", project: "LIJADA + LUSTRE DE MUEBLE + PUERTAS NUEVAS Â´ ZOCALOS", approvalDate: "", deliveryTerm: "", paymentTerms: "FALTA LOS ZOCALOS ", commissionAmount: 0, observations: "", notes: "", executionStatus: "en_curso", soldNetPrice: 732800, businessName: "CANDE ARQ (CRISTINA)", taxId: "", invoiceNumber: "", invoices: [{ invoiceDate: "", subtotal: 366400, vat: 76944, total: 443344 }], payments: [], retentions: [], additionals: [] },
   { budgetNumber: "3365", client: "GUILLERMO OZORES", project: "ETAPA 2", approvalDate: "2026-04-14", deliveryTerm: "45", paymentTerms: "25% FACTURADO RESTO NEGRO ", commissionAmount: 0, observations: "ENTREGARON 10.000 USD (1380)", notes: "", executionStatus: "en_curso", soldNetPrice: 41098257.68, businessName: "UTECH", taxId: "30-71640674-8", invoiceNumber: "", invoices: [{ invoiceDate: "", subtotal: 10274564.42, vat: 2157658.5282, total: 12432222.9482 }], payments: [{ paymentDate: "2026-04-14", amount: 138000 }, { paymentDate: "", amount: 17126438.9042 }], retentions: [], additionals: [] },
 ];
 
@@ -1686,8 +1686,12 @@ const normalizePdfText = (text: string) =>
   text
     .replace(/\0/g, " ")
     .replace(/\s+/g, " ")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/Ã/g, "A")
+    .replace(/Ã‰/g, "E")
+    .replace(/Ã/g, "I")
+    .replace(/Ã“/g, "O")
+    .replace(/Ãš/g, "U")
+    .replace(/Ã‘/g, "N")
     .toUpperCase();
 
 const monthMap: Record<string, string> = {
@@ -1940,8 +1944,7 @@ const SUPABASE_APP_STATE_MODULES_TABLE = "app_state_modules";
 const SUPABASE_APP_STATE_RECORD_KEY = "main";
 const SUPABASE_CRM_CLIENTS_TABLE = "crm_clients";
 const SUPABASE_BUDGETS_TABLE = "crm_budgets";
-const SUPABASE_AUTH_REDIRECT_URL =
-  process.env.REACT_APP_SUPABASE_AUTH_REDIRECT_URL || "";
+const SUPABASE_AUTH_REDIRECT_URL = "https://sistema-gestion-grupo-bga-59bq.vercel.app";
 const SUPABASE_ACTIVE_SESSIONS_TABLE = "app_active_sessions";
 const SUPABASE_INTERNAL_CHAT_TABLE = "app_internal_chat_messages";
 const SUPABASE_COLLAB_CHANNEL = "grupo-bga-collaboration";
@@ -3131,6 +3134,18 @@ export default function App() {
     } catch (error) {
       console.log("COLLAB LOAD ERROR:", error);
     }
+
+    console.log("PROFILE:", profileResult.data, profileResult.error);
+    console.log(
+      "COMPANY PERMISSIONS:",
+      companyPermissionsResult.data,
+      companyPermissionsResult.error
+    );
+    console.log(
+      "TAB PERMISSIONS:",
+      tabPermissionsResult.data,
+      tabPermissionsResult.error
+    );
   };
 
   const loginSupabaseTest = async () => {
@@ -3145,6 +3160,8 @@ export default function App() {
       email: supabaseLoginEmail.trim(),
       password: supabaseLoginPassword,
     });
+
+    console.log("LOGIN RESULT:", result.data, result.error);
 
     if (result.error) {
       setSupabaseAuthMessage(result.error.message || "No se pudo iniciar sesion en Supabase.");
@@ -3218,6 +3235,7 @@ export default function App() {
   const logoutSupabaseTest = async () => {
     await clearSupabasePresence();
     const result = await supabase.auth.signOut();
+    console.log("LOGOUT RESULT:", result.error);
 
     setSupabaseAuthMessage("Sesion Supabase cerrada.");
     setIsSupabaseRecoveryMode(false);
@@ -3228,6 +3246,12 @@ export default function App() {
 
   useEffect(() => {
     const testSupabase = async () => {
+      const companiesResult = await supabase.from("companies").select("*");
+      const tabsResult = await supabase.from("app_tabs").select("*");
+
+      console.log("COMPANIES:", companiesResult.data, companiesResult.error);
+      console.log("APP TABS:", tabsResult.data, tabsResult.error);
+
       await refreshSupabaseAccess();
 
       if (typeof window !== "undefined") {
@@ -6300,7 +6324,7 @@ export default function App() {
 
   const clearLocalSave = async () => {
     const confirmed = window.confirm(
-      "Esto borra el guardado local de este navegador. La pantalla actual no se borra, pero si recargas ya no se restaurara automaticamente. ¿Quieres continuar?"
+      "Esto borra el guardado local de este navegador. La pantalla actual no se borra, pero si recargas ya no se restaurara automaticamente. Â¿Quieres continuar?"
     );
     if (!confirmed) return;
 
@@ -8261,7 +8285,7 @@ export default function App() {
     if (!target) return;
 
     const confirmed = window.confirm(
-      `Vas a quitar ${getSavedBudgetDisplayLabel(target)} del historial y del CRM. ¿Quieres continuar?`
+      `Vas a quitar ${getSavedBudgetDisplayLabel(target)} del historial y del CRM. Â¿Quieres continuar?`
     );
     if (!confirmed) return;
 
@@ -8694,7 +8718,7 @@ export default function App() {
         id: `bank-${item.id}`,
         date: item.date,
         company: item.company,
-        title: `${item.bank || "Banco"} · ${item.concept || "Movimiento"}`,
+        title: `${item.bank || "Banco"} Â· ${item.concept || "Movimiento"}`,
         kind: "banco",
         amount: Number(item.amount || 0),
         statusLabel: item.movementType,
@@ -8708,7 +8732,7 @@ export default function App() {
         id: `job-${item.id}`,
         date: relevantDate,
         company: item.company,
-        title: `${item.budgetNumber} · ${item.client}`,
+        title: `${item.budgetNumber} Â· ${item.client}`,
         kind: "trabajo",
         amount: Number(item.soldNetPrice || 0),
         statusLabel: item.executionStatus,
@@ -9855,7 +9879,7 @@ export default function App() {
             {workspaceTheme.short}
           </div>
           <h1 style={{ margin: "8px 0 0 0" }}>{APP_TITLE}</h1>
-          <div style={styles.muted}>Fechas visibles en formato dia-mes-año</div>
+          <div style={styles.muted}>Fechas visibles en formato dia-mes-aÃ±o</div>
         </div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {activeTab !== "acceso" && (
@@ -10510,7 +10534,7 @@ export default function App() {
 
           <Panel title={`Calendario anual unificado ${analysisYear}`} span="wide">
             <div style={styles.metricGrid}>
-              <MiniMetric label="Eventos del año" value={String(annualCashFlowEntries.length)} />
+              <MiniMetric label="Eventos del aÃ±o" value={String(annualCashFlowEntries.length)} />
               <MiniMetric label="Mov. bancarios" value={String(bankStatementEntries.length)} />
               <MiniMetric label="Compromisos deuda" value={String(annualDebtRows.length)} />
               <MiniMetric label="Ultimo saldo banco" value={money(bankStatementSummary.lastBalance)} />
@@ -10534,11 +10558,11 @@ export default function App() {
                           }}
                         >
                           <div style={styles.yearCalendarEventTitle}>
-                            {formatDateDisplay(item.date)} · {item.title}
+                            {formatDateDisplay(item.date)} Â· {item.title}
                           </div>
                           <div style={styles.calendarItemMeta}>
-                            {item.kind} · {item.statusLabel}
-                            {item.amount ? ` · ${money(item.amount)}` : ""}
+                            {item.kind} Â· {item.statusLabel}
+                            {item.amount ? ` Â· ${money(item.amount)}` : ""}
                           </div>
                         </div>
                       );
@@ -10635,7 +10659,7 @@ export default function App() {
               {annualDebtByMonth.map((month) => (
                 <div key={month.key} style={styles.yearCalendarCard}>
                   <div style={styles.yearCalendarTitle}>
-                    {month.label} · {money(month.total)}
+                    {month.label} Â· {money(month.total)}
                   </div>
                   {month.items.length === 0 ? (
                     <div style={styles.calendarEmpty}>Sin cuotas</div>
@@ -10652,10 +10676,10 @@ export default function App() {
                           }}
                         >
                           <div style={styles.yearCalendarEventTitle}>
-                            {formatDateDisplay(item.date)} · {item.concept}
+                            {formatDateDisplay(item.date)} Â· {item.concept}
                           </div>
                           <div style={styles.calendarItemMeta}>
-                            Cuota {item.installmentNumber}/{item.totalInstallments} · {money(item.amount)}
+                            Cuota {item.installmentNumber}/{item.totalInstallments} Â· {money(item.amount)}
                           </div>
                         </div>
                       );
@@ -10678,7 +10702,7 @@ export default function App() {
               <MiniMetric label="Ultimo saldo" value={money(bankStatementSummary.lastBalance)} />
             </div>
             <div style={styles.noticeBox}>
-              Este bloque queda preparado para replicar la lógica de sus planillas auxiliares de bancos: fecha, banco, crédito/débito, concepto, monto y saldo. También alimenta el calendario anual de cash flow.
+              Este bloque queda preparado para replicar la lÃ³gica de sus planillas auxiliares de bancos: fecha, banco, crÃ©dito/dÃ©bito, concepto, monto y saldo. TambiÃ©n alimenta el calendario anual de cash flow.
             </div>
             {bankStatementEntries.length === 0 ? (
               <div style={styles.empty}>Todavia no hay movimientos bancarios cargados.</div>
@@ -10839,7 +10863,7 @@ export default function App() {
               <MiniMetric label="Caja chica blanco" value={money(pettyCashSummary.whiteTotal)} />
             </div>
             <div style={styles.noticeBox}>
-              Este bloque ya queda armado siguiendo la lógica de sus planillas auxiliares: proveedor, comprobante, moneda, neto gravado, exento e IVA separado para luego exportar al estudio contable.
+              Este bloque ya queda armado siguiendo la lÃ³gica de sus planillas auxiliares: proveedor, comprobante, moneda, neto gravado, exento e IVA separado para luego exportar al estudio contable.
             </div>
           </Panel>
 
@@ -10983,7 +11007,7 @@ export default function App() {
             actions={<ButtonLike onClick={addPurchaseInvoice}>Agregar factura</ButtonLike>}
           >
             <div style={styles.noticeBox}>
-              Puedes cargar una imagen o PDF y dejar que el sistema precomplete una base editable. Después podremos mejorar esta lectura automática con OCR más fino.
+              Puedes cargar una imagen o PDF y dejar que el sistema precomplete una base editable. DespuÃ©s podremos mejorar esta lectura automÃ¡tica con OCR mÃ¡s fino.
             </div>
             {purchaseInvoices.length === 0 ? (
               <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
@@ -11862,7 +11886,7 @@ export default function App() {
             >
               {editingBudgetId && (
                 <div style={styles.noticeBox}>
-                  Estás editando un presupuesto ya guardado. Al actualizarlo también se refresca el trabajo aprobado vinculado.
+                  EstÃ¡s editando un presupuesto ya guardado. Al actualizarlo tambiÃ©n se refresca el trabajo aprobado vinculado.
                 </div>
               )}
               <TwoCol>
@@ -12035,10 +12059,10 @@ export default function App() {
                         <td>
                           <div style={styles.inlineActions}>
                             <button style={styles.smallBtn} onClick={() => moveMaterial(item.id, -1)}>
-                              ↑
+                              â†‘
                             </button>
                             <button style={styles.smallBtn} onClick={() => moveMaterial(item.id, 1)}>
-                              ↓
+                              â†“
                             </button>
                           </div>
                         </td>
@@ -12436,7 +12460,7 @@ export default function App() {
               {subBudgets.length === 0 ? (
                 <div style={styles.empty}>
                   Todavia no guardaste subpresupuestos parciales. Cuando cierres un bloque,
-                  guárdalo y luego sigue cargando el siguiente.
+                  guÃƒÂ¡rdalo y luego sigue cargando el siguiente.
                 </div>
               ) : (
                 <div style={{ marginTop: 12 }}>
@@ -12559,7 +12583,7 @@ export default function App() {
             >
               {editingBudgetId && (
                 <div style={styles.noticeBox}>
-                  Estás editando un presupuesto ya guardado. Al actualizarlo también se refresca el trabajo aprobado vinculado.
+                  EstÃƒÂ¡s editando un presupuesto ya guardado. Al actualizarlo tambiÃƒÂ©n se refresca el trabajo aprobado vinculado.
                 </div>
               )}
               <TwoCol>
@@ -12838,7 +12862,7 @@ export default function App() {
                     <div>{budget.client}</div>
                   </div>
                   <div style={styles.previewMeta}>
-                    <div><strong>N°:</strong> {budget.number}</div>
+                    <div><strong>NÂ°:</strong> {budget.number}</div>
                     <div><strong>Fecha:</strong> {formatDateDisplay(budget.date)}</div>
                     <div><strong>Entrega:</strong> {formatDateDisplay(budgetEstimatedDeliveryDate)}</div>
                   </div>
@@ -13655,7 +13679,7 @@ export default function App() {
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th>N°</th>
+                    <th>NÂ°</th>
                     <th>Fecha</th>
                     <th>Cliente</th>
                     <th>Proyecto</th>
@@ -13679,7 +13703,7 @@ export default function App() {
                               borderColor: group.primary,
                             }}
                           >
-                            {group.short} · {group.value}
+                            {group.short} Â· {group.value}
                           </div>
                         </td>
                       </tr>
@@ -13856,13 +13880,13 @@ export default function App() {
                               borderColor: group.primary,
                             }}
                           >
-                            {group.short} · {group.value}
+                            {group.short} Â· {group.value}
                           </div>
                         </td>
                       </tr>
                       {group.items.map((job) => (
                         <tr key={job.id} style={job.executionStatus === "finalizado" ? styles.rowGreen : undefined}>
-                          <td>{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
+                          <td>{job.isUpdate ? `${job.budgetNumber} Â· Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
                           <td>
                             <span
                               style={{
@@ -13931,7 +13955,7 @@ export default function App() {
                     return (
                       <tr key={`timeline-${row.id}`} style={{ background: `${companyMetaRow.soft}33` }}>
                         <td>{companyMetaRow.short}</td>
-                        <td>{row.isUpdate ? `${row.budgetNumber} · Act. ${row.revisionNumber - 1}` : row.budgetNumber}</td>
+                        <td>{row.isUpdate ? `${row.budgetNumber} Â· Act. ${row.revisionNumber - 1}` : row.budgetNumber}</td>
                         <td>{row.client}</td>
                         <td>{formatDateDisplay(row.start)}</td>
                         <td>{formatDateDisplay(row.end)}</td>
@@ -13990,7 +14014,7 @@ export default function App() {
 
           {selectedApprovedJob && (
             <Panel
-              title={`Detalle ${selectedApprovedJob.isUpdate ? `${selectedApprovedJob.budgetNumber} · Act. ${selectedApprovedJob.revisionNumber - 1}` : selectedApprovedJob.budgetNumber}`}
+              title={`Detalle ${selectedApprovedJob.isUpdate ? `${selectedApprovedJob.budgetNumber} Â· Act. ${selectedApprovedJob.revisionNumber - 1}` : selectedApprovedJob.budgetNumber}`}
               green={selectedApprovedJob.executionStatus === "finalizado"}
               actions={<ButtonLike onClick={() => setSelectedApprovedJobId(null)} secondary>Cerrar detalle</ButtonLike>}
             >
@@ -14662,7 +14686,7 @@ export default function App() {
                             </div>
                             <div>{item.title || "Sin titulo"}</div>
                             <div style={styles.calendarItemMeta}>
-                              {getFinancialTypeLabel(item.type)} · {money(item.amount)}
+                              {getFinancialTypeLabel(item.type)} Â· {money(item.amount)}
                             </div>
                           </button>
                         );
@@ -14779,7 +14803,7 @@ export default function App() {
                 </Field>
                 {selectedFinancialItem.autoGenerated && (
                   <div style={styles.noticeBox}>
-                    Este item se genera automaticamente desde un trabajo aprobado. Si cambias aprobación, plazo o porcentaje facturado, fechas y montos se actualizan solos.
+                    Este item se genera automaticamente desde un trabajo aprobado. Si cambias aprobaciÃ³n, plazo o porcentaje facturado, fechas y montos se actualizan solos.
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -16460,7 +16484,7 @@ export default function App() {
                       onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, insurancePct: Number(e.target.value) })}
                     />
                   </Field>
-                  <Field label="Aguinaldo (sueldos/año)">
+                  <Field label="Aguinaldo (sueldos/aÃ±o)">
                     <input
                       style={styles.input}
                       type="number"
@@ -17666,7 +17690,7 @@ export default function App() {
                     <div style={styles.personalFichaStack}>
                       <Panel title="Sueldo e impacto empresa" nested>
                         <div style={styles.metricGrid}>
-                          <MiniMetric label="Escala mes" value={payrollSummary.scale ? `${payrollSummary.scale.category} · ${monthLabel(payrollSummary.scale.month)}` : "Manual"} />
+                          <MiniMetric label="Escala mes" value={payrollSummary.scale ? `${payrollSummary.scale.category} Â· ${monthLabel(payrollSummary.scale.month)}` : "Manual"} />
                           <MiniMetric label="Hora base" value={money(payrollSummary.baseHourly)} />
                           <MiniMetric label="No remun./hora" value={money(payrollSummary.nonRemHourly)} />
                           <MiniMetric label="Hora neta ref." value={money(payrollSummary.netHourly)} />
@@ -18054,7 +18078,7 @@ export default function App() {
           <MiniMetric label="Resultado blanco" value={money(cashFlowSummary.operatingResultWhite)} />
           <MiniMetric label="Resultado negro" value={money(cashFlowSummary.operatingResultBlack)} />
           <MiniMetric
-            label="Compromisos año"
+            label="Compromisos aÃ±o"
             value={money(annualDebtRows.reduce((acc, item) => acc + Number(item.amount || 0), 0))}
           />
         </div>
@@ -18199,7 +18223,7 @@ export default function App() {
             {approvedJobsSummary.map((job) => (
               <tr key={job.id}>
                 <td>{getCompanyMeta(job.company).short}</td>
-                <td>{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
+                <td>{job.isUpdate ? `${job.budgetNumber} Â· Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
                 <td>{job.client}</td>
                 <td>{formatDateDisplay(job.approvalDate)}</td>
                 <td>{formatDateDisplay(job.deliveryDate)}</td>
