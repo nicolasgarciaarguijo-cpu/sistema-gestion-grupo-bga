@@ -159,18 +159,29 @@ async function checkLocalhost() {
 }
 
 async function checkSupabaseTable(client, check) {
-  const { count, error } = await client
-    .from(check.table)
-    .select(check.columns, { count: "exact", head: true });
+  let lastError = null;
 
-  if (error) {
-    const code = error.code ? `${error.code}: ` : "";
-    logFail(`${check.table} (${check.purpose}) no paso el control: ${code}${error.message}`);
-    return;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const { count, error } = await client
+      .from(check.table)
+      .select(check.columns, { count: "exact", head: true });
+
+    if (!error) {
+      const visibleRows =
+        typeof count === "number" ? `${count} filas visibles con anon` : "sin conteo";
+      logOk(`${check.table} (${check.purpose}) disponible; ${visibleRows}.`);
+      return;
+    }
+
+    lastError = error;
+    if (attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, 1200 * attempt));
+    }
   }
 
-  const visibleRows = typeof count === "number" ? `${count} filas visibles con anon` : "sin conteo";
-  logOk(`${check.table} (${check.purpose}) disponible; ${visibleRows}.`);
+  const code = lastError?.code ? `${lastError.code}: ` : "";
+  const message = lastError?.message || String(lastError || "error desconocido");
+  logFail(`${check.table} (${check.purpose}) no paso el control: ${code}${message}`);
 }
 
 async function main() {
