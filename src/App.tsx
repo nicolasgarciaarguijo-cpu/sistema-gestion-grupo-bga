@@ -1,5 +1,14 @@
 ﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
+import {
+  money,
+  pct,
+  formatDateDisplay,
+  localDateKey,
+  localMonthKey,
+  todayIso,
+  normalizeCompanyText,
+} from "./lib/format";
 import { WORK_TYPE_OPTIONS } from "./domain/types";
 import type {
   CompanyName,
@@ -202,46 +211,6 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "cajaChica",
   "personal",
 ];
-
-const money = (n: number) =>
-  new Intl.NumberFormat("es-AR", {
-    style: "currency",
-    currency: "ARS",
-    maximumFractionDigits: 2,
-  }).format(Number.isFinite(n) ? n : 0);
-
-const pct = (n: number) => `${(Number.isFinite(n) ? n : 0).toFixed(2)}%`;
-
-const formatDateDisplay = (dateText: string) => {
-  if (!dateText) return "-";
-  const parts = dateText.split("-");
-  if (parts.length !== 3) return dateText;
-  const [year, month, day] = parts;
-  return `${day}-${month}-${year}`;
-};
-
-const localDateKey = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-};
-
-const localMonthKey = (date = new Date()) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-};
-
-const todayIso = () => localDateKey(new Date());
-
-const normalizeCompanyText = (value: string) =>
-  (value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9]+/g, " ")
-    .trim()
-    .toLowerCase();
 
 const resolveCompanyNameFromCatalogItem = (
   item: { code?: string | null; name?: string | null; label?: string | null },
