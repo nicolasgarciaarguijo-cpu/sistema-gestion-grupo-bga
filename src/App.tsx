@@ -18654,7 +18654,7 @@ const styles: Record<string, React.CSSProperties> = {
     gridColumn: "span 6",
   },
   panelWide: {
-    gridColumn: "span 8",
+    gridColumn: "1 / -1",
   },
   panelFull: {
     gridColumn: "1 / -1",
