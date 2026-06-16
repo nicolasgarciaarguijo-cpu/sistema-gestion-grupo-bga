@@ -7088,13 +7088,9 @@ export default function App() {
     setFixedCosts((prev) => prev.filter((item) => item.id !== itemId));
   };
 
-  useEffect(() => {
-    const nextKey = `${budget.company}__${budget.workType}`;
-    if (lastMarkerSourceKeyRef.current !== nextKey) {
-      lastMarkerSourceKeyRef.current = nextKey;
-      restoreAllBudgetBlocksFromMarkers();
-    }
-  }, [budget.company, budget.workType]);
+  // Marcadores: ya NO se reaplican automaticamente al cambiar empresa o tipo de
+  // trabajo (eso borraba filas cargadas a mano). Se aplican solo desde los botones
+  // "Aplicar al presupuesto actual" y "Restaurar desde marcadores".
 
   useEffect(() => {
     if (!isPersistenceReady) return;
