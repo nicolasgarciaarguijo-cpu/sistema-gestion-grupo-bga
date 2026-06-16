@@ -146,7 +146,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "compras", label: "Compras" },
   { key: "cajaChica", label: "Caja chica" },
   { key: "presupuesto", label: "Presupuesto actual" },
-  { key: "historial", label: "Historial y CRM" },
+  { key: "historial", label: "CRM" },
   { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
   { key: "marcadores", label: "Marcadores" },
@@ -172,6 +172,7 @@ type PrintMode =
   | "report-caja-chica"
   | "report-marcadores"
   | "report-historial"
+  | "report-crm"
   | "report-aprobados"
   | "report-stock"
   | "report-personal"
@@ -1010,7 +1011,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   cajaChica: "CC",
   presupuesto: "PR",
   marcadores: "MK",
-  historial: "HC",
+  historial: "CRM",
   aprobados: "TA",
   facturacion: "FC",
   stock: "SA",
@@ -2070,7 +2071,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   },
   {
     key: "historial-crm",
-    label: "Historial y CRM",
+    label: "Historial de presupuestos",
     fields: ["savedBudgets"] as const,
   },
   {
@@ -5094,10 +5095,10 @@ export default function App() {
       normalized.includes("historial") ||
       normalized.includes("cliente")
     ) {
-      return `El Historial y CRM muestra ${crmClientRows.length} cliente(s) consolidados en esta sesion. Puedes revisar proyectos, compras y presupuestos relacionados.`;
+      return `CRM muestra ${crmClientRows.length} cliente(s) consolidado(s) en esta sesion. El historial completo de presupuestos esta al final de Presupuesto actual.`;
     }
 
-    return "Puedo darte un resumen rapido de presupuestos, stock, caja chica, compras, Historial y CRM, guardado compartido y usuarios activos. Prueba con una pregunta concreta.";
+    return "Puedo darte un resumen rapido de presupuestos, stock, caja chica, compras, CRM, guardado compartido y usuarios activos. Prueba con una pregunta concreta.";
   };
 
   const sendAssistantQuestion = () => {
@@ -5373,6 +5374,16 @@ export default function App() {
   const selectedBudget = selectedHistoryId
     ? visibleSavedBudgets.find((item) => item.id === selectedHistoryId) || null
     : null;
+
+  const openBudgetHistoryItem = (budgetId: number) => {
+    if (!visibleTabOptions.some((item) => item.key === "presupuesto")) {
+      setStorageMessage("Necesitas acceso a Presupuesto actual para ver el historial completo.");
+      return;
+    }
+
+    setSelectedHistoryId(budgetId);
+    setActiveTab("presupuesto");
+  };
 
   const selectedApprovedJob = selectedApprovedJobId
     ? approvedJobsSummary.find((item) => item.id === selectedApprovedJobId) || null
@@ -9891,6 +9902,167 @@ export default function App() {
       ? "Mes atrasado"
       : "Mes futuro";
 
+  const renderBudgetHistoryBlock = () => (
+    <>
+      <Panel
+        title="Historial de presupuestos por empresa"
+        actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}
+      >
+        {visibleSavedBudgets.length === 0 ? (
+          <div style={styles.empty}>Todavia no hay presupuestos guardados.</div>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th>N°</th>
+                <th>Fecha</th>
+                <th>Cliente</th>
+                <th>Proyecto</th>
+                <th>% ocupacion</th>
+                <th>Comision</th>
+                <th>Exportado</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              {companyHistorySections.map((group) => (
+                <React.Fragment key={group.value}>
+                  <tr>
+                    <td colSpan={9} style={styles.sectionCell}>
+                      <div
+                        style={{
+                          ...styles.sectionHeader,
+                          background: group.soft,
+                          color: group.primary,
+                          borderColor: group.primary,
+                        }}
+                      >
+                        {group.short} · {group.value}
+                      </div>
+                    </td>
+                  </tr>
+                  {group.items.map((item, index) => (
+                    <tr
+                      key={`history-${group.value}-${item.id}-${index}`}
+                      style={
+                        selectedHistoryId === item.id
+                          ? { background: group.soft }
+                          : { background: `${group.soft}66` }
+                      }
+                    >
+                      <td>{getSavedBudgetDisplayLabel(item)}</td>
+                      <td>{formatDateDisplay(item.date)}</td>
+                      <td>{item.client}</td>
+                      <td>{item.project}</td>
+                      <td>{pct(item.laborOccupancyPct)}</td>
+                      <td>{money(item.commissionAmount)}</td>
+                      <td>
+                        <span
+                          style={{
+                            ...styles.statusPill,
+                            ...(item.exportedAt ? styles.statusGreen : styles.statusRed),
+                          }}
+                        >
+                          {item.exportedAt ? "Exportado" : "Sin exportar"}
+                        </span>
+                      </td>
+                      <td>{item.status}</td>
+                      <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button style={styles.smallBtn} onClick={() => approveBudget(item)}>
+                          Aprobar
+                        </button>
+                        <button style={styles.smallBtn} onClick={() => rejectBudget(item.id)}>
+                          No aprobado
+                        </button>
+                        {selectedHistoryId === item.id ? (
+                          <button style={styles.smallBtn} onClick={() => setSelectedHistoryId(null)}>
+                            Cerrar
+                          </button>
+                        ) : (
+                          <button style={styles.smallBtn} onClick={() => openBudgetHistoryItem(item.id)}>
+                            Abrir
+                          </button>
+                        )}
+                        <button
+                          style={styles.smallBtn}
+                          onClick={() => loadBudgetFromSnapshot(item.snapshot, item.id)}
+                        >
+                          Editar
+                        </button>
+                        <button
+                          style={styles.smallBtn}
+                          onClick={() => removeSavedBudget(item.id)}
+                        >
+                          Quitar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+
+      {selectedBudget && (
+        <Panel
+          title={`Detalle ${getSavedBudgetDisplayLabel(selectedBudget)}`}
+          actions={<ButtonLike onClick={() => setSelectedHistoryId(null)} secondary>Cerrar detalle</ButtonLike>}
+        >
+          <div style={styles.metricGrid}>
+            <MiniMetric label="Empresa" value={getCompanyMeta(selectedBudget.company).short} />
+            <MiniMetric label="Fecha" value={formatDateDisplay(selectedBudget.date)} />
+            <MiniMetric label="Entrega" value={formatDateDisplay(buildDeliveryDateFromTerm(selectedBudget.date, selectedBudget.deliveryTerm))} />
+            <MiniMetric label="Encargado" value={selectedBudget.projectManager || "-"} />
+            <MiniMetric label="Comision" value={money(selectedBudget.commissionAmount)} />
+          </div>
+
+          <div style={styles.grid2}>
+            <Panel title="Presupuesto enviado" nested>
+              <div><strong>Descripcion:</strong> {selectedBudget.snapshot.budget.notes}</div>
+              <div style={{ marginTop: 10 }}><strong>Alcance:</strong> {selectedBudget.snapshot.budget.scope}</div>
+            </Panel>
+
+            <Panel title="Detalle faltantes" nested>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Alerta</th>
+                    <th>Material</th>
+                    <th>Req.</th>
+                    <th>Stock</th>
+                    <th>Comprar</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedBudget.snapshot.materials.map((material, index) => {
+                    const stock = stockByDescription.get(material.description.trim().toLowerCase());
+                    const available = stock?.quantity ?? 0;
+                    const missing = Math.max(0, material.qty - available);
+                    const tone =
+                      available >= material.qty ? styles.statusGreen : available > 0 ? styles.statusYellow : styles.statusRed;
+                    const label = available >= material.qty ? "Completo" : available > 0 ? "Parcial" : "Faltante";
+                    return (
+                      <tr key={`selected-budget-material-${material.id}-${index}`}>
+                        <td><span style={{ ...styles.statusPill, ...tone }}>{label}</span></td>
+                        <td>{material.description}</td>
+                        <td>{material.qty} {material.unit}</td>
+                        <td>{available} {material.unit}</td>
+                        <td>{missing} {material.unit}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Panel>
+          </div>
+        </Panel>
+      )}
+    </>
+  );
+
   return (
     <div style={{ ...styles.page, background: workspaceTheme.pageBackground }}>
       <style>{`
@@ -9903,6 +10075,8 @@ export default function App() {
           body[data-print-mode="report-marcadores"] #report-marcadores * { visibility: visible !important; }
           body[data-print-mode="report-historial"] #report-historial,
           body[data-print-mode="report-historial"] #report-historial * { visibility: visible !important; }
+          body[data-print-mode="report-crm"] #report-crm,
+          body[data-print-mode="report-crm"] #report-crm * { visibility: visible !important; }
           body[data-print-mode="report-aprobados"] #report-aprobados,
           body[data-print-mode="report-aprobados"] #report-aprobados * { visibility: visible !important; }
           body[data-print-mode="report-stock"] #report-stock,
@@ -9923,6 +10097,7 @@ export default function App() {
           #report-caja-chica,
           #report-marcadores,
           #report-historial,
+          #report-crm,
           #report-aprobados,
           #report-stock,
           #report-personal,
@@ -9972,7 +10147,7 @@ export default function App() {
                         : activeTab === "marcadores"
                         ? "report-marcadores"
                         : activeTab === "historial"
-                        ? "report-historial"
+                        ? "report-crm"
                         : activeTab === "aprobados"
                         ? "report-aprobados"
                         : activeTab === "stock"
@@ -12997,6 +13172,10 @@ export default function App() {
               </div>
             </Panel>
           </div>
+
+          <div style={styles.budgetHistorySection}>
+            {renderBudgetHistoryBlock()}
+          </div>
         </div>
       )}
 
@@ -13587,7 +13766,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="CRM de clientes" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
+          <Panel title="CRM de clientes" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-crm")} secondary>Reporte</ButtonLike>}>
             {crmClientRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay clientes en CRM porque no hay presupuestos guardados.</div>
             ) : (
@@ -13723,7 +13902,7 @@ export default function App() {
                         </td>
                         <td>{money(item.netPrice)}</td>
                         <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <button style={styles.smallBtn} onClick={() => setSelectedHistoryId(item.id)}>
+                          <button style={styles.smallBtn} onClick={() => openBudgetHistoryItem(item.id)}>
                             Ver
                           </button>
                           <button style={styles.smallBtn} onClick={() => loadBudgetFromSnapshot(item.snapshot, item.id)}>
@@ -13741,159 +13920,6 @@ export default function App() {
             </Panel>
           )}
 
-          <Panel title="Historial de presupuestos por empresa" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}>
-            {visibleSavedBudgets.length === 0 ? (
-              <div style={styles.empty}>Todavia no hay presupuestos guardados.</div>
-            ) : (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th>N°</th>
-                    <th>Fecha</th>
-                    <th>Cliente</th>
-                    <th>Proyecto</th>
-                    <th>% ocupacion</th>
-                    <th>Comision</th>
-                    <th>Exportado</th>
-                    <th>Estado</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {companyHistorySections.map((group) => (
-                    <React.Fragment key={group.value}>
-                      <tr>
-                        <td colSpan={9} style={styles.sectionCell}>
-                          <div
-                            style={{
-                              ...styles.sectionHeader,
-                              background: group.soft,
-                              color: group.primary,
-                              borderColor: group.primary,
-                            }}
-                          >
-                            {group.short} · {group.value}
-                          </div>
-                        </td>
-                      </tr>
-                      {group.items.map((item) => (
-                        <tr
-                          key={item.id}
-                          style={
-                            selectedHistoryId === item.id
-                              ? { background: group.soft }
-                              : { background: `${group.soft}66` }
-                          }
-                        >
-                          <td>{getSavedBudgetDisplayLabel(item)}</td>
-                          <td>{formatDateDisplay(item.date)}</td>
-                          <td>{item.client}</td>
-                          <td>{item.project}</td>
-                          <td>{pct(item.laborOccupancyPct)}</td>
-                          <td>{money(item.commissionAmount)}</td>
-                          <td>
-                            <span
-                              style={{
-                                ...styles.statusPill,
-                                ...(item.exportedAt ? styles.statusGreen : styles.statusRed),
-                              }}
-                            >
-                              {item.exportedAt ? "Exportado" : "Sin exportar"}
-                            </span>
-                          </td>
-                          <td>{item.status}</td>
-                          <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                            <button style={styles.smallBtn} onClick={() => approveBudget(item)}>
-                              Aprobar
-                            </button>
-                            <button style={styles.smallBtn} onClick={() => rejectBudget(item.id)}>
-                              No aprobado
-                            </button>
-                            {selectedHistoryId === item.id ? (
-                              <button style={styles.smallBtn} onClick={() => setSelectedHistoryId(null)}>
-                                Cerrar
-                              </button>
-                            ) : (
-                              <button style={styles.smallBtn} onClick={() => setSelectedHistoryId(item.id)}>
-                                Abrir
-                              </button>
-                            )}
-                            <button
-                              style={styles.smallBtn}
-                              onClick={() => loadBudgetFromSnapshot(item.snapshot, item.id)}
-                            >
-                              Editar
-                            </button>
-                            <button
-                              style={styles.smallBtn}
-                              onClick={() => removeSavedBudget(item.id)}
-                            >
-                              Quitar
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Panel>
-
-          {selectedBudget && (
-            <Panel
-              title={`Detalle ${getSavedBudgetDisplayLabel(selectedBudget)}`}
-              actions={<ButtonLike onClick={() => setSelectedHistoryId(null)} secondary>Cerrar detalle</ButtonLike>}
-            >
-              <div style={styles.metricGrid}>
-                <MiniMetric label="Empresa" value={getCompanyMeta(selectedBudget.company).short} />
-                <MiniMetric label="Fecha" value={formatDateDisplay(selectedBudget.date)} />
-                <MiniMetric label="Entrega" value={formatDateDisplay(buildDeliveryDateFromTerm(selectedBudget.date, selectedBudget.deliveryTerm))} />
-                <MiniMetric label="Encargado" value={selectedBudget.projectManager || "-"} />
-                <MiniMetric label="Comision" value={money(selectedBudget.commissionAmount)} />
-              </div>
-
-              <div style={styles.grid2}>
-                <Panel title="Presupuesto enviado" nested>
-                  <div><strong>Descripcion:</strong> {selectedBudget.snapshot.budget.notes}</div>
-                  <div style={{ marginTop: 10 }}><strong>Alcance:</strong> {selectedBudget.snapshot.budget.scope}</div>
-                </Panel>
-
-                <Panel title="Detalle faltantes" nested>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Alerta</th>
-                        <th>Material</th>
-                        <th>Req.</th>
-                        <th>Stock</th>
-                        <th>Comprar</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selectedBudget.snapshot.materials.map((material) => {
-                        const stock = stockByDescription.get(material.description.trim().toLowerCase());
-                        const available = stock?.quantity ?? 0;
-                        const missing = Math.max(0, material.qty - available);
-                        const tone =
-                          available >= material.qty ? styles.statusGreen : available > 0 ? styles.statusYellow : styles.statusRed;
-                        const label = available >= material.qty ? "Completo" : available > 0 ? "Parcial" : "Faltante";
-                        return (
-                          <tr key={material.id}>
-                            <td><span style={{ ...styles.statusPill, ...tone }}>{label}</span></td>
-                            <td>{material.description}</td>
-                            <td>{material.qty} {material.unit}</td>
-                            <td>{available} {material.unit}</td>
-                            <td>{missing} {material.unit}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </Panel>
-              </div>
-            </Panel>
-          )}
         </div>
       )}
 
@@ -18067,7 +18093,7 @@ export default function App() {
           <div style={styles.workspaceWidgetBody}>
             <div style={styles.chatPanel}>
               <div style={styles.assistantHint}>
-                Preguntale por presupuestos, stock, caja chica, compras, Historial y CRM, usuarios activos o guardado compartido.
+                Preguntale por presupuestos, stock, caja chica, compras, CRM, usuarios activos o guardado compartido.
               </div>
               <div style={styles.assistantMessages}>
                 {assistantMessages.map((message) => (
@@ -18240,7 +18266,7 @@ export default function App() {
         </table>
       </PrintReport>
 
-      <PrintReport id="report-historial" title="Reporte - CRM">
+      <PrintReport id="report-historial" title="Reporte - Historial de presupuestos">
         <table style={styles.table}>
           <thead>
             <tr>
@@ -18255,8 +18281,8 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {visibleSavedBudgets.map((item) => (
-              <tr key={item.id}>
+            {visibleSavedBudgets.map((item, index) => (
+              <tr key={`budget-history-report-${item.id}-${index}`}>
                 <td>{getCompanyMeta(item.company).short}</td>
                 <td>{getSavedBudgetDisplayLabel(item)}</td>
                 <td>{formatDateDisplay(item.date)}</td>
@@ -18265,6 +18291,43 @@ export default function App() {
                 <td>{item.project}</td>
                 <td>{money(item.commissionAmount)}</td>
                 <td>{item.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </PrintReport>
+
+      <PrintReport id="report-crm" title="Reporte - CRM de clientes">
+        <table style={styles.table}>
+          <thead>
+            <tr>
+              <th>Cliente</th>
+              <th>Tipo</th>
+              <th>Contacto</th>
+              <th>Telefono</th>
+              <th>Email</th>
+              <th>CUIT/CUIL</th>
+              <th>Presupuestos</th>
+              <th>Pend. exportar</th>
+              <th>Compro</th>
+              <th>Gasto acumulado</th>
+              <th>Ultimo enviado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {crmClientRows.map((row) => (
+              <tr key={`crm-report-${row.key}`}>
+                <td>{row.client}</td>
+                <td>{row.customerType}</td>
+                <td>{row.contactName || "-"}</td>
+                <td>{row.contactPhone || "-"}</td>
+                <td>{row.contactEmail || "-"}</td>
+                <td>{row.clientTaxId || "-"}</td>
+                <td>{row.quotes.length}</td>
+                <td>{!row.latestQuote?.exportedAt ? "Pendiente" : "Entregado"}</td>
+                <td>{row.bought ? "Si" : "No"}</td>
+                <td>{money(row.totalSpent)}</td>
+                <td>{row.latestQuote ? getSavedBudgetDisplayLabel(row.latestQuote) : "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -19210,6 +19273,13 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14,
     gridColumn: "2",
     gridRow: "1 / span 2",
+  },
+  budgetHistorySection: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    gridColumn: "1 / -1",
+    gridRow: "3",
   },
   grid2: {
     display: "grid",
