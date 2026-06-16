@@ -18759,7 +18759,7 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     marginTop: 10,
   },
-  muted: { color: "#64748b", fontSize: 13 },
+  muted: { color: "#475569", fontSize: 13 },
   empty: {
     padding: 16,
     border: "1px dashed #cbd5e1",
@@ -19643,7 +19643,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   calendarCellMuted: { opacity: 0.45, background: "#f8fafc" },
   calendarCellHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 },
-  calendarEmpty: { fontSize: 12, color: "#94a3b8" },
+  calendarEmpty: { fontSize: 12, color: "#64748b" },
   calendarItem: {
     border: "none",
     borderRadius: 10,
