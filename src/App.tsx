@@ -1139,9 +1139,11 @@ const buildPlaceholderBudgetSnapshot = (input: {
   paymentTerms?: string;
   soldNetPrice?: number;
   notes?: string;
+  vatPct?: number;
 }): BudgetSnapshot => {
   const netPrice = Number(input.soldNetPrice || 0);
-  const finalPrice = Number((netPrice * (1 + INVOICE_VAT_PCT / 100)).toFixed(2));
+  const placeholderVatPct = Number(input.vatPct ?? INVOICE_VAT_PCT);
+  const finalPrice = Number((netPrice * (1 + placeholderVatPct / 100)).toFixed(2));
   return {
     budget: {
       ...cloneBudget(defaultBudget),
@@ -1179,7 +1181,7 @@ const buildPlaceholderBudgetSnapshot = (input: {
     params: {
       deviationPct: 5,
       markupPct: 30,
-      vatPct: 21,
+      vatPct: placeholderVatPct,
       allocationMode: "auto",
       manualAllocationPct: 18.75,
       laborDeviationPct: 0,
@@ -3645,7 +3647,7 @@ export default function App() {
           : billedNetFromPct;
         const invoiceVatAmount = job.invoices.length > 0
           ? job.invoices.reduce((acc, item) => acc + Number(item.vat || 0), 0)
-          : billedNet * (INVOICE_VAT_PCT / 100);
+          : billedNet * (Number(job.snapshot?.params?.vatPct ?? INVOICE_VAT_PCT) / 100);
         const billedGross = billedNet + invoiceVatAmount;
         const blackNet = Math.max(0, Number(job.soldNetPrice || 0) - billedNet);
         const additionalsTotal = (job.additionals || []).reduce(
@@ -8524,10 +8526,21 @@ export default function App() {
       );
     };
 
-  const getScaleForCategory = (category: string, month: string) =>
-    scaleRows.find(
-      (row) => row.month === month && row.category.toLowerCase() === category.toLowerCase()
-    ) || null;
+  const getScaleForCategory = (category: string, month: string) => {
+    const cat = category.toLowerCase();
+    const exact = scaleRows.find(
+      (row) => row.month === month && row.category.toLowerCase() === cat
+    );
+    if (exact) return exact;
+    // Fallback: si no hay escala del mes pedido, usar el ultimo mes cargado para
+    // esa categoria (preferentemente anterior al mes pedido) en vez de devolver 0.
+    const forCategory = scaleRows
+      .filter((row) => row.category.toLowerCase() === cat)
+      .sort((a, b) => a.month.localeCompare(b.month));
+    if (forCategory.length === 0) return null;
+    const notFuture = forCategory.filter((row) => row.month <= month);
+    return notFuture.length > 0 ? notFuture[notFuture.length - 1] : forCategory[forCategory.length - 1];
+  };
 
   const getCurrentPayroll = (employee: Employee) => ensureEmployeePayroll(employee, payrollMonth);
 
