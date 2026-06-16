@@ -1,0 +1,27 @@
+# Normaliza saltos de linea: en el repositorio SIEMPRE se guarda con LF.
+# Evita los diffs fantasma de archivos completos al editar en Windows (CRLF).
+* text=auto eol=lf
+
+# Fuentes y configuracion: forzar LF explicitamente.
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.js   text eol=lf
+*.cjs  text eol=lf
+*.mjs  text eol=lf
+*.json text eol=lf
+*.css  text eol=lf
+*.html text eol=lf
+*.md   text eol=lf
+*.sql  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# Binarios: git no debe tocarlos ni normalizarlos.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.woff  binary
+*.woff2 binary
