@@ -1946,7 +1946,10 @@ const SUPABASE_ACTIVE_SESSIONS_TABLE = "app_active_sessions";
 const SUPABASE_INTERNAL_CHAT_TABLE = "app_internal_chat_messages";
 const SUPABASE_COLLAB_CHANNEL = "grupo-bga-collaboration";
 const LOCAL_AUTOSAVE_DELAY_MS = 1200;
-const SUPABASE_AUTOSAVE_MIN_INTERVAL_MS = 12000;
+const SUPABASE_AUTOSAVE_MIN_INTERVAL_MS = 6000;
+const SUPABASE_SAVE_TIMEOUT_MS = 15000;
+const SUPABASE_SAVE_RETRY_DELAYS_MS = [800, 1800] as const;
+const SUPABASE_MODULE_WRITE_BATCH_SIZE = 3;
 const COLLABORATION_POLL_INTERVAL_MS = 30000;
 
 const MONTHLY_HISTORY_TAB_KEYS = [
@@ -2288,6 +2291,65 @@ const isSupabaseMissingTableError = (error: unknown, tableName: string) => {
   );
 };
 
+class SupabasePersistError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SupabasePersistError";
+  }
+}
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const chunkArray = <T,>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
+const withTimeout = async <T,>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  context: string
+): Promise<T> => {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(`${context} tardo mas de ${Math.round(timeoutMs / 1000)} segundos.`));
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+};
+
+const writeSupabaseWithRetry = async <T,>(
+  operation: () => Promise<T>,
+  context: string
+): Promise<T> => {
+  let lastError: unknown = null;
+  const maxAttempts = SUPABASE_SAVE_RETRY_DELAYS_MS.length + 1;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await withTimeout(operation(), SUPABASE_SAVE_TIMEOUT_MS, context);
+    } catch (error) {
+      lastError = error;
+      const retryDelay = SUPABASE_SAVE_RETRY_DELAYS_MS[attempt];
+      if (retryDelay === undefined) break;
+      await delay(retryDelay);
+    }
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`${context}: ${getSupabaseErrorMessage(lastError)}`);
+};
+
 const getAppStateModuleDefinition = (moduleKey: string) =>
   APP_STATE_MODULE_DEFINITIONS.find((item) => item.key === moduleKey);
 
@@ -2571,19 +2633,24 @@ const writeSupabasePersistedLegacyAppState = async (
   payload: PersistedAppState,
   userId: string
 ) => {
-  const { error } = await supabase.from(SUPABASE_APP_STATE_TABLE).upsert(
-    {
-      id: SUPABASE_APP_STATE_RECORD_KEY,
-      payload,
-      saved_at: payload.savedAt,
-      updated_by: userId,
-    },
-    { onConflict: "id" }
-  );
+  await writeSupabaseWithRetry(
+    async () => {
+      const { error } = await supabase.from(SUPABASE_APP_STATE_TABLE).upsert(
+        {
+          id: SUPABASE_APP_STATE_RECORD_KEY,
+          payload,
+          saved_at: payload.savedAt,
+          updated_by: userId,
+        },
+        { onConflict: "id" }
+      );
 
-  if (error) {
-    throw error;
-  }
+      if (error) {
+        throw error;
+      }
+    },
+    "guardar estado compatible en Supabase"
+  );
 };
 
 const writeSupabasePersistedAppStateModules = async (
@@ -2595,18 +2662,26 @@ const writeSupabasePersistedAppStateModules = async (
 
   if (modulePayloads.length === 0) return [];
 
-  const { error } = await supabase.from(SUPABASE_APP_STATE_MODULES_TABLE).upsert(
-    modulePayloads.map((modulePayload) => ({
-      module_key: modulePayload.moduleKey,
-      payload: modulePayload,
-      saved_at: payload.savedAt,
-      updated_by: userId,
-    })),
-    { onConflict: "module_key" }
-  );
+  for (const moduleBatch of chunkArray(modulePayloads, SUPABASE_MODULE_WRITE_BATCH_SIZE)) {
+    const batchLabels = moduleBatch.map((modulePayload) => modulePayload.moduleLabel).join(", ");
+    await writeSupabaseWithRetry(
+      async () => {
+        const { error } = await supabase.from(SUPABASE_APP_STATE_MODULES_TABLE).upsert(
+          moduleBatch.map((modulePayload) => ({
+            module_key: modulePayload.moduleKey,
+            payload: modulePayload,
+            saved_at: payload.savedAt,
+            updated_by: userId,
+          })),
+          { onConflict: "module_key" }
+        );
 
-  if (error) {
-    throw error;
+        if (error) {
+          throw error;
+        }
+      },
+      `guardar modulos en Supabase (${batchLabels})`
+    );
   }
 
   return modulePayloads.map((modulePayload) => modulePayload.moduleKey);
@@ -2639,7 +2714,9 @@ const writeSupabasePersistedAppState = async (
     };
   } catch (error) {
     if (!isSupabaseMissingTableError(error, SUPABASE_APP_STATE_MODULES_TABLE)) {
-      throw new Error(`No pude guardar en Supabase: ${getSupabaseErrorMessage(error)}`);
+      throw new SupabasePersistError(
+        `No pude guardar en Supabase: ${getSupabaseErrorMessage(error)}`
+      );
     }
 
     await writeSupabasePersistedLegacyAppState(payload, userId);
@@ -2839,6 +2916,7 @@ export default function App() {
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [isPersistenceReady, setIsPersistenceReady] = useState(false);
   const [isSupabaseSnapshotReady, setIsSupabaseSnapshotReady] = useState(false);
+  const [isSupabaseManualSaveInProgress, setIsSupabaseManualSaveInProgress] = useState(false);
   const [editingBudgetId, setEditingBudgetId] = useState<number | null>(null);
   const [supabaseLoginEmail, setSupabaseLoginEmail] = useState("");
   const [supabaseLoginPassword, setSupabaseLoginPassword] = useState("");
@@ -6129,6 +6207,11 @@ export default function App() {
   };
 
   const saveToSupabaseNow = async () => {
+    if (isSupabaseManualSaveInProgress) return;
+
+    setIsSupabaseManualSaveInProgress(true);
+    setStorageMessage("Guardando en este navegador y sincronizando con Supabase...");
+
     try {
       const moduleKeys =
         activeTab === "acceso" ? undefined : getPersistenceModuleKeysForTab(activeTab);
@@ -6167,8 +6250,14 @@ export default function App() {
       );
     } catch (error) {
       setStorageMessage(
-        error instanceof Error ? error.message : "No pude guardar los datos en Supabase."
+        error instanceof SupabasePersistError
+          ? `El guardado local quedo hecho, pero Supabase no confirmo todavia: ${error.message}`
+          : error instanceof Error
+            ? error.message
+            : "No pude guardar los datos en Supabase."
       );
+    } finally {
+      setIsSupabaseManualSaveInProgress(false);
     }
   };
 
@@ -10423,8 +10512,12 @@ export default function App() {
                   <ButtonLike onClick={restoreFromSupabaseSave} secondary>
                     Restaurar Supabase
                   </ButtonLike>
-                  <ButtonLike onClick={saveToSupabaseNow} secondary>
-                    Guardar en Supabase
+                  <ButtonLike
+                    onClick={saveToSupabaseNow}
+                    secondary
+                    disabled={isSupabaseManualSaveInProgress}
+                  >
+                    {isSupabaseManualSaveInProgress ? "Guardando..." : "Guardar en Supabase"}
                   </ButtonLike>
                   <ButtonLike onClick={downloadBackupFile} secondary>
                     Descargar backup
@@ -18428,8 +18521,8 @@ export default function App() {
             </tr>
           </thead>
           <tbody>
-            {financialItems.map((item) => (
-              <tr key={item.id}>
+            {financialItems.map((item, index) => (
+              <tr key={`facturacion-report-${item.id}-${item.type}-${item.date}-${index}`}>
                 <td>{getCompanyMeta(item.company).short}</td>
                 <td>{formatDateDisplay(item.date)}</td>
                 <td>{getFinancialTypeLabel(item.type)}</td>
@@ -18729,15 +18822,23 @@ function ButtonLike({
   children,
   onClick,
   secondary = false,
+  disabled = false,
 }: {
   children: React.ReactNode;
-  onClick: () => void;
+  onClick: () => void | Promise<void>;
   secondary?: boolean;
+  disabled?: boolean;
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      style={{ ...styles.button, ...(secondary ? styles.buttonSecondary : {}) }}
+      disabled={disabled}
+      style={{
+        ...styles.button,
+        ...(secondary ? styles.buttonSecondary : {}),
+        ...(disabled ? styles.buttonDisabled : {}),
+      }}
     >
       {children}
     </button>
@@ -19337,6 +19438,10 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
   },
   buttonSecondary: { background: "white", color: "#0f172a" },
+  buttonDisabled: {
+    opacity: 0.55,
+    cursor: "not-allowed",
+  },
   smallBtn: {
     padding: "6px 10px",
     borderRadius: 8,
