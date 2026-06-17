@@ -73,7 +73,11 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
 ## Trabajo pendiente (ver docs/formulas-y-vinculos.md para el detalle de fórmulas)
 
 1. Aislamiento por empresa (rediseño de persistencia + funciones de ayuda + RLS por empresa + frontend). Base de F4.
-   Fase 1 (funciones de ayuda) ya APLICADA; falta Fase 2 (migración de datos por empresa) + Fase 3 (RLS) + frontend.
+   Fases 1-3 ya APLICADAS (ver `supabase/fase2-3-aislamiento-por-empresa.sql`): funciones de ayuda,
+   tabla `app_state_modules_v2` poblada por empresa (coexiste con la vieja), y RLS por empresa sobre v2.
+   FALTA la Fase 4 (frontend): que `App.tsx` lea/escriba v2 por (módulo, empresa), mergee General +
+   empresas permitidas, y escriba `updated_by = auth.uid()`. Probar con usuario restringido + superadmin
+   antes de desplegar; luego cutover (retirar `app_state_modules` vieja).
 2. F2 facturación: % anticipo como campo numérico, % facturación editable, cuotas intermedias sin pisarse.
 3. F4 contabilidad blanco/negro: dos resultados separados; origen del dinero en compras; desfasaje blanco↔negro.
 4. F5 stock: ligar material↔stock por código; a futuro stock con movimientos + import de remito (OCR).
