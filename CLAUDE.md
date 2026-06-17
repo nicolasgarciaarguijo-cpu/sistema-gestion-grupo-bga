@@ -21,8 +21,11 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
   No alterar esos colores al tocar estética; solo mejorar contraste de textos neutros.
 - **Verificación:** después de cada cambio en `App.tsx`, correr `npx tsc --noEmit` (debe dar 0 errores).
   El build completo de webpack es lento; en sandbox no siempre termina. `tsc` es la verificación rápida.
-- **Commits:** incrementales, uno por cambio lógico, mensajes claros. Rama actual: `codex/save-reliability`.
-  No hay remoto git configurado (commits locales). Para publicar hay que conectar GitHub o subir manual.
+  Si tocás lógica con tests (`src/lib/format.ts`, `src/domain/scale.ts`), correr también los tests.
+- **Commits:** incrementales, uno por cambio lógico, mensajes claros. Rama actual: `main`.
+  Remoto `origin` configurado → `github.com/nicolasgarciaarguijo-cpu/sistema-gestion-grupo-bga`
+  (conectado a Vercel; lo que llega a `main` se despliega). El push usa Git Credential Manager;
+  `gh` no está instalado (los PR se crean por la web).
 
 ## Comandos
 
@@ -30,6 +33,8 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
 - `npm run auth-smoke` — prueba usuarios (necesita `.env.auth.local`).
 - `npm run release-check` — preflight + auth-smoke + build.
 - `npx tsc --noEmit` — chequeo de tipos (verificación rápida tras editar).
+- `CI=true npx react-scripts test --watchAll=false` — tests unitarios (Jest).
+- CI en GitHub Actions (`.github/workflows/ci.yml`): tsc + tests + build en cada PR/push a `main`.
 
 ## Estado actual del código (hecho)
 
@@ -38,17 +43,29 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
 - Helpers de formato extraídos a `src/lib/format.ts`.
 - F1 IVA: trabajos aprobados/directos usan su propia alícuota (no 21% fijo).
 - F7 escala: `getScaleForCategory` cae al último mes cargado si falta el mes en curso.
+  Lógica extraída a `src/domain/scale.ts` (pura, testeada).
 - F3 marcadores: quitado el efecto que borraba filas manuales al cambiar empresa/tipo de trabajo.
 - Estética: grises `muted`/`calendarEmpty` oscurecidos; paneles "wide" ahora a ancho completo.
+- Repo unificado con producción: las dos historias disjuntas (local 19 + GitHub 41 commits)
+  se unieron con `git merge -s ours --allow-unrelated-histories` (sin force-push). Pendiente de
+  mergear el PR de la rama `codex/merge-mejoras`.
+- Tests (Jest) + CI (GitHub Actions) agregados; `@types/jest` en devDependencies.
 
 ## Estado Supabase / seguridad
 
-- RLS activado en todas las tablas. Funciones de ayuda (app_is_superadmin, app_can_access_company)
-  NO existen aún (el `supabase/rls-policies.sql` del repo nunca se aplicó; lo vivo es permisivo).
+- RLS activado en todas las tablas. **Fase 1 aplicada** (migración `fase1_helper_functions_access_control`):
+  existen `app_is_active_user()`, `app_is_superadmin()`, `app_can_access_company(p_company_name)` y
+  `app_can_access_tab(p_tab_key)`, todas `security definer`/`search_path=''`. **Todavía NO las usa
+  ninguna política RLS** (no cambian comportamiento aún). `app_can_access_company` compara contra
+  `companies.name` y devuelve true para `'General'`.
 - Aplicado: chat interno con lectura solo para participantes; `search_path` fijo en función de trigger.
 - Nicolás (`ngarciaarguijo@grupobga.com.ar`) = superadmin.
+- Escaneo de la historia de producción: sin secretos filtrados (la `service_role` nunca se commiteó;
+  solo la `anon` key, pública por diseño; la versión viva lee de `process.env`).
 - Pendiente: políticas UPDATE "siempre verdaderas" en crm_budgets/crm_clients/app_state_* (sin
-  aislamiento por empresa); protección de contraseñas filtradas desactivada en Auth.
+  aislamiento por empresa) — NO apretarlas hasta tener la Fase 2 (migración de datos) + frontend en
+  lockstep, porque el estado vive en una sola fila JSON global y se rompería el guardado;
+  protección de contraseñas filtradas desactivada en Auth (activar 1 clic en Dashboard → Authentication).
 - Dato clave: `crm_budgets` y `crm_clients` están VACÍAS; todos los datos viven en el JSON global
   `app_state_snapshots`/`app_state_modules`. Por eso el aislamiento real por empresa requiere
   rediseñar la persistencia (sacar datos del JSON global a filas por empresa), no solo cambiar RLS.
@@ -56,6 +73,7 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
 ## Trabajo pendiente (ver docs/formulas-y-vinculos.md para el detalle de fórmulas)
 
 1. Aislamiento por empresa (rediseño de persistencia + funciones de ayuda + RLS por empresa + frontend). Base de F4.
+   Fase 1 (funciones de ayuda) ya APLICADA; falta Fase 2 (migración de datos por empresa) + Fase 3 (RLS) + frontend.
 2. F2 facturación: % anticipo como campo numérico, % facturación editable, cuotas intermedias sin pisarse.
 3. F4 contabilidad blanco/negro: dos resultados separados; origen del dinero en compras; desfasaje blanco↔negro.
 4. F5 stock: ligar material↔stock por código; a futuro stock con movimientos + import de remito (OCR).
