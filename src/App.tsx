@@ -10,6 +10,7 @@ import {
   normalizeCompanyText,
 } from "./lib/format";
 import { WORK_TYPE_OPTIONS } from "./domain/types";
+import { getScaleForCategory as getScaleForCategoryPure } from "./domain/scale";
 import type {
   CompanyName,
   CompanyScope,
@@ -8526,21 +8527,9 @@ export default function App() {
       );
     };
 
-  const getScaleForCategory = (category: string, month: string) => {
-    const cat = category.toLowerCase();
-    const exact = scaleRows.find(
-      (row) => row.month === month && row.category.toLowerCase() === cat
-    );
-    if (exact) return exact;
-    // Fallback: si no hay escala del mes pedido, usar el ultimo mes cargado para
-    // esa categoria (preferentemente anterior al mes pedido) en vez de devolver 0.
-    const forCategory = scaleRows
-      .filter((row) => row.category.toLowerCase() === cat)
-      .sort((a, b) => a.month.localeCompare(b.month));
-    if (forCategory.length === 0) return null;
-    const notFuture = forCategory.filter((row) => row.month <= month);
-    return notFuture.length > 0 ? notFuture[notFuture.length - 1] : forCategory[forCategory.length - 1];
-  };
+  // Logica pura extraida a src/domain/scale.ts (testeada). Aca solo se le pasa el estado.
+  const getScaleForCategory = (category: string, month: string) =>
+    getScaleForCategoryPure(scaleRows, category, month);
 
   const getCurrentPayroll = (employee: Employee) => ensureEmployeePayroll(employee, payrollMonth);
 
