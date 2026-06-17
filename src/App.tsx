@@ -10633,7 +10633,7 @@ export default function App() {
 
       {activeTab === "cajaChica" && (
         <div style={styles.column}>
-          <Panel title="Resumen de caja chica">
+          <Panel title="Resumen de caja chica" span="full">
             <div style={styles.metricGrid}>
               <MiniMetric label="Fondos activos" value={String(visiblePettyCashFunds.filter((item) => item.active).length)} />
               <MiniMetric label="Monto asignado" value={money(pettyCashSummary.assignedTotal)} />
@@ -10758,7 +10758,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Fondos operativos y rendicion">
+          <Panel title="Fondos operativos y rendicion" span="full">
             {pettyCashFundSummaries.length === 0 ? (
               <div style={styles.empty}>Agrega una caja chica para empezar a rendir gastos.</div>
             ) : (
