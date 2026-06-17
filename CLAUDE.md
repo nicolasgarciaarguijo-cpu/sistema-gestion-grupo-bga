@@ -75,9 +75,12 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
 1. Aislamiento por empresa (rediseño de persistencia + funciones de ayuda + RLS por empresa + frontend). Base de F4.
    Fases 1-3 ya APLICADAS (ver `supabase/fase2-3-aislamiento-por-empresa.sql`): funciones de ayuda,
    tabla `app_state_modules_v2` poblada por empresa (coexiste con la vieja), y RLS por empresa sobre v2.
-   FALTA la Fase 4 (frontend): que `App.tsx` lea/escriba v2 por (módulo, empresa), mergee General +
-   empresas permitidas, y escriba `updated_by = auth.uid()`. Probar con usuario restringido + superadmin
-   antes de desplegar; luego cutover (retirar `app_state_modules` vieja).
+   Fase 4 (frontend) IMPLEMENTADA en la rama `fase4-frontend-v2` (sin push): `App.tsx` lee/escribe v2
+   por (módulo, empresa) vía `src/domain/companyState.ts`, con `updated_by = auth.uid()`. Verificado:
+   tsc + tests + build OK. FALTA: verificación runtime con usuario restringido + superadmin (auth-smoke
+   con credenciales reales) antes de mergear; luego cutover (apretar las 4 RLS "always true" + retirar
+   `app_state_modules` vieja). UUIDs (#9) quedaron DECOUPLED (migración de tipos+datos aparte).
+   Quick wins de seguridad aplicados (ver `supabase/quickwins-seguridad.sql`); advisors 15 → 9.
 2. F2 facturación: % anticipo como campo numérico, % facturación editable, cuotas intermedias sin pisarse.
 3. F4 contabilidad blanco/negro: dos resultados separados; origen del dinero en compras; desfasaje blanco↔negro.
 4. F5 stock: ligar material↔stock por código; a futuro stock con movimientos + import de remito (OCR).

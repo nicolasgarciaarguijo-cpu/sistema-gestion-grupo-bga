@@ -85,15 +85,22 @@ Sobre `app_state_modules` (y las tablas que se usen, como `crm_budgets` que tien
 - INSERT/UPDATE exigen `updated_by = auth.uid()`.
 - Reemplazar las políticas "siempre verdaderas" actuales (las que marcó el linter).
 
-### Fase 4 — Frontend (`src/App.tsx`)
-- **Carga:** traer las filas de los módulos solo para las empresas permitidas + `General`,
-  y combinarlas en los arrays en memoria (hoy lee un único payload).
-- **Guardado:** al guardar, escribir de vuelta **una fila por empresa** (separar el estado
-  en memoria por `company` antes de subir).
-- **Realtime:** la sincronización debe mergear por (módulo, empresa) y solo para las
-  empresas permitidas, en vez de reemplazar el módulo completo.
-- **Selector de empresa:** que un usuario restringido no vea ni pueda elegir empresas
-  denegadas (ya hay base de esto en el frontend).
+### Fase 4 — Frontend (`src/App.tsx`) — IMPLEMENTADA (rama `fase4-frontend-v2`, pend. verificación)
+Lógica pura en `src/domain/companyState.ts` (split/merge/slice por empresa) + tests.
+`PER_COMPANY_MODULE_FIELDS` debe coincidir con `per_company_keys` del splitter SQL.
+- **Carga:** `readSupabasePersistedModuleRecords` lee `app_state_modules_v2` con `company`;
+  el merge agrupa por módulo y usa `mergeModuleDataByCompany` (concatena arrays por-empresa,
+  globales de General). RLS ya limita las filas a las empresas del usuario. ✓
+- **Guardado:** `splitModuleDataByCompany` separa por `item.company` y se hace
+  `upsert(onConflict: "module_key,company")` con `updated_by = auth.uid()`. Si todavía no se
+  cargaron las empresas escribibles, aborta el write a Supabase (el guardado local ya ocurrió). ✓
+- **Realtime:** `applyCompanyModuleSlice` reemplaza solo la porción de la empresa entrante. ✓
+- **Selector de empresa:** el frontend ya filtra por `canAccessCompany(item.company)`. ✓
+- **Verificación automática hecha:** `tsc` 0 errores, 27 tests, build de producción OK,
+  splitter re-corrido (v2 = 26 filas).
+- **PENDIENTE (manual, requiere usuario):** `npm run auth-smoke` con credenciales reales en
+  `.env.auth.local`, y prueba con usuario restringido + superadmin (ver Fase 5).
+- **PENDIENTE (decoupled):** migración de IDs a UUID (#9) — es migración de tipos+datos aparte.
 
 ### Fase 5 — Pruebas (antes de confiar)
 - Crear/usar un usuario restringido (una sola empresa) y un superadmin.
