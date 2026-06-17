@@ -40,40 +40,31 @@ const itemOwnCompany = (item: Item): string => {
   return typeof company === "string" && company !== "" ? company : GENERAL_COMPANY;
 };
 
-// Devuelve el "bucket" (empresa conocida o General) al que pertenece un item.
-// Items sin company, con 'General', o con una empresa no escribible -> General.
-export const bucketCompany = (
-  rawCompany: unknown,
-  writableCompanies: readonly string[]
-): string => {
-  if (typeof rawCompany === "string" && rawCompany !== GENERAL_COMPANY) {
-    if (writableCompanies.includes(rawCompany)) return rawCompany;
-  }
-  return GENERAL_COMPANY;
-};
-
-// Estado plano de un modulo -> { empresa: dataParcial }.
-// Emite SIEMPRE un bucket por cada empresa escribible + General (con arrays vacios si
-// hace falta), para que los borrados persistan al hacer upsert. No emite buckets de
-// empresas fuera de `writableCompanies`, asi un usuario restringido nunca pisa filas
-// de otras empresas.
+// Estado plano de un modulo -> { empresa: dataParcial }, listo para escribir 1 fila
+// por empresa. Cada item se agrupa por SU PROPIA empresa (itemOwnCompany). Solo se
+// emiten filas para `writableCompanies` + General (siempre, con arrays vacios si hace
+// falta, para que los borrados persistan al hacer upsert). Los items de empresas NO
+// escribibles se descartan en vez de colapsarse a General (asi un usuario restringido
+// nunca contamina datos compartidos; RLS rechazaria esas filas de todos modos).
 export const splitModuleDataByCompany = (
   moduleKey: string,
   data: ModuleData,
   writableCompanies: readonly string[]
 ): Record<string, ModuleData> => {
   const perCompany = perCompanyFieldsFor(moduleKey);
+  const emit = Array.from(new Set([...writableCompanies, GENERAL_COMPANY]));
+  const emitSet = new Set(emit);
   const buckets: Record<string, ModuleData> = {};
-  const targets = [...writableCompanies, GENERAL_COMPANY];
-  for (const company of targets) buckets[company] = {};
+  for (const company of emit) buckets[company] = {};
 
   for (const [field, value] of Object.entries(data)) {
     if (perCompany.includes(field) && Array.isArray(value)) {
-      // Inicializa el campo como [] en cada bucket destino (persistir borrados).
-      for (const company of targets) (buckets[company][field] as Item[]) = [];
+      // Inicializa el campo como [] en cada bucket emitido (persistir borrados).
+      for (const company of emit) (buckets[company][field] as Item[]) = [];
       for (const item of value as Item[]) {
-        const company = bucketCompany((item as Item)?.company, writableCompanies);
-        (buckets[company][field] as Item[]).push(item);
+        const own = itemOwnCompany(item);
+        if (emitSet.has(own)) (buckets[own][field] as Item[]).push(item);
+        // else: item de empresa no escribible -> se descarta.
       }
     } else {
       // Campo global -> siempre a General.

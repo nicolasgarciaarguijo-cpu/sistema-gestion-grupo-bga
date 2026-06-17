@@ -2,23 +2,11 @@ import {
   splitModuleDataByCompany,
   mergeModuleDataByCompany,
   applyCompanyModuleSlice,
-  bucketCompany,
   GENERAL_COMPANY,
 } from "./companyState";
 
 const BGA = "BGA estudio de diseño y produccion industrial s.r.l";
 const DERAIZ = "De raiz s.r.l";
-
-describe("bucketCompany", () => {
-  it("mapea empresa escribible conocida a si misma", () => {
-    expect(bucketCompany(BGA, [BGA, DERAIZ])).toBe(BGA);
-  });
-  it("manda General, vacio o desconocido a General", () => {
-    expect(bucketCompany("General", [BGA])).toBe(GENERAL_COMPANY);
-    expect(bucketCompany(undefined, [BGA])).toBe(GENERAL_COMPANY);
-    expect(bucketCompany(DERAIZ, [BGA])).toBe(GENERAL_COMPANY); // no escribible para este user
-  });
-});
 
 describe("splitModuleDataByCompany", () => {
   it("separa un array por item.company y deja los globales en General", () => {
@@ -47,6 +35,27 @@ describe("splitModuleDataByCompany", () => {
   it("emite array vacio para persistir borrados", () => {
     const data = { approvedJobs: [] as any[] };
     const out = splitModuleDataByCompany("trabajos-aprobados", data, [BGA]);
+    expect(out[BGA].approvedJobs).toEqual([]);
+  });
+
+  it("descarta items de empresas no escribibles (no los manda a General)", () => {
+    const data = {
+      approvedJobs: [
+        { id: 1, company: BGA },
+        { id: 2, company: DERAIZ }, // no escribible para este usuario
+        { id: 3, company: "General" },
+      ],
+    };
+    const out = splitModuleDataByCompany("trabajos-aprobados", data, [BGA]);
+    expect((out[BGA].approvedJobs as any[]).map((i) => i.id)).toEqual([1]);
+    expect((out[GENERAL_COMPANY].approvedJobs as any[]).map((i) => i.id)).toEqual([3]);
+    expect(out[DERAIZ]).toBeUndefined(); // De Raiz no se toca
+  });
+
+  it("items sin company van a General", () => {
+    const data = { approvedJobs: [{ id: 1 }] };
+    const out = splitModuleDataByCompany("trabajos-aprobados", data, [BGA]);
+    expect((out[GENERAL_COMPANY].approvedJobs as any[]).map((i) => i.id)).toEqual([1]);
     expect(out[BGA].approvedJobs).toEqual([]);
   });
 });

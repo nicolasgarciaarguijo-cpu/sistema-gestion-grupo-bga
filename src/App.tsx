@@ -11,6 +11,12 @@ import {
 } from "./lib/format";
 import { WORK_TYPE_OPTIONS } from "./domain/types";
 import { getScaleForCategory as getScaleForCategoryPure } from "./domain/scale";
+import {
+  splitModuleDataByCompany,
+  mergeModuleDataByCompany,
+  applyCompanyModuleSlice,
+  GENERAL_COMPANY,
+} from "./domain/companyState";
 import type {
   CompanyName,
   CompanyScope,
@@ -1216,6 +1222,9 @@ const APP_PERSISTENCE_RECORD_KEY = "main";
 const APP_PERSISTENCE_VERSION = 1;
 const SUPABASE_APP_STATE_TABLE = "app_state_snapshots";
 const SUPABASE_APP_STATE_MODULES_TABLE = "app_state_modules";
+// Fase 4: la app lee/escribe la tabla particionada por (module_key, company).
+// La vieja `app_state_modules` queda solo como fallback hasta el cutover.
+const SUPABASE_APP_STATE_MODULES_V2_TABLE = "app_state_modules_v2";
 const SUPABASE_APP_STATE_RECORD_KEY = "main";
 const SUPABASE_CRM_CLIENTS_TABLE = "crm_clients";
 const SUPABASE_BUDGETS_TABLE = "crm_budgets";
@@ -1797,14 +1806,16 @@ const readSupabasePersistedLegacyAppStateRecord =
 const readSupabasePersistedModuleRecords = async (): Promise<
   {
     module_key: string;
+    company: string;
     payload: unknown;
     saved_at: string;
     updated_by: string | null;
   }[]
 > => {
+  // Lee v2 (1 fila por module_key+company). RLS ya limita a las empresas del usuario.
   const { data, error } = await supabase
-    .from(SUPABASE_APP_STATE_MODULES_TABLE)
-    .select("module_key,payload,saved_at,updated_by")
+    .from(SUPABASE_APP_STATE_MODULES_V2_TABLE)
+    .select("module_key,company,payload,saved_at,updated_by")
     .order("module_key", { ascending: true });
 
   if (error) {
@@ -1813,6 +1824,7 @@ const readSupabasePersistedModuleRecords = async (): Promise<
 
   return (data || []).map((item) => ({
     module_key: String(item.module_key || ""),
+    company: typeof item.company === "string" ? item.company : GENERAL_COMPANY,
     payload: item.payload,
     saved_at: typeof item.saved_at === "string" ? item.saved_at : new Date().toISOString(),
     updated_by: typeof item.updated_by === "string" ? item.updated_by : null,
@@ -1838,6 +1850,13 @@ const mergeSupabaseAppStateRecords = (
   let latestModuleTime = 0;
   const latestModuleKeys: string[] = [];
 
+  // Agrupar filas por modulo: puede haber varias (una por empresa) para el mismo
+  // module_key. Se mergean con mergeModuleDataByCompany hacia el estado plano.
+  const recordsByModule = new Map<
+    string,
+    { company: string; data: Partial<PersistedAppStateData> }[]
+  >();
+
   moduleRecords.forEach((record) => {
     const moduleDefinition = getAppStateModuleDefinition(record.module_key);
     if (!moduleDefinition) return;
@@ -1848,7 +1867,9 @@ const mergeSupabaseAppStateRecords = (
     );
     if (!modulePayload) return;
 
-    Object.assign(mergedData, modulePayload.data);
+    const group = recordsByModule.get(moduleDefinition.key) || [];
+    group.push({ company: record.company, data: modulePayload.data });
+    recordsByModule.set(moduleDefinition.key, group);
 
     const recordTime = new Date(record.saved_at).getTime();
     if (Number.isFinite(recordTime)) {
@@ -1861,10 +1882,17 @@ const mergeSupabaseAppStateRecords = (
       if (recordTime > latestModuleTime) {
         latestModuleTime = recordTime;
         latestModuleKeys.splice(0, latestModuleKeys.length, moduleDefinition.key);
-      } else if (recordTime === latestModuleTime) {
+      } else if (
+        recordTime === latestModuleTime &&
+        !latestModuleKeys.includes(moduleDefinition.key)
+      ) {
         latestModuleKeys.push(moduleDefinition.key);
       }
     }
+  });
+
+  recordsByModule.forEach((rows, moduleKey) => {
+    Object.assign(mergedData, mergeModuleDataByCompany(moduleKey, rows));
   });
 
   if (!legacySnapshot && Object.keys(mergedData).length === 0) return null;
@@ -1900,7 +1928,7 @@ const readSupabasePersistedAppStateRecord =
   try {
     moduleRecords = await readSupabasePersistedModuleRecords();
   } catch (error) {
-    if (!isSupabaseMissingTableError(error, SUPABASE_APP_STATE_MODULES_TABLE)) {
+    if (!isSupabaseMissingTableError(error, SUPABASE_APP_STATE_MODULES_V2_TABLE)) {
       throw new Error(`No pude leer Supabase: ${getSupabaseErrorMessage(error)}`);
     }
   }
@@ -1935,24 +1963,52 @@ const writeSupabasePersistedLegacyAppState = async (
 const writeSupabasePersistedAppStateModules = async (
   payload: PersistedAppState,
   userId: string,
+  writableCompanies: readonly string[],
   moduleKeys?: AppStateModuleKey[]
 ): Promise<AppStateModuleKey[]> => {
   const modulePayloads = buildPersistedAppStateModules(payload, moduleKeys);
 
   if (modulePayloads.length === 0) return [];
 
-  for (const moduleBatch of chunkArray(modulePayloads, SUPABASE_MODULE_WRITE_BATCH_SIZE)) {
-    const batchLabels = moduleBatch.map((modulePayload) => modulePayload.moduleLabel).join(", ");
+  // Sin empresas escribibles (race con la carga de permisos) abortamos antes de
+  // escribir: si no, los items por-empresa se descartarian. El guardado local ya
+  // ocurrio; el autosave a Supabase se reintenta en el proximo cambio.
+  if (writableCompanies.length === 0) {
+    throw new SupabasePersistError(
+      "No pude guardar en Supabase: todavia no se cargaron las empresas habilitadas."
+    );
+  }
+
+  // Cada modulo se parte en 1 fila por (module_key, company).
+  const rows = modulePayloads.flatMap((modulePayload) => {
+    const buckets = splitModuleDataByCompany(
+      modulePayload.moduleKey,
+      modulePayload.data,
+      writableCompanies
+    );
+    return Object.entries(buckets).map(([company, data]) => ({
+      module_key: modulePayload.moduleKey,
+      company,
+      payload: {
+        version: modulePayload.version,
+        savedAt: modulePayload.savedAt,
+        moduleKey: modulePayload.moduleKey,
+        moduleLabel: modulePayload.moduleLabel,
+        data: data as Partial<PersistedAppStateData>,
+      } satisfies PersistedAppStateModulePayload,
+      saved_at: payload.savedAt,
+      updated_by: userId,
+      _label: modulePayload.moduleLabel,
+    }));
+  });
+
+  for (const rowBatch of chunkArray(rows, SUPABASE_MODULE_WRITE_BATCH_SIZE)) {
+    const batchLabels = Array.from(new Set(rowBatch.map((row) => row._label))).join(", ");
     await writeSupabaseWithRetry(
       async () => {
-        const { error } = await supabase.from(SUPABASE_APP_STATE_MODULES_TABLE).upsert(
-          moduleBatch.map((modulePayload) => ({
-            module_key: modulePayload.moduleKey,
-            payload: modulePayload,
-            saved_at: payload.savedAt,
-            updated_by: userId,
-          })),
-          { onConflict: "module_key" }
+        const { error } = await supabase.from(SUPABASE_APP_STATE_MODULES_V2_TABLE).upsert(
+          rowBatch.map(({ _label, ...row }) => row),
+          { onConflict: "module_key,company" }
         );
 
         if (error) {
@@ -1968,7 +2024,7 @@ const writeSupabasePersistedAppStateModules = async (
 
 const writeSupabasePersistedAppState = async (
   payload: PersistedAppState,
-  options?: { moduleKeys?: AppStateModuleKey[] }
+  options?: { moduleKeys?: AppStateModuleKey[]; writableCompanies?: readonly string[] }
 ): Promise<{
   mode: "modules" | "legacy";
   moduleKeys: AppStateModuleKey[];
@@ -1984,6 +2040,7 @@ const writeSupabasePersistedAppState = async (
     const writtenModuleKeys = await writeSupabasePersistedAppStateModules(
       payload,
       userId,
+      options?.writableCompanies || [],
       options?.moduleKeys
     );
 
@@ -1992,7 +2049,7 @@ const writeSupabasePersistedAppState = async (
       moduleKeys: writtenModuleKeys,
     };
   } catch (error) {
-    if (!isSupabaseMissingTableError(error, SUPABASE_APP_STATE_MODULES_TABLE)) {
+    if (!isSupabaseMissingTableError(error, SUPABASE_APP_STATE_MODULES_V2_TABLE)) {
       throw new SupabasePersistError(
         `No pude guardar en Supabase: ${getSupabaseErrorMessage(error)}`
       );
@@ -2748,7 +2805,7 @@ export default function App() {
         {
           event: "*",
           schema: "public",
-          table: SUPABASE_APP_STATE_MODULES_TABLE,
+          table: SUPABASE_APP_STATE_MODULES_V2_TABLE,
         },
         (payload: any) => {
           const nextRow = isRecord(payload?.new) ? payload.new : null;
@@ -2756,6 +2813,10 @@ export default function App() {
             nextRow && typeof nextRow.module_key === "string"
               ? nextRow.module_key
               : "";
+          const rowCompany =
+            nextRow && typeof nextRow.company === "string"
+              ? nextRow.company
+              : GENERAL_COMPANY;
           const modulePayload =
             nextRow && moduleKey
               ? normalizePersistedAppStateModule(nextRow.payload, moduleKey)
@@ -2773,10 +2834,13 @@ export default function App() {
               lastRealtimeModuleMergedDataRef.current
                 ? lastRealtimeModuleMergedDataRef.current
                 : buildPersistedAppData();
-            const mergedModuleData = {
-              ...currentData,
-              ...modulePayload.data,
-            } as PersistedAppStateData;
+            // Reemplaza SOLO la porcion de esa empresa, sin pisar las demas.
+            const mergedModuleData = applyCompanyModuleSlice(
+              modulePayload.moduleKey,
+              currentData,
+              rowCompany,
+              modulePayload.data
+            ) as PersistedAppStateData;
             lastRealtimeModuleMergeSavedAtRef.current = savedAt;
             lastRealtimeModuleMergedDataRef.current = mergedModuleData;
             applyIncomingSupabaseSnapshot(
@@ -5294,6 +5358,7 @@ export default function App() {
       if (shouldSeedAllModules || (moduleKeysToSave && moduleKeysToSave.length > 0)) {
         const supabaseWriteResult = await writeSupabasePersistedAppState(payload, {
           moduleKeys: moduleKeysToSave,
+          writableCompanies: allowedCompaniesForSession,
         });
         lastSupabaseAutosaveAtRef.current = Date.now();
         lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
@@ -5650,10 +5715,13 @@ export default function App() {
       );
       let importSupabaseMode: "modules" | "legacy" | null = null;
       if (isSupabaseLoggedIn) {
-        const supabaseWriteResult = await writeSupabasePersistedAppState({
-          ...normalized,
-          savedAt: importedSavedAt,
-        });
+        const supabaseWriteResult = await writeSupabasePersistedAppState(
+          {
+            ...normalized,
+            savedAt: importedSavedAt,
+          },
+          { writableCompanies: allowedCompaniesForSession }
+        );
         importSupabaseMode = supabaseWriteResult.mode;
         lastSupabaseAutosaveAtRef.current = Date.now();
         lastSupabaseSnapshotSavedAtRef.current = importedSavedAt;
@@ -7142,6 +7210,7 @@ export default function App() {
           try {
             const supabaseWriteResult = await writeSupabasePersistedAppState(payload, {
               moduleKeys: shouldSeedAllModules ? undefined : changedModuleKeys,
+              writableCompanies: allowedCompaniesForSession,
             });
             lastSupabaseAutosaveAtRef.current = Date.now();
             lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
