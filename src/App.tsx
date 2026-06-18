@@ -18,6 +18,7 @@ import {
   GENERAL_COMPANY,
 } from "./domain/companyState";
 import { newId } from "./domain/id";
+import { createPortal } from "react-dom";
 import type {
   CompanyName,
   CompanyScope,
@@ -9507,9 +9508,10 @@ export default function App() {
       <style>{`
         table th, table td { border-bottom: 1px solid #e2e8f0; padding: 6px; vertical-align: top; }
         @media print {
-          body * { visibility: hidden !important; }
-          body[data-print-mode="client-budget"] #client-budget-pdf,
-          body[data-print-mode="client-budget"] #client-budget-pdf * { visibility: visible !important; }
+          @page { size: A4; margin: 14mm; }
+          body[data-print-mode]:not([data-print-mode="client-budget"]) * { visibility: hidden !important; }
+          body[data-print-mode="client-budget"] #root { display: none !important; }
+          body[data-print-mode="client-budget"] #client-budget-pdf { display: block !important; }
           body[data-print-mode="report-marcadores"] #report-marcadores,
           body[data-print-mode="report-marcadores"] #report-marcadores * { visibility: visible !important; }
           body[data-print-mode="report-historial"] #report-historial,
@@ -9530,7 +9532,6 @@ export default function App() {
           body[data-print-mode="report-compras"] #report-compras * { visibility: visible !important; }
           body[data-print-mode="report-caja-chica"] #report-caja-chica,
           body[data-print-mode="report-caja-chica"] #report-caja-chica * { visibility: visible !important; }
-          #client-budget-pdf,
           #report-cashflow,
           #report-compras,
           #report-caja-chica,
@@ -17583,16 +17584,19 @@ export default function App() {
         </div>
       )}
 
-      <div id="client-budget-pdf" style={{ display: "none" }}>
-        <BudgetDocument
-          budget={budget}
-          sections={workingBudgetSections}
-          consolidatedTotals={consolidatedBudgetTotals}
-          vatPct={vatPct}
-          estimatedDeliveryDate={budgetEstimatedDeliveryDate}
-          companyTheme={companyTheme}
-        />
-      </div>
+      {createPortal(
+        <div id="client-budget-pdf" style={{ display: "none" }}>
+          <BudgetDocument
+            budget={budget}
+            sections={workingBudgetSections}
+            consolidatedTotals={consolidatedBudgetTotals}
+            vatPct={vatPct}
+            estimatedDeliveryDate={budgetEstimatedDeliveryDate}
+            companyTheme={companyTheme}
+          />
+        </div>,
+        document.body
+      )}
 
       <PrintReport id="report-cashflow" title="Reporte - Cash flow y resultados">
         <div style={styles.metricGrid}>
@@ -18192,7 +18196,9 @@ function BudgetDocument({
         style={{
           ...styles.printTotals,
           border: `2px solid ${companyTheme.primary}`,
-          background: "transparent",
+          background: companyTheme.soft,
+          color: companyTheme.primary,
+          fontSize: 15,
         }}
       >
         {consolidatedTotals.totalDiscountAmount > 0 && (
@@ -20040,24 +20046,26 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 20,
     alignItems: "flex-start",
     marginBottom: 20,
+    breakInside: "avoid",
+    pageBreakInside: "avoid",
   },
   printWatermark: {
-    position: "absolute",
+    position: "fixed",
     inset: 0,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     fontSize: 160,
     fontWeight: 800,
-    opacity: 0.12,
+    opacity: 0.06,
     pointerEvents: "none",
     zIndex: 0,
   },
   printWatermarkLogo: {
-    maxWidth: "72%",
-    maxHeight: "72%",
+    maxWidth: "82%",
+    maxHeight: "82%",
     objectFit: "contain",
-    opacity: 0.9,
+    opacity: 1,
   },
   printLogoRow: {
     display: "flex",
@@ -20082,6 +20090,8 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 14,
     marginBottom: 14,
     background: "rgba(255,255,255,0.96)",
+    breakInside: "avoid",
+    pageBreakInside: "avoid",
   },
   printReferenceImage: {
     width: "100%",
@@ -20117,6 +20127,8 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     border: "1px solid #cbd5e1",
     background: "rgba(255,255,255,0.96)",
+    breakInside: "avoid",
+    pageBreakInside: "avoid",
   },
 };
 
