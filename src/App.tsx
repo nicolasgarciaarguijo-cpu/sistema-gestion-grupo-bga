@@ -2945,6 +2945,67 @@ export default function App() {
     [companyCatalog, effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedCompanies]
   );
 
+  // Aislamiento reactivo: para un usuario restringido, mantener SIEMPRE limpios todos los
+  // arrays por-empresa en memoria (sacar cualquier item de una empresa no permitida), sin
+  // importar de donde vino la data (cache local, defaults, Supabase, realtime) ni el orden
+  // de carga. Asi NINGUN render -se vea o no, use el array crudo o el filtrado- puede mostrar
+  // datos de otra empresa. No toca al superadmin. El guardado sigue intacto (el split solo
+  // escribe las empresas escribibles; las filas de las otras empresas no se tocan).
+  useEffect(() => {
+    if (!isSupabaseLoggedIn || effectiveIsAdmin) return;
+    const allowedCompany = (company: unknown) =>
+      company === "General" ||
+      (typeof company === "string" &&
+        allowedCompaniesForSession.includes(company as CompanyName));
+    const prune = <T extends { company?: unknown }>(
+      items: T[],
+      setItems: (next: T[]) => void
+    ) => {
+      const filtered = items.filter((item) => allowedCompany(item?.company));
+      if (filtered.length !== items.length) setItems(filtered);
+    };
+    prune(savedBudgets, setSavedBudgets);
+    prune(approvedJobs, setApprovedJobs);
+    prune(financialItems, setFinancialItems);
+    prune(purchaseInvoices, setPurchaseInvoices);
+    prune(pettyCashFunds, setPettyCashFunds);
+    prune(pettyCashExpenses, setPettyCashExpenses);
+    prune(debtPlans, setDebtPlans);
+    prune(bankStatementEntries, setBankStatementEntries);
+    prune(stockItems, setStockItems);
+    prune(costAnalysisGroups, setCostAnalysisGroups);
+    prune(costAnalysisEntries, setCostAnalysisEntries);
+    prune(remitoDrafts, setRemitoDrafts);
+    prune(companyAssets, setCompanyAssets);
+    prune(employees, setEmployees);
+    prune(fixedMarkers, setFixedMarkers);
+    prune(supplyMarkers, setSupplyMarkers);
+    prune(laborMarkers, setLaborMarkers);
+    prune(personalProvisionMarkers, setPersonalProvisionMarkers);
+  }, [
+    isSupabaseLoggedIn,
+    effectiveIsAdmin,
+    allowedCompaniesForSession,
+    savedBudgets,
+    approvedJobs,
+    financialItems,
+    purchaseInvoices,
+    pettyCashFunds,
+    pettyCashExpenses,
+    debtPlans,
+    bankStatementEntries,
+    stockItems,
+    costAnalysisGroups,
+    costAnalysisEntries,
+    remitoDrafts,
+    companyAssets,
+    employees,
+    fixedMarkers,
+    supplyMarkers,
+    laborMarkers,
+    personalProvisionMarkers,
+  ]);
+
   const canAccessCompany = (company: CompanyName | "General") => {
     if (!isSupabaseLoggedIn) return false;
     const hasPermission =
