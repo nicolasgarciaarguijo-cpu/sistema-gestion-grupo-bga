@@ -17,6 +17,7 @@ import {
   applyCompanyModuleSlice,
   GENERAL_COMPANY,
 } from "./domain/companyState";
+import { newId } from "./domain/id";
 import type {
   CompanyName,
   CompanyScope,
@@ -301,7 +302,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
 };
 
 const buildBlankRemitoDraftRow = (company: CompanyScope): RemitoDraftRow => ({
-  id: Date.now() + Math.floor(Math.random() * 1000),
+  id: newId(),
   company,
   description: "",
   group: "",
@@ -422,7 +423,7 @@ const parseDelimitedRemitoRows = (text: string, company: CompanyScope): RemitoDr
     .filter((cells) => cells.length > 0)
     .slice(1)
     .map((cells, index) => ({
-      id: Date.now() + index,
+      id: newId(),
       company,
       description: cells[0] || "",
       group: cells[1] || "",
@@ -1039,7 +1040,7 @@ async function parseScalePdf(file: File): Promise<ScaleRow[]> {
 
     rows.push(
       {
-        id: Date.now() + rows.length + 1,
+        id: newId(),
         month: monthKeys[0],
         category: categoryAliases[pdfCategory],
         baseHourly,
@@ -1048,7 +1049,7 @@ async function parseScalePdf(file: File): Promise<ScaleRow[]> {
         sourceFileName: file.name,
       },
       {
-        id: Date.now() + rows.length + 2,
+        id: newId(),
         month: monthKeys[1],
         category: categoryAliases[pdfCategory],
         baseHourly,
@@ -3546,7 +3547,7 @@ export default function App() {
             null;
           if (!stockItem) return null;
           return {
-            id: Date.now() + Math.random(),
+            id: newId(),
             company:
               stockItem.company === "General"
                 ? COMPANY_OPTIONS[0].value
@@ -4271,7 +4272,7 @@ export default function App() {
     setAssistantMessages((prev) => [
       ...prev,
       {
-        id: Date.now() + Math.floor(Math.random() * 1000),
+        id: newId(),
         role,
         text,
         created_at: new Date().toISOString(),
@@ -4282,7 +4283,7 @@ export default function App() {
   const pushNotification = (text: string) => {
     setNotifications((prev) => [
       {
-        id: Date.now() + Math.floor(Math.random() * 1000),
+        id: newId(),
         text,
         created_at: new Date().toISOString(),
         read: false,
@@ -4835,7 +4836,7 @@ export default function App() {
 
     return [
       {
-        id: Date.now() + Math.random(),
+        id: newId(),
         company: job.company,
         date: job.approvalDate,
         type: "facturacion",
@@ -4850,7 +4851,7 @@ export default function App() {
         preset: "factura",
       },
       {
-        id: Date.now() + Math.random(),
+        id: newId(),
         company: job.company,
         date: job.approvalDate,
         type: "cobranza",
@@ -4865,7 +4866,7 @@ export default function App() {
         preset: "anticipo",
       },
       {
-        id: Date.now() + Math.random(),
+        id: newId(),
         company: job.company,
         date: job.deliveryDate,
         type: "cobranza",
@@ -5089,7 +5090,7 @@ export default function App() {
   );
 
   const mapFixedMarkerToBudgetRow = (item: FixedMarker): FixedCost => ({
-    id: Date.now() + item.id,
+    id: newId(),
     sourceMarkerId: item.id,
     sourceCompany: item.company,
     description: `${item.group} - ${item.description}`,
@@ -5097,7 +5098,7 @@ export default function App() {
   });
 
   const mapSupplyMarkerToBudgetRow = (item: SupplyMarker): Material => ({
-    id: Date.now() + item.id,
+    id: newId(),
     sourceMarkerId: item.id,
     sourceCompany: item.company,
     description: item.description,
@@ -5107,7 +5108,7 @@ export default function App() {
   });
 
   const mapLaborMarkerToBudgetRow = (item: LaborMarker): LaborRow => ({
-    id: Date.now() + item.id,
+    id: newId(),
     sourceMarkerId: item.id,
     sourceCompany: item.company,
     category: item.category,
@@ -5716,7 +5717,7 @@ export default function App() {
 
     const baseData = buildPersistedAppData();
     const snapshot: MonthlyHistorySnapshot = {
-      id: Date.now(),
+      id: newId(),
       tabKey: activeTab,
       tabLabel: getTabLabel(activeTab),
       month: operationalMonth,
@@ -5867,7 +5868,7 @@ export default function App() {
             normalizeBudgetNumberKey(item.number) === currentBudgetNumberKey &&
             item.company === budget.company
         ) || null;
-    const rootBudgetId = existing?.rootBudgetId ?? existing?.id ?? Date.now();
+    const rootBudgetId = existing?.rootBudgetId ?? existing?.id ?? newId();
     const revisionNumber = existing
       ? Math.max(
           ...savedBudgets
@@ -5929,7 +5930,7 @@ export default function App() {
       },
     };
     const next: SavedBudget = {
-      id: existing?.id ?? Date.now(),
+      id: existing?.id ?? newId(),
       rootBudgetId,
       revisionNumber,
       isUpdate: !!existing,
@@ -6083,7 +6084,7 @@ export default function App() {
         (row) => row.budgetId === item.id || row.rootBudgetId === (item.rootBudgetId || item.id)
       );
       const nextJob: ApprovedJob = {
-        id: existing?.id ?? Date.now(),
+        id: existing?.id ?? newId(),
         budgetId: item.id,
         rootBudgetId: item.rootBudgetId || item.id,
         revisionNumber: item.revisionNumber || 1,
@@ -6131,7 +6132,7 @@ export default function App() {
   const createDirectApprovedJob = () => {
     const approvalDate = todayIso();
     const deliveryTerm = budget.deliveryTerm || "30 dias";
-    const generatedId = Date.now();
+    const generatedId = newId();
     const syntheticBudgetId = -generatedId;
     const budgetNumber = `DIR-${String(Date.now()).slice(-6)}`;
     const placeholderSnapshot = buildPlaceholderBudgetSnapshot({
@@ -6367,7 +6368,7 @@ export default function App() {
               ...job,
               invoices: [
                 {
-                  id: Date.now(),
+                  id: newId(),
                   businessName: job.client,
                   taxId: "",
                   invoiceType: "A",
@@ -6419,7 +6420,7 @@ export default function App() {
               ...job,
               payments: [
                 {
-                  id: Date.now(),
+                  id: newId(),
                   paymentNumber: "",
                   paymentDate: "",
                   transactionType: "transferencia",
@@ -6461,7 +6462,7 @@ export default function App() {
               ...job,
               retentions: [
                 {
-                  id: Date.now(),
+                  id: newId(),
                   retentionNumber: "",
                   retentionDate: "",
                   retentionType: "",
@@ -6503,7 +6504,7 @@ export default function App() {
               ...job,
               additionals: [
                 {
-                  id: Date.now(),
+                  id: newId(),
                   date: todayIso(),
                   description: "Adicional",
                   amount: 0,
@@ -6558,7 +6559,7 @@ export default function App() {
               ...job,
               commissionPayments: [
                 {
-                  id: Date.now(),
+                  id: newId(),
                   paymentDate: todayIso(),
                   amount: 0,
                   note: "",
@@ -6628,7 +6629,7 @@ export default function App() {
     setMaterials((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         description: "",
         qty: 1,
         unit: "u",
@@ -6648,7 +6649,7 @@ export default function App() {
     }
 
     const nextSection: BudgetSection = {
-      id: Date.now(),
+      id: newId(),
       title: subBudgetTitle.trim() || `Subpresupuesto ${subBudgets.length + 1}`,
       notes: subBudgetNotes.trim(),
       materials: materials.map((item) => ({ ...item })),
@@ -6759,7 +6760,7 @@ export default function App() {
       ) + 1;
 
     const newStockItem: StockItem = {
-      id: Date.now(),
+      id: newId(),
       company: "General",
       kind: "general",
       shared: true,
@@ -6813,13 +6814,13 @@ export default function App() {
   const addBudgetDiscount = () =>
     setBudgetDiscounts((prev) => [
       ...prev,
-      { id: Date.now(), description: "Descuento comercial", amount: 0 },
+      { id: newId(), description: "Descuento comercial", amount: 0 },
     ]);
 
   const addBudgetIncrease = () =>
     setBudgetIncreases((prev) => [
       ...prev,
-      { id: Date.now(), description: "Actualizacion comercial", pct: 0 },
+      { id: newId(), description: "Actualizacion comercial", pct: 0 },
     ]);
 
   const removeBudgetIncrease = (increaseId: number) => {
@@ -6833,7 +6834,7 @@ export default function App() {
   const addBasicSupply = () =>
     setBasicSupplies((prev) => [
       ...prev,
-      { id: Date.now(), description: "", qty: 1, unit: "u", unitPrice: 0 },
+      { id: newId(), description: "", qty: 1, unit: "u", unitPrice: 0 },
     ]);
 
   const promptAndCreateCostAnalysisGroup = (company: CompanyScope = "General") => {
@@ -6850,7 +6851,7 @@ export default function App() {
     }
 
     const createdGroup: CostAnalysisGroup = {
-      id: Date.now(),
+      id: newId(),
       name: normalized,
       company,
       active: true,
@@ -6867,7 +6868,7 @@ export default function App() {
     setFixedMarkers((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         workType: budget.workType,
         group: fixedMarkerGroupOptions[0] || "Administrativos",
@@ -6882,7 +6883,7 @@ export default function App() {
     setSupplyMarkers((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         workType: budget.workType,
         subtype: "Insumos basicos",
@@ -6899,7 +6900,7 @@ export default function App() {
     setLaborMarkers((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         workType: budget.workType,
         category: "",
@@ -6916,7 +6917,7 @@ export default function App() {
     setPersonalProvisionMarkers((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         shared: true,
         kind: "EPP",
@@ -6940,7 +6941,7 @@ export default function App() {
     setCostAnalysisEntries((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         groupId: fallbackGroup.id,
         company: "General",
         description: "",
@@ -7082,7 +7083,7 @@ export default function App() {
       }
 
       drafts.push({
-        id: Date.now() + Math.floor(Math.random() * 1000),
+        id: newId(),
         fileName: file.name,
         sourceType,
         company: budget.company,
@@ -7151,7 +7152,7 @@ export default function App() {
 
         const nextGroup = row.group.trim() || "Melaminas";
         nextStock.push({
-          id: Date.now() + Math.floor(Math.random() * 1000),
+          id: newId(),
           company: row.company,
           kind: "general",
           shared: row.company === "General",
@@ -7231,7 +7232,7 @@ export default function App() {
     setLabor((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         category: "Ayudante",
         employees: 1,
         monthlyHoursPerEmployee: nominalLaborHoursPerEmployee,
@@ -7241,7 +7242,7 @@ export default function App() {
     ]);
 
   const addFixedCost = () =>
-    setFixedCosts((prev) => [...prev, { id: Date.now(), description: "Nuevo costo", amount: 0 }]);
+    setFixedCosts((prev) => [...prev, { id: newId(), description: "Nuevo costo", amount: 0 }]);
 
   const removeBasicSupply = (itemId: number) => {
     setBasicSupplies((prev) => prev.filter((item) => item.id !== itemId));
@@ -7403,7 +7404,7 @@ export default function App() {
 
   const addFinancialItem = (date?: string, company?: CompanyName) => {
     const item: FinancialCalendarItem = {
-      id: Date.now(),
+      id: newId(),
       company: company ?? budget.company,
       date: date ?? `${financialMonth}-01`,
       type: "facturacion",
@@ -7422,7 +7423,7 @@ export default function App() {
     setStockItems((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         company: "General",
         kind: "general",
         shared: true,
@@ -7447,7 +7448,7 @@ export default function App() {
   const addPurchaseInvoice = () => {
     setPurchaseInvoices((prev) => [
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         administration: "blanco",
         source: "compras",
@@ -7495,7 +7496,7 @@ export default function App() {
   const addPettyCashFund = () => {
     setPettyCashFunds((prev) => [
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         description: "",
         responsible: "",
@@ -7537,7 +7538,7 @@ export default function App() {
         : visiblePettyCashFunds[0] || null;
     setPettyCashExpenses((prev) => [
       {
-        id: Date.now(),
+        id: newId(),
         company: selectedFund?.company || budget.company,
         fundId: selectedFund?.id ?? null,
         date: todayIso(),
@@ -7635,7 +7636,7 @@ export default function App() {
     setDebtPlans((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         concept: "",
         dueDay: 1,
@@ -7655,7 +7656,7 @@ export default function App() {
   const addBankStatementEntry = () => {
     setBankStatementEntries((prev) => [
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         date: todayIso(),
         bank: "",
@@ -7731,7 +7732,7 @@ export default function App() {
     setCompanyAssets((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         company: budget.company,
         category: "Activo fijo",
         description: "",
@@ -7751,7 +7752,7 @@ export default function App() {
     setStockItems((prev) => [
       ...prev,
       {
-        id: Date.now(),
+        id: newId(),
         company: "General",
         kind,
         shared: true,
@@ -7881,7 +7882,7 @@ export default function App() {
               workFiles: [
                 ...job.workFiles,
                 ...fileList.map((file) => ({
-                  id: Date.now() + Math.random(),
+                  id: newId(),
                   kind,
                   name: file.name,
                 })),
@@ -8294,7 +8295,7 @@ export default function App() {
       newEmployeeDraft.nominalHours || employeeBaseConfig.normalHoursDefault || 198
     );
     const employee: Employee = {
-      id: Date.now(),
+      id: newId(),
       company: newEmployeeDraft.company,
       legajo: newEmployeeDraft.legajo.trim(),
       name: cleanName,
@@ -8581,7 +8582,7 @@ export default function App() {
               ...employee,
               documents: [
                 ...employee.documents,
-                { id: Date.now(), name: "", dueDate: "", attachmentName: "" },
+                { id: newId(), name: "", dueDate: "", attachmentName: "" },
               ],
             }
           : employee
@@ -8601,7 +8602,7 @@ export default function App() {
               documents: [
                 ...employee.documents,
                 {
-                  id: Date.now(),
+                  id: newId(),
                   name: cleanName,
                   dueDate: employeeDocumentModal.dueDate,
                   attachmentName: "",
@@ -8663,7 +8664,7 @@ export default function App() {
                 )
             )
             .map((doc) => ({
-              id: Date.now() + Math.random(),
+              id: newId(),
               name: doc.name,
                 dueDate: "",
                 attachmentName: "",
@@ -8679,7 +8680,7 @@ export default function App() {
                   )
               )
               .map((template) => ({
-                id: Date.now() + Math.random(),
+                id: newId(),
                 stockCode: template.stockCode,
                 kind: template.kind,
                 quantity: template.quantity,
@@ -9063,7 +9064,7 @@ export default function App() {
       }
 
       next.push({
-        id: Date.now() + Math.random(),
+        id: newId(),
         company: row.company,
         workType: "General",
         category: row.category,
@@ -9124,7 +9125,7 @@ export default function App() {
               provisionItems: [
                 ...employee.provisionItems,
                 {
-                  id: Date.now(),
+                  id: newId(),
                   stockCode:
                     employeeBaseConfig.provisionTemplates.find((item) => item.kind === kind)?.stockCode || "",
                   kind,
@@ -9145,7 +9146,7 @@ export default function App() {
     const employee = employees.find((item) => item.id === employeeProvisionModal.employeeId);
     const title = employeeProvisionModal.title.trim();
     if (!employee || !title) return;
-    const stockId = Date.now();
+    const stockId = newId();
     const codePrefix = employeeProvisionModal.kind === "EPP" ? "EPP" : "INS";
     const stockCode = `${codePrefix}-${stockId}`;
 
@@ -16134,7 +16135,7 @@ export default function App() {
                         provisionTemplates: [
                           ...prev.provisionTemplates,
                           {
-                            id: Date.now(),
+                            id: newId(),
                             stockCode: stockPersonalItems[0]?.code || "",
                             kind: stockPersonalItems[0]?.kind === "EPP" ? "EPP" : "Insumos",
                             quantity: 1,
@@ -16193,7 +16194,7 @@ export default function App() {
                         ...prev,
                         requiredDocuments: [
                           ...prev.requiredDocuments,
-                          { id: Date.now(), name: "" },
+                          { id: newId(), name: "" },
                         ],
                       }))
                     }
