@@ -5404,6 +5404,24 @@ export default function App() {
   };
 
   const applyPersistedAppData = (data: Partial<PersistedAppStateData>) => {
+    // Defensa de aislamiento: un usuario restringido nunca debe tener en memoria datos
+    // de empresas que no le corresponden, venga la data de Supabase, del cache local o
+    // de los defaults sembrados. Asi cualquier render (filtrado o no) queda seguro.
+    const restrictByCompany = isSupabaseLoggedIn && !effectiveIsAdmin;
+    const keepAccessibleByCompany = <T extends { company?: unknown }>(
+      items: readonly T[]
+    ): T[] => {
+      if (!restrictByCompany) return items as T[];
+      return items.filter((item) => {
+        const company = item?.company;
+        return (
+          company === "General" ||
+          (typeof company === "string" &&
+            allowedCompaniesForSession.includes(company as CompanyName))
+        );
+      });
+    };
+
     const nextBudget = {
       ...cloneBudget(defaultBudget),
       ...(data.budget ? cloneBudget(data.budget) : {}),
@@ -5450,26 +5468,26 @@ export default function App() {
     setFixedCosts((data.fixedCosts || defaultFixedCosts).map((item) => ({ ...item })));
     setBudgetIncreases((data.budgetIncreases || defaultBudgetIncreases).map((item) => ({ ...item })));
     setBudgetDiscounts(cloneBudgetDiscounts(data.budgetDiscounts || defaultBudgetDiscounts));
-    setFixedMarkers((data.fixedMarkers || defaultFixedMarkers).map((item) => ({ ...item })));
-    setSupplyMarkers((data.supplyMarkers || defaultSupplyMarkers).map((item) => ({ ...item })));
-    setLaborMarkers((data.laborMarkers || defaultLaborMarkers).map((item) => ({ ...item })));
+    setFixedMarkers(keepAccessibleByCompany(data.fixedMarkers || defaultFixedMarkers).map((item) => ({ ...item })));
+    setSupplyMarkers(keepAccessibleByCompany(data.supplyMarkers || defaultSupplyMarkers).map((item) => ({ ...item })));
+    setLaborMarkers(keepAccessibleByCompany(data.laborMarkers || defaultLaborMarkers).map((item) => ({ ...item })));
     setPersonalProvisionMarkers(
-      (data.personalProvisionMarkers || defaultPersonalProvisionMarkers).map((item) => ({
+      keepAccessibleByCompany(data.personalProvisionMarkers || defaultPersonalProvisionMarkers).map((item) => ({
         ...item,
       }))
     );
-    setSavedBudgets((data.savedBudgets || []).map((item) => ({ ...item })));
+    setSavedBudgets(keepAccessibleByCompany(data.savedBudgets || []).map((item) => ({ ...item })));
     setApprovedJobs(
-      (data.approvedJobs || []).map((item) => ({
+      keepAccessibleByCompany(data.approvedJobs || []).map((item) => ({
         ...item,
         sourceType: item.sourceType || "from_budget",
         legacyImported: item.legacyImported ?? false,
       }))
     );
-    setFinancialItems((data.financialItems || defaultFinancialItems).map((item) => ({ ...item })));
-    setPurchaseInvoices((data.purchaseInvoices || defaultPurchaseInvoices).map((item) => ({ ...item })));
+    setFinancialItems(keepAccessibleByCompany(data.financialItems || defaultFinancialItems).map((item) => ({ ...item })));
+    setPurchaseInvoices(keepAccessibleByCompany(data.purchaseInvoices || defaultPurchaseInvoices).map((item) => ({ ...item })));
     setPettyCashFunds(
-      (data.pettyCashFunds || defaultPettyCashFunds).map((item) => ({
+      keepAccessibleByCompany(data.pettyCashFunds || defaultPettyCashFunds).map((item) => ({
         ...item,
         description: item.description || "",
         rechargeDate: item.rechargeDate || "",
@@ -5477,31 +5495,31 @@ export default function App() {
         closedDate: item.closedDate || "",
       }))
     );
-    setPettyCashExpenses((data.pettyCashExpenses || defaultPettyCashExpenses).map((item) => ({ ...item })));
-    setDebtPlans((data.debtPlans || defaultDebtPlans).map((item) => ({ ...item })));
+    setPettyCashExpenses(keepAccessibleByCompany(data.pettyCashExpenses || defaultPettyCashExpenses).map((item) => ({ ...item })));
+    setDebtPlans(keepAccessibleByCompany(data.debtPlans || defaultDebtPlans).map((item) => ({ ...item })));
     setBankStatementEntries(
-      (data.bankStatementEntries || defaultBankStatementEntries).map((item) => ({ ...item }))
+      keepAccessibleByCompany(data.bankStatementEntries || defaultBankStatementEntries).map((item) => ({ ...item }))
     );
     setStockItems(
-      (data.stockItems || defaultStockItems).map((item) => ({
+      keepAccessibleByCompany(data.stockItems || defaultStockItems).map((item) => ({
         ...item,
         location: item.location || "",
       }))
     );
     setCostAnalysisGroups(
-      (data.costAnalysisGroups || defaultCostAnalysisGroups).map((item) => ({ ...item }))
+      keepAccessibleByCompany(data.costAnalysisGroups || defaultCostAnalysisGroups).map((item) => ({ ...item }))
     );
     setCostAnalysisEntries(
-      (data.costAnalysisEntries || defaultCostAnalysisEntries).map((item) => ({ ...item }))
+      keepAccessibleByCompany(data.costAnalysisEntries || defaultCostAnalysisEntries).map((item) => ({ ...item }))
     );
     setRemitoDrafts(
-      (data.remitoDrafts || defaultRemitoDrafts).map((draft) => ({
+      keepAccessibleByCompany(data.remitoDrafts || defaultRemitoDrafts).map((draft) => ({
         ...draft,
         rows: draft.rows.map((row) => ({ ...row })),
       }))
     );
-    setCompanyAssets((data.companyAssets || defaultCompanyAssets).map((item) => ({ ...item })));
-    setEmployees((data.employees || defaultEmployees).map((item) => ({ ...item })));
+    setCompanyAssets(keepAccessibleByCompany(data.companyAssets || defaultCompanyAssets).map((item) => ({ ...item })));
+    setEmployees(keepAccessibleByCompany(data.employees || defaultEmployees).map((item) => ({ ...item })));
     setEmployeeBaseConfig({
       ...defaultBaseConfig,
       ...(data.employeeBaseConfig || {}),
