@@ -16,14 +16,25 @@ export const GENERAL_COMPANY = "General";
 
 // module_key -> campos que son arrays de items a separar por item.company.
 // Cualquier otro campo del modulo es global y vive en la fila 'General'.
+// La lista cubre TODOS los campos cuyos items llevan `company` (verificado contra los
+// datos reales), incluso los que hoy estan vacios (bankStatementEntries, remitoDrafts,
+// costAnalysisEntries) para que no filtren cuando se empiecen a usar.
+// DEBE coincidir con `per_company_keys` del splitter SQL.
 export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   archivos: ["companyAssets"],
   "caja-chica": ["pettyCashExpenses", "pettyCashFunds"],
-  "cash-flow": ["debtPlans", "financialItems"],
-  compras: ["purchaseInvoices"],
+  "cash-flow": ["debtPlans", "financialItems", "bankStatementEntries"],
+  compras: ["purchaseInvoices", "remitoDrafts"],
   "historial-crm": ["savedBudgets"],
+  // Marcadores aislados por empresa (decision 2026-06-17; reversible si F3 los comparte).
+  marcadores: [
+    "fixedMarkers",
+    "supplyMarkers",
+    "laborMarkers",
+    "personalProvisionMarkers",
+  ],
   personal: ["employees"],
-  "stock-costos": ["costAnalysisGroups", "stockItems"],
+  "stock-costos": ["costAnalysisGroups", "stockItems", "costAnalysisEntries"],
   "trabajos-aprobados": ["approvedJobs"],
 };
 

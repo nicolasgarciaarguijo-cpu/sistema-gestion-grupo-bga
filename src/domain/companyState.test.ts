@@ -58,6 +58,39 @@ describe("splitModuleDataByCompany", () => {
     expect((out[GENERAL_COMPANY].approvedJobs as any[]).map((i) => i.id)).toEqual([1]);
     expect(out[BGA].approvedJobs).toEqual([]);
   });
+
+  it("marcadores: separa todos los campos por empresa (modulo multi-campo)", () => {
+    const data = {
+      fixedMarkers: [{ id: 1, company: BGA }, { id: 2, company: DERAIZ }],
+      laborMarkers: [{ id: 3, company: DERAIZ }],
+      supplyMarkers: [{ id: 4, company: BGA }],
+      personalProvisionMarkers: [{ id: 5, company: DERAIZ }],
+    };
+    const out = splitModuleDataByCompany("marcadores", data, [BGA, DERAIZ]);
+    expect((out[BGA].fixedMarkers as any[]).map((i) => i.id)).toEqual([1]);
+    expect((out[DERAIZ].fixedMarkers as any[]).map((i) => i.id)).toEqual([2]);
+    expect((out[BGA].laborMarkers as any[]).length).toBe(0);
+    expect((out[DERAIZ].laborMarkers as any[]).map((i) => i.id)).toEqual([3]);
+    expect((out[BGA].supplyMarkers as any[]).map((i) => i.id)).toEqual([4]);
+    expect((out[DERAIZ].personalProvisionMarkers as any[]).map((i) => i.id)).toEqual([5]);
+  });
+
+  it("campos vacios hoy (bankStatementEntries/remitoDrafts/costAnalysisEntries) se parten", () => {
+    expect(
+      splitModuleDataByCompany(
+        "cash-flow",
+        { bankStatementEntries: [{ id: 1, company: BGA }] },
+        [DERAIZ]
+      )[DERAIZ].bankStatementEntries
+    ).toEqual([]); // BGA descartado para usuario De Raiz
+    expect(
+      splitModuleDataByCompany(
+        "compras",
+        { remitoDrafts: [{ id: 1, company: DERAIZ }] },
+        [DERAIZ]
+      )[DERAIZ].remitoDrafts as any[]
+    ).toHaveLength(1);
+  });
 });
 
 describe("mergeModuleDataByCompany", () => {

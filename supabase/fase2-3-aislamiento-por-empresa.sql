@@ -38,11 +38,19 @@ as $$
 declare
   bga text := 'BGA estudio de diseño y produccion industrial s.r.l';
   deraiz text := 'De raiz s.r.l';
+  -- Debe coincidir con PER_COMPANY_MODULE_FIELDS en src/domain/companyState.ts.
+  -- Ampliado 2026-06-17 (migracion expand_per_company_keys_in_splitter): + bankStatementEntries,
+  -- remitoDrafts, costAnalysisEntries (estaban vacios) y los 4 marcadores (aislados por empresa).
   per_company_keys text[] := array[
-    'archivos|companyAssets','caja-chica|pettyCashExpenses','caja-chica|pettyCashFunds',
-    'cash-flow|debtPlans','cash-flow|financialItems','compras|purchaseInvoices',
-    'historial-crm|savedBudgets','personal|employees','stock-costos|costAnalysisGroups',
-    'stock-costos|stockItems','trabajos-aprobados|approvedJobs'];
+    'archivos|companyAssets',
+    'caja-chica|pettyCashExpenses','caja-chica|pettyCashFunds',
+    'cash-flow|debtPlans','cash-flow|financialItems','cash-flow|bankStatementEntries',
+    'compras|purchaseInvoices','compras|remitoDrafts',
+    'historial-crm|savedBudgets',
+    'marcadores|fixedMarkers','marcadores|supplyMarkers','marcadores|laborMarkers','marcadores|personalProvisionMarkers',
+    'personal|employees',
+    'stock-costos|costAnalysisGroups','stock-costos|stockItems','stock-costos|costAnalysisEntries',
+    'trabajos-aprobados|approvedJobs'];
   rec record; payload_fix jsonb; data_obj jsonb; envelope jsonb; k text; v jsonb;
   data_general jsonb := '{}'::jsonb; data_bga jsonb := '{}'::jsonb; data_deraiz jsonb := '{}'::jsonb;
   a_bga jsonb; a_deraiz jsonb; a_general jsonb; n int := 0;

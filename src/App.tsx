@@ -1237,7 +1237,10 @@ const LOCAL_AUTOSAVE_DELAY_MS = 1200;
 const SUPABASE_AUTOSAVE_MIN_INTERVAL_MS = 6000;
 const SUPABASE_SAVE_TIMEOUT_MS = 15000;
 const SUPABASE_SAVE_RETRY_DELAYS_MS = [800, 1800] as const;
-const SUPABASE_MODULE_WRITE_BATCH_SIZE = 3;
+const SUPABASE_MODULE_WRITE_BATCH_SIZE = 12;
+// Firma de la ultima fila (module_key, company) escrita con exito por usuario, para no
+// reescribir empresas cuyo contenido no cambio. Clave: `${userId}|${module}|${company}`.
+const supabaseModuleCompanySignatures = new Map<string, string>();
 const COLLABORATION_POLL_INTERVAL_MS = 30000;
 
 const MONTHLY_HISTORY_TAB_KEYS = [
@@ -1979,35 +1982,45 @@ const writeSupabasePersistedAppStateModules = async (
     );
   }
 
-  // Cada modulo se parte en 1 fila por (module_key, company).
-  const rows = modulePayloads.flatMap((modulePayload) => {
+  // Cada modulo se parte en 1 fila por (module_key, company), con su firma de contenido.
+  const candidateRows = modulePayloads.flatMap((modulePayload) => {
     const buckets = splitModuleDataByCompany(
       modulePayload.moduleKey,
       modulePayload.data,
       writableCompanies
     );
     return Object.entries(buckets).map(([company, data]) => ({
-      module_key: modulePayload.moduleKey,
-      company,
-      payload: {
-        version: modulePayload.version,
-        savedAt: modulePayload.savedAt,
-        moduleKey: modulePayload.moduleKey,
-        moduleLabel: modulePayload.moduleLabel,
-        data: data as Partial<PersistedAppStateData>,
-      } satisfies PersistedAppStateModulePayload,
-      saved_at: payload.savedAt,
-      updated_by: userId,
-      _label: modulePayload.moduleLabel,
+      row: {
+        module_key: modulePayload.moduleKey,
+        company,
+        payload: {
+          version: modulePayload.version,
+          savedAt: modulePayload.savedAt,
+          moduleKey: modulePayload.moduleKey,
+          moduleLabel: modulePayload.moduleLabel,
+          data: data as Partial<PersistedAppStateData>,
+        } satisfies PersistedAppStateModulePayload,
+        saved_at: payload.savedAt,
+        updated_by: userId,
+      },
+      cacheKey: `${userId}|${modulePayload.moduleKey}|${company}`,
+      signature: buildPersistedDataSignature(data as PersistedAppStateData),
+      label: modulePayload.moduleLabel,
     }));
   });
 
-  for (const rowBatch of chunkArray(rows, SUPABASE_MODULE_WRITE_BATCH_SIZE)) {
-    const batchLabels = Array.from(new Set(rowBatch.map((row) => row._label))).join(", ");
+  // Solo escribir las filas cuyo contenido cambio respecto a lo ultimo guardado OK
+  // (editar una empresa ya no reescribe las otras dos -> menos viajes de red).
+  const rowsToWrite = candidateRows.filter(
+    (entry) => supabaseModuleCompanySignatures.get(entry.cacheKey) !== entry.signature
+  );
+
+  for (const batch of chunkArray(rowsToWrite, SUPABASE_MODULE_WRITE_BATCH_SIZE)) {
+    const batchLabels = Array.from(new Set(batch.map((entry) => entry.label))).join(", ");
     await writeSupabaseWithRetry(
       async () => {
         const { error } = await supabase.from(SUPABASE_APP_STATE_MODULES_V2_TABLE).upsert(
-          rowBatch.map(({ _label, ...row }) => row),
+          batch.map((entry) => entry.row),
           { onConflict: "module_key,company" }
         );
 
@@ -2017,6 +2030,10 @@ const writeSupabasePersistedAppStateModules = async (
       },
       `guardar modulos en Supabase (${batchLabels})`
     );
+    // Recien tras escribir OK actualizamos la firma cacheada.
+    for (const entry of batch) {
+      supabaseModuleCompanySignatures.set(entry.cacheKey, entry.signature);
+    }
   }
 
   return modulePayloads.map((modulePayload) => modulePayload.moduleKey);
