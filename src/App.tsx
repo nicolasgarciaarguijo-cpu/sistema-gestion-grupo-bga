@@ -1329,6 +1329,29 @@ const MONTHLY_HISTORY_TAB_SET = new Set<TabKey>([...MONTHLY_HISTORY_TAB_KEYS]);
 const isMonthlyHistoryTab = (tab: TabKey): tab is MonthlyManagedTabKey =>
   MONTHLY_HISTORY_TAB_SET.has(tab);
 
+// Modo de reporte imprimible que corresponde a cada solapa (reutilizado por el boton
+// "Reporte del mes" del header y por el aviso que aparece despues de guardar).
+const getReportModeForTab = (tab: TabKey): PrintMode =>
+  tab === "cashflow"
+    ? "report-cashflow"
+    : tab === "compras"
+    ? "report-compras"
+    : tab === "cajaChica"
+    ? "report-caja-chica"
+    : tab === "presupuesto"
+    ? "client-budget"
+    : tab === "marcadores"
+    ? "report-marcadores"
+    : tab === "historial"
+    ? "report-crm"
+    : tab === "aprobados"
+    ? "report-aprobados"
+    : tab === "stock"
+    ? "report-stock"
+    : tab === "facturacion"
+    ? "report-facturacion"
+    : "report-personal";
+
 type PersistedAppStateData = {
   companyCatalog: CompanyOption[];
   operationalMonth: string;
@@ -2324,6 +2347,8 @@ export default function App() {
   const [stockIncreasePct, setStockIncreasePct] = useState(0);
   const [uploadMessage, setUploadMessage] = useState("");
   const [storageMessage, setStorageMessage] = useState("");
+  // Solapa donde se acaba de guardar: ofrece el "reporte del mes" sin abrirse solo.
+  const [monthReportPromptTab, setMonthReportPromptTab] = useState<TabKey | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState("");
   const [isPersistenceReady, setIsPersistenceReady] = useState(false);
   const [isSupabaseSnapshotReady, setIsSupabaseSnapshotReady] = useState(false);
@@ -5783,6 +5808,7 @@ export default function App() {
       );
     } finally {
       setIsSupabaseManualSaveInProgress(false);
+      setMonthReportPromptTab(activeTab);
     }
   };
 
@@ -5815,6 +5841,7 @@ export default function App() {
 
     try {
       setMonthlyHistorySnapshots(nextSnapshots);
+      setMonthReportPromptTab(activeTab);
       const moduleKeys: AppStateModuleKey[] = Array.from(
         new Set(["mensuales", ...getPersistenceModuleKeysForTab(activeTab)] as AppStateModuleKey[])
       );
@@ -6086,6 +6113,7 @@ export default function App() {
     setApprovedJobs(nextApprovedJobs);
     resetBudgetWorkspace(nextDraftNumber);
     setStorageMessage(`${saveStatusText} Sincronizando en segundo plano...`);
+    setMonthReportPromptTab(activeTab);
 
     void persistAppStateImmediately(
       buildPersistedAppDataWithOverrides({
@@ -6739,6 +6767,7 @@ export default function App() {
     setStorageMessage(
       `${nextSection.title} guardado. El contenido quedo en pantalla para que ajustes y guardes el siguiente bloque.`
     );
+    setMonthReportPromptTab(activeTab);
   };
 
   const removeSubBudget = (subBudgetId: number) => {
@@ -9696,38 +9725,48 @@ export default function App() {
               )}
               {activeTab !== "personal" && (
                 <ButtonLike
-                  onClick={() =>
-                    exportPrint(
-                      activeTab === "cashflow"
-                        ? "report-cashflow"
-                        : activeTab === "compras"
-                        ? "report-compras"
-                        : activeTab === "cajaChica"
-                        ? "report-caja-chica"
-                        : activeTab === "presupuesto"
-                        ? "client-budget"
-                        : activeTab === "marcadores"
-                        ? "report-marcadores"
-                        : activeTab === "historial"
-                        ? "report-crm"
-                        : activeTab === "aprobados"
-                        ? "report-aprobados"
-                        : activeTab === "stock"
-                        ? "report-stock"
-                        : activeTab === "facturacion"
-                        ? "report-facturacion"
-                        : "report-personal"
-                    )
-                  }
+                  onClick={() => exportPrint(getReportModeForTab(activeTab))}
                   secondary
                 >
-                  Reporte
+                  Reporte del mes
                 </ButtonLike>
               )}
             </>
           )}
         </div>
       </div>
+
+      {monthReportPromptTab === activeTab && activeTab !== "acceso" && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            flexWrap: "wrap",
+            background: workspaceTheme.soft,
+            border: `1px solid ${workspaceTheme.primary}`,
+            color: workspaceTheme.primary,
+            borderRadius: 12,
+            padding: "10px 14px",
+            marginBottom: 12,
+          }}
+        >
+          <span style={{ flex: 1, fontSize: 13, minWidth: 200 }}>
+            Guardado. ¿Querés revisar el reporte del mes de esta solapa?
+          </span>
+          <ButtonLike
+            onClick={() => {
+              exportPrint(getReportModeForTab(activeTab));
+              setMonthReportPromptTab(null);
+            }}
+          >
+            Ver reporte del mes
+          </ButtonLike>
+          <ButtonLike secondary onClick={() => setMonthReportPromptTab(null)}>
+            Cerrar
+          </ButtonLike>
+        </div>
+      )}
 
       <div style={styles.workspaceShell}>
         <aside
