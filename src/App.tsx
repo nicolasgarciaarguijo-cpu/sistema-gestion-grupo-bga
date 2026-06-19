@@ -375,13 +375,68 @@ const buildDeliveryDateFromTerm = (baseDateText: string, deliveryTerm: string) =
     .slice(0, 10);
 };
 
-const readImage = (file: File) =>
+// Comprime/reduce una imagen (data URL) via canvas para que NO se guarden fotos full-res
+// en base64 dentro del estado (eso disparaba "Out of Memory"). Reduce la dimension maxima
+// y la recodifica. Devuelve la mas chica entre original y comprimida.
+type ImageReadOpts = { maxDimension?: number; mimeType?: string; quality?: number };
+
+const compressImageDataUrl = (
+  dataUrl: string,
+  maxDimension: number,
+  mimeType: string,
+  quality: number
+) =>
+  new Promise<string>((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const longest = Math.max(img.width, img.height) || 1;
+      const scale = Math.min(1, maxDimension / longest);
+      const width = Math.max(1, Math.round(img.width * scale));
+      const height = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      try {
+        resolve(canvas.toDataURL(mimeType, quality));
+      } catch {
+        resolve(dataUrl);
+      }
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+
+const readImage = (file: File, opts?: ImageReadOpts) =>
   new Promise<BudgetImage>((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve({ name: file.name, preview: String(reader.result || "") });
+    reader.onload = async () => {
+      const raw = String(reader.result || "");
+      try {
+        const compressed = await compressImageDataUrl(
+          raw,
+          opts?.maxDimension ?? 1400,
+          opts?.mimeType ?? "image/jpeg",
+          opts?.quality ?? 0.72
+        );
+        resolve({
+          name: file.name,
+          preview: compressed.length < raw.length ? compressed : raw,
+        });
+      } catch {
+        resolve({ name: file.name, preview: raw });
+      }
+    };
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+
+const LOGO_IMAGE_OPTS: ImageReadOpts = { maxDimension: 480, mimeType: "image/png", quality: 1 };
 
 const readTextFile = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -11415,7 +11470,9 @@ export default function App() {
                     onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
-                      const images = await Promise.all(files.map((file) => readImage(file)));
+                      const images = await Promise.all(
+                        files.map((file) => readImage(file, LOGO_IMAGE_OPTS))
+                      );
                       setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
                     }}
                   />
@@ -12504,7 +12561,9 @@ export default function App() {
                     onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
-                      const images = await Promise.all(files.map((file) => readImage(file)));
+                      const images = await Promise.all(
+                        files.map((file) => readImage(file, LOGO_IMAGE_OPTS))
+                      );
                       setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
                     }}
                   />
