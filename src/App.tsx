@@ -436,7 +436,86 @@ const readImage = (file: File, opts?: ImageReadOpts) =>
     reader.readAsDataURL(file);
   });
 
+// Convierte la imagen comprimida a Blob para subirla a Storage (en vez de base64 en el estado).
+const compressImageToBlob = (file: File, opts?: ImageReadOpts) =>
+  new Promise<{ blob: Blob; contentType: string; ext: string }>((resolve, reject) => {
+    const maxDimension = opts?.maxDimension ?? 1400;
+    const mimeType = opts?.mimeType ?? "image/jpeg";
+    const quality = opts?.quality ?? 0.72;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const longest = Math.max(img.width, img.height) || 1;
+        const scale = Math.min(1, maxDimension / longest);
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("No se pudo procesar la imagen."));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error("No se pudo comprimir la imagen."));
+              return;
+            }
+            resolve({ blob, contentType: mimeType, ext: mimeType === "image/png" ? "png" : "jpg" });
+          },
+          mimeType,
+          quality
+        );
+      };
+      img.onerror = () => reject(new Error("Imagen invalida."));
+      img.src = String(reader.result || "");
+    };
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
+    reader.readAsDataURL(file);
+  });
+
+// Sube la imagen a Supabase Storage (en el estado queda solo la URL -> liviano, escala con
+// muchos planos). Si Storage falla, CAE a base64 comprimido para que la imagen nunca se pierda.
+const uploadBudgetImage = async (file: File, opts?: ImageReadOpts): Promise<BudgetImage> => {
+  try {
+    const { blob, contentType, ext } = await compressImageToBlob(file, opts);
+    const path = `budgets/${newId()}-${Math.floor(Math.random() * 1e6)}.${ext}`;
+    const { error } = await supabase.storage
+      .from("budget-images")
+      .upload(path, blob, { contentType, upsert: false });
+    if (error) throw error;
+    const { data } = supabase.storage.from("budget-images").getPublicUrl(path);
+    return { name: file.name, preview: data.publicUrl };
+  } catch {
+    return readImage(file, opts);
+  }
+};
+
 const LOGO_IMAGE_OPTS: ImageReadOpts = { maxDimension: 480, mimeType: "image/png", quality: 1 };
+
+// Espera a que carguen las imagenes (URLs de Storage) antes de imprimir, para que aparezcan
+// en el PDF. base64 carga al instante; las URLs tienen un tope de 4s por las dudas.
+const preloadImages = (urls: string[]) =>
+  Promise.all(
+    urls
+      .filter((src) => !!src)
+      .map(
+        (src) =>
+          new Promise<void>((resolve) => {
+            const img = new Image();
+            const done = () => resolve();
+            img.onload = done;
+            img.onerror = done;
+            img.src = src;
+            if (img.complete) resolve();
+            window.setTimeout(done, 4000);
+          })
+      )
+  ).then(() => undefined);
 
 const readTextFile = (file: File) =>
   new Promise<string>((resolve, reject) => {
@@ -5299,7 +5378,7 @@ export default function App() {
     [fixedMarkerGroupOptions, fixedMarkers, budget.workType, activeCostAnalysisEntriesForBudget]
   );
 
-  const exportPrint = (mode: PrintMode) => {
+  const exportPrint = async (mode: PrintMode) => {
     if (!mode) return;
     if (mode === "client-budget" && editingBudgetId) {
       const exportTimestamp = new Date().toISOString();
@@ -5319,6 +5398,12 @@ export default function App() {
     }
     setPrintMode(mode);
     document.body.setAttribute("data-print-mode", mode);
+    if (mode === "client-budget") {
+      await preloadImages([
+        ...budget.logos.map((image) => image.preview),
+        ...budget.referenceImages.map((image) => image.preview),
+      ]);
+    }
     window.print();
     document.body.removeAttribute("data-print-mode");
     setPrintMode("");
@@ -11518,7 +11603,7 @@ export default function App() {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
                       const images = await Promise.all(
-                        files.map((file) => readImage(file, LOGO_IMAGE_OPTS))
+                        files.map((file) => uploadBudgetImage(file, LOGO_IMAGE_OPTS))
                       );
                       setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
                     }}
@@ -11533,7 +11618,7 @@ export default function App() {
                     onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
-                      const images = await Promise.all(files.map((file) => readImage(file)));
+                      const images = await Promise.all(files.map((file) => uploadBudgetImage(file)));
                       setBudget((prev) => ({
                         ...prev,
                         referenceImages: [...prev.referenceImages, ...images],
@@ -12609,7 +12694,7 @@ export default function App() {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
                       const images = await Promise.all(
-                        files.map((file) => readImage(file, LOGO_IMAGE_OPTS))
+                        files.map((file) => uploadBudgetImage(file, LOGO_IMAGE_OPTS))
                       );
                       setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
                     }}
@@ -12624,7 +12709,7 @@ export default function App() {
                     onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
-                      const images = await Promise.all(files.map((file) => readImage(file)));
+                      const images = await Promise.all(files.map((file) => uploadBudgetImage(file)));
                       setBudget((prev) => ({
                         ...prev,
                         referenceImages: [...prev.referenceImages, ...images],
