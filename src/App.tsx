@@ -375,66 +375,63 @@ const buildDeliveryDateFromTerm = (baseDateText: string, deliveryTerm: string) =
     .slice(0, 10);
 };
 
-// Comprime/reduce una imagen (data URL) via canvas para que NO se guarden fotos full-res
-// en base64 dentro del estado (eso disparaba "Out of Memory"). Reduce la dimension maxima
-// y la recodifica. Devuelve la mas chica entre original y comprimida.
+// Comprime/reduce una imagen a un Blob via canvas (reduce dimension + recodifica), para
+// subirla liviana a Supabase Storage en vez de guardar base64 full-res en el estado.
 type ImageReadOpts = { maxDimension?: number; mimeType?: string; quality?: number };
 
-const compressImageDataUrl = (
-  dataUrl: string,
-  maxDimension: number,
-  mimeType: string,
-  quality: number
-) =>
-  new Promise<string>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const longest = Math.max(img.width, img.height) || 1;
-      const scale = Math.min(1, maxDimension / longest);
-      const width = Math.max(1, Math.round(img.width * scale));
-      const height = Math.max(1, Math.round(img.height * scale));
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        resolve(dataUrl);
-        return;
-      }
-      ctx.drawImage(img, 0, 0, width, height);
-      try {
-        resolve(canvas.toDataURL(mimeType, quality));
-      } catch {
-        resolve(dataUrl);
-      }
-    };
-    img.onerror = () => resolve(dataUrl);
-    img.src = dataUrl;
-  });
-
-const readImage = (file: File, opts?: ImageReadOpts) =>
-  new Promise<BudgetImage>((resolve, reject) => {
+const compressImageToBlob = (file: File, opts?: ImageReadOpts) =>
+  new Promise<{ blob: Blob; contentType: string; ext: string }>((resolve, reject) => {
+    const maxDimension = opts?.maxDimension ?? 1400;
+    const mimeType = opts?.mimeType ?? "image/jpeg";
+    const quality = opts?.quality ?? 0.72;
     const reader = new FileReader();
-    reader.onload = async () => {
-      const raw = String(reader.result || "");
-      try {
-        const compressed = await compressImageDataUrl(
-          raw,
-          opts?.maxDimension ?? 1400,
-          opts?.mimeType ?? "image/jpeg",
-          opts?.quality ?? 0.72
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const longest = Math.max(img.width, img.height) || 1;
+        const scale = Math.min(1, maxDimension / longest);
+        const width = Math.max(1, Math.round(img.width * scale));
+        const height = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("No se pudo procesar la imagen."));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) {
+              reject(new Error("No se pudo comprimir la imagen."));
+              return;
+            }
+            resolve({ blob, contentType: mimeType, ext: mimeType === "image/png" ? "png" : "jpg" });
+          },
+          mimeType,
+          quality
         );
-        resolve({
-          name: file.name,
-          preview: compressed.length < raw.length ? compressed : raw,
-        });
-      } catch {
-        resolve({ name: file.name, preview: raw });
-      }
+      };
+      img.onerror = () => reject(new Error("Imagen invalida."));
+      img.src = String(reader.result || "");
     };
-    reader.onerror = reject;
+    reader.onerror = () => reject(new Error("No se pudo leer el archivo."));
     reader.readAsDataURL(file);
   });
+
+// Sube la imagen comprimida a Supabase Storage y devuelve la URL publica para guardar en el
+// estado (solo la URL, ~100 bytes). Resuelve el crecimiento/OOM: nada de base64 full-res.
+const uploadBudgetImage = async (file: File, opts?: ImageReadOpts): Promise<BudgetImage> => {
+  const { blob, contentType, ext } = await compressImageToBlob(file, opts);
+  const path = `budgets/${newId()}-${Math.floor(Math.random() * 1e6)}.${ext}`;
+  const { error } = await supabase.storage
+    .from("budget-images")
+    .upload(path, blob, { contentType, upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from("budget-images").getPublicUrl(path);
+  return { name: file.name, preview: data.publicUrl };
+};
 
 const LOGO_IMAGE_OPTS: ImageReadOpts = { maxDimension: 480, mimeType: "image/png", quality: 1 };
 
@@ -11470,10 +11467,18 @@ export default function App() {
                     onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
-                      const images = await Promise.all(
-                        files.map((file) => readImage(file, LOGO_IMAGE_OPTS))
-                      );
-                      setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
+                      try {
+                        const images = await Promise.all(
+                          files.map((file) => uploadBudgetImage(file, LOGO_IMAGE_OPTS))
+                        );
+                        setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
+                      } catch (error) {
+                        setStorageMessage(
+                          error instanceof Error
+                            ? `No pude subir el logo: ${error.message}`
+                            : "No pude subir el logo."
+                        );
+                      }
                     }}
                   />
                 </Field>
@@ -11486,11 +11491,21 @@ export default function App() {
                     onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
-                      const images = await Promise.all(files.map((file) => readImage(file)));
-                      setBudget((prev) => ({
-                        ...prev,
-                        referenceImages: [...prev.referenceImages, ...images],
-                      }));
+                      try {
+                        const images = await Promise.all(
+                          files.map((file) => uploadBudgetImage(file))
+                        );
+                        setBudget((prev) => ({
+                          ...prev,
+                          referenceImages: [...prev.referenceImages, ...images],
+                        }));
+                      } catch (error) {
+                        setStorageMessage(
+                          error instanceof Error
+                            ? `No pude subir la imagen: ${error.message}`
+                            : "No pude subir la imagen."
+                        );
+                      }
                     }}
                   />
                 </Field>
@@ -12561,10 +12576,18 @@ export default function App() {
                     onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
-                      const images = await Promise.all(
-                        files.map((file) => readImage(file, LOGO_IMAGE_OPTS))
-                      );
-                      setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
+                      try {
+                        const images = await Promise.all(
+                          files.map((file) => uploadBudgetImage(file, LOGO_IMAGE_OPTS))
+                        );
+                        setBudget((prev) => ({ ...prev, logos: [...prev.logos, ...images] }));
+                      } catch (error) {
+                        setStorageMessage(
+                          error instanceof Error
+                            ? `No pude subir el logo: ${error.message}`
+                            : "No pude subir el logo."
+                        );
+                      }
                     }}
                   />
                 </Field>
@@ -12577,11 +12600,21 @@ export default function App() {
                     onChange={async (e) => {
                       const files = Array.from(e.target.files || []);
                       if (files.length === 0) return;
-                      const images = await Promise.all(files.map((file) => readImage(file)));
-                      setBudget((prev) => ({
-                        ...prev,
-                        referenceImages: [...prev.referenceImages, ...images],
-                      }));
+                      try {
+                        const images = await Promise.all(
+                          files.map((file) => uploadBudgetImage(file))
+                        );
+                        setBudget((prev) => ({
+                          ...prev,
+                          referenceImages: [...prev.referenceImages, ...images],
+                        }));
+                      } catch (error) {
+                        setStorageMessage(
+                          error instanceof Error
+                            ? `No pude subir la imagen: ${error.message}`
+                            : "No pude subir la imagen."
+                        );
+                      }
                     }}
                   />
                 </Field>
