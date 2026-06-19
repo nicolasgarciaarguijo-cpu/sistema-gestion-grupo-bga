@@ -9715,8 +9715,16 @@ export default function App() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {activeTab !== "acceso" && (
             <>
-              <ButtonLike onClick={saveBudgetSnapshot}>
-                {editingBudgetId ? "Actualizar presupuesto" : "Guardar presupuesto"}
+              <ButtonLike
+                onClick={() => {
+                  if (activeTab === "presupuesto") {
+                    void saveBudgetSnapshot();
+                  } else {
+                    void saveToSupabaseNow();
+                  }
+                }}
+              >
+                {activeTab === "presupuesto" && editingBudgetId ? "Actualizar" : "Guardar"}
               </ButtonLike>
               {editingBudgetId && (
                 <ButtonLike onClick={resetBudgetEditingState} secondary>
