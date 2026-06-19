@@ -18078,8 +18078,8 @@ function BudgetDocument({
     fontSize: 9.5,
     letterSpacing: 1.8,
     textTransform: "uppercase",
-    color: mutedLabel,
-    fontWeight: 500,
+    color: companyTheme.primary,
+    fontWeight: 700,
     marginBottom: 6,
   };
   const block: React.CSSProperties = {
@@ -18095,6 +18095,14 @@ function BudgetDocument({
     borderRadius: 10,
     padding: 16,
     background: "rgba(255,255,255,0.85)",
+  };
+  // Bloques destacados (Descripcion / Alcance): barra de acento + tinte suave de empresa.
+  const accentCard: React.CSSProperties = {
+    ...block,
+    borderLeft: `4px solid ${companyTheme.primary}`,
+    background: hexToRgba(companyTheme.soft, 0.4),
+    borderRadius: 8,
+    padding: "12px 16px",
   };
 
   return (
@@ -18197,14 +18205,14 @@ function BudgetDocument({
       )}
 
       {budget.notes && (
-        <div style={block}>
+        <div style={accentCard}>
           <div style={eyebrow}>Descripcion</div>
           <div style={{ fontSize: 13, lineHeight: 1.6 }}>{budget.notes}</div>
         </div>
       )}
 
       {budget.scope && (
-        <div style={block}>
+        <div style={accentCard}>
           <div style={eyebrow}>Alcance</div>
           <div style={{ fontSize: 13, lineHeight: 1.6 }}>{budget.scope}</div>
         </div>
@@ -18223,7 +18231,18 @@ function BudgetDocument({
               <div style={{ fontSize: 12, color: mutedLabel }}>
                 Neto <span style={{ color: inkColor }}>{money(section.totals.netPrice)}</span>
               </div>
-              <div style={{ fontSize: 13, fontWeight: 500, color: companyTheme.primary }}>
+              <div
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: companyTheme.primary,
+                  background: hexToRgba(companyTheme.soft, 0.7),
+                  border: `1px solid ${companyTheme.primary}`,
+                  borderRadius: 999,
+                  padding: "3px 12px",
+                  justifySelf: "end",
+                }}
+              >
                 Total c/IVA {money(section.totals.finalPrice)}
               </div>
             </div>
@@ -18267,7 +18286,15 @@ function BudgetDocument({
           marginTop: 24,
         }}
       >
-        <div style={{ minWidth: 280 }}>
+        <div
+          style={{
+            minWidth: 300,
+            background: hexToRgba(companyTheme.soft, 0.85),
+            border: `1.5px solid ${companyTheme.primary}`,
+            borderRadius: 12,
+            padding: "14px 18px",
+          }}
+        >
           {consolidatedTotals.totalDiscountAmount > 0 && (
             <>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
@@ -18284,12 +18311,12 @@ function BudgetDocument({
             <span>Valor neto total</span>
             <span style={{ color: inkColor }}>{money(consolidatedTotals.netPrice)}</span>
           </div>
-          <div style={{ height: 1, background: "#e3e6eb", margin: "8px 0" }} />
+          <div style={{ height: 1, background: hexToRgba(companyTheme.primary, 0.25), margin: "10px 0" }} />
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ ...eyebrow, marginBottom: 0, color: companyTheme.primary }}>
+            <span style={{ ...eyebrow, marginBottom: 0 }}>
               Total con IVA ({vatPct}%)
             </span>
-            <span style={{ fontSize: 22, fontWeight: 500, color: companyTheme.primary }}>
+            <span style={{ fontSize: 26, fontWeight: 700, color: companyTheme.primary }}>
               {money(consolidatedTotals.finalPrice)}
             </span>
           </div>
@@ -20180,14 +20207,18 @@ const styles: Record<string, React.CSSProperties> = {
   },
   printReferenceImage: {
     width: "100%",
-    maxHeight: 240,
+    height: 170,
     objectFit: "contain",
-    borderRadius: 12,
+    background: "#f8fafc",
+    border: "0.5px solid #e6e9ee",
+    borderRadius: 8,
+    breakInside: "avoid",
+    pageBreakInside: "avoid",
   },
   printReferenceGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
+    gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+    gap: 10,
   },
   printSectionHeader: {
     display: "flex",
