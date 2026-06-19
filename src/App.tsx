@@ -2320,6 +2320,10 @@ export default function App() {
   const lastRealtimeModuleMergedDataRef = useRef<PersistedAppStateData | null>(null);
   const lastSupabaseAutosaveAtRef = useRef(0);
   const pendingRemoteSnapshotRef = useRef<PersistedAppState | null>(null);
+  // Guard anti-pérdida: solo permitimos ESCRIBIR en Supabase despues de una carga
+  // inicial EXITOSA del estado remoto. Si la carga falla (base caida/lenta) o aun no
+  // ocurrio, el autosave NO sube nada -> nunca pisa los datos buenos con estado vacio.
+  const supabaseHydratedOkRef = useRef(false);
   const presenceAnnouncementReadyRef = useRef(false);
   const knownOtherSessionIdsRef = useRef<string[]>([]);
   const isSupabaseLoggedIn = !!supabaseSession?.user;
@@ -2526,6 +2530,7 @@ export default function App() {
     setSupabaseSession(session);
 
     if (!session?.user) {
+      supabaseHydratedOkRef.current = false;
       setIsSupabaseSnapshotReady(false);
       setSupabaseProfile(null);
       setSupabaseCompaniesCatalog([]);
@@ -2703,6 +2708,8 @@ export default function App() {
 
         const remoteRecord = await readSupabasePersistedAppStateRecord();
         applyIncomingSupabaseSnapshot(remoteRecord, "poll");
+        // Carga remota OK: recien ahora habilitamos la escritura a Supabase.
+        supabaseHydratedOkRef.current = true;
       } catch (error) {
         console.log("COLLAB SYNC ERROR:", error);
       }
@@ -5411,6 +5418,7 @@ export default function App() {
     const shouldWriteSupabase =
       options?.saveToSupabase !== false &&
       isSupabaseLoggedIn &&
+      supabaseHydratedOkRef.current &&
       (!pendingRemoteSnapshotRef.current ||
         options?.allowSupabaseWithPendingRemote === true);
 
@@ -7283,6 +7291,7 @@ export default function App() {
         const canAutosaveSupabase =
           isSupabaseLoggedIn &&
           isSupabaseSnapshotReady &&
+          supabaseHydratedOkRef.current &&
           !pendingRemoteSnapshotRef.current &&
           Date.now() - lastAppliedRemoteSnapshotAtRef.current > 1500;
 
