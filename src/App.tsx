@@ -2217,6 +2217,7 @@ export default function App() {
   const [employeeBaseConfig, setEmployeeBaseConfig] = useState<EmployeeBaseConfig>(defaultBaseConfig);
   const [scaleRows, setScaleRows] = useState<ScaleRow[]>(seededScaleRows);
   const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null);
+  const [expandedRevisionsRoot, setExpandedRevisionsRoot] = useState<number | null>(null);
   const [selectedApprovedJobId, setSelectedApprovedJobId] = useState<number | null>(null);
   const [selectedCrmClientKey, setSelectedCrmClientKey] = useState<string | null>(null);
   const [selectedFinancialItemId, setSelectedFinancialItemId] = useState<number | null>(
@@ -3072,6 +3073,15 @@ export default function App() {
       ),
     [savedBudgets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
+
+  // Versiones anteriores de un presupuesto (mismas raiz, distinto id), mas nuevas primero.
+  // Sirve para avisar en el historial que hay actualizaciones previas y poder revisarlas.
+  const getPriorBudgetRevisions = (item: SavedBudget) => {
+    const root = item.rootBudgetId || item.id;
+    return savedBudgets
+      .filter((other) => (other.rootBudgetId || other.id) === root && other.id !== item.id)
+      .sort((a, b) => (b.revisionNumber || 1) - (a.revisionNumber || 1));
+  };
 
   const otherActiveSessions = useMemo(
     () =>
@@ -5939,7 +5949,9 @@ export default function App() {
       },
     };
     const next: SavedBudget = {
-      id: existing?.id ?? newId(),
+      // id NUEVO por cada version: la revision anterior queda guardada (misma rootBudgetId)
+      // para poder revisarla, en vez de pisarse.
+      id: newId(),
       rootBudgetId,
       revisionNumber,
       isUpdate: !!existing,
@@ -5964,15 +5976,9 @@ export default function App() {
       snapshot: nextSnapshot,
     };
 
-    const nextSavedBudgetPool = existing
-      ? [
-          next,
-          ...savedBudgets.filter(
-            (item) => (item.rootBudgetId || item.id) !== rootBudgetId
-          ),
-        ]
-      : [next, ...savedBudgets];
-    const nextSavedBudgets = getLatestBudgetRevisions(nextSavedBudgetPool);
+    // Conservar TODAS las versiones (no colapsar a la ultima). El historial muestra la
+    // ultima via getLatestBudgetRevisions; las anteriores quedan guardadas y revisables.
+    const nextSavedBudgets = [next, ...savedBudgets];
     const nextApprovedJobs = approvedJobs.map((job) =>
       job.rootBudgetId === rootBudgetId || job.budgetId === existing?.id
         ? {
@@ -6002,7 +6008,7 @@ export default function App() {
     );
 
     const nextDraftNumber = getNextBudgetNumber(
-      nextSavedBudgets.map((item) => item.number),
+      getLatestBudgetRevisions(nextSavedBudgets).map((item) => item.number),
       next.number
     );
     const nextDraftBudget = buildBlankBudgetDraft({
@@ -6672,17 +6678,11 @@ export default function App() {
       savedAt: new Date().toISOString(),
     };
 
+    // El contenido editable (materiales, mano de obra, insumos, costos fijos, etc.) NO se
+    // resetea al guardar un bloque: queda igual en pantalla para ajustar y guardar el siguiente.
     setSubBudgets((prev) => [...prev, nextSection]);
-    setSubBudgetTitle("");
-    setSubBudgetNotes("");
-    setMaterials([]);
-    setBasicSupplies([]);
-    setLabor([]);
-    setFixedCosts([]);
-    setBudgetIncreases([]);
-    setBudgetDiscounts([]);
     setStorageMessage(
-      `${nextSection.title} guardado. Ya puedes cargar el siguiente bloque y, si hace falta, restaurar los marcadores.`
+      `${nextSection.title} guardado. El contenido quedo en pantalla para que ajustes y guardes el siguiente bloque.`
     );
   };
 
@@ -9392,63 +9392,120 @@ export default function App() {
                       </div>
                     </td>
                   </tr>
-                  {group.items.map((item, index) => (
-                    <tr
-                      key={`history-${group.value}-${item.id}-${index}`}
-                      style={
-                        selectedHistoryId === item.id
-                          ? { background: group.soft }
-                          : { background: `${group.soft}66` }
-                      }
-                    >
-                      <td>{getSavedBudgetDisplayLabel(item)}</td>
-                      <td>{formatDateDisplay(item.date)}</td>
-                      <td>{item.client}</td>
-                      <td>{item.project}</td>
-                      <td>{pct(item.laborOccupancyPct)}</td>
-                      <td>{money(item.commissionAmount)}</td>
-                      <td>
-                        <span
-                          style={{
-                            ...styles.statusPill,
-                            ...(item.exportedAt ? styles.statusGreen : styles.statusRed),
-                          }}
+                  {group.items.map((item, index) => {
+                    const priorRevisions = getPriorBudgetRevisions(item);
+                    const revisionsKey = item.rootBudgetId || item.id;
+                    const revisionsOpen = expandedRevisionsRoot === revisionsKey;
+                    return (
+                      <React.Fragment key={`history-${group.value}-${item.id}-${index}`}>
+                        <tr
+                          style={
+                            selectedHistoryId === item.id
+                              ? { background: group.soft }
+                              : { background: `${group.soft}66` }
+                          }
                         >
-                          {item.exportedAt ? "Exportado" : "Sin exportar"}
-                        </span>
-                      </td>
-                      <td>{item.status}</td>
-                      <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <button style={styles.smallBtn} onClick={() => approveBudget(item)}>
-                          Aprobar
-                        </button>
-                        <button style={styles.smallBtn} onClick={() => rejectBudget(item.id)}>
-                          No aprobado
-                        </button>
-                        {selectedHistoryId === item.id ? (
-                          <button style={styles.smallBtn} onClick={() => setSelectedHistoryId(null)}>
-                            Cerrar
-                          </button>
-                        ) : (
-                          <button style={styles.smallBtn} onClick={() => openBudgetHistoryItem(item.id)}>
-                            Abrir
-                          </button>
+                          <td>
+                            {getSavedBudgetDisplayLabel(item)}
+                            {priorRevisions.length > 0 && (
+                              <div style={{ fontSize: 10, fontWeight: 700, color: group.primary, marginTop: 2 }}>
+                                {priorRevisions.length} version(es) anterior(es)
+                              </div>
+                            )}
+                          </td>
+                          <td>{formatDateDisplay(item.date)}</td>
+                          <td>{item.client}</td>
+                          <td>{item.project}</td>
+                          <td>{pct(item.laborOccupancyPct)}</td>
+                          <td>{money(item.commissionAmount)}</td>
+                          <td>
+                            <span
+                              style={{
+                                ...styles.statusPill,
+                                ...(item.exportedAt ? styles.statusGreen : styles.statusRed),
+                              }}
+                            >
+                              {item.exportedAt ? "Exportado" : "Sin exportar"}
+                            </span>
+                          </td>
+                          <td>{item.status}</td>
+                          <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            <button style={styles.smallBtn} onClick={() => approveBudget(item)}>
+                              Aprobar
+                            </button>
+                            <button style={styles.smallBtn} onClick={() => rejectBudget(item.id)}>
+                              No aprobado
+                            </button>
+                            {selectedHistoryId === item.id ? (
+                              <button style={styles.smallBtn} onClick={() => setSelectedHistoryId(null)}>
+                                Cerrar
+                              </button>
+                            ) : (
+                              <button style={styles.smallBtn} onClick={() => openBudgetHistoryItem(item.id)}>
+                                Abrir
+                              </button>
+                            )}
+                            <button
+                              style={styles.smallBtn}
+                              onClick={() => loadBudgetFromSnapshot(item.snapshot, item.id)}
+                            >
+                              Editar
+                            </button>
+                            {priorRevisions.length > 0 && (
+                              <button
+                                style={styles.smallBtn}
+                                onClick={() =>
+                                  setExpandedRevisionsRoot(revisionsOpen ? null : revisionsKey)
+                                }
+                              >
+                                {revisionsOpen
+                                  ? "Ocultar anteriores"
+                                  : `Ver anteriores (${priorRevisions.length})`}
+                              </button>
+                            )}
+                            <button
+                              style={styles.smallBtn}
+                              onClick={() => removeSavedBudget(item.id)}
+                            >
+                              Quitar
+                            </button>
+                          </td>
+                        </tr>
+                        {revisionsOpen && priorRevisions.length > 0 && (
+                          <tr>
+                            <td colSpan={9} style={{ background: `${group.soft}40`, padding: "8px 12px" }}>
+                              <div style={{ fontSize: 11, fontWeight: 700, color: group.primary, marginBottom: 6 }}>
+                                Versiones anteriores de {getSavedBudgetDisplayLabel(item)}
+                              </div>
+                              {priorRevisions.map((rev) => (
+                                <div
+                                  key={rev.id}
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: 12,
+                                    padding: "5px 0",
+                                    borderTop: "0.5px solid #e2e8f0",
+                                    fontSize: 12,
+                                  }}
+                                >
+                                  <span style={{ minWidth: 70 }}>Rev. {rev.revisionNumber || 1}</span>
+                                  <span style={{ minWidth: 90 }}>{formatDateDisplay(rev.date)}</span>
+                                  <span style={{ flex: 1 }}>{money(rev.finalPrice)}</span>
+                                  <button
+                                    style={styles.smallBtn}
+                                    onClick={() => loadBudgetFromSnapshot(rev.snapshot, rev.id)}
+                                  >
+                                    Ver / editar
+                                  </button>
+                                </div>
+                              ))}
+                            </td>
+                          </tr>
                         )}
-                        <button
-                          style={styles.smallBtn}
-                          onClick={() => loadBudgetFromSnapshot(item.snapshot, item.id)}
-                        >
-                          Editar
-                        </button>
-                        <button
-                          style={styles.smallBtn}
-                          onClick={() => removeSavedBudget(item.id)}
-                        >
-                          Quitar
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                      </React.Fragment>
+                    );
+                  })}
                 </React.Fragment>
               ))}
             </tbody>
