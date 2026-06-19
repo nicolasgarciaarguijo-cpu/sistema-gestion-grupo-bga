@@ -9517,10 +9517,10 @@ export default function App() {
       <style>{`
         table th, table td { border-bottom: 1px solid #e2e8f0; padding: 6px; vertical-align: top; }
         @media print {
-          @page { size: A4; margin: 14mm; }
+          @page { size: A4; margin: 0; }
           body[data-print-mode]:not([data-print-mode="client-budget"]) * { visibility: hidden !important; }
           body[data-print-mode="client-budget"] #root { display: none !important; }
-          body[data-print-mode="client-budget"] #client-budget-pdf { display: block !important; }
+          body[data-print-mode="client-budget"] #client-budget-pdf { display: block !important; padding: 14mm !important; }
           body[data-print-mode="report-marcadores"] #report-marcadores,
           body[data-print-mode="report-marcadores"] #report-marcadores * { visibility: visible !important; }
           body[data-print-mode="report-historial"] #report-historial,
