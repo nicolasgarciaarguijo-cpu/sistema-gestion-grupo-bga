@@ -490,7 +490,8 @@ const uploadBudgetImage = async (file: File, opts?: ImageReadOpts): Promise<Budg
     if (error) throw error;
     const { data } = supabase.storage.from("budget-images").getPublicUrl(path);
     return { name: file.name, preview: data.publicUrl };
-  } catch {
+  } catch (err) {
+    console.error("[budget-image] Fallo la subida a Storage, usando base64:", err);
     return readImage(file, opts);
   }
 };
