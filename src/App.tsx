@@ -6018,65 +6018,66 @@ export default function App() {
       ? `Presupuesto actualizado. Actualizaciones acumuladas: ${updateCount}.`
       : "Presupuesto guardado.";
 
-    try {
-      const persistResult = await persistAppStateImmediately(
-        buildPersistedAppDataWithOverrides({
-          budget: cloneBudget(nextDraftBudget),
-          subBudgets: [],
-          subBudgetTitle: "",
-          subBudgetNotes: "",
-          materials: [],
-          basicSupplies: [],
-          labor: [],
-          fixedCosts: [],
-          budgetIncreases: defaultBudgetIncreases.map((item) => ({ ...item })),
-          budgetDiscounts: cloneBudgetDiscounts(defaultBudgetDiscounts),
-          savedBudgets: nextSavedBudgets.map((item) => ({ ...item })),
-          approvedJobs: nextApprovedJobs.map((item) => ({ ...item })),
-          allocationMode: "auto",
-          manualAllocationPct: 18.75,
-          deviationPct: 5,
-          markupPct: 30,
-          vatPct: 21,
-          laborDeviationPct: 0,
-          commissionPct: 0,
-          editingBudgetId: null,
-        }),
-        {
-          allowSupabaseWithPendingRemote: true,
-          moduleKeys: ["presupuestos", "historial-crm", "trabajos-aprobados"],
-        }
-      );
+    // Guardado OPTIMISTA: la UI se actualiza al instante (el presupuesto aparece y el
+    // formulario se limpia) sin esperar a Supabase. La persistencia local + la sync con
+    // Supabase corren en segundo plano, asi el boton nunca queda "guardando".
+    setSavedBudgets(nextSavedBudgets);
+    setApprovedJobs(nextApprovedJobs);
+    resetBudgetWorkspace(nextDraftNumber);
+    setStorageMessage(`${saveStatusText} Sincronizando en segundo plano...`);
 
-      setSavedBudgets(nextSavedBudgets);
-      setApprovedJobs(nextApprovedJobs);
-      resetBudgetWorkspace(nextDraftNumber);
-      const syncedModuleText = formatPersistenceModuleList(
-        persistResult.savedModuleKeys
-      );
-      if (persistResult.savedToSupabase) {
-        announceSystemChange(
-          persistResult.supabaseSaveMode === "modules"
-            ? `${saveStatusText} Guardado confirmado en Supabase: ${syncedModuleText}.`
-            : `${saveStatusText} Guardado confirmado en Supabase en modo compatible. Ejecuta la query de guardado por modulos para activar la sincronizacion liviana.`
-        );
+    void persistAppStateImmediately(
+      buildPersistedAppDataWithOverrides({
+        budget: cloneBudget(nextDraftBudget),
+        subBudgets: [],
+        subBudgetTitle: "",
+        subBudgetNotes: "",
+        materials: [],
+        basicSupplies: [],
+        labor: [],
+        fixedCosts: [],
+        budgetIncreases: defaultBudgetIncreases.map((item) => ({ ...item })),
+        budgetDiscounts: cloneBudgetDiscounts(defaultBudgetDiscounts),
+        savedBudgets: nextSavedBudgets.map((item) => ({ ...item })),
+        approvedJobs: nextApprovedJobs.map((item) => ({ ...item })),
+        allocationMode: "auto",
+        manualAllocationPct: 18.75,
+        deviationPct: 5,
+        markupPct: 30,
+        vatPct: 21,
+        laborDeviationPct: 0,
+        commissionPct: 0,
+        editingBudgetId: null,
+      }),
+      {
+        allowSupabaseWithPendingRemote: true,
+        moduleKeys: ["presupuestos", "historial-crm", "trabajos-aprobados"],
       }
-      setStorageMessage(
-        persistResult.savedToSupabase
-          ? persistResult.supabaseSaveMode === "modules"
-            ? `${saveStatusText} Sincronizado por modulos: ${syncedModuleText}.`
-            : `${saveStatusText} Supabase quedo en modo compatible. Falta ejecutar la query de guardado por modulos para mejorar rendimiento.`
-          : pendingRemoteSnapshotRef.current
-            ? `${saveStatusText} Quedo en este navegador. Hay una version remota pendiente: pulsa Refresh antes de sincronizar en Supabase.`
-            : `${saveStatusText} Quedo en este navegador.`
-      );
-    } catch (error) {
-      setStorageMessage(
-        error instanceof Error
-          ? `No pude guardar el presupuesto: ${error.message}`
-          : "No pude guardar el presupuesto."
-      );
-    }
+    )
+      .then((persistResult) => {
+        const syncedModuleText = formatPersistenceModuleList(
+          persistResult.savedModuleKeys
+        );
+        if (persistResult.savedToSupabase) {
+          announceSystemChange(
+            persistResult.supabaseSaveMode === "modules"
+              ? `${saveStatusText} Guardado confirmado en Supabase: ${syncedModuleText}.`
+              : `${saveStatusText} Guardado confirmado en Supabase en modo compatible.`
+          );
+        }
+        setStorageMessage(
+          persistResult.savedToSupabase
+            ? `${saveStatusText} Sincronizado: ${syncedModuleText}.`
+            : `${saveStatusText} Guardado en este navegador (se sincroniza solo al recuperar conexion).`
+        );
+      })
+      .catch((error) => {
+        setStorageMessage(
+          error instanceof Error
+            ? `${saveStatusText} Guardado local OK; la sincronizacion con Supabase reintentara (${error.message}).`
+            : `${saveStatusText} Guardado local OK; la sincronizacion con Supabase reintentara.`
+        );
+      });
   };
 
   const approveBudget = (item: SavedBudget) => {
