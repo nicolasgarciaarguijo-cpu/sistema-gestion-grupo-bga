@@ -18071,16 +18071,33 @@ function BudgetDocument({
   const mainLogo = budget.logos[0] || null;
   const companyMetaInfo = getCompanyMeta(budget.company);
   const companyBankingLines = getCompanyBankingLines(budget.company);
-  const accentBlockStyle: React.CSSProperties = {
-    ...styles.printBlock,
-    borderColor: companyTheme.primary,
-    borderWidth: 1,
-    borderStyle: "solid",
-    background: "transparent",
+  const mutedLabel = "#9aa3b2";
+  const inkColor = "#1a2230";
+  const eyebrow: React.CSSProperties = {
+    fontSize: 9.5,
+    letterSpacing: 1.8,
+    textTransform: "uppercase",
+    color: mutedLabel,
+    fontWeight: 500,
+    marginBottom: 6,
+  };
+  const block: React.CSSProperties = {
+    breakInside: "avoid",
+    pageBreakInside: "avoid",
+    position: "relative",
+    zIndex: 1,
+    marginTop: 22,
+  };
+  const card: React.CSSProperties = {
+    ...block,
+    border: "0.5px solid #e6e9ee",
+    borderRadius: 10,
+    padding: 16,
+    background: "rgba(255,255,255,0.85)",
   };
 
   return (
-    <div style={{ ...styles.printSheet, borderTop: `10px solid ${companyTheme.primary}` }}>
+    <div style={{ ...styles.printSheet, color: inkColor }}>
       <div style={styles.printWatermark}>
         {mainLogo ? (
           <img src={mainLogo.preview} alt={mainLogo.name} style={styles.printWatermarkLogo} />
@@ -18088,54 +18105,83 @@ function BudgetDocument({
           <div style={{ color: companyTheme.soft }}>{companyTheme.short}</div>
         )}
       </div>
+
       <div
         style={{
           ...styles.printHeader,
-          background: companyTheme.primary,
-          color: "white",
-          borderRadius: 20,
-          padding: 24,
-          borderBottom: "none",
+          marginBottom: 0,
+          alignItems: "center",
+          position: "relative",
+          zIndex: 1,
         }}
       >
-        <div>
-          <div style={styles.printLogoRow}>
-            {budget.logos.map((image, index) => (
-              <img
-                key={`${image.name}-${index}`}
-                src={image.preview}
-                alt={image.name}
-                style={styles.printHeaderLogo}
-              />
-            ))}
-            <div style={{ ...styles.companyRibbon, background: companyTheme.soft, color: companyTheme.primary }}>
+        <div style={styles.printLogoRow}>
+          {budget.logos.map((image, index) => (
+            <img
+              key={`${image.name}-${index}`}
+              src={image.preview}
+              alt={image.name}
+              style={styles.printHeaderLogo}
+            />
+          ))}
+          <div>
+            <div style={{ fontSize: 17, letterSpacing: 1, color: companyTheme.primary, fontWeight: 500 }}>
               {companyTheme.short}
             </div>
+            <div style={{ fontSize: 10, color: mutedLabel }}>
+              {companyMetaInfo.short} · CUIT {budget.cuit}
+            </div>
+          </div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={eyebrow}>Presupuesto</div>
+          <div style={{ fontSize: 20, fontWeight: 500, color: companyTheme.primary }}>
+            N.º {budget.number}
           </div>
           {budget.isUpdate && (
-            <div style={{ ...styles.statusPill, ...styles.statusBlue, marginTop: 10 }}>
+            <div style={{ ...styles.statusPill, ...styles.statusBlue, marginTop: 8 }}>
               {budget.updateLabel || "Actualizacion"}
             </div>
           )}
-          <h1 style={{ margin: "12px 0 4px 0" }}>{budget.project}</h1>
-          <div>{budget.client}</div>
-          {budget.clientTaxId && (
-            <div style={{ marginTop: 6 }}>CUIT/CUIL cliente: {budget.clientTaxId}</div>
-          )}
         </div>
-        <div style={styles.previewMeta}>
-          <div><strong>Empresa:</strong> {companyMetaInfo.short}</div>
-          <div><strong>CUIT empresa:</strong> {budget.cuit}</div>
-          <div><strong>Nro:</strong> {budget.number}</div>
-          <div><strong>Fecha:</strong> {formatDateDisplay(budget.date)}</div>
-          <div><strong>Entrega:</strong> {formatDateDisplay(estimatedDeliveryDate)}</div>
-          <div><strong>Forma de pago:</strong> {budget.paymentTerms}</div>
+      </div>
+
+      <div style={{ height: 2, background: companyTheme.primary, marginTop: 14, position: "relative", zIndex: 1 }} />
+
+      <div style={{ ...block, marginTop: 18 }}>
+        <h1 style={{ margin: "0 0 4px 0", fontSize: 22, color: inkColor }}>{budget.project}</h1>
+        <div style={{ fontSize: 13 }}>{budget.client}</div>
+        {budget.clientTaxId && (
+          <div style={{ fontSize: 12, color: mutedLabel }}>CUIT/CUIL cliente: {budget.clientTaxId}</div>
+        )}
+      </div>
+
+      <div
+        style={{
+          ...block,
+          marginTop: 16,
+          display: "grid",
+          gridTemplateColumns: "repeat(3, 1fr)",
+          gap: 14,
+        }}
+      >
+        <div>
+          <div style={eyebrow}>Fecha</div>
+          <div style={{ fontSize: 13 }}>{formatDateDisplay(budget.date)}</div>
+        </div>
+        <div>
+          <div style={eyebrow}>Entrega estimada</div>
+          <div style={{ fontSize: 13 }}>{formatDateDisplay(estimatedDeliveryDate)}</div>
+        </div>
+        <div>
+          <div style={eyebrow}>Forma de pago</div>
+          <div style={{ fontSize: 13 }}>{budget.paymentTerms}</div>
         </div>
       </div>
 
       {budget.referenceImages.length > 0 && (
-        <div style={accentBlockStyle}>
-          <div style={styles.label}>Imagenes de referencia</div>
+        <div style={card}>
+          <div style={eyebrow}>Imagenes de referencia</div>
           <div style={styles.printReferenceGrid}>
             {budget.referenceImages.map((image, index) => (
               <img
@@ -18149,32 +18195,40 @@ function BudgetDocument({
         </div>
       )}
 
-      <div style={accentBlockStyle}>
-        <div style={styles.label}>Descripcion</div>
-        <div>{budget.notes}</div>
-      </div>
+      {budget.notes && (
+        <div style={block}>
+          <div style={eyebrow}>Descripcion</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6 }}>{budget.notes}</div>
+        </div>
+      )}
 
-      <div style={accentBlockStyle}>
-        <div style={styles.label}>Alcance</div>
-        <div>{budget.scope}</div>
-      </div>
+      {budget.scope && (
+        <div style={block}>
+          <div style={eyebrow}>Alcance</div>
+          <div style={{ fontSize: 13, lineHeight: 1.6 }}>{budget.scope}</div>
+        </div>
+      )}
 
       {sections.map((section, index) => (
-        <div key={section.id} style={accentBlockStyle}>
+        <div key={section.id} style={card}>
           <div style={styles.printSectionHeader}>
             <div>
-              <div style={styles.label}>
-                {section.title || `Subpresupuesto ${index + 1}`}
-              </div>
-              {section.notes && <div>{section.notes}</div>}
+              <div style={eyebrow}>{section.title || `Subpresupuesto ${index + 1}`}</div>
+              {section.notes && (
+                <div style={{ fontSize: 12, color: mutedLabel }}>{section.notes}</div>
+              )}
             </div>
             <div style={styles.printSectionMeta}>
-              <div><strong>Neto:</strong> {money(section.totals.netPrice)}</div>
-              <div><strong>Total c/IVA:</strong> {money(section.totals.finalPrice)}</div>
+              <div style={{ fontSize: 12, color: mutedLabel }}>
+                Neto <span style={{ color: inkColor }}>{money(section.totals.netPrice)}</span>
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 500, color: companyTheme.primary }}>
+                Total c/IVA {money(section.totals.finalPrice)}
+              </div>
             </div>
           </div>
 
-          <div style={styles.label}>Materiales incluidos</div>
+          <div style={{ ...eyebrow, marginTop: 12 }}>Materiales incluidos</div>
           <div style={styles.materialColumns}>
             {section.materials.length === 0 ? (
               <div style={styles.muted}>Sin materiales cargados en este bloque.</div>
@@ -18188,11 +18242,11 @@ function BudgetDocument({
           </div>
 
           {section.discounts.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <div><strong>Neto antes de descuentos:</strong> {money(section.totals.preDiscountNetPrice)}</div>
+            <div style={{ marginTop: 12, fontSize: 12 }}>
+              <div>Neto antes de descuentos: {money(section.totals.preDiscountNetPrice)}</div>
               {section.discounts.map((item) => (
                 <div key={item.id}>
-                  <strong>{item.description}:</strong> -{money(item.amount)}
+                  {item.description}: -{money(item.amount)}
                 </div>
               ))}
               <div><strong>Total descuentos:</strong> -{money(section.totals.totalDiscountAmount)}</div>
@@ -18204,27 +18258,48 @@ function BudgetDocument({
       <div
         style={{
           ...styles.printTotals,
-          border: `2px solid ${companyTheme.primary}`,
-          background: companyTheme.soft,
-          color: companyTheme.primary,
-          fontSize: 15,
+          display: "flex",
+          justifyContent: "flex-end",
+          background: "transparent",
+          border: "none",
+          padding: 0,
+          marginTop: 24,
         }}
       >
-        {consolidatedTotals.totalDiscountAmount > 0 && (
-          <div style={{ marginBottom: 10 }}>
-            <div><strong>Neto antes de descuentos:</strong> {money(consolidatedTotals.preDiscountNetPrice)}</div>
-            <div><strong>Total descuentos:</strong> -{money(consolidatedTotals.totalDiscountAmount)}</div>
+        <div style={{ minWidth: 280 }}>
+          {consolidatedTotals.totalDiscountAmount > 0 && (
+            <>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
+                <span>Neto antes de descuentos</span>
+                <span>{money(consolidatedTotals.preDiscountNetPrice)}</span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
+                <span>Total descuentos</span>
+                <span>-{money(consolidatedTotals.totalDiscountAmount)}</span>
+              </div>
+            </>
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
+            <span>Valor neto total</span>
+            <span style={{ color: inkColor }}>{money(consolidatedTotals.netPrice)}</span>
           </div>
-        )}
-        <div><strong>Valor neto total:</strong> {money(consolidatedTotals.netPrice)}</div>
-        <div><strong>Total con IVA ({vatPct}%):</strong> {money(consolidatedTotals.finalPrice)}</div>
+          <div style={{ height: 1, background: "#e3e6eb", margin: "8px 0" }} />
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <span style={{ ...eyebrow, marginBottom: 0, color: companyTheme.primary }}>
+              Total con IVA ({vatPct}%)
+            </span>
+            <span style={{ fontSize: 22, fontWeight: 500, color: companyTheme.primary }}>
+              {money(consolidatedTotals.finalPrice)}
+            </span>
+          </div>
+        </div>
       </div>
 
       {companyBankingLines.length > 0 && (
-        <div style={accentBlockStyle}>
-          <div style={styles.label}>Datos para transferencia</div>
+        <div style={{ ...block, marginTop: 28, paddingTop: 14, borderTop: "0.5px solid #e6e9ee" }}>
+          <div style={eyebrow}>Datos para transferencia</div>
           {companyBankingLines.map((line) => (
-            <div key={line}>{line}</div>
+            <div key={line} style={{ fontSize: 12, color: mutedLabel }}>{line}</div>
           ))}
         </div>
       )}
