@@ -1371,6 +1371,9 @@ const SUPABASE_ACTIVE_SESSIONS_TABLE = "app_active_sessions";
 const SUPABASE_INTERNAL_CHAT_TABLE = "app_internal_chat_messages";
 const SUPABASE_COLLAB_CHANNEL = "grupo-bga-collaboration";
 const LOCAL_AUTOSAVE_DELAY_MS = 1200;
+// Cuantos pasos de "Atras" (deshacer) se guardan en memoria. Cada paso es un snapshot
+// JSON completo del estado; con las imagenes ya en Storage (solo URLs) esto es liviano.
+const UNDO_HISTORY_LIMIT = 25;
 const SUPABASE_AUTOSAVE_MIN_INTERVAL_MS = 6000;
 const SUPABASE_SAVE_TIMEOUT_MS = 15000;
 const SUPABASE_SAVE_RETRY_DELAYS_MS = [800, 1800] as const;
@@ -2477,6 +2480,15 @@ export default function App() {
   const lastAppliedRemoteSnapshotAtRef = useRef(0);
   const lastSnapshotEventKeyRef = useRef("");
   const lastPersistedDataSignatureRef = useRef("");
+  // --- "Atras" (deshacer) ---
+  // Pila de snapshots JSON del estado (del mas viejo al mas reciente). undoBaselineRef es
+  // el estado "asentado" actual contra el que se compara el proximo cambio.
+  const undoStackRef = useRef<string[]>([]);
+  const undoBaselineRef = useRef<string | null>(null);
+  // Cuando la restauracion/sync cambia el estado de forma programatica, esto evita que ese
+  // cambio se registre como un paso de deshacer del usuario.
+  const suppressUndoCaptureRef = useRef(false);
+  const [undoAvailable, setUndoAvailable] = useState(0);
   const lastSupabaseModuleSignaturesRef = useRef<Record<string, string>>({});
   const lastRealtimeModuleMergeSavedAtRef = useRef("");
   const lastRealtimeModuleMergedDataRef = useRef<PersistedAppStateData | null>(null);
@@ -5651,6 +5663,9 @@ export default function App() {
   };
 
   const applyPersistedAppData = (data: Partial<PersistedAppStateData>) => {
+    // Toda restauracion programatica (load inicial, sync remoto, restore, deshacer) no debe
+    // generar un paso de "Atras": el proximo barrido de captura lo ignora y solo re-asienta.
+    suppressUndoCaptureRef.current = true;
     // Defensa de aislamiento: un usuario restringido nunca debe tener en memoria datos
     // de empresas que no le corresponden, venga la data de Supabase, del cache local o
     // de los defaults sembrados. Asi cualquier render (filtrado o no) queda seguro.
@@ -5787,6 +5802,28 @@ export default function App() {
     setCommissionPct(data.commissionPct ?? 0);
     setStockIncreasePct(data.stockIncreasePct ?? 0);
     setEditingBudgetId(data.editingBudgetId ?? null);
+  };
+
+  // "Atras": restaura el snapshot inmediatamente anterior. Reusa applyPersistedAppData
+  // (mismo camino probado del load remoto, respeta el aislamiento por empresa) y deja que
+  // el autosave re-sincronice el estado restaurado. Solo deshace cambios propios.
+  const handleUndo = () => {
+    if (undoStackRef.current.length === 0) {
+      setStorageMessage("No hay cambios para deshacer.");
+      return;
+    }
+    const previous = undoStackRef.current.pop();
+    setUndoAvailable(undoStackRef.current.length);
+    if (!previous) return;
+    let data: PersistedAppStateData;
+    try {
+      data = JSON.parse(previous) as PersistedAppStateData;
+    } catch {
+      setStorageMessage("No pude deshacer el ultimo cambio.");
+      return;
+    }
+    applyPersistedAppData(data);
+    setStorageMessage("Listo: deshice el ultimo cambio.");
   };
 
   const restoreFromLocalSave = async () => {
@@ -7453,6 +7490,25 @@ export default function App() {
           data: buildPersistedAppData(),
         };
         const payloadSignature = buildPersistedDataSignature(payload.data);
+
+        // --- Captura para "Atras" (deshacer) ---
+        // Corre en cada estado asentado. Si el cambio vino de una restauracion/sync
+        // (suppress) o es la primera vez, solo re-asienta la baseline sin crear un paso.
+        const currentUndoJson = JSON.stringify(payload.data);
+        if (suppressUndoCaptureRef.current) {
+          suppressUndoCaptureRef.current = false;
+          undoBaselineRef.current = currentUndoJson;
+        } else if (undoBaselineRef.current === null) {
+          undoBaselineRef.current = currentUndoJson;
+        } else if (currentUndoJson !== undoBaselineRef.current) {
+          undoStackRef.current.push(undoBaselineRef.current);
+          if (undoStackRef.current.length > UNDO_HISTORY_LIMIT) {
+            undoStackRef.current.shift();
+          }
+          undoBaselineRef.current = currentUndoJson;
+          setUndoAvailable(undoStackRef.current.length);
+        }
+
         if (payloadSignature === lastPersistedDataSignatureRef.current) {
           return;
         }
@@ -9801,6 +9857,9 @@ export default function App() {
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {activeTab !== "acceso" && (
             <>
+              <ButtonLike onClick={handleUndo} secondary disabled={undoAvailable === 0}>
+                {undoAvailable > 0 ? `Atras (${undoAvailable})` : "Atras"}
+              </ButtonLike>
               <ButtonLike
                 onClick={() => {
                   if (activeTab === "presupuesto") {
