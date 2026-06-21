@@ -2484,11 +2484,15 @@ export default function App() {
   // Pila de snapshots JSON del estado (del mas viejo al mas reciente). undoBaselineRef es
   // el estado "asentado" actual contra el que se compara el proximo cambio.
   const undoStackRef = useRef<string[]>([]);
+  // Pila de "Rehacer": estados que se deshicieron y se pueden re-aplicar. Se vacia en cuanto
+  // el usuario hace una edicion nueva (esa edicion invalida el "futuro" que se podia rehacer).
+  const redoStackRef = useRef<string[]>([]);
   const undoBaselineRef = useRef<string | null>(null);
   // Cuando la restauracion/sync cambia el estado de forma programatica, esto evita que ese
   // cambio se registre como un paso de deshacer del usuario.
   const suppressUndoCaptureRef = useRef(false);
   const [undoAvailable, setUndoAvailable] = useState(0);
+  const [redoAvailable, setRedoAvailable] = useState(0);
   const lastSupabaseModuleSignaturesRef = useRef<Record<string, string>>({});
   const lastRealtimeModuleMergeSavedAtRef = useRef("");
   const lastRealtimeModuleMergedDataRef = useRef<PersistedAppStateData | null>(null);
@@ -5822,8 +5826,44 @@ export default function App() {
       setStorageMessage("No pude deshacer el ultimo cambio.");
       return;
     }
+    // Guardar el estado que estamos dejando para poder REHACER.
+    if (undoBaselineRef.current !== null) {
+      redoStackRef.current.push(undoBaselineRef.current);
+      if (redoStackRef.current.length > UNDO_HISTORY_LIMIT) {
+        redoStackRef.current.shift();
+      }
+      setRedoAvailable(redoStackRef.current.length);
+    }
     applyPersistedAppData(data);
     setStorageMessage("Listo: deshice el ultimo cambio.");
+  };
+
+  // "Rehacer": vuelve a aplicar el ultimo estado deshecho. Simetrico a handleUndo.
+  const handleRedo = () => {
+    if (redoStackRef.current.length === 0) {
+      setStorageMessage("No hay nada para rehacer.");
+      return;
+    }
+    const next = redoStackRef.current.pop();
+    setRedoAvailable(redoStackRef.current.length);
+    if (!next) return;
+    let data: PersistedAppStateData;
+    try {
+      data = JSON.parse(next) as PersistedAppStateData;
+    } catch {
+      setStorageMessage("No pude rehacer el cambio.");
+      return;
+    }
+    // Guardar el estado actual en la pila de deshacer para poder volver atras.
+    if (undoBaselineRef.current !== null) {
+      undoStackRef.current.push(undoBaselineRef.current);
+      if (undoStackRef.current.length > UNDO_HISTORY_LIMIT) {
+        undoStackRef.current.shift();
+      }
+      setUndoAvailable(undoStackRef.current.length);
+    }
+    applyPersistedAppData(data);
+    setStorageMessage("Listo: rehice el cambio.");
   };
 
   const restoreFromLocalSave = async () => {
@@ -7507,6 +7547,11 @@ export default function App() {
           }
           undoBaselineRef.current = currentUndoJson;
           setUndoAvailable(undoStackRef.current.length);
+          // Una edicion nueva invalida lo que se podia rehacer.
+          if (redoStackRef.current.length > 0) {
+            redoStackRef.current = [];
+            setRedoAvailable(0);
+          }
         }
 
         if (payloadSignature === lastPersistedDataSignatureRef.current) {
@@ -9859,6 +9904,9 @@ export default function App() {
             <>
               <ButtonLike onClick={handleUndo} secondary disabled={undoAvailable === 0}>
                 {undoAvailable > 0 ? `Atras (${undoAvailable})` : "Atras"}
+              </ButtonLike>
+              <ButtonLike onClick={handleRedo} secondary disabled={redoAvailable === 0}>
+                {redoAvailable > 0 ? `Rehacer (${redoAvailable})` : "Rehacer"}
               </ButtonLike>
               <ButtonLike
                 onClick={() => {
