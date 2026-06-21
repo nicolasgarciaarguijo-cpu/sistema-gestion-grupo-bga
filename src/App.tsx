@@ -12989,6 +12989,7 @@ export default function App() {
         <div style={styles.column}>
           <Panel
             title="Marcadores base por empresa y tipo de trabajo"
+            span="wide"
             actions={<ButtonLike onClick={applyMarkersToBudget}>Aplicar al presupuesto actual</ButtonLike>}
           >
             <div style={styles.metricGrid}>
@@ -14513,7 +14514,8 @@ export default function App() {
       )}
 
       {activeTab === "facturacion" && (
-        <div style={styles.column}>
+        <div style={styles.masterDetailLayout}>
+          <div style={styles.masterDetailMain}>
           <Panel
             title="Calendario de facturacion y cobranzas"
             actions={
@@ -14598,8 +14600,10 @@ export default function App() {
               })}
             </div>
           </Panel>
+          </div>
 
           {selectedFinancialItem && (
+            <div style={styles.masterDetailAside}>
             <Panel
               title="Editor dinamico del item"
               actions={<ButtonLike onClick={() => setSelectedFinancialItemId(null)} secondary>Cerrar editor</ButtonLike>}
@@ -14719,6 +14723,7 @@ export default function App() {
                 </ButtonLike>
               </div>
             </Panel>
+            </div>
           )}
         </div>
       )}
@@ -14727,6 +14732,7 @@ export default function App() {
         <div style={styles.column}>
           <Panel
             title="Tablero general de fabricacion"
+            span="wide"
             actions={<ButtonLike onClick={() => exportPrint("report-fabricacion")} secondary>Reporte</ButtonLike>}
           >
             <div style={styles.metricGrid}>
@@ -14789,7 +14795,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Compras realizadas">
+          <Panel title="Compras realizadas" span="wide">
             {fabricationCompletedPurchases.length === 0 ? (
               <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
             ) : (
@@ -19270,6 +19276,30 @@ const styles: Record<string, React.CSSProperties> = {
     gap: 14,
     alignItems: "start",
     gridAutoFlow: "dense",
+  },
+  // Layout master-detalle: contenido principal a ancho flexible + panel lateral sticky.
+  // Cuando el aside no se renderiza, la 2da columna ("auto") colapsa y el main ocupa todo.
+  masterDetailLayout: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: 14,
+    alignItems: "start",
+  },
+  masterDetailMain: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    minWidth: 0,
+  },
+  masterDetailAside: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+    position: "sticky",
+    top: 16,
+    width: 360,
+    maxWidth: "100%",
+    alignSelf: "start",
   },
   panel: {
     background: "white",
