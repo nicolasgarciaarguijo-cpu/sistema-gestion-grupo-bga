@@ -10262,6 +10262,7 @@ export default function App() {
           <div style={styles.column}>
             <Panel
               title="Sesion Supabase"
+              span="half"
               actions={
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <ButtonLike onClick={logoutSupabaseTest} secondary>
@@ -10292,7 +10293,7 @@ export default function App() {
               </div>
             </Panel>
 
-            <Panel title="Seguridad de acceso">
+            <Panel title="Seguridad de acceso" span="half">
               <div style={styles.grid2}>
                 <div>
                   <div style={styles.label}>Cambiar contrasena</div>
@@ -10325,7 +10326,7 @@ export default function App() {
             </Panel>
 
             {effectiveIsAdmin && (
-              <Panel title="Usuarios creados en Supabase">
+              <Panel title="Usuarios creados en Supabase" span="wide">
                 {supabaseUserDirectory.length === 0 ? (
                   <div style={styles.empty}>
                     No pude leer perfiles todavia. Si esto sigue vacio, corre el SQL de
@@ -10364,7 +10365,7 @@ export default function App() {
             )}
 
             {effectiveIsAdmin && (
-              <Panel title="Empresas del sistema">
+              <Panel title="Empresas del sistema" span="wide">
                 <div style={styles.grid2}>
                   <div>
                     <div style={styles.label}>Empresas activas</div>
@@ -15066,7 +15067,7 @@ export default function App() {
 
       {activeTab === "stock" && (
         <div style={styles.column}>
-          <Panel title="Agenda de fabricacion" span="half" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
+          <Panel title="Agenda de fabricacion" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -15299,7 +15300,7 @@ export default function App() {
 
           <Panel
             title="Analisis de costos"
-            span="half"
+            span="wide"
             actions={
               <div style={styles.inlineActions}>
                 <ButtonLike onClick={addCostAnalysisGroup} secondary>
@@ -15522,6 +15523,7 @@ export default function App() {
 
           <Panel
             title="Remitos a cargar"
+            span="wide"
             actions={
               <label style={styles.buttonLikeLabel}>
                 Subir PDF / Excel / CSV
