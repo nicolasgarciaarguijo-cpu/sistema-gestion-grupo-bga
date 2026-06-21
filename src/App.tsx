@@ -10860,7 +10860,7 @@ export default function App() {
 
       {activeTab === "compras" && (
         <div style={styles.column}>
-          <Panel title="Resumen de compras pendientes" span="half">
+          <Panel title="Resumen de compras pendientes" span="wide">
             <div style={styles.metricGrid}>
               <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
               <MiniMetric label="Costo estimado" value={money(totalPurchaseNeed)} />
@@ -10948,7 +10948,7 @@ export default function App() {
 
           <Panel
             title="Calendario de fechas limite de compra"
-            span="half"
+            span="wide"
             actions={
               <div style={styles.monthToolbar}>
                 <ButtonLike onClick={() => shiftPurchaseMonth(-1)} secondary>Mes anterior</ButtonLike>
@@ -11167,7 +11167,7 @@ export default function App() {
 
           <Panel
             title="Responsabilidad y fondos"
-            span="half"
+            span="wide"
             actions={<ButtonLike onClick={addPettyCashFund}>Agregar caja chica</ButtonLike>}
           >
             {visiblePettyCashFunds.length === 0 ? (
@@ -11462,7 +11462,7 @@ export default function App() {
             )}
           </Panel>
 
-          <Panel title="Seguimiento de gastos aplicados" span="half">
+          <Panel title="Seguimiento de gastos aplicados" span="wide">
             {pettyCashTrackingRows.length === 0 ? (
               <div style={styles.empty}>
                 Todavia no hay gastos aplicados para seguir.
@@ -13026,7 +13026,7 @@ export default function App() {
             </div>
           </Panel>
 
-          <Panel title="Costos fijos por grupo" span="half" actions={<ButtonLike onClick={addFixedMarker}>Agregar marcador</ButtonLike>}>
+          <Panel title="Costos fijos por grupo" span="wide" actions={<ButtonLike onClick={addFixedMarker}>Agregar marcador</ButtonLike>}>
             <div style={styles.metricGrid}>
               {fixedMarkersByGroup.map((row) => (
                 <MiniMetric key={row.group} label={row.group} value={money(row.total)} />
@@ -13156,7 +13156,7 @@ export default function App() {
             </table>
           </Panel>
 
-          <Panel title="Insumos y fletes base" span="half" actions={<ButtonLike onClick={addSupplyMarker}>Agregar marcador</ButtonLike>}>
+          <Panel title="Insumos y fletes base" span="wide" actions={<ButtonLike onClick={addSupplyMarker}>Agregar marcador</ButtonLike>}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -13288,7 +13288,7 @@ export default function App() {
           </Panel>
 
           <Panel
-            span="half"
+            span="wide"
             title="Mano de obra base"
             actions={
               <div style={styles.inlineActions}>
@@ -13421,7 +13421,7 @@ export default function App() {
           </Panel>
 
           <Panel
-            span="half"
+            span="wide"
             title="Informacion de personal: EPP e insumos"
             actions={
               <div style={styles.inlineActions}>
