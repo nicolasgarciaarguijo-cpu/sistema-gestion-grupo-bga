@@ -2492,9 +2492,6 @@ export default function App() {
   // --- "Atras" (deshacer) ---
   // Pila de snapshots JSON del estado (del mas viejo al mas reciente). undoBaselineRef es
   // el estado "asentado" actual contra el que se compara el proximo cambio.
-  // Al cargar, ubicar el mes activo en el ultimo mes con datos (si el mes corriente esta vacio),
-  // para que el usuario no abra una solapa "vacia" cuando sus datos viven en otro mes. Corre una vez.
-  const didInitOperationalMonthRef = useRef(false);
   const undoStackRef = useRef<string[]>([]);
   // Pila de "Rehacer": estados que se deshicieron y se pueden re-aplicar. Se vacia en cuanto
   // el usuario hace una edicion nueva (esa edicion invalida el "futuro" que se podia rehacer).
@@ -3508,31 +3505,6 @@ export default function App() {
   // Fecha por defecto para altas: hoy si estamos en el mes corriente; si no, el 1ro del mes activo.
   const defaultDateForActiveMonth = () =>
     operationalMonth === localMonthKey() ? todayIso() : `${operationalMonth}-01`;
-
-  // Aterrizar en el ultimo mes con datos si el mes corriente esta vacio (una sola vez tras hidratar).
-  useEffect(() => {
-    if (didInitOperationalMonthRef.current) return;
-    if (!isPersistenceReady) return;
-    const months: string[] = [];
-    visibleFinancialItems.forEach((i) => i.date && months.push(itemMonthKey(i.date)));
-    visibleBankStatementEntries.forEach((i) => i.date && months.push(itemMonthKey(i.date)));
-    visiblePettyCashExpenses.forEach((i) => i.date && months.push(itemMonthKey(i.date)));
-    visiblePurchaseInvoices.forEach((i) => i.invoiceDate && months.push(itemMonthKey(i.invoiceDate)));
-    if (months.length === 0) return; // esperar a que haya datos hidratados
-    didInitOperationalMonthRef.current = true;
-    if (!months.includes(localMonthKey())) {
-      const latest = months.slice().sort()[months.length - 1];
-      if (latest && latest !== operationalMonth) {
-        syncOperationalMonth(latest);
-      }
-    }
-  }, [
-    isPersistenceReady,
-    visibleFinancialItems,
-    visibleBankStatementEntries,
-    visiblePettyCashExpenses,
-    visiblePurchaseInvoices,
-  ]);
 
   const visibleStockItems = useMemo(
     () => stockItems.filter((item) => canAccessCompany(item.company)),
