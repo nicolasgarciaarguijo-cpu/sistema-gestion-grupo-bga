@@ -587,15 +587,6 @@ const shiftMonthKey = (month: string, amount: number) => {
   return localMonthKey(new Date(year, monthIndex + amount, 1));
 };
 
-// Mes "YYYY-MM" al que pertenece un item segun su fecha. Si no tiene fecha valida,
-// cae al mes corriente para que el item siga siendo alcanzable (no queda huerfano).
-const itemMonthKey = (dateValue: unknown): string => {
-  if (typeof dateValue === "string" && /^\d{4}-\d{2}/.test(dateValue)) {
-    return dateValue.slice(0, 7);
-  }
-  return localMonthKey();
-};
-
 const ATTENDANCE_WEEKDAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 
 const monthLabel = (month: string) => {
@@ -3485,26 +3476,6 @@ export default function App() {
     () => bankStatementEntries.filter((item) => canAccessCompany(item.company)),
     [bankStatementEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
-
-  // --- Silos por mes (vista filtrada por fecha) ---
-  // Las solapas mensuales muestran/editan SOLO los items del mes activo. El dato vivo sigue
-  // siendo la lista continua completa (los consumidores cross-mes -analisis anual, stock,
-  // fabricacion- siguen leyendo visible*). operational/financial/purchase van en lockstep.
-  const monthBankStatementEntries = useMemo(
-    () => visibleBankStatementEntries.filter((item) => itemMonthKey(item.date) === operationalMonth),
-    [visibleBankStatementEntries, operationalMonth]
-  );
-  const monthPettyCashExpenses = useMemo(
-    () => visiblePettyCashExpenses.filter((item) => itemMonthKey(item.date) === operationalMonth),
-    [visiblePettyCashExpenses, operationalMonth]
-  );
-  const monthPurchaseInvoices = useMemo(
-    () => visiblePurchaseInvoices.filter((item) => itemMonthKey(item.invoiceDate) === purchaseMonth),
-    [visiblePurchaseInvoices, purchaseMonth]
-  );
-  // Fecha por defecto para altas: hoy si estamos en el mes corriente; si no, el 1ro del mes activo.
-  const defaultDateForActiveMonth = () =>
-    operationalMonth === localMonthKey() ? todayIso() : `${operationalMonth}-01`;
 
   const visibleStockItems = useMemo(
     () => stockItems.filter((item) => canAccessCompany(item.company)),
@@ -7769,7 +7740,7 @@ export default function App() {
         receiptKind: "Factura",
         receiptLetter: "A",
         invoiceNumber: "",
-        invoiceDate: defaultDateForActiveMonth(),
+        invoiceDate: todayIso(),
         currency: "ARS",
         exemptAmount: 0,
         net21: 0,
@@ -7852,7 +7823,7 @@ export default function App() {
         id: newId(),
         company: selectedFund?.company || budget.company,
         fundId: selectedFund?.id ?? null,
-        date: defaultDateForActiveMonth(),
+        date: todayIso(),
         category: "Gasto operativo",
         description: "",
         amount: 0,
@@ -7969,7 +7940,7 @@ export default function App() {
       {
         id: newId(),
         company: budget.company,
-        date: defaultDateForActiveMonth(),
+        date: todayIso(),
         bank: "",
         movementType: "credito",
         concept: "",
@@ -10154,7 +10125,7 @@ export default function App() {
                 <div style={styles.label}>Mes operativo</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                   <ButtonLike onClick={() => shiftOperationalMonth(-1)} secondary>
-                    ◀ Mes anterior
+                    Mes anterior
                   </ButtonLike>
                   <input
                     type="month"
@@ -10163,7 +10134,7 @@ export default function App() {
                     style={{ ...styles.input, maxWidth: 170 }}
                   />
                   <ButtonLike onClick={() => shiftOperationalMonth(1)} secondary>
-                    Mes siguiente ▶
+                    Mes siguiente
                   </ButtonLike>
                   <ButtonLike onClick={() => syncOperationalMonth(localMonthKey())} secondary>
                     Mes actual
@@ -10766,7 +10737,7 @@ export default function App() {
           </Panel>
 
           <Panel
-            title={`Resumen bancario - ${monthLabel(operationalMonth)}`}
+            title="Resumen bancario"
             span="full"
             actions={<ButtonLike onClick={addBankStatementEntry}>Agregar movimiento</ButtonLike>}
           >
@@ -10779,10 +10750,10 @@ export default function App() {
             <div style={styles.noticeBox}>
               Este bloque queda preparado para replicar la lógica de sus planillas auxiliares de bancos: fecha, banco, crédito/débito, concepto, monto y saldo. También alimenta el calendario anual de cash flow.
             </div>
-            {monthBankStatementEntries.length === 0 ? (
-              <div style={styles.empty}>No hay movimientos bancarios en {monthLabel(operationalMonth)}.</div>
+            {bankStatementEntries.length === 0 ? (
+              <div style={styles.empty}>Todavia no hay movimientos bancarios cargados.</div>
             ) : (
-              monthBankStatementEntries.map((entry) => (
+              bankStatementEntries.map((entry) => (
                 <div key={entry.id} style={styles.subCard}>
                   <div style={styles.inlineActions}>
                     <button style={styles.smallBtn} onClick={() => removeBankStatementEntry(entry.id)}>
@@ -10943,8 +10914,8 @@ export default function App() {
           </Panel>
 
           <Panel title="Facturas blancas vinculadas desde caja chica" span="half">
-            {monthPettyCashExpenses.filter((item) => item.administration === "blanco").length === 0 ? (
-              <div style={styles.empty}>No hay gastos de caja chica en blanco en {monthLabel(purchaseMonth)} para levantar dentro de compras.</div>
+            {visiblePettyCashExpenses.filter((item) => item.administration === "blanco").length === 0 ? (
+              <div style={styles.empty}>No hay gastos de caja chica en blanco para levantar dentro de compras.</div>
             ) : (
               <table style={styles.table}>
                 <thead>
@@ -10958,7 +10929,7 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {monthPettyCashExpenses
+                  {visiblePettyCashExpenses
                     .filter((item) => item.administration === "blanco")
                     .map((item) => (
                       <tr key={`pc-white-${item.id}`}>
@@ -11078,16 +11049,16 @@ export default function App() {
           </Panel>
 
           <Panel
-            title={`Facturas de compra - ${monthLabel(purchaseMonth)}`}
+            title="Facturas de compra"
             actions={<ButtonLike onClick={addPurchaseInvoice}>Agregar factura</ButtonLike>}
           >
             <div style={styles.noticeBox}>
-              Mostrando las facturas de <strong>{monthLabel(purchaseMonth)}</strong>. Usa la barra de mes para navegar. Puedes cargar una imagen o PDF y dejar que el sistema precomplete una base editable. Después podremos mejorar esta lectura automática con OCR más fino.
+              Puedes cargar una imagen o PDF y dejar que el sistema precomplete una base editable. Después podremos mejorar esta lectura automática con OCR más fino.
             </div>
-            {monthPurchaseInvoices.length === 0 ? (
-              <div style={styles.empty}>No hay facturas de compra cargadas en {monthLabel(purchaseMonth)}.</div>
+            {purchaseInvoices.length === 0 ? (
+              <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
             ) : (
-              monthPurchaseInvoices.map((invoice) => (
+              purchaseInvoices.map((invoice) => (
                 <div key={invoice.id} style={styles.subCard}>
                   <div style={styles.inlineActions}>
                     <button style={styles.smallBtn} onClick={() => removePurchaseInvoice(invoice.id)}>
@@ -11394,12 +11365,10 @@ export default function App() {
                       </div>
                     </div>
 
-                    {expenses.filter((expense) => itemMonthKey(expense.date) === operationalMonth).length === 0 ? (
-                      <div style={styles.empty}>No hay gastos cargados en {monthLabel(operationalMonth)} para esta caja chica.</div>
+                    {expenses.length === 0 ? (
+                      <div style={styles.empty}>Todavia no hay gastos cargados para esta caja chica.</div>
                     ) : (
-                      expenses
-                        .filter((expense) => itemMonthKey(expense.date) === operationalMonth)
-                        .map((expense) => (
+                      expenses.map((expense) => (
                         <details key={expense.id} style={styles.pettyCashInlineBubble}>
                           <summary style={styles.pettyCashExpenseSummary}>
                             <span style={styles.pettyCashExpenseSummaryLine}>
