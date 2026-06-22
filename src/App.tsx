@@ -348,6 +348,44 @@ const parseLeadDays = (deliveryTerm: string) => {
   return first ? Number(first) : 0;
 };
 
+// Semaforo de estado por urgencia de fecha (verde = bien, amarillo = mas o menos, rojo = complicado).
+// Semantica de ESTADO (no de empresa): verde si esta hecho o con margen; amarillo si vence pronto;
+// rojo si esta vencido. Reutilizable para cobros, pagos y fechas.
+type SemaphoreLevel = "verde" | "amarillo" | "rojo";
+const SEMAPHORE_PALETTE: Record<SemaphoreLevel, { color: string; soft: string }> = {
+  verde: { color: "#16a34a", soft: "rgba(22,163,74,0.15)" },
+  amarillo: { color: "#f59e0b", soft: "rgba(245,158,11,0.15)" },
+  rojo: { color: "#dc2626", soft: "rgba(220,38,38,0.15)" },
+};
+const SEMAPHORE_SOON_DAYS = 7;
+const daysUntilDate = (dateStr: string): number | null => {
+  if (!dateStr) return null;
+  const [y, m, d] = dateStr.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const target = new Date(y, m - 1, d);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+};
+const getDateSemaphore = (
+  dateStr: string,
+  done: boolean,
+  doneLabel = "hecho"
+): { level: SemaphoreLevel; color: string; soft: string; label: string } => {
+  if (done) return { level: "verde", ...SEMAPHORE_PALETTE.verde, label: doneLabel };
+  const days = daysUntilDate(dateStr);
+  if (days === null) return { level: "amarillo", ...SEMAPHORE_PALETTE.amarillo, label: "sin fecha" };
+  if (days < 0)
+    return { level: "rojo", ...SEMAPHORE_PALETTE.rojo, label: `vencio hace ${Math.abs(days)} d` };
+  if (days <= SEMAPHORE_SOON_DAYS)
+    return {
+      level: "amarillo",
+      ...SEMAPHORE_PALETTE.amarillo,
+      label: days === 0 ? "vence hoy" : `vence en ${days} d`,
+    };
+  return { level: "verde", ...SEMAPHORE_PALETTE.verde, label: `en ${days} d` };
+};
+
 const parsePaymentPercents = (paymentTerms: string) => {
   const regex = /(\d{1,3})(?:[.,]\d+)?\s*%/g;
   const matches: number[] = [];
@@ -8304,6 +8342,34 @@ export default function App() {
     return map;
   }, [visibleFinancialItems]);
 
+  // Semaforo resumen de cobros / pagos / fechas (sobre TODO lo visible, no solo el mes,
+  // para que un vencido de otro mes igual se vea). verde/amarillo/rojo + conteo.
+  const financialSemaphoreSummary = useMemo(() => {
+    const summarize = (items: FinancialCalendarItem[]) => {
+      let vencidos = 0;
+      let porVencer = 0;
+      items.forEach((item) => {
+        if (item.status === "realizado") return;
+        const level = getDateSemaphore(item.date, false).level;
+        if (level === "rojo") vencidos += 1;
+        else if (level === "amarillo") porVencer += 1;
+      });
+      const level: SemaphoreLevel = vencidos > 0 ? "rojo" : porVencer > 0 ? "amarillo" : "verde";
+      const label =
+        vencidos > 0
+          ? `${vencidos} vencida${vencidos > 1 ? "s" : ""}`
+          : porVencer > 0
+            ? `${porVencer} por vencer`
+            : "al dia";
+      return { level, label };
+    };
+    return {
+      cobros: summarize(visibleFinancialItems.filter((item) => item.type === "cobranza")),
+      pagos: summarize(visibleFinancialItems.filter((item) => item.type === "pago")),
+      fechas: summarize(visibleFinancialItems.filter((item) => item.type === "facturacion")),
+    };
+  }, [visibleFinancialItems]);
+
   const purchaseMonthData = useMemo(() => {
     const [year, month] = purchaseMonth.split("-").map(Number);
     const firstDay = new Date(year, month - 1, 1);
@@ -14518,6 +14584,23 @@ export default function App() {
       {activeTab === "facturacion" && (
         <div style={styles.masterDetailLayout}>
           <div style={styles.masterDetailMain}>
+          <Panel title="Semaforo: cobros, pagos y fechas">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+              {([
+                ["Cobros", financialSemaphoreSummary.cobros],
+                ["Pagos", financialSemaphoreSummary.pagos],
+                ["Fechas a facturar", financialSemaphoreSummary.fechas],
+              ] as const).map(([label, s]) => (
+                <div key={label} style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 12 }}>
+                  <Semaforo level={s.level} size={24} ring />
+                  <div>
+                    <div style={styles.metricLabel}>{label}</div>
+                    <div style={{ fontWeight: 700 }}>{s.label}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Panel>
           <Panel
             title="Calendario de facturacion y cobranzas"
             actions={
@@ -14577,17 +14660,23 @@ export default function App() {
                               setSelectedFinancialItemId((prev) => (prev === item.id ? null : item.id))
                             }
                           >
-                            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                              <span
-                                style={{
-                                  width: 10,
-                                  height: 10,
-                                  borderRadius: 999,
-                                  background: companyMetaItem.primary,
-                                  display: "inline-block",
-                                }}
-                              />
-                              <strong>{companyMetaItem.short}</strong>
+                            <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "space-between" }}>
+                              <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                                <span
+                                  style={{
+                                    width: 10,
+                                    height: 10,
+                                    borderRadius: 999,
+                                    background: companyMetaItem.primary,
+                                    display: "inline-block",
+                                  }}
+                                />
+                                <strong>{companyMetaItem.short}</strong>
+                              </span>
+                              {(() => {
+                                const sem = getDateSemaphore(item.date, item.status === "realizado");
+                                return <Semaforo level={sem.level} size={10} title={sem.label} />;
+                              })()}
                             </div>
                             <div>{item.title || "Sin titulo"}</div>
                             <div style={styles.calendarItemMeta}>
@@ -18775,6 +18864,33 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 function TwoCol({ children }: { children: React.ReactNode }) {
   return <div style={styles.grid2}>{children}</div>;
+}
+
+function Semaforo({
+  level,
+  size = 12,
+  title,
+  ring = false,
+}: {
+  level: SemaphoreLevel;
+  size?: number;
+  title?: string;
+  ring?: boolean;
+}) {
+  return (
+    <span
+      title={title}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: 999,
+        background: SEMAPHORE_PALETTE[level].color,
+        boxShadow: ring ? `0 0 0 4px ${SEMAPHORE_PALETTE[level].soft}` : undefined,
+        display: "inline-block",
+        flex: "none",
+      }}
+    />
+  );
 }
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
