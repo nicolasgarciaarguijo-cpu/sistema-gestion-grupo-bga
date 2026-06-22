@@ -10366,10 +10366,10 @@ export default function App() {
 
             {effectiveIsAdmin && (
               <Panel title="Empresas del sistema" span="wide">
-                <div style={styles.grid2}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                   <div>
                     <div style={styles.label}>Empresas activas</div>
-                    <div style={styles.column}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 10, alignItems: "start" }}>
                       {COMPANY_OPTIONS.map((company) => (
                         <div key={`company-card-${company.value}`} style={styles.subCard}>
                           <div style={styles.inlineActions}>
