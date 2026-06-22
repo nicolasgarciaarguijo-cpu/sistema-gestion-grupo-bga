@@ -395,6 +395,9 @@ export type ApprovedJob = {
   soldNetPrice: number;
   soldGrossPrice: number;
   billedPct: number;
+  // % de anticipo como dato propio del trabajo (F2). Si esta undefined, se cae al % parseado
+  // del texto de la forma de pago (compatibilidad con trabajos viejos).
+  anticipoPct?: number;
   commissionPct: number;
   commissionAmount: number;
   totalDiscountAmount: number;

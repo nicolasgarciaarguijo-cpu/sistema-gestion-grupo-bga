@@ -5018,8 +5018,15 @@ export default function App() {
     [visibleSavedBudgets, budget.client]
   );
 
+  // % de anticipo efectivo: el campo numerico propio del trabajo (F2) o, si no esta cargado,
+  // el % parseado del texto de la forma de pago (compatibilidad con trabajos viejos).
+  const getJobAnticipoPct = (job: ApprovedJob) =>
+    typeof job.anticipoPct === "number"
+      ? Math.max(0, Math.min(100, job.anticipoPct))
+      : parsePaymentPercents(job.snapshot?.budget?.paymentTerms || "").anticipoPct;
+
   const buildAutoFinancialItemsForJob = (job: ApprovedJob): FinancialCalendarItem[] => {
-    const { anticipoPct } = parsePaymentPercents(job.snapshot.budget.paymentTerms || "");
+    const anticipoPct = getJobAnticipoPct(job);
     const anticipoAmount = Number(
       ((job.soldGrossPrice || 0) * (anticipoPct / 100)).toFixed(2)
     );
@@ -5186,6 +5193,10 @@ export default function App() {
                 id: existing.id,
                 status: existing.status,
                 notes: existing.notes || generated.notes,
+                // No pisar ediciones manuales de fecha/titulo; el monto si se recalcula
+                // desde los % (anticipo/facturacion) para que "se recalcule solo".
+                date: existing.date || generated.date,
+                title: existing.title || generated.title,
               }
             : generated;
         })
@@ -13996,6 +14007,20 @@ export default function App() {
                         value={selectedApprovedJob.billedPct}
                         onChange={(e) =>
                           updateApprovedJob(selectedApprovedJob.id, "billedPct", Number(e.target.value))
+                        }
+                      />
+                    </Field>
+                    <Field label="% anticipo">
+                      <input
+                        style={styles.input}
+                        type="number"
+                        value={getJobAnticipoPct(selectedApprovedJob)}
+                        onChange={(e) =>
+                          updateApprovedJob(
+                            selectedApprovedJob.id,
+                            "anticipoPct",
+                            Math.max(0, Math.min(100, Number(e.target.value)))
+                          )
                         }
                       />
                     </Field>
