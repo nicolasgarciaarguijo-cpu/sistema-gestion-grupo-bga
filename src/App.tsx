@@ -9844,7 +9844,8 @@ export default function App() {
   return (
     <div style={{ ...styles.page, background: workspaceTheme.pageBackground }}>
       <style>{`
-        table th, table td { border-bottom: 1px solid #e2e8f0; padding: 6px; vertical-align: top; }
+        table th, table td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; vertical-align: top; }
+        table th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #cbd5e1; }
         @media print {
           @page { size: A4; margin: 0; }
           body[data-print-mode]:not([data-print-mode="client-budget"]) * { visibility: hidden !important; }
@@ -18779,8 +18780,8 @@ function TwoCol({ children }: { children: React.ReactNode }) {
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
     <div style={styles.metric}>
-      <div style={styles.muted}>{label}</div>
-      <div style={{ fontWeight: 700 }}>{value}</div>
+      <div style={styles.metricLabel}>{label}</div>
+      <div style={styles.metricValue}>{value}</div>
     </div>
   );
 }
@@ -19406,8 +19407,22 @@ const styles: Record<string, React.CSSProperties> = {
   metric: {
     border: "1px solid #e2e8f0",
     borderRadius: 12,
-    padding: 12,
-    background: "white",
+    padding: 14,
+    background: "#f8fafc",
+  },
+  metricLabel: {
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: 700,
+    letterSpacing: "0.04em",
+    textTransform: "uppercase",
+  },
+  metricValue: {
+    fontWeight: 700,
+    fontSize: 20,
+    color: "#0f172a",
+    marginTop: 4,
+    lineHeight: 1.2,
   },
   metricGrid: {
     display: "grid",
