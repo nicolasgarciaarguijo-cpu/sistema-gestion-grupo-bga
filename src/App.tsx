@@ -386,6 +386,42 @@ const getDateSemaphore = (
   return { level: "verde", ...SEMAPHORE_PALETTE.verde, label: `en ${days} d` };
 };
 
+// Semaforo de un trabajo aprobado: rojo si falta fecha de inicio (dato critico),
+// verde si finalizado, amarillo si en curso/pendiente.
+const getJobSemaphore = (job: {
+  startDate?: string;
+  executionStatus?: string;
+}): { level: SemaphoreLevel; label: string } => {
+  if (!job.startDate) return { level: "rojo", label: "sin fecha de inicio" };
+  if (job.executionStatus === "finalizado") return { level: "verde", label: "finalizado" };
+  if (job.executionStatus === "en_curso") return { level: "amarillo", label: "en curso" };
+  return { level: "amarillo", label: "pendiente" };
+};
+
+// Semaforo de un presupuesto del historial: aprobado=verde, no aprobado=rojo, y si sigue
+// en borrador/pendiente, vencido (paso la validez) = rojo, vigente = amarillo.
+const getBudgetSemaphore = (budget: {
+  status?: string;
+  date?: string;
+  snapshot?: { budget?: { validity?: string } };
+}): { level: SemaphoreLevel; label: string } => {
+  if (budget.status === "aprobado") return { level: "verde", label: "aprobado" };
+  if (budget.status === "no_aprobado") return { level: "rojo", label: "no aprobado" };
+  const validityDays = Number(/(\d+)/.exec(budget.snapshot?.budget?.validity || "")?.[1] || 0);
+  if (validityDays > 0 && budget.date) {
+    const [y, m, d] = budget.date.slice(0, 10).split("-").map(Number);
+    if (y && m && d) {
+      const venc = new Date(y, m - 1, d + validityDays);
+      const vencStr = `${venc.getFullYear()}-${String(venc.getMonth() + 1).padStart(2, "0")}-${String(
+        venc.getDate()
+      ).padStart(2, "0")}`;
+      const left = daysUntilDate(vencStr);
+      if (left !== null && left < 0) return { level: "rojo", label: "vencido" };
+    }
+  }
+  return { level: "amarillo", label: "vigente" };
+};
+
 const parsePaymentPercents = (paymentTerms: string) => {
   const regex = /(\d{1,3})(?:[.,]\d+)?\s*%/g;
   const matches: number[] = [];
@@ -8370,6 +8406,34 @@ export default function App() {
     };
   }, [visibleFinancialItems]);
 
+  // Semaforo resumen de trabajos aprobados (verde finalizado / amarillo en curso / rojo sin fecha inicio).
+  const jobSemaphoreSummary = useMemo(() => {
+    let rojo = 0;
+    let amarillo = 0;
+    let verde = 0;
+    visibleApprovedJobs.forEach((job) => {
+      const level = getJobSemaphore(job).level;
+      if (level === "rojo") rojo += 1;
+      else if (level === "amarillo") amarillo += 1;
+      else verde += 1;
+    });
+    return { rojo, amarillo, verde };
+  }, [visibleApprovedJobs]);
+
+  // Semaforo resumen del historial de presupuestos (verde aprobado / amarillo vigente / rojo vencido o no aprobado).
+  const budgetSemaphoreSummary = useMemo(() => {
+    let rojo = 0;
+    let amarillo = 0;
+    let verde = 0;
+    getLatestBudgetRevisions(visibleSavedBudgets).forEach((budget) => {
+      const level = getBudgetSemaphore(budget).level;
+      if (level === "rojo") rojo += 1;
+      else if (level === "amarillo") amarillo += 1;
+      else verde += 1;
+    });
+    return { rojo, amarillo, verde };
+  }, [visibleSavedBudgets]);
+
   const purchaseMonthData = useMemo(() => {
     const [year, month] = purchaseMonth.split("-").map(Number);
     const firstDay = new Date(year, month - 1, 1);
@@ -9691,6 +9755,15 @@ export default function App() {
 
   const renderBudgetHistoryBlock = () => (
     <>
+      <Panel title="Semaforo de presupuestos">
+        <SemaforoResumen
+          items={[
+            { level: "verde", label: "Aprobados", value: String(budgetSemaphoreSummary.verde) },
+            { level: "amarillo", label: "Vigentes", value: String(budgetSemaphoreSummary.amarillo) },
+            { level: "rojo", label: "Vencidos / no aprobados", value: String(budgetSemaphoreSummary.rojo) },
+          ]}
+        />
+      </Panel>
       <Panel
         title="Historial de presupuestos por empresa"
         actions={<ButtonLike onClick={() => exportPrint("report-historial")} secondary>Reporte</ButtonLike>}
@@ -9765,7 +9838,17 @@ export default function App() {
                               {item.exportedAt ? "Exportado" : "Sin exportar"}
                             </span>
                           </td>
-                          <td>{item.status}</td>
+                          <td>
+                            {(() => {
+                              const sb = getBudgetSemaphore(item);
+                              return (
+                                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <Semaforo level={sb.level} size={10} title={sb.label} />
+                                  <span>{item.status}</span>
+                                </span>
+                              );
+                            })()}
+                          </td>
                           <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                             <button style={styles.smallBtn} onClick={() => approveBudget(item)}>
                               Aprobar
@@ -13800,6 +13883,15 @@ export default function App() {
 
       {activeTab === "aprobados" && (
         <div style={styles.column}>
+          <Panel span="full" title="Semaforo de trabajos">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Finalizados", value: String(jobSemaphoreSummary.verde) },
+                { level: "amarillo", label: "En curso / pendientes", value: String(jobSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Sin fecha de inicio", value: String(jobSemaphoreSummary.rojo) },
+              ]}
+            />
+          </Panel>
     <Panel
       span="full"
       title="Trabajos aprobados por empresa"
@@ -13881,7 +13973,17 @@ export default function App() {
                           <td>{money(job.commissionPending)}</td>
                           <td>{money(job.valueToCollect)}</td>
                           <td>{money(job.collectedTotal)}</td>
-                          <td>{job.executionStatus}</td>
+                          <td>
+                            {(() => {
+                              const sj = getJobSemaphore(job);
+                              return (
+                                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                  <Semaforo level={sj.level} size={10} title={sj.label} />
+                                  <span>{job.executionStatus}</span>
+                                </span>
+                              );
+                            })()}
+                          </td>
                           <td>
                             {selectedApprovedJobId === job.id ? (
                               <button style={styles.smallBtn} onClick={() => setSelectedApprovedJobId(null)}>
@@ -18890,6 +18992,26 @@ function Semaforo({
         flex: "none",
       }}
     />
+  );
+}
+
+function SemaforoResumen({
+  items,
+}: {
+  items: { level: SemaphoreLevel; label: string; value: string }[];
+}) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+      {items.map((it) => (
+        <div key={it.label} style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 12 }}>
+          <Semaforo level={it.level} size={24} ring />
+          <div>
+            <div style={styles.metricLabel}>{it.label}</div>
+            <div style={{ fontWeight: 700 }}>{it.value}</div>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
