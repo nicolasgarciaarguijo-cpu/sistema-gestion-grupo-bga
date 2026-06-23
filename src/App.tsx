@@ -9129,6 +9129,23 @@ export default function App() {
   const getScaleForCategory = (category: string, month: string) =>
     getScaleForCategoryPure(scaleRows, category, month);
 
+  // Semaforo de la escala salarial de una categoria respecto del mes de liquidacion (payrollMonth):
+  // verde = hay escala vigente (del mes o futura), amarillo = la ultima es del mes anterior (actualizar),
+  // rojo = desactualizada (2+ meses) o sin escala cargada para la categoria.
+  const getScaleSemaphore = (category: string): { level: SemaphoreLevel; label: string } => {
+    const cat = (category || "").trim().toLowerCase();
+    if (!cat) return { level: "amarillo", label: "sin categoria" };
+    const rows = scaleRows.filter((row) => row.category.toLowerCase() === cat);
+    if (rows.length === 0) return { level: "rojo", label: "sin escala cargada" };
+    const latest = rows.reduce((a, b) => (b.month > a.month ? b : a)).month;
+    const [ly, lm] = latest.split("-").map(Number);
+    const [cy, cm] = (payrollMonth || localMonthKey()).split("-").map(Number);
+    const diff = (cy - ly) * 12 + (cm - lm);
+    if (diff <= 0) return { level: "verde", label: `vigente (${monthLabel(latest)})` };
+    if (diff === 1) return { level: "amarillo", label: `por actualizar (ultima ${monthLabel(latest)})` };
+    return { level: "rojo", label: `desactualizada ${diff} meses (ultima ${monthLabel(latest)})` };
+  };
+
   const getCurrentPayroll = (employee: Employee) => ensureEmployeePayroll(employee, payrollMonth);
 
   const getAttendanceSummary = (employee: Employee) => {
@@ -9191,8 +9208,15 @@ export default function App() {
       getEmployeeProvisionSummary(employee, "EPP").tone,
       getEmployeeProvisionSummary(employee, "Insumos").tone,
     ];
+    const scale = getScaleSemaphore(employee.category);
     if (tones.includes("red")) return { level: "rojo", label: "documentacion / EPP faltante o vencida" };
-    if (tones.includes("yellow")) return { level: "amarillo", label: "documentacion por vencer" };
+    if (scale.level === "rojo")
+      return { level: "amarillo", label: "categoria sin escala salarial cargada" };
+    if (tones.includes("yellow") || scale.level === "amarillo")
+      return {
+        level: "amarillo",
+        label: scale.level === "amarillo" ? "escala salarial por actualizar" : "documentacion por vencer",
+      };
     return { level: "verde", label: "ficha completa" };
   };
 
@@ -16839,6 +16863,47 @@ export default function App() {
                     onChange={(e) => setPayrollMonth(e.target.value)}
                   />
                 </Field>
+
+                {(() => {
+                  const cats = Array.from(
+                    new Set([
+                      ...visibleEmployees.map((e) => (e.category || "").trim()).filter(Boolean),
+                      ...scaleRows.map((r) => r.category),
+                    ])
+                  ).sort();
+                  if (cats.length === 0) return null;
+                  return (
+                    <div style={{ marginBottom: 12 }}>
+                      <div style={styles.label}>
+                        Estado de escalas por categoria · {monthLabel(payrollMonth)}
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+                          gap: 8,
+                          marginTop: 6,
+                        }}
+                      >
+                        {cats.map((cat) => {
+                          const s = getScaleSemaphore(cat);
+                          return (
+                            <div
+                              key={cat}
+                              style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 10 }}
+                            >
+                              <Semaforo level={s.level} size={16} ring title={s.label} />
+                              <div>
+                                <div style={{ fontWeight: 700 }}>{cat}</div>
+                                <div style={styles.muted}>{s.label}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <table style={styles.table}>
                   <thead>
