@@ -5471,13 +5471,33 @@ export default function App() {
 
   const exportPrint = async (mode: PrintMode) => {
     if (!mode) return;
-    if (mode === "client-budget" && editingBudgetId) {
+    if (mode === "client-budget") {
+      // Marcar como exportado el presupuesto que corresponde, este o no en modo edicion:
+      // si hay uno abierto se usa ese; si no, se busca la ultima revision guardada con el
+      // mismo numero y empresa. Asi NO hace falta reabrirlo para que quede marcado.
       const exportTimestamp = new Date().toISOString();
-      setSavedBudgets((prev) =>
-        prev.map((item) =>
-          item.id === editingBudgetId ? { ...item, exportedAt: exportTimestamp } : item
-        )
-      );
+      const candidates = editingBudgetId
+        ? savedBudgets.filter((item) => item.id === editingBudgetId)
+        : savedBudgets.filter(
+            (item) => item.number === budget.number && item.company === budget.company
+          );
+      const target = candidates.length
+        ? candidates.reduce((a, b) =>
+            (b.revisionNumber || 1) >= (a.revisionNumber || 1) ? b : a
+          )
+        : null;
+      if (target) {
+        setSavedBudgets((prev) =>
+          prev.map((item) =>
+            item.id === target.id ? { ...item, exportedAt: exportTimestamp } : item
+          )
+        );
+        setStorageMessage(`Presupuesto ${target.number} marcado como exportado.`);
+      } else {
+        setStorageMessage(
+          "PDF exportado. Guarda el presupuesto en el historial para que quede marcado como exportado."
+        );
+      }
     }
     const previousTitle = document.title;
     if (mode === "client-budget") {
