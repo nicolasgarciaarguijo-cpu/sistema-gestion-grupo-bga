@@ -3564,6 +3564,7 @@ export default function App() {
           const fund = visiblePettyCashFunds.find((item) => item.id === expense.fundId) || null;
           return {
             id: expense.id,
+            fundId: expense.fundId,
             company: fund?.company || expense.company,
             fundDescription: fund?.description || "Caja chica sin descripcion",
             responsible: fund?.responsible || "Sin responsable asignado",
@@ -11978,18 +11979,63 @@ export default function App() {
                     <th>Fecha de pago</th>
                     <th>Administracion</th>
                     <th>Descripcion</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {pettyCashTrackingRows.map((row) => (
                     <tr key={`pc-track-${row.id}`}>
                       <td>{getCompanyMeta(row.company).short}</td>
-                      <td>{row.fundDescription}</td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={row.fundId ?? ""}
+                          onChange={(e) =>
+                            updatePettyCashExpense(row.id, "fundId", Number(e.target.value))
+                          }
+                        >
+                          {visiblePettyCashFunds.map((fund) => (
+                            <option key={fund.id} value={fund.id}>
+                              {fund.description || "Caja sin descripcion"} · {getCompanyMeta(fund.company).short}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td>{row.responsible}</td>
-                      <td>{money(row.amount)}</td>
-                      <td>{formatDateDisplay(row.date)}</td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          type="number"
+                          value={row.amount}
+                          onChange={(e) =>
+                            updatePettyCashExpense(row.id, "amount", Number(e.target.value))
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          type="date"
+                          value={row.date}
+                          onChange={(e) => updatePettyCashExpense(row.id, "date", e.target.value)}
+                        />
+                      </td>
                       <td>{row.administration === "blanco" ? "Blanco" : "Negro"}</td>
-                      <td>{row.description || "-"}</td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={row.description}
+                          onChange={(e) =>
+                            updatePettyCashExpense(row.id, "description", e.target.value)
+                          }
+                          placeholder="Descripcion"
+                        />
+                      </td>
+                      <td>
+                        <button style={styles.smallBtn} onClick={() => removePettyCashExpense(row.id)}>
+                          Quitar
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
