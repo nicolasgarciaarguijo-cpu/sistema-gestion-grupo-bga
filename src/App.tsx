@@ -11561,6 +11561,67 @@ export default function App() {
             </div>
           </Panel>
 
+          <Panel title="Rendicion por responsable" span="wide">
+            {responsibleRendicion.length === 0 ? (
+              <div style={styles.empty}>Todavia no hay responsables con cajas asignadas.</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+                {responsibleRendicion.map((r) => {
+                  const estado =
+                    r.net < 0
+                      ? { texto: `La empresa le debe ${money(Math.abs(r.net))}`, color: "#dc2626" }
+                      : r.net > 0
+                        ? { texto: `Saldo a rendir (en su poder) ${money(r.net)}`, color: "#b7791f" }
+                        : { texto: "Al dia", color: "#16a34a" };
+                  return (
+                    <div key={r.responsible} style={styles.nestedCard}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                        <Semaforo level={r.net < 0 ? "rojo" : r.net > 0 ? "amarillo" : "verde"} size={18} ring />
+                        <strong style={{ fontSize: 15 }}>{r.responsible}</strong>
+                      </div>
+                      <div style={{ ...styles.metricLabel, color: estado.color, marginBottom: 8 }}>
+                        {estado.texto}
+                      </div>
+                      <div style={styles.metricGrid}>
+                        <MiniMetric label="Cajas asignadas" value={String(r.funds.length)} />
+                        <MiniMetric label="Total asignado" value={money(r.totalAssigned)} />
+                        <MiniMetric label="Total rendido" value={money(r.totalRendered)} />
+                      </div>
+                      <table style={{ ...styles.table, marginTop: 10 }}>
+                        <thead>
+                          <tr>
+                            <th>Caja</th>
+                            <th>Asignado</th>
+                            <th>Rendido</th>
+                            <th>Saldo</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {r.funds
+                            .slice()
+                            .sort((a, b) => a.fund.id - b.fund.id)
+                            .map((f) => (
+                              <tr key={f.fund.id}>
+                                <td>
+                                  {f.fund.description || "Caja sin descripcion"} ·{" "}
+                                  {getCompanyMeta(f.fund.company).short}
+                                </td>
+                                <td>{money(Number(f.fund.assignedAmount || 0))}</td>
+                                <td>{money(f.renderedTotal)}</td>
+                                <td style={f.remainingBalance < 0 ? { color: "#dc2626" } : undefined}>
+                                  {money(f.remainingBalance)}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
+
           <Panel
             title="Responsabilidad y fondos"
             span="wide"
@@ -11898,67 +11959,6 @@ export default function App() {
                     )}
                   </div>
                 ))}
-              </div>
-            )}
-          </Panel>
-
-          <Panel title="Rendicion por responsable" span="wide">
-            {responsibleRendicion.length === 0 ? (
-              <div style={styles.empty}>Todavia no hay responsables con cajas asignadas.</div>
-            ) : (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
-                {responsibleRendicion.map((r) => {
-                  const estado =
-                    r.net < 0
-                      ? { texto: `La empresa le debe ${money(Math.abs(r.net))}`, color: "#dc2626" }
-                      : r.net > 0
-                        ? { texto: `Saldo a rendir (en su poder) ${money(r.net)}`, color: "#b7791f" }
-                        : { texto: "Al dia", color: "#16a34a" };
-                  return (
-                    <div key={r.responsible} style={styles.nestedCard}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                        <Semaforo level={r.net < 0 ? "rojo" : r.net > 0 ? "amarillo" : "verde"} size={18} ring />
-                        <strong style={{ fontSize: 15 }}>{r.responsible}</strong>
-                      </div>
-                      <div style={{ ...styles.metricLabel, color: estado.color, marginBottom: 8 }}>
-                        {estado.texto}
-                      </div>
-                      <div style={styles.metricGrid}>
-                        <MiniMetric label="Cajas asignadas" value={String(r.funds.length)} />
-                        <MiniMetric label="Total asignado" value={money(r.totalAssigned)} />
-                        <MiniMetric label="Total rendido" value={money(r.totalRendered)} />
-                      </div>
-                      <table style={{ ...styles.table, marginTop: 10 }}>
-                        <thead>
-                          <tr>
-                            <th>Caja</th>
-                            <th>Asignado</th>
-                            <th>Rendido</th>
-                            <th>Saldo</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {r.funds
-                            .slice()
-                            .sort((a, b) => a.fund.id - b.fund.id)
-                            .map((f) => (
-                              <tr key={f.fund.id}>
-                                <td>
-                                  {f.fund.description || "Caja sin descripcion"} ·{" "}
-                                  {getCompanyMeta(f.fund.company).short}
-                                </td>
-                                <td>{money(Number(f.fund.assignedAmount || 0))}</td>
-                                <td>{money(f.renderedTotal)}</td>
-                                <td style={f.remainingBalance < 0 ? { color: "#dc2626" } : undefined}>
-                                  {money(f.remainingBalance)}
-                                </td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
-                })}
               </div>
             )}
           </Panel>
