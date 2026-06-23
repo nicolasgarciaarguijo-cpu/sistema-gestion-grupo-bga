@@ -4549,6 +4549,43 @@ export default function App() {
     [visiblePettyCashExpenses, visiblePettyCashFunds]
   );
 
+  // Neteo de deuda por responsable: si una caja se sobregira, la empresa le queda debiendo al
+  // responsable. Cuando se le asigna OTRA caja, lo que le queda por gastar se descuenta de esa deuda
+  // (figura como "Ajuste de deuda" en la caja nueva). Procesa las cajas del responsable por orden de
+  // creacion arrastrando la deuda. Devuelve por caja: ajuste aplicado y saldo real para gastar; y la
+  // deuda neta total que la empresa sigue debiendo a los responsables.
+  const { fundDebtAdjustments, totalResponsibleDebt } = useMemo(() => {
+    const map = new Map<number, { ajuste: number; adjustedRemaining: number }>();
+    const byResponsible = new Map<string, typeof pettyCashFundSummaries>();
+    pettyCashFundSummaries.forEach((entry) => {
+      const key =
+        (entry.fund.responsible || "").trim().toLowerCase() || `__sin_responsable_${entry.fund.id}`;
+      const list = byResponsible.get(key) || [];
+      list.push(entry);
+      byResponsible.set(key, list);
+    });
+    let totalDebt = 0;
+    byResponsible.forEach((funds) => {
+      const ordered = funds.slice().sort((a, b) => a.fund.id - b.fund.id);
+      let carriedDebt = 0;
+      ordered.forEach((entry) => {
+        const own = entry.remainingBalance; // asignado - rendido
+        if (own < 0) {
+          carriedDebt += -own;
+          map.set(entry.fund.id, { ajuste: 0, adjustedRemaining: own });
+        } else if (carriedDebt > 0) {
+          const ajuste = Math.min(own, carriedDebt);
+          carriedDebt -= ajuste;
+          map.set(entry.fund.id, { ajuste, adjustedRemaining: own - ajuste });
+        } else {
+          map.set(entry.fund.id, { ajuste: 0, adjustedRemaining: own });
+        }
+      });
+      totalDebt += carriedDebt;
+    });
+    return { fundDebtAdjustments: map, totalResponsibleDebt: totalDebt };
+  }, [pettyCashFundSummaries]);
+
   useEffect(() => {
     setPettyCashFunds((prev) => {
       let changed = false;
@@ -11486,15 +11523,7 @@ export default function App() {
               <MiniMetric label="Monto asignado" value={money(pettyCashSummary.assignedTotal)} />
               <MiniMetric label="Rendido" value={money(pettyCashSummary.renderedTotal)} />
               <MiniMetric label="Saldo pendiente" value={money(pettyCashSummary.pendingBalance)} />
-              <MiniMetric
-                label="Deuda con responsables"
-                value={money(
-                  pettyCashFundSummaries.reduce(
-                    (acc, f) => acc + Math.max(0, -f.remainingBalance),
-                    0
-                  )
-                )}
-              />
+              <MiniMetric label="Deuda con responsables" value={money(totalResponsibleDebt)} />
               <MiniMetric label="Administracion blanco" value={money(pettyCashSummary.whiteTotal)} />
               <MiniMetric label="Administracion negro" value={money(pettyCashSummary.blackTotal)} />
             </div>
@@ -11659,6 +11688,24 @@ export default function App() {
                           {money(remainingBalance)}
                         </strong>
                       </div>
+                      {(fundDebtAdjustments.get(fund.id)?.ajuste || 0) > 0 && (
+                        <>
+                          <div style={styles.pettyCashFundMetric}>
+                            <div style={styles.label}>
+                              Ajuste de deuda (repago a {fund.responsible || "responsable"})
+                            </div>
+                            <strong style={{ color: "#b7791f" }}>
+                              - {money(fundDebtAdjustments.get(fund.id)?.ajuste || 0)}
+                            </strong>
+                          </div>
+                          <div style={styles.pettyCashFundMetric}>
+                            <div style={styles.label}>Saldo para gastar</div>
+                            <strong>
+                              {money(fundDebtAdjustments.get(fund.id)?.adjustedRemaining ?? remainingBalance)}
+                            </strong>
+                          </div>
+                        </>
+                      )}
                       {remainingBalance < 0 && (
                         <div style={styles.pettyCashFundMetric}>
                           <div style={styles.label}>
