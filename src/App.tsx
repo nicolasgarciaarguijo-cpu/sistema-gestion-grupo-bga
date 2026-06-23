@@ -422,6 +422,45 @@ const getBudgetSemaphore = (budget: {
   return { level: "amarillo", label: "vigente" };
 };
 
+// Semaforo de stock/faltante de un material: verde cubierto, amarillo parcial, rojo faltante total.
+const getStockSemaphore = (row: {
+  available: number;
+  missing: number;
+}): { level: SemaphoreLevel; label: string } => {
+  if (Number(row.missing) <= 0) return { level: "verde", label: "cubierto" };
+  if (Number(row.available) > 0) return { level: "amarillo", label: "parcial" };
+  return { level: "rojo", label: "faltante" };
+};
+
+// Semaforo de un fondo de caja chica: rojo si se agoto el saldo, amarillo si queda poco (<20%).
+const getFundSemaphore = (
+  remaining: number,
+  assigned: number
+): { level: SemaphoreLevel; label: string } => {
+  if (Number(remaining) <= 0) return { level: "rojo", label: "saldo agotado" };
+  if (Number(assigned) > 0 && Number(remaining) < Number(assigned) * 0.2)
+    return { level: "amarillo", label: "saldo bajo" };
+  return { level: "verde", label: "con saldo" };
+};
+
+// Semaforo de un cliente del CRM: rojo si no hay CUIT ni contacto, amarillo si falta uno, verde completo.
+const getClientSemaphore = (row: {
+  clientTaxId?: string;
+  contactName?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+}): { level: SemaphoreLevel; label: string } => {
+  const hasTax = !!(row.clientTaxId || "").trim();
+  const hasContact = !!(
+    (row.contactName || "").trim() ||
+    (row.contactPhone || "").trim() ||
+    (row.contactEmail || "").trim()
+  );
+  if (!hasTax && !hasContact) return { level: "rojo", label: "sin CUIT ni contacto" };
+  if (!hasTax || !hasContact) return { level: "amarillo", label: "datos incompletos" };
+  return { level: "verde", label: "datos completos" };
+};
+
 const parsePaymentPercents = (paymentTerms: string) => {
   const regex = /(\d{1,3})(?:[.,]\d+)?\s*%/g;
   const matches: number[] = [];
@@ -8454,6 +8493,52 @@ export default function App() {
     return { rojo, amarillo, verde };
   }, [visibleSavedBudgets]);
 
+  // Semaforos resumen de stock (faltantes), fondos de caja chica, clientes CRM y fechas limite de compra.
+  const stockSemaphoreSummary = useMemo(() => {
+    let rojo = 0, amarillo = 0, verde = 0;
+    stockNeedRows.forEach((row) => {
+      const level = getStockSemaphore(row).level;
+      if (level === "rojo") rojo += 1;
+      else if (level === "amarillo") amarillo += 1;
+      else verde += 1;
+    });
+    return { rojo, amarillo, verde };
+  }, [stockNeedRows]);
+
+  const fundSemaphoreSummary = useMemo(() => {
+    let rojo = 0, amarillo = 0, verde = 0;
+    pettyCashFundSummaries.forEach((f) => {
+      const level = getFundSemaphore(f.remainingBalance, f.fund.assignedAmount).level;
+      if (level === "rojo") rojo += 1;
+      else if (level === "amarillo") amarillo += 1;
+      else verde += 1;
+    });
+    return { rojo, amarillo, verde };
+  }, [pettyCashFundSummaries]);
+
+  const crmSemaphoreSummary = useMemo(() => {
+    let rojo = 0, amarillo = 0, verde = 0;
+    crmClientRows.forEach((row) => {
+      const level = getClientSemaphore(row).level;
+      if (level === "rojo") rojo += 1;
+      else if (level === "amarillo") amarillo += 1;
+      else verde += 1;
+    });
+    return { rojo, amarillo, verde };
+  }, [crmClientRows]);
+
+  const purchaseDeadlineSemaphore = useMemo(() => {
+    let vencidas = 0, proximas = 0;
+    purchaseCalendarRows.forEach((row) => {
+      const level = getDateSemaphore(row.deadlineDate, false).level;
+      if (level === "rojo") vencidas += 1;
+      else if (level === "amarillo") proximas += 1;
+    });
+    const level: SemaphoreLevel = vencidas > 0 ? "rojo" : proximas > 0 ? "amarillo" : "verde";
+    const label = vencidas > 0 ? `${vencidas} vencida(s)` : proximas > 0 ? `${proximas} proxima(s)` : "al dia";
+    return { level, label };
+  }, [purchaseCalendarRows]);
+
   const purchaseMonthData = useMemo(() => {
     const [year, month] = purchaseMonth.split("-").map(Number);
     const firstDay = new Date(year, month - 1, 1);
@@ -11079,6 +11164,22 @@ export default function App() {
 
       {activeTab === "compras" && (
         <div style={styles.column}>
+          <Panel span="wide" title="Semaforo de compras">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Materiales cubiertos", value: String(stockSemaphoreSummary.verde) },
+                { level: "amarillo", label: "Compra parcial", value: String(stockSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Faltantes", value: String(stockSemaphoreSummary.rojo) },
+              ]}
+            />
+            <div style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+              <Semaforo level={purchaseDeadlineSemaphore.level} size={24} ring />
+              <div>
+                <div style={styles.metricLabel}>Fechas limite de compra</div>
+                <div style={{ fontWeight: 700 }}>{purchaseDeadlineSemaphore.label}</div>
+              </div>
+            </div>
+          </Panel>
           <Panel title="Resumen de compras pendientes" span="wide">
             <div style={styles.metricGrid}>
               <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
@@ -11370,6 +11471,15 @@ export default function App() {
 
       {activeTab === "cajaChica" && (
         <div style={styles.column}>
+          <Panel span="full" title="Semaforo de caja chica">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Fondos con saldo", value: String(fundSemaphoreSummary.verde) },
+                { level: "amarillo", label: "Saldo bajo", value: String(fundSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Saldo agotado", value: String(fundSemaphoreSummary.rojo) },
+              ]}
+            />
+          </Panel>
           <Panel title="Resumen de caja chica" span="full">
             <div style={styles.metricGrid}>
               <MiniMetric label="Fondos activos" value={String(visiblePettyCashFunds.filter((item) => item.active).length)} />
@@ -11504,7 +11614,14 @@ export default function App() {
                   <div key={fund.id} style={styles.pettyCashFundCard}>
                     <div style={styles.pettyCashFundHeader}>
                       <div style={styles.pettyCashFundTitle}>
-                        <strong>{fund.description || "Caja chica sin descripcion"}</strong>
+                        <strong style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <Semaforo
+                            level={getFundSemaphore(remainingBalance, fund.assignedAmount).level}
+                            size={12}
+                            title={getFundSemaphore(remainingBalance, fund.assignedAmount).label}
+                          />
+                          {fund.description || "Caja chica sin descripcion"}
+                        </strong>
                         <span style={styles.muted}>
                           {fund.responsible || "Sin responsable"} · {getCompanyMeta(fund.company).short}
                         </span>
@@ -13792,6 +13909,15 @@ export default function App() {
             </div>
           </Panel>
 
+          <Panel span="wide" title="Semaforo de clientes">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Datos completos", value: String(crmSemaphoreSummary.verde) },
+                { level: "amarillo", label: "Datos incompletos", value: String(crmSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Sin CUIT ni contacto", value: String(crmSemaphoreSummary.rojo) },
+              ]}
+            />
+          </Panel>
           <Panel title="CRM de clientes" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-crm")} secondary>Reporte</ButtonLike>}>
             {crmClientRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay clientes en CRM porque no hay presupuestos guardados.</div>
@@ -13816,7 +13942,17 @@ export default function App() {
                 <tbody>
                   {crmClientRows.map((row) => (
                     <tr key={row.key}>
-                      <td>{row.client}</td>
+                      <td>
+                        {(() => {
+                          const sc = getClientSemaphore(row);
+                          return (
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <Semaforo level={sc.level} size={10} title={sc.label} />
+                              <span>{row.client}</span>
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td>
                         <span
                           style={{
@@ -14991,6 +15127,26 @@ export default function App() {
 
       {activeTab === "fabricacion" && (
         <div style={styles.column}>
+          <Panel span="wide" title="Semaforo de fabricacion">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Materiales cubiertos", value: String(stockSemaphoreSummary.verde) },
+                { level: "amarillo", label: "Compra parcial", value: String(stockSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Faltantes para fabricar", value: String(stockSemaphoreSummary.rojo) },
+              ]}
+            />
+            <div style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+              <Semaforo
+                level={occupancyPct > 100 ? "rojo" : occupancyPct > 85 ? "amarillo" : "verde"}
+                size={24}
+                ring
+              />
+              <div>
+                <div style={styles.metricLabel}>Ocupacion</div>
+                <div style={{ fontWeight: 700 }}>{occupancyPct.toFixed(1)}%</div>
+              </div>
+            </div>
+          </Panel>
           <Panel
             title="Tablero general de fabricacion"
             span="wide"
@@ -15327,6 +15483,15 @@ export default function App() {
 
       {activeTab === "stock" && (
         <div style={styles.column}>
+          <Panel span="wide" title="Semaforo de stock">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Cubiertos", value: String(stockSemaphoreSummary.verde) },
+                { level: "amarillo", label: "Parciales", value: String(stockSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Faltantes", value: String(stockSemaphoreSummary.rojo) },
+              ]}
+            />
+          </Panel>
           <Panel title="Agenda de fabricacion" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
             <table style={styles.table}>
               <thead>
