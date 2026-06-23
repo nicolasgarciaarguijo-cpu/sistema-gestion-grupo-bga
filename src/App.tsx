@@ -9175,6 +9175,27 @@ export default function App() {
     return { label: "Documentacion al dia", tone: "green" as const };
   };
 
+  // Semaforo del empleado: rojo si faltan datos basicos o hay documentacion/EPP vencida/faltante,
+  // amarillo si algo esta por vencer, verde si la ficha esta completa. Avisa donde falta cargar.
+  const getEmployeeSemaphore = (employee: Employee): { level: SemaphoreLevel; label: string } => {
+    if (
+      !employee.legajo?.trim() ||
+      !employee.name?.trim() ||
+      !employee.category?.trim() ||
+      Number(employee.nominalHours) <= 0
+    ) {
+      return { level: "rojo", label: "faltan datos basicos (legajo/nombre/categoria/horas)" };
+    }
+    const tones = [
+      getEmployeeDocumentSummary(employee).tone,
+      getEmployeeProvisionSummary(employee, "EPP").tone,
+      getEmployeeProvisionSummary(employee, "Insumos").tone,
+    ];
+    if (tones.includes("red")) return { level: "rojo", label: "documentacion / EPP faltante o vencida" };
+    if (tones.includes("yellow")) return { level: "amarillo", label: "documentacion por vencer" };
+    return { level: "verde", label: "ficha completa" };
+  };
+
   const getProvisionState = (dueDate: string, attachmentName: string) => {
     if (!attachmentName) return { label: "Faltante", tone: "red" as const };
     if (!dueDate) return { label: "Al dia", tone: "green" as const };
@@ -16965,6 +16986,28 @@ export default function App() {
 
           {!selectedEmployee && (
           <div style={{ order: 3, gridColumn: "1 / -1" }}>
+          {(() => {
+            let rojo = 0;
+            let amarillo = 0;
+            let verde = 0;
+            employeesSortedByPay.forEach((employee) => {
+              const level = getEmployeeSemaphore(employee).level;
+              if (level === "rojo") rojo += 1;
+              else if (level === "amarillo") amarillo += 1;
+              else verde += 1;
+            });
+            return (
+              <Panel span="full" title="Semaforo de personal">
+                <SemaforoResumen
+                  items={[
+                    { level: "verde", label: "Fichas completas", value: String(verde) },
+                    { level: "amarillo", label: "Documentacion por vencer", value: String(amarillo) },
+                    { level: "rojo", label: "Falta info / vencidos", value: String(rojo) },
+                  ]}
+                />
+              </Panel>
+            );
+          })()}
           <Panel title="Empleados" span="full">
             <table style={styles.table}>
               <thead>
@@ -17031,7 +17074,17 @@ export default function App() {
                         </span>
                       </td>
                       <td>{employee.legajo}</td>
-                      <td>{employee.name}</td>
+                      <td>
+                        {(() => {
+                          const se = getEmployeeSemaphore(employee);
+                          return (
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <Semaforo level={se.level} size={10} title={se.label} />
+                              <span>{employee.name}</span>
+                            </span>
+                          );
+                        })()}
+                      </td>
                       <td>{employee.category}</td>
                       <td>{employee.seniorityYears}</td>
                       <td>
