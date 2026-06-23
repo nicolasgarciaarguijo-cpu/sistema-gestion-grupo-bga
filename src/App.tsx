@@ -9130,8 +9130,10 @@ export default function App() {
     getScaleForCategoryPure(scaleRows, category, month);
 
   // Semaforo de la escala salarial de una categoria respecto del mes de liquidacion (payrollMonth):
-  // verde = hay escala vigente (del mes o futura), amarillo = la ultima es del mes anterior (actualizar),
-  // rojo = desactualizada (2+ meses) o sin escala cargada para la categoria.
+  // - verde "vigente": ya hay escala cargada para un mes POSTERIOR (cubierto con margen).
+  // - amarillo "por actualizar": la ultima escala es justo el mes actual -> estamos en el ultimo
+  //   mes que cubre, proximo al vencimiento, conviene cargar la siguiente.
+  // - rojo: este mes ya NO hay escala actualizada (la ultima es de un mes anterior) o no hay ninguna.
   const getScaleSemaphore = (category: string): { level: SemaphoreLevel; label: string } => {
     const cat = (category || "").trim().toLowerCase();
     if (!cat) return { level: "amarillo", label: "sin categoria" };
@@ -9140,10 +9142,11 @@ export default function App() {
     const latest = rows.reduce((a, b) => (b.month > a.month ? b : a)).month;
     const [ly, lm] = latest.split("-").map(Number);
     const [cy, cm] = (payrollMonth || localMonthKey()).split("-").map(Number);
-    const diff = (cy - ly) * 12 + (cm - lm);
-    if (diff <= 0) return { level: "verde", label: `vigente (${monthLabel(latest)})` };
-    if (diff === 1) return { level: "amarillo", label: `por actualizar (ultima ${monthLabel(latest)})` };
-    return { level: "rojo", label: `desactualizada ${diff} meses (ultima ${monthLabel(latest)})` };
+    const diff = (cy - ly) * 12 + (cm - lm); // meses que el mes de liquidacion adelanta a la ultima escala
+    if (diff < 0) return { level: "verde", label: `vigente (escala ${monthLabel(latest)})` };
+    if (diff === 0)
+      return { level: "amarillo", label: `por actualizar (ultimo mes vigente: ${monthLabel(latest)})` };
+    return { level: "rojo", label: `sin escala actualizada este mes (ultima ${monthLabel(latest)})` };
   };
 
   const getCurrentPayroll = (employee: Employee) => ensureEmployeePayroll(employee, payrollMonth);
@@ -9211,7 +9214,7 @@ export default function App() {
     const scale = getScaleSemaphore(employee.category);
     if (tones.includes("red")) return { level: "rojo", label: "documentacion / EPP faltante o vencida" };
     if (scale.level === "rojo")
-      return { level: "amarillo", label: "categoria sin escala salarial cargada" };
+      return { level: "amarillo", label: "categoria sin escala actualizada este mes" };
     if (tones.includes("yellow") || scale.level === "amarillo")
       return {
         level: "amarillo",
