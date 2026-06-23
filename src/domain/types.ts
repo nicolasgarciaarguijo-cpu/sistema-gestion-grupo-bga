@@ -148,6 +148,10 @@ export type BudgetDiscount = {
   id: number;
   description: string;
   amount: number;
+  // Modo de descuento (F: descuentos en %). "monto" usa amount; "porcentaje" usa pct sobre el
+  // precio antes de descuentos. Si esta undefined, se asume "monto" (compatibilidad con lo viejo).
+  mode?: "monto" | "porcentaje";
+  pct?: number;
 };
 
 export type BudgetIncrease = {

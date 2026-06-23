@@ -3677,7 +3677,11 @@ export default function App() {
   );
   const priceBeforeDiscounts = preDiscountNetPrice + totalIncreaseAmount;
   const totalDiscountAmount = budgetDiscounts.reduce(
-    (acc, item) => acc + Number(item.amount || 0),
+    (acc, item) =>
+      acc +
+      (item.mode === "porcentaje"
+        ? priceBeforeDiscounts * (Number(item.pct || 0) / 100)
+        : Number(item.amount || 0)),
     0
   );
   const netPrice = Math.max(0, priceBeforeDiscounts - totalDiscountAmount);
@@ -5705,13 +5709,9 @@ export default function App() {
     setSubBudgets([]);
     setSubBudgetTitle("");
     setSubBudgetNotes("");
-    setDeviationPct(5);
-    setMarkupPct(30);
-    setVatPct(21);
-    setAllocationMode("auto");
-    setManualAllocationPct(18.75);
-    setLaborDeviationPct(0);
-    setCommissionPct(0);
+    // Los parametros economicos (markup, desvio, IVA, comision, etc.) NO se resetean aca: se fijan
+    // desde el bloque "Parametros economicos" en Marcadores (fuente de verdad) y se mantienen al
+    // armar un presupuesto nuevo.
   };
 
   const resetBudgetEditingState = () => {
@@ -12570,19 +12570,47 @@ export default function App() {
                           />
                         </td>
                         <td>
-                          <input
-                            style={styles.input}
-                            type="number"
-                            value={item.amount}
-                            onChange={(e) =>
-                              updateArrayItem(
-                                setBudgetDiscounts,
-                                item.id,
-                                "amount",
-                                Number(e.target.value)
-                              )
-                            }
-                          />
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <select
+                              style={{ ...styles.input, maxWidth: 80 }}
+                              value={item.mode || "monto"}
+                              onChange={(e) =>
+                                updateArrayItem(setBudgetDiscounts, item.id, "mode", e.target.value)
+                              }
+                            >
+                              <option value="monto">$</option>
+                              <option value="porcentaje">%</option>
+                            </select>
+                            {item.mode === "porcentaje" ? (
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={item.pct ?? 0}
+                                onChange={(e) =>
+                                  updateArrayItem(
+                                    setBudgetDiscounts,
+                                    item.id,
+                                    "pct",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            ) : (
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={item.amount}
+                                onChange={(e) =>
+                                  updateArrayItem(
+                                    setBudgetDiscounts,
+                                    item.id,
+                                    "amount",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            )}
+                          </div>
                         </td>
                         <td>
                           <button
@@ -13267,19 +13295,47 @@ export default function App() {
                           />
                         </td>
                         <td>
-                          <input
-                            style={styles.input}
-                            type="number"
-                            value={item.amount}
-                            onChange={(e) =>
-                              updateArrayItem(
-                                setBudgetDiscounts,
-                                item.id,
-                                "amount",
-                                Number(e.target.value)
-                              )
-                            }
-                          />
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <select
+                              style={{ ...styles.input, maxWidth: 80 }}
+                              value={item.mode || "monto"}
+                              onChange={(e) =>
+                                updateArrayItem(setBudgetDiscounts, item.id, "mode", e.target.value)
+                              }
+                            >
+                              <option value="monto">$</option>
+                              <option value="porcentaje">%</option>
+                            </select>
+                            {item.mode === "porcentaje" ? (
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={item.pct ?? 0}
+                                onChange={(e) =>
+                                  updateArrayItem(
+                                    setBudgetDiscounts,
+                                    item.id,
+                                    "pct",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            ) : (
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={item.amount}
+                                onChange={(e) =>
+                                  updateArrayItem(
+                                    setBudgetDiscounts,
+                                    item.id,
+                                    "amount",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            )}
+                          </div>
                         </td>
                         <td>
                           <button
@@ -13533,6 +13589,51 @@ export default function App() {
 
       {activeTab === "marcadores" && (
         <div style={styles.column}>
+          <Panel span="wide" title="Parametros economicos (fuente de verdad)">
+            <div style={styles.noticeBox}>
+              Estos valores se aplican a los presupuestos y se toman de aca al armar uno nuevo. Editalos
+              una vez y quedan fijos para todos los presupuestos siguientes.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
+              <Field label="Markup / ganancia (%)">
+                <input style={styles.input} type="number" value={markupPct}
+                  onChange={(e) => setMarkupPct(Number(e.target.value))} />
+              </Field>
+              <Field label="Desvio de costos (%)">
+                <input style={styles.input} type="number" value={deviationPct}
+                  onChange={(e) => setDeviationPct(Number(e.target.value))} />
+              </Field>
+              <Field label="Desvio mano de obra (%)">
+                <input style={styles.input} type="number" value={laborDeviationPct}
+                  onChange={(e) => setLaborDeviationPct(Number(e.target.value))} />
+              </Field>
+              <Field label="IVA (%)">
+                <input style={styles.input} type="number" value={vatPct}
+                  onChange={(e) => setVatPct(Number(e.target.value))} />
+              </Field>
+              <Field label="Comision (%)">
+                <input style={styles.input} type="number" value={commissionPct}
+                  onChange={(e) => setCommissionPct(Number(e.target.value))} />
+              </Field>
+              <Field label="Aumento de stock (%)">
+                <input style={styles.input} type="number" value={stockIncreasePct}
+                  onChange={(e) => setStockIncreasePct(Number(e.target.value))} />
+              </Field>
+              <Field label="Asignacion de costos fijos">
+                <select style={styles.input} value={allocationMode}
+                  onChange={(e) => setAllocationMode(e.target.value as "auto" | "manual")}>
+                  <option value="auto">Automatica</option>
+                  <option value="manual">Manual</option>
+                </select>
+              </Field>
+              {allocationMode === "manual" && (
+                <Field label="Asignacion manual (%)">
+                  <input style={styles.input} type="number" value={manualAllocationPct}
+                    onChange={(e) => setManualAllocationPct(Number(e.target.value))} />
+                </Field>
+              )}
+            </div>
+          </Panel>
           <Panel
             title="Marcadores base por empresa y tipo de trabajo"
             span="wide"
