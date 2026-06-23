@@ -11486,6 +11486,15 @@ export default function App() {
               <MiniMetric label="Monto asignado" value={money(pettyCashSummary.assignedTotal)} />
               <MiniMetric label="Rendido" value={money(pettyCashSummary.renderedTotal)} />
               <MiniMetric label="Saldo pendiente" value={money(pettyCashSummary.pendingBalance)} />
+              <MiniMetric
+                label="Deuda con responsables"
+                value={money(
+                  pettyCashFundSummaries.reduce(
+                    (acc, f) => acc + Math.max(0, -f.remainingBalance),
+                    0
+                  )
+                )}
+              />
               <MiniMetric label="Administracion blanco" value={money(pettyCashSummary.whiteTotal)} />
               <MiniMetric label="Administracion negro" value={money(pettyCashSummary.blackTotal)} />
             </div>
@@ -11646,8 +11655,18 @@ export default function App() {
                     <div style={styles.pettyCashFundSummary}>
                       <div style={styles.pettyCashFundMetric}>
                         <div style={styles.label}>Saldo restante</div>
-                        <strong>{money(remainingBalance)}</strong>
+                        <strong style={remainingBalance < 0 ? { color: "#dc2626" } : undefined}>
+                          {money(remainingBalance)}
+                        </strong>
                       </div>
+                      {remainingBalance < 0 && (
+                        <div style={styles.pettyCashFundMetric}>
+                          <div style={styles.label}>
+                            DEBE: la empresa a {fund.responsible || "responsable"}
+                          </div>
+                          <strong style={{ color: "#dc2626" }}>{money(Math.abs(remainingBalance))}</strong>
+                        </div>
+                      )}
                       <div style={styles.pettyCashFundMetric}>
                         <div style={styles.label}>Comprado en blanco</div>
                         <strong>{money(whiteTotal)}</strong>
