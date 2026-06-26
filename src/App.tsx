@@ -389,6 +389,18 @@ const agingPhrase = (dateStr: string): string => {
   return `en ${monthShortLabel(dateStr)} - hace ${months} ${months === 1 ? "mes" : "meses"}`;
 };
 
+// Tiempo transcurrido desde una fecha de carga/modificacion. SIEMPRE devuelve texto (incluido "hoy"),
+// para que el semaforo aclare a que fecha se refiere el "hace cuanto". "" solo si la fecha es invalida.
+const elapsedPhrase = (dateStr: string): string => {
+  const days = daysUntilDate(dateStr);
+  if (days === null) return "";
+  const past = Math.max(0, -days);
+  if (past === 0) return "hoy";
+  if (past < 31) return `hace ${past} d`;
+  const months = Math.max(1, Math.round(past / 30.44));
+  return `hace ${months} ${months === 1 ? "mes" : "meses"} (${monthShortLabel(dateStr)})`;
+};
+
 const getDateSemaphore = (
   dateStr: string,
   done: boolean,
@@ -5835,7 +5847,10 @@ export default function App() {
       rows: draft.rows.map((row) => ({ ...row })),
     })),
     companyAssets: companyAssets.map((item) => ({ ...item })),
-    employees: employees.map((item) => ({ ...item })),
+    employees: employees.map((item) => {
+      const createdAt = stampDate(item.createdAt); // fecha de carga: hoy si nunca se estampo
+      return { ...item, createdAt, updatedAt: item.updatedAt || createdAt };
+    }),
     employeeBaseConfig: {
       ...employeeBaseConfig,
       requiredDocuments: employeeBaseConfig.requiredDocuments.map((item) => ({ ...item })),
@@ -8967,6 +8982,8 @@ export default function App() {
       suppliesAttachmentName: "",
       skills: "",
       notes: "",
+      createdAt: todayIso(),
+      updatedAt: todayIso(),
       payrolls: [
         {
           month: payrollMonth,
@@ -9042,7 +9059,11 @@ export default function App() {
       | EmployeeProvisionItem[]
   ) => {
     setEmployees((prev) =>
-      prev.map((employee) => (employee.id === employeeId ? { ...employee, [field]: value } : employee))
+      prev.map((employee) =>
+        employee.id === employeeId
+          ? { ...employee, [field]: value, updatedAt: todayIso() }
+          : employee
+      )
     );
   };
 
@@ -9433,7 +9454,7 @@ export default function App() {
 
   // Semaforo del empleado: rojo si faltan datos basicos o hay documentacion/EPP vencida/faltante,
   // amarillo si algo esta por vencer, verde si la ficha esta completa. Avisa donde falta cargar.
-  const getEmployeeSemaphore = (employee: Employee): { level: SemaphoreLevel; label: string } => {
+  const getEmployeeSemaphoreBase = (employee: Employee): { level: SemaphoreLevel; label: string } => {
     if (
       !employee.legajo?.trim() ||
       !employee.name?.trim() ||
@@ -9457,6 +9478,18 @@ export default function App() {
         label: scale.level === "amarillo" ? "escala salarial por actualizar" : "documentacion por vencer",
       };
     return { level: "verde", label: "ficha completa" };
+  };
+
+  // Envoltorio: aclara EN EL SEMAFORO a que fecha se refiere el "hace cuanto" (carga / modificacion).
+  const getEmployeeSemaphore = (employee: Employee): { level: SemaphoreLevel; label: string } => {
+    const base = getEmployeeSemaphoreBase(employee);
+    const carga = elapsedPhrase(employee.createdAt || "");
+    const modif = elapsedPhrase(employee.updatedAt || "");
+    const refs: string[] = [];
+    if (carga) refs.push(`cargado ${carga}`);
+    if (modif && employee.updatedAt && employee.updatedAt !== employee.createdAt)
+      refs.push(`modificado ${modif}`);
+    return refs.length ? { ...base, label: `${base.label} · ${refs.join(" · ")}` } : base;
   };
 
   const getProvisionState = (dueDate: string, attachmentName: string) => {

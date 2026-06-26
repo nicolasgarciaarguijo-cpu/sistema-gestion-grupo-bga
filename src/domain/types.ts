@@ -724,6 +724,10 @@ export type Employee = {
   skills: string;
   notes: string;
   payrolls: EmployeePayroll[];
+  // Marcas de tiempo para el semaforo ("desde cuando"): fecha de carga (alta del registro) y
+  // fecha de ultima modificacion. Opcionales: los registros viejos las reciben al guardar.
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 export type EmployeeBaseDocument = {
