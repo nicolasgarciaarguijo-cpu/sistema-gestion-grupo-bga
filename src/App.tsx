@@ -709,6 +709,13 @@ const itemMonthKey = (dateValue: unknown): string => {
   return localMonthKey();
 };
 
+// Estampa una fecha valida: si el valor esta vacio o no parece una fecha, devuelve HOY.
+// Se aplica al guardar (buildPersistedAppData) para que ningun item quede sin fecha y su
+// mes quede FIJADO de forma permanente (no se recalcula a "hoy" en cada vista). Additivo:
+// nunca pisa una fecha existente.
+const stampDate = (value: unknown): string =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) ? value : todayIso();
+
 const ATTENDANCE_WEEKDAY_LABELS = ["Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom"];
 
 const monthLabel = (month: string) => {
@@ -5781,12 +5788,20 @@ export default function App() {
     personalProvisionMarkers: personalProvisionMarkers.map((item) => ({ ...item })),
     savedBudgets: savedBudgets.map((item) => ({ ...item })),
     approvedJobs: approvedJobs.map((item) => ({ ...item })),
-    financialItems: financialItems.map((item) => ({ ...item })),
-    purchaseInvoices: purchaseInvoices.map((item) => ({ ...item })),
+    // Estampado de fecha al guardar: ningun movimiento mensual queda sin fecha (queda fijado
+    // en su mes para siempre). Solo rellena los vacios; nunca pisa una fecha ya puesta.
+    financialItems: financialItems.map((item) => ({ ...item, date: stampDate(item.date) })),
+    purchaseInvoices: purchaseInvoices.map((item) => ({
+      ...item,
+      invoiceDate: stampDate(item.invoiceDate),
+    })),
     pettyCashFunds: pettyCashFunds.map((item) => ({ ...item })),
-    pettyCashExpenses: pettyCashExpenses.map((item) => ({ ...item })),
+    pettyCashExpenses: pettyCashExpenses.map((item) => ({ ...item, date: stampDate(item.date) })),
     debtPlans: debtPlans.map((item) => ({ ...item })),
-    bankStatementEntries: bankStatementEntries.map((item) => ({ ...item })),
+    bankStatementEntries: bankStatementEntries.map((item) => ({
+      ...item,
+      date: stampDate(item.date),
+    })),
     stockItems: stockItems.map((item) => ({ ...item })),
     costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
