@@ -367,6 +367,28 @@ const daysUntilDate = (dateStr: string): number | null => {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.round((target.getTime() - today.getTime()) / 86400000);
 };
+// Mes corto "mmm aaaa" de una fecha, para ubicar el origen de un problema que perdura.
+const monthShortLabel = (dateStr: string): string => {
+  if (!dateStr || !/^\d{4}-\d{2}/.test(dateStr)) return "";
+  const [y, m] = dateStr.slice(0, 7).split("-").map(Number);
+  const name = new Date(y, (m || 1) - 1, 1)
+    .toLocaleDateString("es-AR", { month: "short" })
+    .replace(".", "");
+  return `${name} ${y}`;
+};
+
+// Antiguedad legible y CONSISTENTE de una fecha ya pasada: dias si es reciente, meses + mes de
+// origen si perdura. Corto: "hace 5 d". Persistente: "en mar 2026 - hace 3 meses". "" si no aplica
+// (fecha invalida o todavia no paso). Se usa en todos los semaforos con fecha para que sea igual.
+const agingPhrase = (dateStr: string): string => {
+  const days = daysUntilDate(dateStr);
+  if (days === null || days >= 0) return "";
+  const past = Math.abs(days);
+  if (past < 31) return `hace ${past} d`;
+  const months = Math.max(1, Math.round(past / 30.44));
+  return `en ${monthShortLabel(dateStr)} - hace ${months} ${months === 1 ? "mes" : "meses"}`;
+};
+
 const getDateSemaphore = (
   dateStr: string,
   done: boolean,
@@ -376,7 +398,7 @@ const getDateSemaphore = (
   const days = daysUntilDate(dateStr);
   if (days === null) return { level: "amarillo", ...SEMAPHORE_PALETTE.amarillo, label: "sin fecha" };
   if (days < 0)
-    return { level: "rojo", ...SEMAPHORE_PALETTE.rojo, label: `vencio hace ${Math.abs(days)} d` };
+    return { level: "rojo", ...SEMAPHORE_PALETTE.rojo, label: `vencio ${agingPhrase(dateStr)}` };
   if (days <= SEMAPHORE_SOON_DAYS)
     return {
       level: "amarillo",
@@ -394,8 +416,10 @@ const getJobSemaphore = (job: {
 }): { level: SemaphoreLevel; label: string } => {
   if (!job.startDate) return { level: "rojo", label: "sin fecha de inicio" };
   if (job.executionStatus === "finalizado") return { level: "verde", label: "finalizado" };
-  if (job.executionStatus === "en_curso") return { level: "amarillo", label: "en curso" };
-  return { level: "amarillo", label: "pendiente" };
+  const since = monthShortLabel(job.startDate);
+  if (job.executionStatus === "en_curso")
+    return { level: "amarillo", label: since ? `en curso (desde ${since})` : "en curso" };
+  return { level: "amarillo", label: since ? `pendiente (desde ${since})` : "pendiente" };
 };
 
 // Semaforo de un presupuesto del historial: aprobado=verde, no aprobado=rojo, y si sigue
@@ -416,7 +440,8 @@ const getBudgetSemaphore = (budget: {
         venc.getDate()
       ).padStart(2, "0")}`;
       const left = daysUntilDate(vencStr);
-      if (left !== null && left < 0) return { level: "rojo", label: "vencido" };
+      if (left !== null && left < 0)
+        return { level: "rojo", label: `vencido ${agingPhrase(vencStr)}`.trim() };
     }
   }
   return { level: "amarillo", label: "vigente" };
@@ -9343,7 +9368,12 @@ export default function App() {
     if (diff < 0) return { level: "verde", label: `vigente (escala ${monthLabel(latest)})` };
     if (diff === 0)
       return { level: "amarillo", label: `por actualizar (ultimo mes vigente: ${monthLabel(latest)})` };
-    return { level: "rojo", label: `sin escala actualizada este mes (ultima ${monthLabel(latest)})` };
+    return {
+      level: "rojo",
+      label: `sin escala actualizada (ultima ${monthLabel(latest)} - hace ${diff} ${
+        diff === 1 ? "mes" : "meses"
+      })`,
+    };
   };
 
   const getCurrentPayroll = (employee: Employee) => ensureEmployeePayroll(employee, payrollMonth);
@@ -9384,7 +9414,16 @@ export default function App() {
     }
     const states = employee.documents.map(getEmployeeDocumentState);
     if (states.includes("faltante") || states.includes("vencido")) {
-      return { label: "Faltantes o vencidos", tone: "red" as const };
+      // Antiguedad del documento vencido mas viejo, para saber desde cuando se arrastra.
+      const oldestOverdue = employee.documents
+        .filter((doc) => getEmployeeDocumentState(doc) === "vencido" && doc.dueDate)
+        .map((doc) => doc.dueDate)
+        .sort()[0];
+      const aging = oldestOverdue ? agingPhrase(oldestOverdue) : "";
+      return {
+        label: aging ? `Faltantes o vencidos (${aging})` : "Faltantes o vencidos",
+        tone: "red" as const,
+      };
     }
     if (states.includes("vence_pronto")) {
       return { label: "Documentacion por vencer", tone: "yellow" as const };
@@ -9425,7 +9464,7 @@ export default function App() {
     if (!dueDate) return { label: "Al dia", tone: "green" as const };
     const diff =
       (new Date(dueDate).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24);
-    if (diff < 0) return { label: "Vencido", tone: "red" as const };
+    if (diff < 0) return { label: `Vencido ${agingPhrase(dueDate)}`.trim(), tone: "red" as const };
     if (diff <= 30) return { label: "Vence pronto", tone: "yellow" as const };
     return { label: "Al dia", tone: "green" as const };
   };
