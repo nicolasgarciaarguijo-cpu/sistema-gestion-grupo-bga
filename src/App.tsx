@@ -39,6 +39,7 @@ import { FabricacionTab } from "./tabs/Fabricacion";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { StockTab } from "./tabs/Stock";
 import { FacturacionTab } from "./tabs/Facturacion";
+import { HistorialTab } from "./tabs/Historial";
 import { createPortal } from "react-dom";
 import type {
   CompanyName,
@@ -13305,202 +13306,25 @@ export default function App() {
       )}
 
       {activeTab === "historial" && (
-        <div style={styles.column}>
-          <Panel
-            title="Resumen comercial"
-            actions={
-              <div style={styles.inlineActions}>
-                <ButtonLike onClick={restoreCrmAndBudgetsFromSupabase} secondary>
-                  Restaurar CRM Supabase
-                </ButtonLike>
-                <ButtonLike onClick={saveCrmAndBudgetsToSupabase}>
-                  Guardar CRM y presupuestos
-                </ButtonLike>
-              </div>
-            }
-          >
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Presupuestos realizados" value={String(exportedBudgetsCount)} />
-              <MiniMetric label="Presupuestos faltantes" value={String(pendingExportBudgetsCount)} />
-              <MiniMetric label="Clientes en CRM" value={String(crmClientRows.length)} />
-              <MiniMetric label="Presupuestos guardados" value={String(visibleSavedBudgets.length)} />
-            </div>
-          </Panel>
-
-          <Panel span="wide" title="Semaforo de clientes">
-            <SemaforoResumen
-              items={[
-                { level: "verde", label: "Datos completos", value: String(crmSemaphoreSummary.verde) },
-                { level: "amarillo", label: "Datos incompletos", value: String(crmSemaphoreSummary.amarillo) },
-                { level: "rojo", label: "Sin CUIT ni contacto", value: String(crmSemaphoreSummary.rojo) },
-              ]}
-            />
-          </Panel>
-          <Panel title="CRM de clientes" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-crm")} secondary>Reporte</ButtonLike>}>
-            {crmClientRows.length === 0 ? (
-              <div style={styles.empty}>Todavia no hay clientes en CRM porque no hay presupuestos guardados.</div>
-            ) : (
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Cliente</th>
-                    <th>Tipo</th>
-                    <th>Contacto</th>
-                    <th>Telefono</th>
-                    <th>Email</th>
-                    <th>CUIT/CUIL</th>
-                    <th>Presupuestos</th>
-                    <th>Pend. exportar</th>
-                    <th>Compro</th>
-                    <th>Gasto acumulado</th>
-                    <th>Ultimo enviado</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {crmClientRows.map((row) => (
-                    <tr key={row.key}>
-                      <td>
-                        {(() => {
-                          const sc = getClientSemaphore(row);
-                          return (
-                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <Semaforo level={sc.level} size={10} title={sc.label} />
-                              <span>{row.client}</span>
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td>
-                        <span
-                          style={{
-                            ...styles.statusPill,
-                            ...(row.customerType === "Cliente habitual"
-                              ? styles.statusYellow
-                              : styles.statusBlue),
-                          }}
-                        >
-                          {row.customerType}
-                        </span>
-                      </td>
-                      <td>{row.contactName || "-"}</td>
-                      <td>{row.contactPhone || "-"}</td>
-                      <td>{row.contactEmail || "-"}</td>
-                      <td>{row.clientTaxId || "-"}</td>
-                      <td>{row.quotes.length}</td>
-                      <td>
-                        <span
-                          style={{
-                            ...styles.statusPill,
-                            ...(!row.latestQuote?.exportedAt
-                              ? styles.statusRed
-                              : styles.statusGreen),
-                          }}
-                        >
-                          {!row.latestQuote?.exportedAt ? "Pendiente" : "Entregado"}
-                        </span>
-                      </td>
-                      <td>{row.bought ? "Si" : "No"}</td>
-                      <td>{money(row.totalSpent)}</td>
-                      <td>{row.latestQuote ? getSavedBudgetDisplayLabel(row.latestQuote) : "-"}</td>
-                      <td>
-                        {selectedCrmClientKey === row.key ? (
-                          <button style={styles.smallBtn} onClick={() => setSelectedCrmClientKey(null)}>
-                            Cerrar
-                          </button>
-                        ) : (
-                          <button style={styles.smallBtn} onClick={() => setSelectedCrmClientKey(row.key)}>
-                            Abrir CRM
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Panel>
-
-          {selectedCrmClient && (
-            <Panel
-              span="half"
-              title={`CRM ${selectedCrmClient.client}`}
-              actions={<ButtonLike onClick={() => setSelectedCrmClientKey(null)} secondary>Cerrar CRM</ButtonLike>}
-            >
-              <div style={styles.metricGrid}>
-                <MiniMetric label="Tipo" value={selectedCrmClient.customerType} />
-                <MiniMetric label="Presupuestos" value={String(selectedCrmClient.quotes.length)} />
-                <MiniMetric label="Compro" value={selectedCrmClient.bought ? "Si" : "No"} />
-                <MiniMetric label="Gasto acumulado" value={money(selectedCrmClient.totalSpent)} />
-              </div>
-              <div style={styles.grid2}>
-                <Panel title="Contacto" nested>
-                  <div><strong>Persona:</strong> {selectedCrmClient.contactName || "-"}</div>
-                  <div style={{ marginTop: 8 }}><strong>Telefono:</strong> {selectedCrmClient.contactPhone || "-"}</div>
-                  <div style={{ marginTop: 8 }}><strong>Email:</strong> {selectedCrmClient.contactEmail || "-"}</div>
-                  <div style={{ marginTop: 8 }}><strong>CUIT/CUIL:</strong> {selectedCrmClient.clientTaxId || "-"}</div>
-                  <div style={{ marginTop: 8 }}><strong>Notas:</strong> {selectedCrmClient.clientNotes || "-"}</div>
-                </Panel>
-                <Panel title="Empresas vinculadas" nested>
-                  <div>{selectedCrmClient.companyLabels.join(", ") || "-"}</div>
-                </Panel>
-              </div>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Presupuesto</th>
-                    <th>Fecha</th>
-                    <th>Proyecto</th>
-                    <th>Estado</th>
-                    <th>Compra</th>
-                    <th>Exportado</th>
-                    <th>Neto</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {selectedCrmClient.quotes.map((item) => {
-                    const wasBought = approvedJobs.some(
-                      (job) => job.rootBudgetId === item.rootBudgetId || job.budgetId === item.id
-                    );
-                    return (
-                      <tr key={item.id}>
-                        <td>{getSavedBudgetDisplayLabel(item)}</td>
-                        <td>{formatDateDisplay(item.date)}</td>
-                        <td>{item.project}</td>
-                        <td>{item.status}</td>
-                        <td>{wasBought ? "Compro" : "No compro"}</td>
-                        <td>
-                          <span
-                            style={{
-                              ...styles.statusPill,
-                              ...(item.exportedAt ? styles.statusGreen : styles.statusRed),
-                            }}
-                          >
-                            {item.exportedAt ? "Si" : "No"}
-                          </span>
-                        </td>
-                        <td>{money(item.netPrice)}</td>
-                        <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                          <button style={styles.smallBtn} onClick={() => openBudgetHistoryItem(item.id)}>
-                            Ver
-                          </button>
-                          <button style={styles.smallBtn} onClick={() => loadBudgetFromSnapshot(item.snapshot, item.id)}>
-                            Editar
-                          </button>
-                          <button style={styles.smallBtn} onClick={() => removeSavedBudget(item.id)}>
-                            Quitar
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </Panel>
-          )}
-
-        </div>
+        <HistorialTab
+          exportedBudgetsCount={exportedBudgetsCount}
+          pendingExportBudgetsCount={pendingExportBudgetsCount}
+          crmClientRows={crmClientRows}
+          visibleSavedBudgets={visibleSavedBudgets}
+          crmSemaphoreSummary={crmSemaphoreSummary}
+          selectedCrmClientKey={selectedCrmClientKey}
+          selectedCrmClient={selectedCrmClient}
+          approvedJobs={approvedJobs}
+          getClientSemaphore={getClientSemaphore}
+          getSavedBudgetDisplayLabel={getSavedBudgetDisplayLabel}
+          restoreCrmAndBudgetsFromSupabase={restoreCrmAndBudgetsFromSupabase}
+          saveCrmAndBudgetsToSupabase={saveCrmAndBudgetsToSupabase}
+          exportPrint={exportPrint}
+          setSelectedCrmClientKey={setSelectedCrmClientKey}
+          openBudgetHistoryItem={openBudgetHistoryItem}
+          loadBudgetFromSnapshot={loadBudgetFromSnapshot}
+          removeSavedBudget={removeSavedBudget}
+        />
       )}
 
       {activeTab === "aprobados" && (
