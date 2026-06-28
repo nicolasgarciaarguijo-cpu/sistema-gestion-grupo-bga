@@ -22,6 +22,13 @@ import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash
 import { computeBudgetPricing } from "./domain/budgetPricing";
 import { computePayrollSummary } from "./domain/payroll";
 import {
+  buildBudgetNumberFromParts,
+  getNextBudgetNumber,
+  parseLeadDays,
+  parsePaymentPercents,
+  buildDeliveryDateFromTerm,
+} from "./domain/budgetTerms";
+import {
   daysUntilDate,
   monthShortLabel,
   agingPhrase,
@@ -359,54 +366,6 @@ const getCompanyBankingLines = (company: CompanyName) => {
   ].filter(Boolean);
 };
 
-const buildBudgetNumberFromParts = (prefix: string, value: number, width: number) =>
-  `${prefix}${String(Math.max(0, value)).padStart(width, "0")}`;
-
-const getNextBudgetNumber = (existingNumbers: string[], currentNumber: string) => {
-  const currentMatch = (currentNumber || "").trim().match(/^(.*?)(\d+)$/);
-  const prefix = currentMatch?.[1] ?? "P-";
-  const width = currentMatch?.[2]?.length ?? 4;
-  const candidates = [...existingNumbers, currentNumber]
-    .map((item) => (item || "").trim().match(/^(.*?)(\d+)$/))
-    .filter((match): match is RegExpMatchArray => !!match && match[1] === prefix)
-    .map((match) => Number(match[2] || 0));
-  const maxNumber = candidates.reduce((acc, value) => Math.max(acc, value), 0);
-  return buildBudgetNumberFromParts(prefix, maxNumber + 1, width);
-};
-
-const parseLeadDays = (deliveryTerm: string) => {
-  const cleaned = (deliveryTerm || "").replace(/[^0-9]/g, " ").trim();
-  const first = cleaned.split(/\s+/)[0];
-  return first ? Number(first) : 0;
-};
-
-
-const parsePaymentPercents = (paymentTerms: string) => {
-  const regex = /(\d{1,3})(?:[.,]\d+)?\s*%/g;
-  const matches: number[] = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = regex.exec(paymentTerms)) !== null) {
-    matches.push(Number(match[1] || 0));
-  }
-
-  const anticipoPct = Math.min(100, Math.max(0, matches[0] ?? 0));
-  const saldoPct =
-    matches.length > 1
-      ? Math.min(100, Math.max(0, matches[1] ?? 0))
-      : Math.max(0, 100 - anticipoPct);
-  return { anticipoPct, saldoPct };
-};
-
-const buildDeliveryDateFromTerm = (baseDateText: string, deliveryTerm: string) => {
-  const leadDays = parseLeadDays(deliveryTerm);
-  if (!baseDateText || !leadDays) return "";
-  const baseDate = new Date(baseDateText);
-  if (Number.isNaN(baseDate.getTime())) return "";
-  return new Date(baseDate.getTime() + leadDays * 24 * 60 * 60 * 1000)
-    .toISOString()
-    .slice(0, 10);
-};
 
 // Comprime/reduce una imagen (data URL) via canvas para que NO se guarden fotos full-res
 // en base64 dentro del estado (eso disparaba "Out of Memory"). Reduce la dimension maxima
