@@ -18,6 +18,7 @@ import {
   GENERAL_COMPANY,
 } from "./domain/companyState";
 import { newId } from "./domain/id";
+import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { styles } from "./ui/styles";
 import { SEMAPHORE_PALETTE, type SemaphoreLevel } from "./ui/theme";
 import {
@@ -296,14 +297,6 @@ const getCompanyScopeLabel = (company: CompanyScope) =>
 
 const getAllCompanyOptions = () => runtimeCompanyOptions;
 
-const getPettyCashAdministration = (
-  expense: Pick<PettyCashExpense, "invoiceNumber" | "attachmentName">
-) =>
-  String(expense.invoiceNumber || "").trim() ||
-  String(expense.attachmentName || "").trim()
-    ? "blanco"
-    : "negro";
-
 const getTabAdministrationType = (tab: TabKey) => {
   if (tab === "acceso") return "Sistema";
   if (NETA_TAB_KEYS.includes(tab)) return "Administracion neta";
@@ -490,16 +483,6 @@ const getStockSemaphore = (row: {
 };
 
 // Semaforo de un fondo de caja chica: rojo si se agoto el saldo, amarillo si queda poco (<20%).
-const getFundSemaphore = (
-  remaining: number,
-  assigned: number
-): { level: SemaphoreLevel; label: string } => {
-  if (Number(remaining) <= 0) return { level: "rojo", label: "saldo agotado" };
-  if (Number(assigned) > 0 && Number(remaining) < Number(assigned) * 0.2)
-    return { level: "amarillo", label: "saldo bajo" };
-  return { level: "verde", label: "con saldo" };
-};
-
 // Semaforo de un cliente del CRM: rojo si no hay CUIT ni contacto, amarillo si falta uno, verde completo.
 const getClientSemaphore = (row: {
   clientTaxId?: string;
