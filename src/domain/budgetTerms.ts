@@ -43,6 +43,17 @@ export const parsePaymentPercents = (paymentTerms: string) => {
   return { anticipoPct, saldoPct };
 };
 
+// % de anticipo EFECTIVO: usa el campo numerico explicito si esta seteado (incluido 0); si es
+// undefined/null (datos viejos), cae al parseo de la forma de pago. Fuente unica para UI y calculo.
+export function resolveAdvancePct(
+  advancePct: number | null | undefined,
+  paymentTerms: string
+): number {
+  return advancePct != null
+    ? Number(advancePct)
+    : parsePaymentPercents(paymentTerms || "").anticipoPct;
+}
+
 // Fecha de entrega = fecha base + dias de plazo (ISO yyyy-mm-dd). "" si falta algun dato.
 export const buildDeliveryDateFromTerm = (baseDateText: string, deliveryTerm: string) => {
   const leadDays = parseLeadDays(deliveryTerm);

@@ -214,6 +214,9 @@ export type BudgetData = {
   projectManager: string;
   maxRequirementDate: string;
   billedPct: number;
+  // % de anticipo como dato numerico explicito. Si es undefined (presupuestos viejos), el calculo
+  // cae al parseo del texto "forma de pago" (paymentTerms). Una vez seteado, manda el numero.
+  advancePct?: number;
   isUpdate: boolean;
   updateLabel: string;
   logos: BudgetImage[];
@@ -399,6 +402,9 @@ export type ApprovedJob = {
   soldNetPrice: number;
   soldGrossPrice: number;
   billedPct: number;
+  // % de anticipo numerico (sincronizado desde el presupuesto). Si es undefined, el calculo
+  // cae al parseo de la forma de pago del snapshot.
+  advancePct?: number;
   commissionPct: number;
   commissionAmount: number;
   totalDiscountAmount: number;

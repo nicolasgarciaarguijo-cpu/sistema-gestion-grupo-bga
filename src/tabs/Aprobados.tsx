@@ -12,6 +12,7 @@ import {
   FileDropButton,
 } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
+import { resolveAdvancePct } from "../domain/budgetTerms";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
@@ -370,6 +371,23 @@ export function AprobadosTab({
                         value={selectedApprovedJob.billedPct}
                         onChange={(e) =>
                           updateApprovedJob(selectedApprovedJob.id, "billedPct", Number(e.target.value))
+                        }
+                      />
+                    </Field>
+                    <Field label="% anticipo">
+                      <input
+                        style={styles.input}
+                        type="number"
+                        value={resolveAdvancePct(
+                          selectedApprovedJob.advancePct,
+                          selectedApprovedJob.snapshot?.budget?.paymentTerms || ""
+                        )}
+                        onChange={(e) =>
+                          updateApprovedJob(
+                            selectedApprovedJob.id,
+                            "advancePct",
+                            Math.max(0, Math.min(100, Number(e.target.value)))
+                          )
                         }
                       />
                     </Field>

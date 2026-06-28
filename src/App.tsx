@@ -26,8 +26,8 @@ import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
   parseLeadDays,
-  parsePaymentPercents,
   buildDeliveryDateFromTerm,
+  resolveAdvancePct,
 } from "./domain/budgetTerms";
 import {
   daysUntilDate,
@@ -5129,7 +5129,9 @@ export default function App() {
   );
 
   const buildAutoFinancialItemsForJob = (job: ApprovedJob): FinancialCalendarItem[] => {
-    const { anticipoPct } = parsePaymentPercents(job.snapshot.budget.paymentTerms || "");
+    // % anticipo: usa el campo numerico explicito si existe; si no (datos viejos), cae al
+    // parseo de la forma de pago del snapshot.
+    const anticipoPct = resolveAdvancePct(job.advancePct, job.snapshot.budget.paymentTerms || "");
     const anticipoAmount = Number(
       ((job.soldGrossPrice || 0) * (anticipoPct / 100)).toFixed(2)
     );
@@ -6505,6 +6507,7 @@ export default function App() {
         soldNetPrice: item.netPrice,
         soldGrossPrice: item.finalPrice,
         billedPct: existing?.billedPct ?? 100,
+        advancePct: existing?.advancePct ?? item.snapshot?.budget?.advancePct,
         commissionPct: item.commissionPct,
         commissionAmount: item.commissionAmount,
         totalDiscountAmount: item.totalDiscountAmount,

@@ -2,6 +2,7 @@ import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
+import { resolveAdvancePct } from "../domain/budgetTerms";
 import { WORK_TYPE_OPTIONS } from "../domain/types";
 import type { CompanyName, WorkTypeName } from "../domain/types";
 
@@ -258,6 +259,19 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     style={styles.input}
                     value={budget.paymentTerms}
                     onChange={(e) => setBudget({ ...budget, paymentTerms: e.target.value })}
+                  />
+                </Field>
+                <Field label="% anticipo">
+                  <input
+                    style={styles.input}
+                    type="number"
+                    value={resolveAdvancePct(budget.advancePct, budget.paymentTerms)}
+                    onChange={(e) =>
+                      setBudget({
+                        ...budget,
+                        advancePct: Math.max(0, Math.min(100, Number(e.target.value))),
+                      })
+                    }
                   />
                 </Field>
                 <Field label="% facturado / blanco">

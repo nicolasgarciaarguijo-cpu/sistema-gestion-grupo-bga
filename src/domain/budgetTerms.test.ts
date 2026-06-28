@@ -4,6 +4,7 @@ import {
   parseLeadDays,
   parsePaymentPercents,
   buildDeliveryDateFromTerm,
+  resolveAdvancePct,
 } from "./budgetTerms";
 
 describe("buildBudgetNumberFromParts", () => {
@@ -41,6 +42,20 @@ describe("parsePaymentPercents", () => {
   });
   it("sin porcentajes: 0 anticipo, 100 saldo", () => {
     expect(parsePaymentPercents("contado")).toEqual({ anticipoPct: 0, saldoPct: 100 });
+  });
+});
+
+describe("resolveAdvancePct", () => {
+  it("usa el campo numerico cuando esta seteado (incluido 0)", () => {
+    expect(resolveAdvancePct(40, "70% anticipo")).toBe(40);
+    expect(resolveAdvancePct(0, "70% anticipo")).toBe(0);
+  });
+  it("cae al parseo del texto cuando es undefined/null", () => {
+    expect(resolveAdvancePct(undefined, "70% anticipo / 30% saldo")).toBe(70);
+    expect(resolveAdvancePct(null, "30% de anticipo")).toBe(30);
+  });
+  it("0 si no hay campo ni texto util", () => {
+    expect(resolveAdvancePct(undefined, "")).toBe(0);
   });
 });
 
