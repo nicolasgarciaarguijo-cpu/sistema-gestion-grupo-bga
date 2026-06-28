@@ -1,4 +1,3 @@
-import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, SemaforoResumen, Semaforo, MiniMetric, ButtonLike } from "../ui/primitives";
 import { formatDateDisplay } from "../lib/format";
