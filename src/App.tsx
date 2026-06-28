@@ -20,6 +20,7 @@ import {
 import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
+import { computePayrollSummary } from "./domain/payroll";
 import {
   daysUntilDate,
   monthShortLabel,
@@ -9443,93 +9444,16 @@ export default function App() {
     hourlyNetManual: number;
     hourlyGrossManual: number;
     payroll: EmployeePayroll;
-  }) => {
-    const scale = getScaleForCategory(category, payroll.month);
-
-    const baseHourly = hourlyGrossManual || scale?.baseHourly || scale?.vht || 0;
-    const nonRemHourly = Math.max(0, scale?.nonRemHourly || 0);
-    const grossReference = hourlyGrossManual || scale?.vht || baseHourly;
-    const payableHours =
-      payroll.normalHours +
-      payroll.holidayHours +
-      payroll.justifiedAbsenceHours -
-      payroll.unjustifiedAbsenceHours;
-
-    const grossNormal = baseHourly * payroll.normalHours;
-    const grossHoliday = baseHourly * payroll.holidayHours;
-    const extra50 = baseHourly * 1.5 * payroll.extra50Hours;
-    const extra100 = baseHourly * 2 * payroll.extra100Hours;
-    const night50 = baseHourly * 1.5 * 1.133333333 * payroll.night50Hours;
-    const night = baseHourly * 1.133333333 * payroll.nightHours;
-    const seniorityBonus =
-      (grossNormal + grossHoliday + extra50 + extra100 + night50 + night) *
-      ((employeeBaseConfig.seniorityPctPerYear * seniorityYears) / 100);
-    const presentismoPct =
-      payroll.presentismoPctOverride === null
-        ? 0
-        : payroll.presentismoPctOverride;
-    const presentismo =
-      payroll.unjustifiedAbsenceHours > 0 ? 0 : grossNormal * (presentismoPct / 100);
-    const nonRem = nonRemHourly * Math.max(payableHours, 0);
-    const grossRem =
-      grossNormal + grossHoliday + extra50 + extra100 + night50 + night + seniorityBonus + presentismo;
-    const totalGross = grossRem + nonRem;
-    const jubilacion = grossRem * 0.11;
-    const ley19032 = grossRem * 0.03;
-    const obraSocial = grossRem * 0.03;
-    const sindicato = grossRem * (employeeBaseConfig.unionPct / 100);
-    const seguro = grossRem * (employeeBaseConfig.insurancePct / 100);
-    const descuentos = jubilacion + ley19032 + obraSocial + sindicato + seguro;
-    const cashBonus = Number(payroll.cashBonus || 0);
-    const net = totalGross - descuentos - payroll.anticipos;
-    const netWithCashBonus = net + cashBonus;
-    const employerContrib = grossRem * ((payroll.employerExtraPct || 0) / 100);
-    const employerInsurance = grossRem * ((employeeBaseConfig.employerInsurancePct || 0) / 100);
-    const monthlyProvisionCost = getMonthlyProvisionMarkerCostForCompany(company);
-    const annualSACBase = totalGross * (employeeBaseConfig.aguinaldoAnnualMonths || 0);
-    const annualSACCharges =
-      annualSACBase *
-      (((payroll.employerExtraPct || 0) + (employeeBaseConfig.employerInsurancePct || 0)) / 100);
-    const annualCompanyCost =
-      12 * (totalGross + employerContrib + employerInsurance + monthlyProvisionCost) +
-      annualSACBase +
-      annualSACCharges;
-    const annualBaseHours = (employeeBaseConfig.normalHoursDefault || 198) * 12;
-    const monthlySACProration = (annualSACBase + annualSACCharges) / 12;
-    const employerImpact =
-      totalGross +
-      employerContrib +
-      employerInsurance +
-      monthlyProvisionCost +
-      monthlySACProration;
-    const hourlyCost = annualBaseHours > 0 ? annualCompanyCost / annualBaseHours : 0;
-    const netHourly = hourlyNetManual || Math.max(net / Math.max(payableHours || 1, 1), 0);
-
-    return {
-      scale,
-      baseHourly,
-      grossReference,
-      nonRemHourly,
-      grossNormal,
-      grossRem,
-      totalGross,
-      nonRem,
-      seniorityBonus,
-      presentismo,
-      employerContrib,
-      employerInsurance,
-      monthlyProvisionCost,
-      annualSACBase,
-      monthlySACProration,
-      descuentos,
-      net,
-      cashBonus,
-      netWithCashBonus,
-      employerImpact,
-      hourlyCost,
-      netHourly,
-    };
-  };
+  }) =>
+    computePayrollSummary({
+      seniorityYears,
+      hourlyNetManual,
+      hourlyGrossManual,
+      payroll,
+      scale: getScaleForCategory(category, payroll.month),
+      config: employeeBaseConfig,
+      monthlyProvisionCost: getMonthlyProvisionMarkerCostForCompany(company),
+    });
 
   const getEmployeePayrollSummary = (employee: Employee) => {
     const payroll = getCurrentPayroll(employee);
