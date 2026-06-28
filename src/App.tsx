@@ -21,6 +21,7 @@ import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
 import { computePayrollSummary } from "./domain/payroll";
+import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -2510,6 +2511,9 @@ export default function App() {
   // inicial EXITOSA del estado remoto. Si la carga falla (base caida/lenta) o aun no
   // ocurrio, el autosave NO sube nada -> nunca pisa los datos buenos con estado vacio.
   const supabaseHydratedOkRef = useRef(false);
+  // Guard anti-pérdida por CONTENIDO: ultima cantidad de items vista. Si un guardado queda
+  // vacio habiendo tenido datos, se bloquea (no se pisan los datos buenos con estado vacio).
+  const lastNonEmptyContentCountRef = useRef(0);
   const presenceAnnouncementReadyRef = useRef(false);
   const knownOtherSessionIdsRef = useRef<string[]>([]);
   const isSupabaseLoggedIn = !!supabaseSession?.user;
@@ -7663,6 +7667,18 @@ export default function App() {
           data: buildPersistedAppData(),
         };
         const payloadSignature = buildPersistedDataSignature(payload.data);
+
+        // --- Guard anti-pérdida por contenido (segunda línea de defensa) ---
+        // Si el estado quedó vacío habiendo tenido datos, NO se escribe (ni local ni Supabase):
+        // nunca se pisan los datos buenos con un estado vacío inesperado (incidente 2026-06-18).
+        const contentCount = countPersistedContent(payload.data);
+        if (isEmptyOverwrite(lastNonEmptyContentCountRef.current, contentCount)) {
+          setStorageMessage(
+            "Guardado en pausa: el estado quedó vacío de forma inesperada. No se sobrescribieron los datos. Recargá la página para recuperar lo último guardado."
+          );
+          return;
+        }
+        if (contentCount > 0) lastNonEmptyContentCountRef.current = contentCount;
 
         // --- Captura para "Atras" (deshacer) ---
         // Corre en cada estado asentado. Si el cambio vino de una restauracion/sync
