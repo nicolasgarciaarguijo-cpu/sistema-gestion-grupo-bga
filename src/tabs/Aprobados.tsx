@@ -50,6 +50,7 @@ type AprobadosTabProps = {
   removeRetention: (jobId: number, retentionId: number) => void;
   updateRetention: (jobId: number, retentionId: number, field: string, value: string | number) => void;
   uploadApprovedJobFile: (jobId: number, section: string, itemId: number, file: File | null) => void;
+  exportPaymentReceipt: (job: any, payment: any) => void;
 };
 
 export function AprobadosTab({
@@ -86,6 +87,7 @@ export function AprobadosTab({
   removeRetention,
   updateRetention,
   uploadApprovedJobFile,
+  exportPaymentReceipt,
 }: AprobadosTabProps) {
   return (
         <div style={styles.column}>
@@ -621,6 +623,9 @@ export function AprobadosTab({
                     selectedApprovedJob.payments.map((payment) => (
                       <div key={payment.id} style={styles.subCard}>
                         <div style={styles.inlineActions}>
+                          <button style={styles.smallBtn} onClick={() => exportPaymentReceipt(selectedApprovedJob, payment)}>
+                            Recibo
+                          </button>
                           <button style={styles.smallBtn} onClick={() => removePayment(selectedApprovedJob.id, payment.id)}>
                             Quitar pago
                           </button>

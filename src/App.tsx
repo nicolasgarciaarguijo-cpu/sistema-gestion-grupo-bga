@@ -2429,6 +2429,8 @@ export default function App() {
   const [payrollMonth, setPayrollMonth] = useState(() => localMonthKey());
   const [personalReportCompany, setPersonalReportCompany] = useState<CompanyScope>("General");
   const [, setPrintMode] = useState<PrintMode>("");
+  // Recibo de pago a exportar (trabajo + pago seleccionado). Se setea al tocar "Recibo".
+  const [receiptData, setReceiptData] = useState<{ job: any; payment: any } | null>(null);
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto");
   const [manualAllocationPct, setManualAllocationPct] = useState(18.75);
   const [deviationPct, setDeviationPct] = useState(5);
@@ -5562,6 +5564,12 @@ export default function App() {
   const exportPersonalReport = (company: CompanyScope) => {
     setPersonalReportCompany(company);
     window.setTimeout(() => exportPrint("report-personal"), 0);
+  };
+
+  // Exporta un recibo de pago para el cliente: datos del trabajo + suma pagada + saldo.
+  const exportPaymentReceipt = (job: ApprovedJob, payment: ApprovedJob["payments"][number]) => {
+    setReceiptData({ job, payment });
+    window.setTimeout(() => exportPrint("payment-receipt"), 0);
   };
 
   const loadBudgetFromSnapshot = (snapshot: BudgetSnapshot, budgetId?: number | null) => {
@@ -10124,9 +10132,11 @@ export default function App() {
         table th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #cbd5e1; }
         @media print {
           @page { size: A4; margin: 0; }
-          body[data-print-mode]:not([data-print-mode="client-budget"]) * { visibility: hidden !important; }
+          body[data-print-mode]:not([data-print-mode="client-budget"]):not([data-print-mode="payment-receipt"]) * { visibility: hidden !important; }
           body[data-print-mode="client-budget"] #root { display: none !important; }
           body[data-print-mode="client-budget"] #client-budget-pdf { display: block !important; padding: 14mm !important; }
+          body[data-print-mode="payment-receipt"] #root { display: none !important; }
+          body[data-print-mode="payment-receipt"] #payment-receipt { display: block !important; padding: 14mm !important; }
           body[data-print-mode="report-marcadores"] #report-marcadores,
           body[data-print-mode="report-marcadores"] #report-marcadores * { visibility: visible !important; }
           body[data-print-mode="report-historial"] #report-historial,
@@ -10803,6 +10813,7 @@ export default function App() {
           removeRetention={removeRetention}
           updateRetention={updateRetention}
           uploadApprovedJobFile={uploadApprovedJobFile}
+          exportPaymentReceipt={exportPaymentReceipt}
         />
       )}
 
@@ -11305,6 +11316,97 @@ export default function App() {
         </div>,
         document.body
       )}
+
+      {receiptData &&
+        createPortal(
+          <div
+            id="payment-receipt"
+            style={{ display: "none", fontFamily: "Arial, sans-serif", color: "#0f172a" }}
+          >
+            <div style={{ maxWidth: 720, margin: "0 auto" }}>
+              <h1 style={{ margin: "0 0 4px 0" }}>Recibo de pago</h1>
+              <div style={{ color: "#475569" }}>
+                {getCompanyMeta(receiptData.job.company).value} · CUIT{" "}
+                {getCompanyTaxId(receiptData.job.company) || "-"}
+              </div>
+              <div style={{ color: "#475569", marginBottom: 12 }}>
+                Fecha: {formatDateDisplay(receiptData.payment.paymentDate) || "-"}
+                {receiptData.payment.paymentNumber
+                  ? ` · Recibo N° ${receiptData.payment.paymentNumber}`
+                  : ""}
+              </div>
+              <hr style={{ border: "none", borderTop: "1px solid #cbd5e1" }} />
+              <h3 style={{ marginBottom: 6 }}>Datos del trabajo</h3>
+              <div>
+                <strong>Cliente:</strong> {receiptData.job.client}
+              </div>
+              {receiptData.job.businessName ? (
+                <div>
+                  <strong>Razón social:</strong> {receiptData.job.businessName}
+                </div>
+              ) : null}
+              {receiptData.job.taxId ? (
+                <div>
+                  <strong>CUIT/CUIL:</strong> {receiptData.job.taxId}
+                </div>
+              ) : null}
+              <div>
+                <strong>Proyecto:</strong> {receiptData.job.project}
+              </div>
+              <div style={{ marginBottom: 12 }}>
+                <strong>Presupuesto:</strong> {receiptData.job.budgetNumber}
+              </div>
+              <hr style={{ border: "none", borderTop: "1px solid #cbd5e1" }} />
+              <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
+                <tbody>
+                  <tr>
+                    <td style={{ padding: "6px 0" }}>Valor del trabajo</td>
+                    <td style={{ padding: "6px 0", textAlign: "right" }}>
+                      {money(receiptData.job.valueToCollect)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "6px 0" }}>Total cobrado</td>
+                    <td style={{ padding: "6px 0", textAlign: "right" }}>
+                      {money(receiptData.job.collectedTotal)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "6px 0", fontWeight: 700 }}>Pago recibido</td>
+                    <td style={{ padding: "6px 0", textAlign: "right", fontWeight: 700 }}>
+                      {money(receiptData.payment.amount)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: "6px 0", fontWeight: 700, borderTop: "2px solid #0f172a" }}>
+                      Saldo pendiente
+                    </td>
+                    <td
+                      style={{
+                        padding: "6px 0",
+                        textAlign: "right",
+                        fontWeight: 700,
+                        borderTop: "2px solid #0f172a",
+                      }}
+                    >
+                      {money(receiptData.job.remainingToPay)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <p style={{ marginTop: 24 }}>
+                Recibimos la suma de <strong>{money(receiptData.payment.amount)}</strong> en
+                concepto de pago del trabajo {receiptData.job.budgetNumber} —{" "}
+                {receiptData.job.project}.
+              </p>
+              <div style={{ marginTop: 56, display: "flex", justifyContent: "space-between" }}>
+                <div>Firma: ____________________</div>
+                <div>Aclaración: ____________________</div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <PrintReport id="report-cashflow" title="Reporte - Cash flow y resultados">
         <div style={styles.metricGrid}>

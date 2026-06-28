@@ -33,6 +33,7 @@ export type TabKey =
 export type PrintMode =
   | ""
   | "client-budget"
+  | "payment-receipt"
   | "report-cashflow"
   | "report-fabricacion"
   | "report-compras"
