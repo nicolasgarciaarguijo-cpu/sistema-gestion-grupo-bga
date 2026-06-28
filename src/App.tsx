@@ -19,6 +19,7 @@ import {
 } from "./domain/companyState";
 import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
+import { computeBudgetPricing } from "./domain/budgetPricing";
 import {
   daysUntilDate,
   monthShortLabel,
@@ -3621,28 +3622,34 @@ export default function App() {
     [fixedCosts]
   );
 
-  const allocationPctUsed = allocationMode === "auto" ? occupancyPct : manualAllocationPct;
-  const fixedCostsApplied = totalFixedCosts * (allocationPctUsed / 100);
-  const deviationAmount = (totalMaterials + totalBasicSupplies + totalLabor) * (deviationPct / 100);
-  const totalCost = totalMaterials + totalBasicSupplies + totalLabor + fixedCostsApplied + deviationAmount;
-  const markupAmount = totalCost * (markupPct / 100);
-  const preDiscountNetPrice = totalCost + markupAmount;
-  const totalIncreaseAmount = budgetIncreases.reduce(
-    (acc, item) => acc + preDiscountNetPrice * (Number(item.pct || 0) / 100),
-    0
-  );
-  const priceBeforeDiscounts = preDiscountNetPrice + totalIncreaseAmount;
-  const totalDiscountAmount = budgetDiscounts.reduce(
-    (acc, item) =>
-      acc +
-      (item.mode === "porcentaje"
-        ? priceBeforeDiscounts * (Number(item.pct || 0) / 100)
-        : Number(item.amount || 0)),
-    0
-  );
-  const netPrice = Math.max(0, priceBeforeDiscounts - totalDiscountAmount);
-  const commissionAmount = netPrice * (commissionPct / 100);
-  const finalPrice = netPrice * (1 + vatPct / 100);
+  const {
+    allocationPctUsed,
+    fixedCostsApplied,
+    deviationAmount,
+    totalCost,
+    markupAmount,
+    preDiscountNetPrice,
+    totalIncreaseAmount,
+    priceBeforeDiscounts,
+    totalDiscountAmount,
+    netPrice,
+    commissionAmount,
+    finalPrice,
+  } = computeBudgetPricing({
+    totalMaterials,
+    totalBasicSupplies,
+    totalLabor,
+    totalFixedCosts,
+    occupancyPct,
+    allocationMode,
+    manualAllocationPct,
+    deviationPct,
+    markupPct,
+    budgetIncreases,
+    budgetDiscounts,
+    commissionPct,
+    vatPct,
+  });
   const budgetEstimatedDeliveryDate = buildDeliveryDateFromTerm(budget.date, budget.deliveryTerm);
 
   const stockByDescription = useMemo(() => {
