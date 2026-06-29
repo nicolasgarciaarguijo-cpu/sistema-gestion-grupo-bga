@@ -22,6 +22,7 @@ import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash
 import { computeBudgetPricing } from "./domain/budgetPricing";
 import { computePayrollSummary } from "./domain/payroll";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
+import { buildCrmRows, normalizeClientName, deriveClientsFromHistory } from "./domain/clients";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -91,6 +92,7 @@ import type {
   BudgetData,
   BudgetSnapshot,
   SavedBudget,
+  CrmClient,
   Invoice,
   Payment,
   Retention,
@@ -1446,6 +1448,7 @@ const getReportModeForTab = (tab: TabKey): PrintMode =>
 
 type PersistedAppStateData = {
   companyCatalog: CompanyOption[];
+  crmClients: CrmClient[];
   operationalMonth: string;
   monthlyHistorySnapshots: MonthlyHistorySnapshot[];
   budget: BudgetData;
@@ -2365,6 +2368,9 @@ export default function App() {
   const [laborMarkers, setLaborMarkers] = useState<LaborMarker[]>(defaultLaborMarkers);
   const [personalProvisionMarkers, setPersonalProvisionMarkers] = useState<PersonalProvisionMarker[]>(defaultPersonalProvisionMarkers);
   const [savedBudgets, setSavedBudgets] = useState<SavedBudget[]>([]);
+  // CRM: clientes como entidad (fuente de verdad). Arranca vacio; se puebla con alta manual
+  // o con "generar desde historial". El CRM matchea por clientId y, si falta, por nombre.
+  const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
   const [approvedJobs, setApprovedJobs] = useState<ApprovedJob[]>([]);
   const [financialItems, setFinancialItems] = useState<FinancialCalendarItem[]>(defaultFinancialItems);
   const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(defaultPurchaseInvoices);
@@ -4088,78 +4094,78 @@ export default function App() {
     [approvedJobsSummary]
   );
 
-  const crmClientRows = useMemo(() => {
-    const grouped = new Map<
-      string,
-      {
-        key: string;
-        client: string;
-        clientTaxId: string;
-        contactName: string;
-        contactPhone: string;
-        contactEmail: string;
-        clientNotes: string;
-        quotes: SavedBudget[];
-        approvedCount: number;
-        totalSpent: number;
-        companyLabels: string[];
-      }
-    >();
-
-    visibleSavedBudgets.forEach((item) => {
-      const key = normalizeClientKey(item.client);
-      const approvedForClient = approvedJobsSummary.filter(
-        (job) => normalizeClientKey(job.client) === key
-      );
-      const current = grouped.get(key) || {
-        key,
-        client: item.client,
-        clientTaxId: item.snapshot.budget.clientTaxId || "",
-        contactName: item.snapshot.budget.contactName,
-        contactPhone: item.snapshot.budget.contactPhone,
-        contactEmail: item.snapshot.budget.contactEmail,
-        clientNotes: item.snapshot.budget.clientNotes,
-        quotes: [],
-        approvedCount: approvedForClient.length,
-        totalSpent: approvedForClient.reduce((acc, job) => acc + Number(job.soldGrossPrice || 0), 0),
-        companyLabels: [],
-      };
-
-      current.quotes.push(item);
-      if (!current.clientTaxId) current.clientTaxId = item.snapshot.budget.clientTaxId || "";
-      if (!current.contactName) current.contactName = item.snapshot.budget.contactName;
-      if (!current.contactPhone) current.contactPhone = item.snapshot.budget.contactPhone;
-      if (!current.contactEmail) current.contactEmail = item.snapshot.budget.contactEmail;
-      if (!current.clientNotes) current.clientNotes = item.snapshot.budget.clientNotes;
-      current.companyLabels = Array.from(
-        new Set([...current.companyLabels, getCompanyMeta(item.company).short])
-      );
-      grouped.set(key, current);
-    });
-
-    return Array.from(grouped.values())
-      .map((row) => {
-        const quotes = [...row.quotes].sort((a, b) => {
-          const byDate = b.date.localeCompare(a.date);
-          if (byDate !== 0) return byDate;
-          return (b.revisionNumber || 1) - (a.revisionNumber || 1);
-        });
-        return {
-          ...row,
-          quotes,
-          latestQuote: quotes[0] || null,
-          customerType:
-            quotes.length > 1 || row.approvedCount > 0 ? "Cliente habitual" : "Nuevo cliente",
-          bought: row.approvedCount > 0,
-        };
-      })
-      .sort((a, b) => a.client.localeCompare(b.client));
-  }, [visibleSavedBudgets, approvedJobsSummary]);
+  const crmClientRows = useMemo(
+    () =>
+      buildCrmRows({
+        savedBudgets: visibleSavedBudgets,
+        approvedJobs: approvedJobsSummary,
+        clients: crmClients,
+        getCompanyShort: (company) => getCompanyMeta(company).short,
+      }),
+    [visibleSavedBudgets, approvedJobsSummary, crmClients]
+  );
 
   const selectedCrmClient =
     selectedCrmClientKey !== null
       ? crmClientRows.find((item) => item.key === selectedCrmClientKey) || null
       : null;
+
+  // --- CRM: clientes como entidad ---
+  const addCrmClient = () => {
+    setCrmClients((prev) => [
+      {
+        id: newId(),
+        name: "",
+        taxId: "",
+        contactName: "",
+        contactPhone: "",
+        contactEmail: "",
+        notes: "",
+        company: budget.company,
+        createdAt: todayIso(),
+      },
+      ...prev,
+    ]);
+  };
+
+  const updateCrmClient = (
+    id: number,
+    field: keyof CrmClient,
+    value: string | number
+  ) => {
+    setCrmClients((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
+  };
+
+  const removeCrmClient = (id: number) => {
+    setCrmClients((prev) => prev.filter((c) => c.id !== id));
+  };
+
+  // Migración manual e idempotente: genera los clientes-entidad desde el historial y
+  // backfillea clientId en presupuestos/trabajos por nombre (no destructivo).
+  const generateClientsFromHistory = () => {
+    if (crmClients.length > 0) {
+      setStorageMessage("Ya hay clientes cargados; la generación desde historial es para empezar.");
+      return;
+    }
+    const derived = deriveClientsFromHistory(savedBudgets, approvedJobs, newId);
+    if (derived.length === 0) {
+      setStorageMessage("No hay historial para derivar clientes.");
+      return;
+    }
+    setCrmClients(derived);
+    const idByName = new Map(derived.map((c) => [normalizeClientName(c.name), c.id]));
+    setSavedBudgets((prev) =>
+      prev.map((b) =>
+        b.clientId != null ? b : { ...b, clientId: idByName.get(normalizeClientName(b.client)) }
+      )
+    );
+    setApprovedJobs((prev) =>
+      prev.map((j) =>
+        j.clientId != null ? j : { ...j, clientId: idByName.get(normalizeClientName(j.client)) }
+      )
+    );
+    setStorageMessage(`Se generaron ${derived.length} clientes desde el historial.`);
+  };
 
   const saveCrmAndBudgetsToSupabase = async () => {
     if (!isSupabaseLoggedIn) {
@@ -5658,6 +5664,7 @@ export default function App() {
 
   const buildPersistedAppData = (): PersistedAppStateData => ({
     companyCatalog: companyCatalog.map((item) => ({ ...item })),
+    crmClients: crmClients.map((item) => ({ ...item })),
     operationalMonth,
     monthlyHistorySnapshots: monthlyHistorySnapshots.map((item) => ({
       ...item,
@@ -5891,6 +5898,7 @@ export default function App() {
       }))
     );
     setSavedBudgets(keepAccessibleByCompany(data.savedBudgets || []).map((item) => ({ ...item })));
+    setCrmClients(keepAccessibleByCompany(data.crmClients || []).map((item) => ({ ...item })));
     setApprovedJobs(
       keepAccessibleByCompany(data.approvedJobs || []).map((item) => ({
         ...item,
@@ -10778,6 +10786,12 @@ export default function App() {
           openBudgetHistoryItem={openBudgetHistoryItem}
           loadBudgetFromSnapshot={loadBudgetFromSnapshot}
           removeSavedBudget={removeSavedBudget}
+          crmClients={crmClients}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          addCrmClient={addCrmClient}
+          updateCrmClient={updateCrmClient}
+          removeCrmClient={removeCrmClient}
+          generateClientsFromHistory={generateClientsFromHistory}
         />
       )}
 

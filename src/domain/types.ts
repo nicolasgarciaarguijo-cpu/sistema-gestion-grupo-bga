@@ -199,6 +199,7 @@ export type BudgetData = {
   number: string;
   date: string;
   client: string;
+  clientId?: number;
   clientTaxId: string;
   contactName: string;
   contactPhone: string;
@@ -263,6 +264,20 @@ export type BudgetSnapshot = {
   };
 };
 
+// Cliente del CRM como ENTIDAD (fuente de verdad). id estable; el vinculo primario con
+// presupuestos/trabajos es clientId, con fallback por nombre normalizado para datos viejos.
+export type CrmClient = {
+  id: number;
+  name: string;
+  taxId: string;
+  contactName: string;
+  contactPhone: string;
+  contactEmail: string;
+  notes: string;
+  company: CompanyName;
+  createdAt: string;
+};
+
 export type SavedBudget = {
   id: number;
   rootBudgetId: number;
@@ -273,6 +288,7 @@ export type SavedBudget = {
   number: string;
   company: CompanyName;
   client: string;
+  clientId?: number;
   project: string;
   date: string;
   deliveryTerm: string;
@@ -391,6 +407,7 @@ export type ApprovedJob = {
   budgetNumber: string;
   company: CompanyName;
   client: string;
+  clientId?: number;
   project: string;
   date: string;
   approvalDate: string;

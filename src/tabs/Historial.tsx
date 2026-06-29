@@ -23,6 +23,12 @@ type HistorialTabProps = {
   openBudgetHistoryItem: (budgetId: number) => void;
   loadBudgetFromSnapshot: (snapshot: any, budgetId: any) => void;
   removeSavedBudget: (budgetId: number) => void;
+  crmClients: any[];
+  COMPANY_OPTIONS: any[];
+  addCrmClient: () => void;
+  updateCrmClient: (id: number, field: string, value: string | number) => void;
+  removeCrmClient: (id: number) => void;
+  generateClientsFromHistory: () => void;
 };
 
 export function HistorialTab({
@@ -43,6 +49,12 @@ export function HistorialTab({
   openBudgetHistoryItem,
   loadBudgetFromSnapshot,
   removeSavedBudget,
+  crmClients,
+  COMPANY_OPTIONS,
+  addCrmClient,
+  updateCrmClient,
+  removeCrmClient,
+  generateClientsFromHistory,
 }: HistorialTabProps) {
   return (
         <div style={styles.column}>
@@ -65,6 +77,114 @@ export function HistorialTab({
               <MiniMetric label="Clientes en CRM" value={String(crmClientRows.length)} />
               <MiniMetric label="Presupuestos guardados" value={String(visibleSavedBudgets.length)} />
             </div>
+          </Panel>
+
+          <Panel
+            span="wide"
+            title="Clientes (fuente de verdad)"
+            actions={
+              <div style={styles.inlineActions}>
+                {crmClients.length === 0 && (
+                  <ButtonLike onClick={generateClientsFromHistory} secondary>
+                    Generar desde historial
+                  </ButtonLike>
+                )}
+                <ButtonLike onClick={addCrmClient}>Agregar cliente</ButtonLike>
+              </div>
+            }
+          >
+            <div style={styles.noticeBox}>
+              Los clientes cargados acá son la base del CRM y se autocompletan al cargar un
+              presupuesto. Podés darlos de alta a mano o generarlos una vez desde el historial.
+            </div>
+            {crmClients.length === 0 ? (
+              <div style={styles.empty}>
+                Todavía no hay clientes-entidad. Usá "Generar desde historial" para crearlos a partir
+                de los presupuestos existentes, o "Agregar cliente".
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Empresa</th>
+                    <th>Nombre / razón social</th>
+                    <th>CUIT/CUIL</th>
+                    <th>Contacto</th>
+                    <th>Teléfono</th>
+                    <th>Email</th>
+                    <th>Notas</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {crmClients.map((client) => (
+                    <tr key={client.id}>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={client.company}
+                          onChange={(e) => updateCrmClient(client.id, "company", e.target.value)}
+                        >
+                          {COMPANY_OPTIONS.map((company) => (
+                            <option key={company.value} value={company.value}>
+                              {company.short}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={client.name}
+                          onChange={(e) => updateCrmClient(client.id, "name", e.target.value)}
+                          placeholder="Nombre del cliente"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={client.taxId}
+                          onChange={(e) => updateCrmClient(client.id, "taxId", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={client.contactName}
+                          onChange={(e) => updateCrmClient(client.id, "contactName", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={client.contactPhone}
+                          onChange={(e) => updateCrmClient(client.id, "contactPhone", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={client.contactEmail}
+                          onChange={(e) => updateCrmClient(client.id, "contactEmail", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={client.notes}
+                          onChange={(e) => updateCrmClient(client.id, "notes", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <button style={styles.smallBtn} onClick={() => removeCrmClient(client.id)}>
+                          Quitar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </Panel>
 
           <Panel span="wide" title="Semaforo de clientes">
