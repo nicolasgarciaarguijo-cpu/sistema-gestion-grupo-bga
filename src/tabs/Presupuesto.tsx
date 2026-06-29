@@ -3,11 +3,13 @@ import { styles } from "../ui/styles";
 import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { resolveAdvancePct } from "../domain/budgetTerms";
+import { findClientByName } from "../domain/clients";
 import { WORK_TYPE_OPTIONS } from "../domain/types";
 import type { CompanyName, WorkTypeName } from "../domain/types";
 
 type PresupuestoTabProps = {
   budget: any;
+  crmClients: any[];
   materials: any[];
   labor: any[];
   fixedCosts: any[];
@@ -118,7 +120,7 @@ type PresupuestoTabProps = {
 
 export function PresupuestoTab(props: PresupuestoTabProps) {
   const {
-    budget, materials, labor, fixedCosts, basicSupplies, budgetDiscounts,
+    budget, crmClients, materials, labor, fixedCosts, basicSupplies, budgetDiscounts,
     budgetIncreases, subBudgets, subBudgetTitle, subBudgetNotes, markupPct,
     deviationPct, laborDeviationPct, vatPct, commissionPct, manualAllocationPct,
     allocationMode, editingBudgetId, consolidatedBudgetTotals,
@@ -202,9 +204,33 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 <Field label="Cliente">
                   <input
                     style={styles.input}
+                    list="crm-client-options"
                     value={budget.client}
-                    onChange={(e) => setBudget({ ...budget, client: e.target.value })}
+                    onChange={(e) => {
+                      const name = e.target.value;
+                      const match = findClientByName(crmClients, name);
+                      if (match) {
+                        // Autocompletado: al elegir un cliente existente, se traen sus datos y se fija el clientId.
+                        setBudget({
+                          ...budget,
+                          client: name,
+                          clientId: match.id,
+                          clientTaxId: match.taxId || budget.clientTaxId,
+                          contactName: match.contactName || budget.contactName,
+                          contactPhone: match.contactPhone || budget.contactPhone,
+                          contactEmail: match.contactEmail || budget.contactEmail,
+                          clientNotes: match.notes || budget.clientNotes,
+                        });
+                      } else {
+                        setBudget({ ...budget, client: name, clientId: undefined });
+                      }
+                    }}
                   />
+                  <datalist id="crm-client-options">
+                    {crmClients.map((c) => (
+                      <option key={c.id} value={c.name} />
+                    ))}
+                  </datalist>
                 </Field>
                 <Field label="Contacto">
                   <input

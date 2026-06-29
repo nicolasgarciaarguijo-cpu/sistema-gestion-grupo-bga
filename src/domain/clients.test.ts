@@ -1,4 +1,4 @@
-import { buildCrmRows, normalizeClientName, deriveClientsFromHistory } from "./clients";
+import { buildCrmRows, normalizeClientName, deriveClientsFromHistory, findClientByName } from "./clients";
 import type { CrmClient } from "./types";
 
 const short = (c: string) => c;
@@ -63,6 +63,18 @@ describe("buildCrmRows (sin clientes-entidad = comportamiento historico)", () =>
     expect(rows[0].bought).toBe(true);
     expect(rows[0].totalSpent).toBe(1500);
     expect(rows[0].customerType).toBe("Cliente habitual"); // approvedCount>0
+  });
+});
+
+describe("findClientByName", () => {
+  const list = [client({ id: 1, name: "Juan Perez" }), client({ id: 2, name: "Ana Gomez" })];
+  it("encuentra ignorando mayusculas y espacios de los extremos", () => {
+    expect(findClientByName(list, "JUAN PEREZ")?.id).toBe(1);
+    expect(findClientByName(list, "  ana gomez  ")?.id).toBe(2);
+  });
+  it("null si no hay match o nombre vacio", () => {
+    expect(findClientByName(list, "Nadie")).toBeNull();
+    expect(findClientByName(list, "")).toBeNull();
   });
 });
 

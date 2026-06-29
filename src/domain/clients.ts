@@ -3,6 +3,13 @@ import type { CrmClient } from "./types";
 // Clave normalizada de un nombre de cliente (para matchear sin importar mayúsculas/espacios).
 export const normalizeClientName = (text: string): string => (text || "").trim().toLowerCase();
 
+// Busca un cliente-entidad por nombre normalizado (para el typeahead/autocompletado).
+export function findClientByName(clients: CrmClient[], name: string): CrmClient | null {
+  const nk = normalizeClientName(name);
+  if (!nk) return null;
+  return clients.find((c) => normalizeClientName(c.name) === nk) || null;
+}
+
 export type CrmRow = {
   key: string; // identidad de fila para la UI (c:<id> si hay cliente, n:<nombre> si no)
   clientId?: number;

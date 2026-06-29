@@ -10612,6 +10612,7 @@ export default function App() {
       {activeTab === "presupuesto" && (
         <PresupuestoTab
           budget={budget}
+          crmClients={crmClients}
           materials={materials}
           labor={labor}
           fixedCosts={fixedCosts}
