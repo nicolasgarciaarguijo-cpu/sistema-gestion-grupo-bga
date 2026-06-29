@@ -83,4 +83,18 @@ describe("computePayrollSummary", () => {
     // annualSAC=200000, annualCost=12*200000+200000=2600000, baseHours=2400 -> 1083.33
     expect(run().hourlyCost).toBeCloseTo(2600000 / 2400);
   });
+
+  it("sin feriados/vacaciones, las horas productivas = nominales (sin regresion)", () => {
+    expect(run().productiveAnnualHours).toBe(2400);
+    expect(run().hourlyCost).toBeCloseTo(2600000 / 2400);
+  });
+
+  it("costo-hora sobre horas PRODUCTIVAS: descuenta feriados + vacaciones", () => {
+    const r = run({}, { config: { ...config, annualHolidayDays: 10, annualVacationDays: 14 } });
+    const daily = 200 / 22;
+    const productive = 2400 - 24 * daily;
+    expect(r.productiveAnnualHours).toBeCloseTo(productive);
+    expect(r.hourlyCost).toBeCloseTo(2600000 / productive);
+    expect(r.hourlyCost).toBeGreaterThan(2600000 / 2400); // mas caro por hora
+  });
 });

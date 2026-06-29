@@ -435,6 +435,22 @@ export function PersonalTab(props: PersonalTabProps) {
                       onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, normalHoursDefault: Number(e.target.value) })}
                     />
                   </Field>
+                  <Field label="Feriados / año (dias)">
+                    <input
+                      style={styles.input}
+                      type="number"
+                      value={employeeBaseConfig.annualHolidayDays || 0}
+                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, annualHolidayDays: Number(e.target.value) })}
+                    />
+                  </Field>
+                  <Field label="Vacaciones / año (dias)">
+                    <input
+                      style={styles.input}
+                      type="number"
+                      value={employeeBaseConfig.annualVacationDays || 0}
+                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, annualVacationDays: Number(e.target.value) })}
+                    />
+                  </Field>
                   <Field label="Presentismo %">
                     <input
                       style={styles.input}
@@ -1777,6 +1793,7 @@ export function PersonalTab(props: PersonalTabProps) {
                             <MiniMetric label="Aguinaldo anual" value={money(payrollSummary.annualSACBase)} />
                           <MiniMetric label="Neto" value={money(payrollSummary.net)} />
                           <MiniMetric label="Impacto empresa" value={money(payrollSummary.employerImpact)} />
+                          <MiniMetric label="Horas productivas/año" value={String(Math.round(payrollSummary.productiveAnnualHours || 0))} />
                           <MiniMetric label="Costo hora" value={money(payrollSummary.hourlyCost)} />
                         </div>
                         <Field label="Experiencias y destrezas">

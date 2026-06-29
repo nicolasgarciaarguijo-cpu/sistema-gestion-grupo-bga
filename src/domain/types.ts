@@ -783,6 +783,10 @@ export type EmployeeBaseConfig = {
   unionPct: number;
   insurancePct: number;
   aguinaldoAnnualMonths: number;
+  // Para el costo-hora sobre horas PRODUCTIVAS: dias/año no trabajados que se descuentan
+  // de las horas nominales. Si faltan (datos viejos) se toman 0 = costo-hora como antes.
+  annualHolidayDays?: number;
+  annualVacationDays?: number;
   eppSemiannualCost: number;
   suppliesSemiannualCost: number;
   requiredDocuments: EmployeeBaseDocument[];

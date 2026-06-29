@@ -19,7 +19,14 @@ export type PayrollConfig = {
   employerInsurancePct: number;
   aguinaldoAnnualMonths: number;
   normalHoursDefault: number;
+  // Dias/año no trabajados (feriados + vacaciones) para el costo-hora productivo. Opcionales:
+  // si faltan, se toman 0 y el costo-hora se calcula sobre las horas nominales (como antes).
+  annualHolidayDays?: number;
+  annualVacationDays?: number;
 };
+
+// Dias laborables promedio por mes, para convertir dias no trabajados a horas.
+const WORK_DAYS_PER_MONTH = 22;
 
 export type PayrollSummaryInput = {
   seniorityYears: number;
@@ -93,7 +100,13 @@ export function computePayrollSummary({
     employerInsurance +
     monthlyProvisionCost +
     monthlySACProration;
-  const hourlyCost = annualBaseHours > 0 ? annualCompanyCost / annualBaseHours : 0;
+  // Horas PRODUCTIVAS = nominales anuales − dias no trabajados (feriados+vacaciones) en horas.
+  // El costo-hora se reparte sobre lo realmente trabajado. Si no hay dias cargados, == nominales.
+  const dailyHours = (config.normalHoursDefault || 198) / WORK_DAYS_PER_MONTH;
+  const nonProductiveDays =
+    Number(config.annualHolidayDays || 0) + Number(config.annualVacationDays || 0);
+  const productiveAnnualHours = Math.max(1, annualBaseHours - nonProductiveDays * dailyHours);
+  const hourlyCost = annualBaseHours > 0 ? annualCompanyCost / productiveAnnualHours : 0;
   const netHourly = hourlyNetManual || Math.max(net / Math.max(payableHours || 1, 1), 0);
 
   return {
@@ -117,6 +130,7 @@ export function computePayrollSummary({
     cashBonus,
     netWithCashBonus,
     employerImpact,
+    productiveAnnualHours,
     hourlyCost,
     netHourly,
   };
