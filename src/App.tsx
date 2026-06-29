@@ -5294,14 +5294,15 @@ export default function App() {
             (item) =>
               item.sourceJobId === generated.sourceJobId && item.preset === generated.preset
           );
-          return existing
-            ? {
-                ...generated,
-                id: existing.id,
-                status: existing.status,
-                notes: existing.notes || generated.notes,
-              }
-            : generated;
+          if (!existing) return generated;
+          // Si el usuario lo editó a mano (montos/fechas/cuotas), se respeta tal cual: no se pisa.
+          if (existing.userEdited) return existing;
+          return {
+            ...generated,
+            id: existing.id,
+            status: existing.status,
+            notes: existing.notes || generated.notes,
+          };
         })
       );
       return [...rebuiltAuto, ...manualItems];
@@ -8301,7 +8302,9 @@ export default function App() {
     value: string | number
   ) => {
     setFinancialItems((prev) =>
-      prev.map((item) => (item.id === itemId ? { ...item, [field]: value } : item))
+      prev.map((item) =>
+        item.id === itemId ? { ...item, [field]: value, userEdited: true } : item
+      )
     );
   };
 
