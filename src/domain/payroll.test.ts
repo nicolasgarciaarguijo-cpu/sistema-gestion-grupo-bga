@@ -71,6 +71,20 @@ describe("computePayrollSummary", () => {
     expect(run({ anticipos: 50000 }).net).toBeCloseTo(110000);
   });
 
+  it("premio NEGRO se suma al neto sin cargas", () => {
+    const r = run({ cashBonus: 10000 });
+    expect(r.descuentos).toBeCloseTo(40000); // bruto sin cambios
+    expect(r.netWithCashBonus).toBeCloseTo(160000 + 10000); // entero al neto
+  });
+
+  it("premio BLANCO entra al bruto y paga cargas (neto sube menos que el premio)", () => {
+    const r = run({ whiteBonus: 10000 });
+    expect(r.grossRem).toBeCloseTo(210000);
+    expect(r.descuentos).toBeCloseTo(42000); // 20% de 210000
+    expect(r.net).toBeCloseTo(168000); // 160000 + 8000 (neto del premio tras cargas)
+    expect(r.whiteBonus).toBe(10000);
+  });
+
   it("hora neta = neto / horas pagables", () => {
     expect(run().netHourly).toBeCloseTo(800); // 160000 / 200
   });

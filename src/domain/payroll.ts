@@ -70,8 +70,11 @@ export function computePayrollSummary({
   const presentismo =
     payroll.unjustifiedAbsenceHours > 0 ? 0 : grossNormal * (presentismoPct / 100);
   const nonRem = nonRemHourly * Math.max(payableHours, 0);
+  // Premio BLANCO: remunerativo. Entra al bruto despues de antiguedad/presentismo (no los multiplica),
+  // y por estar en grossRem paga descuentos de ley y genera cargas patronales y SAC.
+  const whiteBonus = Number(payroll.whiteBonus || 0);
   const grossRem =
-    grossNormal + grossHoliday + extra50 + extra100 + night50 + night + seniorityBonus + presentismo;
+    grossNormal + grossHoliday + extra50 + extra100 + night50 + night + seniorityBonus + presentismo + whiteBonus;
   const totalGross = grossRem + nonRem;
   const jubilacion = grossRem * 0.11;
   const ley19032 = grossRem * 0.03;
@@ -128,6 +131,7 @@ export function computePayrollSummary({
     descuentos,
     net,
     cashBonus,
+    whiteBonus,
     netWithCashBonus,
     employerImpact,
     productiveAnnualHours,

@@ -729,7 +729,10 @@ export type EmployeePayroll = {
   justifiedAbsenceHours: number;
   vacationsDays: number;
   anticipos: number;
-  cashBonus: number;
+  cashBonus: number; // premio NEGRO: se paga al neto, sin cargas.
+  // premio BLANCO: entra al bruto remunerativo (paga jubilacion/obra social/sindicato + cargas
+  // patronales). Opcional: si falta (datos viejos) = 0, sin cambios.
+  whiteBonus?: number;
   presentismoPctOverride: number | null;
   employerExtraPct: number;
   manualOverride: boolean;

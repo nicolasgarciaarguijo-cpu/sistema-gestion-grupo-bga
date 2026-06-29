@@ -1694,6 +1694,21 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                               />
                             </Field>
+                            <Field label="Premio en blanco (con cargas)">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.whiteBonus || 0}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "whiteBonus",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
                             <Field label="Impacto empresa %">
                               <input
                                 style={styles.input}
@@ -1727,6 +1742,7 @@ export function PersonalTab(props: PersonalTabProps) {
 
                           <div style={{ ...styles.metricGrid, marginTop: 12 }}>
                             <MiniMetric label="Neto blanco" value={money(payrollSummary.net)} />
+                            <MiniMetric label="Premio blanco" value={money(payrollSummary.whiteBonus || 0)} />
                             <MiniMetric label="Premio negro" value={money(payrollSummary.cashBonus)} />
                             <MiniMetric label="Total empleado" value={money(payrollSummary.netWithCashBonus)} />
                           </div>
