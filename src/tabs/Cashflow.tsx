@@ -6,6 +6,7 @@ import type { CompanyName, DebtPlan, BankStatementEntry } from "../domain/types"
 
 type CashflowTabProps = {
   cashFlowSummary: any;
+  accountingResults: any;
   activeAssetsMonthlyDepreciation: number;
   analysisYear: number;
   annualCashFlowEntries: any[];
@@ -41,6 +42,7 @@ type CashflowTabProps = {
 
 export function CashflowTab({
   cashFlowSummary,
+  accountingResults,
   activeAssetsMonthlyDepreciation,
   analysisYear,
   annualCashFlowEntries,
@@ -66,6 +68,36 @@ export function CashflowTab({
 }: CashflowTabProps) {
   return (
         <div style={styles.column}>
+          <Panel title="Contabilidad blanco / negro (dos resultados)" span="wide">
+            <div style={styles.grid2}>
+              <div>
+                <div style={styles.sectionHeader}>Circuito BLANCO</div>
+                <div style={styles.metricGrid}>
+                  <MiniMetric label="Ingresos blanco" value={money(accountingResults.whiteIncome)} />
+                  <MiniMetric label="Egresos blanco" value={money(accountingResults.whiteExpense)} />
+                  <MiniMetric label="Resultado blanco" value={money(accountingResults.whiteResult)} />
+                </div>
+              </div>
+              <div>
+                <div style={styles.sectionHeader}>Circuito NEGRO</div>
+                <div style={styles.metricGrid}>
+                  <MiniMetric label="Ingresos negro" value={money(accountingResults.blackIncome)} />
+                  <MiniMetric label="Egresos negro" value={money(accountingResults.blackExpense)} />
+                  <MiniMetric label="Resultado negro" value={money(accountingResults.blackResult)} />
+                </div>
+              </div>
+            </div>
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Resultado total" value={money(accountingResults.totalResult)} />
+              <MiniMetric label="% operacion en negro" value={`${accountingResults.blackSharePct.toFixed(1)}%`} />
+              <MiniMetric label="Desfasaje blanco vs negro" value={money(accountingResults.desfasaje)} />
+            </div>
+            <div style={styles.noticeBox}>
+              Dos resultados separados por circuito. Las compras y la caja chica se imputan segun su
+              administracion (blanco/negro), y los premios segun su origen. Verifica que cada concepto
+              caiga en el circuito que esperas; lo ajustamos si hace falta.
+            </div>
+          </Panel>
           <Panel title="Cash flow y estado de resultados" span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturado bruto" value={money(cashFlowSummary.billedGross)} />

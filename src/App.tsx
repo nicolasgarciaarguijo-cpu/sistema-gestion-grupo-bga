@@ -24,7 +24,8 @@ import { computePayrollSummary } from "./domain/payroll";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
 import { buildCrmRows, normalizeClientName, deriveClientsFromHistory } from "./domain/clients";
 import { buildPersonalReminders } from "./domain/personalReminders";
-import { matchStockForMaterial } from "./domain/stockMatch";
+import { matchStockForMaterial, applyStockMovement } from "./domain/stockMatch";
+import { computeAccountingResults } from "./domain/accounting";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -7885,6 +7886,38 @@ export default function App() {
     setSelectedFinancialItemId(item.id);
   };
 
+  // F5 movimientos: registra una entrada/salida, ajusta la cantidad y guarda el historial en el item.
+  const registerStockMovement = (
+    itemId: number,
+    type: "entrada" | "salida",
+    quantity: number,
+    note: string
+  ) => {
+    const qty = Number(quantity) || 0;
+    if (qty <= 0) {
+      setStorageMessage("Para registrar un movimiento, carga una cantidad mayor a cero.");
+      return;
+    }
+    setStockItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const movement = {
+          id: newId(),
+          date: todayIso(),
+          type,
+          quantity: qty,
+          note: note || "",
+        };
+        return {
+          ...item,
+          quantity: applyStockMovement(Number(item.quantity || 0), type, qty),
+          movements: [movement, ...(item.movements || [])],
+        };
+      })
+    );
+    setStorageMessage(`Movimiento de stock registrado (${type}).`);
+  };
+
   const addStockItem = () => {
     setStockItems((prev) => [
       ...prev,
@@ -9491,6 +9524,47 @@ export default function App() {
     [visibleEmployees, payrollMonth, scaleRows, employeeBaseConfig, visibleStockItems, personalProvisionMarkers]
   );
 
+  // F4 Contabilidad blanco/negro: dos resultados separados + desfasaje. Arma los agregados de cada
+  // circuito (compras por administracion, premios por origen) y los pasa a la funcion pura.
+  const accountingResults = useMemo(() => {
+    const whiteIncome = approvedJobsSummary.reduce((acc, j) => acc + Number(j.billedNet || 0), 0);
+    const blackIncome = approvedJobsSummary.reduce((acc, j) => acc + Number(j.blackNet || 0), 0);
+    const whitePurchases = purchaseInvoicesWithPettyCashWhite
+      .filter((item) => item.administration === "blanco")
+      .reduce((acc, item) => acc + Number(item.total || 0), 0);
+    const blackPurchases = purchaseInvoicesWithPettyCashWhite
+      .filter((item) => item.administration === "negro")
+      .reduce((acc, item) => acc + Number(item.total || 0), 0);
+    const premioWhite = visibleEmployees.reduce(
+      (acc, e) => acc + Number(getCurrentPayroll(e).whiteBonus || 0),
+      0
+    );
+    const premioBlack = visibleEmployees.reduce(
+      (acc, e) => acc + Number(getCurrentPayroll(e).cashBonus || 0),
+      0
+    );
+    return computeAccountingResults({
+      whiteIncome,
+      blackIncome,
+      whitePurchases,
+      blackPurchases,
+      pettyCashBlack: cashFlowSummary.pettyCashBlackTotal,
+      commissions: cashFlowSummary.commissionsPending,
+      depreciation: activeAssetsMonthlyDepreciation,
+      bankCredits: cashFlowSummary.bankCredits,
+      bankDebits: cashFlowSummary.bankDebits,
+      premioWhite,
+      premioBlack,
+    });
+  }, [
+    approvedJobsSummary,
+    purchaseInvoicesWithPettyCashWhite,
+    visibleEmployees,
+    payrollMonth,
+    cashFlowSummary,
+    activeAssetsMonthlyDepreciation,
+  ]);
+
   const categoryBaseRows = useMemo(
     () =>
       COMPANY_OPTIONS.filter((company) => canAccessCompany(company.value)).flatMap((company) =>
@@ -10539,6 +10613,7 @@ export default function App() {
       {activeTab === "cashflow" && (
         <CashflowTab
           cashFlowSummary={cashFlowSummary}
+          accountingResults={accountingResults}
           activeAssetsMonthlyDepreciation={activeAssetsMonthlyDepreciation}
           analysisYear={analysisYear}
           annualCashFlowEntries={annualCashFlowEntries}
@@ -10899,6 +10974,7 @@ export default function App() {
           approvedJobsSummary={approvedJobsSummary}
           stockByCode={stockByCode}
           stockByDescription={stockByDescription}
+          registerStockMovement={registerStockMovement}
           fixedMarkerGroupOptions={fixedMarkerGroupOptions}
           visibleStockItems={visibleStockItems}
           stockIncreasePct={stockIncreasePct}

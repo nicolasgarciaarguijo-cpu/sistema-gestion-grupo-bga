@@ -39,6 +39,12 @@ type StockTabProps = {
   updateApprovedJob: (jobId: number, field: keyof ApprovedJob, value: string | number) => void;
   applyStockIncrease: () => void;
   addStockItem: () => void;
+  registerStockMovement: (
+    itemId: number,
+    type: "entrada" | "salida",
+    quantity: number,
+    note: string
+  ) => void;
   updateStockItem: (id: number, field: string, value: any) => void;
   removeStockItem: (id: number) => void;
   addCostAnalysisGroup: () => void;
@@ -88,6 +94,7 @@ export function StockTab({
   updateApprovedJob,
   applyStockIncrease,
   addStockItem,
+  registerStockMovement,
   updateStockItem,
   removeStockItem,
   addCostAnalysisGroup,
@@ -108,6 +115,17 @@ export function StockTab({
   addCompanyAsset,
   removeCompanyAsset,
 }: StockTabProps) {
+  const [movItemId, setMovItemId] = React.useState<number | "">("");
+  const [movType, setMovType] = React.useState<"entrada" | "salida">("entrada");
+  const [movQty, setMovQty] = React.useState(0);
+  const [movNote, setMovNote] = React.useState("");
+  const generalStock = visibleStockItems.filter((item) => item.kind === "general");
+  const recentMovements = generalStock
+    .flatMap((item) =>
+      (item.movements || []).map((m: any) => ({ ...m, itemDescription: item.description }))
+    )
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .slice(0, 25);
   return (
         <div style={styles.column}>
           <Panel span="wide" title="Semaforo de stock">
@@ -788,6 +806,93 @@ export function StockTab({
                   </div>
                 </div>
               ))
+            )}
+          </Panel>
+
+          <Panel title="Movimientos de stock" span="wide">
+            <div style={styles.inlineForm}>
+              <Field label="Item">
+                <select
+                  style={styles.input}
+                  value={movItemId}
+                  onChange={(e) => setMovItemId(e.target.value ? Number(e.target.value) : "")}
+                >
+                  <option value="">Elegir item...</option>
+                  {generalStock.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.description} {item.code ? `(${item.code})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Tipo">
+                <select
+                  style={styles.input}
+                  value={movType}
+                  onChange={(e) => setMovType(e.target.value as "entrada" | "salida")}
+                >
+                  <option value="entrada">Entrada</option>
+                  <option value="salida">Salida</option>
+                </select>
+              </Field>
+              <Field label="Cantidad">
+                <input
+                  style={styles.input}
+                  type="number"
+                  value={movQty}
+                  onChange={(e) => setMovQty(Number(e.target.value))}
+                />
+              </Field>
+              <Field label="Nota">
+                <input style={styles.input} value={movNote} onChange={(e) => setMovNote(e.target.value)} />
+              </Field>
+              <div style={styles.inlineActions}>
+                <ButtonLike
+                  onClick={() => {
+                    if (movItemId === "") return;
+                    registerStockMovement(movItemId, movType, movQty, movNote);
+                    setMovQty(0);
+                    setMovNote("");
+                  }}
+                >
+                  Registrar movimiento
+                </ButtonLike>
+              </div>
+            </div>
+            {recentMovements.length === 0 ? (
+              <div style={styles.empty}>Todavia no hay movimientos registrados.</div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Item</th>
+                    <th>Tipo</th>
+                    <th>Cantidad</th>
+                    <th>Nota</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentMovements.map((m) => (
+                    <tr key={m.id}>
+                      <td>{formatDateDisplay(m.date)}</td>
+                      <td>{m.itemDescription}</td>
+                      <td>
+                        <span
+                          style={{
+                            ...styles.statusPill,
+                            ...(m.type === "entrada" ? styles.statusGreen : styles.statusYellow),
+                          }}
+                        >
+                          {m.type === "entrada" ? "Entrada" : "Salida"}
+                        </span>
+                      </td>
+                      <td>{m.quantity}</td>
+                      <td>{m.note || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </Panel>
 

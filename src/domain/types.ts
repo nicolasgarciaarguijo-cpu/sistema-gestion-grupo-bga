@@ -551,10 +551,19 @@ export type BankStatementEntry = {
   extractedAutomatically: boolean;
 };
 
+export type StockMovement = {
+  id: number;
+  date: string;
+  type: "entrada" | "salida";
+  quantity: number;
+  note: string;
+};
+
 export type StockItem = {
   id: number;
   company: CompanyName | "General";
   kind: "general" | PersonalProvisionKind;
+  movements?: StockMovement[];
   shared: boolean;
   group: string;
   location: string;

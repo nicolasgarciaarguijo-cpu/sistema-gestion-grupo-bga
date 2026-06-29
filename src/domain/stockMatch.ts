@@ -15,3 +15,13 @@ export function matchStockForMaterial(
   const desc = (material.description || "").trim().toLowerCase();
   return byDescription.get(desc) || null;
 }
+
+// Nueva cantidad de stock tras un movimiento (entrada suma, salida resta, nunca negativo). Pura.
+export function applyStockMovement(
+  currentQty: number,
+  type: "entrada" | "salida",
+  qty: number
+): number {
+  const delta = type === "entrada" ? Number(qty || 0) : -Number(qty || 0);
+  return Math.max(0, Number(currentQty || 0) + delta);
+}
