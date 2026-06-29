@@ -24,6 +24,7 @@ import { computePayrollSummary } from "./domain/payroll";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
 import { buildCrmRows, normalizeClientName, deriveClientsFromHistory } from "./domain/clients";
 import { buildPersonalReminders } from "./domain/personalReminders";
+import { matchStockForMaterial } from "./domain/stockMatch";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -4404,7 +4405,7 @@ export default function App() {
       .forEach((job) => {
         job.snapshot.materials.forEach((material) => {
           const key = material.description.trim().toLowerCase();
-          const stockMatch = stockByDescription.get(key);
+          const stockMatch = matchStockForMaterial(material, stockByCode, stockByDescription);
           const available = Number(stockMatch?.quantity || 0);
           const existing = grouped.get(key);
           const required = (existing?.required ?? 0) + Number(material.qty || 0);
@@ -4427,7 +4428,7 @@ export default function App() {
     return Array.from(grouped.values()).sort((a, b) =>
       a.description.localeCompare(b.description)
     );
-  }, [approvedJobsSummary, stockByDescription]);
+  }, [approvedJobsSummary, stockByCode, stockByDescription]);
 
   const purchaseCalendarRows = useMemo(
     () =>
@@ -4441,12 +4442,12 @@ export default function App() {
           startDate: job.startDate,
           deadlineDate: job.startDate,
           missingCount: job.snapshot.materials.filter((material) => {
-            const stockMatch = stockByDescription.get(material.description.trim().toLowerCase());
+            const stockMatch = matchStockForMaterial(material, stockByCode, stockByDescription);
             return Number(stockMatch?.quantity || 0) < Number(material.qty || 0);
           }).length,
         }))
         .sort((a, b) => a.deadlineDate.localeCompare(b.deadlineDate)),
-    [approvedJobsSummary, stockByDescription]
+    [approvedJobsSummary, stockByCode, stockByDescription]
   );
 
   const totalPurchaseNeed = useMemo(
@@ -4945,7 +4946,7 @@ export default function App() {
           materialMissingCount,
         };
       }),
-    [approvedJobsSummary, stockByDescription]
+    [approvedJobsSummary, stockByCode, stockByDescription]
   );
 
   const activeAssetsMonthlyDepreciation = useMemo(
@@ -10125,7 +10126,7 @@ export default function App() {
                 </thead>
                 <tbody>
                   {selectedBudget.snapshot.materials.map((material, index) => {
-                    const stock = stockByDescription.get(material.description.trim().toLowerCase());
+                    const stock = matchStockForMaterial(material, stockByCode, stockByDescription);
                     const available = stock?.quantity ?? 0;
                     const missing = Math.max(0, material.qty - available);
                     const tone =
@@ -10896,6 +10897,7 @@ export default function App() {
         <StockTab
           stockSemaphoreSummary={stockSemaphoreSummary}
           approvedJobsSummary={approvedJobsSummary}
+          stockByCode={stockByCode}
           stockByDescription={stockByDescription}
           fixedMarkerGroupOptions={fixedMarkerGroupOptions}
           visibleStockItems={visibleStockItems}

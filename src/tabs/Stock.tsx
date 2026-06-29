@@ -3,11 +3,13 @@ import { styles } from "../ui/styles";
 import { Panel, SemaforoResumen, ButtonLike, MiniMetric, Field } from "../ui/primitives";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
+import { matchStockForMaterial } from "../domain/stockMatch";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
 type StockTabProps = {
   stockSemaphoreSummary: any;
   approvedJobsSummary: any[];
+  stockByCode: Map<string, any>;
   stockByDescription: Map<string, any>;
   fixedMarkerGroupOptions: any[];
   visibleStockItems: any[];
@@ -61,6 +63,7 @@ type StockTabProps = {
 export function StockTab({
   stockSemaphoreSummary,
   approvedJobsSummary,
+  stockByCode,
   stockByDescription,
   fixedMarkerGroupOptions,
   visibleStockItems,
@@ -139,7 +142,7 @@ export function StockTab({
                       )
                     : null;
                   const missingCount = job.snapshot.materials.filter((material) => {
-                    const stockMatch = stockByDescription.get(material.description.trim().toLowerCase());
+                    const stockMatch = matchStockForMaterial(material, stockByCode, stockByDescription);
                     return Number(stockMatch?.quantity || 0) < Number(material.qty || 0);
                   }).length;
                   return (

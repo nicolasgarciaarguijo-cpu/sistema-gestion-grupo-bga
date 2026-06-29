@@ -4,6 +4,7 @@ import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol } from "../ui/
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { resolveAdvancePct } from "../domain/budgetTerms";
 import { findClientByName } from "../domain/clients";
+import { matchStockForMaterial } from "../domain/stockMatch";
 import { WORK_TYPE_OPTIONS } from "../domain/types";
 import type { CompanyName, WorkTypeName } from "../domain/types";
 
@@ -814,9 +815,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 </thead>
                 <tbody>
                   {displayedMaterials.map((item) => {
-                    const stockMatch =
-                      (item.stockCode ? stockByCode.get(item.stockCode.trim().toLowerCase()) : null) ||
-                      stockByDescription.get(item.description.trim().toLowerCase());
+                    const stockMatch = matchStockForMaterial(item, stockByCode, stockByDescription);
                     return (
                       <tr key={item.id}>
                         <td>
