@@ -23,6 +23,7 @@ import { computeBudgetPricing } from "./domain/budgetPricing";
 import { computePayrollSummary } from "./domain/payroll";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
 import { buildCrmRows, normalizeClientName, deriveClientsFromHistory } from "./domain/clients";
+import { buildPersonalReminders } from "./domain/personalReminders";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -3745,6 +3746,19 @@ export default function App() {
 
     return rows.sort((a, b) => a.daysLeft - b.daysLeft);
   }, [employees, stockPersonalItems]);
+
+  // Recordatorios de personal: vencimientos de provisiones + documentacion (faltante/vencido/pronto)
+  // de los empleados accesibles, ordenados por urgencia.
+  const personalReminders = useMemo(
+    () =>
+      buildPersonalReminders(visibleEmployees, {
+        todayMs: new Date().getTime(),
+        resolveProvisionName: (item, employee) =>
+          getStockPersonalItemForCompany(item.stockCode, employee.company)?.description ||
+          item.stockCode,
+      }),
+    [visibleEmployees, stockPersonalItems]
+  );
 
   const getEmployeeProvisionSummary = (
     employee: Employee,
@@ -10940,6 +10954,7 @@ export default function App() {
           employeeProvisionModal={employeeProvisionModal}
           employeeDocumentModal={employeeDocumentModal}
           stockPersonalItems={stockPersonalItems}
+          personalReminders={personalReminders}
           scaleRows={scaleRows}
           isEmployeeSetupModalOpen={isEmployeeSetupModalOpen}
           uploadMessage={uploadMessage}

@@ -9,7 +9,7 @@ import {
   SemaforoResumen,
   TwoCol,
 } from "../ui/primitives";
-import { money, pct, localMonthKey } from "../lib/format";
+import { money, pct, localMonthKey, formatDateDisplay } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import type { CompanyName } from "../domain/types";
 
@@ -24,6 +24,7 @@ type PersonalTabProps = {
   employeeProvisionModal: any;
   employeeDocumentModal: any;
   stockPersonalItems: any[];
+  personalReminders: any[];
   scaleRows: any[];
   isEmployeeSetupModalOpen: any;
   uploadMessage: any;
@@ -80,7 +81,7 @@ export function PersonalTab(props: PersonalTabProps) {
   const {
     employees, visibleEmployees, selectedEmployee, selectedEmployeeId,
     employeeBaseConfig, payrollMonth, newEmployeeDraft,
-    employeeProvisionModal, employeeDocumentModal, stockPersonalItems, scaleRows,
+    employeeProvisionModal, employeeDocumentModal, stockPersonalItems, personalReminders, scaleRows,
     isEmployeeSetupModalOpen, uploadMessage, COMPANY_OPTIONS, CATEGORY_OPTIONS,
     companyCategoryCostRows, canAccessCompany, totalCompanyPayroll,
     employeesSortedByPay, attendanceMonthData, shiftMonthKey,
@@ -100,6 +101,60 @@ export function PersonalTab(props: PersonalTabProps) {
   } = props;
   return (
         <div style={styles.personalStack}>
+          <div style={{ order: 0, gridColumn: "1 / -1" }}>
+            <Panel span="full" title={`Recordatorios de personal (${personalReminders.length})`}>
+              {personalReminders.length === 0 ? (
+                <div style={styles.empty}>
+                  No hay vencimientos ni documentacion pendiente en los proximos 30 dias.
+                </div>
+              ) : (
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Estado</th>
+                      <th>Empleado</th>
+                      <th>Tipo</th>
+                      <th>Detalle</th>
+                      <th>Vence</th>
+                      <th>Dias</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {personalReminders.map((rem, i) => {
+                      const level = rem.state === "vence_pronto" ? "amarillo" : "rojo";
+                      const estadoLabel =
+                        rem.state === "faltante"
+                          ? "Falta cargar"
+                          : rem.state === "vencido"
+                          ? "Vencido"
+                          : "Vence pronto";
+                      return (
+                        <tr key={`${rem.type}-${rem.employeeName}-${rem.label}-${i}`}>
+                          <td>
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <Semaforo level={level} size={10} title={estadoLabel} />
+                              <span>{estadoLabel}</span>
+                            </span>
+                          </td>
+                          <td>{rem.employeeName}</td>
+                          <td>{rem.type === "provision" ? "Provision" : "Documento"}</td>
+                          <td>{rem.label}</td>
+                          <td>{rem.dueDate ? formatDateDisplay(rem.dueDate) : "-"}</td>
+                          <td>
+                            {rem.state === "faltante"
+                              ? "-"
+                              : rem.daysLeft < 0
+                              ? `${Math.abs(rem.daysLeft)} d vencido`
+                              : `${rem.daysLeft} d`}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </Panel>
+          </div>
           <div style={{ order: 5, gridColumn: "1 / -1" }}>
             <Panel
               title="Costo real por empresa y categoria"
