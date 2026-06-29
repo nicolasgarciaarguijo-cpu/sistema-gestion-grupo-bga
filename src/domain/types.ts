@@ -125,7 +125,13 @@ export type LaborMarker = {
   notes: string;
 };
 
-export type PersonalProvisionKind = "EPP" | "Insumos";
+export type PersonalProvisionKind = "EPP" | "Insumos" | "Examenes" | "Capacitaciones";
+export const PERSONAL_PROVISION_KINDS: PersonalProvisionKind[] = [
+  "EPP",
+  "Insumos",
+  "Examenes",
+  "Capacitaciones",
+];
 
 export type PersonalProvisionMarker = {
   id: number;
@@ -548,7 +554,7 @@ export type BankStatementEntry = {
 export type StockItem = {
   id: number;
   company: CompanyName | "General";
-  kind: "general" | "EPP" | "Insumos";
+  kind: "general" | PersonalProvisionKind;
   shared: boolean;
   group: string;
   location: string;
@@ -682,7 +688,7 @@ export type EmployeeDocument = {
   attachmentName: string;
 };
 
-export type EmployeeProvisionKind = "EPP" | "Insumos";
+export type EmployeeProvisionKind = PersonalProvisionKind;
 
 export type EmployeeProvisionItem = {
   id: number;

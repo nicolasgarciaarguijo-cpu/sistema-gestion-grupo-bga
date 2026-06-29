@@ -8199,7 +8199,7 @@ export default function App() {
     setCompanyAssets((prev) => prev.filter((item) => item.id !== assetId));
   };
 
-  const addPersonalStockItem = (kind: "EPP" | "Insumos") => {
+  const addPersonalStockItem = (kind: PersonalProvisionKind) => {
     setStockItems((prev) => [
       ...prev,
       {

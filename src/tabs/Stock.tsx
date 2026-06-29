@@ -2,6 +2,7 @@ import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, SemaforoResumen, ButtonLike, MiniMetric, Field } from "../ui/primitives";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
+import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
 type StockTabProps = {
@@ -788,15 +789,14 @@ export function StockTab({
           </Panel>
 
           <Panel
-            title="EPP e insumos"
+            title="EPP, insumos, examenes y capacitaciones"
             actions={
               <div style={styles.inlineActions}>
-                <ButtonLike onClick={() => addPersonalStockItem("EPP")} secondary>
-                  Agregar EPP
-                </ButtonLike>
-                <ButtonLike onClick={() => addPersonalStockItem("Insumos")}>
-                  Agregar insumo
-                </ButtonLike>
+                {PERSONAL_PROVISION_KINDS.map((k) => (
+                  <ButtonLike key={k} onClick={() => addPersonalStockItem(k)} secondary>
+                    Agregar {k}
+                  </ButtonLike>
+                ))}
               </div>
             }
           >
@@ -832,8 +832,11 @@ export function StockTab({
                         value={item.kind}
                         onChange={(e) => updateStockItem(item.id, "kind", e.target.value)}
                       >
-                        <option value="EPP">EPP</option>
-                        <option value="Insumos">Insumos</option>
+                        {PERSONAL_PROVISION_KINDS.map((k) => (
+                          <option key={k} value={k}>
+                            {k}
+                          </option>
+                        ))}
                       </select>
                     </td>
                     <td>

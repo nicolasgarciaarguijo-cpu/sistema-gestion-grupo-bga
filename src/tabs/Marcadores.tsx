@@ -2,7 +2,7 @@ import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike } from "../ui/primitives";
 import { money } from "../lib/format";
-import { WORK_TYPE_OPTIONS } from "../domain/types";
+import { WORK_TYPE_OPTIONS, PERSONAL_PROVISION_KINDS } from "../domain/types";
 import type {
   CompanyName,
   WorkTypeName,
@@ -661,8 +661,11 @@ export function MarcadoresTab({
                           value={item.kind}
                           onChange={(e) => updateArrayItem(setPersonalProvisionMarkers, item.id, "kind", e.target.value as PersonalProvisionKind)}
                         >
-                          <option value="EPP">EPP</option>
-                          <option value="Insumos">Insumos</option>
+                          {PERSONAL_PROVISION_KINDS.map((k) => (
+                            <option key={k} value={k}>
+                              {k}
+                            </option>
+                          ))}
                         </select>
                       </td>
                       <td>

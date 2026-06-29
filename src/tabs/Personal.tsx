@@ -10,6 +10,7 @@ import {
   TwoCol,
 } from "../ui/primitives";
 import { money, pct, localMonthKey } from "../lib/format";
+import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import type { CompanyName } from "../domain/types";
 
 type PersonalTabProps = {
@@ -544,9 +545,8 @@ export function PersonalTab(props: PersonalTabProps) {
                                       ...template,
                                       stockCode: e.target.value,
                                       kind:
-                                        stockPersonalItems.find((stock) => stock.code === e.target.value)?.kind === "EPP"
-                                          ? "EPP"
-                                          : "Insumos",
+                                        stockPersonalItems.find((stock) => stock.code === e.target.value)?.kind ||
+                                        "Insumos",
                                     }
                                   : template
                               ),
@@ -618,7 +618,7 @@ export function PersonalTab(props: PersonalTabProps) {
                           {
                             id: newId(),
                             stockCode: stockPersonalItems[0]?.code || "",
-                            kind: stockPersonalItems[0]?.kind === "EPP" ? "EPP" : "Insumos",
+                            kind: stockPersonalItems[0]?.kind || "Insumos",
                             quantity: 1,
                             validityMonths: 6,
                           },
@@ -933,8 +933,9 @@ export function PersonalTab(props: PersonalTabProps) {
                   <th>Antig.</th>
                   <th>Asistencia</th>
                   <th>Documentacion</th>
-                  <th>EPP</th>
-                  <th>Insumos</th>
+                  {PERSONAL_PROVISION_KINDS.map((k) => (
+                    <th key={k}>{k}</th>
+                  ))}
                   <th>Hs mes</th>
                   <th>Bruto</th>
                   <th>Neto</th>
@@ -948,8 +949,6 @@ export function PersonalTab(props: PersonalTabProps) {
                   const meta = getCompanyMeta(employee.company);
                   const att = getAttendanceSummary(employee);
                   const docs = getEmployeeDocumentSummary(employee);
-                  const epp = getEmployeeProvisionSummary(employee, "EPP");
-                  const supplies = getEmployeeProvisionSummary(employee, "Insumos");
                   const salary = getEmployeePayrollSummary(employee);
                   const toneStyle =
                     att.tone === "green"
@@ -965,18 +964,6 @@ export function PersonalTab(props: PersonalTabProps) {
                     docs.tone === "green"
                       ? styles.statusGreen
                       : docs.tone === "yellow"
-                      ? styles.statusYellow
-                      : styles.statusRed;
-                  const eppStyle =
-                    epp.tone === "green"
-                      ? styles.statusGreen
-                      : epp.tone === "yellow"
-                      ? styles.statusYellow
-                      : styles.statusRed;
-                  const suppliesStyle =
-                    supplies.tone === "green"
-                      ? styles.statusGreen
-                      : supplies.tone === "yellow"
                       ? styles.statusYellow
                       : styles.statusRed;
                   const payroll = getCurrentPayroll(employee);
@@ -1010,12 +997,20 @@ export function PersonalTab(props: PersonalTabProps) {
                       <td>
                         <span style={{ ...styles.statusPill, ...docsStyle }}>{docs.label}</span>
                       </td>
-                      <td>
-                        <span style={{ ...styles.statusPill, ...eppStyle }}>{epp.label}</span>
-                      </td>
-                      <td>
-                        <span style={{ ...styles.statusPill, ...suppliesStyle }}>{supplies.label}</span>
-                      </td>
+                      {PERSONAL_PROVISION_KINDS.map((k) => {
+                        const prov = getEmployeeProvisionSummary(employee, k);
+                        const provStyle =
+                          prov.tone === "green"
+                            ? styles.statusGreen
+                            : prov.tone === "yellow"
+                            ? styles.statusYellow
+                            : styles.statusRed;
+                        return (
+                          <td key={k}>
+                            <span style={{ ...styles.statusPill, ...provStyle }}>{prov.label}</span>
+                          </td>
+                        );
+                      })}
                       <td>{Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}</td>
                       <td>{money(salary.totalGross)}</td>
                       <td>{money(salary.netWithCashBonus)}</td>
@@ -1067,8 +1062,6 @@ export function PersonalTab(props: PersonalTabProps) {
                     : styles.statusGray;
                 const payroll = getCurrentPayroll(selectedEmployee);
                 const payrollSummary = getEmployeePayrollSummary(selectedEmployee);
-                const eppSummary = getEmployeeProvisionSummary(selectedEmployee, "EPP");
-                const suppliesSummary = getEmployeeProvisionSummary(selectedEmployee, "Insumos");
                 const attendanceWeeks = attendanceMonthData.weeks;
 
                 return (
@@ -1087,12 +1080,24 @@ export function PersonalTab(props: PersonalTabProps) {
                       >
                         {documentSemaphore.label}
                       </span>
-                      <span style={{ ...styles.statusPill, ...(eppSummary.tone === "green" ? styles.statusGreen : eppSummary.tone === "yellow" ? styles.statusYellow : styles.statusRed) }}>
-                        EPP: {eppSummary.label}
-                      </span>
-                      <span style={{ ...styles.statusPill, ...(suppliesSummary.tone === "green" ? styles.statusGreen : suppliesSummary.tone === "yellow" ? styles.statusYellow : styles.statusRed) }}>
-                        Insumos: {suppliesSummary.label}
-                      </span>
+                      {PERSONAL_PROVISION_KINDS.map((k) => {
+                        const prov = getEmployeeProvisionSummary(selectedEmployee, k);
+                        return (
+                          <span
+                            key={k}
+                            style={{
+                              ...styles.statusPill,
+                              ...(prov.tone === "green"
+                                ? styles.statusGreen
+                                : prov.tone === "yellow"
+                                ? styles.statusYellow
+                                : styles.statusRed),
+                            }}
+                          >
+                            {k}: {prov.label}
+                          </span>
+                        );
+                      })}
                       <strong>{meta.short}</strong>
                       <span>Liquidacion: {monthLabel(payrollMonth)}</span>
                       <span>Categoria: {selectedEmployee.category}</span>
@@ -1245,35 +1250,27 @@ export function PersonalTab(props: PersonalTabProps) {
 
                         <div style={styles.employeeSubsection}>
                           <div style={styles.panelHeader}>
-                            <h4 style={{ margin: 0, fontSize: 15 }}>EPP e insumos de seguridad</h4>
+                            <h4 style={{ margin: 0, fontSize: 15 }}>
+                              EPP, insumos, examenes y capacitaciones
+                            </h4>
                             <div style={styles.inlineActions}>
-                              <ButtonLike
-                                onClick={() =>
-                                  setEmployeeProvisionModal({
-                                    employeeId: selectedEmployee.id,
-                                    kind: "EPP",
-                                    title: "",
-                                    dueDate: "",
-                                    unitPrice: 0,
-                                  })
-                                }
-                                secondary
-                              >
-                                Agregar EPP
-                              </ButtonLike>
-                              <ButtonLike
-                                onClick={() =>
-                                  setEmployeeProvisionModal({
-                                    employeeId: selectedEmployee.id,
-                                    kind: "Insumos",
-                                    title: "",
-                                    dueDate: "",
-                                    unitPrice: 0,
-                                  })
-                                }
-                              >
-                                Agregar insumo
-                              </ButtonLike>
+                              {PERSONAL_PROVISION_KINDS.map((k) => (
+                                <ButtonLike
+                                  key={k}
+                                  onClick={() =>
+                                    setEmployeeProvisionModal({
+                                      employeeId: selectedEmployee.id,
+                                      kind: k,
+                                      title: "",
+                                      dueDate: "",
+                                      unitPrice: 0,
+                                    })
+                                  }
+                                  secondary
+                                >
+                                  Agregar {k}
+                                </ButtonLike>
+                              ))}
                             </div>
                           </div>
 
