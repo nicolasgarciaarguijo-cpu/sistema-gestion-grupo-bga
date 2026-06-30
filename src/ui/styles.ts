@@ -1352,6 +1352,9 @@ export const styles: Record<string, CSSProperties> = {
   statusYellow: { background: "#fef3c7", color: "#92400e" },
   statusRed: { background: "#fee2e2", color: "#991b1b" },
   statusBlue: { background: "#dbeafe", color: "#1d4ed8" },
+  // Contraste de administracion: NEGRO = oscuro con texto claro; BLANCO = claro con borde.
+  adminBlack: { background: "#1f2937", color: "#f9fafb", fontWeight: 700 },
+  adminWhite: { background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", fontWeight: 700 },
   statusGray: { background: "#e2e8f0", color: "#334155" },
   rowGreen: { background: "#dcfce7" },
   financialBrown: { background: "#92400e", color: "white" },

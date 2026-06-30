@@ -133,6 +133,7 @@ export function AprobadosTab({
                     <th>Comision pend.</th>
                     <th>Valor a cobrar</th>
                     <th>Cobrado</th>
+                    <th>Saldo</th>
                     <th>Estado</th>
                     <th>Accion</th>
                   </tr>
@@ -141,7 +142,7 @@ export function AprobadosTab({
                   {companyApprovedSections.map((group) => (
                     <React.Fragment key={group.value}>
                       <tr>
-                        <td colSpan={14} style={styles.sectionCell}>
+                        <td colSpan={15} style={styles.sectionCell}>
                           <div
                             style={{
                               ...styles.sectionHeader,
@@ -181,6 +182,7 @@ export function AprobadosTab({
                           <td>{money(job.commissionPending)}</td>
                           <td>{money(job.valueToCollect)}</td>
                           <td>{money(job.collectedTotal)}</td>
+                          <td>{money(job.remainingToPay)}</td>
                           <td>
                             {(() => {
                               const sj = getJobSemaphore(job);
@@ -566,25 +568,21 @@ export function AprobadosTab({
                               }
                             />
                           </Field>
-                          <Field label="IVA">
+                          <Field label="Alicuota %">
                             <input
                               style={styles.input}
                               type="number"
-                              value={invoice.vat}
+                              value={invoice.vatRate ?? 21}
                               onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "vat", Number(e.target.value))
+                                updateInvoice(selectedApprovedJob.id, invoice.id, "vatRate", Number(e.target.value))
                               }
                             />
                           </Field>
-                          <Field label="Total">
-                            <input
-                              style={styles.input}
-                              type="number"
-                              value={invoice.total}
-                              onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "total", Number(e.target.value))
-                              }
-                            />
+                          <Field label="IVA (calculado)">
+                            <input style={styles.input} type="number" value={invoice.vat} readOnly />
+                          </Field>
+                          <Field label="Total (calculado)">
+                            <input style={styles.input} type="number" value={invoice.total} readOnly />
                           </Field>
                         </TwoCol>
                         <div style={styles.uploadActions}>
@@ -621,8 +619,22 @@ export function AprobadosTab({
                     <div style={styles.empty}>No hay pagos cargados.</div>
                   ) : (
                     selectedApprovedJob.payments.map((payment) => (
-                      <div key={payment.id} style={styles.subCard}>
+                      <div
+                        key={payment.id}
+                        style={{
+                          ...styles.subCard,
+                          borderLeft: `8px solid ${payment.administration === "negro" ? "#1f2937" : "#cbd5e1"}`,
+                        }}
+                      >
                         <div style={styles.inlineActions}>
+                          <span
+                            style={{
+                              ...styles.statusPill,
+                              ...(payment.administration === "negro" ? styles.adminBlack : styles.adminWhite),
+                            }}
+                          >
+                            {payment.administration === "negro" ? "NEGRO" : "BLANCO"}
+                          </span>
                           <button style={styles.smallBtn} onClick={() => exportPaymentReceipt(selectedApprovedJob, payment)}>
                             Recibo
                           </button>
@@ -662,6 +674,18 @@ export function AprobadosTab({
                               <option value="transferencia">Transferencia</option>
                               <option value="cheque">Cheque</option>
                               <option value="otros">Otros</option>
+                            </select>
+                          </Field>
+                          <Field label="Administracion">
+                            <select
+                              style={styles.input}
+                              value={payment.administration || "blanco"}
+                              onChange={(e) =>
+                                updatePayment(selectedApprovedJob.id, payment.id, "administration", e.target.value)
+                              }
+                            >
+                              <option value="blanco">Blanco</option>
+                              <option value="negro">Negro</option>
                             </select>
                           </Field>
                           <Field label="Monto">

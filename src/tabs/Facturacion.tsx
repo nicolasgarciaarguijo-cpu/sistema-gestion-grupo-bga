@@ -142,6 +142,17 @@ export function FacturacionTab({
                             <div>{item.title || "Sin titulo"}</div>
                             <div style={styles.calendarItemMeta}>
                               {getFinancialTypeLabel(item.type)} · {money(item.amount)}
+                              <span
+                                style={{
+                                  ...styles.statusPill,
+                                  ...(item.administration === "negro" ? styles.adminBlack : styles.adminWhite),
+                                  marginLeft: 6,
+                                  fontSize: 9,
+                                  padding: "1px 5px",
+                                }}
+                              >
+                                {item.administration === "negro" ? "N" : "B"}
+                              </span>
                             </div>
                           </button>
                         );
@@ -209,6 +220,18 @@ export function FacturacionTab({
                   >
                     <option value="pendiente">Pendiente</option>
                     <option value="realizado">Realizado</option>
+                  </select>
+                </Field>
+                <Field label="Administracion">
+                  <select
+                    style={styles.input}
+                    value={selectedFinancialItem.administration || "blanco"}
+                    onChange={(e) =>
+                      updateFinancialItem(selectedFinancialItem.id, "administration", e.target.value)
+                    }
+                  >
+                    <option value="blanco">Blanco</option>
+                    <option value="negro">Negro</option>
                   </select>
                 </Field>
                 <Field label="Titulo">
