@@ -74,10 +74,12 @@ export function FacturacionTab({
             }
           >
             <div style={styles.calendarLegend}>
-              <span style={{ ...styles.statusPill, ...styles.financialBrown }}>Facturacion pendiente</span>
-              <span style={{ ...styles.statusPill, ...styles.financialBlack }}>Cobranza pendiente</span>
-              <span style={{ ...styles.statusPill, ...styles.financialRed }}>Pago pendiente</span>
-              <span style={{ ...styles.statusPill, ...styles.financialDone }}>Verde = realizado</span>
+              <span style={{ ...styles.statusPill, ...styles.adminWhite }}>BLANCO (claro)</span>
+              <span style={{ ...styles.statusPill, ...styles.adminBlack }}>NEGRO (oscuro)</span>
+              <span style={{ ...styles.muted }}>
+                Los items reflejan las facturas y pagos reales del trabajo. El semaforo marca la fecha;
+                el color, la administracion (blanco/negro).
+              </span>
             </div>
 
             <div style={styles.calendarWeekdays}>
@@ -115,6 +117,11 @@ export function FacturacionTab({
                             style={{
                               ...styles.calendarItem,
                               ...getFinancialItemStyle(item),
+                              // La administracion domina el fondo: BLANCO claro / NEGRO oscuro,
+                              // para ver los dos circuitos diferenciados de un vistazo.
+                              ...(item.administration === "negro"
+                                ? { background: "#1f2937", color: "#f9fafb" }
+                                : { background: "#ffffff", color: "#0f172a" }),
                               borderLeft: `8px solid ${companyMetaItem.primary}`,
                             }}
                             onClick={() =>
