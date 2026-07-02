@@ -4062,6 +4062,16 @@ export default function App() {
           0
         );
         const valueToCollect = job.soldNetPrice + additionalsTotal + invoiceVatAmount;
+        // Manda el trabajo aprobado: el % anticipo se resuelve del job (fallback forma de pago) y
+        // el IVA va SOLO sobre lo facturado (invoiceVatAmount). Anticipo = %anticipo x neto + IVA facturado.
+        const anticipoPctResolved = resolveAdvancePct(
+          job.advancePct,
+          job.snapshot?.budget?.paymentTerms || ""
+        );
+        const anticipoToCharge = Number(
+          (job.soldNetPrice * (anticipoPctResolved / 100) + invoiceVatAmount).toFixed(2)
+        );
+        const saldoToCharge = Math.max(0, valueToCollect - anticipoToCharge);
         const estimatedProductionDays =
           totalAvailableHours > 0 ? job.estimatedJobHours / (totalAvailableHours / 22 || 1) : 0;
         const paymentsTotal = job.payments.reduce((acc, item) => acc + Number(item.amount || 0), 0);
@@ -4094,6 +4104,11 @@ export default function App() {
           commissionPending: Math.max(0, Number(job.commissionAmount || 0) - commissionPaidTotal),
           collectedTotal: financialCollected,
           remainingToPay: Math.max(0, valueToCollect - financialCollected),
+          // Bruto corregido: IVA solo sobre lo facturado (no sobre el neto completo).
+          soldGrossPrice: Number((job.soldNetPrice + invoiceVatAmount).toFixed(2)),
+          anticipoPctResolved,
+          anticipoToCharge,
+          saldoToCharge,
           estimatedProductionDays,
           estimatedDeliveryDate: job.deliveryDate,
         };

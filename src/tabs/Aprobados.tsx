@@ -429,6 +429,11 @@ export function AprobadosTab({
                   <SummaryRow label="IVA 21%" value={money(selectedApprovedJob.invoiceVatAmount)} />
                   <SummaryRow label="Adicionales" value={money(selectedApprovedJob.additionalsTotal)} />
                   <SummaryRow label="Valor a cobrar" value={money(selectedApprovedJob.valueToCollect)} strong />
+                  <SummaryRow
+                    label={`Anticipo a cobrar (${pct(selectedApprovedJob.anticipoPctResolved)} neto + IVA facturado)`}
+                    value={money(selectedApprovedJob.anticipoToCharge)}
+                  />
+                  <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
                   <SummaryRow label="Cobrado" value={money(selectedApprovedJob.collectedTotal)} />
                   <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
                   <SummaryRow label="Comision" value={money(selectedApprovedJob.commissionAmount)} />
