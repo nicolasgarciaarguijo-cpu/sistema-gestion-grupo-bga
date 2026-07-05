@@ -8,32 +8,38 @@ const base: IncomeStatementInput = {
   pettyCashWhite: 0,
   pettyCashBlack: 0,
   commissionsPaid: 0,
+  laborWhite: 0,
+  laborBlack: 0,
+  depreciation: 0,
   bankCredits: 0,
   bankDebits: 0,
 };
 
 describe("computeIncomeStatement", () => {
-  it("resultado blanco = cobros blanco - (compras+caja+comisiones) blanco", () => {
+  it("resultado blanco = cobros blanco - (compras+caja+comisiones+nomina+amortizacion) blanco", () => {
     const r = computeIncomeStatement({
       ...base,
       collectedWhite: 1000,
       purchasesWhite: 300,
       pettyCashWhite: 50,
       commissionsPaid: 100,
+      laborWhite: 120,
+      depreciation: 30,
     });
-    expect(r.whiteExpense).toBe(450);
-    expect(r.whiteResult).toBe(550);
+    expect(r.whiteExpense).toBe(600);
+    expect(r.whiteResult).toBe(400);
   });
 
-  it("resultado negro = cobros negro - (compras+caja) negro", () => {
+  it("resultado negro = cobros negro - (compras+caja+premios) negro", () => {
     const r = computeIncomeStatement({
       ...base,
       collectedBlack: 800,
       purchasesBlack: 200,
       pettyCashBlack: 100,
+      laborBlack: 50,
     });
-    expect(r.blackExpense).toBe(300);
-    expect(r.blackResult).toBe(500);
+    expect(r.blackExpense).toBe(350);
+    expect(r.blackResult).toBe(450);
   });
 
   it("total, desfasaje y % negro", () => {

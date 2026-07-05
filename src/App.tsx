@@ -4279,78 +4279,6 @@ export default function App() {
     balanceMonth,
   ]);
 
-  // Estado de resultados del periodo (base percibido, operativo) por empresa+periodo: ingresos = cobros
-  // (del balance), egresos = compras + caja chica + comisiones pagadas; banco aparte. Circuito blanco/negro.
-  const periodStatement = useMemo(() => {
-    const monthRange = monthBounds(balanceMonth);
-    const makeInPeriod = (company: string): ((d: string) => boolean) => {
-      if (balancePeriodMode === "all") return () => true;
-      if (balancePeriodMode === "month")
-        return (d) => isIsoInRange(d, monthRange.startIso, monthRange.endIso);
-      const startMonth = getFiscalYearStartMonth(companyCatalog.find((c) => c.value === company));
-      const b = fiscalYearBounds(startMonth, balanceFiscalStartYear);
-      return (d) => isIsoInRange(d, b.startIso, b.endIso);
-    };
-    const inScope = (company: string) =>
-      balanceCompanyScope === "__ALL__" || company === balanceCompanyScope;
-
-    let purchasesWhite = 0;
-    let purchasesBlack = 0;
-    visiblePurchaseInvoices.forEach((inv) => {
-      if (!inScope(inv.company) || !makeInPeriod(inv.company)(inv.invoiceDate)) return;
-      if (inv.administration === "negro") purchasesBlack += Number(inv.total || 0);
-      else purchasesWhite += Number(inv.total || 0);
-    });
-
-    let pettyCashWhite = 0;
-    let pettyCashBlack = 0;
-    visiblePettyCashExpenses.forEach((exp) => {
-      if (!inScope(exp.company) || !makeInPeriod(exp.company)(exp.date)) return;
-      if (exp.administration === "negro") pettyCashBlack += Number(exp.amount || 0);
-      else pettyCashWhite += Number(exp.amount || 0);
-    });
-
-    let commissionsPaid = 0;
-    approvedJobsSummary.forEach((job) => {
-      if (!inScope(job.company)) return;
-      const pred = makeInPeriod(job.company);
-      (job.commissionPayments || []).forEach((cp) => {
-        if (pred(cp.paymentDate)) commissionsPaid += Number(cp.amount || 0);
-      });
-    });
-
-    let bankCredits = 0;
-    let bankDebits = 0;
-    visibleBankStatementEntries.forEach((entry) => {
-      if (!inScope(entry.company) || !makeInPeriod(entry.company)(entry.date)) return;
-      if (entry.movementType === "credito") bankCredits += Number(entry.amount || 0);
-      else bankDebits += Number(entry.amount || 0);
-    });
-
-    return computeIncomeStatement({
-      collectedWhite: billingBalance.collectedWhite,
-      collectedBlack: billingBalance.collectedBlack,
-      purchasesWhite,
-      purchasesBlack,
-      pettyCashWhite,
-      pettyCashBlack,
-      commissionsPaid,
-      bankCredits,
-      bankDebits,
-    });
-  }, [
-    billingBalance,
-    visiblePurchaseInvoices,
-    visiblePettyCashExpenses,
-    visibleBankStatementEntries,
-    approvedJobsSummary,
-    companyCatalog,
-    balanceCompanyScope,
-    balancePeriodMode,
-    balanceFiscalStartYear,
-    balanceMonth,
-  ]);
-
   // Opciones para el selector: anos fiscales recientes (por su ano de inicio) y label legible.
   const balanceFiscalYearOptions = useMemo(() => {
     const current = currentFiscalStartYear(10, new Date());
@@ -9766,6 +9694,122 @@ export default function App() {
       payroll,
     });
   };
+
+  // Estado de resultados del periodo (base percibido, operativo) por empresa+periodo. Ingresos = cobros
+  // (del balance); egresos = compras + caja chica + comisiones pagadas + nomina (por mes cargado) +
+  // amortizacion; banco aparte. Circuito blanco/negro. Definido aca porque usa getPayrollSummaryForScenario.
+  const periodStatement = useMemo(() => {
+    const monthRange = monthBounds(balanceMonth);
+    const makeInPeriod = (company: string): ((d: string) => boolean) => {
+      if (balancePeriodMode === "all") return () => true;
+      if (balancePeriodMode === "month")
+        return (d) => isIsoInRange(d, monthRange.startIso, monthRange.endIso);
+      const startMonth = getFiscalYearStartMonth(companyCatalog.find((c) => c.value === company));
+      const b = fiscalYearBounds(startMonth, balanceFiscalStartYear);
+      return (d) => isIsoInRange(d, b.startIso, b.endIso);
+    };
+    const inScope = (company: string) =>
+      balanceCompanyScope === "__ALL__" || company === balanceCompanyScope;
+
+    let purchasesWhite = 0;
+    let purchasesBlack = 0;
+    visiblePurchaseInvoices.forEach((inv) => {
+      if (!inScope(inv.company) || !makeInPeriod(inv.company)(inv.invoiceDate)) return;
+      if (inv.administration === "negro") purchasesBlack += Number(inv.total || 0);
+      else purchasesWhite += Number(inv.total || 0);
+    });
+
+    let pettyCashWhite = 0;
+    let pettyCashBlack = 0;
+    visiblePettyCashExpenses.forEach((exp) => {
+      if (!inScope(exp.company) || !makeInPeriod(exp.company)(exp.date)) return;
+      if (exp.administration === "negro") pettyCashBlack += Number(exp.amount || 0);
+      else pettyCashWhite += Number(exp.amount || 0);
+    });
+
+    let commissionsPaid = 0;
+    approvedJobsSummary.forEach((job) => {
+      if (!inScope(job.company)) return;
+      const pred = makeInPeriod(job.company);
+      (job.commissionPayments || []).forEach((cp) => {
+        if (pred(cp.paymentDate)) commissionsPaid += Number(cp.amount || 0);
+      });
+    });
+
+    // Nomina del periodo: recorre el HISTORICO (employee.payrolls, un registro por mes) y suma los
+    // meses que caen en el periodo. Costo blanco = employerImpact (bruto + cargas + premio blanco);
+    // costo negro = cashBonus (premio en negro). Hoy puede dar bajo si falta cargar meses; se completa.
+    let laborWhite = 0;
+    let laborBlack = 0;
+    visibleEmployees.forEach((emp) => {
+      if (!inScope(emp.company)) return;
+      const pred = makeInPeriod(emp.company);
+      (emp.payrolls || []).forEach((pr) => {
+        if (!pred(`${pr.month}-01`)) return;
+        const summary = getPayrollSummaryForScenario({
+          company: emp.company,
+          category: emp.category,
+          seniorityYears: emp.seniorityYears,
+          hourlyNetManual: emp.hourlyNetManual,
+          hourlyGrossManual: emp.hourlyGrossManual,
+          payroll: pr,
+        });
+        laborWhite += Number(summary.employerImpact || 0);
+        laborBlack += Number(summary.cashBonus || 0);
+      });
+    });
+
+    // Amortizacion del periodo: amortizacion mensual de los activos en scope x meses del periodo
+    // (ano fiscal = 12, mes = 1; en "todo" no se prorratea).
+    const monthsInPeriod =
+      balancePeriodMode === "fiscalYear" ? 12 : balancePeriodMode === "month" ? 1 : 0;
+    let scopedMonthlyDepreciation = 0;
+    visibleCompanyAssets.forEach((asset) => {
+      if (!asset.active || !inScope(asset.company)) return;
+      scopedMonthlyDepreciation +=
+        Number(asset.value || 0) / Math.max(Number(asset.usefulLifeMonths || 1), 1);
+    });
+    const depreciation = scopedMonthlyDepreciation * monthsInPeriod;
+
+    let bankCredits = 0;
+    let bankDebits = 0;
+    visibleBankStatementEntries.forEach((entry) => {
+      if (!inScope(entry.company) || !makeInPeriod(entry.company)(entry.date)) return;
+      if (entry.movementType === "credito") bankCredits += Number(entry.amount || 0);
+      else bankDebits += Number(entry.amount || 0);
+    });
+
+    return computeIncomeStatement({
+      collectedWhite: billingBalance.collectedWhite,
+      collectedBlack: billingBalance.collectedBlack,
+      purchasesWhite,
+      purchasesBlack,
+      pettyCashWhite,
+      pettyCashBlack,
+      commissionsPaid,
+      laborWhite,
+      laborBlack,
+      depreciation,
+      bankCredits,
+      bankDebits,
+    });
+  }, [
+    billingBalance,
+    visiblePurchaseInvoices,
+    visiblePettyCashExpenses,
+    visibleBankStatementEntries,
+    visibleCompanyAssets,
+    approvedJobsSummary,
+    visibleEmployees,
+    scaleRows,
+    employeeBaseConfig,
+    personalProvisionMarkers,
+    companyCatalog,
+    balanceCompanyScope,
+    balancePeriodMode,
+    balanceFiscalStartYear,
+    balanceMonth,
+  ]);
 
   const employeesSortedByPay = useMemo(
     () =>

@@ -289,11 +289,18 @@ export function CashflowTab({
               <MiniMetric label="% en negro" value={`${periodStatement.blackSharePct.toFixed(1)}%`} />
               <MiniMetric label="Desfasaje blanco vs negro" value={money(periodStatement.desfasaje)} />
             </div>
+            <div style={styles.sectionHeader}>Egresos: nomina y amortizacion incluidos</div>
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Nomina blanca (periodo)" value={money(periodStatement.laborWhite)} />
+              <MiniMetric label="Premios negros (periodo)" value={money(periodStatement.laborBlack)} />
+              <MiniMetric label="Amortizacion (periodo)" value={money(periodStatement.depreciation)} />
+            </div>
             <div style={styles.noticeBox}>
               Base percibido: ingresos = cobros del periodo; egresos = compras + caja chica + comisiones
-              pagadas (por su fecha). Compras a valor total (con IVA). No incluye sueldos/premios ni
-              amortizacion (eso, en el panel de contabilidad general de abajo). Respeta la empresa y el
-              periodo elegidos arriba.
+              pagadas + nomina + amortizacion. La nomina sale del historico por mes (un registro por
+              empleado y mes); si faltan meses cargados, el costo laboral saldra bajo hasta completarlo.
+              La amortizacion se prorratea (ano fiscal = 12 meses, mes = 1). Compras a valor total (con
+              IVA). Respeta la empresa y el periodo elegidos arriba.
             </div>
           </Panel>
 
