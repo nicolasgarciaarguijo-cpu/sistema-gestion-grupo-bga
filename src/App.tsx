@@ -150,7 +150,19 @@ import type {
   EmployeeBaseProvisionTemplate,
   EmployeeBaseConfig,
   ScaleRow,
+  LinkedDocument,
 } from "./domain/types";
+import { DocumentosTab } from "./tabs/Documentos";
+import {
+  classifyPath,
+  isFileSystemAccessSupported,
+  pickDirectory,
+  saveDirHandle,
+  loadDirHandle,
+  clearDirHandle,
+  ensureReadPermission,
+  scanDirectory,
+} from "./lib/folderSync";
 
 declare global {
   interface Window {
@@ -274,6 +286,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "historial", label: "CRM" },
   { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
+  { key: "documentos", label: "Documentos" },
   { key: "marcadores", label: "Marcadores" },
 ];
 
@@ -359,6 +372,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   facturacion: "FC",
   stock: "SA",
   personal: "PE",
+  documentos: "DOC",
 };
 
 const buildBlankRemitoDraftRow = (company: CompanyScope): RemitoDraftRow => ({
@@ -1495,6 +1509,7 @@ type PersistedAppStateData = {
   costAnalysisEntries: CostAnalysisEntry[];
   remitoDrafts: RemitoDraft[];
   companyAssets: CompanyAsset[];
+  linkedDocuments: LinkedDocument[];
   employees: Employee[];
   employeeBaseConfig: EmployeeBaseConfig;
   scaleRows: ScaleRow[];
@@ -1601,6 +1616,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     label: "Archivos, logos y datos de empresas",
     fields: ["companyAssets"] as const,
   },
+  {
+    key: "documentos",
+    label: "Documentos vinculados",
+    fields: ["linkedDocuments"] as const,
+  },
 ] as const satisfies readonly {
   key: string;
   label: string;
@@ -1623,6 +1643,7 @@ const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> 
   historial: ["mensuales", "historial-crm", "presupuestos"],
   stock: ["stock-costos", "marcadores", "trabajos-aprobados"],
   personal: ["personal"],
+  documentos: ["documentos"],
   marcadores: ["marcadores", "stock-costos", "personal"],
 };
 
@@ -2406,6 +2427,12 @@ export default function App() {
   );
   const [remitoDrafts, setRemitoDrafts] = useState<RemitoDraft[]>(defaultRemitoDrafts);
   const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>(defaultCompanyAssets);
+  // Documentos vinculados (F1): metadatos de archivos subidos desde la carpeta de la PC a Storage.
+  const [linkedDocuments, setLinkedDocuments] = useState<LinkedDocument[]>([]);
+  const [documentsFolderLinked, setDocumentsFolderLinked] = useState(false);
+  const [documentsFolderName, setDocumentsFolderName] = useState("");
+  const [documentsBusy, setDocumentsBusy] = useState(false);
+  const [documentsMessage, setDocumentsMessage] = useState("");
   const [employees, setEmployees] = useState<Employee[]>(defaultEmployees);
   const [employeeBaseConfig, setEmployeeBaseConfig] = useState<EmployeeBaseConfig>(defaultBaseConfig);
   const [scaleRows, setScaleRows] = useState<ScaleRow[]>(seededScaleRows);
@@ -4326,6 +4353,156 @@ export default function App() {
     );
   };
 
+  // --- Documentos F1: carpeta vinculada + sincronizacion a Storage ---
+  // Al montar, recupera si ya hay carpeta vinculada (handle en IndexedDB) para mostrar el estado.
+  useEffect(() => {
+    if (!isFileSystemAccessSupported()) return;
+    (async () => {
+      try {
+        const handle = await loadDirHandle();
+        if (handle) {
+          setDocumentsFolderLinked(true);
+          setDocumentsFolderName(handle.name || "carpeta");
+        }
+      } catch (err) {
+        console.error("[documentos] no se pudo recuperar el handle:", err);
+      }
+    })();
+  }, []);
+
+  const linkDocumentsFolder = async () => {
+    if (!isFileSystemAccessSupported()) {
+      setDocumentsMessage("Tu navegador no permite carpeta vinculada. Usa Chrome o Edge.");
+      return;
+    }
+    try {
+      const handle = await pickDirectory();
+      await saveDirHandle(handle);
+      setDocumentsFolderLinked(true);
+      setDocumentsFolderName(handle.name || "carpeta");
+      setDocumentsMessage(
+        `Carpeta "${handle.name}" vinculada. Toca "Sincronizar" para subir los archivos nuevos.`
+      );
+    } catch (err) {
+      // El usuario puede cancelar el selector: no es un error.
+      console.error("[documentos] vinculacion cancelada o fallida:", err);
+    }
+  };
+
+  const unlinkDocumentsFolder = async () => {
+    try {
+      await clearDirHandle();
+    } catch (err) {
+      console.error("[documentos] al desvincular:", err);
+    }
+    setDocumentsFolderLinked(false);
+    setDocumentsFolderName("");
+    setDocumentsMessage("Carpeta desvinculada. Los documentos ya subidos siguen en el sistema.");
+  };
+
+  const syncDocumentsFolder = async () => {
+    setDocumentsBusy(true);
+    setDocumentsMessage("Sincronizando carpeta...");
+    try {
+      const handle = await loadDirHandle();
+      if (!handle) {
+        setDocumentsMessage("No hay carpeta vinculada. Toca \"Vincular carpeta\" primero.");
+        setDocumentsBusy(false);
+        return;
+      }
+      const granted = await ensureReadPermission(handle);
+      if (!granted) {
+        setDocumentsMessage("El navegador no dio permiso para leer la carpeta.");
+        setDocumentsBusy(false);
+        return;
+      }
+      const scanned = await scanDirectory(handle);
+      const existingKeys = new Set(
+        linkedDocuments.map((doc) => `${doc.relPath}__${doc.size}__${doc.lastModified}`)
+      );
+      const pending = scanned.filter((file) => {
+        const cls = classifyPath(file.relPath);
+        if (!cls.docType) return false; // fuera de las carpetas conocidas
+        return !existingKeys.has(`${file.relPath}__${file.size}__${file.lastModified}`);
+      });
+
+      const added: LinkedDocument[] = [];
+      let uploaded = 0;
+      let failed = 0;
+      for (const file of pending) {
+        const cls = classifyPath(file.relPath);
+        if (!cls.docType) continue;
+        try {
+          const realFile = await file.handle.getFile();
+          const { error } = await supabase.storage
+            .from("documentos")
+            .upload(file.relPath, realFile, {
+              upsert: true,
+              contentType: realFile.type || undefined,
+            });
+          if (error) {
+            failed += 1;
+            console.error("[documentos] upload:", file.relPath, error);
+            continue;
+          }
+          added.push({
+            id: newId(),
+            docType: cls.docType,
+            month: cls.month,
+            employee: cls.employee,
+            subArea: cls.subArea,
+            fileName: file.name,
+            relPath: file.relPath,
+            size: file.size,
+            lastModified: file.lastModified,
+            storagePath: file.relPath,
+            uploadedAt: new Date().toISOString(),
+          });
+          uploaded += 1;
+        } catch (err) {
+          failed += 1;
+          console.error("[documentos] al subir:", file.relPath, err);
+        }
+      }
+
+      if (added.length > 0) {
+        setLinkedDocuments((prev) => {
+          const byPath = new Map(prev.map((doc) => [doc.relPath, doc]));
+          added.forEach((doc) => byPath.set(doc.relPath, doc));
+          return Array.from(byPath.values());
+        });
+      }
+      setDocumentsMessage(
+        `Listo: ${uploaded} archivo(s) nuevo(s)${failed ? `, ${failed} con error` : ""}. ` +
+          `Total en el sistema: ${linkedDocuments.length + added.length}.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] sincronizacion:", err);
+      setDocumentsMessage("Error al sincronizar: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+  };
+
+  const openLinkedDocument = async (doc: LinkedDocument) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from("documentos")
+        .createSignedUrl(doc.storagePath, 120);
+      if (error || !data) {
+        setDocumentsMessage("No se pudo abrir el archivo.");
+        return;
+      }
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("[documentos] abrir:", err);
+      setDocumentsMessage("No se pudo abrir el archivo.");
+    }
+  };
+
+  const removeLinkedDocument = (id: number) => {
+    setLinkedDocuments((prev) => prev.filter((doc) => doc.id !== id));
+  };
+
   const crmClientRows = useMemo(
     () =>
       buildCrmRows({
@@ -5934,6 +6111,7 @@ export default function App() {
       rows: draft.rows.map((row) => ({ ...row })),
     })),
     companyAssets: companyAssets.map((item) => ({ ...item })),
+    linkedDocuments: linkedDocuments.map((item) => ({ ...item })),
     employees: employees.map((item) => {
       const createdAt = stampDate(item.createdAt); // fecha de carga: hoy si nunca se estampo
       return { ...item, createdAt, updatedAt: item.updatedAt || createdAt };
@@ -6158,6 +6336,7 @@ export default function App() {
       }))
     );
     setCompanyAssets(keepAccessibleByCompany(data.companyAssets || defaultCompanyAssets).map((item) => ({ ...item })));
+    setLinkedDocuments((data.linkedDocuments || []).map((item) => ({ ...item })));
     setEmployees(keepAccessibleByCompany(data.employees || defaultEmployees).map((item) => ({ ...item })));
     setEmployeeBaseConfig({
       ...defaultBaseConfig,
@@ -11143,6 +11322,22 @@ export default function App() {
           laborRows={laborRows}
           nominalLaborHoursPerEmployee={nominalLaborHoursPerEmployee}
           totalFixedCosts={totalFixedCosts}
+        />
+      )}
+
+      {activeTab === "documentos" && (
+        <DocumentosTab
+          linkedDocuments={linkedDocuments}
+          folderLinked={documentsFolderLinked}
+          folderName={documentsFolderName}
+          busy={documentsBusy}
+          message={documentsMessage}
+          fsSupported={isFileSystemAccessSupported()}
+          onLink={linkDocumentsFolder}
+          onUnlink={unlinkDocumentsFolder}
+          onSync={syncDocumentsFolder}
+          onOpen={openLinkedDocument}
+          onRemove={removeLinkedDocument}
         />
       )}
 

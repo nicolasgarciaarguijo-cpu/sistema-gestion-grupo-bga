@@ -28,7 +28,8 @@ export type TabKey =
   | "aprobados"
   | "facturacion"
   | "stock"
-  | "personal";
+  | "personal"
+  | "documentos";
 
 export type PrintMode =
   | ""
@@ -591,6 +592,34 @@ export type CompanyAsset = {
   usefulLifeMonths: number;
   active: boolean;
   notes: string;
+};
+
+// Carga por carpetas vinculadas (F1). Un documento subido desde la carpeta "Sistema de Gestion" de la
+// PC a Storage (bucket privado "documentos"), clasificado por tipo/mes (y empleado, para personal).
+export type LinkedDocumentType =
+  | "compras"
+  | "facturas-emitidas"
+  | "remitos"
+  | "banco"
+  | "cobranzas"
+  | "caja-chica"
+  | "escalas"
+  | "documentacion"
+  | "personal";
+
+export type LinkedDocument = {
+  id: number;
+  docType: LinkedDocumentType;
+  month: string; // "YYYY-MM" o "" si la carpeta no tiene mes
+  employee?: string; // solo para personal
+  subArea?: string; // Documentacion / EPP / Recibos (personal)
+  fileName: string;
+  relPath: string; // ruta relativa dentro de la carpeta raiz (clave de dedup)
+  size: number;
+  lastModified: number;
+  storagePath: string; // path dentro del bucket documentos
+  uploadedAt: string;
+  assignedRefId?: number; // F2: id del registro (factura/pago/empleado) al que se asigno
 };
 
 export type CostAnalysisGroup = {
