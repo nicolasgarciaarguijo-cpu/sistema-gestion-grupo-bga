@@ -47,4 +47,11 @@ describe("classifyPath", () => {
   it("sin mes = month vacio", () => {
     expect(classifyPath("Escalas/tabla.xlsx").month).toBe("");
   });
+
+  it("acepta 'Escala salarial' (singular) en la raiz, sin mes", () => {
+    expect(classifyPath("Escala salarial/UOM 2026-06.xlsx")).toEqual({
+      docType: "escalas",
+      month: "",
+    });
+  });
 });
