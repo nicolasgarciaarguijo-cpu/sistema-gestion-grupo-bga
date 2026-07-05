@@ -1,42 +1,51 @@
-// Sumatoria/balance de facturacion y cobranza sobre un conjunto de trabajos. Todo lo REAL sale de
-// facturas y pagos; el circuito (blanco/negro) del ADEUDADO es una estimacion: blanco = lo facturado
-// (con IVA) + adicionales; negro = el resto del neto (blackNet). Lo cobrado por circuito sale de la
-// administracion real de cada pago (retenciones cuentan como blanco). Pensado para un balance anual.
+// Sumatoria/balance de facturacion y cobranza sobre un conjunto de trabajos, para un PERIODO.
+// Distingue dos cosas:
+//  - FLUJOS del periodo: facturado (por fecha de factura) y cobrado (por fecha de pago) que caen en el
+//    periodo elegido. Sirven para el balance del ano/mes.
+//  - SALDOS a la fecha: lo que falta facturar y lo que se adeuda cobrar, que son acumulados a hoy (no
+//    dependen del periodo). El circuito (blanco/negro) del adeudado es estimado: blanco = lo facturado
+//    (con IVA) + adicionales; negro = el resto del neto (blackNet).
+// El que arma los inputs (App) ya filtro facturas/pagos por fecha; aca solo se suma.
 
 export type BillingTotalsInput = {
-  invoicedTotal: number; // bruto facturado (con IVA) = suma de totales de facturas
-  invoicedNet: number; // neto facturado = suma de subtotales de facturas
-  committedNet: number; // neto que el trabajo se comprometio a facturar (neto * %facturado)
-  billedGross: number; // bruto comprometido/emitido en blanco (neto factura + IVA)
-  blackNet: number; // neto que corre por negro (no facturado)
-  additionalsTotal: number; // adicionales (se consideran circuito blanco)
-  whiteCollected: number; // cobrado en blanco (pagos blanco + retenciones)
-  blackCollected: number; // cobrado en negro (pagos negro)
-  remainingToPay: number; // saldo total a cobrar del trabajo (autoritativo)
+  invoicedTotalPeriod: number; // bruto facturado (con IVA) dentro del periodo
+  invoicedNetPeriod: number; // neto facturado dentro del periodo
+  committedNet: number; // neto comprometido a facturar (neto * %facturado) - a la fecha
+  invoicedNetAllTime: number; // neto facturado historico (todas las facturas) - a la fecha
+  billedGross: number; // bruto comprometido/emitido en blanco (neto factura + IVA) - a la fecha
+  blackNet: number; // neto que corre por negro (no facturado) - a la fecha
+  additionalsTotal: number; // adicionales (circuito blanco) - a la fecha
+  whiteCollectedPeriod: number; // cobrado en blanco dentro del periodo (pagos)
+  blackCollectedPeriod: number; // cobrado en negro dentro del periodo (pagos)
+  whiteCollectedAllTime: number; // cobrado en blanco historico (pagos + retenciones) - a la fecha
+  blackCollectedAllTime: number; // cobrado en negro historico - a la fecha
+  remainingToPay: number; // saldo total a cobrar del trabajo (autoritativo) - a la fecha
 };
 
 export type BillingTotals = {
   count: number;
+  // Flujos del periodo
   invoicedTotal: number;
   invoicedNet: number;
-  missingToInvoiceNet: number; // neto que falta facturar (comprometido - facturado)
   collectedTotal: number;
   collectedWhite: number;
   collectedBlack: number;
-  owedTotal: number; // saldo total a cobrar (suma de remainingToPay)
-  owedWhite: number; // saldo estimado circuito blanco
-  owedBlack: number; // saldo estimado circuito negro
-  blackSharePct: number; // % del total (facturado+negro) que corre por negro
+  // Saldos a la fecha
+  missingToInvoiceNet: number;
+  owedTotal: number;
+  owedWhite: number;
+  owedBlack: number;
+  blackSharePct: number;
 };
 
 const ZERO: BillingTotals = {
   count: 0,
   invoicedTotal: 0,
   invoicedNet: 0,
-  missingToInvoiceNet: 0,
   collectedTotal: 0,
   collectedWhite: 0,
   collectedBlack: 0,
+  missingToInvoiceNet: 0,
   owedTotal: 0,
   owedWhite: 0,
   owedBlack: 0,
@@ -51,14 +60,16 @@ export function computeBillingTotals(jobs: BillingTotalsInput[]): BillingTotals 
     const whiteToCollect = j.billedGross + j.additionalsTotal;
     const blackToCollect = j.blackNet;
     t.count += 1;
-    t.invoicedTotal += j.invoicedTotal;
-    t.invoicedNet += j.invoicedNet;
-    t.missingToInvoiceNet += Math.max(0, j.committedNet - j.invoicedNet);
-    t.collectedWhite += j.whiteCollected;
-    t.collectedBlack += j.blackCollected;
+    // flujos del periodo
+    t.invoicedTotal += j.invoicedTotalPeriod;
+    t.invoicedNet += j.invoicedNetPeriod;
+    t.collectedWhite += j.whiteCollectedPeriod;
+    t.collectedBlack += j.blackCollectedPeriod;
+    // saldos a la fecha
+    t.missingToInvoiceNet += Math.max(0, j.committedNet - j.invoicedNetAllTime);
     t.owedTotal += j.remainingToPay;
-    t.owedWhite += Math.max(0, whiteToCollect - j.whiteCollected);
-    t.owedBlack += Math.max(0, blackToCollect - j.blackCollected);
+    t.owedWhite += Math.max(0, whiteToCollect - j.whiteCollectedAllTime);
+    t.owedBlack += Math.max(0, blackToCollect - j.blackCollectedAllTime);
     whiteBase += whiteToCollect;
     blackBase += blackToCollect;
   }

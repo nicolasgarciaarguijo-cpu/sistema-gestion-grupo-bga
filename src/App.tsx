@@ -28,6 +28,14 @@ import { matchStockForMaterial, applyStockMovement } from "./domain/stockMatch";
 import { computeAccountingResults } from "./domain/accounting";
 import { computeBillingTotals } from "./domain/billingTotals";
 import {
+  getFiscalYearStartMonth,
+  fiscalYearBounds,
+  currentFiscalStartYear,
+  monthBounds,
+  isIsoInRange,
+  fiscalYearLabel,
+} from "./domain/fiscalYear";
+import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
   parseLeadDays,
@@ -184,6 +192,7 @@ type CompanyOption = {
   bankAlias: string;
   bankCbu: string;
   bankAccount: string;
+  fiscalYearStartMonth?: number; // mes de inicio del ano fiscal (1-12); default octubre (10)
 };
 
 const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
@@ -197,6 +206,7 @@ const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
     bankAlias: "GRUPOBGA",
     bankCbu: "0720082320000000448536",
     bankAccount: "CC$ 082-004485/3",
+    fiscalYearStartMonth: 10,
   },
   {
     value: "De raiz s.r.l",
@@ -208,6 +218,7 @@ const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
     bankAlias: "DERAIZSRL",
     bankCbu: "0340041800419997078004",
     bankAccount: "CC $ 041-419997078-000",
+    fiscalYearStartMonth: 10,
   },
 ];
 
@@ -252,7 +263,7 @@ const STOCK_GROUP_CODE_PREFIX: Record<StockGeneralGroupName, string> = {
 
 const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "acceso", label: "Acceso" },
-  { key: "cashflow", label: "Cash flow y resultados" },
+  { key: "cashflow", label: "Balance, cash flow y resultados" },
   { key: "facturacion", label: "Facturacion y cobranzas" },
   { key: "aprobados", label: "Trabajos aprobados" },
   { key: "fabricacion", label: "Fabricacion" },
@@ -1551,7 +1562,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   },
   {
     key: "cash-flow",
-    label: "Cash flow y resultados",
+    label: "Balance, cash flow y resultados",
     fields: ["financialItems", "debtPlans", "bankStatementEntries"] as const,
   },
   {
@@ -2401,6 +2412,18 @@ export default function App() {
   const [expandedRevisionsRoot, setExpandedRevisionsRoot] = useState<number | null>(null);
   const [selectedApprovedJobId, setSelectedApprovedJobId] = useState<number | null>(null);
   const [selectedCrmClientKey, setSelectedCrmClientKey] = useState<string | null>(null);
+  // Controles del balance (solapa Balance/Cashflow): empresa, periodo (ano fiscal / mes / todo) y cual.
+  const [balanceCompanyScope, setBalanceCompanyScope] = useState<string>("__ALL__");
+  const [balancePeriodMode, setBalancePeriodMode] = useState<"fiscalYear" | "month" | "all">(
+    "fiscalYear"
+  );
+  const [balanceFiscalStartYear, setBalanceFiscalStartYear] = useState<number>(() =>
+    currentFiscalStartYear(10, new Date())
+  );
+  const [balanceMonth, setBalanceMonth] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  });
   const [selectedFinancialItemId, setSelectedFinancialItemId] = useState<number | null>(
     defaultFinancialItems[0]?.id ?? null
   );
@@ -4187,44 +4210,92 @@ export default function App() {
       );
   }, [approvedJobsSummary]);
 
-  // Balance/sumatoria de facturacion y cobranza sobre TODOS los trabajos visibles (no solo los
-  // pendientes): facturado, falta facturar, cobrado blanco/negro y adeudado blanco/negro. Base del
-  // balance anual (el filtro por ano fiscal por empresa viene en el proximo paso).
-  const billingTotals = useMemo(
-    () =>
-      computeBillingTotals(
-        approvedJobsSummary.map((job) => {
-          const invoicedTotal = (job.invoices || []).reduce(
-            (acc, inv) => acc + Number(inv.total || 0),
-            0
+  // Balance/sumatoria de facturacion y cobranza, filtrado por empresa y por periodo (ano fiscal por
+  // empresa / mes / todo). Facturado se corta por fecha de factura y cobrado por fecha de pago; falta
+  // facturar y adeudado son acumulados a la fecha. Base para el cierre de balances y balances mensuales.
+  const billingBalance = useMemo(() => {
+    const monthRange = monthBounds(balanceMonth);
+    const inputs = approvedJobsSummary
+      .filter((job) => balanceCompanyScope === "__ALL__" || job.company === balanceCompanyScope)
+      .map((job) => {
+        let inPeriod: (dateStr: string) => boolean;
+        if (balancePeriodMode === "all") {
+          inPeriod = () => true;
+        } else if (balancePeriodMode === "month") {
+          inPeriod = (d) => isIsoInRange(d, monthRange.startIso, monthRange.endIso);
+        } else {
+          const startMonth = getFiscalYearStartMonth(
+            companyCatalog.find((c) => c.value === job.company)
           );
-          const invoicedNet = (job.invoices || []).reduce(
-            (acc, inv) => acc + Number(inv.subtotal || 0),
-            0
-          );
-          const whiteCollected =
-            (job.payments || [])
-              .filter((pay) => pay.administration !== "negro")
-              .reduce((acc, pay) => acc + Number(pay.amount || 0), 0) +
-            (job.retentions || []).reduce((acc, ret) => acc + Number(ret.amount || 0), 0);
-          const blackCollected = (job.payments || [])
-            .filter((pay) => pay.administration === "negro")
-            .reduce((acc, pay) => acc + Number(pay.amount || 0), 0);
-          return {
-            invoicedTotal,
-            invoicedNet,
-            committedNet: job.soldNetPrice * (job.billedPct / 100),
-            billedGross: job.billedGross,
-            blackNet: job.blackNet,
-            additionalsTotal: job.additionalsTotal,
-            whiteCollected,
-            blackCollected,
-            remainingToPay: job.remainingToPay,
-          };
-        })
-      ),
-    [approvedJobsSummary]
-  );
+          const b = fiscalYearBounds(startMonth, balanceFiscalStartYear);
+          inPeriod = (d) => isIsoInRange(d, b.startIso, b.endIso);
+        }
+        const invoices = job.invoices || [];
+        const payments = job.payments || [];
+        const invoicedTotalPeriod = invoices
+          .filter((inv) => inPeriod(inv.invoiceDate))
+          .reduce((acc, inv) => acc + Number(inv.total || 0), 0);
+        const invoicedNetPeriod = invoices
+          .filter((inv) => inPeriod(inv.invoiceDate))
+          .reduce((acc, inv) => acc + Number(inv.subtotal || 0), 0);
+        const invoicedNetAllTime = invoices.reduce((acc, inv) => acc + Number(inv.subtotal || 0), 0);
+        const whiteCollectedPeriod = payments
+          .filter((pay) => pay.administration !== "negro" && inPeriod(pay.paymentDate))
+          .reduce((acc, pay) => acc + Number(pay.amount || 0), 0);
+        const blackCollectedPeriod = payments
+          .filter((pay) => pay.administration === "negro" && inPeriod(pay.paymentDate))
+          .reduce((acc, pay) => acc + Number(pay.amount || 0), 0);
+        const whiteCollectedAllTime =
+          payments
+            .filter((pay) => pay.administration !== "negro")
+            .reduce((acc, pay) => acc + Number(pay.amount || 0), 0) +
+          (job.retentions || []).reduce((acc, ret) => acc + Number(ret.amount || 0), 0);
+        const blackCollectedAllTime = payments
+          .filter((pay) => pay.administration === "negro")
+          .reduce((acc, pay) => acc + Number(pay.amount || 0), 0);
+        return {
+          invoicedTotalPeriod,
+          invoicedNetPeriod,
+          committedNet: job.soldNetPrice * (job.billedPct / 100),
+          invoicedNetAllTime,
+          billedGross: job.billedGross,
+          blackNet: job.blackNet,
+          additionalsTotal: job.additionalsTotal,
+          whiteCollectedPeriod,
+          blackCollectedPeriod,
+          whiteCollectedAllTime,
+          blackCollectedAllTime,
+          remainingToPay: job.remainingToPay,
+        };
+      });
+    return computeBillingTotals(inputs);
+  }, [
+    approvedJobsSummary,
+    companyCatalog,
+    balanceCompanyScope,
+    balancePeriodMode,
+    balanceFiscalStartYear,
+    balanceMonth,
+  ]);
+
+  // Opciones para el selector: anos fiscales recientes (por su ano de inicio) y label legible.
+  const balanceFiscalYearOptions = useMemo(() => {
+    const current = currentFiscalStartYear(10, new Date());
+    const years: { value: number; label: string }[] = [];
+    for (let y = current; y >= current - 5; y--) {
+      years.push({ value: y, label: fiscalYearLabel(10, y) });
+    }
+    return years;
+  }, []);
+
+  // Actualiza el mes de inicio del ano fiscal de una empresa en el catalogo (persistido).
+  const updateCompanyFiscalStartMonth = (companyValue: string, month: number) => {
+    setCompanyCatalog((prev) =>
+      prev.map((item) =>
+        item.value === companyValue ? { ...item, fiscalYearStartMonth: month } : item
+      )
+    );
+  };
 
   const crmClientRows = useMemo(
     () =>
@@ -10725,6 +10796,17 @@ export default function App() {
         <CashflowTab
           cashFlowSummary={cashFlowSummary}
           accountingResults={accountingResults}
+          billingBalance={billingBalance}
+          balanceCompanyScope={balanceCompanyScope}
+          setBalanceCompanyScope={setBalanceCompanyScope}
+          balancePeriodMode={balancePeriodMode}
+          setBalancePeriodMode={setBalancePeriodMode}
+          balanceFiscalStartYear={balanceFiscalStartYear}
+          setBalanceFiscalStartYear={setBalanceFiscalStartYear}
+          balanceMonth={balanceMonth}
+          setBalanceMonth={setBalanceMonth}
+          balanceFiscalYearOptions={balanceFiscalYearOptions}
+          updateCompanyFiscalStartMonth={updateCompanyFiscalStartMonth}
           activeAssetsMonthlyDepreciation={activeAssetsMonthlyDepreciation}
           analysisYear={analysisYear}
           annualCashFlowEntries={annualCashFlowEntries}
@@ -11039,7 +11121,6 @@ export default function App() {
       {activeTab === "facturacion" && (
         <FacturacionTab
           financialSemaphoreSummary={financialSemaphoreSummary}
-          billingTotals={billingTotals}
           jobBillingCards={jobBillingCards}
           setActiveTab={setActiveTab}
           setSelectedApprovedJobId={setSelectedApprovedJobId}

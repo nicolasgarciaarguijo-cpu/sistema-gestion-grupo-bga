@@ -4,9 +4,82 @@ import { Panel, MiniMetric, ButtonLike, TwoCol, Field } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, BankStatementEntry } from "../domain/types";
 
+// Tile de balance: blanco claro / negro oscuro para diferenciar las administraciones de un vistazo.
+function BalanceTile({
+  label,
+  value,
+  tone = "plain",
+}: {
+  label: string;
+  value: string;
+  tone?: "white" | "black" | "warn" | "strong" | "plain";
+}) {
+  const toneStyle: React.CSSProperties =
+    tone === "black"
+      ? { background: "#1f2937" }
+      : tone === "white"
+      ? { background: "#f8fafc" }
+      : tone === "warn"
+      ? { background: "#fffbeb", border: "1px solid #fde68a" }
+      : tone === "strong"
+      ? { background: "#eff6ff", border: "1px solid #bfdbfe" }
+      : {};
+  const dark = tone === "black";
+  return (
+    <div style={{ ...styles.metric, ...toneStyle }}>
+      <div style={{ ...styles.metricLabel, color: dark ? "#cbd5e1" : styles.metricLabel.color }}>
+        {label}
+      </div>
+      <div style={{ ...styles.metricValue, color: dark ? "#f9fafb" : styles.metricValue.color }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+const balanceGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 10,
+  marginBottom: 12,
+};
+const balanceSection: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  color: "#475569",
+  textTransform: "uppercase",
+  margin: "4px 0 6px",
+};
+const MONTH_OPTIONS = [
+  { value: 1, label: "enero" },
+  { value: 2, label: "febrero" },
+  { value: 3, label: "marzo" },
+  { value: 4, label: "abril" },
+  { value: 5, label: "mayo" },
+  { value: 6, label: "junio" },
+  { value: 7, label: "julio" },
+  { value: 8, label: "agosto" },
+  { value: 9, label: "septiembre" },
+  { value: 10, label: "octubre" },
+  { value: 11, label: "noviembre" },
+  { value: 12, label: "diciembre" },
+];
+
 type CashflowTabProps = {
   cashFlowSummary: any;
   accountingResults: any;
+  billingBalance: any;
+  balanceCompanyScope: string;
+  setBalanceCompanyScope: (scope: string) => void;
+  balancePeriodMode: "fiscalYear" | "month" | "all";
+  setBalancePeriodMode: (mode: "fiscalYear" | "month" | "all") => void;
+  balanceFiscalStartYear: number;
+  setBalanceFiscalStartYear: (year: number) => void;
+  balanceMonth: string;
+  setBalanceMonth: (ym: string) => void;
+  balanceFiscalYearOptions: { value: number; label: string }[];
+  updateCompanyFiscalStartMonth: (companyValue: string, month: number) => void;
   activeAssetsMonthlyDepreciation: number;
   analysisYear: number;
   annualCashFlowEntries: any[];
@@ -65,9 +138,129 @@ export function CashflowTab({
   removeBankStatementEntry,
   updateBankStatementEntry,
   uploadBankStatementFile,
+  billingBalance,
+  balanceCompanyScope,
+  setBalanceCompanyScope,
+  balancePeriodMode,
+  setBalancePeriodMode,
+  balanceFiscalStartYear,
+  setBalanceFiscalStartYear,
+  balanceMonth,
+  setBalanceMonth,
+  balanceFiscalYearOptions,
+  updateCompanyFiscalStartMonth,
 }: CashflowTabProps) {
   return (
         <div style={styles.column}>
+          <Panel title="Balance · facturacion y cobranza" span="wide">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginBottom: 12 }}>
+              <Field label="Empresa">
+                <select
+                  style={styles.input}
+                  value={balanceCompanyScope}
+                  onChange={(e) => setBalanceCompanyScope(e.target.value)}
+                >
+                  <option value="__ALL__">Todas</option>
+                  {COMPANY_OPTIONS.map((company) => (
+                    <option key={company.value} value={company.value}>
+                      {company.short || company.value}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Periodo">
+                <select
+                  style={styles.input}
+                  value={balancePeriodMode}
+                  onChange={(e) => setBalancePeriodMode(e.target.value as "fiscalYear" | "month" | "all")}
+                >
+                  <option value="fiscalYear">Ano fiscal</option>
+                  <option value="month">Mes</option>
+                  <option value="all">Todo</option>
+                </select>
+              </Field>
+              {balancePeriodMode === "fiscalYear" && (
+                <Field label="Ano fiscal">
+                  <select
+                    style={styles.input}
+                    value={balanceFiscalStartYear}
+                    onChange={(e) => setBalanceFiscalStartYear(Number(e.target.value))}
+                  >
+                    {balanceFiscalYearOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              )}
+              {balancePeriodMode === "month" && (
+                <Field label="Mes">
+                  <input
+                    style={styles.input}
+                    type="month"
+                    value={balanceMonth}
+                    onChange={(e) => setBalanceMonth(e.target.value)}
+                  />
+                </Field>
+              )}
+            </div>
+
+            <div style={balanceSection}>Facturacion (del periodo)</div>
+            <div style={balanceGrid}>
+              <BalanceTile label="Facturado (con IVA)" value={money(billingBalance.invoicedTotal)} />
+              <BalanceTile label="Facturado (neto)" value={money(billingBalance.invoicedNet)} />
+              <BalanceTile label="Falta facturar (neto, a la fecha)" value={money(billingBalance.missingToInvoiceNet)} tone="warn" />
+            </div>
+
+            <div style={balanceSection}>Cobrado (del periodo, por administracion)</div>
+            <div style={balanceGrid}>
+              <BalanceTile label="Cobrado total" value={money(billingBalance.collectedTotal)} tone="strong" />
+              <BalanceTile label="Cobrado blanco" value={money(billingBalance.collectedWhite)} tone="white" />
+              <BalanceTile label="Cobrado negro" value={money(billingBalance.collectedBlack)} tone="black" />
+            </div>
+
+            <div style={balanceSection}>Adeudado a cobrar (a la fecha)</div>
+            <div style={balanceGrid}>
+              <BalanceTile label="Adeudado total" value={money(billingBalance.owedTotal)} tone="strong" />
+              <BalanceTile label="Adeudado blanco (est.)" value={money(billingBalance.owedWhite)} tone="white" />
+              <BalanceTile label="Adeudado negro (est.)" value={money(billingBalance.owedBlack)} tone="black" />
+            </div>
+
+            <div style={{ ...styles.noticeBox, marginTop: 4 }}>
+              Facturado se corta por fecha de factura y cobrado por fecha de pago (del periodo elegido).
+              Falta facturar y adeudado son acumulados a la fecha. Circuito del adeudado estimado:
+              blanco = lo facturado + adicionales, negro = el resto. Peso del negro:{" "}
+              <strong>{billingBalance.blackSharePct.toFixed(1)}%</strong> · {billingBalance.count} trabajos.
+            </div>
+
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569" }}>
+                Ano fiscal por empresa
+              </summary>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 }}>
+                {COMPANY_OPTIONS.map((company) => (
+                  <Field key={company.value} label={company.short || company.value}>
+                    <select
+                      style={styles.input}
+                      value={company.fiscalYearStartMonth ?? 10}
+                      onChange={(e) => updateCompanyFiscalStartMonth(company.value, Number(e.target.value))}
+                    >
+                      {MONTH_OPTIONS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          Empieza en {m.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                ))}
+              </div>
+              <div style={{ ...styles.muted, marginTop: 6 }}>
+                Hoy ambas empresas arrancan en octubre. Cambialo aca si sumas una empresa con otro calendario.
+              </div>
+            </details>
+          </Panel>
+
           <Panel title="Contabilidad blanco / negro (dos resultados)" span="wide">
             <div style={styles.grid2}>
               <div>
