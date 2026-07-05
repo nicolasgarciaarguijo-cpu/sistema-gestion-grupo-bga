@@ -70,6 +70,7 @@ type CashflowTabProps = {
   cashFlowSummary: any;
   accountingResults: any;
   billingBalance: any;
+  periodStatement: any;
   balanceCompanyScope: string;
   setBalanceCompanyScope: (scope: string) => void;
   balancePeriodMode: "fiscalYear" | "month" | "all";
@@ -139,6 +140,7 @@ export function CashflowTab({
   updateBankStatementEntry,
   uploadBankStatementFile,
   billingBalance,
+  periodStatement,
   balanceCompanyScope,
   setBalanceCompanyScope,
   balancePeriodMode,
@@ -261,7 +263,54 @@ export function CashflowTab({
             </details>
           </Panel>
 
-          <Panel title="Contabilidad blanco / negro (dos resultados)" span="wide">
+          <Panel title="Estado de resultados del periodo (percibido, operativo)" span="wide">
+            <div style={styles.grid2}>
+              <div>
+                <div style={styles.sectionHeader}>Circuito BLANCO</div>
+                <div style={styles.metricGrid}>
+                  <MiniMetric label="Cobrado blanco" value={money(periodStatement.whiteIncome)} />
+                  <MiniMetric label="Egresos blanco" value={money(periodStatement.whiteExpense)} />
+                  <MiniMetric label="Resultado blanco" value={money(periodStatement.whiteResult)} />
+                </div>
+              </div>
+              <div>
+                <div style={styles.sectionHeader}>Circuito NEGRO</div>
+                <div style={styles.metricGrid}>
+                  <MiniMetric label="Cobrado negro" value={money(periodStatement.blackIncome)} />
+                  <MiniMetric label="Egresos negro" value={money(periodStatement.blackExpense)} />
+                  <MiniMetric label="Resultado negro" value={money(periodStatement.blackResult)} />
+                </div>
+              </div>
+            </div>
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Ingresos totales" value={money(periodStatement.totalIncome)} />
+              <MiniMetric label="Egresos totales" value={money(periodStatement.totalExpense)} />
+              <MiniMetric label="Resultado total" value={money(periodStatement.totalResult)} />
+              <MiniMetric label="% en negro" value={`${periodStatement.blackSharePct.toFixed(1)}%`} />
+              <MiniMetric label="Desfasaje blanco vs negro" value={money(periodStatement.desfasaje)} />
+            </div>
+            <div style={styles.noticeBox}>
+              Base percibido: ingresos = cobros del periodo; egresos = compras + caja chica + comisiones
+              pagadas (por su fecha). Compras a valor total (con IVA). No incluye sueldos/premios ni
+              amortizacion (eso, en el panel de contabilidad general de abajo). Respeta la empresa y el
+              periodo elegidos arriba.
+            </div>
+          </Panel>
+
+          <Panel title="Cash flow del periodo" span="half">
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Flujo operativo (cobros - pagos)" value={money(periodStatement.totalResult)} />
+              <MiniMetric label="Creditos banco" value={money(periodStatement.bankCredits)} />
+              <MiniMetric label="Debitos banco" value={money(periodStatement.bankDebits)} />
+              <MiniMetric label="Flujo banco (neto)" value={money(periodStatement.netBank)} />
+            </div>
+            <div style={styles.noticeBox}>
+              Flujo operativo = cobros menos pagos del periodo. El banco se muestra aparte para no
+              duplicar (un cobro ya cuenta como ingreso). Mas abajo, el detalle mensual y las deudas.
+            </div>
+          </Panel>
+
+          <Panel title="Contabilidad general blanco / negro (devengado, con sueldos y amortizacion)" span="wide">
             <div style={styles.grid2}>
               <div>
                 <div style={styles.sectionHeader}>Circuito BLANCO</div>
