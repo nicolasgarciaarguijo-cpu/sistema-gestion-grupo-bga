@@ -5,8 +5,57 @@ import { money, pct } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode } from "../domain/types";
 
+// Tile de balance: blanco claro / negro oscuro para diferenciar las administraciones de un vistazo.
+function BalanceTile({
+  label,
+  value,
+  tone = "plain",
+}: {
+  label: string;
+  value: string;
+  tone?: "white" | "black" | "warn" | "strong" | "plain";
+}) {
+  const toneStyle: React.CSSProperties =
+    tone === "black"
+      ? { background: "#1f2937" }
+      : tone === "white"
+      ? { background: "#f8fafc" }
+      : tone === "warn"
+      ? { background: "#fffbeb", border: "1px solid #fde68a" }
+      : tone === "strong"
+      ? { background: "#eff6ff", border: "1px solid #bfdbfe" }
+      : {};
+  const dark = tone === "black";
+  return (
+    <div style={{ ...styles.metric, ...toneStyle }}>
+      <div style={{ ...styles.metricLabel, color: dark ? "#cbd5e1" : styles.metricLabel.color }}>
+        {label}
+      </div>
+      <div style={{ ...styles.metricValue, color: dark ? "#f9fafb" : styles.metricValue.color }}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+const balanceGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+  gap: 10,
+  marginBottom: 12,
+};
+const balanceSection: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: "0.06em",
+  color: "#475569",
+  textTransform: "uppercase",
+  margin: "4px 0 6px",
+};
+
 type FacturacionTabProps = {
   financialSemaphoreSummary: any;
+  billingTotals: any;
   jobBillingCards: any[];
   setActiveTab: (tab: any) => void;
   setSelectedApprovedJobId: React.Dispatch<React.SetStateAction<number | null>>;
@@ -29,6 +78,7 @@ type FacturacionTabProps = {
 
 export function FacturacionTab({
   financialSemaphoreSummary,
+  billingTotals,
   jobBillingCards,
   setActiveTab,
   setSelectedApprovedJobId,
@@ -68,6 +118,38 @@ export function FacturacionTab({
               ))}
             </div>
           </Panel>
+          <Panel title="Balance general · facturacion y cobranza (todos los trabajos)">
+            <div style={{ ...styles.muted, marginBottom: 10 }}>
+              Suma de los {billingTotals.count} trabajos visibles. Lo cobrado sale de la
+              administracion real de cada pago; el circuito del adeudado es estimado (blanco = lo
+              facturado + adicionales, negro = el resto). Proximo paso: filtrar por ano fiscal por empresa.
+            </div>
+
+            <div style={balanceSection}>Facturacion</div>
+            <div style={balanceGrid}>
+              <BalanceTile label="Facturado (con IVA)" value={money(billingTotals.invoicedTotal)} />
+              <BalanceTile label="Falta facturar (neto)" value={money(billingTotals.missingToInvoiceNet)} tone="warn" />
+            </div>
+
+            <div style={balanceSection}>Cobrado</div>
+            <div style={balanceGrid}>
+              <BalanceTile label="Cobrado total" value={money(billingTotals.collectedTotal)} tone="strong" />
+              <BalanceTile label="Cobrado blanco" value={money(billingTotals.collectedWhite)} tone="white" />
+              <BalanceTile label="Cobrado negro" value={money(billingTotals.collectedBlack)} tone="black" />
+            </div>
+
+            <div style={balanceSection}>Adeudado (saldo a cobrar)</div>
+            <div style={balanceGrid}>
+              <BalanceTile label="Adeudado total" value={money(billingTotals.owedTotal)} tone="strong" />
+              <BalanceTile label="Adeudado blanco (est.)" value={money(billingTotals.owedWhite)} tone="white" />
+              <BalanceTile label="Adeudado negro (est.)" value={money(billingTotals.owedBlack)} tone="black" />
+            </div>
+
+            <div style={{ ...styles.muted, marginTop: 4 }}>
+              Peso del circuito negro sobre lo comprometido: <strong>{pct(billingTotals.blackSharePct)}</strong>
+            </div>
+          </Panel>
+
           <Panel
             title="Calendario de facturacion y cobranzas"
             actions={

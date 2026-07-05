@@ -26,6 +26,7 @@ import { buildCrmRows, normalizeClientName, deriveClientsFromHistory } from "./d
 import { buildPersonalReminders } from "./domain/personalReminders";
 import { matchStockForMaterial, applyStockMovement } from "./domain/stockMatch";
 import { computeAccountingResults } from "./domain/accounting";
+import { computeBillingTotals } from "./domain/billingTotals";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -4185,6 +4186,45 @@ export default function App() {
           b.remainingToPay - a.remainingToPay
       );
   }, [approvedJobsSummary]);
+
+  // Balance/sumatoria de facturacion y cobranza sobre TODOS los trabajos visibles (no solo los
+  // pendientes): facturado, falta facturar, cobrado blanco/negro y adeudado blanco/negro. Base del
+  // balance anual (el filtro por ano fiscal por empresa viene en el proximo paso).
+  const billingTotals = useMemo(
+    () =>
+      computeBillingTotals(
+        approvedJobsSummary.map((job) => {
+          const invoicedTotal = (job.invoices || []).reduce(
+            (acc, inv) => acc + Number(inv.total || 0),
+            0
+          );
+          const invoicedNet = (job.invoices || []).reduce(
+            (acc, inv) => acc + Number(inv.subtotal || 0),
+            0
+          );
+          const whiteCollected =
+            (job.payments || [])
+              .filter((pay) => pay.administration !== "negro")
+              .reduce((acc, pay) => acc + Number(pay.amount || 0), 0) +
+            (job.retentions || []).reduce((acc, ret) => acc + Number(ret.amount || 0), 0);
+          const blackCollected = (job.payments || [])
+            .filter((pay) => pay.administration === "negro")
+            .reduce((acc, pay) => acc + Number(pay.amount || 0), 0);
+          return {
+            invoicedTotal,
+            invoicedNet,
+            committedNet: job.soldNetPrice * (job.billedPct / 100),
+            billedGross: job.billedGross,
+            blackNet: job.blackNet,
+            additionalsTotal: job.additionalsTotal,
+            whiteCollected,
+            blackCollected,
+            remainingToPay: job.remainingToPay,
+          };
+        })
+      ),
+    [approvedJobsSummary]
+  );
 
   const crmClientRows = useMemo(
     () =>
@@ -10999,6 +11039,7 @@ export default function App() {
       {activeTab === "facturacion" && (
         <FacturacionTab
           financialSemaphoreSummary={financialSemaphoreSummary}
+          billingTotals={billingTotals}
           jobBillingCards={jobBillingCards}
           setActiveTab={setActiveTab}
           setSelectedApprovedJobId={setSelectedApprovedJobId}
