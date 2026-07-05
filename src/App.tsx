@@ -299,6 +299,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "compras",
   "cajaChica",
   "personal",
+  "documentos",
 ];
 
 const resolveCompanyNameFromCatalogItem = (
