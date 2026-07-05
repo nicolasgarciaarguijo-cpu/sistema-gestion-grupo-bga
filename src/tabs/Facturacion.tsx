@@ -1,13 +1,17 @@
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Semaforo, ButtonLike, Field } from "../ui/primitives";
-import { money, pct } from "../lib/format";
+import { money, pct, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode } from "../domain/types";
 
 type FacturacionTabProps = {
   financialSemaphoreSummary: any;
   jobBillingCards: any[];
+  annualCalendarMonths: any[];
+  annualCalendarStartYear: number;
+  setAnnualCalendarStartYear: (year: number) => void;
+  annualCalendarYearOptions: { value: number; label: string }[];
   setActiveTab: (tab: any) => void;
   setSelectedApprovedJobId: React.Dispatch<React.SetStateAction<number | null>>;
   financialMonthData: any;
@@ -30,6 +34,10 @@ type FacturacionTabProps = {
 export function FacturacionTab({
   financialSemaphoreSummary,
   jobBillingCards,
+  annualCalendarMonths,
+  annualCalendarStartYear,
+  setAnnualCalendarStartYear,
+  annualCalendarYearOptions,
   setActiveTab,
   setSelectedApprovedJobId,
   financialMonthData,
@@ -48,6 +56,16 @@ export function FacturacionTab({
   removeFinancialItem,
   exportPrint,
 }: FacturacionTabProps) {
+  // Colapso por mes del calendario anual. Sin entrada explicita: los meses vacios nacen minimizados.
+  const [collapsedMonths, setCollapsedMonths] = React.useState<Record<string, boolean>>({});
+  const isMonthCollapsed = (key: string, count: number) => collapsedMonths[key] ?? count === 0;
+  const toggleMonth = (key: string, count: number) =>
+    setCollapsedMonths((prev) => ({ ...prev, [key]: !(prev[key] ?? count === 0) }));
+  const setAllMonths = (collapsed: boolean) =>
+    setCollapsedMonths(
+      Object.fromEntries(annualCalendarMonths.map((m) => [m.key, collapsed]))
+    );
+
   return (
         <div style={styles.masterDetailLayout}>
           <div style={styles.masterDetailMain}>
@@ -68,6 +86,125 @@ export function FacturacionTab({
               ))}
             </div>
           </Panel>
+          <Panel
+            title="Calendario anual unificado"
+            actions={
+              <div style={styles.monthToolbar}>
+                <select
+                  style={styles.input}
+                  value={annualCalendarStartYear}
+                  onChange={(e) => setAnnualCalendarStartYear(Number(e.target.value))}
+                >
+                  {annualCalendarYearOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <ButtonLike onClick={() => setAllMonths(false)} secondary>Expandir todo</ButtonLike>
+                <ButtonLike onClick={() => setAllMonths(true)} secondary>Minimizar todo</ButtonLike>
+              </div>
+            }
+          >
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {annualCalendarMonths.map((month) => {
+                const collapsed = isMonthCollapsed(month.key, month.count);
+                return (
+                  <div
+                    key={month.key}
+                    style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}
+                  >
+                    <button
+                      onClick={() => toggleMonth(month.key, month.count)}
+                      style={{
+                        width: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        padding: "10px 14px",
+                        background: "#f8fafc",
+                        border: "none",
+                        cursor: "pointer",
+                        textAlign: "left",
+                      }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <span style={{ fontSize: 16, color: "#64748b", width: 14, display: "inline-block" }}>
+                          {collapsed ? "▸" : "▾"}
+                        </span>
+                        <strong style={{ textTransform: "capitalize", fontSize: 15 }}>{month.label}</strong>
+                        <span style={{ ...styles.statusPill, background: "#e2e8f0", color: "#475569" }}>
+                          {month.count} mov.
+                        </span>
+                      </span>
+                      <span style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, color: "#475569" }}>
+                        <span>Facturado <strong>{money(month.facturado)}</strong></span>
+                        <span>Cobrado <strong>{money(month.cobrado)}</strong></span>
+                        {month.pagos > 0 && <span>Pagos <strong>{money(month.pagos)}</strong></span>}
+                      </span>
+                    </button>
+
+                    {!collapsed &&
+                      (month.count === 0 ? (
+                        <div style={{ ...styles.calendarEmpty, padding: "10px 14px" }}>Sin movimientos este mes</div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column" }}>
+                          {month.items.map((item) => {
+                            const meta = getCompanyMeta(item.company);
+                            const sem = getDateSemaphore(item.date, item.status === "realizado");
+                            const negro = item.administration === "negro";
+                            return (
+                              <button
+                                key={item.id}
+                                onClick={() => setSelectedFinancialItemId(item.id)}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "92px 1fr auto",
+                                  alignItems: "center",
+                                  gap: 12,
+                                  padding: "9px 14px",
+                                  borderTop: "1px solid #f1f5f9",
+                                  borderLeft: `6px solid ${meta.primary}`,
+                                  background: negro ? "#1f2937" : "#ffffff",
+                                  color: negro ? "#f9fafb" : "#0f172a",
+                                  cursor: "pointer",
+                                  textAlign: "left",
+                                  width: "100%",
+                                }}
+                              >
+                                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                                  <Semaforo level={sem.level} size={10} title={sem.label} />
+                                  {formatDateDisplay(item.date)}
+                                </span>
+                                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  <strong>{meta.short}</strong> · {getFinancialTypeLabel(item.type)}
+                                  {item.client || item.title ? ` · ${item.client || item.title}` : ""}
+                                </span>
+                                <span style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                                  {money(item.amount)}
+                                  <span
+                                    style={{
+                                      ...styles.statusPill,
+                                      ...(negro ? styles.adminBlack : styles.adminWhite),
+                                      fontSize: 9,
+                                      padding: "1px 5px",
+                                    }}
+                                  >
+                                    {negro ? "N" : "B"}
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ))}
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+
           <Panel
             title="Calendario de facturacion y cobranzas"
             actions={

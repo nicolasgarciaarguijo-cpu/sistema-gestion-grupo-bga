@@ -2425,6 +2425,10 @@ export default function App() {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   });
+  // Calendario anual (12 meses colapsables): ano fiscal de inicio (octubre por defecto).
+  const [annualCalendarStartYear, setAnnualCalendarStartYear] = useState<number>(() =>
+    currentFiscalStartYear(10, new Date())
+  );
   const [selectedFinancialItemId, setSelectedFinancialItemId] = useState<number | null>(
     defaultFinancialItems[0]?.id ?? null
   );
@@ -4210,6 +4214,30 @@ export default function App() {
           b.remainingToPay - a.remainingToPay
       );
   }, [approvedJobsSummary]);
+
+  // Calendario anual unificado: 12 meses del ano fiscal (arranca en octubre), cada uno con sus items
+  // (facturacion/cobranza/pago) y totales, para una vista amplia y colapsable por mes.
+  const annualCalendarMonths = useMemo(() => {
+    const FISCAL_START_MONTH = 10; // octubre
+    return Array.from({ length: 12 }, (_, i) => {
+      const d = new Date(annualCalendarStartYear, FISCAL_START_MONTH - 1 + i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const items = visibleFinancialItems
+        .filter((item) => (item.date || "").slice(0, 7) === key)
+        .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      const sumBy = (type: string) =>
+        items.filter((it) => it.type === type).reduce((acc, it) => acc + Number(it.amount || 0), 0);
+      return {
+        key,
+        label: monthLabel(key),
+        items,
+        count: items.length,
+        facturado: sumBy("facturacion"),
+        cobrado: sumBy("cobranza"),
+        pagos: sumBy("pago"),
+      };
+    });
+  }, [annualCalendarStartYear, visibleFinancialItems]);
 
   // Balance/sumatoria de facturacion y cobranza, filtrado por empresa y por periodo (ano fiscal por
   // empresa / mes / todo). Facturado se corta por fecha de factura y cobrado por fecha de pago; falta
@@ -11240,6 +11268,10 @@ export default function App() {
         <FacturacionTab
           financialSemaphoreSummary={financialSemaphoreSummary}
           jobBillingCards={jobBillingCards}
+          annualCalendarMonths={annualCalendarMonths}
+          annualCalendarStartYear={annualCalendarStartYear}
+          setAnnualCalendarStartYear={setAnnualCalendarStartYear}
+          annualCalendarYearOptions={balanceFiscalYearOptions}
           setActiveTab={setActiveTab}
           setSelectedApprovedJobId={setSelectedApprovedJobId}
           financialMonthData={financialMonthData}
