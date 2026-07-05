@@ -1,12 +1,15 @@
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Semaforo, ButtonLike, Field } from "../ui/primitives";
-import { money } from "../lib/format";
+import { money, pct } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode } from "../domain/types";
 
 type FacturacionTabProps = {
   financialSemaphoreSummary: any;
+  jobBillingCards: any[];
+  setActiveTab: (tab: any) => void;
+  setSelectedApprovedJobId: React.Dispatch<React.SetStateAction<number | null>>;
   financialMonthData: any;
   financialItemsByDate: Map<string, any[]>;
   selectedFinancialItem: any;
@@ -26,6 +29,9 @@ type FacturacionTabProps = {
 
 export function FacturacionTab({
   financialSemaphoreSummary,
+  jobBillingCards,
+  setActiveTab,
+  setSelectedApprovedJobId,
   financialMonthData,
   financialItemsByDate,
   selectedFinancialItem,
@@ -169,6 +175,136 @@ export function FacturacionTab({
                 );
               })}
             </div>
+          </Panel>
+
+          <Panel
+            title={`Fichas por trabajo · evolucion y pendientes${
+              jobBillingCards.length ? ` (${jobBillingCards.length})` : ""
+            }`}
+          >
+            <div style={{ ...styles.calendarLegend, marginBottom: 10 }}>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Semaforo level="verde" size={10} /> al dia
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Semaforo level="amarillo" size={10} /> falta facturar o cobrar
+              </span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Semaforo level="rojo" size={10} /> finalizado con pendientes
+              </span>
+              <span style={styles.muted}>Solo trabajos activos y cerrados con algo pendiente.</span>
+            </div>
+
+            {jobBillingCards.length === 0 ? (
+              <div style={styles.calendarEmpty}>No hay trabajos con facturacion o cobranza pendiente.</div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {jobBillingCards.map((card) => {
+                  const meta = getCompanyMeta(card.company);
+                  const billedPctReal =
+                    card.soldNetPrice > 0
+                      ? Math.min(100, (card.invoicedNetReal / card.soldNetPrice) * 100)
+                      : 0;
+                  return (
+                    <div
+                      key={card.id}
+                      style={{
+                        border: "1px solid #e2e8f0",
+                        borderLeft: `6px solid ${meta.primary}`,
+                        borderRadius: 12,
+                        padding: 12,
+                        background: "#ffffff",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <span
+                            style={{
+                              width: 10,
+                              height: 10,
+                              borderRadius: 999,
+                              background: meta.primary,
+                              display: "inline-block",
+                              flex: "none",
+                            }}
+                          />
+                          <strong>{meta.short}</strong>
+                          <span style={{ fontWeight: 700 }}>{card.budgetNumber}</span>
+                        </span>
+                        <Semaforo level={card.semaphore.level} size={14} title={card.semaphore.label} ring />
+                      </div>
+
+                      <div style={{ fontSize: 12, color: "#334155", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {card.client || "Sin cliente"}
+                        {card.project ? ` · ${card.project}` : ""}
+                      </div>
+
+                      {/* Facturado */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b" }}>
+                          <span>Facturado {pct(billedPctReal)} de {pct(card.billedPct)}</span>
+                          <span>{money(card.invoicedNetReal)}</span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 999, background: "#e2e8f0", overflow: "hidden", marginTop: 3 }}>
+                          <div style={{ width: `${billedPctReal}%`, height: "100%", background: meta.primary }} />
+                        </div>
+                      </div>
+
+                      {/* Cobrado */}
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#64748b" }}>
+                          <span>Cobrado {pct(card.collectedPct)}</span>
+                          <span>{money(card.collectedTotal)} / {money(card.valueToCollect)}</span>
+                        </div>
+                        <div style={{ height: 6, borderRadius: 999, background: "#e2e8f0", overflow: "hidden", marginTop: 3 }}>
+                          <div style={{ width: `${card.collectedPct}%`, height: "100%", background: "#16a34a" }} />
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {card.semaphore.needsInvoice && (
+                          <span style={{ ...styles.statusPill, background: "#fef3c7", color: "#92400e", fontWeight: 700 }}>
+                            Falta facturar {money(card.missingToInvoice)}
+                          </span>
+                        )}
+                        {card.semaphore.needsCollect && (
+                          <span style={{ ...styles.statusPill, background: "#fee2e2", color: "#991b1b", fontWeight: 700 }}>
+                            Falta cobrar {money(card.remainingToPay)}
+                          </span>
+                        )}
+                        {!card.semaphore.needsInvoice && !card.semaphore.needsCollect && (
+                          <span style={{ ...styles.statusPill, background: "#dcfce7", color: "#166534", fontWeight: 700 }}>
+                            Al dia
+                          </span>
+                        )}
+                        <span style={{ ...styles.statusPill, background: "#f1f5f9", color: "#475569" }}>
+                          {card.invoicesCount} fact · {card.paymentsCount} pagos
+                        </span>
+                      </div>
+
+                      <ButtonLike
+                        secondary
+                        onClick={() => {
+                          setSelectedApprovedJobId(card.id);
+                          setActiveTab("aprobados");
+                        }}
+                      >
+                        Abrir trabajo
+                      </ButtonLike>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </Panel>
           </div>
 

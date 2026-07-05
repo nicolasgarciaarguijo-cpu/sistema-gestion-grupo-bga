@@ -105,6 +105,43 @@ const getBudgetSemaphore = (budget: {
   return { level: "amarillo", label: "vigente" };
 };
 
+// Semaforo de facturacion/cobranza de UN trabajo: avisa que falta para evitar errores.
+// - needsInvoice: el neto facturado real es menor al comprometido (billedPct) -> falta emitir/completar factura.
+// - needsCollect: queda saldo por cobrar.
+// Nivel: verde = al dia; amarillo = falta algo pero sigue en curso; rojo = finalizado y todavia falta
+// (factura o cobranza pendiente en un trabajo cerrado = error a corregir).
+const getJobBillingSemaphore = (job: {
+  billedNetTarget: number;
+  billedNetReal: number;
+  invoicesCount: number;
+  remainingToPay: number;
+  executionStatus?: string;
+}): {
+  level: SemaphoreLevel;
+  label: string;
+  needsInvoice: boolean;
+  needsCollect: boolean;
+} => {
+  const TOL = 1; // tolerancia de $1 para no marcar por redondeos
+  const needsInvoice =
+    job.invoicesCount === 0
+      ? job.billedNetTarget > TOL
+      : job.billedNetReal + TOL < job.billedNetTarget;
+  const needsCollect = job.remainingToPay > TOL;
+  const finished = job.executionStatus === "finalizado";
+  if (!needsInvoice && !needsCollect) {
+    return { level: "verde", label: "al dia", needsInvoice, needsCollect };
+  }
+  const parts: string[] = [];
+  if (needsInvoice) parts.push("facturar");
+  if (needsCollect) parts.push("cobrar");
+  const what = parts.join(" y ");
+  if (finished) {
+    return { level: "rojo", label: `finalizado: falta ${what}`, needsInvoice, needsCollect };
+  }
+  return { level: "amarillo", label: `falta ${what}`, needsInvoice, needsCollect };
+};
+
 // Semaforo de stock/faltante de un material: verde cubierto, amarillo parcial, rojo faltante total.
 const getStockSemaphore = (row: {
   available: number;
@@ -141,6 +178,7 @@ export {
   elapsedPhrase,
   getDateSemaphore,
   getJobSemaphore,
+  getJobBillingSemaphore,
   getBudgetSemaphore,
   getStockSemaphore,
   getClientSemaphore,

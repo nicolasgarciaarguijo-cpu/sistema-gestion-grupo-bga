@@ -40,6 +40,7 @@ import {
   elapsedPhrase,
   getDateSemaphore,
   getJobSemaphore,
+  getJobBillingSemaphore,
   getBudgetSemaphore,
   getStockSemaphore,
   getClientSemaphore,
@@ -4128,6 +4129,62 @@ export default function App() {
       })).filter((group) => group.items.length > 0),
     [approvedJobsSummary]
   );
+
+  // Fichas por trabajo para Facturacion/Cobranza: evolucion (facturado/cobrado/saldo) + semaforo que
+  // avisa que falta (factura o cobranza). Muestra los trabajos activos y los cerrados que aun tienen
+  // pendientes (esos van en rojo). Los cerrados y al dia se ocultan. Orden: primero lo mas urgente.
+  const jobBillingCards = useMemo(() => {
+    const levelRank: Record<string, number> = { rojo: 0, amarillo: 1, verde: 2 };
+    return approvedJobsSummary
+      .map((job) => {
+        const invoicesCount = (job.invoices || []).length;
+        const paymentsCount = (job.payments || []).length;
+        const billedNetTarget = job.soldNetPrice * (job.billedPct / 100);
+        const invoicedNetReal = (job.invoices || []).reduce(
+          (acc, inv) => acc + Number(inv.subtotal || 0),
+          0
+        );
+        const missingToInvoice = Math.max(0, billedNetTarget - invoicedNetReal);
+        const semaphore = getJobBillingSemaphore({
+          billedNetTarget,
+          billedNetReal: invoicedNetReal,
+          invoicesCount,
+          remainingToPay: job.remainingToPay,
+          executionStatus: job.executionStatus,
+        });
+        const collectedPct =
+          job.valueToCollect > 0
+            ? Math.min(100, (job.collectedTotal / job.valueToCollect) * 100)
+            : 0;
+        return {
+          id: job.id,
+          budgetNumber: job.budgetNumber,
+          client: job.client,
+          project: job.project,
+          company: job.company,
+          executionStatus: job.executionStatus,
+          deliveryDate: job.deliveryDate,
+          billedPct: job.billedPct,
+          soldNetPrice: job.soldNetPrice,
+          invoicedNetReal,
+          billedNetTarget,
+          missingToInvoice,
+          valueToCollect: job.valueToCollect,
+          collectedTotal: job.collectedTotal,
+          remainingToPay: job.remainingToPay,
+          collectedPct,
+          invoicesCount,
+          paymentsCount,
+          semaphore,
+        };
+      })
+      .filter((card) => card.executionStatus !== "finalizado" || card.semaphore.level !== "verde")
+      .sort(
+        (a, b) =>
+          (levelRank[a.semaphore.level] ?? 3) - (levelRank[b.semaphore.level] ?? 3) ||
+          b.remainingToPay - a.remainingToPay
+      );
+  }, [approvedJobsSummary]);
 
   const crmClientRows = useMemo(
     () =>
@@ -10942,6 +10999,9 @@ export default function App() {
       {activeTab === "facturacion" && (
         <FacturacionTab
           financialSemaphoreSummary={financialSemaphoreSummary}
+          jobBillingCards={jobBillingCards}
+          setActiveTab={setActiveTab}
+          setSelectedApprovedJobId={setSelectedApprovedJobId}
           financialMonthData={financialMonthData}
           financialItemsByDate={financialItemsByDate}
           selectedFinancialItem={selectedFinancialItem}

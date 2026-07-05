@@ -2,6 +2,7 @@ import {
   daysUntilDate,
   getDateSemaphore,
   getJobSemaphore,
+  getJobBillingSemaphore,
   getBudgetSemaphore,
   getStockSemaphore,
   getClientSemaphore,
@@ -38,6 +39,34 @@ describe("getJobSemaphore", () => {
   it("sin fecha de inicio = rojo", () => expect(getJobSemaphore({}).level).toBe("rojo"));
   it("finalizado = verde", () => expect(getJobSemaphore({ startDate: isoOffset(-5), executionStatus: "finalizado" }).level).toBe("verde"));
   it("en curso = amarillo", () => expect(getJobSemaphore({ startDate: isoOffset(-5), executionStatus: "en_curso" }).level).toBe("amarillo"));
+});
+
+describe("getJobBillingSemaphore", () => {
+  const base = { billedNetTarget: 1000, billedNetReal: 1000, invoicesCount: 1, remainingToPay: 0 };
+  it("todo facturado y cobrado = verde", () =>
+    expect(getJobBillingSemaphore(base).level).toBe("verde"));
+  it("comprometio facturar pero no emitio factura = falta facturar (amarillo)", () => {
+    const r = getJobBillingSemaphore({ ...base, invoicesCount: 0, billedNetReal: 0 });
+    expect(r.level).toBe("amarillo");
+    expect(r.needsInvoice).toBe(true);
+  });
+  it("factura parcial vs comprometido = falta facturar", () => {
+    const r = getJobBillingSemaphore({ ...base, billedNetReal: 400 });
+    expect(r.needsInvoice).toBe(true);
+  });
+  it("queda saldo = falta cobrar (amarillo)", () => {
+    const r = getJobBillingSemaphore({ ...base, remainingToPay: 500 });
+    expect(r.level).toBe("amarillo");
+    expect(r.needsCollect).toBe(true);
+  });
+  it("finalizado con saldo pendiente = rojo", () => {
+    const r = getJobBillingSemaphore({ ...base, remainingToPay: 500, executionStatus: "finalizado" });
+    expect(r.level).toBe("rojo");
+  });
+  it("tolerancia de $1: no marca por redondeo", () => {
+    const r = getJobBillingSemaphore({ ...base, remainingToPay: 0.5, billedNetReal: 999.5 });
+    expect(r.level).toBe("verde");
+  });
 });
 
 describe("getBudgetSemaphore", () => {
