@@ -600,6 +600,8 @@ export type LinkedDocumentType =
   | "compras"
   | "facturas-emitidas"
   | "remitos"
+  | "presupuestos"
+  | "recibos"
   | "banco"
   | "cobranzas"
   | "caja-chica"

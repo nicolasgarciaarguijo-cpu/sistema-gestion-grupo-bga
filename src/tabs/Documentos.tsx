@@ -22,6 +22,8 @@ const DOC_TYPE_LABELS: Record<LinkedDocumentType, string> = {
   compras: "Facturas de compra",
   "facturas-emitidas": "Facturas emitidas",
   remitos: "Remitos",
+  presupuestos: "Presupuestos",
+  recibos: "Recibos",
   banco: "Banco",
   cobranzas: "Cobranzas",
   "caja-chica": "Caja chica",
@@ -34,6 +36,8 @@ const DOC_TYPE_ORDER: LinkedDocumentType[] = [
   "compras",
   "facturas-emitidas",
   "remitos",
+  "presupuestos",
+  "recibos",
   "banco",
   "cobranzas",
   "caja-chica",
@@ -127,8 +131,10 @@ export function DocumentosTab({
   Compras/AAAA-MM/            (facturas de compra)
   Facturas emitidas/AAAA-MM/
   Remitos/AAAA-MM/
-  Banco/AAAA-MM/
+  Presupuestos/AAAA-MM/
+  Recibos/AAAA-MM/           (recibos de pago a clientes)
   Cobranzas/AAAA-MM/
+  Banco/AAAA-MM/
   Caja chica/AAAA-MM/
   Escalas/AAAA-MM/           (escalas salariales)
   Documentacion/AAAA-MM/

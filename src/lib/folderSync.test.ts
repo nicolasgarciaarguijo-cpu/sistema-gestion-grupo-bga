@@ -14,6 +14,11 @@ describe("classifyPath", () => {
     expect(classifyPath("CAJA CHICA/2026-02/ticket.jpg").docType).toBe("caja-chica");
   });
 
+  it("presupuestos y recibos (import/export)", () => {
+    expect(classifyPath("Presupuestos/2026-06/3400.pdf").docType).toBe("presupuestos");
+    expect(classifyPath("Recibos/2026-06/recibo-3389.pdf").docType).toBe("recibos");
+  });
+
   it("banco y cobranzas", () => {
     expect(classifyPath("Banco/2026-05/resumen.pdf").docType).toBe("banco");
     expect(classifyPath("Cobranzas/2026-05/recibo.pdf").docType).toBe("cobranzas");
