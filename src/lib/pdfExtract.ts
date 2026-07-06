@@ -5,15 +5,42 @@
 // latin1: cada byte -> un char, asi los indices de string == indices de byte (para cortar los streams).
 const decodeLatin1 = (bytes: Uint8Array): string => new TextDecoder("latin1").decode(bytes);
 
-// Inflar un chunk deflate con DecompressionStream. Prueba zlib ("deflate") y crudo ("deflate-raw").
+const concatChunks = (chunks: Uint8Array[]): Uint8Array => {
+  let len = 0;
+  chunks.forEach((c) => (len += c.length));
+  const out = new Uint8Array(len);
+  let offset = 0;
+  chunks.forEach((c) => {
+    out.set(c, offset);
+    offset += c.length;
+  });
+  return out;
+};
+
+// Inflar un chunk deflate con DecompressionStream. Lee la salida a mano y CONSERVA lo ya
+// descomprimido aunque el stream tire error al final por bytes de mas (el PDF agrega un salto de
+// linea antes de "endstream"; DecompressionStream es estricto y node no). Prueba zlib y crudo.
 async function inflate(bytes: Uint8Array): Promise<Uint8Array | null> {
   const DS: any = (globalThis as any).DecompressionStream;
   if (!DS) return null;
   for (const format of ["deflate", "deflate-raw"]) {
     try {
-      const stream = new Blob([bytes as any]).stream().pipeThrough(new DS(format));
-      const buffer = await new Response(stream).arrayBuffer();
-      return new Uint8Array(buffer);
+      const ds = new DS(format);
+      const writer = ds.writable.getWriter();
+      writer.write(bytes).catch(() => {});
+      writer.close().catch(() => {});
+      const reader = ds.readable.getReader();
+      const chunks: Uint8Array[] = [];
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) chunks.push(value);
+        }
+      } catch {
+        // bytes de mas al final: nos quedamos con lo ya descomprimido (contenido util completo)
+      }
+      if (chunks.length > 0) return concatChunks(chunks);
     } catch {
       // formato incorrecto: probar el siguiente
     }
