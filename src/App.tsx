@@ -305,7 +305,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "cajaChica",
   "personal",
 ];
-const CARGA_TAB_KEYS: TabKey[] = ["documentos"];
+const CARGA_TAB_KEYS: TabKey[] = ["documentos", "manual"];
 
 const resolveCompanyNameFromCatalogItem = (
   item: { code?: string | null; name?: string | null; label?: string | null },
@@ -357,7 +357,7 @@ const getCompanyScopeLabel = (company: CompanyScope) =>
 const getAllCompanyOptions = () => runtimeCompanyOptions;
 
 const getTabAdministrationType = (tab: TabKey) => {
-  if (tab === "acceso" || tab === "manual") return "Sistema";
+  if (tab === "acceso") return "Sistema";
   if (CARGA_TAB_KEYS.includes(tab)) return "Informacion de carga";
   if (NETA_TAB_KEYS.includes(tab)) return "Administracion neta";
   return "Administracion bruta";
@@ -3245,9 +3245,7 @@ export default function App() {
   }, [effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedTabs]);
 
   const sidebarSections = useMemo(() => {
-    const accessTabs = visibleTabOptions.filter(
-      (item) => item.key === "acceso" || item.key === "manual"
-    );
+    const accessTabs = visibleTabOptions.filter((item) => item.key === "acceso");
     const brutaTabs = visibleTabOptions.filter((item) => BRUTA_TAB_KEYS.includes(item.key));
     const netaTabs = visibleTabOptions.filter((item) => NETA_TAB_KEYS.includes(item.key));
     const cargaTabs = visibleTabOptions.filter((item) => CARGA_TAB_KEYS.includes(item.key));
