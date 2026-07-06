@@ -242,6 +242,97 @@ export function buildGeneralSummaryHtml(input: {
   return page(`Resumen general ${input.periodLabel}`, body);
 }
 
+// ---- Resumen de compras ----
+
+export function buildComprasSummaryHtml(purchases: any[], periodLabel: string): string {
+  const rows = purchases
+    .slice()
+    .sort((a, b) => (a.invoiceDate || "").localeCompare(b.invoiceDate || ""))
+    .map(
+      (p) =>
+        `<tr><td>${esc(p.invoiceDate || "-")}</td><td>${esc(p.supplier || "-")}</td><td>${esc(
+          p.invoiceNumber || "-"
+        )}</td><td class="num">${money(p.subtotal)}</td><td class="num">${money(
+          p.vat
+        )}</td><td class="num">${money(p.total)}</td><td>${
+          p.administration === "negro" ? "Negro" : "Blanco"
+        }</td></tr>`
+    )
+    .join("");
+  const totalWhite = purchases
+    .filter((p) => p.administration !== "negro")
+    .reduce((a, p) => a + Number(p.total || 0), 0);
+  const totalBlack = purchases
+    .filter((p) => p.administration === "negro")
+    .reduce((a, p) => a + Number(p.total || 0), 0);
+  const body = `
+    <h1>Resumen de compras</h1>
+    <p class="sub">${esc(periodLabel)} &middot; ${purchases.length} comprobante(s)</p>
+    <div class="grid">
+      <div class="card"><div class="k">Total blanco</div><div class="v">${money(totalWhite)}</div></div>
+      <div class="card"><div class="k">Total negro</div><div class="v">${money(totalBlack)}</div></div>
+      <div class="card"><div class="k">Total</div><div class="v">${money(totalWhite + totalBlack)}</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Proveedor</th><th>N&deg;</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th><th>Adm.</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  return page("Resumen de compras", body);
+}
+
+// ---- Resumen de personal (vencimientos de documentacion / EPP / insumos) ----
+
+const vigenciaEstado = (dueDate: string, hasAttachment: boolean, today: string): string => {
+  if (!hasAttachment && !dueDate) return "Falta";
+  if (!dueDate) return "Sin vencimiento";
+  const d = dueDate.slice(0, 10);
+  if (d < today) return "VENCIDO";
+  // vence pronto: dentro de ~30 dias (comparacion de texto aproximada por mes/dia no exacta, usa fecha)
+  const [ty, tm, td] = today.split("-").map(Number);
+  const [vy, vm, vd] = d.split("-").map(Number);
+  const days = Math.round(
+    (new Date(vy, vm - 1, vd).getTime() - new Date(ty, tm - 1, td).getTime()) / 86400000
+  );
+  if (days <= 30) return "Vence pronto";
+  return "Vigente";
+};
+
+export function buildPersonalSummaryHtml(employees: any[], today: string): string {
+  const rows: string[] = [];
+  for (const emp of employees) {
+    (emp.documents || []).forEach((doc: any) => {
+      rows.push(
+        `<tr><td>${esc(emp.name)}</td><td>Documentacion</td><td>${esc(
+          doc.name || "-"
+        )}</td><td>${esc(doc.dueDate || "-")}</td><td>${vigenciaEstado(
+          doc.dueDate || "",
+          !!doc.attachmentName,
+          today
+        )}</td></tr>`
+      );
+    });
+    (emp.provisionItems || []).forEach((item: any) => {
+      rows.push(
+        `<tr><td>${esc(emp.name)}</td><td>${esc(item.kind || "-")}</td><td>${esc(
+          item.stockCode || item.notes || "-"
+        )}</td><td>${esc(item.dueDate || "-")}</td><td>${vigenciaEstado(
+          item.dueDate || "",
+          !!item.attachmentName,
+          today
+        )}</td></tr>`
+      );
+    });
+  }
+  const body = `
+    <h1>Resumen de personal - vencimientos</h1>
+    <p class="sub">${employees.length} empleado(s) &middot; al ${esc(today)}</p>
+    <table>
+      <thead><tr><th>Empleado</th><th>Tipo</th><th>Item</th><th>Vence</th><th>Estado</th></tr></thead>
+      <tbody>${rows.join("") || `<tr><td colspan="5">Sin datos.</td></tr>`}</tbody>
+    </table>`;
+  return page("Resumen personal - vencimientos", body);
+}
+
 // ---- Caja chica ----
 
 // Nombre de carpeta del fondo: "responsable - descripcion" (mas claro). Si falta alguno, usa el que

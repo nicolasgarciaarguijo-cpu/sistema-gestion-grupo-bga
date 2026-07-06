@@ -193,7 +193,7 @@ export function DocumentosTab({
             Caja chica
           </ButtonLike>
           <ButtonLike onClick={onExportSummary} disabled={busy || !folderLinked} secondary>
-            Resumen general
+            Resumenes
           </ButtonLike>
         </div>
         <div style={{ ...styles.muted, marginTop: 8 }}>

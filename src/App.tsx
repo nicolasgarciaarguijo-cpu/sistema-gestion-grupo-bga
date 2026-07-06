@@ -187,6 +187,8 @@ import {
   remitoFileName,
   buildRemitoHtml,
   buildGeneralSummaryHtml,
+  buildComprasSummaryHtml,
+  buildPersonalSummaryHtml,
   pettyCashFundFolder,
   buildPettyCashFundHtml,
 } from "./content/exportHtml";
@@ -4897,7 +4899,24 @@ export default function App() {
       const path = `Resumenes/${periodKey}/Resumen general.html`;
       await writeFileToFolder(handle, path, html);
       written.push(path);
-      setDocumentsMessage(`Resumen exportado en Resumenes/${periodKey}/.`);
+      // Resumen de compras (todas) y de personal (vencimientos), para leer rapido desde la carpeta.
+      const comprasPath = `Resumenes/${periodKey}/Compras.html`;
+      await writeFileToFolder(
+        handle,
+        comprasPath,
+        buildComprasSummaryHtml(purchaseInvoicesWithPettyCashWhite, periodLabel)
+      );
+      written.push(comprasPath);
+      const personalPath = `Resumenes/${periodKey}/Personal - vencimientos.html`;
+      await writeFileToFolder(
+        handle,
+        personalPath,
+        buildPersonalSummaryHtml(visibleEmployees, todayIso())
+      );
+      written.push(personalPath);
+      setDocumentsMessage(
+        `Resumenes exportados en Resumenes/${periodKey}/ (general, compras, personal).`
+      );
     } catch (err: any) {
       console.error("[documentos] export resumen:", err);
       setDocumentsMessage("Error al exportar resumen: " + (err?.message || String(err)));
