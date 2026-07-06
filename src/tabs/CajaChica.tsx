@@ -9,7 +9,7 @@ import {
   Field,
   FileDropButton,
 } from "../ui/primitives";
-import { money, formatDateDisplay, todayIso } from "../lib/format";
+import { money, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PettyCashFund, PettyCashExpense } from "../domain/types";
 
@@ -61,11 +61,6 @@ type CajaChicaTabProps = {
   fundDebtAdjustments: Map<number, any>;
   addPettyCashExpense: (fundId?: number | null) => void;
   reopenPettyCashFund: (fundId: number) => void;
-  pettyCashRechargeDrafts: Record<number, string>;
-  setPettyCashRechargeDrafts: React.Dispatch<React.SetStateAction<Record<number, string>>>;
-  pettyCashRechargeDateDrafts: Record<number, string>;
-  setPettyCashRechargeDateDrafts: React.Dispatch<React.SetStateAction<Record<number, string>>>;
-  rechargePettyCashFund: (fundId: number) => void;
   itemMonthKey: (dateValue: unknown) => string;
   operationalMonth: string;
   monthLabel: (month: string) => string;
@@ -105,11 +100,6 @@ export function CajaChicaTab({
   fundDebtAdjustments,
   addPettyCashExpense,
   reopenPettyCashFund,
-  pettyCashRechargeDrafts,
-  setPettyCashRechargeDrafts,
-  pettyCashRechargeDateDrafts,
-  setPettyCashRechargeDateDrafts,
-  rechargePettyCashFund,
   itemMonthKey,
   operationalMonth,
   monthLabel,
@@ -378,7 +368,6 @@ export function CajaChicaTab({
                     <th>Blanca</th>
                     <th>Negra</th>
                     <th>Entrega</th>
-                    <th>Recarga</th>
                     <th>Rendido</th>
                     <th>Saldo</th>
                     <th>Estado</th>
@@ -462,7 +451,6 @@ export function CajaChicaTab({
                             onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "deliveredDate", e.target.value)}
                           />
                         </td>
-                        <td>{fund.rechargeDate ? formatDateDisplay(fund.rechargeDate) : "-"}</td>
                         <td>{money(rendered)}</td>
                         <td>{money(Number(fund.assignedAmount || 0) - rendered)}</td>
                         <td>
@@ -572,45 +560,6 @@ export function CajaChicaTab({
                       <div style={styles.pettyCashFundMetric}>
                         <div style={styles.label}>Rendido total</div>
                         <strong>{money(renderedTotal)}</strong>
-                      </div>
-                      <div style={styles.pettyCashFundMetric}>
-                        <div style={styles.label}>Ultima recarga</div>
-                        <strong>{fund.rechargeDate ? formatDateDisplay(fund.rechargeDate) : "-"}</strong>
-                      </div>
-                    </div>
-
-                    <div style={styles.inlineForm}>
-                      <Field label="Recargar fondo">
-                        <input
-                          style={styles.input}
-                          type="number"
-                          value={pettyCashRechargeDrafts[fund.id] || ""}
-                          onChange={(e) =>
-                            setPettyCashRechargeDrafts((prev) => ({
-                              ...prev,
-                              [fund.id]: e.target.value,
-                            }))
-                          }
-                          placeholder="Importe de recarga"
-                        />
-                      </Field>
-                      <Field label="Fecha de recarga">
-                        <input
-                          style={styles.input}
-                          type="date"
-                          value={pettyCashRechargeDateDrafts[fund.id] || fund.rechargeDate || todayIso()}
-                          onChange={(e) =>
-                            setPettyCashRechargeDateDrafts((prev) => ({
-                              ...prev,
-                              [fund.id]: e.target.value,
-                            }))
-                          }
-                        />
-                      </Field>
-                      <div style={styles.inlineActions}>
-                        <button style={styles.smallBtn} onClick={() => rechargePettyCashFund(fund.id)}>
-                          Recargar fondo
-                        </button>
                       </div>
                     </div>
 

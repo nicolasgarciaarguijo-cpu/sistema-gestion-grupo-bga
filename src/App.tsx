@@ -2367,8 +2367,6 @@ export default function App() {
   const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(defaultPurchaseInvoices);
   const [pettyCashFunds, setPettyCashFunds] = useState<PettyCashFund[]>(defaultPettyCashFunds);
   const [pettyCashExpenses, setPettyCashExpenses] = useState<PettyCashExpense[]>(defaultPettyCashExpenses);
-  const [pettyCashRechargeDrafts, setPettyCashRechargeDrafts] = useState<Record<number, string>>({});
-  const [pettyCashRechargeDateDrafts, setPettyCashRechargeDateDrafts] = useState<Record<number, string>>({});
   const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
@@ -8831,16 +8829,6 @@ export default function App() {
 
   const removePettyCashFund = (fundId: number) => {
     setPettyCashFunds((prev) => prev.filter((item) => item.id !== fundId));
-    setPettyCashRechargeDrafts((prev) => {
-      const next = { ...prev };
-      delete next[fundId];
-      return next;
-    });
-    setPettyCashRechargeDateDrafts((prev) => {
-      const next = { ...prev };
-      delete next[fundId];
-      return next;
-    });
     setPettyCashExpenses((prev) =>
       prev.map((item) =>
         item.fundId === fundId ? { ...item, fundId: null } : item
@@ -8976,32 +8964,6 @@ export default function App() {
         };
       })
     );
-  };
-
-  const rechargePettyCashFund = (fundId: number) => {
-    const amount = Number(pettyCashRechargeDrafts[fundId] || 0);
-    const rechargeDate = pettyCashRechargeDateDrafts[fundId] || todayIso();
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setStorageMessage("Para recargar un fondo, carga un importe mayor a cero.");
-      return;
-    }
-    setPettyCashFunds((prev) =>
-      prev.map((item) =>
-        item.id === fundId
-          ? {
-              ...item,
-              assignedAmount: Number(item.assignedAmount || 0) + amount,
-              rechargeDate,
-              active: true,
-              closed: false,
-              closedDate: "",
-            }
-          : item
-      )
-    );
-    setPettyCashRechargeDrafts((prev) => ({ ...prev, [fundId]: "" }));
-    setPettyCashRechargeDateDrafts((prev) => ({ ...prev, [fundId]: todayIso() }));
-    setStorageMessage("Fondo de caja chica recargado correctamente.");
   };
 
   const reopenPettyCashFund = (fundId: number) => {
@@ -11704,11 +11666,6 @@ export default function App() {
           fundDebtAdjustments={fundDebtAdjustments}
           addPettyCashExpense={addPettyCashExpense}
           reopenPettyCashFund={reopenPettyCashFund}
-          pettyCashRechargeDrafts={pettyCashRechargeDrafts}
-          setPettyCashRechargeDrafts={setPettyCashRechargeDrafts}
-          pettyCashRechargeDateDrafts={pettyCashRechargeDateDrafts}
-          setPettyCashRechargeDateDrafts={setPettyCashRechargeDateDrafts}
-          rechargePettyCashFund={rechargePettyCashFund}
           itemMonthKey={itemMonthKey}
           operationalMonth={operationalMonth}
           monthLabel={monthLabel}
