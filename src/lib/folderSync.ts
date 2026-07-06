@@ -168,6 +168,34 @@ export async function ensureReadPermission(handle: any): Promise<boolean> {
   return (await handle.requestPermission(opts)) === "granted";
 }
 
+// Verifica (o pide) permiso de ESCRITURA sobre el handle (para exportar archivos a la carpeta).
+export async function ensureWritePermission(handle: any): Promise<boolean> {
+  if (!handle || typeof handle.queryPermission !== "function") return false;
+  const opts = { mode: "readwrite" };
+  if ((await handle.queryPermission(opts)) === "granted") return true;
+  return (await handle.requestPermission(opts)) === "granted";
+}
+
+// Escribe un archivo de texto (o Blob) en rootHandle, en la ruta relativa dada, creando las
+// subcarpetas que falten. Ej: writeFileToFolder(h, "Manuales/Juan/Manual.html", html).
+export async function writeFileToFolder(
+  rootHandle: any,
+  relPath: string,
+  content: string | Blob
+): Promise<void> {
+  const parts = relPath.split("/").filter(Boolean);
+  const fileName = parts.pop();
+  if (!fileName) throw new Error("Ruta de archivo invalida.");
+  let dir = rootHandle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part, { create: true });
+  }
+  const fileHandle = await dir.getFileHandle(fileName, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(content as any);
+  await writable.close();
+}
+
 // Recorre recursivamente el directorio y devuelve todos los archivos con su ruta relativa.
 export async function scanDirectory(rootHandle: any): Promise<ScannedFile[]> {
   const out: ScannedFile[] = [];

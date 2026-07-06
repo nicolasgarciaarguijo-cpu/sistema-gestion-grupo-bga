@@ -165,8 +165,11 @@ import {
   loadDirHandle,
   clearDirHandle,
   ensureReadPermission,
+  ensureWritePermission,
+  writeFileToFolder,
   scanDirectory,
 } from "./lib/folderSync";
+import { buildManualHtml } from "./content/manualHtml";
 
 declare global {
   interface Window {
@@ -4546,6 +4549,63 @@ export default function App() {
 
   const removeLinkedDocument = (id: number) => {
     setLinkedDocuments((prev) => prev.filter((doc) => doc.id !== id));
+  };
+
+  // Exporta a la carpeta un manual HTML por cada usuario, en Manuales/<usuario>/, con solo sus solapas.
+  const exportManualsToFolder = async () => {
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando manuales a la carpeta...");
+    try {
+      const handle = await loadDirHandle();
+      if (!handle) {
+        setDocumentsMessage("Vincula la carpeta primero (boton Vincular carpeta).");
+        setDocumentsBusy(false);
+        return;
+      }
+      const granted = await ensureWritePermission(handle);
+      if (!granted) {
+        setDocumentsMessage("El navegador no dio permiso para escribir en la carpeta.");
+        setDocumentsBusy(false);
+        return;
+      }
+      const allTabKeys = TAB_OPTIONS.map((tab) => tab.key as string);
+      // Si no hay directorio de usuarios cargado (no admin), al menos exporta el manual propio.
+      const users =
+        supabaseUserDirectory.length > 0
+          ? supabaseUserDirectory.filter((u) => u.active !== false)
+          : [
+              {
+                id: supabaseProfile?.id,
+                full_name: supabaseProfile?.full_name || "usuario",
+                is_superadmin: !!supabaseProfile?.is_superadmin,
+                active: true,
+              } as any,
+            ];
+      let written = 0;
+      for (const user of users) {
+        const name = (user.full_name || "usuario").trim();
+        const tabKeys = user.is_superadmin
+          ? allTabKeys
+          : [
+              "acceso",
+              "manual",
+              ...supabaseTabPermissions
+                .filter((p) => p.user_id === user.id)
+                .map((p) => p.tab_key as string),
+            ];
+        const html = buildManualHtml(name, tabKeys);
+        const safe = name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "usuario";
+        await writeFileToFolder(handle, `Manuales/${safe}/Manual - ${safe}.html`, html);
+        written += 1;
+      }
+      setDocumentsMessage(
+        `Manuales exportados: ${written}. Estan en la carpeta Manuales/<usuario>/ (HTML; abri con doble clic o imprimi a PDF con Ctrl+P).`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export manuales:", err);
+      setDocumentsMessage("Error al exportar manuales: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
   };
 
   const crmClientRows = useMemo(
@@ -11390,6 +11450,7 @@ export default function App() {
           onSync={syncDocumentsFolder}
           onOpen={openLinkedDocument}
           onRemove={removeLinkedDocument}
+          onExportManuals={exportManualsToFolder}
         />
       )}
 

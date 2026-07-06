@@ -16,6 +16,7 @@ type DocumentosTabProps = {
   onSync: () => void;
   onOpen: (doc: LinkedDocument) => void;
   onRemove: (id: number) => void;
+  onExportManuals: () => void;
 };
 
 const DOC_TYPE_LABELS: Record<LinkedDocumentType, string> = {
@@ -65,6 +66,7 @@ export function DocumentosTab({
   onSync,
   onOpen,
   onRemove,
+  onExportManuals,
 }: DocumentosTabProps) {
   const grouped = React.useMemo(() => {
     const byType = new Map<LinkedDocumentType, LinkedDocument[]>();
@@ -149,6 +151,18 @@ export function DocumentosTab({
             estaban no se vuelven a subir.
           </div>
         </details>
+      </Panel>
+
+      <Panel title="Exportar a la carpeta" span="wide">
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+          <ButtonLike onClick={onExportManuals} disabled={busy || !folderLinked}>
+            Exportar manuales
+          </ButtonLike>
+          <span style={styles.muted}>
+            Genera un manual HTML por usuario en <strong>Manuales/&lt;usuario&gt;/</strong> (solo sus
+            solapas). La primera vez el navegador pide permiso de escritura.
+          </span>
+        </div>
       </Panel>
 
       <Panel title={`Documentos cargados (${linkedDocuments.length})`} span="wide">
