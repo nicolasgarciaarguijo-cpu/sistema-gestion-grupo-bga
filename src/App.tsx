@@ -155,6 +155,7 @@ import type {
 import { DocumentosTab } from "./tabs/Documentos";
 import { extractPdfRawText } from "./lib/pdfExtract";
 import { parseScaleFromRawText } from "./lib/scaleParse";
+import { resolvePersonalDoc, type ResolvedPersonalDoc } from "./domain/personalDocs";
 import {
   classifyPath,
   isFileSystemAccessSupported,
@@ -4355,6 +4356,15 @@ export default function App() {
 
       const added: LinkedDocument[] = [];
       const scaleRowsFromEscala: ScaleRow[] = [];
+      const personalUpdates: { employee: string; resolved: ResolvedPersonalDoc }[] = [];
+      const provisionCatalog = stockItems
+        .filter((item) => item.kind !== "general")
+        .map((item) => ({
+          code: item.code,
+          description: item.description,
+          kind: item.kind,
+          periodicityMonths: item.periodicityMonths,
+        }));
       let escalaFilesRead = 0;
       let uploaded = 0;
       let failed = 0;
@@ -4398,6 +4408,11 @@ export default function App() {
               console.error("[documentos] escala no interpretada:", file.relPath, scaleErr);
             }
           }
+          // Documentacion/EPP/insumos/examenes de personal: la fecha del nombre da la vigencia.
+          if (cls.docType === "personal" && cls.employee) {
+            const resolved = resolvePersonalDoc(file.name, cls.subArea, provisionCatalog);
+            if (resolved) personalUpdates.push({ employee: cls.employee, resolved });
+          }
         } catch (err) {
           failed += 1;
           console.error("[documentos] al subir:", file.relPath, err);
@@ -4425,13 +4440,67 @@ export default function App() {
           );
         });
       }
+      // Personal: crea/actualiza documentos e items de provision del empleado, con su vigencia calculada.
+      const normName = (s: string) =>
+        (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+      const personalApplied = personalUpdates.filter((u) =>
+        employees.some((emp) => normName(emp.name) === normName(u.employee))
+      ).length;
+      if (personalUpdates.length > 0) {
+        setEmployees((prev) =>
+          prev.map((emp) => {
+            const ups = personalUpdates.filter((u) => normName(u.employee) === normName(emp.name));
+            if (ups.length === 0) return emp;
+            const documents = emp.documents.map((d) => ({ ...d }));
+            const provisionItems = emp.provisionItems.map((p) => ({ ...p }));
+            ups.forEach(({ resolved }) => {
+              if (resolved.target === "document") {
+                const i = documents.findIndex((d) => normName(d.name) === normName(resolved.itemName));
+                const rec = {
+                  name: resolved.itemName,
+                  dueDate: resolved.dueDate,
+                  attachmentName: resolved.attachmentName,
+                };
+                if (i >= 0) documents[i] = { ...documents[i], ...rec };
+                else documents.push({ id: newId(), ...rec });
+              } else {
+                const i = provisionItems.findIndex((p) =>
+                  resolved.stockCode
+                    ? p.kind === resolved.kind && p.stockCode === resolved.stockCode
+                    : p.kind === resolved.kind && normName(p.notes || "") === normName(resolved.itemName)
+                );
+                if (i >= 0) {
+                  provisionItems[i] = {
+                    ...provisionItems[i],
+                    dueDate: resolved.dueDate,
+                    attachmentName: resolved.attachmentName,
+                  };
+                } else {
+                  provisionItems.push({
+                    id: newId(),
+                    stockCode: resolved.stockCode,
+                    kind: resolved.kind as EmployeeProvisionKind,
+                    quantity: 1,
+                    dueDate: resolved.dueDate,
+                    attachmentName: resolved.attachmentName,
+                    notes: resolved.stockCode ? "" : resolved.itemName,
+                  });
+                }
+              }
+            });
+            return { ...emp, documents, provisionItems };
+          })
+        );
+      }
       const escalaMsg =
         escalaFilesRead > 0
           ? ` Escala leida: ${scaleRowsFromEscala.length} valores cargados.`
           : "";
+      const personalMsg =
+        personalApplied > 0 ? ` Personal: ${personalApplied} item(s) con vigencia actualizada.` : "";
       setDocumentsMessage(
         `Listo: ${uploaded} archivo(s) nuevo(s)${failed ? `, ${failed} con error` : ""}. ` +
-          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}`
+          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}${personalMsg}`
       );
     } catch (err: any) {
       console.error("[documentos] sincronizacion:", err);

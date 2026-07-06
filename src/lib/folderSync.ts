@@ -63,7 +63,15 @@ const TOP_FOLDER_TO_TYPE: Record<string, LinkedDocumentType> = {
 };
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
-const PERSONAL_SUBAREAS = ["documentacion", "epp", "recibos", "seguridad"];
+const PERSONAL_SUBAREAS = [
+  "documentacion",
+  "epp",
+  "recibos",
+  "seguridad",
+  "insumos",
+  "examenes",
+  "capacitaciones",
+];
 // Palabras que identifican una carpeta de escalas salariales, en cualquier nivel de la ruta.
 const ESCALA_KEYWORDS = [
   "escalas",
