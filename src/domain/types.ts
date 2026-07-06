@@ -508,6 +508,9 @@ export type PettyCashFund = {
   description: string;
   responsible: string;
   assignedAmount: number;
+  // Origen de la plata del fondo (cuanto entro por cada circuito). Opcionales para datos viejos.
+  assignedWhite?: number;
+  assignedBlack?: number;
   deliveredDate: string;
   rechargeDate: string;
   notes: string;

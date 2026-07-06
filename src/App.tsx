@@ -173,6 +173,7 @@ import {
 } from "./lib/folderSync";
 import { buildManualHtml } from "./content/manualHtml";
 import { readTicket } from "./lib/ocr";
+import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
   safeName,
   budgetFileName,
@@ -3493,6 +3494,12 @@ export default function App() {
   const visiblePettyCashExpenses = useMemo(
     () => normalizedPettyCashExpenses.filter((item) => canAccessCompany(item.company)),
     [normalizedPettyCashExpenses, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  // Balance blanco/negro de caja chica: entradas por origen del fondo vs salidas por administracion.
+  const pettyCashBalanceSummary = useMemo(
+    () => computePettyCashBalance(visiblePettyCashFunds, visiblePettyCashExpenses),
+    [visiblePettyCashFunds, visiblePettyCashExpenses]
   );
 
   const pettyCashTrackingRows = useMemo(
@@ -11672,6 +11679,7 @@ export default function App() {
 
       {activeTab === "cajaChica" && (
         <CajaChicaTab
+          pettyCashBalanceSummary={pettyCashBalanceSummary}
           pettyOcrBusy={pettyOcrBusy}
           pettyOcrMsg={pettyOcrMsg}
           pettyTicketDraft={pettyTicketDraft}

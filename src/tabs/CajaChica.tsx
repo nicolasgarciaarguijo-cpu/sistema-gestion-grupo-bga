@@ -14,6 +14,16 @@ import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PettyCashFund, PettyCashExpense } from "../domain/types";
 
 type CajaChicaTabProps = {
+  pettyCashBalanceSummary: {
+    whiteIn: number;
+    blackIn: number;
+    unclassifiedIn: number;
+    whiteOut: number;
+    blackOut: number;
+    whiteSaldo: number;
+    blackSaldo: number;
+    desbalance: number;
+  };
   pettyOcrBusy: boolean;
   pettyOcrMsg: string;
   pettyTicketDraft: {
@@ -70,6 +80,7 @@ type CajaChicaTabProps = {
 };
 
 export function CajaChicaTab({
+  pettyCashBalanceSummary,
   pettyOcrBusy,
   pettyOcrMsg,
   pettyTicketDraft,
@@ -217,6 +228,45 @@ export function CajaChicaTab({
             </div>
           </Panel>
 
+          <Panel span="wide" title="Balance blanco / negro de caja chica">
+            <div style={styles.grid2}>
+              <div>
+                <div style={styles.sectionHeader}>Circuito BLANCO</div>
+                <div style={styles.metricGrid}>
+                  <MiniMetric label="Entro (origen)" value={money(pettyCashBalanceSummary.whiteIn)} />
+                  <MiniMetric label="Salio (gastos)" value={money(pettyCashBalanceSummary.whiteOut)} />
+                  <MiniMetric label="Saldo" value={money(pettyCashBalanceSummary.whiteSaldo)} />
+                </div>
+              </div>
+              <div>
+                <div style={styles.sectionHeader}>Circuito NEGRO</div>
+                <div style={styles.metricGrid}>
+                  <MiniMetric label="Entro (origen)" value={money(pettyCashBalanceSummary.blackIn)} />
+                  <MiniMetric label="Salio (gastos)" value={money(pettyCashBalanceSummary.blackOut)} />
+                  <MiniMetric label="Saldo" value={money(pettyCashBalanceSummary.blackSaldo)} />
+                </div>
+              </div>
+            </div>
+            <div style={styles.metricGrid}>
+              <MiniMetric
+                label="Desbalance (blanco - negro)"
+                value={money(pettyCashBalanceSummary.desbalance)}
+              />
+              {pettyCashBalanceSummary.unclassifiedIn > 0 && (
+                <MiniMetric
+                  label="Sin clasificar (cargar origen)"
+                  value={money(pettyCashBalanceSummary.unclassifiedIn)}
+                />
+              )}
+            </div>
+            <div style={styles.noticeBox}>
+              Entro = origen de la plata del fondo (blanca/negra, se carga en la tabla de abajo). Salio =
+              gastos por administracion. Miralo para no desbalancearte: si el desbalance se va mucho para
+              un lado, ajusta de que circuito cargas o gastas antes del cierre. Lo negro nunca se mezcla
+              con lo blanco.
+            </div>
+          </Panel>
+
           <Panel span="full" title="Semaforo de caja chica">
             <SemaforoResumen
               items={[
@@ -325,6 +375,8 @@ export function CajaChicaTab({
                     <th>Descripcion caja chica</th>
                     <th>Responsable</th>
                     <th>Monto asignado</th>
+                    <th>Blanca</th>
+                    <th>Negra</th>
                     <th>Entrega</th>
                     <th>Recarga</th>
                     <th>Rendido</th>
@@ -384,6 +436,22 @@ export function CajaChicaTab({
                             type="number"
                             value={fund.assignedAmount}
                             onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "assignedAmount", Number(e.target.value))}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            style={styles.input}
+                            type="number"
+                            value={fund.assignedWhite ?? 0}
+                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "assignedWhite", Number(e.target.value))}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            style={styles.input}
+                            type="number"
+                            value={fund.assignedBlack ?? 0}
+                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "assignedBlack", Number(e.target.value))}
                           />
                         </td>
                         <td>
