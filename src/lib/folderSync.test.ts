@@ -45,6 +45,11 @@ describe("classifyPath", () => {
     });
   });
 
+  it("escalas dentro de Personal se clasifica como escalas (prioridad)", () => {
+    expect(classifyPath("Personal/Escalas salariales/2026-06 a 09 Escala.pdf").docType).toBe("escalas");
+    expect(classifyPath("Escalas/2026-06/x.pdf").docType).toBe("escalas");
+  });
+
   it("carpeta desconocida = docType null", () => {
     expect(classifyPath("Otra cosa/archivo.pdf").docType).toBeNull();
   });

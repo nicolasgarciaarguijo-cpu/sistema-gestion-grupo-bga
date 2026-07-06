@@ -4354,6 +4354,8 @@ export default function App() {
       });
 
       const added: LinkedDocument[] = [];
+      const scaleRowsFromEscala: ScaleRow[] = [];
+      let escalaFilesRead = 0;
       let uploaded = 0;
       let failed = 0;
       for (const file of pending) {
@@ -4386,6 +4388,16 @@ export default function App() {
             uploadedAt: new Date().toISOString(),
           });
           uploaded += 1;
+          // Si es una escala salarial en PDF, ademas de archivarla, se leen los valores y se cargan.
+          if (cls.docType === "escalas" && /\.pdf$/i.test(file.name)) {
+            try {
+              const parsed = await parseScalePdf(realFile);
+              scaleRowsFromEscala.push(...parsed);
+              escalaFilesRead += 1;
+            } catch (scaleErr) {
+              console.error("[documentos] escala no interpretada:", file.relPath, scaleErr);
+            }
+          }
         } catch (err) {
           failed += 1;
           console.error("[documentos] al subir:", file.relPath, err);
@@ -4399,9 +4411,27 @@ export default function App() {
           return Array.from(byPath.values());
         });
       }
+      // Merge de las escalas leidas: reemplaza las filas del mismo mes+categoria (no duplica).
+      if (scaleRowsFromEscala.length > 0) {
+        setScaleRows((prev) => {
+          const withoutSame = prev.filter(
+            (row) =>
+              !scaleRowsFromEscala.some(
+                (parsed) => parsed.month === row.month && parsed.category === row.category
+              )
+          );
+          return [...withoutSame, ...scaleRowsFromEscala].sort((a, b) =>
+            `${a.month}-${a.category}`.localeCompare(`${b.month}-${b.category}`)
+          );
+        });
+      }
+      const escalaMsg =
+        escalaFilesRead > 0
+          ? ` Escala leida: ${scaleRowsFromEscala.length} valores cargados.`
+          : "";
       setDocumentsMessage(
         `Listo: ${uploaded} archivo(s) nuevo(s)${failed ? `, ${failed} con error` : ""}. ` +
-          `Total en el sistema: ${linkedDocuments.length + added.length}.`
+          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}`
       );
     } catch (err: any) {
       console.error("[documentos] sincronizacion:", err);

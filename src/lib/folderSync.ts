@@ -64,14 +64,32 @@ const TOP_FOLDER_TO_TYPE: Record<string, LinkedDocumentType> = {
 
 const MONTH_RE = /^\d{4}-\d{2}$/;
 const PERSONAL_SUBAREAS = ["documentacion", "epp", "recibos", "seguridad"];
+// Palabras que identifican una carpeta de escalas salariales, en cualquier nivel de la ruta.
+const ESCALA_KEYWORDS = [
+  "escalas",
+  "escala",
+  "escala salarial",
+  "escalas salariales",
+  "escala salariales",
+  "escalas salarial",
+  "escalas salariales",
+];
 
 // Clasifica una ruta relativa (segmentos separados por "/") en tipo/mes/empleado/subArea.
 export function classifyPath(relPath: string): PathClassification {
   const segments = relPath.split("/").filter(Boolean);
   if (segments.length === 0) return { docType: null, month: "" };
-  const top = norm(segments[0]);
+  const normSegs = segments.map(norm);
+  const month = normSegs.find((seg) => MONTH_RE.test(seg)) ?? "";
+
+  // La escala salarial tiene prioridad: si aparece en CUALQUIER segmento (incluso Personal/Escalas...),
+  // se clasifica como "escalas" para que el sistema la lea e importe los valores.
+  if (normSegs.some((seg) => ESCALA_KEYWORDS.includes(seg))) {
+    return { docType: "escalas", month };
+  }
+
+  const top = normSegs[0];
   const docType = TOP_FOLDER_TO_TYPE[top] ?? null;
-  const month = segments.map(norm).find((seg) => MONTH_RE.test(seg)) ?? "";
 
   if (docType === "personal" && segments.length >= 2) {
     const employee = segments[1];
