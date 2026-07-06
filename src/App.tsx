@@ -171,6 +171,7 @@ import {
   scanDirectory,
 } from "./lib/folderSync";
 import { buildManualHtml } from "./content/manualHtml";
+import { readTicket } from "./lib/ocr";
 import {
   safeName,
   budgetFileName,
@@ -2383,6 +2384,17 @@ export default function App() {
   const [documentsFolderName, setDocumentsFolderName] = useState("");
   const [documentsBusy, setDocumentsBusy] = useState(false);
   const [documentsMessage, setDocumentsMessage] = useState("");
+  // OCR de ticket de caja chica: borrador para confirmar antes de crear el gasto.
+  const [pettyOcrBusy, setPettyOcrBusy] = useState(false);
+  const [pettyOcrMsg, setPettyOcrMsg] = useState("");
+  const [pettyTicketDraft, setPettyTicketDraft] = useState<{
+    fundId: number | null;
+    date: string;
+    amount: number;
+    description: string;
+    supplier: string;
+    fileName: string;
+  } | null>(null);
   const [employees, setEmployees] = useState<Employee[]>(defaultEmployees);
   const [employeeBaseConfig, setEmployeeBaseConfig] = useState<EmployeeBaseConfig>(defaultBaseConfig);
   const [scaleRows, setScaleRows] = useState<ScaleRow[]>(seededScaleRows);
@@ -8842,6 +8854,71 @@ export default function App() {
     ]);
   };
 
+  // OCR de ticket: lee el archivo, precompleta y abre el borrador para que el usuario CONFIRME.
+  const runPettyCashTicketOcr = async (fundId: number | null, file: File | null) => {
+    if (!file) return;
+    setPettyOcrBusy(true);
+    setPettyOcrMsg("Leyendo el ticket... (la primera vez descarga el OCR, puede tardar)");
+    try {
+      const t = await readTicket(file);
+      setPettyTicketDraft({
+        fundId,
+        date: t.date || defaultDateForActiveMonth(),
+        amount: t.amount,
+        description: t.supplier,
+        supplier: t.supplier,
+        fileName: file.name,
+      });
+      setPettyOcrMsg(
+        t.amount > 0
+          ? `Detectado: ${money(t.amount)}${t.date ? " · " + t.date : ""}. Revisa y confirma abajo.`
+          : "No pude detectar el monto. Cargalo a mano en el borrador de abajo."
+      );
+    } catch (err: any) {
+      console.error("[ocr] ticket:", err);
+      setPettyOcrMsg("No se pudo leer el ticket: " + (err?.message || String(err)));
+    }
+    setPettyOcrBusy(false);
+  };
+
+  const updatePettyTicketDraft = (field: string, value: string | number) => {
+    setPettyTicketDraft((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const cancelPettyTicketDraft = () => {
+    setPettyTicketDraft(null);
+    setPettyOcrMsg("");
+  };
+
+  // Confirma el borrador: crea el gasto de caja chica con los valores revisados por el usuario.
+  const savePettyTicketDraft = () => {
+    if (!pettyTicketDraft) return;
+    const fund =
+      pettyCashFunds.find((item) => item.id === pettyTicketDraft.fundId) ||
+      visiblePettyCashFunds[0] ||
+      null;
+    setPettyCashExpenses((prev) => [
+      {
+        id: newId(),
+        company: fund?.company || budget.company,
+        fundId: fund?.id ?? null,
+        date: pettyTicketDraft.date || defaultDateForActiveMonth(),
+        category: "Gasto operativo",
+        description: pettyTicketDraft.description || pettyTicketDraft.supplier || "Ticket",
+        amount: Number(pettyTicketDraft.amount) || 0,
+        administration: "negro",
+        supplier: pettyTicketDraft.supplier || "",
+        invoiceNumber: "",
+        notes: "Cargado por OCR de ticket.",
+        attachmentName: pettyTicketDraft.fileName || "",
+        linkedPurchaseInvoiceId: null,
+      },
+      ...prev,
+    ]);
+    setPettyTicketDraft(null);
+    setPettyOcrMsg("Gasto guardado.");
+  };
+
   const updatePettyCashExpense = (
     expenseId: number,
     field: keyof PettyCashExpense,
@@ -11582,6 +11659,13 @@ export default function App() {
 
       {activeTab === "cajaChica" && (
         <CajaChicaTab
+          pettyOcrBusy={pettyOcrBusy}
+          pettyOcrMsg={pettyOcrMsg}
+          pettyTicketDraft={pettyTicketDraft}
+          onRunTicketOcr={runPettyCashTicketOcr}
+          onUpdateTicketDraft={updatePettyTicketDraft}
+          onSaveTicketDraft={savePettyTicketDraft}
+          onCancelTicketDraft={cancelPettyTicketDraft}
           fundSemaphoreSummary={fundSemaphoreSummary}
           visiblePettyCashFunds={visiblePettyCashFunds}
           pettyCashSummary={pettyCashSummary}

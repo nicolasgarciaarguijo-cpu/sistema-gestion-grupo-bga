@@ -14,6 +14,20 @@ import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PettyCashFund, PettyCashExpense } from "../domain/types";
 
 type CajaChicaTabProps = {
+  pettyOcrBusy: boolean;
+  pettyOcrMsg: string;
+  pettyTicketDraft: {
+    fundId: number | null;
+    date: string;
+    amount: number;
+    description: string;
+    supplier: string;
+    fileName: string;
+  } | null;
+  onRunTicketOcr: (fundId: number | null, file: File | null) => void;
+  onUpdateTicketDraft: (field: string, value: string | number) => void;
+  onSaveTicketDraft: () => void;
+  onCancelTicketDraft: () => void;
   fundSemaphoreSummary: any;
   visiblePettyCashFunds: PettyCashFund[];
   pettyCashSummary: any;
@@ -55,6 +69,13 @@ type CajaChicaTabProps = {
 };
 
 export function CajaChicaTab({
+  pettyOcrBusy,
+  pettyOcrMsg,
+  pettyTicketDraft,
+  onRunTicketOcr,
+  onUpdateTicketDraft,
+  onSaveTicketDraft,
+  onCancelTicketDraft,
   fundSemaphoreSummary,
   visiblePettyCashFunds,
   pettyCashSummary,
@@ -85,8 +106,106 @@ export function CajaChicaTab({
   uploadPettyCashFile,
   pettyCashTrackingRows,
 }: CajaChicaTabProps) {
+  const [ocrFundId, setOcrFundId] = React.useState<number | null>(null);
+  const effectiveFundId = ocrFundId ?? visiblePettyCashFunds[0]?.id ?? null;
   return (
         <div style={styles.column}>
+          <Panel span="wide" title="Cargar ticket con OCR (leer y confirmar)">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+              <Field label="Fondo">
+                <select
+                  style={styles.input}
+                  value={effectiveFundId ?? ""}
+                  onChange={(e) => setOcrFundId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  {visiblePettyCashFunds.map((fund) => (
+                    <option key={fund.id} value={fund.id}>
+                      {fund.description || `Fondo ${fund.id}`}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <label
+                style={{
+                  ...styles.input,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  fontWeight: 700,
+                  background: "#0f172a",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                {pettyOcrBusy ? "Leyendo..." : "Elegir ticket (foto o PDF)"}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  style={{ display: "none" }}
+                  disabled={pettyOcrBusy}
+                  onChange={(e) => {
+                    onRunTicketOcr(effectiveFundId, e.target.files?.[0] || null);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {pettyOcrMsg && <div style={{ ...styles.noticeBox, marginTop: 8 }}>{pettyOcrMsg}</div>}
+
+            {pettyTicketDraft && (
+              <div style={{ ...styles.noticeBox, marginTop: 10, background: "#f8fafc" }}>
+                <div style={styles.sectionHeader}>Confirma el gasto (revisa el monto)</div>
+                <div style={styles.grid2}>
+                  <Field label="Fondo">
+                    <select
+                      style={styles.input}
+                      value={pettyTicketDraft.fundId ?? ""}
+                      onChange={(e) => onUpdateTicketDraft("fundId", Number(e.target.value))}
+                    >
+                      {visiblePettyCashFunds.map((fund) => (
+                        <option key={fund.id} value={fund.id}>
+                          {fund.description || `Fondo ${fund.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Fecha">
+                    <input
+                      style={styles.input}
+                      type="date"
+                      value={pettyTicketDraft.date}
+                      onChange={(e) => onUpdateTicketDraft("date", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Monto (verificalo)">
+                    <input
+                      style={styles.input}
+                      type="number"
+                      value={pettyTicketDraft.amount}
+                      onChange={(e) => onUpdateTicketDraft("amount", Number(e.target.value))}
+                    />
+                  </Field>
+                  <Field label="Descripcion / proveedor">
+                    <input
+                      style={styles.input}
+                      value={pettyTicketDraft.description}
+                      onChange={(e) => onUpdateTicketDraft("description", e.target.value)}
+                    />
+                  </Field>
+                </div>
+                <div style={{ ...styles.muted, margin: "6px 0" }}>Archivo: {pettyTicketDraft.fileName}</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <ButtonLike onClick={onSaveTicketDraft}>Guardar gasto</ButtonLike>
+                  <ButtonLike secondary onClick={onCancelTicketDraft}>Cancelar</ButtonLike>
+                </div>
+              </div>
+            )}
+            <div style={{ ...styles.muted, marginTop: 8 }}>
+              El OCR lee el ticket y precompleta el monto y la fecha; siempre revisalo antes de guardar
+              (asi queda preciso). La primera vez descarga el motor de OCR, puede tardar unos segundos.
+            </div>
+          </Panel>
+
           <Panel span="full" title="Semaforo de caja chica">
             <SemaforoResumen
               items={[
