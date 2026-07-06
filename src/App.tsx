@@ -4527,6 +4527,41 @@ export default function App() {
         setPettyCashExpenses((prev) => [...newPettyExpenses, ...prev]);
       }
 
+      // Planos: los archivos en Trabajos aprobados/<estado>/<cliente>/Planos/ se cargan como plano del
+      // trabajo de ese cliente (dedup por nombre). Estructura:
+      // Trabajos aprobados / (Trabajos en curso|Trabajos finalizados) / <cliente> / Planos / archivo.
+      const planoAdds: { jobId: number; name: string }[] = [];
+      for (const file of scanned) {
+        const segs = file.relPath.split("/");
+        if (segs.length < 5) continue;
+        if (cnorm(segs[0]) !== "trabajos aprobados") continue;
+        if (cnorm(segs[3]) !== "planos") continue;
+        const estadoSeg = cnorm(segs[1]);
+        const job = approvedJobs.find((j) => {
+          const jEstado =
+            j.executionStatus === "finalizado" ? "trabajos finalizados" : "trabajos en curso";
+          return cnorm(safeName(j.client || "")) === cnorm(segs[2]) && jEstado === estadoSeg;
+        });
+        if (!job) continue;
+        if ((job.workFiles || []).some((w) => w.name === file.name && w.kind === "plano")) continue;
+        planoAdds.push({ jobId: job.id, name: file.name });
+      }
+      if (planoAdds.length > 0) {
+        setApprovedJobs((prev) =>
+          prev.map((job) => {
+            const adds = planoAdds.filter((p) => p.jobId === job.id);
+            if (adds.length === 0) return job;
+            return {
+              ...job,
+              workFiles: [
+                ...job.workFiles,
+                ...adds.map((a) => ({ id: newId(), kind: "plano" as const, name: a.name })),
+              ],
+            };
+          })
+        );
+      }
+
       // Merge de las escalas leidas: reemplaza las filas del mismo mes+categoria (no duplica).
       if (scaleRowsFromEscala.length > 0) {
         setScaleRows((prev) => {
@@ -4605,9 +4640,11 @@ export default function App() {
         newPettyExpenses.length > 0
           ? ` Caja chica: ${newPettyExpenses.length} ticket(s) leidos (revisa monto y blanco/negro).`
           : "";
+      const planosMsg =
+        planoAdds.length > 0 ? ` Planos: ${planoAdds.length} cargado(s) a trabajos.` : "";
       setDocumentsMessage(
         `Listo: ${uploaded} archivo(s) nuevo(s)${failed ? `, ${failed} con error` : ""}. ` +
-          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}${personalMsg}${cajaMsg}`
+          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}${personalMsg}${cajaMsg}${planosMsg}`
       );
     } catch (err: any) {
       console.error("[documentos] sincronizacion:", err);
@@ -4787,6 +4824,8 @@ export default function App() {
           job.executionStatus === "finalizado" ? "Trabajos finalizados" : "Trabajos en curso";
         const path = `Trabajos aprobados/${estado}/${cliente}/${jobFileName(job)}`;
         await writeFileToFolder(handle, path, buildJobHtml(job));
+        // Carpeta Planos por cliente: para cargar los planos directamente desde ahi.
+        await ensureFolder(handle, `Trabajos aprobados/${estado}/${cliente}/Planos`);
         written.push(path);
         const monthKey = (job.approvalDate || "").slice(0, 7) || "sin-fecha";
         const list = byMonth.get(monthKey) || [];
