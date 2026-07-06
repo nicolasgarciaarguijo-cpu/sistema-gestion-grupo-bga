@@ -189,7 +189,6 @@ import {
   buildGeneralSummaryHtml,
   pettyCashFundFolder,
   buildPettyCashFundHtml,
-  buildPettyCashSummaryHtml,
 } from "./content/exportHtml";
 
 declare global {
@@ -4483,6 +4482,49 @@ export default function App() {
         const resolved = resolvePersonalDoc(file.name, fcls.subArea, provisionCatalog);
         if (resolved) personalUpdates.push({ employee: fcls.employee, resolved });
       }
+
+      // Caja chica: los tickets/facturas dejados en "Rendicion de tickets y facturas" de cada caja se
+      // leen con OCR y crean el gasto (dedup por ruta del archivo). Estructura:
+      // Caja chica / (Cajas abiertas|cerradas) / <caja> / Rendicion de tickets y facturas / archivo.
+      const cnorm = (s: string) =>
+        (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toLowerCase();
+      const newPettyExpenses: PettyCashExpense[] = [];
+      for (const file of scanned) {
+        const segs = file.relPath.split("/");
+        if (segs.length < 5) continue;
+        if (cnorm(segs[0]) !== "caja chica") continue;
+        if (cnorm(segs[3]) !== "rendicion de tickets y facturas") continue;
+        const fund = visiblePettyCashFunds.find(
+          (f) => cnorm(pettyCashFundFolder(f)) === cnorm(segs[2])
+        );
+        if (!fund) continue;
+        if (pettyCashExpenses.some((e) => e.attachmentName === file.relPath)) continue; // ya cargado
+        try {
+          const realFile = await file.handle.getFile();
+          const ticket = await readTicket(realFile);
+          newPettyExpenses.push({
+            id: newId(),
+            company: fund.company,
+            fundId: fund.id,
+            date: ticket.date || defaultDateForActiveMonth(),
+            category: "Gasto operativo",
+            description: ticket.supplier || file.name,
+            amount: ticket.amount || 0,
+            administration: "negro",
+            supplier: ticket.supplier || "",
+            invoiceNumber: "",
+            notes: "Leido de la carpeta por OCR - revisar monto y blanco/negro.",
+            attachmentName: file.relPath,
+            linkedPurchaseInvoiceId: null,
+          });
+        } catch (ocrErr) {
+          console.error("[caja chica] OCR ticket:", file.relPath, ocrErr);
+        }
+      }
+      if (newPettyExpenses.length > 0) {
+        setPettyCashExpenses((prev) => [...newPettyExpenses, ...prev]);
+      }
+
       // Merge de las escalas leidas: reemplaza las filas del mismo mes+categoria (no duplica).
       if (scaleRowsFromEscala.length > 0) {
         setScaleRows((prev) => {
@@ -4557,9 +4599,13 @@ export default function App() {
           : "";
       const personalMsg =
         personalApplied > 0 ? ` Personal: ${personalApplied} item(s) con vigencia actualizada.` : "";
+      const cajaMsg =
+        newPettyExpenses.length > 0
+          ? ` Caja chica: ${newPettyExpenses.length} ticket(s) leidos (revisa monto y blanco/negro).`
+          : "";
       setDocumentsMessage(
         `Listo: ${uploaded} archivo(s) nuevo(s)${failed ? `, ${failed} con error` : ""}. ` +
-          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}${personalMsg}`
+          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}${personalMsg}${cajaMsg}`
       );
     } catch (err: any) {
       console.error("[documentos] sincronizacion:", err);
@@ -4848,8 +4894,14 @@ export default function App() {
     return written;
   };
 
-  // Caja chica (doble via): exporta la estructura de fondos (crea Caja chica/<fondo>/ con la ficha de
-  // cada fondo -> ahi el usuario deja los tickets) + resumen mensual de gastos.
+  // Ruta base de una caja en la carpeta: Caja chica/(Cajas abiertas|Cajas cerradas)/<responsable - descripcion>.
+  const pettyCashFundBasePath = (fund: any): string => {
+    const estado = fund.closed || fund.active === false ? "Cajas cerradas" : "Cajas abiertas";
+    return `Caja chica/${estado}/${pettyCashFundFolder(fund)}`;
+  };
+
+  // Caja chica (doble via): por cada caja crea su carpeta con el Resumen de la caja y una subcarpeta
+  // "Rendicion de tickets y facturas" donde el usuario deja los comprobantes (que se leen al sincronizar).
   const exportPettyCashToFolder = async (): Promise<string[]> => {
     const written: string[] = [];
     setDocumentsBusy(true);
@@ -4861,28 +4913,17 @@ export default function App() {
         return written;
       }
       for (const fund of visiblePettyCashFunds) {
-        const folder = pettyCashFundFolder(fund);
+        const base = pettyCashFundBasePath(fund);
         const fundExpenses = visiblePettyCashExpenses.filter((e) => e.fundId === fund.id);
-        const path = `Caja chica/${folder}/Ficha del fondo.html`;
-        await writeFileToFolder(handle, path, buildPettyCashFundHtml(fund, fundExpenses));
-        written.push(path);
-      }
-      const byMonth = new Map<string, typeof visiblePettyCashExpenses>();
-      for (const expense of visiblePettyCashExpenses) {
-        const monthKey = (expense.date || "").slice(0, 7) || "sin-fecha";
-        const list = byMonth.get(monthKey) || [];
-        list.push(expense);
-        byMonth.set(monthKey, list);
-      }
-      const fundName = (fundId: number | null) =>
-        visiblePettyCashFunds.find((f) => f.id === fundId)?.description || "-";
-      for (const [monthKey, list] of Array.from(byMonth.entries())) {
-        const path = `Caja chica/Resumen mensual/${monthKey} - Resumen caja chica.html`;
-        await writeFileToFolder(handle, path, buildPettyCashSummaryHtml(list, monthKey, fundName));
-        written.push(path);
+        // Resumen de la caja.
+        const resumenPath = `${base}/Resumen de la caja.html`;
+        await writeFileToFolder(handle, resumenPath, buildPettyCashFundHtml(fund, fundExpenses));
+        written.push(resumenPath);
+        // Carpeta de rendicion (donde el usuario deja tickets/facturas).
+        await ensureFolder(handle, `${base}/Rendicion de tickets y facturas`);
       }
       setDocumentsMessage(
-        `Caja chica exportada: ${visiblePettyCashFunds.length} fondo(s). Deja los tickets en la carpeta de cada fondo.`
+        `Caja chica exportada: ${visiblePettyCashFunds.length} caja(s) en Cajas abiertas/cerradas. Deja los tickets en "Rendicion de tickets y facturas" de cada caja.`
       );
     } catch (err: any) {
       console.error("[documentos] export caja chica:", err);
