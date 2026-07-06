@@ -1,6 +1,6 @@
 // Genera HTML para exportar a la carpeta de gestion: presupuestos y trabajos aprobados (uno por
 // archivo, dentro de la carpeta del cliente) y resumenes mensuales. Pensado para seguimiento.
-import type { SavedBudget } from "../domain/types";
+import type { SavedBudget, RemitoDraft, Payment } from "../domain/types";
 import { money } from "../lib/format";
 
 const esc = (s: unknown): string =>
@@ -144,6 +144,102 @@ export function buildJobHtml(job: any): string {
       <tr><td>Circuito negro</td><td class="num">${money(job.blackNet)}</td></tr>
     </tbody></table>`;
   return page(`Trabajo ${job.budgetNumber} - ${job.client}`, body);
+}
+
+// ---- Recibos de pago ----
+
+export const receiptFileName = (job: any, payment: Payment): string =>
+  safeName(
+    `Recibo ${job.budgetNumber} - ${job.client} - ${payment.paymentDate || "s-f"} - ${Math.round(
+      Number(payment.amount || 0)
+    )}`
+  ) + ".html";
+
+export function buildReceiptHtml(job: any, payment: Payment): string {
+  const body = `
+    <h1>Recibo de pago</h1>
+    <p class="sub">${esc(job.client)} &middot; Trabajo N&deg; ${esc(job.budgetNumber)} &middot; ${esc(
+    job.company
+  )} &middot; ${esc(payment.paymentDate || "sin fecha")}</p>
+    <div class="grid">
+      <div class="card"><div class="k">Monto pagado</div><div class="v">${money(payment.amount)}</div></div>
+      <div class="card"><div class="k">Forma</div><div class="v">${esc(payment.transactionType || "-")}</div></div>
+      <div class="card"><div class="k">Administracion</div><div class="v">${
+        payment.administration === "negro" ? "Negro" : "Blanco"
+      }</div></div>
+    </div>
+    <h2>Estado del trabajo</h2>
+    <table><tbody>
+      <tr><td>Proyecto</td><td>${esc(job.project)}</td></tr>
+      <tr><td>Valor a cobrar</td><td class="num">${money(job.valueToCollect)}</td></tr>
+      <tr><td>Cobrado (total)</td><td class="num">${money(job.collectedTotal)}</td></tr>
+      <tr class="tot"><td>Saldo actual</td><td class="num">${money(job.remainingToPay)}</td></tr>
+    </tbody></table>`;
+  return page(`Recibo ${job.budgetNumber} - ${job.client}`, body);
+}
+
+// ---- Remitos ----
+
+export const remitoFileName = (draft: RemitoDraft): string =>
+  safeName(`Remito ${draft.fileName || draft.id}`) + ".html";
+
+export function buildRemitoHtml(draft: RemitoDraft): string {
+  const rows = (draft.rows || [])
+    .map(
+      (r) =>
+        `<tr><td>${esc(r.description)}</td><td class="num">${esc(r.quantity)}</td><td>${esc(
+          r.unit
+        )}</td><td class="num">${money(r.unitPrice)}</td><td class="num">${money(
+          Number(r.quantity || 0) * Number(r.unitPrice || 0)
+        )}</td></tr>`
+    )
+    .join("");
+  const total = (draft.rows || []).reduce(
+    (acc, r) => acc + Number(r.quantity || 0) * Number(r.unitPrice || 0),
+    0
+  );
+  const body = `
+    <h1>Remito</h1>
+    <p class="sub">${esc(draft.fileName || "sin nombre")} &middot; ${esc(draft.company)}</p>
+    <table>
+      <thead><tr><th>Descripcion</th><th class="num">Cant.</th><th>Unidad</th><th class="num">P. unit</th><th class="num">Subtotal</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr class="tot"><td colspan="4">Total</td><td class="num">${money(total)}</td></tr></tfoot>
+    </table>
+    ${draft.notes ? `<h2>Notas</h2><p>${esc(draft.notes)}</p>` : ""}`;
+  return page(`Remito ${draft.fileName || draft.id}`, body);
+}
+
+// ---- Resumen general (balance + trabajos) ----
+
+export function buildGeneralSummaryHtml(input: {
+  periodLabel: string;
+  companyLabel: string;
+  balance: any;
+  jobsCount: number;
+  toCollect: number;
+  collected: number;
+  pending: number;
+}): string {
+  const b = input.balance || {};
+  const body = `
+    <h1>Resumen general</h1>
+    <p class="sub">${esc(input.companyLabel)} &middot; ${esc(input.periodLabel)}</p>
+    <h2>Facturacion y cobranza</h2>
+    <div class="grid">
+      <div class="card"><div class="k">Facturado (con IVA)</div><div class="v">${money(b.invoicedTotal)}</div></div>
+      <div class="card"><div class="k">Cobrado blanco</div><div class="v">${money(b.collectedWhite)}</div></div>
+      <div class="card"><div class="k">Cobrado negro</div><div class="v">${money(b.collectedBlack)}</div></div>
+      <div class="card"><div class="k">Adeudado total</div><div class="v">${money(b.owedTotal)}</div></div>
+    </div>
+    <h2>Trabajos aprobados</h2>
+    <div class="grid">
+      <div class="card"><div class="k">Trabajos</div><div class="v">${esc(input.jobsCount)}</div></div>
+      <div class="card"><div class="k">A cobrar</div><div class="v">${money(input.toCollect)}</div></div>
+      <div class="card"><div class="k">Cobrado</div><div class="v">${money(input.collected)}</div></div>
+      <div class="card"><div class="k">Saldo</div><div class="v">${money(input.pending)}</div></div>
+    </div>`;
+  return page(`Resumen general ${input.periodLabel}`, body);
 }
 
 export function buildJobsSummaryHtml(jobs: any[], monthKey: string): string {

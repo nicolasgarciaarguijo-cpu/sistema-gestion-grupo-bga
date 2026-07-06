@@ -19,6 +19,10 @@ type DocumentosTabProps = {
   onExportManuals: () => void;
   onExportBudgets: () => void;
   onExportJobs: () => void;
+  onExportReceipts: () => void;
+  onExportRemitos: () => void;
+  onExportSummary: () => void;
+  onExportAll: () => void;
 };
 
 const DOC_TYPE_LABELS: Record<LinkedDocumentType, string> = {
@@ -71,6 +75,10 @@ export function DocumentosTab({
   onExportManuals,
   onExportBudgets,
   onExportJobs,
+  onExportReceipts,
+  onExportRemitos,
+  onExportSummary,
+  onExportAll,
 }: DocumentosTabProps) {
   const grouped = React.useMemo(() => {
     const byType = new Map<LinkedDocumentType, LinkedDocument[]>();
@@ -158,22 +166,35 @@ export function DocumentosTab({
       </Panel>
 
       <Panel title="Exportar a la carpeta" span="wide">
+        <div style={{ marginBottom: 8 }}>
+          <ButtonLike onClick={onExportAll} disabled={busy || !folderLinked}>
+            {busy ? "Exportando..." : "Exportar TODO"}
+          </ButtonLike>
+        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-          <ButtonLike onClick={onExportManuals} disabled={busy || !folderLinked}>
-            Exportar manuales
+          <ButtonLike onClick={onExportManuals} disabled={busy || !folderLinked} secondary>
+            Manuales
           </ButtonLike>
-          <ButtonLike onClick={onExportBudgets} disabled={busy || !folderLinked}>
-            Exportar presupuestos
+          <ButtonLike onClick={onExportBudgets} disabled={busy || !folderLinked} secondary>
+            Presupuestos
           </ButtonLike>
-          <ButtonLike onClick={onExportJobs} disabled={busy || !folderLinked}>
-            Exportar trabajos aprobados
+          <ButtonLike onClick={onExportJobs} disabled={busy || !folderLinked} secondary>
+            Trabajos aprobados
+          </ButtonLike>
+          <ButtonLike onClick={onExportReceipts} disabled={busy || !folderLinked} secondary>
+            Recibos
+          </ButtonLike>
+          <ButtonLike onClick={onExportRemitos} disabled={busy || !folderLinked} secondary>
+            Remitos
+          </ButtonLike>
+          <ButtonLike onClick={onExportSummary} disabled={busy || !folderLinked} secondary>
+            Resumen general
           </ButtonLike>
         </div>
         <div style={{ ...styles.muted, marginTop: 8 }}>
-          Los manuales van a <strong>Manuales/&lt;usuario&gt;/</strong>. Los presupuestos a{" "}
-          <strong>Presupuestos/&lt;cliente&gt;/</strong> (una carpeta por cliente) con su resumen
-          mensual, y los trabajos a <strong>Trabajos aprobados/&lt;cliente&gt;/</strong>. La primera
-          vez el navegador pide permiso de escritura. Archivos HTML (se imprimen a PDF con Ctrl+P).
+          Destinos: Manuales/&lt;usuario&gt;/ · Presupuestos/&lt;cliente&gt;/ (+ resumen mensual) ·
+          Trabajos aprobados/&lt;cliente&gt;/ · Recibos/AAAA-MM/ · Remitos/ · Resumenes/&lt;periodo&gt;/.
+          La primera vez el navegador pide permiso de escritura. Son HTML (se imprimen a PDF con Ctrl+P).
         </div>
       </Panel>
 

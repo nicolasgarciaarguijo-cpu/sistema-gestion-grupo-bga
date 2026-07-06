@@ -179,6 +179,11 @@ import {
   jobFileName,
   buildJobHtml,
   buildJobsSummaryHtml,
+  receiptFileName,
+  buildReceiptHtml,
+  remitoFileName,
+  buildRemitoHtml,
+  buildGeneralSummaryHtml,
 } from "./content/exportHtml";
 
 declare global {
@@ -4729,6 +4734,114 @@ export default function App() {
       setDocumentsMessage("Error al exportar trabajos: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
+  };
+
+  // Exporta un recibo por cada pago cargado, en Recibos/AAAA-MM/.
+  const exportReceiptsToFolder = async () => {
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando recibos a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return;
+      }
+      let written = 0;
+      for (const job of approvedJobsSummary) {
+        for (const payment of job.payments || []) {
+          const monthKey = (payment.paymentDate || "").slice(0, 7) || "sin-fecha";
+          await writeFileToFolder(
+            handle,
+            `Recibos/${monthKey}/${receiptFileName(job, payment)}`,
+            buildReceiptHtml(job, payment)
+          );
+          written += 1;
+        }
+      }
+      setDocumentsMessage(`Recibos exportados: ${written} en Recibos/AAAA-MM/.`);
+    } catch (err: any) {
+      console.error("[documentos] export recibos:", err);
+      setDocumentsMessage("Error al exportar recibos: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+  };
+
+  // Exporta cada remito importado a Remitos/.
+  const exportRemitosToFolder = async () => {
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando remitos a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return;
+      }
+      let written = 0;
+      for (const draft of remitoDrafts) {
+        await writeFileToFolder(handle, `Remitos/${remitoFileName(draft)}`, buildRemitoHtml(draft));
+        written += 1;
+      }
+      setDocumentsMessage(`Remitos exportados: ${written} en Remitos/.`);
+    } catch (err: any) {
+      console.error("[documentos] export remitos:", err);
+      setDocumentsMessage("Error al exportar remitos: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+  };
+
+  // Exporta un resumen general (balance + trabajos) del periodo elegido, en Resumenes/<periodo>/.
+  const exportSummaryToFolder = async () => {
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando resumen a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return;
+      }
+      const periodKey =
+        balancePeriodMode === "month"
+          ? balanceMonth
+          : balancePeriodMode === "fiscalYear"
+          ? `Ano-fiscal-${balanceFiscalStartYear}`
+          : "Todo";
+      const periodLabel =
+        balancePeriodMode === "month"
+          ? balanceMonth
+          : balancePeriodMode === "fiscalYear"
+          ? `Ano fiscal ${balanceFiscalStartYear}`
+          : "Todo el historial";
+      const companyLabel =
+        balanceCompanyScope === "__ALL__"
+          ? "Todas las empresas"
+          : getCompanyMeta(balanceCompanyScope as CompanyName).short;
+      const html = buildGeneralSummaryHtml({
+        periodLabel,
+        companyLabel,
+        balance: billingBalance,
+        jobsCount: approvedJobsSummary.length,
+        toCollect: approvedJobsSummary.reduce((a, j) => a + Number(j.valueToCollect || 0), 0),
+        collected: approvedJobsSummary.reduce((a, j) => a + Number(j.collectedTotal || 0), 0),
+        pending: approvedJobsSummary.reduce((a, j) => a + Number(j.remainingToPay || 0), 0),
+      });
+      await writeFileToFolder(handle, `Resumenes/${periodKey}/Resumen general.html`, html);
+      setDocumentsMessage(`Resumen exportado en Resumenes/${periodKey}/.`);
+    } catch (err: any) {
+      console.error("[documentos] export resumen:", err);
+      setDocumentsMessage("Error al exportar resumen: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+  };
+
+  // Exporta TODO de una: manuales, presupuestos, trabajos, recibos, remitos y resumen.
+  const exportAllToFolder = async () => {
+    await exportManualsToFolder();
+    await exportBudgetsToFolder();
+    await exportApprovedJobsToFolder();
+    await exportReceiptsToFolder();
+    await exportRemitosToFolder();
+    await exportSummaryToFolder();
+    setDocumentsMessage("Exportacion completa: manuales, presupuestos, trabajos, recibos, remitos y resumen.");
   };
 
   const crmClientRows = useMemo(
@@ -11576,6 +11689,10 @@ export default function App() {
           onExportManuals={exportManualsToFolder}
           onExportBudgets={exportBudgetsToFolder}
           onExportJobs={exportApprovedJobsToFolder}
+          onExportReceipts={exportReceiptsToFolder}
+          onExportRemitos={exportRemitosToFolder}
+          onExportSummary={exportSummaryToFolder}
+          onExportAll={exportAllToFolder}
         />
       )}
 
