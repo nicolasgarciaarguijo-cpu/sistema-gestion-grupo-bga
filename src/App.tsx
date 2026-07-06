@@ -153,6 +153,8 @@ import type {
   LinkedDocument,
 } from "./domain/types";
 import { DocumentosTab } from "./tabs/Documentos";
+import { extractPdfRawText } from "./lib/pdfExtract";
+import { parseScaleFromRawText } from "./lib/scaleParse";
 import {
   classifyPath,
   isFileSystemAccessSupported,
@@ -1146,107 +1148,26 @@ const buildBlankBudgetDraft = (input: {
 const cloneBudgetDiscounts = (items: BudgetDiscount[]) =>
   items.map((item) => ({ ...item }));
 
-const normalizePdfText = (text: string) =>
-  text
-    .replace(/\0/g, " ")
-    .replace(/\s+/g, " ")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase();
-
-const monthMap: Record<string, string> = {
-  ENERO: "01",
-  FEBRERO: "02",
-  MARZO: "03",
-  ABRIL: "04",
-  MAYO: "05",
-  JUNIO: "06",
-  JULIO: "07",
-  AGOSTO: "08",
-  SEPTIEMBRE: "09",
-  OCTUBRE: "10",
-  NOVIEMBRE: "11",
-  DICIEMBRE: "12",
-};
-
-const parseSpanishNumber = (text: string) => Number(text.replace(/\./g, "").replace(",", "."));
-
+// Lee la escala salarial de un PDF (incluso comprimido) descomprimiendo los streams con la API nativa
+// del navegador y parseando el texto. Reusa la logica pura testeada (parseScaleFromRawText).
 async function parseScalePdf(file: File): Promise<ScaleRow[]> {
-  const buffer = await file.arrayBuffer();
-  const text = normalizePdfText(new TextDecoder("latin1").decode(new Uint8Array(buffer)));
-
-  const monthRegex =
-    /(ENERO|FEBRERO|MARZO|ABRIL|MAYO|JUNIO|JULIO|AGOSTO|SEPTIEMBRE|OCTUBRE|NOVIEMBRE|DICIEMBRE)\s*(20\d{2})/g;
-  const monthMatches: RegExpExecArray[] = [];
-  let monthMatch: RegExpExecArray | null;
-
-  while ((monthMatch = monthRegex.exec(text)) !== null) {
-    monthMatches.push(monthMatch);
-  }
-
-  // Meses de vigencia unicos, en orden de aparicion. Soporta escalas de 2 o 3 meses (trimestrales):
-  // cada mes detallado del PDF genera su propia fila con su valor.
-  const seenMonths = new Set<string>();
-  const monthKeys: string[] = [];
-  for (const match of monthMatches) {
-    const key = `${match[2]}-${monthMap[match[1]]}`;
-    if (!seenMonths.has(key)) {
-      seenMonths.add(key);
-      monthKeys.push(key);
-    }
-  }
-  const monthKeysToUse = monthKeys.slice(0, 3); // hasta 3 (trimestral)
-
-  if (monthKeysToUse.length < 1) {
-    throw new Error("No pude detectar meses de vigencia en el PDF.");
-  }
-
-  const categoryKeys = Object.keys(categoryAliases);
-  const rows: ScaleRow[] = [];
-
-  categoryKeys.forEach((pdfCategory, index) => {
-    const start = text.indexOf(pdfCategory);
-    if (start === -1) return;
-
-    const nextStartCandidates = categoryKeys
-      .slice(index + 1)
-      .map((name) => text.indexOf(name))
-      .filter((value) => value > start);
-    const end = nextStartCandidates.length > 0 ? Math.min(...nextStartCandidates) : text.length;
-    const block = text.slice(start, end);
-    const numberRegex = /\d{1,5},\d{2}/g;
-    const numbers: number[] = [];
-    let numberMatch: RegExpExecArray | null;
-
-    while ((numberMatch = numberRegex.exec(block)) !== null) {
-      numbers.push(parseSpanishNumber(numberMatch[0]));
-    }
-
-    if (numbers.length < 1 + monthKeysToUse.length) return;
-    const baseHourly = numbers[0];
-    // Un VHT por mes: se toman los ultimos N valores mayores al basico (uno por cada mes del trimestre).
-    const vhtValues = numbers.filter((value) => value > baseHourly).slice(-monthKeysToUse.length);
-    if (vhtValues.length < monthKeysToUse.length) return;
-
-    monthKeysToUse.forEach((monthKey, monthIndex) => {
-      const vht = vhtValues[monthIndex];
-      rows.push({
-        id: newId(),
-        month: monthKey,
-        category: categoryAliases[pdfCategory],
-        baseHourly,
-        nonRemHourly: Number((vht - baseHourly).toFixed(2)),
-        vht,
-        sourceFileName: file.name,
-      });
-    });
-  });
-
+  const rawText = await extractPdfRawText(file);
+  const { rows, warnings } = parseScaleFromRawText(rawText, categoryAliases);
   if (rows.length === 0) {
-    throw new Error("No pude leer categorias y valores del PDF. Puedes dejarlos manuales.");
+    const detail = warnings[0] ? ` (${warnings[0]})` : "";
+    throw new Error(
+      `No pude leer la escala del PDF${detail}. Revisa que sea el PDF de la escala o cargala a mano.`
+    );
   }
-
-  return rows;
+  return rows.map((row) => ({
+    id: newId(),
+    month: row.month,
+    category: row.category,
+    baseHourly: row.baseHourly,
+    nonRemHourly: row.nonRemHourly,
+    vht: row.vht,
+    sourceFileName: file.name,
+  }));
 }
 
 const getFinancialTypeLabel = (type: FinancialItemType) => {
