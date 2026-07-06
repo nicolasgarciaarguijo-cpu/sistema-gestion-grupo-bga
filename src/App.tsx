@@ -4721,17 +4721,27 @@ export default function App() {
         setDocumentsBusy(false);
         return written;
       }
-      // Una carpeta por cada cliente del CRM (aunque no tenga presupuestos todavia).
+      // Vencido = ya paso su validez (dias desde la fecha). Se usa para separar Vigentes/Vencidos.
+      const isBudgetExpired = (b: SavedBudget): boolean => {
+        const validityDays = Number(/(\d+)/.exec(b.snapshot?.budget?.validity || "")?.[1] || 0);
+        if (!validityDays || !b.date) return false;
+        const [y, m, d] = b.date.slice(0, 10).split("-").map(Number);
+        if (!y || !m || !d) return false;
+        const venc = new Date(y, m - 1, d + validityDays);
+        return venc.getTime() < new Date().getTime();
+      };
+      // Una carpeta por cada cliente del CRM (aunque no tenga presupuestos): bajo Vigentes por defecto.
       for (const client of crmClients) {
         if (client.name?.trim()) {
-          await ensureFolder(handle, `Presupuestos/${safeName(client.name)}`);
+          await ensureFolder(handle, `Presupuestos/Vigentes/${safeName(client.name)}`);
         }
       }
-      // Un archivo por presupuesto (ultima revision), dentro de la carpeta del cliente.
+      // Un archivo por presupuesto (ultima revision): Presupuestos/(Vigentes|Vencidos)/<cliente>/.
       const byMonth = new Map<string, typeof visibleSavedBudgets>();
       for (const budget of visibleSavedBudgets) {
         const cliente = safeName(budget.client || "Sin cliente");
-        const path = `Presupuestos/${cliente}/${budgetFileName(budget)}`;
+        const estado = isBudgetExpired(budget) ? "Vencidos" : "Vigentes";
+        const path = `Presupuestos/${estado}/${cliente}/${budgetFileName(budget)}`;
         await writeFileToFolder(handle, path, buildBudgetHtml(budget));
         written.push(path);
         const monthKey = (budget.date || "").slice(0, 7) || "sin-fecha";
@@ -4771,7 +4781,9 @@ export default function App() {
       const byMonth = new Map<string, any[]>();
       for (const job of approvedJobsSummary) {
         const cliente = safeName(job.client || "Sin cliente");
-        const path = `Trabajos aprobados/${cliente}/${jobFileName(job)}`;
+        const estado =
+          job.executionStatus === "finalizado" ? "Trabajos finalizados" : "Trabajos en curso";
+        const path = `Trabajos aprobados/${estado}/${cliente}/${jobFileName(job)}`;
         await writeFileToFolder(handle, path, buildJobHtml(job));
         written.push(path);
         const monthKey = (job.approvalDate || "").slice(0, 7) || "sin-fecha";

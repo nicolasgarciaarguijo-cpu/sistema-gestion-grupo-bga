@@ -197,9 +197,10 @@ export function DocumentosTab({
           </ButtonLike>
         </div>
         <div style={{ ...styles.muted, marginTop: 8 }}>
-          Destinos: Manuales/&lt;usuario&gt;/ · Presupuestos/&lt;cliente&gt;/ (+ resumen mensual) ·
-          Trabajos aprobados/&lt;cliente&gt;/ · Recibos/AAAA-MM/ · Remitos/ · Caja chica/&lt;fondo&gt;/ (deja
-          los tickets ahi) · Resumenes/&lt;periodo&gt;/. La primera vez el navegador pide permiso de
+          Destinos: Manuales/&lt;usuario&gt;/ · Presupuestos/(Vigentes|Vencidos)/&lt;cliente&gt;/ ·
+          Trabajos aprobados/(En curso|Finalizados)/&lt;cliente&gt;/ · Recibos/AAAA-MM/ · Remitos/ ·
+          Caja chica/(Cajas abiertas|cerradas)/&lt;caja&gt;/ (deja los tickets en Rendicion) ·
+          Resumenes/&lt;periodo&gt;/. La primera vez el navegador pide permiso de
           escritura. Son HTML (se imprimen a PDF con Ctrl+P). <strong>Exportar TODO</strong> ademas borra
           los HTML sobrantes (lo que borraste del sistema); nunca toca tus tickets/fotos/PDF cargados.
         </div>
