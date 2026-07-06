@@ -21,6 +21,7 @@ type DocumentosTabProps = {
   onExportJobs: () => void;
   onExportReceipts: () => void;
   onExportRemitos: () => void;
+  onExportPettyCash: () => void;
   onExportSummary: () => void;
   onExportAll: () => void;
 };
@@ -77,6 +78,7 @@ export function DocumentosTab({
   onExportJobs,
   onExportReceipts,
   onExportRemitos,
+  onExportPettyCash,
   onExportSummary,
   onExportAll,
 }: DocumentosTabProps) {
@@ -187,14 +189,18 @@ export function DocumentosTab({
           <ButtonLike onClick={onExportRemitos} disabled={busy || !folderLinked} secondary>
             Remitos
           </ButtonLike>
+          <ButtonLike onClick={onExportPettyCash} disabled={busy || !folderLinked} secondary>
+            Caja chica
+          </ButtonLike>
           <ButtonLike onClick={onExportSummary} disabled={busy || !folderLinked} secondary>
             Resumen general
           </ButtonLike>
         </div>
         <div style={{ ...styles.muted, marginTop: 8 }}>
           Destinos: Manuales/&lt;usuario&gt;/ · Presupuestos/&lt;cliente&gt;/ (+ resumen mensual) ·
-          Trabajos aprobados/&lt;cliente&gt;/ · Recibos/AAAA-MM/ · Remitos/ · Resumenes/&lt;periodo&gt;/.
-          La primera vez el navegador pide permiso de escritura. Son HTML (se imprimen a PDF con Ctrl+P).
+          Trabajos aprobados/&lt;cliente&gt;/ · Recibos/AAAA-MM/ · Remitos/ · Caja chica/&lt;fondo&gt;/ (deja
+          los tickets ahi) · Resumenes/&lt;periodo&gt;/. La primera vez el navegador pide permiso de
+          escritura. Son HTML (se imprimen a PDF con Ctrl+P).
         </div>
       </Panel>
 

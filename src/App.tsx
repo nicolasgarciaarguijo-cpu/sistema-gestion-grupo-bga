@@ -184,6 +184,9 @@ import {
   remitoFileName,
   buildRemitoHtml,
   buildGeneralSummaryHtml,
+  pettyCashFundFolder,
+  buildPettyCashFundHtml,
+  buildPettyCashSummaryHtml,
 } from "./content/exportHtml";
 
 declare global {
@@ -4833,15 +4836,68 @@ export default function App() {
     setDocumentsBusy(false);
   };
 
-  // Exporta TODO de una: manuales, presupuestos, trabajos, recibos, remitos y resumen.
+  // Caja chica (doble via): exporta la estructura de fondos (crea Caja chica/<fondo>/ con la ficha de
+  // cada fondo -> ahi el usuario deja los tickets) + resumen mensual de gastos.
+  const exportPettyCashToFolder = async () => {
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando caja chica a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return;
+      }
+      let funds = 0;
+      for (const fund of visiblePettyCashFunds) {
+        const folder = pettyCashFundFolder(fund);
+        const fundExpenses = visiblePettyCashExpenses.filter((e) => e.fundId === fund.id);
+        await writeFileToFolder(
+          handle,
+          `Caja chica/${folder}/Ficha del fondo.html`,
+          buildPettyCashFundHtml(fund, fundExpenses)
+        );
+        funds += 1;
+      }
+      const byMonth = new Map<string, typeof visiblePettyCashExpenses>();
+      for (const expense of visiblePettyCashExpenses) {
+        const monthKey = (expense.date || "").slice(0, 7) || "sin-fecha";
+        const list = byMonth.get(monthKey) || [];
+        list.push(expense);
+        byMonth.set(monthKey, list);
+      }
+      const fundName = (fundId: number | null) =>
+        visiblePettyCashFunds.find((f) => f.id === fundId)?.description || "-";
+      let summaries = 0;
+      for (const [monthKey, list] of Array.from(byMonth.entries())) {
+        await writeFileToFolder(
+          handle,
+          `Caja chica/Resumen mensual/${monthKey} - Resumen caja chica.html`,
+          buildPettyCashSummaryHtml(list, monthKey, fundName)
+        );
+        summaries += 1;
+      }
+      setDocumentsMessage(
+        `Caja chica exportada: ${funds} fondo(s) en Caja chica/<fondo>/, ${summaries} resumen(es). Deja los tickets en la carpeta de cada fondo.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export caja chica:", err);
+      setDocumentsMessage("Error al exportar caja chica: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+  };
+
+  // Exporta TODO de una: manuales, presupuestos, trabajos, recibos, remitos, caja chica y resumen.
   const exportAllToFolder = async () => {
     await exportManualsToFolder();
     await exportBudgetsToFolder();
     await exportApprovedJobsToFolder();
     await exportReceiptsToFolder();
     await exportRemitosToFolder();
+    await exportPettyCashToFolder();
     await exportSummaryToFolder();
-    setDocumentsMessage("Exportacion completa: manuales, presupuestos, trabajos, recibos, remitos y resumen.");
+    setDocumentsMessage(
+      "Exportacion completa: manuales, presupuestos, trabajos, recibos, remitos, caja chica y resumen."
+    );
   };
 
   const crmClientRows = useMemo(
@@ -11691,6 +11747,7 @@ export default function App() {
           onExportJobs={exportApprovedJobsToFolder}
           onExportReceipts={exportReceiptsToFolder}
           onExportRemitos={exportRemitosToFolder}
+          onExportPettyCash={exportPettyCashToFolder}
           onExportSummary={exportSummaryToFolder}
           onExportAll={exportAllToFolder}
         />

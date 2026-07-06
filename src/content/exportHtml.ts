@@ -242,6 +242,76 @@ export function buildGeneralSummaryHtml(input: {
   return page(`Resumen general ${input.periodLabel}`, body);
 }
 
+// ---- Caja chica ----
+
+// Nombre de carpeta del fondo: descripcion (+ responsable si ayuda a distinguir).
+export const pettyCashFundFolder = (fund: any): string =>
+  safeName(
+    fund.description
+      ? `${fund.description}${fund.responsible ? " - " + fund.responsible : ""}`
+      : `Fondo ${fund.id}`
+  );
+
+const adminLabel = (a?: string): string => (a === "negro" ? "Negro" : "Blanco");
+
+export function buildPettyCashFundHtml(fund: any, expenses: any[]): string {
+  const spent = expenses.reduce((acc, e) => acc + Number(e.amount || 0), 0);
+  const saldo = Number(fund.assignedAmount || 0) - spent;
+  const rows = expenses
+    .slice()
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
+    .map(
+      (e) =>
+        `<tr><td>${esc(e.date || "-")}</td><td>${esc(e.category || "-")}</td><td>${esc(
+          e.description || "-"
+        )}</td><td class="num">${money(e.amount)}</td><td>${adminLabel(e.administration)}</td></tr>`
+    )
+    .join("");
+  const body = `
+    <h1>Caja chica: ${esc(fund.description || "Fondo")}</h1>
+    <p class="sub">Responsable: ${esc(fund.responsible || "-")} &middot; ${esc(fund.company)}${
+    fund.active ? "" : " &middot; cerrado"
+  }</p>
+    <div class="grid">
+      <div class="card"><div class="k">Monto asignado</div><div class="v">${money(fund.assignedAmount)}</div></div>
+      <div class="card"><div class="k">Gastado</div><div class="v">${money(spent)}</div></div>
+      <div class="card"><div class="k">Saldo</div><div class="v">${money(saldo)}</div></div>
+    </div>
+    <h2>Gastos cargados</h2>
+    <table>
+      <thead><tr><th>Fecha</th><th>Categoria</th><th>Descripcion</th><th class="num">Monto</th><th>Adm.</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="5">Sin gastos cargados. Deja los tickets en esta carpeta.</td></tr>`}</tbody>
+    </table>`;
+  return page(`Caja chica ${fund.description || fund.id}`, body);
+}
+
+export function buildPettyCashSummaryHtml(
+  expenses: any[],
+  monthKey: string,
+  fundName: (fundId: number | null) => string
+): string {
+  const rows = expenses
+    .map(
+      (e) =>
+        `<tr><td>${esc(e.date || "-")}</td><td>${esc(fundName(e.fundId))}</td><td>${esc(
+          e.category || "-"
+        )}</td><td>${esc(e.description || "-")}</td><td class="num">${money(
+          e.amount
+        )}</td><td>${adminLabel(e.administration)}</td></tr>`
+    )
+    .join("");
+  const total = expenses.reduce((acc, e) => acc + Number(e.amount || 0), 0);
+  const body = `
+    <h1>Resumen de caja chica</h1>
+    <p class="sub">${monthLabelEs(monthKey)} &middot; ${expenses.length} gasto(s)</p>
+    <table>
+      <thead><tr><th>Fecha</th><th>Fondo</th><th>Categoria</th><th>Descripcion</th><th class="num">Monto</th><th>Adm.</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr class="tot"><td colspan="4">Total</td><td class="num">${money(total)}</td><td></td></tr></tfoot>
+    </table>`;
+  return page(`Resumen caja chica ${monthKey}`, body);
+}
+
 export function buildJobsSummaryHtml(jobs: any[], monthKey: string): string {
   const rows = jobs
     .map(
