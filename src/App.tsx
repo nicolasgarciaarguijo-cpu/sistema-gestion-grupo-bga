@@ -168,6 +168,7 @@ import {
   ensureWritePermission,
   writeFileToFolder,
   ensureFolder,
+  cleanOrphanHtmlFiles,
   scanDirectory,
 } from "./lib/folderSync";
 import { buildManualHtml } from "./content/manualHtml";
@@ -4582,7 +4583,9 @@ export default function App() {
   };
 
   // Exporta a la carpeta un manual HTML por cada usuario, en Manuales/<usuario>/, con solo sus solapas.
-  const exportManualsToFolder = async () => {
+  // Devuelve las rutas escritas (para que "Exportar TODO" pueda limpiar los sobrantes).
+  const exportManualsToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
     setDocumentsBusy(true);
     setDocumentsMessage("Exportando manuales a la carpeta...");
     try {
@@ -4590,13 +4593,13 @@ export default function App() {
       if (!handle) {
         setDocumentsMessage("Vincula la carpeta primero (boton Vincular carpeta).");
         setDocumentsBusy(false);
-        return;
+        return written;
       }
       const granted = await ensureWritePermission(handle);
       if (!granted) {
         setDocumentsMessage("El navegador no dio permiso para escribir en la carpeta.");
         setDocumentsBusy(false);
-        return;
+        return written;
       }
       const allTabKeys = TAB_OPTIONS.map((tab) => tab.key as string);
       // Si no hay directorio de usuarios cargado (no admin), al menos exporta el manual propio.
@@ -4611,7 +4614,6 @@ export default function App() {
                 active: true,
               } as any,
             ];
-      let written = 0;
       for (const user of users) {
         const name = (user.full_name || "usuario").trim();
         const tabKeys = user.is_superadmin
@@ -4625,17 +4627,19 @@ export default function App() {
             ];
         const html = buildManualHtml(name, tabKeys);
         const safe = name.replace(/[\\/:*?"<>|]+/g, "-").trim() || "usuario";
-        await writeFileToFolder(handle, `Manuales/${safe}/Manual - ${safe}.html`, html);
-        written += 1;
+        const path = `Manuales/${safe}/Manual - ${safe}.html`;
+        await writeFileToFolder(handle, path, html);
+        written.push(path);
       }
       setDocumentsMessage(
-        `Manuales exportados: ${written}. Estan en la carpeta Manuales/<usuario>/ (HTML; abri con doble clic o imprimi a PDF con Ctrl+P).`
+        `Manuales exportados: ${written.length}. Estan en la carpeta Manuales/<usuario>/ (HTML; abri con doble clic o imprimi a PDF con Ctrl+P).`
       );
     } catch (err: any) {
       console.error("[documentos] export manuales:", err);
       setDocumentsMessage("Error al exportar manuales: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
+    return written;
   };
 
   // Prepara el handle con permiso de escritura; devuelve null (y avisa) si no se puede.
@@ -4655,14 +4659,15 @@ export default function App() {
 
   // Exporta cada presupuesto a Presupuestos/<cliente>/, crea la carpeta de cada cliente del CRM y
   // arma un resumen mensual del historial en Presupuestos/Resumen mensual/.
-  const exportBudgetsToFolder = async () => {
+  const exportBudgetsToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
     setDocumentsBusy(true);
     setDocumentsMessage("Exportando presupuestos a la carpeta...");
     try {
       const handle = await getWritableFolder();
       if (!handle) {
         setDocumentsBusy(false);
-        return;
+        return written;
       }
       // Una carpeta por cada cliente del CRM (aunque no tenga presupuestos todavia).
       for (const client of crmClients) {
@@ -4671,148 +4676,134 @@ export default function App() {
         }
       }
       // Un archivo por presupuesto (ultima revision), dentro de la carpeta del cliente.
-      let written = 0;
       const byMonth = new Map<string, typeof visibleSavedBudgets>();
       for (const budget of visibleSavedBudgets) {
         const cliente = safeName(budget.client || "Sin cliente");
-        await writeFileToFolder(
-          handle,
-          `Presupuestos/${cliente}/${budgetFileName(budget)}`,
-          buildBudgetHtml(budget)
-        );
-        written += 1;
+        const path = `Presupuestos/${cliente}/${budgetFileName(budget)}`;
+        await writeFileToFolder(handle, path, buildBudgetHtml(budget));
+        written.push(path);
         const monthKey = (budget.date || "").slice(0, 7) || "sin-fecha";
         const list = byMonth.get(monthKey) || [];
         list.push(budget);
         byMonth.set(monthKey, list);
       }
       // Resumen mensual del historial.
-      let summaries = 0;
       for (const [monthKey, list] of Array.from(byMonth.entries())) {
-        await writeFileToFolder(
-          handle,
-          `Presupuestos/Resumen mensual/${monthKey} - Resumen presupuestos.html`,
-          buildBudgetsSummaryHtml(list, monthKey)
-        );
-        summaries += 1;
+        const path = `Presupuestos/Resumen mensual/${monthKey} - Resumen presupuestos.html`;
+        await writeFileToFolder(handle, path, buildBudgetsSummaryHtml(list, monthKey));
+        written.push(path);
       }
       setDocumentsMessage(
-        `Presupuestos exportados: ${written} en Presupuestos/<cliente>/, ${summaries} resumen(es) mensual(es), ${crmClients.length} carpeta(s) de cliente.`
+        `Presupuestos exportados: ${written.length} archivo(s), ${crmClients.length} carpeta(s) de cliente.`
       );
     } catch (err: any) {
       console.error("[documentos] export presupuestos:", err);
       setDocumentsMessage("Error al exportar presupuestos: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
+    return written;
   };
 
   // Exporta cada trabajo aprobado a Trabajos aprobados/<cliente>/ + resumen mensual (por fecha de
   // aprobacion), para hacer seguimiento de facturacion y cobranza.
-  const exportApprovedJobsToFolder = async () => {
+  const exportApprovedJobsToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
     setDocumentsBusy(true);
     setDocumentsMessage("Exportando trabajos aprobados a la carpeta...");
     try {
       const handle = await getWritableFolder();
       if (!handle) {
         setDocumentsBusy(false);
-        return;
+        return written;
       }
-      let written = 0;
       const byMonth = new Map<string, any[]>();
       for (const job of approvedJobsSummary) {
         const cliente = safeName(job.client || "Sin cliente");
-        await writeFileToFolder(
-          handle,
-          `Trabajos aprobados/${cliente}/${jobFileName(job)}`,
-          buildJobHtml(job)
-        );
-        written += 1;
+        const path = `Trabajos aprobados/${cliente}/${jobFileName(job)}`;
+        await writeFileToFolder(handle, path, buildJobHtml(job));
+        written.push(path);
         const monthKey = (job.approvalDate || "").slice(0, 7) || "sin-fecha";
         const list = byMonth.get(monthKey) || [];
         list.push(job);
         byMonth.set(monthKey, list);
       }
-      let summaries = 0;
       for (const [monthKey, list] of Array.from(byMonth.entries())) {
-        await writeFileToFolder(
-          handle,
-          `Trabajos aprobados/Resumen mensual/${monthKey} - Resumen trabajos.html`,
-          buildJobsSummaryHtml(list, monthKey)
-        );
-        summaries += 1;
+        const path = `Trabajos aprobados/Resumen mensual/${monthKey} - Resumen trabajos.html`;
+        await writeFileToFolder(handle, path, buildJobsSummaryHtml(list, monthKey));
+        written.push(path);
       }
-      setDocumentsMessage(
-        `Trabajos aprobados exportados: ${written} en Trabajos aprobados/<cliente>/, ${summaries} resumen(es) mensual(es).`
-      );
+      setDocumentsMessage(`Trabajos aprobados exportados: ${written.length} archivo(s).`);
     } catch (err: any) {
       console.error("[documentos] export trabajos:", err);
       setDocumentsMessage("Error al exportar trabajos: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
+    return written;
   };
 
   // Exporta un recibo por cada pago cargado, en Recibos/AAAA-MM/.
-  const exportReceiptsToFolder = async () => {
+  const exportReceiptsToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
     setDocumentsBusy(true);
     setDocumentsMessage("Exportando recibos a la carpeta...");
     try {
       const handle = await getWritableFolder();
       if (!handle) {
         setDocumentsBusy(false);
-        return;
+        return written;
       }
-      let written = 0;
       for (const job of approvedJobsSummary) {
         for (const payment of job.payments || []) {
           const monthKey = (payment.paymentDate || "").slice(0, 7) || "sin-fecha";
-          await writeFileToFolder(
-            handle,
-            `Recibos/${monthKey}/${receiptFileName(job, payment)}`,
-            buildReceiptHtml(job, payment)
-          );
-          written += 1;
+          const path = `Recibos/${monthKey}/${receiptFileName(job, payment)}`;
+          await writeFileToFolder(handle, path, buildReceiptHtml(job, payment));
+          written.push(path);
         }
       }
-      setDocumentsMessage(`Recibos exportados: ${written} en Recibos/AAAA-MM/.`);
+      setDocumentsMessage(`Recibos exportados: ${written.length} en Recibos/AAAA-MM/.`);
     } catch (err: any) {
       console.error("[documentos] export recibos:", err);
       setDocumentsMessage("Error al exportar recibos: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
+    return written;
   };
 
   // Exporta cada remito importado a Remitos/.
-  const exportRemitosToFolder = async () => {
+  const exportRemitosToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
     setDocumentsBusy(true);
     setDocumentsMessage("Exportando remitos a la carpeta...");
     try {
       const handle = await getWritableFolder();
       if (!handle) {
         setDocumentsBusy(false);
-        return;
+        return written;
       }
-      let written = 0;
       for (const draft of remitoDrafts) {
-        await writeFileToFolder(handle, `Remitos/${remitoFileName(draft)}`, buildRemitoHtml(draft));
-        written += 1;
+        const path = `Remitos/${remitoFileName(draft)}`;
+        await writeFileToFolder(handle, path, buildRemitoHtml(draft));
+        written.push(path);
       }
-      setDocumentsMessage(`Remitos exportados: ${written} en Remitos/.`);
+      setDocumentsMessage(`Remitos exportados: ${written.length} en Remitos/.`);
     } catch (err: any) {
       console.error("[documentos] export remitos:", err);
       setDocumentsMessage("Error al exportar remitos: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
+    return written;
   };
 
   // Exporta un resumen general (balance + trabajos) del periodo elegido, en Resumenes/<periodo>/.
-  const exportSummaryToFolder = async () => {
+  const exportSummaryToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
     setDocumentsBusy(true);
     setDocumentsMessage("Exportando resumen a la carpeta...");
     try {
       const handle = await getWritableFolder();
       if (!handle) {
         setDocumentsBusy(false);
-        return;
+        return written;
       }
       const periodKey =
         balancePeriodMode === "month"
@@ -4839,36 +4830,36 @@ export default function App() {
         collected: approvedJobsSummary.reduce((a, j) => a + Number(j.collectedTotal || 0), 0),
         pending: approvedJobsSummary.reduce((a, j) => a + Number(j.remainingToPay || 0), 0),
       });
-      await writeFileToFolder(handle, `Resumenes/${periodKey}/Resumen general.html`, html);
+      const path = `Resumenes/${periodKey}/Resumen general.html`;
+      await writeFileToFolder(handle, path, html);
+      written.push(path);
       setDocumentsMessage(`Resumen exportado en Resumenes/${periodKey}/.`);
     } catch (err: any) {
       console.error("[documentos] export resumen:", err);
       setDocumentsMessage("Error al exportar resumen: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
+    return written;
   };
 
   // Caja chica (doble via): exporta la estructura de fondos (crea Caja chica/<fondo>/ con la ficha de
   // cada fondo -> ahi el usuario deja los tickets) + resumen mensual de gastos.
-  const exportPettyCashToFolder = async () => {
+  const exportPettyCashToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
     setDocumentsBusy(true);
     setDocumentsMessage("Exportando caja chica a la carpeta...");
     try {
       const handle = await getWritableFolder();
       if (!handle) {
         setDocumentsBusy(false);
-        return;
+        return written;
       }
-      let funds = 0;
       for (const fund of visiblePettyCashFunds) {
         const folder = pettyCashFundFolder(fund);
         const fundExpenses = visiblePettyCashExpenses.filter((e) => e.fundId === fund.id);
-        await writeFileToFolder(
-          handle,
-          `Caja chica/${folder}/Ficha del fondo.html`,
-          buildPettyCashFundHtml(fund, fundExpenses)
-        );
-        funds += 1;
+        const path = `Caja chica/${folder}/Ficha del fondo.html`;
+        await writeFileToFolder(handle, path, buildPettyCashFundHtml(fund, fundExpenses));
+        written.push(path);
       }
       const byMonth = new Map<string, typeof visiblePettyCashExpenses>();
       for (const expense of visiblePettyCashExpenses) {
@@ -4879,36 +4870,56 @@ export default function App() {
       }
       const fundName = (fundId: number | null) =>
         visiblePettyCashFunds.find((f) => f.id === fundId)?.description || "-";
-      let summaries = 0;
       for (const [monthKey, list] of Array.from(byMonth.entries())) {
-        await writeFileToFolder(
-          handle,
-          `Caja chica/Resumen mensual/${monthKey} - Resumen caja chica.html`,
-          buildPettyCashSummaryHtml(list, monthKey, fundName)
-        );
-        summaries += 1;
+        const path = `Caja chica/Resumen mensual/${monthKey} - Resumen caja chica.html`;
+        await writeFileToFolder(handle, path, buildPettyCashSummaryHtml(list, monthKey, fundName));
+        written.push(path);
       }
       setDocumentsMessage(
-        `Caja chica exportada: ${funds} fondo(s) en Caja chica/<fondo>/, ${summaries} resumen(es). Deja los tickets en la carpeta de cada fondo.`
+        `Caja chica exportada: ${visiblePettyCashFunds.length} fondo(s). Deja los tickets en la carpeta de cada fondo.`
       );
     } catch (err: any) {
       console.error("[documentos] export caja chica:", err);
       setDocumentsMessage("Error al exportar caja chica: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
+    return written;
   };
 
-  // Exporta TODO de una: manuales, presupuestos, trabajos, recibos, remitos, caja chica y resumen.
+  // Exporta TODO y ademas LIMPIA los HTML sobrantes (lo borrado del sistema). Solo borra archivos .html
+  // generados por el sistema; nunca los tickets/fotos/PDF que carga el usuario.
+  const EXPORT_MANAGED_FOLDERS = [
+    "Manuales",
+    "Presupuestos",
+    "Trabajos aprobados",
+    "Recibos",
+    "Remitos",
+    "Caja chica",
+    "Resumenes",
+  ];
   const exportAllToFolder = async () => {
-    await exportManualsToFolder();
-    await exportBudgetsToFolder();
-    await exportApprovedJobsToFolder();
-    await exportReceiptsToFolder();
-    await exportRemitosToFolder();
-    await exportPettyCashToFolder();
-    await exportSummaryToFolder();
+    const written: string[] = [];
+    written.push(...(await exportManualsToFolder()));
+    written.push(...(await exportBudgetsToFolder()));
+    written.push(...(await exportApprovedJobsToFolder()));
+    written.push(...(await exportReceiptsToFolder()));
+    written.push(...(await exportRemitosToFolder()));
+    written.push(...(await exportPettyCashToFolder()));
+    written.push(...(await exportSummaryToFolder()));
+    let removed = 0;
+    try {
+      const handle = await loadDirHandle();
+      if (handle && written.length > 0) {
+        removed = await cleanOrphanHtmlFiles(handle, EXPORT_MANAGED_FOLDERS, new Set(written));
+      }
+    } catch (err) {
+      console.error("[documentos] limpieza sobrantes:", err);
+    }
+    setDocumentsBusy(false);
     setDocumentsMessage(
-      "Exportacion completa: manuales, presupuestos, trabajos, recibos, remitos, caja chica y resumen."
+      `Exportacion completa: ${written.length} archivo(s) escritos${
+        removed > 0 ? `, ${removed} sobrante(s) borrado(s)` : ""
+      }.`
     );
   };
 

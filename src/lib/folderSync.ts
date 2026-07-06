@@ -176,6 +176,49 @@ export async function ensureWritePermission(handle: any): Promise<boolean> {
   return (await handle.requestPermission(opts)) === "granted";
 }
 
+// Borra los archivos .html HUERFANOS (que ya no estan en `keep`) dentro de las carpetas indicadas.
+// SOLO toca archivos .html (los que genera el export); nunca los archivos cargados por el usuario
+// (fotos/PDF/tickets). Devuelve cuantos borro. Pensado para que el export refleje el sistema.
+export async function cleanOrphanHtmlFiles(
+  rootHandle: any,
+  topFolders: string[],
+  keep: Set<string>
+): Promise<number> {
+  let removed = 0;
+  const walk = async (dirHandle: any, prefix: string): Promise<void> => {
+    const iterator = dirHandle.values();
+    const toDelete: string[] = [];
+    while (true) {
+      const next = await iterator.next();
+      if (next.done) break;
+      const entry = next.value;
+      const path = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.kind === "directory") {
+        await walk(entry, path);
+      } else if (entry.kind === "file" && /\.html$/i.test(entry.name) && !keep.has(path)) {
+        toDelete.push(entry.name);
+      }
+    }
+    for (const name of toDelete) {
+      try {
+        await dirHandle.removeEntry(name);
+        removed += 1;
+      } catch {
+        // si no se puede borrar, se ignora
+      }
+    }
+  };
+  for (const top of topFolders) {
+    try {
+      const dir = await rootHandle.getDirectoryHandle(top, { create: false });
+      await walk(dir, top);
+    } catch {
+      // la carpeta no existe: nada que limpiar
+    }
+  }
+  return removed;
+}
+
 // Crea (si falta) la carpeta en la ruta relativa dada. Ej: ensureFolder(h, "Presupuestos/Juan Perez").
 export async function ensureFolder(rootHandle: any, relPath: string): Promise<void> {
   const parts = relPath.split("/").filter(Boolean);
