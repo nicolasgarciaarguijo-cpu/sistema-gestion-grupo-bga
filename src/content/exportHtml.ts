@@ -244,13 +244,14 @@ export function buildGeneralSummaryHtml(input: {
 
 // ---- Caja chica ----
 
-// Nombre de carpeta del fondo: descripcion (+ responsable si ayuda a distinguir).
-export const pettyCashFundFolder = (fund: any): string =>
-  safeName(
-    fund.description
-      ? `${fund.description}${fund.responsible ? " - " + fund.responsible : ""}`
-      : `Fondo ${fund.id}`
-  );
+// Nombre de carpeta del fondo: "responsable - descripcion" (mas claro). Si falta alguno, usa el que
+// haya; si no hay ninguno, "Fondo N".
+export const pettyCashFundFolder = (fund: any): string => {
+  const parts = [fund.responsible, fund.description]
+    .map((p) => String(p ?? "").trim())
+    .filter(Boolean);
+  return safeName(parts.length ? parts.join(" - ") : `Fondo ${fund.id}`);
+};
 
 const adminLabel = (a?: string): string => (a === "negro" ? "Negro" : "Blanco");
 
