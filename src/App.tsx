@@ -153,6 +153,7 @@ import type {
   LinkedDocument,
 } from "./domain/types";
 import { DocumentosTab } from "./tabs/Documentos";
+import { ManualTab } from "./tabs/Manual";
 import { extractPdfRawText } from "./lib/pdfExtract";
 import { parseScaleFromRawText } from "./lib/scaleParse";
 import { resolvePersonalDoc, type ResolvedPersonalDoc } from "./domain/personalDocs";
@@ -291,6 +292,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "personal", label: "Personal" },
   { key: "documentos", label: "Documentos" },
   { key: "marcadores", label: "Marcadores" },
+  { key: "manual", label: "Manual" },
 ];
 
 const NETA_TAB_KEYS: TabKey[] = ["presupuesto", "historial", "stock", "marcadores"];
@@ -355,7 +357,7 @@ const getCompanyScopeLabel = (company: CompanyScope) =>
 const getAllCompanyOptions = () => runtimeCompanyOptions;
 
 const getTabAdministrationType = (tab: TabKey) => {
-  if (tab === "acceso") return "Sistema";
+  if (tab === "acceso" || tab === "manual") return "Sistema";
   if (CARGA_TAB_KEYS.includes(tab)) return "Informacion de carga";
   if (NETA_TAB_KEYS.includes(tab)) return "Administracion neta";
   return "Administracion bruta";
@@ -378,6 +380,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   stock: "SA",
   personal: "PE",
   documentos: "DOC",
+  manual: "MAN",
 };
 
 const buildBlankRemitoDraftRow = (company: CompanyScope): RemitoDraftRow => ({
@@ -3229,15 +3232,22 @@ export default function App() {
 
     if (isSupabaseLoggedIn) {
       return withAccess(
-        TAB_OPTIONS.filter((item) => item.key === "acceso" || supabaseAllowedTabs.includes(item.key))
+        TAB_OPTIONS.filter(
+          (item) =>
+            item.key === "acceso" ||
+            item.key === "manual" ||
+            supabaseAllowedTabs.includes(item.key)
+        )
       );
     }
 
-    return withAccess(TAB_OPTIONS.filter((item) => item.key === "acceso"));
+    return withAccess(TAB_OPTIONS.filter((item) => item.key === "acceso" || item.key === "manual"));
   }, [effectiveIsAdmin, isSupabaseLoggedIn, supabaseAllowedTabs]);
 
   const sidebarSections = useMemo(() => {
-    const accessTabs = visibleTabOptions.filter((item) => item.key === "acceso");
+    const accessTabs = visibleTabOptions.filter(
+      (item) => item.key === "acceso" || item.key === "manual"
+    );
     const brutaTabs = visibleTabOptions.filter((item) => BRUTA_TAB_KEYS.includes(item.key));
     const netaTabs = visibleTabOptions.filter((item) => NETA_TAB_KEYS.includes(item.key));
     const cargaTabs = visibleTabOptions.filter((item) => CARGA_TAB_KEYS.includes(item.key));
@@ -11359,6 +11369,13 @@ export default function App() {
           laborRows={laborRows}
           nominalLaborHoursPerEmployee={nominalLaborHoursPerEmployee}
           totalFixedCosts={totalFixedCosts}
+        />
+      )}
+
+      {activeTab === "manual" && (
+        <ManualTab
+          userName={supabaseProfile?.full_name || ""}
+          visibleTabOptions={visibleTabOptions}
         />
       )}
 

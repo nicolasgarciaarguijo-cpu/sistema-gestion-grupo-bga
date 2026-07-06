@@ -29,7 +29,8 @@ export type TabKey =
   | "facturacion"
   | "stock"
   | "personal"
-  | "documentos";
+  | "documentos"
+  | "manual";
 
 export type PrintMode =
   | ""
