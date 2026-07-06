@@ -1183,12 +1183,21 @@ async function parseScalePdf(file: File): Promise<ScaleRow[]> {
     monthMatches.push(monthMatch);
   }
 
-  const monthKeys = monthMatches
-    .slice(0, 2)
-    .map((match) => `${match[2]}-${monthMap[match[1]]}`);
+  // Meses de vigencia unicos, en orden de aparicion. Soporta escalas de 2 o 3 meses (trimestrales):
+  // cada mes detallado del PDF genera su propia fila con su valor.
+  const seenMonths = new Set<string>();
+  const monthKeys: string[] = [];
+  for (const match of monthMatches) {
+    const key = `${match[2]}-${monthMap[match[1]]}`;
+    if (!seenMonths.has(key)) {
+      seenMonths.add(key);
+      monthKeys.push(key);
+    }
+  }
+  const monthKeysToUse = monthKeys.slice(0, 3); // hasta 3 (trimestral)
 
-  if (monthKeys.length < 2) {
-    throw new Error("No pude detectar dos meses de vigencia en el PDF.");
+  if (monthKeysToUse.length < 1) {
+    throw new Error("No pude detectar meses de vigencia en el PDF.");
   }
 
   const categoryKeys = Object.keys(categoryAliases);
@@ -1212,31 +1221,24 @@ async function parseScalePdf(file: File): Promise<ScaleRow[]> {
       numbers.push(parseSpanishNumber(numberMatch[0]));
     }
 
-    if (numbers.length < 3) return;
+    if (numbers.length < 1 + monthKeysToUse.length) return;
     const baseHourly = numbers[0];
-    const vhtValues = numbers.filter((value) => value > baseHourly).slice(-2);
-    if (vhtValues.length < 2) return;
+    // Un VHT por mes: se toman los ultimos N valores mayores al basico (uno por cada mes del trimestre).
+    const vhtValues = numbers.filter((value) => value > baseHourly).slice(-monthKeysToUse.length);
+    if (vhtValues.length < monthKeysToUse.length) return;
 
-    rows.push(
-      {
+    monthKeysToUse.forEach((monthKey, monthIndex) => {
+      const vht = vhtValues[monthIndex];
+      rows.push({
         id: newId(),
-        month: monthKeys[0],
+        month: monthKey,
         category: categoryAliases[pdfCategory],
         baseHourly,
-        nonRemHourly: Number((vhtValues[0] - baseHourly).toFixed(2)),
-        vht: vhtValues[0],
+        nonRemHourly: Number((vht - baseHourly).toFixed(2)),
+        vht,
         sourceFileName: file.name,
-      },
-      {
-        id: newId(),
-        month: monthKeys[1],
-        category: categoryAliases[pdfCategory],
-        baseHourly,
-        nonRemHourly: Number((vhtValues[1] - baseHourly).toFixed(2)),
-        vht: vhtValues[1],
-        sourceFileName: file.name,
-      }
-    );
+      });
+    });
   });
 
   if (rows.length === 0) {
