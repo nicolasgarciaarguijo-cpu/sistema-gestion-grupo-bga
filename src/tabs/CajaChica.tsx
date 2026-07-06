@@ -23,6 +23,7 @@ type CajaChicaTabProps = {
     description: string;
     supplier: string;
     fileName: string;
+    administration: "blanco" | "negro";
   } | null;
   onRunTicketOcr: (fundId: number | null, file: File | null) => void;
   onUpdateTicketDraft: (field: string, value: string | number) => void;
@@ -191,6 +192,16 @@ export function CajaChicaTab({
                       value={pettyTicketDraft.description}
                       onChange={(e) => onUpdateTicketDraft("description", e.target.value)}
                     />
+                  </Field>
+                  <Field label="Administracion (factura = blanco)">
+                    <select
+                      style={styles.input}
+                      value={pettyTicketDraft.administration}
+                      onChange={(e) => onUpdateTicketDraft("administration", e.target.value)}
+                    >
+                      <option value="negro">Negro (ticket sin factura)</option>
+                      <option value="blanco">Blanco (factura - se vincula a Compras)</option>
+                    </select>
                   </Field>
                 </div>
                 <div style={{ ...styles.muted, margin: "6px 0" }}>Archivo: {pettyTicketDraft.fileName}</div>

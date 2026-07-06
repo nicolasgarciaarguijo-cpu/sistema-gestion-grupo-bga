@@ -2395,6 +2395,7 @@ export default function App() {
     description: string;
     supplier: string;
     fileName: string;
+    administration: "blanco" | "negro";
   } | null>(null);
   const [employees, setEmployees] = useState<Employee[]>(defaultEmployees);
   const [employeeBaseConfig, setEmployeeBaseConfig] = useState<EmployeeBaseConfig>(defaultBaseConfig);
@@ -8879,6 +8880,7 @@ export default function App() {
         description: t.supplier,
         supplier: t.supplier,
         fileName: file.name,
+        administration: "negro",
       });
       setPettyOcrMsg(
         t.amount > 0
@@ -8917,7 +8919,7 @@ export default function App() {
         category: "Gasto operativo",
         description: pettyTicketDraft.description || pettyTicketDraft.supplier || "Ticket",
         amount: Number(pettyTicketDraft.amount) || 0,
-        administration: "negro",
+        administration: pettyTicketDraft.administration,
         supplier: pettyTicketDraft.supplier || "",
         invoiceNumber: "",
         notes: "Cargado por OCR de ticket.",
