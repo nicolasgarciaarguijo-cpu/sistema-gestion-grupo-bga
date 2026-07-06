@@ -1,0 +1,176 @@
+// Genera HTML para exportar a la carpeta de gestion: presupuestos y trabajos aprobados (uno por
+// archivo, dentro de la carpeta del cliente) y resumenes mensuales. Pensado para seguimiento.
+import type { SavedBudget } from "../domain/types";
+import { money } from "../lib/format";
+
+const esc = (s: unknown): string =>
+  String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+// Limpia un texto para usarlo como nombre de carpeta o archivo (saca caracteres invalidos).
+export const safeName = (s: string): string =>
+  (s || "").replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() || "sin-nombre";
+
+const MONTHS_ES = [
+  "enero", "febrero", "marzo", "abril", "mayo", "junio",
+  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+];
+export const monthLabelEs = (monthKey: string): string => {
+  const [y, m] = (monthKey || "").split("-").map(Number);
+  if (!y || !m) return "sin fecha";
+  return `${MONTHS_ES[m - 1]} ${y}`;
+};
+
+const CSS = `
+*{box-sizing:border-box}
+body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#0f172a;line-height:1.5;max-width:820px;margin:0 auto;padding:28px 20px;background:#fff}
+h1{font-size:22px;margin:0 0 2px}
+h2{font-size:16px;color:#334155;margin:20px 0 8px;border-bottom:2px solid #f1f5f9;padding-bottom:4px}
+.sub{color:#475569;margin:0 0 16px;font-size:14px}
+table{border-collapse:collapse;width:100%;margin:8px 0;font-size:14px}
+th{text-align:left;padding:6px 10px;border-bottom:2px solid #e2e8f0;color:#475569;font-size:12px;text-transform:uppercase}
+td{padding:6px 10px;border-bottom:1px solid #f1f5f9;color:#334155}
+td.num,th.num{text-align:right}
+.tot{font-weight:700;color:#0f172a}
+.pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.ok{background:#dcfce7;color:#166534}.no{background:#fee2e2;color:#991b1b}.dr{background:#e2e8f0;color:#475569}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0}
+.card{border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px}
+.card .k{font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700}
+.card .v{font-size:18px;font-weight:700;margin-top:2px}
+footer{color:#94a3b8;font-size:12px;text-align:center;margin-top:24px}
+@media print{body{padding:0}}
+`;
+
+const page = (title: string, body: string): string =>
+  `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(
+    title
+  )}</title><style>${CSS}</style></head><body>${body}<footer>Generado desde el Sistema de Gestion Grupo BGA</footer></body></html>`;
+
+const statusPill = (status: string): string => {
+  if (status === "aprobado") return `<span class="pill ok">Aprobado</span>`;
+  if (status === "no_aprobado") return `<span class="pill no">No aprobado</span>`;
+  return `<span class="pill dr">Borrador</span>`;
+};
+
+// ---- Presupuestos ----
+
+export const budgetFileName = (b: SavedBudget): string =>
+  safeName(`Presupuesto ${b.number}${b.project ? " - " + b.project : ""}`) + ".html";
+
+export function buildBudgetHtml(b: SavedBudget): string {
+  const t = b.snapshot?.totals as any;
+  const body = `
+    <h1>Presupuesto N&deg; ${esc(b.number)}</h1>
+    <p class="sub">${esc(b.client)} &middot; ${esc(b.project)} &middot; ${esc(b.date || "sin fecha")} &middot; ${statusPill(
+    b.status
+  )}${b.exportedAt ? " &middot; exportado" : ""}</p>
+    <div class="grid">
+      <div class="card"><div class="k">Neto</div><div class="v">${money(b.netPrice)}</div></div>
+      <div class="card"><div class="k">Descuentos</div><div class="v">${money(b.totalDiscountAmount)}</div></div>
+      <div class="card"><div class="k">Precio final</div><div class="v">${money(b.finalPrice)}</div></div>
+      <div class="card"><div class="k">Comision</div><div class="v">${money(b.commissionAmount)}</div></div>
+    </div>
+    ${
+      t
+        ? `<h2>Composicion del costo</h2>
+    <table><tbody>
+      <tr><td>Materiales</td><td class="num">${money(t.totalMaterials)}</td></tr>
+      <tr><td>Insumos</td><td class="num">${money(t.totalBasicSupplies)}</td></tr>
+      <tr><td>Mano de obra</td><td class="num">${money(t.totalLabor)}</td></tr>
+      <tr><td>Costos fijos</td><td class="num">${money(t.fixedCostsApplied)}</td></tr>
+      <tr class="tot"><td>Costo total</td><td class="num">${money(t.totalCost)}</td></tr>
+    </tbody></table>`
+        : ""
+    }
+    <h2>Datos</h2>
+    <table><tbody>
+      <tr><td>Empresa</td><td>${esc(b.company)}</td></tr>
+      <tr><td>Plazo de entrega</td><td>${esc(b.deliveryTerm || "-")}</td></tr>
+      <tr><td>Responsable</td><td>${esc(b.projectManager || "-")}</td></tr>
+      <tr><td>Revision</td><td>${esc(b.revisionNumber || 1)}</td></tr>
+    </tbody></table>`;
+  return page(`Presupuesto ${b.number} - ${b.client}`, body);
+}
+
+export function buildBudgetsSummaryHtml(budgets: SavedBudget[], monthKey: string): string {
+  const rows = budgets
+    .map(
+      (b) =>
+        `<tr><td>${esc(b.number)}</td><td>${esc(b.client)}</td><td>${esc(
+          b.project
+        )}</td><td>${esc(b.date || "-")}</td><td class="num">${money(
+          b.finalPrice
+        )}</td><td>${statusPill(b.status)}</td></tr>`
+    )
+    .join("");
+  const total = budgets.reduce((acc, b) => acc + Number(b.finalPrice || 0), 0);
+  const approved = budgets.filter((b) => b.status === "aprobado").length;
+  const body = `
+    <h1>Resumen de presupuestos</h1>
+    <p class="sub">${monthLabelEs(monthKey)} &middot; ${budgets.length} presupuesto(s) &middot; ${approved} aprobado(s)</p>
+    <table>
+      <thead><tr><th>N&deg;</th><th>Cliente</th><th>Proyecto</th><th>Fecha</th><th class="num">Final</th><th>Estado</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr class="tot"><td colspan="4">Total</td><td class="num">${money(total)}</td><td></td></tr></tfoot>
+    </table>`;
+  return page(`Resumen presupuestos ${monthKey}`, body);
+}
+
+// ---- Trabajos aprobados ----
+
+export const jobFileName = (job: any): string =>
+  safeName(`Trabajo ${job.budgetNumber}${job.project ? " - " + job.project : ""}`) + ".html";
+
+export function buildJobHtml(job: any): string {
+  const body = `
+    <h1>Trabajo N&deg; ${esc(job.budgetNumber)}</h1>
+    <p class="sub">${esc(job.client)} &middot; ${esc(job.project)} &middot; ${esc(
+    job.company
+  )} &middot; ${esc(job.executionStatus || "-")}</p>
+    <div class="grid">
+      <div class="card"><div class="k">Neto</div><div class="v">${money(job.soldNetPrice)}</div></div>
+      <div class="card"><div class="k">Valor a cobrar</div><div class="v">${money(job.valueToCollect)}</div></div>
+      <div class="card"><div class="k">Cobrado</div><div class="v">${money(job.collectedTotal)}</div></div>
+      <div class="card"><div class="k">Saldo</div><div class="v">${money(job.remainingToPay)}</div></div>
+    </div>
+    <h2>Facturacion</h2>
+    <table><tbody>
+      <tr><td>% facturado</td><td class="num">${Number(job.billedPct || 0).toFixed(2)}%</td></tr>
+      <tr><td>Neto facturado</td><td class="num">${money(job.billedNet)}</td></tr>
+      <tr><td>IVA (sobre lo facturado)</td><td class="num">${money(job.invoiceVatAmount)}</td></tr>
+      <tr><td>Circuito negro</td><td class="num">${money(job.blackNet)}</td></tr>
+    </tbody></table>`;
+  return page(`Trabajo ${job.budgetNumber} - ${job.client}`, body);
+}
+
+export function buildJobsSummaryHtml(jobs: any[], monthKey: string): string {
+  const rows = jobs
+    .map(
+      (j) =>
+        `<tr><td>${esc(j.budgetNumber)}</td><td>${esc(j.client)}</td><td>${esc(
+          j.project
+        )}</td><td class="num">${money(j.valueToCollect)}</td><td class="num">${money(
+          j.collectedTotal
+        )}</td><td class="num">${money(j.remainingToPay)}</td><td>${esc(
+          j.executionStatus || "-"
+        )}</td></tr>`
+    )
+    .join("");
+  const toCollect = jobs.reduce((acc, j) => acc + Number(j.valueToCollect || 0), 0);
+  const collected = jobs.reduce((acc, j) => acc + Number(j.collectedTotal || 0), 0);
+  const pending = jobs.reduce((acc, j) => acc + Number(j.remainingToPay || 0), 0);
+  const body = `
+    <h1>Resumen de trabajos aprobados</h1>
+    <p class="sub">${monthLabelEs(monthKey)} &middot; ${jobs.length} trabajo(s)</p>
+    <table>
+      <thead><tr><th>N&deg;</th><th>Cliente</th><th>Proyecto</th><th class="num">A cobrar</th><th class="num">Cobrado</th><th class="num">Saldo</th><th>Estado</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr class="tot"><td colspan="3">Total</td><td class="num">${money(
+        toCollect
+      )}</td><td class="num">${money(collected)}</td><td class="num">${money(pending)}</td><td></td></tr></tfoot>
+    </table>`;
+  return page(`Resumen trabajos ${monthKey}`, body);
+}

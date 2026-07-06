@@ -17,6 +17,8 @@ type DocumentosTabProps = {
   onOpen: (doc: LinkedDocument) => void;
   onRemove: (id: number) => void;
   onExportManuals: () => void;
+  onExportBudgets: () => void;
+  onExportJobs: () => void;
 };
 
 const DOC_TYPE_LABELS: Record<LinkedDocumentType, string> = {
@@ -67,6 +69,8 @@ export function DocumentosTab({
   onOpen,
   onRemove,
   onExportManuals,
+  onExportBudgets,
+  onExportJobs,
 }: DocumentosTabProps) {
   const grouped = React.useMemo(() => {
     const byType = new Map<LinkedDocumentType, LinkedDocument[]>();
@@ -154,14 +158,22 @@ export function DocumentosTab({
       </Panel>
 
       <Panel title="Exportar a la carpeta" span="wide">
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
           <ButtonLike onClick={onExportManuals} disabled={busy || !folderLinked}>
             Exportar manuales
           </ButtonLike>
-          <span style={styles.muted}>
-            Genera un manual HTML por usuario en <strong>Manuales/&lt;usuario&gt;/</strong> (solo sus
-            solapas). La primera vez el navegador pide permiso de escritura.
-          </span>
+          <ButtonLike onClick={onExportBudgets} disabled={busy || !folderLinked}>
+            Exportar presupuestos
+          </ButtonLike>
+          <ButtonLike onClick={onExportJobs} disabled={busy || !folderLinked}>
+            Exportar trabajos aprobados
+          </ButtonLike>
+        </div>
+        <div style={{ ...styles.muted, marginTop: 8 }}>
+          Los manuales van a <strong>Manuales/&lt;usuario&gt;/</strong>. Los presupuestos a{" "}
+          <strong>Presupuestos/&lt;cliente&gt;/</strong> (una carpeta por cliente) con su resumen
+          mensual, y los trabajos a <strong>Trabajos aprobados/&lt;cliente&gt;/</strong>. La primera
+          vez el navegador pide permiso de escritura. Archivos HTML (se imprimen a PDF con Ctrl+P).
         </div>
       </Panel>
 

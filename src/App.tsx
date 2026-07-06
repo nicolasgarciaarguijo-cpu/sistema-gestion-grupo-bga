@@ -167,9 +167,19 @@ import {
   ensureReadPermission,
   ensureWritePermission,
   writeFileToFolder,
+  ensureFolder,
   scanDirectory,
 } from "./lib/folderSync";
 import { buildManualHtml } from "./content/manualHtml";
+import {
+  safeName,
+  budgetFileName,
+  buildBudgetHtml,
+  buildBudgetsSummaryHtml,
+  jobFileName,
+  buildJobHtml,
+  buildJobsSummaryHtml,
+} from "./content/exportHtml";
 
 declare global {
   interface Window {
@@ -4604,6 +4614,119 @@ export default function App() {
     } catch (err: any) {
       console.error("[documentos] export manuales:", err);
       setDocumentsMessage("Error al exportar manuales: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+  };
+
+  // Prepara el handle con permiso de escritura; devuelve null (y avisa) si no se puede.
+  const getWritableFolder = async (): Promise<any | null> => {
+    const handle = await loadDirHandle();
+    if (!handle) {
+      setDocumentsMessage("Vincula la carpeta primero (boton Vincular carpeta).");
+      return null;
+    }
+    const granted = await ensureWritePermission(handle);
+    if (!granted) {
+      setDocumentsMessage("El navegador no dio permiso para escribir en la carpeta.");
+      return null;
+    }
+    return handle;
+  };
+
+  // Exporta cada presupuesto a Presupuestos/<cliente>/, crea la carpeta de cada cliente del CRM y
+  // arma un resumen mensual del historial en Presupuestos/Resumen mensual/.
+  const exportBudgetsToFolder = async () => {
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando presupuestos a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return;
+      }
+      // Una carpeta por cada cliente del CRM (aunque no tenga presupuestos todavia).
+      for (const client of crmClients) {
+        if (client.name?.trim()) {
+          await ensureFolder(handle, `Presupuestos/${safeName(client.name)}`);
+        }
+      }
+      // Un archivo por presupuesto (ultima revision), dentro de la carpeta del cliente.
+      let written = 0;
+      const byMonth = new Map<string, typeof visibleSavedBudgets>();
+      for (const budget of visibleSavedBudgets) {
+        const cliente = safeName(budget.client || "Sin cliente");
+        await writeFileToFolder(
+          handle,
+          `Presupuestos/${cliente}/${budgetFileName(budget)}`,
+          buildBudgetHtml(budget)
+        );
+        written += 1;
+        const monthKey = (budget.date || "").slice(0, 7) || "sin-fecha";
+        const list = byMonth.get(monthKey) || [];
+        list.push(budget);
+        byMonth.set(monthKey, list);
+      }
+      // Resumen mensual del historial.
+      let summaries = 0;
+      for (const [monthKey, list] of Array.from(byMonth.entries())) {
+        await writeFileToFolder(
+          handle,
+          `Presupuestos/Resumen mensual/${monthKey} - Resumen presupuestos.html`,
+          buildBudgetsSummaryHtml(list, monthKey)
+        );
+        summaries += 1;
+      }
+      setDocumentsMessage(
+        `Presupuestos exportados: ${written} en Presupuestos/<cliente>/, ${summaries} resumen(es) mensual(es), ${crmClients.length} carpeta(s) de cliente.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export presupuestos:", err);
+      setDocumentsMessage("Error al exportar presupuestos: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+  };
+
+  // Exporta cada trabajo aprobado a Trabajos aprobados/<cliente>/ + resumen mensual (por fecha de
+  // aprobacion), para hacer seguimiento de facturacion y cobranza.
+  const exportApprovedJobsToFolder = async () => {
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando trabajos aprobados a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return;
+      }
+      let written = 0;
+      const byMonth = new Map<string, any[]>();
+      for (const job of approvedJobsSummary) {
+        const cliente = safeName(job.client || "Sin cliente");
+        await writeFileToFolder(
+          handle,
+          `Trabajos aprobados/${cliente}/${jobFileName(job)}`,
+          buildJobHtml(job)
+        );
+        written += 1;
+        const monthKey = (job.approvalDate || "").slice(0, 7) || "sin-fecha";
+        const list = byMonth.get(monthKey) || [];
+        list.push(job);
+        byMonth.set(monthKey, list);
+      }
+      let summaries = 0;
+      for (const [monthKey, list] of Array.from(byMonth.entries())) {
+        await writeFileToFolder(
+          handle,
+          `Trabajos aprobados/Resumen mensual/${monthKey} - Resumen trabajos.html`,
+          buildJobsSummaryHtml(list, monthKey)
+        );
+        summaries += 1;
+      }
+      setDocumentsMessage(
+        `Trabajos aprobados exportados: ${written} en Trabajos aprobados/<cliente>/, ${summaries} resumen(es) mensual(es).`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export trabajos:", err);
+      setDocumentsMessage("Error al exportar trabajos: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
   };
@@ -11451,6 +11574,8 @@ export default function App() {
           onOpen={openLinkedDocument}
           onRemove={removeLinkedDocument}
           onExportManuals={exportManualsToFolder}
+          onExportBudgets={exportBudgetsToFolder}
+          onExportJobs={exportApprovedJobsToFolder}
         />
       )}
 

@@ -176,6 +176,15 @@ export async function ensureWritePermission(handle: any): Promise<boolean> {
   return (await handle.requestPermission(opts)) === "granted";
 }
 
+// Crea (si falta) la carpeta en la ruta relativa dada. Ej: ensureFolder(h, "Presupuestos/Juan Perez").
+export async function ensureFolder(rootHandle: any, relPath: string): Promise<void> {
+  const parts = relPath.split("/").filter(Boolean);
+  let dir = rootHandle;
+  for (const part of parts) {
+    dir = await dir.getDirectoryHandle(part, { create: true });
+  }
+}
+
 // Escribe un archivo de texto (o Blob) en rootHandle, en la ruta relativa dada, creando las
 // subcarpetas que falten. Ej: writeFileToFolder(h, "Manuales/Juan/Manual.html", html).
 export async function writeFileToFolder(
