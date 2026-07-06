@@ -4365,7 +4365,6 @@ export default function App() {
           kind: item.kind,
           periodicityMonths: item.periodicityMonths,
         }));
-      let escalaFilesRead = 0;
       let uploaded = 0;
       let failed = 0;
       for (const file of pending) {
@@ -4398,21 +4397,6 @@ export default function App() {
             uploadedAt: new Date().toISOString(),
           });
           uploaded += 1;
-          // Si es una escala salarial en PDF, ademas de archivarla, se leen los valores y se cargan.
-          if (cls.docType === "escalas" && /\.pdf$/i.test(file.name)) {
-            try {
-              const parsed = await parseScalePdf(realFile);
-              scaleRowsFromEscala.push(...parsed);
-              escalaFilesRead += 1;
-            } catch (scaleErr) {
-              console.error("[documentos] escala no interpretada:", file.relPath, scaleErr);
-            }
-          }
-          // Documentacion/EPP/insumos/examenes de personal: la fecha del nombre da la vigencia.
-          if (cls.docType === "personal" && cls.employee) {
-            const resolved = resolvePersonalDoc(file.name, cls.subArea, provisionCatalog);
-            if (resolved) personalUpdates.push({ employee: cls.employee, resolved });
-          }
         } catch (err) {
           failed += 1;
           console.error("[documentos] al subir:", file.relPath, err);
@@ -4425,6 +4409,31 @@ export default function App() {
           added.forEach((doc) => byPath.set(doc.relPath, doc));
           return Array.from(byPath.values());
         });
+      }
+
+      // Escala: se relee de TODOS los PDFs de escala del scan (no solo los nuevos), para que cargue
+      // aunque el archivo ya estuviera archivado de una sync anterior. Idempotente (reemplaza mes+categoria).
+      const escalaErrors: string[] = [];
+      for (const file of scanned) {
+        const fcls = classifyPath(file.relPath);
+        if (fcls.docType !== "escalas" || !/\.pdf$/i.test(file.name)) continue;
+        try {
+          const realFile = await file.handle.getFile();
+          const parsed = await parseScalePdf(realFile);
+          scaleRowsFromEscala.push(...parsed);
+        } catch (scaleErr: any) {
+          escalaErrors.push(scaleErr?.message || String(scaleErr));
+          console.error("[documentos] escala no interpretada:", file.relPath, scaleErr);
+        }
+      }
+
+      // Personal: la vigencia se deriva del nombre del archivo (no requiere leer el contenido), sobre
+      // todos los archivos del scan.
+      for (const file of scanned) {
+        const fcls = classifyPath(file.relPath);
+        if (fcls.docType !== "personal" || !fcls.employee) continue;
+        const resolved = resolvePersonalDoc(file.name, fcls.subArea, provisionCatalog);
+        if (resolved) personalUpdates.push({ employee: fcls.employee, resolved });
       }
       // Merge de las escalas leidas: reemplaza las filas del mismo mes+categoria (no duplica).
       if (scaleRowsFromEscala.length > 0) {
@@ -4493,8 +4502,10 @@ export default function App() {
         );
       }
       const escalaMsg =
-        escalaFilesRead > 0
+        scaleRowsFromEscala.length > 0
           ? ` Escala leida: ${scaleRowsFromEscala.length} valores cargados.`
+          : escalaErrors.length > 0
+          ? ` No pude leer la escala (${escalaErrors[0]}).`
           : "";
       const personalMsg =
         personalApplied > 0 ? ` Personal: ${personalApplied} item(s) con vigencia actualizada.` : "";
