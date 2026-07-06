@@ -299,8 +299,8 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "compras",
   "cajaChica",
   "personal",
-  "documentos",
 ];
+const CARGA_TAB_KEYS: TabKey[] = ["documentos"];
 
 const resolveCompanyNameFromCatalogItem = (
   item: { code?: string | null; name?: string | null; label?: string | null },
@@ -353,6 +353,7 @@ const getAllCompanyOptions = () => runtimeCompanyOptions;
 
 const getTabAdministrationType = (tab: TabKey) => {
   if (tab === "acceso") return "Sistema";
+  if (CARGA_TAB_KEYS.includes(tab)) return "Informacion de carga";
   if (NETA_TAB_KEYS.includes(tab)) return "Administracion neta";
   return "Administracion bruta";
 };
@@ -3317,11 +3318,13 @@ export default function App() {
     const accessTabs = visibleTabOptions.filter((item) => item.key === "acceso");
     const brutaTabs = visibleTabOptions.filter((item) => BRUTA_TAB_KEYS.includes(item.key));
     const netaTabs = visibleTabOptions.filter((item) => NETA_TAB_KEYS.includes(item.key));
+    const cargaTabs = visibleTabOptions.filter((item) => CARGA_TAB_KEYS.includes(item.key));
 
     return [
       { title: "Sistema", hint: "Acceso y seguridad", tabs: accessTabs },
       { title: "Administracion bruta", hint: "Operacion y resultados", tabs: brutaTabs },
       { title: "Administracion neta", hint: "Costos y presupuestacion", tabs: netaTabs },
+      { title: "Informacion de carga", hint: "Carga de archivos y documentos", tabs: cargaTabs },
     ].filter((section) => section.tabs.length > 0);
   }, [visibleTabOptions]);
 
