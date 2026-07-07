@@ -1211,19 +1211,37 @@ export function PersonalTab(props: PersonalTabProps) {
                               onChange={(e) => updateEmployeeField(selectedEmployee.id, "name", e.target.value)}
                             />
                           </Field>
-                          <Field label="Categoria base">
-                            <select
-                              style={styles.input}
-                              value={selectedEmployee.category}
-                              onChange={(e) => updateEmployeeField(selectedEmployee.id, "category", e.target.value)}
-                            >
-                              {CATEGORY_OPTIONS.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
+                          {selectedEmployee.employmentType === "temporal" ? (
+                            <Field label="Sueldo acordado (temporal, negro)">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={selectedEmployee.agreedSalary ?? 0}
+                                onChange={(e) =>
+                                  updateEmployeeField(
+                                    selectedEmployee.id,
+                                    "agreedSalary",
+                                    Number(e.target.value)
+                                  )
+                                }
+                                placeholder="Monto acordado"
+                              />
+                            </Field>
+                          ) : (
+                            <Field label="Categoria base">
+                              <select
+                                style={styles.input}
+                                value={selectedEmployee.category}
+                                onChange={(e) => updateEmployeeField(selectedEmployee.id, "category", e.target.value)}
+                              >
+                                {CATEGORY_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                          )}
                           <Field label="Horas nominales">
                             <input
                               style={styles.input}
@@ -1647,36 +1665,6 @@ export function PersonalTab(props: PersonalTabProps) {
                                     selectedEmployee.id,
                                     payrollMonth,
                                     "holidayHours",
-                                    Number(e.target.value)
-                                  )
-                                }
-                              />
-                            </Field>
-                            <Field label="Hs nocturnas 50">
-                              <input
-                                style={styles.input}
-                                type="number"
-                                value={payroll.night50Hours}
-                                onChange={(e) =>
-                                  updateEmployeePayrollManual(
-                                    selectedEmployee.id,
-                                    payrollMonth,
-                                    "night50Hours",
-                                    Number(e.target.value)
-                                  )
-                                }
-                              />
-                            </Field>
-                            <Field label="Hs nocturnas">
-                              <input
-                                style={styles.input}
-                                type="number"
-                                value={payroll.nightHours}
-                                onChange={(e) =>
-                                  updateEmployeePayrollManual(
-                                    selectedEmployee.id,
-                                    payrollMonth,
-                                    "nightHours",
                                     Number(e.target.value)
                                   )
                                 }

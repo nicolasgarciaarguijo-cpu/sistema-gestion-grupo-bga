@@ -798,6 +798,8 @@ export type Employee = {
   // Tipo de vinculo: "convenio" (por escala, default) o "temporal" (negro, por acuerdo, se paga por
   // caja chica hasta efectivizar). Opcional para datos viejos.
   employmentType?: "convenio" | "temporal";
+  // Sueldo acordado (mensual) del empleado temporal, por acuerdo entre partes.
+  agreedSalary?: number;
   nominalHours: number;
   seniorityYears: number;
   hourlyNetManual: number;
