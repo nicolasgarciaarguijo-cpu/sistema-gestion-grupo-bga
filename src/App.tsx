@@ -22,7 +22,12 @@ import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash
 import { computeBudgetPricing } from "./domain/budgetPricing";
 import { computePayrollSummary } from "./domain/payroll";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
-import { buildCrmRows, normalizeClientName, deriveClientsFromHistory } from "./domain/clients";
+import {
+  buildCrmRows,
+  normalizeClientName,
+  deriveClientsFromHistory,
+  findClientByName,
+} from "./domain/clients";
 import { buildPersonalReminders } from "./domain/personalReminders";
 import { matchStockForMaterial, applyStockMovement } from "./domain/stockMatch";
 import { computeAccountingResults } from "./domain/accounting";
@@ -7245,6 +7250,48 @@ export default function App() {
       isUpdate: !!existing,
       updateLabel: existing ? `Actualizacion ${revisionNumber - 1}` : "",
     };
+
+    // Vinculo CRM <-> presupuestos: reconoce el cliente por id o por nombre. Si ya existe, se
+    // completan sus datos vacios desde el presupuesto (sin pisar lo cargado). Si es nuevo, se
+    // REGISTRA como entidad del CRM para reconocerlo y autocompletarlo la proxima vez.
+    const budgetClientName = (nextBudgetData.client || "").trim();
+    let nextCrmClients = crmClients;
+    if (budgetClientName) {
+      const existingClient =
+        (typeof nextBudgetData.clientId === "number"
+          ? crmClients.find((c) => c.id === nextBudgetData.clientId)
+          : null) || findClientByName(crmClients, budgetClientName);
+      if (existingClient) {
+        nextBudgetData.clientId = existingClient.id;
+        nextCrmClients = crmClients.map((c) =>
+          c.id === existingClient.id
+            ? {
+                ...c,
+                taxId: c.taxId || nextBudgetData.clientTaxId || "",
+                contactName: c.contactName || nextBudgetData.contactName || "",
+                contactPhone: c.contactPhone || nextBudgetData.contactPhone || "",
+                contactEmail: c.contactEmail || nextBudgetData.contactEmail || "",
+                notes: c.notes || nextBudgetData.clientNotes || "",
+              }
+            : c
+        );
+      } else {
+        const createdClient: CrmClient = {
+          id: newId(),
+          name: budgetClientName,
+          taxId: nextBudgetData.clientTaxId || "",
+          contactName: nextBudgetData.contactName || "",
+          contactPhone: nextBudgetData.contactPhone || "",
+          contactEmail: nextBudgetData.contactEmail || "",
+          notes: nextBudgetData.clientNotes || "",
+          company: nextBudgetData.company,
+          createdAt: nextBudgetData.date || "",
+        };
+        nextBudgetData.clientId = createdClient.id;
+        nextCrmClients = [...crmClients, createdClient];
+      }
+    }
+
     const nextSnapshot: BudgetSnapshot = {
       budget: nextBudgetData,
       subBudgets: subBudgets.map((item) => ({
@@ -7304,6 +7351,7 @@ export default function App() {
       number: nextBudgetData.number,
       company: nextBudgetData.company,
       client: nextBudgetData.client,
+      clientId: nextBudgetData.clientId,
       project: nextBudgetData.project,
       date: nextBudgetData.date,
       deliveryTerm: nextBudgetData.deliveryTerm,
@@ -7334,6 +7382,7 @@ export default function App() {
             budgetNumber: next.number,
             company: next.company,
             client: next.client,
+            clientId: nextBudgetData.clientId,
             project: next.project,
             date: next.date,
             deliveryTerm: next.deliveryTerm,
@@ -7373,6 +7422,7 @@ export default function App() {
     // Supabase corren en segundo plano, asi el boton nunca queda "guardando".
     setSavedBudgets(nextSavedBudgets);
     setApprovedJobs(nextApprovedJobs);
+    if (nextCrmClients !== crmClients) setCrmClients(nextCrmClients);
     resetBudgetWorkspace(nextDraftNumber);
     setStorageMessage(`${saveStatusText} Sincronizando en segundo plano...`);
     setMonthReportPromptTab(activeTab);
@@ -7391,6 +7441,7 @@ export default function App() {
         budgetDiscounts: cloneBudgetDiscounts(defaultBudgetDiscounts),
         savedBudgets: nextSavedBudgets.map((item) => ({ ...item })),
         approvedJobs: nextApprovedJobs.map((item) => ({ ...item })),
+        crmClients: nextCrmClients.map((item) => ({ ...item })),
         allocationMode: "auto",
         manualAllocationPct: 18.75,
         deviationPct: 5,

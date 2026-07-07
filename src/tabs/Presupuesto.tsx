@@ -232,6 +232,17 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       <option key={c.id} value={c.name} />
                     ))}
                   </datalist>
+                  {findClientByName(crmClients, budget.client) ? (
+                    <div style={{ marginTop: 6 }}>
+                      <span style={{ ...styles.statusPill, ...styles.statusGreen }}>
+                        ✓ Cliente reconocido del CRM — datos autocompletados
+                      </span>
+                    </div>
+                  ) : budget.client.trim() ? (
+                    <div style={{ marginTop: 6 }}>
+                      <span style={styles.muted}>Cliente nuevo — se registrará en el CRM al guardar</span>
+                    </div>
+                  ) : null}
                 </Field>
                 <Field label="Contacto">
                   <input
