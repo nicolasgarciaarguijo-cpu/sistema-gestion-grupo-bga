@@ -9858,6 +9858,14 @@ export default function App() {
     return styles.financialRed;
   };
 
+  // Proximo legajo automatico acumulativo: max legajo numerico existente + 1.
+  const nextLegajo = () => {
+    const nums = employees
+      .map((e) => parseInt(String(e.legajo || "").replace(/\D/g, ""), 10))
+      .filter((n) => Number.isFinite(n));
+    return String((nums.length ? Math.max(...nums) : 0) + 1);
+  };
+
   const addEmployee = () => {
     const cleanName = newEmployeeDraft.name.trim();
     if (!cleanName) return;
@@ -9867,7 +9875,7 @@ export default function App() {
     const employee: Employee = {
       id: newId(),
       company: newEmployeeDraft.company,
-      legajo: newEmployeeDraft.legajo.trim(),
+      legajo: newEmployeeDraft.legajo.trim() || nextLegajo(),
       name: cleanName,
       employmentType: newEmployeeDraft.employmentType,
       category:

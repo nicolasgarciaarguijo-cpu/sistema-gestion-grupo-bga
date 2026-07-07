@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { styles } from "../ui/styles";
 import {
   Panel,
@@ -99,6 +100,8 @@ export function PersonalTab(props: PersonalTabProps) {
     updateEmployeeDocument, updateEmployeeField, updateEmployeePayrollManual,
     updateEmployeeProvisionItem,
   } = props;
+  // Escalas: por defecto se ocultan las anteriores al mes en curso (se ve la del mes y las que siguen).
+  const [showOldScales, setShowOldScales] = useState(false);
   return (
         <div style={styles.personalStack}>
           <div style={{ order: 0, gridColumn: "1 / -1" }}>
@@ -399,14 +402,14 @@ export function PersonalTab(props: PersonalTabProps) {
                           ))}
                         </select>
                       </Field>
-                      <Field label="Legajo">
+                      <Field label="Legajo (automatico)">
                         <input
-                          style={styles.input}
+                          style={styles.inputReadOnly}
                           value={newEmployeeDraft.legajo}
                           onChange={(e) =>
                             setNewEmployeeDraft({ ...newEmployeeDraft, legajo: e.target.value })
                           }
-                          placeholder="Ej: 24"
+                          placeholder="Se asigna solo al crear"
                         />
                       </Field>
                       <Field label="Nombre y apellido">
@@ -832,6 +835,11 @@ export function PersonalTab(props: PersonalTabProps) {
                   );
                 })()}
 
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+                  <ButtonLike onClick={() => setShowOldScales((v) => !v)} secondary>
+                    {showOldScales ? "Ocultar escalas anteriores" : "Ver escalas anteriores"}
+                  </ButtonLike>
+                </div>
                 <table style={styles.table}>
                   <thead>
                     <tr>
@@ -846,6 +854,7 @@ export function PersonalTab(props: PersonalTabProps) {
                   <tbody>
                     {scaleRows
                       .slice()
+                      .filter((r) => showOldScales || (r.month || "") >= payrollMonth.slice(0, 7))
                       .sort((a, b) => `${a.month}-${a.category}`.localeCompare(`${b.month}-${b.category}`))
                       .map((row) => (
                         <tr key={row.id}>
@@ -1017,7 +1026,8 @@ export function PersonalTab(props: PersonalTabProps) {
                   <th>Hs mes</th>
                   <th>Bruto</th>
                   <th>Neto</th>
-                  <th>Impacto</th>
+                  <th>Imp. blanco</th>
+                  <th>Imp. negro</th>
                   <th>Costo hora</th>
                   <th>Accion</th>
                 </tr>
@@ -1090,9 +1100,15 @@ export function PersonalTab(props: PersonalTabProps) {
                         );
                       })}
                       <td>{Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}</td>
-                      <td>{money(salary.totalGross)}</td>
-                      <td>{money(salary.netWithCashBonus)}</td>
-                      <td>{money(salary.employerImpact)}</td>
+                      <td>{money(employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : salary.totalGross)}</td>
+                      <td>{money(employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : salary.netWithCashBonus)}</td>
+                      <td>{money(employee.employmentType === "temporal" ? 0 : salary.employerImpact)}</td>
+                      <td>
+                        {money(
+                          Number(salary.cashBonus || 0) +
+                            (employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : 0)
+                        )}
+                      </td>
                       <td>{money(salary.hourlyCost)}</td>
                       <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {selectedEmployeeId === employee.id ? (
@@ -1256,6 +1272,19 @@ export function PersonalTab(props: PersonalTabProps) {
                               }
                             />
                           </Field>
+                          {selectedEmployee.employmentType === "temporal" && (
+                            <Field label="En el sistema desde (fecha de carga)">
+                              <input
+                                style={styles.inputReadOnly}
+                                value={
+                                  selectedEmployee.createdAt
+                                    ? formatDateDisplay(selectedEmployee.createdAt)
+                                    : "-"
+                                }
+                                readOnly
+                              />
+                            </Field>
+                          )}
                         </TwoCol>
 
                         <div style={styles.employeeSubsection}>
@@ -1871,7 +1900,19 @@ export function PersonalTab(props: PersonalTabProps) {
                             <MiniMetric label="SAC mensual" value={money(payrollSummary.monthlySACProration)} />
                             <MiniMetric label="Aguinaldo anual" value={money(payrollSummary.annualSACBase)} />
                           <MiniMetric label="Neto" value={money(payrollSummary.net)} />
-                          <MiniMetric label="Impacto empresa" value={money(payrollSummary.employerImpact)} />
+                          <MiniMetric
+                            label="Impacto empresa BLANCO"
+                            value={money(selectedEmployee.employmentType === "temporal" ? 0 : payrollSummary.employerImpact)}
+                          />
+                          <MiniMetric
+                            label="Impacto empresa NEGRO"
+                            value={money(
+                              Number(payrollSummary.cashBonus || 0) +
+                                (selectedEmployee.employmentType === "temporal"
+                                  ? Number(selectedEmployee.agreedSalary || 0)
+                                  : 0)
+                            )}
+                          />
                           <MiniMetric label="Horas productivas/año" value={String(Math.round(payrollSummary.productiveAnnualHours || 0))} />
                           <MiniMetric label="Costo hora" value={money(payrollSummary.hourlyCost)} />
                         </div>
