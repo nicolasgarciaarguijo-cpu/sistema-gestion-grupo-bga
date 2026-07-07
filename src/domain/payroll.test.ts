@@ -115,17 +115,28 @@ describe("computePayrollSummary", () => {
   it("premio/acuerdo NEGRO (cashBonus) sube el costo hora (dinero de la empresa para cotizar)", () => {
     const r = run({ cashBonus: 50000 });
     expect(r.blackMonthly).toBe(50000);
-    // annualCost sube 12*50000=600000 -> 3200000/2400
-    expect(r.hourlyCost).toBeCloseTo(3200000 / 2400);
+    // aguinaldo negro = 50000 x 1 mes; annualCost sube 12*50000 + 50000 = 650000 -> 3250000/2400
+    expect(r.annualBlackSAC).toBe(50000);
+    expect(r.hourlyCost).toBeCloseTo(3250000 / 2400);
     // el impacto blanco NO incluye el negro (vista separada)
     expect(r.employerImpact).toBeCloseTo(run().employerImpact);
-    expect(r.totalMonthlyImpact).toBeCloseTo(r.employerImpact + 50000);
+    // impacto negro = premio + prorrateo del aguinaldo negro (50000/12)
+    expect(r.blackImpact).toBeCloseTo(50000 + 50000 / 12);
+    expect(r.totalMonthlyImpact).toBeCloseTo(r.employerImpact + r.blackImpact);
   });
 
-  it("temporal: el sueldo acordado entra como negro puro al costo hora", () => {
+  it("el negro genera aguinaldo NEGRO (solo aguinaldo, sin otras cargas)", () => {
+    const sinAguinaldo = run({ cashBonus: 50000 }, { config: { ...config, aguinaldoAnnualMonths: 0 } });
+    expect(sinAguinaldo.annualBlackSAC).toBe(0);
+    const conAguinaldo = run({ cashBonus: 50000 }); // aguinaldoAnnualMonths: 1
+    expect(conAguinaldo.annualBlackSAC).toBe(50000);
+  });
+
+  it("temporal: el sueldo acordado entra como negro puro al costo hora + aguinaldo negro", () => {
     const r = run({}, { isTemporal: true, agreedSalary: 300000 });
     expect(r.blackMonthly).toBe(300000);
-    expect(r.hourlyCost).toBeCloseTo((2600000 + 12 * 300000) / 2400);
+    expect(r.annualBlackSAC).toBe(300000); // 300000 x 1 mes de aguinaldo
+    expect(r.hourlyCost).toBeCloseTo((2600000 + 12 * 300000 + 300000) / 2400);
   });
 
   it("agreedSalary sin isTemporal no impacta (solo aplica al temporal)", () => {

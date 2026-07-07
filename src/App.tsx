@@ -10562,7 +10562,7 @@ export default function App() {
           agreedSalary: Number(emp.agreedSalary || 0),
         });
         laborWhite += Number(summary.employerImpact || 0);
-        laborBlack += Number(summary.blackMonthly || 0);
+        laborBlack += Number(summary.blackImpact || 0);
       });
     });
 

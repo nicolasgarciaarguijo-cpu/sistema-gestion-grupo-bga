@@ -112,8 +112,35 @@ export function PersonalTab(props: PersonalTabProps) {
   const vigenteFromMonth = inForceMonths.length
     ? inForceMonths[inForceMonths.length - 1]
     : scaleMonthsSorted[0] || curScaleMonth;
+  // Capacidad horaria de la dotacion visible (anual). Nominales = horas teoricas; productivas =
+  // nominales menos feriados y vacaciones (base para costo hora y futuras estadisticas).
+  const workforceHours = (visibleEmployees as any[]).reduce(
+    (acc, emp) => {
+      const s = getEmployeePayrollSummary(emp);
+      acc.nominal += Number(s.annualBaseHours || 0);
+      acc.productive += Number(s.productiveAnnualHours || 0);
+      return acc;
+    },
+    { nominal: 0, productive: 0 }
+  );
+  const workforceProductivityPct =
+    workforceHours.nominal > 0 ? (workforceHours.productive / workforceHours.nominal) * 100 : 0;
+  const nfHours = (n: number) => Math.round(n).toLocaleString("es-AR");
   return (
         <div style={styles.personalStack}>
+          <div style={{ order: -1, gridColumn: "1 / -1" }}>
+            <Panel span="full" title={`Capacidad horaria de la dotacion (${visibleEmployees.length} empleados)`}>
+              <div style={styles.metricGrid}>
+                <MiniMetric label="Horas nominales / año" value={nfHours(workforceHours.nominal)} />
+                <MiniMetric label="Horas productivas / año" value={nfHours(workforceHours.productive)} />
+                <MiniMetric
+                  label="No productivas (feriados+vac.)"
+                  value={nfHours(workforceHours.nominal - workforceHours.productive)}
+                />
+                <MiniMetric label="Productividad" value={pct(workforceProductivityPct)} />
+              </div>
+            </Panel>
+          </div>
           <div style={{ order: 0, gridColumn: "1 / -1" }}>
             <Panel span="full" title={`Recordatorios de personal (${personalReminders.length})`}>
               {personalReminders.length === 0 ? (
@@ -1113,7 +1140,7 @@ export function PersonalTab(props: PersonalTabProps) {
                       <td>{money(employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : salary.totalGross)}</td>
                       <td>{money(employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : salary.netWithCashBonus)}</td>
                       <td>{money(employee.employmentType === "temporal" ? 0 : salary.employerImpact)}</td>
-                      <td>{money(Number(salary.blackMonthly || 0))}</td>
+                      <td>{money(Number(salary.blackImpact || 0))}</td>
                       <td>{money(salary.hourlyCost)}</td>
                       <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {selectedEmployeeId === employee.id ? (
@@ -1910,7 +1937,7 @@ export function PersonalTab(props: PersonalTabProps) {
                           />
                           <MiniMetric
                             label="Impacto empresa NEGRO"
-                            value={money(payrollSummary.blackMonthly || 0)}
+                            value={money(payrollSummary.blackImpact || 0)}
                           />
                           <MiniMetric
                             label="Impacto empresa TOTAL"
