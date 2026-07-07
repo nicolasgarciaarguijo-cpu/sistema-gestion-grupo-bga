@@ -292,7 +292,7 @@ export function CashflowTab({
             <div style={styles.sectionHeader}>Egresos: nomina y amortizacion incluidos</div>
             <div style={styles.metricGrid}>
               <MiniMetric label="Nomina blanca (periodo)" value={money(periodStatement.laborWhite)} />
-              <MiniMetric label="Premios negros (periodo)" value={money(periodStatement.laborBlack)} />
+              <MiniMetric label="Premios / Acuerdos negros (periodo)" value={money(periodStatement.laborBlack)} />
               <MiniMetric label="Amortizacion (periodo)" value={money(periodStatement.depreciation)} />
             </div>
             <div style={styles.noticeBox}>

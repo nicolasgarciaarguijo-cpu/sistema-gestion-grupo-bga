@@ -10462,6 +10462,8 @@ export default function App() {
     hourlyNetManual,
     hourlyGrossManual,
     payroll,
+    isTemporal,
+    agreedSalary,
   }: {
     company: CompanyName;
     category: string;
@@ -10469,6 +10471,8 @@ export default function App() {
     hourlyNetManual: number;
     hourlyGrossManual: number;
     payroll: EmployeePayroll;
+    isTemporal?: boolean;
+    agreedSalary?: number;
   }) =>
     computePayrollSummary({
       seniorityYears,
@@ -10478,6 +10482,8 @@ export default function App() {
       scale: getScaleForCategory(category, payroll.month),
       config: employeeBaseConfig,
       monthlyProvisionCost: getMonthlyProvisionMarkerCostForCompany(company),
+      isTemporal,
+      agreedSalary,
     });
 
   const getEmployeePayrollSummary = (employee: Employee) => {
@@ -10489,6 +10495,8 @@ export default function App() {
       hourlyNetManual: employee.hourlyNetManual,
       hourlyGrossManual: employee.hourlyGrossManual,
       payroll,
+      isTemporal: employee.employmentType === "temporal",
+      agreedSalary: Number(employee.agreedSalary || 0),
     });
   };
 
@@ -10550,9 +10558,11 @@ export default function App() {
           hourlyNetManual: emp.hourlyNetManual,
           hourlyGrossManual: emp.hourlyGrossManual,
           payroll: pr,
+          isTemporal: emp.employmentType === "temporal",
+          agreedSalary: Number(emp.agreedSalary || 0),
         });
         laborWhite += Number(summary.employerImpact || 0);
-        laborBlack += Number(summary.cashBonus || 0);
+        laborBlack += Number(summary.blackMonthly || 0);
       });
     });
 

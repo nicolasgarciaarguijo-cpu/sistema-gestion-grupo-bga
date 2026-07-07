@@ -111,4 +111,24 @@ describe("computePayrollSummary", () => {
     expect(r.hourlyCost).toBeCloseTo(2600000 / productive);
     expect(r.hourlyCost).toBeGreaterThan(2600000 / 2400); // mas caro por hora
   });
+
+  it("premio/acuerdo NEGRO (cashBonus) sube el costo hora (dinero de la empresa para cotizar)", () => {
+    const r = run({ cashBonus: 50000 });
+    expect(r.blackMonthly).toBe(50000);
+    // annualCost sube 12*50000=600000 -> 3200000/2400
+    expect(r.hourlyCost).toBeCloseTo(3200000 / 2400);
+    // el impacto blanco NO incluye el negro (vista separada)
+    expect(r.employerImpact).toBeCloseTo(run().employerImpact);
+    expect(r.totalMonthlyImpact).toBeCloseTo(r.employerImpact + 50000);
+  });
+
+  it("temporal: el sueldo acordado entra como negro puro al costo hora", () => {
+    const r = run({}, { isTemporal: true, agreedSalary: 300000 });
+    expect(r.blackMonthly).toBe(300000);
+    expect(r.hourlyCost).toBeCloseTo((2600000 + 12 * 300000) / 2400);
+  });
+
+  it("agreedSalary sin isTemporal no impacta (solo aplica al temporal)", () => {
+    expect(run({}, { agreedSalary: 300000 }).blackMonthly).toBe(0);
+  });
 });

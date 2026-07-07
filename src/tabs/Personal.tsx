@@ -1038,7 +1038,7 @@ export function PersonalTab(props: PersonalTabProps) {
                   <th>Neto</th>
                   <th>Imp. blanco</th>
                   <th>Imp. negro</th>
-                  <th>Costo hora</th>
+                  <th>Costo hora real</th>
                   <th>Accion</th>
                 </tr>
               </thead>
@@ -1113,12 +1113,7 @@ export function PersonalTab(props: PersonalTabProps) {
                       <td>{money(employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : salary.totalGross)}</td>
                       <td>{money(employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : salary.netWithCashBonus)}</td>
                       <td>{money(employee.employmentType === "temporal" ? 0 : salary.employerImpact)}</td>
-                      <td>
-                        {money(
-                          Number(salary.cashBonus || 0) +
-                            (employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : 0)
-                        )}
-                      </td>
+                      <td>{money(Number(salary.blackMonthly || 0))}</td>
                       <td>{money(salary.hourlyCost)}</td>
                       <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {selectedEmployeeId === employee.id ? (
@@ -1783,7 +1778,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                               />
                             </Field>
-                            <Field label="Premio en efectivo (negro)">
+                            <Field label="Premios / Acuerdo (negro)">
                               <input
                                 style={styles.input}
                                 type="number"
@@ -1798,7 +1793,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                               />
                             </Field>
-                            <Field label="Premio en blanco (con cargas)">
+                            <Field label="Adicional en blanco (con cargas)">
                               <input
                                 style={styles.input}
                                 type="number"
@@ -1846,8 +1841,8 @@ export function PersonalTab(props: PersonalTabProps) {
 
                           <div style={{ ...styles.metricGrid, marginTop: 12 }}>
                             <MiniMetric label="Neto blanco" value={money(payrollSummary.net)} />
-                            <MiniMetric label="Premio blanco" value={money(payrollSummary.whiteBonus || 0)} />
-                            <MiniMetric label="Premio negro" value={money(payrollSummary.cashBonus)} />
+                            <MiniMetric label="Adicional blanco" value={money(payrollSummary.whiteBonus || 0)} />
+                            <MiniMetric label="Premios / Acuerdo (negro)" value={money(payrollSummary.blackMonthly)} />
                             <MiniMetric label="Total empleado" value={money(payrollSummary.netWithCashBonus)} />
                           </div>
 
@@ -1915,15 +1910,14 @@ export function PersonalTab(props: PersonalTabProps) {
                           />
                           <MiniMetric
                             label="Impacto empresa NEGRO"
-                            value={money(
-                              Number(payrollSummary.cashBonus || 0) +
-                                (selectedEmployee.employmentType === "temporal"
-                                  ? Number(selectedEmployee.agreedSalary || 0)
-                                  : 0)
-                            )}
+                            value={money(payrollSummary.blackMonthly || 0)}
+                          />
+                          <MiniMetric
+                            label="Impacto empresa TOTAL"
+                            value={money(payrollSummary.totalMonthlyImpact || 0)}
                           />
                           <MiniMetric label="Horas productivas/año" value={String(Math.round(payrollSummary.productiveAnnualHours || 0))} />
-                          <MiniMetric label="Costo hora" value={money(payrollSummary.hourlyCost)} />
+                          <MiniMetric label="Costo hora (real, blanco+negro)" value={money(payrollSummary.hourlyCost)} />
                         </div>
                         <Field label="Experiencias y destrezas">
                           <textarea style={styles.textarea} value={selectedEmployee.skills} onChange={(e) => updateEmployeeField(selectedEmployee.id, "skills", e.target.value)} />

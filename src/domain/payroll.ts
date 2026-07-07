@@ -36,6 +36,10 @@ export type PayrollSummaryInput = {
   scale: PayrollScale;
   config: PayrollConfig;
   monthlyProvisionCost: number;
+  // Empleado temporal: 100% negro, se paga por acuerdo (bruto negro puro, sin cargas ni descuentos).
+  // Su sueldo acordado mensual entra al costo hora hombre (dinero de la empresa) como negro.
+  isTemporal?: boolean;
+  agreedSalary?: number;
 };
 
 export function computePayrollSummary({
@@ -46,6 +50,8 @@ export function computePayrollSummary({
   scale,
   config,
   monthlyProvisionCost,
+  isTemporal,
+  agreedSalary,
 }: PayrollSummaryInput) {
   const baseHourly = hourlyGrossManual || scale?.baseHourly || scale?.vht || 0;
   const nonRemHourly = Math.max(0, scale?.nonRemHourly || 0);
@@ -83,6 +89,11 @@ export function computePayrollSummary({
   const seguro = grossRem * (config.insurancePct / 100);
   const descuentos = jubilacion + ley19032 + obraSocial + sindicato + seguro;
   const cashBonus = Number(payroll.cashBonus || 0);
+  // Costo NEGRO mensual = premio/acuerdo en negro (cashBonus) + para el temporal su sueldo acordado
+  // (bruto negro puro, sin cargas ni descuentos). No genera cargas patronales ni SAC (es negro), pero
+  // SI es dinero de la empresa: entra al costo hora hombre para cotizar el valor real.
+  const agreedMonthly = isTemporal ? Number(agreedSalary || 0) : 0;
+  const blackMonthly = cashBonus + agreedMonthly;
   const net = totalGross - descuentos - payroll.anticipos;
   const netWithCashBonus = net + cashBonus;
   const employerContrib = grossRem * ((payroll.employerExtraPct || 0) / 100);
@@ -92,17 +103,21 @@ export function computePayrollSummary({
     annualSACBase *
     (((payroll.employerExtraPct || 0) + (config.employerInsurancePct || 0)) / 100);
   const annualCompanyCost =
-    12 * (totalGross + employerContrib + employerInsurance + monthlyProvisionCost) +
+    12 *
+      (totalGross + employerContrib + employerInsurance + monthlyProvisionCost + blackMonthly) +
     annualSACBase +
     annualSACCharges;
   const annualBaseHours = (config.normalHoursDefault || 198) * 12;
   const monthlySACProration = (annualSACBase + annualSACCharges) / 12;
+  // Impacto BLANCO mensual (vista separada por administracion): bruto + cargas + provisiones + SAC.
   const employerImpact =
     totalGross +
     employerContrib +
     employerInsurance +
     monthlyProvisionCost +
     monthlySACProration;
+  // Impacto TOTAL mensual (blanco + negro): lo real que le cuesta el empleado a la empresa.
+  const totalMonthlyImpact = employerImpact + blackMonthly;
   // Horas PRODUCTIVAS = nominales anuales − dias no trabajados (feriados+vacaciones) en horas.
   // El costo-hora se reparte sobre lo realmente trabajado. Si no hay dias cargados, == nominales.
   const dailyHours = (config.normalHoursDefault || 198) / WORK_DAYS_PER_MONTH;
@@ -132,8 +147,10 @@ export function computePayrollSummary({
     net,
     cashBonus,
     whiteBonus,
+    blackMonthly,
     netWithCashBonus,
     employerImpact,
+    totalMonthlyImpact,
     productiveAnnualHours,
     hourlyCost,
     netHourly,
