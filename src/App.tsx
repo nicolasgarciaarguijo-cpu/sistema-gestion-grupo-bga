@@ -4778,20 +4778,26 @@ export default function App() {
         const venc = new Date(y, m - 1, d + validityDays);
         return venc.getTime() < new Date().getTime();
       };
-      // Una carpeta por cada cliente del CRM (aunque no tenga presupuestos): bajo Vigentes por defecto.
-      for (const client of crmClients) {
-        if (client.name?.trim()) {
-          await ensureFolder(handle, `Presupuestos/Vigentes/${safeName(client.name)}`);
-        }
+      // CLIENTE PRIMERO: una carpeta por cada cliente (del CRM y/o con presupuestos), y adentro
+      // Vigentes/Vencidos. Asi, al abrir la carpeta de un cliente, ves TODOS sus presupuestos.
+      const clientNamesForFolders = new Set<string>();
+      crmClients.forEach((c) => {
+        if (c.name?.trim()) clientNamesForFolders.add(c.name.trim());
+      });
+      visibleSavedBudgets.forEach((b) => {
+        if ((b.client || "").trim()) clientNamesForFolders.add(b.client.trim());
+      });
+      for (const clientName of Array.from(clientNamesForFolders)) {
+        await ensureFolder(handle, `Presupuestos/${safeName(clientName)}`);
       }
-      // Un archivo por presupuesto (ultima revision): Presupuestos/(Vigentes|Vencidos)/<cliente>/.
+      // Un archivo por presupuesto (ultima revision): Presupuestos/<cliente>/(Vigentes|Vencidos)/.
       const byMonth = new Map<string, typeof visibleSavedBudgets>();
       const exportedIds = new Set<number>();
       const exportTimestamp = new Date().toISOString();
       for (const budget of visibleSavedBudgets) {
         const cliente = safeName(budget.client || "Sin cliente");
         const estado = isBudgetExpired(budget) ? "Vencidos" : "Vigentes";
-        const path = `Presupuestos/${estado}/${cliente}/${budgetFileName(budget)}`;
+        const path = `Presupuestos/${cliente}/${estado}/${budgetFileName(budget)}`;
         await writeFileToFolder(handle, path, buildBudgetHtml(budget));
         written.push(path);
         exportedIds.add(budget.id);
@@ -4816,8 +4822,8 @@ export default function App() {
         );
       }
       setDocumentsMessage(
-        `Presupuestos exportados: ${written.length} archivo(s), ${crmClients.length} carpeta(s) de cliente. ` +
-          `${exportedIds.size} presupuesto(s) marcados como exportados en el historial.`
+        `Presupuestos exportados: ${written.length} archivo(s) en Presupuestos/<cliente>/(Vigentes|Vencidos)/. ` +
+          `${clientNamesForFolders.size} carpeta(s) de cliente. ${exportedIds.size} marcados como exportados en el historial.`
       );
     } catch (err: any) {
       console.error("[documentos] export presupuestos:", err);
