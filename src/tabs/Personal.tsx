@@ -100,8 +100,18 @@ export function PersonalTab(props: PersonalTabProps) {
     updateEmployeeDocument, updateEmployeeField, updateEmployeePayrollManual,
     updateEmployeeProvisionItem,
   } = props;
-  // Escalas: por defecto se ocultan las anteriores al mes en curso (se ve la del mes y las que siguen).
+  // Escalas: se muestran las VIGENTES = la que rige este mes (la ultima cargada <= mes en curso, aunque
+  // sea de un mes anterior por como venga la escala del sindicato) y todas las siguientes. Las viejas
+  // se ocultan salvo que se pida verlas.
   const [showOldScales, setShowOldScales] = useState(false);
+  const scaleMonthsSorted = Array.from(
+    new Set((scaleRows as any[]).map((r) => r.month).filter(Boolean))
+  ).sort() as string[];
+  const curScaleMonth = (payrollMonth || "").slice(0, 7);
+  const inForceMonths = scaleMonthsSorted.filter((m) => m <= curScaleMonth);
+  const vigenteFromMonth = inForceMonths.length
+    ? inForceMonths[inForceMonths.length - 1]
+    : scaleMonthsSorted[0] || curScaleMonth;
   return (
         <div style={styles.personalStack}>
           <div style={{ order: 0, gridColumn: "1 / -1" }}>
@@ -854,7 +864,7 @@ export function PersonalTab(props: PersonalTabProps) {
                   <tbody>
                     {scaleRows
                       .slice()
-                      .filter((r) => showOldScales || (r.month || "") >= payrollMonth.slice(0, 7))
+                      .filter((r) => showOldScales || (r.month || "") >= vigenteFromMonth)
                       .sort((a, b) => `${a.month}-${a.category}`.localeCompare(`${b.month}-${b.category}`))
                       .map((row) => (
                         <tr key={row.id}>
@@ -1273,15 +1283,14 @@ export function PersonalTab(props: PersonalTabProps) {
                             />
                           </Field>
                           {selectedEmployee.employmentType === "temporal" && (
-                            <Field label="En el sistema desde (fecha de carga)">
+                            <Field label="En el sistema desde (editable)">
                               <input
-                                style={styles.inputReadOnly}
-                                value={
-                                  selectedEmployee.createdAt
-                                    ? formatDateDisplay(selectedEmployee.createdAt)
-                                    : "-"
+                                style={styles.input}
+                                type="date"
+                                value={(selectedEmployee.createdAt || "").slice(0, 10)}
+                                onChange={(e) =>
+                                  updateEmployeeField(selectedEmployee.id, "createdAt", e.target.value)
                                 }
-                                readOnly
                               />
                             </Field>
                           )}
