@@ -419,24 +419,45 @@ export function PersonalTab(props: PersonalTabProps) {
                           placeholder="Nombre completo"
                         />
                       </Field>
-                      <Field label="Categoria base">
+                      <Field label="Tipo de empleado">
                         <select
                           style={styles.input}
-                          value={newEmployeeDraft.category}
+                          value={newEmployeeDraft.employmentType || "convenio"}
                           onChange={(e) =>
                             setNewEmployeeDraft({
                               ...newEmployeeDraft,
-                              category: e.target.value,
+                              employmentType: e.target.value,
                             })
                           }
                         >
-                          {CATEGORY_OPTIONS.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
+                          <option value="convenio">Convenio (por escala)</option>
+                          <option value="temporal">Temporal (negro, por acuerdo)</option>
                         </select>
                       </Field>
+                      {newEmployeeDraft.employmentType === "temporal" ? (
+                        <Field label="Categoria">
+                          <input style={styles.input} value="Temporal" readOnly />
+                        </Field>
+                      ) : (
+                        <Field label="Categoria base">
+                          <select
+                            style={styles.input}
+                            value={newEmployeeDraft.category}
+                            onChange={(e) =>
+                              setNewEmployeeDraft({
+                                ...newEmployeeDraft,
+                                category: e.target.value,
+                              })
+                            }
+                          >
+                            {CATEGORY_OPTIONS.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </Field>
+                      )}
                       <Field label="Horas nominales">
                         <input
                           style={styles.input}
@@ -452,8 +473,10 @@ export function PersonalTab(props: PersonalTabProps) {
                       </Field>
                     </TwoCol>
                     <div style={{ ...styles.muted, marginTop: 10 }}>
-                      Con estos datos se crea el empleado. El resto se completa luego desde Abrir
-                      ficha.
+                      Con estos datos se crea el empleado. El resto se completa luego desde Abrir ficha.
+                      {newEmployeeDraft.employmentType === "temporal"
+                        ? " Temporal: no usa convenio; siempre en negro hasta efectivizar. El pago se carga como gasto de caja chica (de ahi sale el recibo)."
+                        : ""}
                     </div>
                     {/* Configuracion base anterior retirada: el alta solo pide los cinco datos iniciales.
                 <div style={{ ...styles.muted, marginBottom: 10 }}>

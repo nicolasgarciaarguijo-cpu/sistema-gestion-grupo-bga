@@ -795,6 +795,9 @@ export type Employee = {
   legajo: string;
   name: string;
   category: string;
+  // Tipo de vinculo: "convenio" (por escala, default) o "temporal" (negro, por acuerdo, se paga por
+  // caja chica hasta efectivizar). Opcional para datos viejos.
+  employmentType?: "convenio" | "temporal";
   nominalHours: number;
   seniorityYears: number;
   hourlyNetManual: number;

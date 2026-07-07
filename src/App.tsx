@@ -2435,12 +2435,14 @@ export default function App() {
     name: string;
     category: string;
     nominalHours: number;
+    employmentType: "convenio" | "temporal";
   }>({
     company: DEFAULT_COMPANY_OPTIONS[0].value,
     legajo: "",
     name: "",
     category: defaultBaseConfig.category,
     nominalHours: defaultBaseConfig.normalHoursDefault,
+    employmentType: "convenio",
   });
   const [employeeDocumentModal, setEmployeeDocumentModal] = useState<{
     employeeId: number;
@@ -9867,7 +9869,11 @@ export default function App() {
       company: newEmployeeDraft.company,
       legajo: newEmployeeDraft.legajo.trim(),
       name: cleanName,
-      category: newEmployeeDraft.category || employeeBaseConfig.category,
+      employmentType: newEmployeeDraft.employmentType,
+      category:
+        newEmployeeDraft.employmentType === "temporal"
+          ? "Temporal"
+          : newEmployeeDraft.category || employeeBaseConfig.category,
       nominalHours,
       seniorityYears: 0,
       hourlyNetManual: 0,
@@ -9915,6 +9921,7 @@ export default function App() {
       name: "",
       category: employeeBaseConfig.category,
       nominalHours: employeeBaseConfig.normalHoursDefault,
+      employmentType: "convenio",
     });
   };
 
