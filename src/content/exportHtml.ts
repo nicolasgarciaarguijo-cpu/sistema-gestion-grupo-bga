@@ -377,6 +377,37 @@ export function buildPettyCashFundHtml(fund: any, expenses: any[]): string {
   return page(`Caja chica ${fund.description || fund.id}`, body);
 }
 
+// Recibo de un pago/gasto de caja chica (constancia de que se pago el servicio/gasto).
+export const pettyReceiptFileName = (expense: any): string =>
+  safeName(
+    `Recibo ${expense.date || "s-f"} - ${expense.supplier || expense.description || "pago"} - ${Math.round(
+      Number(expense.amount || 0)
+    )}`
+  ) + ".html";
+
+export function buildPettyCashReceiptHtml(fund: any, expense: any): string {
+  const body = `
+    <h1>Recibo de pago</h1>
+    <p class="sub">Caja: ${esc(fund.description || "-")} &middot; Responsable: ${esc(
+    fund.responsible || "-"
+  )} &middot; ${esc(fund.company)} &middot; ${esc(expense.date || "sin fecha")}</p>
+    <div class="grid">
+      <div class="card"><div class="k">Monto pagado</div><div class="v">${money(expense.amount)}</div></div>
+      <div class="card"><div class="k">Administracion</div><div class="v">${
+        expense.administration === "negro" ? "Negro" : "Blanco"
+      }</div></div>
+    </div>
+    <table><tbody>
+      <tr><td>Concepto</td><td>${esc(expense.category || "-")}</td></tr>
+      <tr><td>Detalle</td><td>${esc(expense.description || "-")}</td></tr>
+      <tr><td>Beneficiario / proveedor</td><td>${esc(expense.supplier || "-")}</td></tr>
+      <tr><td>Comprobante</td><td>${esc(expense.invoiceNumber || "-")}</td></tr>
+    </tbody></table>
+    <p style="margin-top:20px">Se deja constancia del pago indicado, abonado desde la caja chica.</p>
+    <p style="margin-top:32px">Firma: ______________________________</p>`;
+  return page(`Recibo ${expense.date || ""} - ${fund.description || ""}`, body);
+}
+
 export function buildPettyCashSummaryHtml(
   expenses: any[],
   monthKey: string,

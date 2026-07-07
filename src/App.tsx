@@ -191,6 +191,8 @@ import {
   buildPersonalSummaryHtml,
   pettyCashFundFolder,
   buildPettyCashFundHtml,
+  pettyReceiptFileName,
+  buildPettyCashReceiptHtml,
 } from "./content/exportHtml";
 
 declare global {
@@ -4991,9 +4993,15 @@ export default function App() {
         written.push(resumenPath);
         // Carpeta de rendicion (donde el usuario deja tickets/facturas).
         await ensureFolder(handle, `${base}/Rendicion de tickets y facturas`);
+        // Un recibo por cada pago/gasto de la caja (constancia de que se pago el servicio).
+        for (const expense of fundExpenses) {
+          const reciboPath = `${base}/Recibos/${pettyReceiptFileName(expense)}`;
+          await writeFileToFolder(handle, reciboPath, buildPettyCashReceiptHtml(fund, expense));
+          written.push(reciboPath);
+        }
       }
       setDocumentsMessage(
-        `Caja chica exportada: ${visiblePettyCashFunds.length} caja(s) en Cajas abiertas/cerradas. Deja los tickets en "Rendicion de tickets y facturas" de cada caja.`
+        `Caja chica exportada: ${visiblePettyCashFunds.length} caja(s) con su resumen y recibos por pago. Deja los tickets en "Rendicion de tickets y facturas" de cada caja.`
       );
     } catch (err: any) {
       console.error("[documentos] export caja chica:", err);
