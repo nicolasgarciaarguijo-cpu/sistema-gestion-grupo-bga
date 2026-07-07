@@ -4786,12 +4786,15 @@ export default function App() {
       }
       // Un archivo por presupuesto (ultima revision): Presupuestos/(Vigentes|Vencidos)/<cliente>/.
       const byMonth = new Map<string, typeof visibleSavedBudgets>();
+      const exportedIds = new Set<number>();
+      const exportTimestamp = new Date().toISOString();
       for (const budget of visibleSavedBudgets) {
         const cliente = safeName(budget.client || "Sin cliente");
         const estado = isBudgetExpired(budget) ? "Vencidos" : "Vigentes";
         const path = `Presupuestos/${estado}/${cliente}/${budgetFileName(budget)}`;
         await writeFileToFolder(handle, path, buildBudgetHtml(budget));
         written.push(path);
+        exportedIds.add(budget.id);
         const monthKey = (budget.date || "").slice(0, 7) || "sin-fecha";
         const list = byMonth.get(monthKey) || [];
         list.push(budget);
@@ -4803,8 +4806,18 @@ export default function App() {
         await writeFileToFolder(handle, path, buildBudgetsSummaryHtml(list, monthKey));
         written.push(path);
       }
+      // Marca los presupuestos exportados con la fecha, para que el resumen del historial aclare
+      // que quedaron guardados en la carpeta del cliente (misma marca que el export individual).
+      if (exportedIds.size > 0) {
+        setSavedBudgets((prev) =>
+          prev.map((item) =>
+            exportedIds.has(item.id) ? { ...item, exportedAt: exportTimestamp } : item
+          )
+        );
+      }
       setDocumentsMessage(
-        `Presupuestos exportados: ${written.length} archivo(s), ${crmClients.length} carpeta(s) de cliente.`
+        `Presupuestos exportados: ${written.length} archivo(s), ${crmClients.length} carpeta(s) de cliente. ` +
+          `${exportedIds.size} presupuesto(s) marcados como exportados en el historial.`
       );
     } catch (err: any) {
       console.error("[documentos] export presupuestos:", err);
@@ -11226,9 +11239,19 @@ export default function App() {
                                 ...styles.statusPill,
                                 ...(item.exportedAt ? styles.statusGreen : styles.statusRed),
                               }}
+                              title={
+                                item.exportedAt
+                                  ? `Guardado en la carpeta del cliente el ${formatDateTimeDisplay(item.exportedAt)}`
+                                  : "Todavia no se exporto a la carpeta"
+                              }
                             >
                               {item.exportedAt ? "Exportado" : "Sin exportar"}
                             </span>
+                            {item.exportedAt && (
+                              <div style={{ fontSize: 10, color: "#166534", marginTop: 2 }}>
+                                {formatDateDisplay(item.exportedAt)}
+                              </div>
+                            )}
                           </td>
                           <td>
                             {(() => {
