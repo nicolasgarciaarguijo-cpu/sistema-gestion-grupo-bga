@@ -296,7 +296,7 @@ const figAprobados = (): string => {
     txt(CX + 36, y - 2, name, { size: 11, weight: 700 }) +
     txt(CX + 36, y + 14, comp + " · saldo " + saldo, { size: 9.5, color: C.muted });
   const list =
-    listRow(188, C.bga, "BGA", "Obra Rivadavia", "$ 1.9 M") +
+    listRow(188, C.bga, "BGA", "Obra Rivadavia", "$ 0.9 M") +
     listRow(238, C.raiz, "De Raiz", "Deck jardin", "$ 0.5 M") +
     listRow(288, C.bga, "BGA", "Mobiliario oficina", "$ 0");
   const listPanel = panel(CX, 128, 340, 200, "Trabajos aprobados por empresa", list);
@@ -314,12 +314,12 @@ const figAprobados = (): string => {
     fw,
     200,
     "Resumen economico",
-    resumen(172, "Neto presupuesto", "$ 3.100.000") +
+    resumen(172, "Neto presupuesto", "$ 3.000.000") +
       resumen(198, "% facturado", "60 %") +
-      resumen(224, "IVA (sobre lo facturado)", "$ 390.600") +
-      resumen(252, "Valor a cobrar", "$ 3.490.600", true) +
-      resumen(280, "Anticipo a cobrar", "$ 1.245.000") +
-      resumen(306, "Saldo", "$ 1.900.000", true)
+      resumen(224, "IVA (sobre lo facturado)", "$ 378.000") +
+      resumen(252, "Valor a cobrar (bruto)", "$ 3.378.000", true) +
+      resumen(280, "Anticipo a cobrar", "$ 2.478.000") +
+      resumen(306, "Saldo", "$ 900.000", true)
   );
   return frame("aprobados", listPanel + ficha, { chipText: "BGA", chipFill: C.bgaSoft, chipColor: C.bga });
 };
