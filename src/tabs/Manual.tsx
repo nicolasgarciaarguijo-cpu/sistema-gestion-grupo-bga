@@ -46,6 +46,44 @@ function Block({ block }: { block: ManualBlock }) {
     );
   }
   if (block.type === "image") {
+    if (block.svg) {
+      return (
+        <figure style={{ margin: "10px 0" }}>
+          <div
+            style={{
+              borderRadius: 10,
+              border: "1px solid #e2e8f0",
+              overflow: "hidden",
+              background: "#eef2f7",
+            }}
+            dangerouslySetInnerHTML={{ __html: block.svg }}
+          />
+          <figcaption style={{ marginTop: 6, fontSize: 12.5, color: "#64748b", textAlign: "center" }}>
+            {block.caption}
+          </figcaption>
+        </figure>
+      );
+    }
+    if (block.src) {
+      return (
+        <figure style={{ margin: "10px 0" }}>
+          <img
+            src={block.src}
+            alt={block.caption}
+            style={{
+              display: "block",
+              maxWidth: "100%",
+              borderRadius: 10,
+              border: "1px solid #e2e8f0",
+              boxShadow: "0 1px 3px rgba(15,23,42,0.08)",
+            }}
+          />
+          <figcaption style={{ marginTop: 6, fontSize: 12.5, color: "#64748b", textAlign: "center" }}>
+            {block.caption}
+          </figcaption>
+        </figure>
+      );
+    }
     return (
       <div
         style={{
@@ -60,6 +98,26 @@ function Block({ block }: { block: ManualBlock }) {
         }}
       >
         🖼️ Captura pendiente: {block.caption}
+      </div>
+    );
+  }
+  if (block.type === "faq") {
+    return (
+      <div style={{ margin: "8px 0", display: "flex", flexDirection: "column", gap: 10 }}>
+        {block.items.map((it, i) => (
+          <div
+            key={i}
+            style={{
+              background: "#f8fafc",
+              border: "1px solid #e2e8f0",
+              borderRadius: 10,
+              padding: "10px 12px",
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "#0f172a", marginBottom: 3 }}>{it.q}</div>
+            <div style={{ color: "#334155", lineHeight: 1.5 }}>{it.a}</div>
+          </div>
+        ))}
       </div>
     );
   }

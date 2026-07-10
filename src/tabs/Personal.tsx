@@ -462,7 +462,7 @@ export function PersonalTab(props: PersonalTabProps) {
                       <Field label="Tipo de empleado">
                         <select
                           style={styles.input}
-                          value={newEmployeeDraft.employmentType || "convenio"}
+                          value={newEmployeeDraft.employmentType || "temporal"}
                           onChange={(e) =>
                             setNewEmployeeDraft({
                               ...newEmployeeDraft,
@@ -1317,6 +1317,23 @@ export function PersonalTab(props: PersonalTabProps) {
                             </Field>
                           )}
                         </TwoCol>
+
+                        {selectedEmployee.employmentType === "temporal" && (
+                          <div style={{ marginTop: 8, marginBottom: 4 }}>
+                            <ButtonLike
+                              onClick={() => {
+                                updateEmployeeField(selectedEmployee.id, "employmentType", "convenio");
+                                updateEmployeeField(selectedEmployee.id, "category", CATEGORY_OPTIONS[0]);
+                              }}
+                            >
+                              Efectivizar (pasar a convenio)
+                            </ButtonLike>
+                            <div style={{ ...styles.muted, marginTop: 4 }}>
+                              Pasa de Temporal (negro, por acuerdo) a Convenio (blanco, por escala). Despues de
+                              efectivizar, elegi la categoria de la escala arriba.
+                            </div>
+                          </div>
+                        )}
 
                         <div style={styles.employeeSubsection}>
                           <div style={styles.panelHeader}>

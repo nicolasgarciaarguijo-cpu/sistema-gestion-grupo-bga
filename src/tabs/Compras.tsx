@@ -304,12 +304,18 @@ export function ComprasTab({
                     <Field label="Administracion">
                       <select
                         style={styles.input}
-                        value={invoice.administration}
+                        value={invoice.invoiceNumber.trim() ? "blanco" : invoice.administration}
+                        disabled={!!invoice.invoiceNumber.trim()}
                         onChange={(e) => updatePurchaseInvoice(invoice.id, "administration", e.target.value)}
                       >
                         <option value="blanco">Blanco</option>
                         <option value="negro">Negro</option>
                       </select>
+                      {invoice.invoiceNumber.trim() ? (
+                        <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                          Con factura = blanco (una factura no puede ser negra).
+                        </div>
+                      ) : null}
                     </Field>
                     <Field label="Origen">
                       <input style={styles.input} value={invoice.source} readOnly />
@@ -327,7 +333,15 @@ export function ComprasTab({
                       <input style={styles.input} value={invoice.receiptLetter} onChange={(e) => updatePurchaseInvoice(invoice.id, "receiptLetter", e.target.value)} />
                     </Field>
                     <Field label="Numero">
-                      <input style={styles.input} value={invoice.invoiceNumber} onChange={(e) => updatePurchaseInvoice(invoice.id, "invoiceNumber", e.target.value)} />
+                      <input
+                        style={styles.input}
+                        value={invoice.invoiceNumber}
+                        onChange={(e) => {
+                          updatePurchaseInvoice(invoice.id, "invoiceNumber", e.target.value);
+                          if (e.target.value.trim())
+                            updatePurchaseInvoice(invoice.id, "administration", "blanco");
+                        }}
+                      />
                     </Field>
                     <Field label="Fecha">
                       <input style={styles.input} type="date" value={invoice.invoiceDate} onChange={(e) => updatePurchaseInvoice(invoice.id, "invoiceDate", e.target.value)} />

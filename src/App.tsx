@@ -2447,7 +2447,7 @@ export default function App() {
     name: "",
     category: defaultBaseConfig.category,
     nominalHours: defaultBaseConfig.normalHoursDefault,
-    employmentType: "convenio",
+    employmentType: "temporal",
   });
   const [employeeDocumentModal, setEmployeeDocumentModal] = useState<{
     employeeId: number;
@@ -9999,7 +9999,7 @@ export default function App() {
       name: "",
       category: employeeBaseConfig.category,
       nominalHours: employeeBaseConfig.normalHoursDefault,
-      employmentType: "convenio",
+      employmentType: "temporal",
     });
   };
 
