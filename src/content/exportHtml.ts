@@ -1,6 +1,6 @@
 // Genera HTML para exportar a la carpeta de gestion: presupuestos y trabajos aprobados (uno por
 // archivo, dentro de la carpeta del cliente) y resumenes mensuales. Pensado para seguimiento.
-import type { SavedBudget, RemitoDraft, Payment } from "../domain/types";
+import type { SavedBudget, RemitoDraft, Payment, Invoice } from "../domain/types";
 import { money } from "../lib/format";
 import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency } from "../domain/planos";
 
@@ -125,6 +125,11 @@ export function buildBudgetsSummaryHtml(budgets: SavedBudget[], monthKey: string
 export const jobFileName = (job: any): string =>
   safeName(`Trabajo ${job.budgetNumber}${job.project ? " - " + job.project : ""}`) + ".html";
 
+// Nombre de la CARPETA de un trabajo dentro de la del cliente: "<N presup> - <proyecto>" (sin extension).
+// Es la clave que usa el import para reconocer a que trabajo pertenece un archivo dejado en sus subcarpetas.
+export const jobFolderName = (job: any): string =>
+  safeName(`${job.budgetNumber || "s-n"}${job.project ? " - " + job.project : ""}`);
+
 export function buildJobHtml(job: any): string {
   const body = `
     <h1>Trabajo N&deg; ${esc(job.budgetNumber)}</h1>
@@ -145,6 +150,59 @@ export function buildJobHtml(job: any): string {
       <tr><td>Circuito negro</td><td class="num">${money(job.blackNet)}</td></tr>
     </tbody></table>`;
   return page(`Trabajo ${job.budgetNumber} - ${job.client}`, body);
+}
+
+// ---- Facturas (una por comprobante) ----
+
+// Nombre de archivo de una factura. Usa numero de comprobante (o el de AFIP) + cliente + fecha.
+export const invoiceFileName = (job: any, inv: Invoice): string => {
+  const tipo = (inv.invoiceType || "").trim();
+  const nro =
+    inv.invoiceNumber ||
+    (inv.afipPtoVta != null && inv.afipCbteNro != null
+      ? `${String(inv.afipPtoVta).padStart(4, "0")}-${String(inv.afipCbteNro).padStart(8, "0")}`
+      : String(inv.id));
+  return (
+    safeName(
+      `Factura ${tipo ? tipo + " " : ""}${nro} - ${job.client || "s-cliente"} - ${
+        inv.invoiceDate || "s-f"
+      }`
+    ) + ".html"
+  );
+};
+
+export function buildInvoiceHtml(job: any, inv: Invoice): string {
+  const afip = inv.afipCae
+    ? `<h2>Emision AFIP</h2>
+    <table><tbody>
+      <tr><td>CAE</td><td>${esc(inv.afipCae)}</td></tr>
+      <tr><td>Vencimiento CAE</td><td>${esc(inv.afipCaeVto || "-")}</td></tr>
+      <tr><td>Comprobante</td><td>${esc(
+        `${String(inv.afipPtoVta ?? 0).padStart(4, "0")}-${String(inv.afipCbteNro ?? 0).padStart(8, "0")}`
+      )}${inv.afipEnv === "homo" ? " (homologacion)" : ""}</td></tr>
+      <tr><td>Resultado</td><td>${esc(inv.afipResultado || "-")}</td></tr>
+    </tbody></table>`
+    : "";
+  const body = `
+    <h1>Factura ${esc(inv.invoiceType || "")} ${esc(inv.invoiceNumber || "")}</h1>
+    <p class="sub">${esc(inv.businessName || job.client || "-")} &middot; Trabajo N&deg; ${esc(
+    job.budgetNumber
+  )} &middot; ${esc(job.company)} &middot; ${esc(inv.invoiceDate || "sin fecha")}</p>
+    <div class="grid">
+      <div class="card"><div class="k">Neto</div><div class="v">${money(inv.subtotal)}</div></div>
+      <div class="card"><div class="k">IVA</div><div class="v">${money(inv.vat)}</div></div>
+      <div class="card"><div class="k">Total</div><div class="v">${money(inv.total)}</div></div>
+    </div>
+    <h2>Datos</h2>
+    <table><tbody>
+      <tr><td>Razon social</td><td>${esc(inv.businessName || "-")}</td></tr>
+      <tr><td>CUIT</td><td>${esc(inv.taxId || "-")}</td></tr>
+      <tr><td>Tipo</td><td>${esc(inv.invoiceType || "-")}</td></tr>
+      <tr><td>Numero</td><td>${esc(inv.invoiceNumber || "-")}</td></tr>
+      <tr><td>Proyecto</td><td>${esc(job.project || "-")}</td></tr>
+    </tbody></table>
+    ${afip}`;
+  return page(`Factura ${inv.invoiceNumber || inv.id} - ${job.client || ""}`, body);
 }
 
 // ---- Recibos de pago ----
@@ -500,4 +558,81 @@ export function buildJobsSummaryHtml(jobs: any[], monthKey: string): string {
       )}</td><td class="num">${money(collected)}</td><td class="num">${money(pending)}</td><td></td></tr></tfoot>
     </table>`;
   return page(`Resumen trabajos ${monthKey}`, body);
+}
+
+// ---- Facturacion y cobranzas (por mes) ----
+
+export type FacturacionRow = {
+  kind: "factura" | "cobranza";
+  date: string;
+  client: string;
+  project: string;
+  detail: string;
+  amount: number;
+  admin?: string;
+};
+
+// Resumen mensual mezclando facturas emitidas y cobranzas (pagos recibidos). El detalle por trabajo ya
+// vive en la carpeta de cada trabajo; aca es la vista cronologica del mes para revisar mes a mes.
+export function buildFacturacionCobranzasHtml(rows: FacturacionRow[], monthKey: string): string {
+  const ordered = rows.slice().sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const trs = ordered
+    .map(
+      (r) =>
+        `<tr><td>${esc(r.date || "-")}</td><td>${
+          r.kind === "factura" ? "Factura" : "Cobranza"
+        }</td><td>${esc(r.client || "-")}</td><td>${esc(r.project || "-")}</td><td>${esc(
+          r.detail || "-"
+        )}</td><td class="num">${money(r.amount)}</td><td>${
+          r.admin === "negro" ? "Negro" : r.admin === "blanco" ? "Blanco" : "-"
+        }</td></tr>`
+    )
+    .join("");
+  const facturado = rows.filter((r) => r.kind === "factura").reduce((a, r) => a + Number(r.amount || 0), 0);
+  const cobrado = rows.filter((r) => r.kind === "cobranza").reduce((a, r) => a + Number(r.amount || 0), 0);
+  const body = `
+    <h1>Facturacion y cobranzas</h1>
+    <p class="sub">${monthLabelEs(monthKey)} &middot; ${rows.length} movimiento(s)</p>
+    <div class="grid">
+      <div class="card"><div class="k">Facturado (mes)</div><div class="v">${money(facturado)}</div></div>
+      <div class="card"><div class="k">Cobrado (mes)</div><div class="v">${money(cobrado)}</div></div>
+    </div>
+    <table>
+      <thead><tr><th>Fecha</th><th>Tipo</th><th>Cliente</th><th>Proyecto</th><th>Detalle</th><th class="num">Monto</th><th>Adm.</th></tr></thead>
+      <tbody>${trs || `<tr><td colspan="7">Sin movimientos en el mes.</td></tr>`}</tbody>
+    </table>`;
+  return page(`Facturacion y cobranzas ${monthKey}`, body);
+}
+
+// ---- Presentismo (resumen mensual por empleado) ----
+
+// Resumen de presentismo del mes: por cada empleado, cuenta los dias segun el estado del parte diario
+// (emp.attendance). Horas normales/extra sumadas del mes. Se exporta a Personal/<empleado>/Presentismo/
+// cada vez que se solicita.
+export function buildPresentismoResumenHtml(employees: any[], monthKey: string): string {
+  const inMonth = (iso: string) => (iso || "").slice(0, 7) === monthKey;
+  const rows = employees
+    .map((emp: any) => {
+      const recs = (emp.attendance || []).filter((r: any) => inMonth(r.date));
+      const count = (status: string) => recs.filter((r: any) => r.status === status).length;
+      const presente = count("presente");
+      const ausInj = count("ausente_injustificado");
+      const ausJust = count("ausente_justificado");
+      const vacaciones = count("vacaciones");
+      const horas = recs.reduce(
+        (a: number, r: any) =>
+          a + Number(r.normalHours || 0) + Number(r.extra50Hours || 0) + Number(r.extra100Hours || 0),
+        0
+      );
+      return `<tr><td>${esc(emp.name || "-")}</td><td class="num">${presente}</td><td class="num">${ausInj}</td><td class="num">${ausJust}</td><td class="num">${vacaciones}</td><td class="num">${recs.length}</td><td class="num">${horas.toFixed(1)}</td></tr>`;
+    })
+    .join("");
+  const body = `
+    <h1>Presentismo</h1>
+    <p class="sub">${monthLabelEs(monthKey)} &middot; ${employees.length} empleado(s)</p>
+    <table>
+      <thead><tr><th>Empleado</th><th class="num">Presente</th><th class="num">Aus. injust.</th><th class="num">Aus. just.</th><th class="num">Vacaciones</th><th class="num">Partes</th><th class="num">Horas</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="7">Sin empleados.</td></tr>`}</tbody>
+    </table>`;
+  return page(`Presentismo ${monthKey}`, body);
 }

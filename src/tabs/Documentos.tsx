@@ -19,7 +19,10 @@ type DocumentosTabProps = {
   onExportManuals: () => void;
   onExportBudgets: () => void;
   onExportJobs: () => void;
-  onExportReceipts: () => void;
+  onExportFacturas: () => void;
+  onExportFacturacion: () => void;
+  onExportCompras: () => void;
+  onExportPersonal: () => void;
   onExportRemitos: () => void;
   onExportPettyCash: () => void;
   onExportSummary: () => void;
@@ -76,7 +79,10 @@ export function DocumentosTab({
   onExportManuals,
   onExportBudgets,
   onExportJobs,
-  onExportReceipts,
+  onExportFacturas,
+  onExportFacturacion,
+  onExportCompras,
+  onExportPersonal,
   onExportRemitos,
   onExportPettyCash,
   onExportSummary,
@@ -144,20 +150,24 @@ export function DocumentosTab({
           </summary>
           <div style={{ ...styles.muted, marginTop: 8, whiteSpace: "pre-wrap", fontFamily: "monospace", fontSize: 12 }}>
 {`Sistema de Gestion/
-  Compras/AAAA-MM/            (facturas de compra)
-  Facturas emitidas/AAAA-MM/
-  Remitos/AAAA-MM/
-  Presupuestos/AAAA-MM/
-  Recibos/AAAA-MM/           (recibos de pago a clientes)
-  Cobranzas/AAAA-MM/
-  Banco/AAAA-MM/
-  Caja chica/AAAA-MM/
-  Escalas/AAAA-MM/           (escalas salariales)
-  Documentacion/AAAA-MM/
+  Trabajos aprobados/<cliente>/<N presup - trabajo>/
+      Facturas/          (dejas una factura aca => aparece en el trabajo)
+      Pagos y tickets/
+      Planos/
+      Remitos/
+  Facturas/AAAA/AAAA-MM/       (todas las facturas, por fecha de emision)
+  Facturacion y cobranzas/AAAA-MM/
+  Compras/AAAA-MM/
+      Facturas de compra/
   Personal/<empleado>/
-      Documentacion/
-      EPP/
-      Recibos/AAAA-MM/`}
+      Documentacion/   EPP/   Examenes/   Capacitaciones/   Presentismo/
+      Recibos/AAAA-MM/
+  Presupuestos/<cliente>/(Vigentes|Vencidos)/
+  Caja chica/(Cajas abiertas|cerradas)/<caja>/
+      Rendicion de tickets y facturas/
+      Recibos/AAAA-MM/
+  Remitos/AAAA/
+  Escalas/AAAA-MM/             (escalas salariales)`}
           </div>
           <div style={{ ...styles.muted, marginTop: 6 }}>
             Tiras los archivos en la subcarpeta que corresponde (AAAA-MM = ano-mes, ej. 2026-03) y
@@ -183,8 +193,17 @@ export function DocumentosTab({
           <ButtonLike onClick={onExportJobs} disabled={busy || !folderLinked} secondary>
             Trabajos aprobados
           </ButtonLike>
-          <ButtonLike onClick={onExportReceipts} disabled={busy || !folderLinked} secondary>
-            Recibos
+          <ButtonLike onClick={onExportFacturas} disabled={busy || !folderLinked} secondary>
+            Facturas (global)
+          </ButtonLike>
+          <ButtonLike onClick={onExportFacturacion} disabled={busy || !folderLinked} secondary>
+            Facturacion y cobranzas
+          </ButtonLike>
+          <ButtonLike onClick={onExportCompras} disabled={busy || !folderLinked} secondary>
+            Compras
+          </ButtonLike>
+          <ButtonLike onClick={onExportPersonal} disabled={busy || !folderLinked} secondary>
+            Personal
           </ButtonLike>
           <ButtonLike onClick={onExportRemitos} disabled={busy || !folderLinked} secondary>
             Remitos
@@ -197,12 +216,17 @@ export function DocumentosTab({
           </ButtonLike>
         </div>
         <div style={{ ...styles.muted, marginTop: 8 }}>
-          Destinos: Manuales/&lt;usuario&gt;/ · Presupuestos/(Vigentes|Vencidos)/&lt;cliente&gt;/ ·
-          Trabajos aprobados/(En curso|Finalizados)/&lt;cliente&gt;/ · Recibos/AAAA-MM/ · Remitos/ ·
-          Caja chica/(Cajas abiertas|cerradas)/&lt;caja&gt;/ (deja los tickets en Rendicion) ·
-          Resumenes/&lt;periodo&gt;/. La primera vez el navegador pide permiso de
-          escritura. Son HTML (se imprimen a PDF con Ctrl+P). <strong>Exportar TODO</strong> ademas borra
-          los HTML sobrantes (lo que borraste del sistema); nunca toca tus tickets/fotos/PDF cargados.
+          Destinos: Trabajos aprobados/&lt;cliente&gt;/&lt;N&deg; presup - trabajo&gt;/ (con Facturas,
+          Pagos y tickets, Planos y Remitos adentro) · Facturas/AAAA/AAAA-MM/ (todas, por emision) ·
+          Facturacion y cobranzas/AAAA-MM/ · Compras/AAAA-MM/ (deja las facturas de compra ahi) ·
+          Personal/&lt;empleado&gt;/(Documentacion, EPP, Recibos/AAAA-MM, Examenes, Capacitaciones,
+          Presentismo) · Remitos/AAAA/ · Caja chica/(abiertas|cerradas)/&lt;caja&gt;/ ·
+          Presupuestos/&lt;cliente&gt;/ · Resumenes/&lt;periodo&gt;/. Doble via con OCR: si dejas una
+          factura en Facturas/, un comprobante en Pagos y tickets/ de un trabajo, o una factura en
+          Compras/&lt;mes&gt;/, al Sincronizar se leen los montos y se crea el registro (revisa los
+          numeros despues). La primera vez el navegador pide permiso de escritura. Son HTML
+          (se imprimen a PDF con Ctrl+P). <strong>Exportar TODO</strong> ademas borra los HTML sobrantes
+          (lo que borraste del sistema); nunca toca tus tickets/fotos/PDF cargados.
         </div>
       </Panel>
 

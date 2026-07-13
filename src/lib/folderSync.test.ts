@@ -50,6 +50,45 @@ describe("classifyPath", () => {
     expect(classifyPath("Escalas/2026-06/x.pdf").docType).toBe("escalas");
   });
 
+  it("subcarpetas de un trabajo: factura/pago/remito dejados por el usuario se ingresan", () => {
+    // Trabajos aprobados / <cliente> / <N presup - proyecto> / <sub> / archivo
+    expect(
+      classifyPath("Trabajos aprobados/Perez SA/P-1043 - Porton/Facturas/factura.pdf").docType
+    ).toBe("facturas-emitidas");
+    expect(
+      classifyPath("Trabajos aprobados/Perez SA/P-1043 - Porton/Pagos y tickets/ticket.jpg").docType
+    ).toBe("recibos");
+    expect(
+      classifyPath("Trabajos aprobados/Perez SA/P-1043 - Porton/Remitos/remito.pdf").docType
+    ).toBe("remitos");
+  });
+
+  it("subcarpetas de un trabajo: los .html que genera el export NO se re-ingresan; planos van aparte", () => {
+    expect(
+      classifyPath("Trabajos aprobados/Perez SA/P-1043 - Porton/Facturas/Factura A 1.html").docType
+    ).toBeNull();
+    expect(
+      classifyPath("Trabajos aprobados/Perez SA/P-1043 - Porton/Resumen del trabajo.html").docType
+    ).toBeNull();
+    // Planos se adjuntan al trabajo por su propio flujo, no como documento suelto.
+    expect(
+      classifyPath("Trabajos aprobados/Perez SA/P-1043 - Porton/Planos/plano.dwg").docType
+    ).toBeNull();
+  });
+
+  it("facturacion y cobranzas por mes, y presentismo dentro de personal", () => {
+    expect(classifyPath("Facturacion y cobranzas/2026-07/Resumen 2026-07.html").docType).toBe(
+      "cobranzas"
+    );
+    expect(classifyPath("Facturas/2026/2026-07/Factura.pdf").docType).toBe("facturas-emitidas");
+    expect(classifyPath("Personal/Ana Lopez/Presentismo/parte.pdf")).toEqual({
+      docType: "personal",
+      month: "",
+      employee: "Ana Lopez",
+      subArea: "Presentismo",
+    });
+  });
+
   it("carpeta desconocida = docType null", () => {
     expect(classifyPath("Otra cosa/archivo.pdf").docType).toBeNull();
   });

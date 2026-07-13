@@ -35,10 +35,15 @@ const TOP_FOLDER_TO_TYPE: Record<string, LinkedDocumentType> = {
   "facturas de compra": "compras",
   "factura de compra": "compras",
   "facturas compra": "compras",
+  facturas: "facturas-emitidas",
+  factura: "facturas-emitidas",
   "facturas emitidas": "facturas-emitidas",
   "factura emitida": "facturas-emitidas",
   "facturas realizadas": "facturas-emitidas",
   "factura realizada": "facturas-emitidas",
+  "facturacion y cobranzas": "cobranzas",
+  "facturacion y cobranza": "cobranzas",
+  facturacion: "cobranzas",
   remitos: "remitos",
   remito: "remitos",
   presupuestos: "presupuestos",
@@ -71,7 +76,17 @@ const PERSONAL_SUBAREAS = [
   "insumos",
   "examenes",
   "capacitaciones",
+  "presentismo",
 ];
+// Subcarpetas dentro de la carpeta de un trabajo (Trabajos aprobados/<cliente>/<trabajo>/<sub>/) y el
+// tipo de documento con el que se ingresa lo que el usuario deje ahi. "planos" se maneja aparte (se
+// adjunta como plano del trabajo, no como documento suelto).
+const JOB_SUBFOLDER_TO_TYPE: Record<string, LinkedDocumentType> = {
+  facturas: "facturas-emitidas",
+  "pagos y tickets": "recibos",
+  pagos: "recibos",
+  remitos: "remitos",
+};
 // Palabras que identifican una carpeta de escalas salariales, en cualquier nivel de la ruta.
 const ESCALA_KEYWORDS = [
   "escalas",
@@ -97,6 +112,16 @@ export function classifyPath(relPath: string): PathClassification {
   }
 
   const top = normSegs[0];
+
+  // Trabajos aprobados/<cliente>/<trabajo>/<sub>/archivo: lo que el usuario deja en Facturas / Pagos y
+  // tickets / Remitos se ingresa como documento de ese tipo (doble via). Los .html que genera el propio
+  // export se ignoran (no se re-suben). "planos" queda en null: lo adjunta el flujo de planos aparte.
+  if (top === "trabajos aprobados") {
+    const isHtml = /\.html$/.test(normSegs[normSegs.length - 1] || "");
+    const sub = normSegs.find((seg) => JOB_SUBFOLDER_TO_TYPE[seg]);
+    return { docType: sub && !isHtml ? JOB_SUBFOLDER_TO_TYPE[sub] : null, month };
+  }
+
   const docType = TOP_FOLDER_TO_TYPE[top] ?? null;
 
   if (docType === "personal" && segments.length >= 2) {

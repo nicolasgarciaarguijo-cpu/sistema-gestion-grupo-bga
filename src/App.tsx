@@ -182,19 +182,24 @@ import { readTicket } from "./lib/ocr";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
   safeName,
+  monthLabelEs,
   budgetFileName,
   buildBudgetHtml,
   buildBudgetsSummaryHtml,
-  jobFileName,
+  jobFolderName,
   buildJobHtml,
   buildJobsSummaryHtml,
+  invoiceFileName,
+  buildInvoiceHtml,
   receiptFileName,
   buildReceiptHtml,
   remitoFileName,
   buildRemitoHtml,
   buildGeneralSummaryHtml,
   buildComprasSummaryHtml,
+  buildFacturacionCobranzasHtml,
   buildPersonalSummaryHtml,
+  buildPresentismoResumenHtml,
   buildPlanosPendientesHtml,
   pettyCashFundFolder,
   buildPettyCashFundHtml,
@@ -4552,21 +4557,20 @@ export default function App() {
         setPettyCashExpenses((prev) => [...newPettyExpenses, ...prev]);
       }
 
-      // Planos: los archivos en Trabajos aprobados/<estado>/<cliente>/Planos/ se cargan como plano del
-      // trabajo de ese cliente (dedup por nombre). Estructura:
-      // Trabajos aprobados / (Trabajos en curso|Trabajos finalizados) / <cliente> / Planos / archivo.
+      // Planos: los archivos en Trabajos aprobados/<cliente>/<trabajo>/Planos/ se cargan como plano del
+      // trabajo (dedup por nombre). Estructura nueva (cliente primero, carpeta por trabajo):
+      // Trabajos aprobados / <cliente> / <N presup - proyecto> / Planos / archivo.
       const planoAdds: { jobId: number; name: string }[] = [];
       for (const file of scanned) {
         const segs = file.relPath.split("/");
         if (segs.length < 5) continue;
         if (cnorm(segs[0]) !== "trabajos aprobados") continue;
         if (cnorm(segs[3]) !== "planos") continue;
-        const estadoSeg = cnorm(segs[1]);
-        const job = approvedJobs.find((j) => {
-          const jEstado =
-            j.executionStatus === "finalizado" ? "trabajos finalizados" : "trabajos en curso";
-          return cnorm(safeName(j.client || "")) === cnorm(segs[2]) && jEstado === estadoSeg;
-        });
+        const job = approvedJobs.find(
+          (j) =>
+            cnorm(safeName(j.client || "")) === cnorm(segs[1]) &&
+            cnorm(jobFolderName(j)) === cnorm(segs[2])
+        );
         if (!job) continue;
         if ((job.workFiles || []).some((w) => w.name === file.name && w.kind === "plano")) continue;
         planoAdds.push({ jobId: job.id, name: file.name });
@@ -4585,6 +4589,133 @@ export default function App() {
             };
           })
         );
+      }
+
+      // Doble via con OCR en las carpetas de cada trabajo: una factura dejada en Facturas/ crea una
+      // factura del trabajo; un comprobante en Pagos y tickets/ crea un pago. Se lee el monto/fecha con
+      // OCR (readTicket, igual que caja chica). Dedup por ruta del archivo. El IVA de la factura se
+      // estima al 21% (tipo A) para revisar en Trabajos aprobados.
+      const invoiceAdds: { jobId: number; invoice: Invoice }[] = [];
+      const paymentAdds: { jobId: number; payment: Payment }[] = [];
+      const split21 = (total: number) => {
+        const subtotal = total ? Math.round((total / 1.21) * 100) / 100 : 0;
+        return { subtotal, vat: Math.round((total - subtotal) * 100) / 100 };
+      };
+      for (const file of scanned) {
+        if (/\.html$/i.test(file.name)) continue;
+        const segs = file.relPath.split("/");
+        if (segs.length < 5) continue;
+        if (cnorm(segs[0]) !== "trabajos aprobados") continue;
+        const sub = cnorm(segs[3]);
+        const isFactura = sub === "facturas";
+        const isPago = sub === "pagos y tickets" || sub === "pagos";
+        if (!isFactura && !isPago) continue;
+        const job = approvedJobs.find(
+          (j) =>
+            cnorm(safeName(j.client || "")) === cnorm(segs[1]) &&
+            cnorm(jobFolderName(j)) === cnorm(segs[2])
+        );
+        if (!job) continue;
+        if (isFactura && (job.invoices || []).some((inv) => inv.attachmentName === file.relPath))
+          continue;
+        if (isPago && (job.payments || []).some((p) => p.attachmentName === file.relPath)) continue;
+        try {
+          const realFile = await file.handle.getFile();
+          const ticket = await readTicket(realFile);
+          const total = ticket.amount || 0;
+          if (isFactura) {
+            const { subtotal, vat } = split21(total);
+            invoiceAdds.push({
+              jobId: job.id,
+              invoice: {
+                id: newId(),
+                businessName: ticket.supplier || job.client,
+                taxId: "",
+                invoiceType: "A",
+                invoiceNumber: "",
+                invoiceDate: ticket.date || "",
+                subtotal,
+                vat,
+                total,
+                attachmentName: file.relPath,
+              },
+            });
+          } else {
+            paymentAdds.push({
+              jobId: job.id,
+              payment: {
+                id: newId(),
+                paymentNumber: "",
+                paymentDate: ticket.date || "",
+                transactionType: "transferencia",
+                administration: "blanco",
+                amount: total,
+                attachmentName: file.relPath,
+              },
+            });
+          }
+        } catch (ocrErr) {
+          console.error("[trabajos] OCR doble via:", file.relPath, ocrErr);
+        }
+      }
+      if (invoiceAdds.length > 0 || paymentAdds.length > 0) {
+        setApprovedJobs((prev) =>
+          prev.map((job) => {
+            const invs = invoiceAdds.filter((a) => a.jobId === job.id).map((a) => a.invoice);
+            const pays = paymentAdds.filter((a) => a.jobId === job.id).map((a) => a.payment);
+            if (invs.length === 0 && pays.length === 0) return job;
+            return {
+              ...job,
+              invoices: [...invs, ...job.invoices],
+              payments: [...pays, ...job.payments],
+            };
+          })
+        );
+      }
+
+      // Doble via con OCR en Compras/AAAA-MM/: una factura de compra dejada ahi crea la factura de
+      // compra (empresa = la activa, revisar). Dedup por ruta. La fecha cae al mes de la carpeta si el
+      // OCR no la detecta.
+      const newComprasInvoices: PurchaseInvoice[] = [];
+      for (const file of scanned) {
+        if (/\.html$/i.test(file.name)) continue;
+        const segs = file.relPath.split("/");
+        if (segs.length < 3) continue;
+        if (cnorm(segs[0]) !== "compras") continue;
+        if (purchaseInvoices.some((p) => p.attachmentName === file.relPath)) continue;
+        const monthSeg = segs.find((s) => /^\d{4}-\d{2}$/.test(s));
+        try {
+          const realFile = await file.handle.getFile();
+          const ticket = await readTicket(realFile);
+          const total = ticket.amount || 0;
+          const { subtotal, vat } = split21(total);
+          newComprasInvoices.push({
+            id: newId(),
+            company: budget.company,
+            administration: "blanco",
+            source: "compras",
+            supplier: ticket.supplier || file.name,
+            taxId: "",
+            receiptKind: "Factura",
+            receiptLetter: "A",
+            invoiceNumber: "",
+            invoiceDate: ticket.date || (monthSeg ? `${monthSeg}-01` : ""),
+            currency: "ARS",
+            exemptAmount: 0,
+            net21: subtotal,
+            subtotal,
+            vat,
+            total,
+            notes: "Leido de la carpeta por OCR - revisar montos y empresa.",
+            attachmentName: file.relPath,
+            extractedAutomatically: true,
+          });
+        } catch (ocrErr) {
+          console.error("[compras] OCR factura de compra:", file.relPath, ocrErr);
+        }
+      }
+      if (newComprasInvoices.length > 0) {
+        setPurchaseInvoices((prev) => [...newComprasInvoices, ...prev]);
       }
 
       // Merge de las escalas leidas: reemplaza las filas del mismo mes+categoria (no duplica).
@@ -4667,9 +4798,17 @@ export default function App() {
           : "";
       const planosMsg =
         planoAdds.length > 0 ? ` Planos: ${planoAdds.length} cargado(s) a trabajos.` : "";
+      const dobleViaMsg =
+        invoiceAdds.length > 0 || paymentAdds.length > 0
+          ? ` Trabajos (OCR): ${invoiceAdds.length} factura(s) y ${paymentAdds.length} pago(s) leidos (revisa montos).`
+          : "";
+      const comprasMsg =
+        newComprasInvoices.length > 0
+          ? ` Compras (OCR): ${newComprasInvoices.length} factura(s) de compra leida(s) (revisa montos y empresa).`
+          : "";
       setDocumentsMessage(
         `Listo: ${uploaded} archivo(s) nuevo(s)${failed ? `, ${failed} con error` : ""}. ` +
-          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}${personalMsg}${cajaMsg}${planosMsg}`
+          `Total en el sistema: ${linkedDocuments.length + added.length}.${escalaMsg}${personalMsg}${cajaMsg}${planosMsg}${dobleViaMsg}${comprasMsg}`
       );
     } catch (err: any) {
       console.error("[documentos] sincronizacion:", err);
@@ -4861,16 +5000,32 @@ export default function App() {
         setDocumentsBusy(false);
         return written;
       }
+      // CLIENTE PRIMERO, y una carpeta por TRABAJO ("<N presup> - <proyecto>") con TODO adentro:
+      // Facturas / Pagos y tickets / Planos / Remitos + el Resumen del trabajo. Las 4 subcarpetas son
+      // "dobles": lo que el sistema tiene se exporta aca, y lo que dejes aca se lee al sincronizar.
       const byMonth = new Map<string, any[]>();
       for (const job of approvedJobsSummary) {
         const cliente = safeName(job.client || "Sin cliente");
-        const estado =
-          job.executionStatus === "finalizado" ? "Trabajos finalizados" : "Trabajos en curso";
-        const path = `Trabajos aprobados/${estado}/${cliente}/${jobFileName(job)}`;
-        await writeFileToFolder(handle, path, buildJobHtml(job));
-        // Carpeta Planos por cliente: para cargar los planos directamente desde ahi.
-        await ensureFolder(handle, `Trabajos aprobados/${estado}/${cliente}/Planos`);
-        written.push(path);
+        const base = `Trabajos aprobados/${cliente}/${jobFolderName(job)}`;
+        const resumenPath = `${base}/Resumen del trabajo.html`;
+        await writeFileToFolder(handle, resumenPath, buildJobHtml(job));
+        written.push(resumenPath);
+        await ensureFolder(handle, `${base}/Facturas`);
+        await ensureFolder(handle, `${base}/Pagos y tickets`);
+        await ensureFolder(handle, `${base}/Planos`);
+        await ensureFolder(handle, `${base}/Remitos`);
+        // Una factura por comprobante cargado/emitido.
+        for (const inv of job.invoices || []) {
+          const p = `${base}/Facturas/${invoiceFileName(job, inv)}`;
+          await writeFileToFolder(handle, p, buildInvoiceHtml(job, inv));
+          written.push(p);
+        }
+        // Un recibo por cada pago/cobranza del trabajo.
+        for (const payment of job.payments || []) {
+          const p = `${base}/Pagos y tickets/${receiptFileName(job, payment)}`;
+          await writeFileToFolder(handle, p, buildReceiptHtml(job, payment));
+          written.push(p);
+        }
         const monthKey = (job.approvalDate || "").slice(0, 7) || "sin-fecha";
         const list = byMonth.get(monthKey) || [];
         list.push(job);
@@ -4881,7 +5036,9 @@ export default function App() {
         await writeFileToFolder(handle, path, buildJobsSummaryHtml(list, monthKey));
         written.push(path);
       }
-      setDocumentsMessage(`Trabajos aprobados exportados: ${written.length} archivo(s).`);
+      setDocumentsMessage(
+        `Trabajos aprobados exportados: ${written.length} archivo(s). Carpeta por cliente/trabajo con Facturas, Pagos y tickets, Planos y Remitos.`
+      );
     } catch (err: any) {
       console.error("[documentos] export trabajos:", err);
       setDocumentsMessage("Error al exportar trabajos: " + (err?.message || String(err)));
@@ -4890,11 +5047,12 @@ export default function App() {
     return written;
   };
 
-  // Exporta un recibo por cada pago cargado, en Recibos/AAAA-MM/.
-  const exportReceiptsToFolder = async (): Promise<string[]> => {
+  // Repositorio GLOBAL de facturas: todas las facturas de todos los trabajos, en Facturas/AAAA/AAAA-MM/
+  // separadas por la fecha de emision. Cada factura vive tambien en la carpeta de su trabajo (doble via).
+  const exportFacturasGlobalToFolder = async (): Promise<string[]> => {
     const written: string[] = [];
     setDocumentsBusy(true);
-    setDocumentsMessage("Exportando recibos a la carpeta...");
+    setDocumentsMessage("Exportando facturas (repositorio global) a la carpeta...");
     try {
       const handle = await getWritableFolder();
       if (!handle) {
@@ -4902,17 +5060,80 @@ export default function App() {
         return written;
       }
       for (const job of approvedJobsSummary) {
-        for (const payment of job.payments || []) {
-          const monthKey = (payment.paymentDate || "").slice(0, 7) || "sin-fecha";
-          const path = `Recibos/${monthKey}/${receiptFileName(job, payment)}`;
-          await writeFileToFolder(handle, path, buildReceiptHtml(job, payment));
+        for (const inv of job.invoices || []) {
+          const monthKey = (inv.invoiceDate || "").slice(0, 7) || "sin-fecha";
+          const year = monthKey === "sin-fecha" ? "sin-fecha" : monthKey.slice(0, 4);
+          const path = `Facturas/${year}/${monthKey}/${invoiceFileName(job, inv)}`;
+          await writeFileToFolder(handle, path, buildInvoiceHtml(job, inv));
           written.push(path);
         }
       }
-      setDocumentsMessage(`Recibos exportados: ${written.length} en Recibos/AAAA-MM/.`);
+      setDocumentsMessage(
+        `Facturas exportadas al repositorio global: ${written.length} en Facturas/AAAA/AAAA-MM/ (por fecha de emision).`
+      );
     } catch (err: any) {
-      console.error("[documentos] export recibos:", err);
-      setDocumentsMessage("Error al exportar recibos: " + (err?.message || String(err)));
+      console.error("[documentos] export facturas globales:", err);
+      setDocumentsMessage("Error al exportar facturas: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+    return written;
+  };
+
+  // Facturacion y cobranzas por MES: un resumen cronologico por mes (facturas emitidas + cobranzas),
+  // en Facturacion y cobranzas/AAAA-MM/. El detalle por trabajo vive en la carpeta de cada trabajo.
+  const exportFacturacionToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando facturacion y cobranzas a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return written;
+      }
+      const byMonth = new Map<string, any[]>();
+      const push = (monthKey: string, row: any) => {
+        const list = byMonth.get(monthKey) || [];
+        list.push(row);
+        byMonth.set(monthKey, list);
+      };
+      for (const job of approvedJobsSummary) {
+        for (const inv of job.invoices || []) {
+          const monthKey = (inv.invoiceDate || "").slice(0, 7) || "sin-fecha";
+          push(monthKey, {
+            kind: "factura",
+            date: inv.invoiceDate || "",
+            client: job.client,
+            project: job.project,
+            detail: `${inv.invoiceType || ""} ${inv.invoiceNumber || ""}`.trim() || "Factura",
+            amount: Number(inv.total || 0),
+            admin: "blanco",
+          });
+        }
+        for (const payment of job.payments || []) {
+          const monthKey = (payment.paymentDate || "").slice(0, 7) || "sin-fecha";
+          push(monthKey, {
+            kind: "cobranza",
+            date: payment.paymentDate || "",
+            client: job.client,
+            project: job.project,
+            detail: payment.transactionType || "Cobranza",
+            amount: Number(payment.amount || 0),
+            admin: payment.administration || "blanco",
+          });
+        }
+      }
+      for (const [monthKey, rows] of Array.from(byMonth.entries())) {
+        const path = `Facturacion y cobranzas/${monthKey}/Resumen ${monthKey}.html`;
+        await writeFileToFolder(handle, path, buildFacturacionCobranzasHtml(rows, monthKey));
+        written.push(path);
+      }
+      setDocumentsMessage(
+        `Facturacion y cobranzas exportada: ${written.length} resumen(es) mensual(es) en Facturacion y cobranzas/AAAA-MM/.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export facturacion:", err);
+      setDocumentsMessage("Error al exportar facturacion: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
     return written;
@@ -4929,12 +5150,15 @@ export default function App() {
         setDocumentsBusy(false);
         return written;
       }
+      // Repositorio global de remitos separado por ano (el modelo de remito no tiene fecha propia; se
+      // usa el ano en curso). Cada remito de un trabajo se deja ademas en la carpeta Remitos/ del trabajo.
+      const year = todayIso().slice(0, 4) || "sin-fecha";
       for (const draft of remitoDrafts) {
-        const path = `Remitos/${remitoFileName(draft)}`;
+        const path = `Remitos/${year}/${remitoFileName(draft)}`;
         await writeFileToFolder(handle, path, buildRemitoHtml(draft));
         written.push(path);
       }
-      setDocumentsMessage(`Remitos exportados: ${written.length} en Remitos/.`);
+      setDocumentsMessage(`Remitos exportados: ${written.length} en Remitos/AAAA/.`);
     } catch (err: any) {
       console.error("[documentos] export remitos:", err);
       setDocumentsMessage("Error al exportar remitos: " + (err?.message || String(err)));
@@ -5042,9 +5266,11 @@ export default function App() {
         written.push(resumenPath);
         // Carpeta de rendicion (donde el usuario deja tickets/facturas).
         await ensureFolder(handle, `${base}/Rendicion de tickets y facturas`);
-        // Un recibo por cada pago/gasto de la caja (constancia de que se pago el servicio).
+        // Un recibo por cada pago/gasto de la caja (constancia de que se pago el servicio), separado
+        // por mes: Caja chica/<estado>/<caja>/Recibos/AAAA-MM/.
         for (const expense of fundExpenses) {
-          const reciboPath = `${base}/Recibos/${pettyReceiptFileName(expense)}`;
+          const monthKey = (expense.date || "").slice(0, 7) || "sin-fecha";
+          const reciboPath = `${base}/Recibos/${monthKey}/${pettyReceiptFileName(expense)}`;
           await writeFileToFolder(handle, reciboPath, buildPettyCashReceiptHtml(fund, expense));
           written.push(reciboPath);
         }
@@ -5060,12 +5286,95 @@ export default function App() {
     return written;
   };
 
+  // Compras por MES: un resumen mensual (Compras/AAAA-MM/) + subcarpeta "Facturas de compra" para
+  // dejar los comprobantes (doble via: lo que dejes aca se lee al sincronizar como compra del mes).
+  const exportComprasToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando compras a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return written;
+      }
+      const byMonth = new Map<string, any[]>();
+      for (const inv of visiblePurchaseInvoices) {
+        const monthKey = (inv.invoiceDate || "").slice(0, 7) || "sin-fecha";
+        const list = byMonth.get(monthKey) || [];
+        list.push(inv);
+        byMonth.set(monthKey, list);
+      }
+      for (const [monthKey, list] of Array.from(byMonth.entries())) {
+        await ensureFolder(handle, `Compras/${monthKey}/Facturas de compra`);
+        const path = `Compras/${monthKey}/Resumen compras ${monthKey}.html`;
+        await writeFileToFolder(handle, path, buildComprasSummaryHtml(list, monthLabelEs(monthKey)));
+        written.push(path);
+      }
+      // Si no hay compras cargadas, deja al menos la carpeta del mes en curso lista para usar.
+      if (byMonth.size === 0) {
+        await ensureFolder(handle, `Compras/${todayIso().slice(0, 7)}/Facturas de compra`);
+      }
+      setDocumentsMessage(
+        `Compras exportadas: ${written.length} resumen(es) mensual(es) en Compras/AAAA-MM/. Deja las facturas de compra en "Facturas de compra" de cada mes.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export compras:", err);
+      setDocumentsMessage("Error al exportar compras: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+    return written;
+  };
+
+  // Personal por EMPLEADO: una carpeta por empleado con subcarpetas (Documentacion, EPP, Recibos por
+  // mes, Examenes, Capacitaciones, Presentismo) + Resumen del legajo + Presentismo del mes en curso.
+  const exportPersonalToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando personal a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return written;
+      }
+      const monthKey = todayIso().slice(0, 7);
+      const subfolders = ["Documentacion", "EPP", "Examenes", "Capacitaciones", "Presentismo"];
+      for (const emp of visibleEmployees) {
+        const base = `Personal/${safeName(emp.name || `Empleado ${emp.id}`)}`;
+        for (const sub of subfolders) {
+          await ensureFolder(handle, `${base}/${sub}`);
+        }
+        // Recibos separados por mes.
+        await ensureFolder(handle, `${base}/Recibos/${monthKey}`);
+        const resumenPath = `${base}/Resumen del legajo.html`;
+        await writeFileToFolder(handle, resumenPath, buildPersonalSummaryHtml([emp], todayIso()));
+        written.push(resumenPath);
+        const presPath = `${base}/Presentismo/Presentismo ${monthKey}.html`;
+        await writeFileToFolder(handle, presPath, buildPresentismoResumenHtml([emp], monthKey));
+        written.push(presPath);
+      }
+      setDocumentsMessage(
+        `Personal exportado: ${visibleEmployees.length} empleado(s) con sus subcarpetas + resumen de legajo y presentismo de ${monthKey}.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export personal:", err);
+      setDocumentsMessage("Error al exportar personal: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+    return written;
+  };
+
   // Exporta TODO y ademas LIMPIA los HTML sobrantes (lo borrado del sistema). Solo borra archivos .html
   // generados por el sistema; nunca los tickets/fotos/PDF que carga el usuario.
   const EXPORT_MANAGED_FOLDERS = [
     "Manuales",
     "Presupuestos",
     "Trabajos aprobados",
+    "Facturas",
+    "Facturacion y cobranzas",
+    "Compras",
+    "Personal",
     "Recibos",
     "Remitos",
     "Caja chica",
@@ -5076,7 +5385,10 @@ export default function App() {
     written.push(...(await exportManualsToFolder()));
     written.push(...(await exportBudgetsToFolder()));
     written.push(...(await exportApprovedJobsToFolder()));
-    written.push(...(await exportReceiptsToFolder()));
+    written.push(...(await exportFacturasGlobalToFolder()));
+    written.push(...(await exportFacturacionToFolder()));
+    written.push(...(await exportComprasToFolder()));
+    written.push(...(await exportPersonalToFolder()));
     written.push(...(await exportRemitosToFolder()));
     written.push(...(await exportPettyCashToFolder()));
     written.push(...(await exportSummaryToFolder()));
@@ -7527,7 +7839,11 @@ export default function App() {
   // Best-effort al aprobar: crea la carpeta de Planos del cliente SIN pedir permiso (solo si la
   // carpeta ya esta vinculada y con permiso concedido en esta sesion). Si no, no molesta: la carpeta
   // se crea igual al exportar/sincronizar. Asi apenas aprobas ya tenes donde dejar los DWG/3DM.
-  const ensurePlanosFolderSilently = async (client: string, executionStatus: string) => {
+  const ensurePlanosFolderSilently = async (job: {
+    client: string;
+    budgetNumber: string;
+    project: string;
+  }) => {
     try {
       const handle = await loadDirHandle();
       if (!handle) return;
@@ -7535,9 +7851,8 @@ export default function App() {
       const perm =
         typeof q === "function" ? await q.call(handle, { mode: "readwrite" }) : "granted";
       if (perm !== "granted") return;
-      const estado = executionStatus === "finalizado" ? "Trabajos finalizados" : "Trabajos en curso";
-      const cliente = safeName(client || "Sin cliente");
-      await ensureFolder(handle, `Trabajos aprobados/${estado}/${cliente}/Planos`);
+      const cliente = safeName(job.client || "Sin cliente");
+      await ensureFolder(handle, `Trabajos aprobados/${cliente}/${jobFolderName(job)}/Planos`);
     } catch {
       /* best-effort: si falla, se crea al exportar/sincronizar */
     }
@@ -7601,7 +7916,11 @@ export default function App() {
         ? prev.map((row) => (row.budgetId === item.id ? nextJob : row))
         : [nextJob, ...prev];
     });
-    void ensurePlanosFolderSilently(item.client, "pendiente");
+    void ensurePlanosFolderSilently({
+      client: item.client,
+      budgetNumber: item.number,
+      project: item.project,
+    });
   };
 
   const createDirectApprovedJob = () => {
@@ -7664,7 +7983,11 @@ export default function App() {
     };
 
     setApprovedJobs((prev) => [nextJob, ...prev]);
-    void ensurePlanosFolderSilently(nextJob.client, nextJob.executionStatus);
+    void ensurePlanosFolderSilently({
+      client: nextJob.client,
+      budgetNumber: nextJob.budgetNumber,
+      project: nextJob.project,
+    });
     setSelectedApprovedJobId(nextJob.id);
     setActiveTab("aprobados");
   };
@@ -12209,7 +12532,10 @@ export default function App() {
           onExportManuals={exportManualsToFolder}
           onExportBudgets={exportBudgetsToFolder}
           onExportJobs={exportApprovedJobsToFolder}
-          onExportReceipts={exportReceiptsToFolder}
+          onExportFacturas={exportFacturasGlobalToFolder}
+          onExportFacturacion={exportFacturacionToFolder}
+          onExportCompras={exportComprasToFolder}
+          onExportPersonal={exportPersonalToFolder}
           onExportRemitos={exportRemitosToFolder}
           onExportPettyCash={exportPettyCashToFolder}
           onExportSummary={exportSummaryToFolder}
