@@ -16,7 +16,9 @@ import {
   mergeModuleDataByCompany,
   applyCompanyModuleSlice,
   GENERAL_COMPANY,
+  PER_COMPANY_MODULE_FIELDS,
 } from "./domain/companyState";
+import { mergeModuleSlice } from "./domain/mergeItems";
 import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
@@ -2171,7 +2173,8 @@ const writeSupabasePersistedAppStateModules = async (
   payload: PersistedAppState,
   userId: string,
   writableCompanies: readonly string[],
-  moduleKeys?: AppStateModuleKey[]
+  moduleKeys?: AppStateModuleKey[],
+  baselineData?: PersistedAppStateData | null
 ): Promise<AppStateModuleKey[]> => {
   const modulePayloads = buildPersistedAppStateModules(payload, moduleKeys);
 
@@ -2219,6 +2222,61 @@ const writeSupabasePersistedAppStateModules = async (
     (entry) => supabaseModuleCompanySignatures.get(entry.cacheKey) !== entry.signature
   );
 
+  // #16 Anti-pisado por item: antes de escribir, releemos la version FRESCA de cada fila y fusionamos
+  // por id (3-way con la base ya sincronizada), asi no perdemos lo que otro usuario agrego/edito en la
+  // misma (modulo, empresa) mientras tanto. Best-effort: si la relectura falla o no hay base, se escribe
+  // lo nuestro tal cual (comportamiento anterior; nunca peor). Solo toca los campos por-empresa.
+  if (baselineData && rowsToWrite.length > 0) {
+    try {
+      const moduleKeysToReread = Array.from(new Set(rowsToWrite.map((entry) => entry.row.module_key)));
+      const { data: freshRows, error: freshError } = await supabase
+        .from(SUPABASE_APP_STATE_MODULES_V2_TABLE)
+        .select("module_key,company,payload")
+        .in("module_key", moduleKeysToReread);
+      if (freshError) throw freshError;
+      const freshByKey = new Map<string, Record<string, unknown>>();
+      for (const freshRow of freshRows || []) {
+        const dataSlice = (freshRow as any)?.payload?.data;
+        if (dataSlice && typeof dataSlice === "object") {
+          freshByKey.set(`${(freshRow as any).module_key}|${(freshRow as any).company}`, dataSlice);
+        }
+      }
+      // Base por (modulo, empresa) = el ultimo estado que teniamos sincronizado con la DB.
+      const baselineBucketsByModule = new Map<string, Record<string, Record<string, unknown>>>();
+      for (const moduleKey of moduleKeysToReread) {
+        const baselineModule = buildPersistedAppStateModules(
+          { ...payload, data: baselineData },
+          [moduleKey as AppStateModuleKey]
+        )[0];
+        baselineBucketsByModule.set(
+          moduleKey,
+          baselineModule
+            ? (splitModuleDataByCompany(moduleKey, baselineModule.data, writableCompanies) as Record<
+                string,
+                Record<string, unknown>
+              >)
+            : {}
+        );
+      }
+      for (const entry of rowsToWrite) {
+        const moduleKey = entry.row.module_key;
+        const company = entry.row.company;
+        const theirs = freshByKey.get(`${moduleKey}|${company}`);
+        if (!theirs) continue; // no habia fila previa en la DB: nada que fusionar, se escribe lo nuestro
+        const baselineSlice = baselineBucketsByModule.get(moduleKey)?.[company] || {};
+        const merged = mergeModuleSlice(
+          PER_COMPANY_MODULE_FIELDS[moduleKey] || [],
+          baselineSlice,
+          entry.row.payload.data as Record<string, unknown>,
+          theirs
+        );
+        entry.row.payload.data = merged as Partial<PersistedAppStateData>;
+      }
+    } catch (mergeError) {
+      console.error("[persistencia] merge por item fallo; escribo sin fusionar:", mergeError);
+    }
+  }
+
   for (const batch of chunkArray(rowsToWrite, SUPABASE_MODULE_WRITE_BATCH_SIZE)) {
     const batchLabels = Array.from(new Set(batch.map((entry) => entry.label))).join(", ");
     await writeSupabaseWithRetry(
@@ -2245,7 +2303,11 @@ const writeSupabasePersistedAppStateModules = async (
 
 const writeSupabasePersistedAppState = async (
   payload: PersistedAppState,
-  options?: { moduleKeys?: AppStateModuleKey[]; writableCompanies?: readonly string[] }
+  options?: {
+    moduleKeys?: AppStateModuleKey[];
+    writableCompanies?: readonly string[];
+    baselineData?: PersistedAppStateData | null;
+  }
 ): Promise<{
   mode: "modules" | "legacy";
   moduleKeys: AppStateModuleKey[];
@@ -2262,7 +2324,8 @@ const writeSupabasePersistedAppState = async (
       payload,
       userId,
       options?.writableCompanies || [],
-      options?.moduleKeys
+      options?.moduleKeys,
+      options?.baselineData
     );
 
     return {
@@ -7261,6 +7324,8 @@ export default function App() {
         const supabaseWriteResult = await writeSupabasePersistedAppState(payload, {
           moduleKeys: moduleKeysToSave,
           writableCompanies: allowedCompaniesForSession,
+          // #16 base para el merge por item: el ultimo estado sincronizado con la DB.
+          baselineData: lastRealtimeModuleMergedDataRef.current,
         });
         lastSupabaseAutosaveAtRef.current = Date.now();
         lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
@@ -9354,6 +9419,8 @@ export default function App() {
             const supabaseWriteResult = await writeSupabasePersistedAppState(payload, {
               moduleKeys: shouldSeedAllModules ? undefined : changedModuleKeys,
               writableCompanies: allowedCompaniesForSession,
+              // #16 base para el merge por item: el ultimo estado sincronizado con la DB.
+              baselineData: lastRealtimeModuleMergedDataRef.current,
             });
             lastSupabaseAutosaveAtRef.current = Date.now();
             lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
