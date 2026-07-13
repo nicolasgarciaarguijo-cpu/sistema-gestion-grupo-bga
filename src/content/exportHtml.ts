@@ -132,13 +132,22 @@ export type ClientBudgetInput = {
   finalPrice: number;
   date?: string;
   deliveryTerm?: string;
+  revisionNumber?: number;
   snapshot?: any;
 };
 
-// Nombre del archivo del historial: "P-<numero> - <cliente> - <descripcion>.html", como lo pidio el usuario.
+// Marca de actualizacion para el nombre de archivo: la revision 1 es el original (sin marca); la 2 es
+// "ACT 1", la 3 "ACT 2", etc. Asi cada actualizacion se guarda al lado del original sin pisarlo.
+export const actSuffix = (revisionNumber?: number): string =>
+  revisionNumber && revisionNumber > 1 ? ` - ACT ${revisionNumber - 1}` : "";
+
+// Nombre del archivo del historial: "P-<numero> - <cliente> - <descripcion>[ - ACT k].html".
 export const clientBudgetFileName = (b: ClientBudgetInput): string =>
-  safeName(`P-${b.number} - ${b.client || "sin cliente"} - ${b.project || "sin descripcion"}`) +
-  ".html";
+  safeName(
+    `P-${b.number} - ${b.client || "sin cliente"} - ${b.project || "sin descripcion"}${actSuffix(
+      b.revisionNumber
+    )}`
+  ) + ".html";
 
 // Documento del presupuesto TAL COMO SE PRESENTA AL CLIENTE: encabezado con color de empresa, datos,
 // descripcion/alcance y subpresupuestos con sus materiales incluidos y total con IVA. NO muestra el

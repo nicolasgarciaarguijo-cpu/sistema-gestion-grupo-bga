@@ -162,8 +162,8 @@ export function DocumentosTab({
   Personal/<empleado>/
       Documentacion/   EPP/   Examenes/   Capacitaciones/   Presentismo/
       Recibos/AAAA-MM/
-  Presupuestos/<cliente>/(Vigentes|Vencidos)/
-  Presupuestos/Historial de presupuestos/   (P-<n> - cliente - descripcion, para el cliente)
+  Presupuestos/<cliente>/(Vigente|Viejo)/     (Vigente = ultima revision)
+  Presupuestos/Historial de presupuestos/     (P-<n> - cliente - desc [- ACT k], para el cliente)
   Caja chica/(Cajas abiertas|cerradas)/<caja>/
       Rendicion de tickets y facturas/
       Recibos/AAAA-MM/

@@ -189,6 +189,7 @@ import {
   clientBudgetFileName,
   buildClientBudgetHtml,
   buildBudgetsHistorialHtml,
+  actSuffix,
   jobFolderName,
   buildJobHtml,
   buildJobsSummaryHtml,
@@ -4927,38 +4928,39 @@ export default function App() {
         setDocumentsBusy(false);
         return written;
       }
-      // Vencido = ya paso su validez (dias desde la fecha). Se usa para separar Vigentes/Vencidos.
-      const isBudgetExpired = (b: SavedBudget): boolean => {
-        const validityDays = Number(/(\d+)/.exec(b.snapshot?.budget?.validity || "")?.[1] || 0);
-        if (!validityDays || !b.date) return false;
-        const [y, m, d] = b.date.slice(0, 10).split("-").map(Number);
-        if (!y || !m || !d) return false;
-        const venc = new Date(y, m - 1, d + validityDays);
-        return venc.getTime() < new Date().getTime();
-      };
-      // CLIENTE PRIMERO: una carpeta por cada cliente (del CRM y/o con presupuestos), y adentro
-      // Vigentes/Vencidos. Asi, al abrir la carpeta de un cliente, ves TODOS sus presupuestos.
+      // VIGENTE = la ULTIMA revision de cada presupuesto (la que "mata" a la anterior). Las revisiones
+      // anteriores van a "Viejo" con su marca ACT. En el Historial se guardan TODAS las revisiones.
+      const allVisibleBudgets = savedBudgets.filter((b) => canAccessCompany(b.company));
+      const latestIds = new Set(visibleSavedBudgets.map((b) => b.id));
+      // CLIENTE PRIMERO: una carpeta por cada cliente (del CRM y/o con presupuestos).
       const clientNamesForFolders = new Set<string>();
       crmClients.forEach((c) => {
         if (c.name?.trim()) clientNamesForFolders.add(c.name.trim());
       });
-      visibleSavedBudgets.forEach((b) => {
+      allVisibleBudgets.forEach((b) => {
         if ((b.client || "").trim()) clientNamesForFolders.add(b.client.trim());
       });
       for (const clientName of Array.from(clientNamesForFolders)) {
         await ensureFolder(handle, `Presupuestos/${safeName(clientName)}`);
       }
-      // Un archivo por presupuesto (ultima revision): Presupuestos/<cliente>/(Vigentes|Vencidos)/.
-      const byMonth = new Map<string, typeof visibleSavedBudgets>();
+      const byMonth = new Map<string, SavedBudget[]>();
       const exportedIds = new Set<number>();
       const exportTimestamp = new Date().toISOString();
-      for (const budget of visibleSavedBudgets) {
+      for (const budget of allVisibleBudgets) {
         const cliente = safeName(budget.client || "Sin cliente");
-        const estado = isBudgetExpired(budget) ? "Vencidos" : "Vigentes";
-        const path = `Presupuestos/${cliente}/${estado}/${budgetFileName(budget)}`;
+        const isVigente = latestIds.has(budget.id);
+        // Vigente: nombre fijo (la nueva revision pisa a la anterior). Viejo: con sufijo ACT para no pisarse.
+        const fileName = isVigente
+          ? budgetFileName(budget)
+          : safeName(
+              `Presupuesto ${budget.number}${budget.project ? " - " + budget.project : ""}${actSuffix(
+                budget.revisionNumber
+              )}`
+            ) + ".html";
+        const path = `Presupuestos/${cliente}/${isVigente ? "Vigente" : "Viejo"}/${fileName}`;
         await writeFileToFolder(handle, path, buildBudgetHtml(budget));
         written.push(path);
-        // Historial: el presupuesto TAL COMO SE PRESENTA AL CLIENTE, con nombre "P-<n> - cliente - desc".
+        // Historial: el presupuesto TAL COMO SE PRESENTA AL CLIENTE, TODAS las revisiones con su ACT.
         const histPath = `Presupuestos/Historial de presupuestos/${clientBudgetFileName(budget)}`;
         await writeFileToFolder(
           handle,
@@ -4966,19 +4968,21 @@ export default function App() {
           buildClientBudgetHtml(budget, getCompanyMeta(budget.company))
         );
         written.push(histPath);
-        exportedIds.add(budget.id);
-        const monthKey = (budget.date || "").slice(0, 7) || "sin-fecha";
-        const list = byMonth.get(monthKey) || [];
-        list.push(budget);
-        byMonth.set(monthKey, list);
+        if (isVigente) {
+          exportedIds.add(budget.id);
+          const monthKey = (budget.date || "").slice(0, 7) || "sin-fecha";
+          const list = byMonth.get(monthKey) || [];
+          list.push(budget);
+          byMonth.set(monthKey, list);
+        }
       }
-      // Resumen mensual del historial.
+      // Resumen mensual (sobre las vigentes).
       for (const [monthKey, list] of Array.from(byMonth.entries())) {
         const path = `Presupuestos/Resumen mensual/${monthKey} - Resumen presupuestos.html`;
         await writeFileToFolder(handle, path, buildBudgetsSummaryHtml(list, monthKey));
         written.push(path);
       }
-      // Resumen general del historial de presupuestos (todos los que se van presentando al cliente).
+      // Resumen general del historial (las vigentes que se van presentando al cliente).
       const histSummaryPath = `Presupuestos/Historial de presupuestos/Resumen de presupuestos.html`;
       await writeFileToFolder(
         handle,
@@ -4996,9 +5000,9 @@ export default function App() {
         );
       }
       setDocumentsMessage(
-        `Presupuestos exportados: ${written.length} archivo(s). Por cliente en Presupuestos/<cliente>/(Vigentes|Vencidos)/ ` +
-          `y para el cliente en Presupuestos/Historial de presupuestos/ (P-<n> - cliente - descripcion). ` +
-          `${clientNamesForFolders.size} carpeta(s) de cliente. ${exportedIds.size} marcados como exportados.`
+        `Presupuestos exportados: ${written.length} archivo(s). Por cliente en Presupuestos/<cliente>/(Vigente|Viejo)/ ` +
+          `(Vigente = ultima revision) y en Presupuestos/Historial de presupuestos/ (P-<n> - cliente - desc, cada ACT). ` +
+          `${clientNamesForFolders.size} carpeta(s) de cliente. ${exportedIds.size} vigentes marcados como exportados.`
       );
     } catch (err: any) {
       console.error("[documentos] export presupuestos:", err);
@@ -6839,7 +6843,7 @@ export default function App() {
   // Guarda el presupuesto TAL COMO SE PRESENTA AL CLIENTE en Presupuestos/Historial de presupuestos/
   // (mismo documento que el PDF, con logos e imagenes). Best-effort: si no hay carpeta vinculada o no
   // se concede permiso de escritura, devuelve false sin romper la impresion. Usa el borrador en edicion.
-  const saveClientBudgetToFolder = async (): Promise<boolean> => {
+  const saveClientBudgetToFolder = async (revisionNumber?: number): Promise<boolean> => {
     try {
       const handle = await loadDirHandle();
       if (!handle) return false;
@@ -6851,6 +6855,7 @@ export default function App() {
         project: budget.project,
         netPrice: consolidatedBudgetTotals.netPrice,
         finalPrice: consolidatedBudgetTotals.finalPrice,
+        revisionNumber,
         snapshot: {
           budget,
           subBudgets: workingBudgetSections,
@@ -6895,8 +6900,9 @@ export default function App() {
         );
       }
       // Ademas de marcarlo como exportado, guarda el documento del cliente directamente en la carpeta
-      // (Historial de presupuestos), asi se busca ahi y se envia sin tener que exportar de nuevo.
-      const savedToFolder = await saveClientBudgetToFolder();
+      // (Historial de presupuestos), con su marca ACT si es una actualizacion, asi se busca ahi y se
+      // envia sin tener que exportar de nuevo.
+      const savedToFolder = await saveClientBudgetToFolder(target?.revisionNumber);
       const marcaMsg = target
         ? `Presupuesto ${target.number} marcado como exportado.`
         : "PDF exportado.";
