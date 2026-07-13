@@ -6836,6 +6836,40 @@ export default function App() {
     [fixedMarkerGroupOptions, fixedMarkers, budget.workType, activeCostAnalysisEntriesForBudget]
   );
 
+  // Guarda el presupuesto TAL COMO SE PRESENTA AL CLIENTE en Presupuestos/Historial de presupuestos/
+  // (mismo documento que el PDF, con logos e imagenes). Best-effort: si no hay carpeta vinculada o no
+  // se concede permiso de escritura, devuelve false sin romper la impresion. Usa el borrador en edicion.
+  const saveClientBudgetToFolder = async (): Promise<boolean> => {
+    try {
+      const handle = await loadDirHandle();
+      if (!handle) return false;
+      const granted = await ensureWritePermission(handle);
+      if (!granted) return false;
+      const input = {
+        number: budget.number,
+        client: budget.client,
+        project: budget.project,
+        netPrice: consolidatedBudgetTotals.netPrice,
+        finalPrice: consolidatedBudgetTotals.finalPrice,
+        snapshot: {
+          budget,
+          subBudgets: workingBudgetSections,
+          totals: consolidatedBudgetTotals,
+        },
+      };
+      const path = `Presupuestos/Historial de presupuestos/${clientBudgetFileName(input)}`;
+      await writeFileToFolder(
+        handle,
+        path,
+        buildClientBudgetHtml(input, getCompanyMeta(budget.company))
+      );
+      return true;
+    } catch (err) {
+      console.error("[presupuesto] guardar en historial:", err);
+      return false;
+    }
+  };
+
   const exportPrint = async (mode: PrintMode) => {
     if (!mode) return;
     if (mode === "client-budget") {
@@ -6859,12 +6893,17 @@ export default function App() {
             item.id === target.id ? { ...item, exportedAt: exportTimestamp } : item
           )
         );
-        setStorageMessage(`Presupuesto ${target.number} marcado como exportado.`);
-      } else {
-        setStorageMessage(
-          "PDF exportado. Guarda el presupuesto en el historial para que quede marcado como exportado."
-        );
       }
+      // Ademas de marcarlo como exportado, guarda el documento del cliente directamente en la carpeta
+      // (Historial de presupuestos), asi se busca ahi y se envia sin tener que exportar de nuevo.
+      const savedToFolder = await saveClientBudgetToFolder();
+      const marcaMsg = target
+        ? `Presupuesto ${target.number} marcado como exportado.`
+        : "PDF exportado.";
+      const folderMsg = savedToFolder
+        ? " Guardado en Presupuestos/Historial de presupuestos/ (ya podes buscarlo ahi y enviarlo)."
+        : " (Para que se guarde solo en la carpeta, vincula la carpeta en Documentos.)";
+      setStorageMessage(marcaMsg + folderMsg);
     }
     const previousTitle = document.title;
     if (mode === "client-budget") {

@@ -122,8 +122,21 @@ export function buildBudgetsSummaryHtml(budgets: SavedBudget[], monthKey: string
 
 // ---- Presupuesto para el cliente (historial) ----
 
+// Forma minima que necesita el documento del cliente: sirve tanto un SavedBudget (historial) como el
+// borrador en edicion (al tocar "Exportar PDF cliente"). El snapshot lleva budget/subBudgets/totals.
+export type ClientBudgetInput = {
+  number: string;
+  client: string;
+  project: string;
+  netPrice: number;
+  finalPrice: number;
+  date?: string;
+  deliveryTerm?: string;
+  snapshot?: any;
+};
+
 // Nombre del archivo del historial: "P-<numero> - <cliente> - <descripcion>.html", como lo pidio el usuario.
-export const clientBudgetFileName = (b: SavedBudget): string =>
+export const clientBudgetFileName = (b: ClientBudgetInput): string =>
   safeName(`P-${b.number} - ${b.client || "sin cliente"} - ${b.project || "sin descripcion"}`) +
   ".html";
 
@@ -131,7 +144,7 @@ export const clientBudgetFileName = (b: SavedBudget): string =>
 // descripcion/alcance y subpresupuestos con sus materiales incluidos y total con IVA. NO muestra el
 // desglose de costos interno (materiales/mano de obra/costos fijos). theme = colores de la empresa.
 export function buildClientBudgetHtml(
-  b: SavedBudget,
+  b: ClientBudgetInput,
   theme: { short: string; primary: string; soft: string }
 ): string {
   const snap: any = b.snapshot || {};
