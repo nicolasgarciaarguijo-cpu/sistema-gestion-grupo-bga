@@ -186,6 +186,9 @@ import {
   budgetFileName,
   buildBudgetHtml,
   buildBudgetsSummaryHtml,
+  clientBudgetFileName,
+  buildClientBudgetHtml,
+  buildBudgetsHistorialHtml,
   jobFolderName,
   buildJobHtml,
   buildJobsSummaryHtml,
@@ -4955,6 +4958,14 @@ export default function App() {
         const path = `Presupuestos/${cliente}/${estado}/${budgetFileName(budget)}`;
         await writeFileToFolder(handle, path, buildBudgetHtml(budget));
         written.push(path);
+        // Historial: el presupuesto TAL COMO SE PRESENTA AL CLIENTE, con nombre "P-<n> - cliente - desc".
+        const histPath = `Presupuestos/Historial de presupuestos/${clientBudgetFileName(budget)}`;
+        await writeFileToFolder(
+          handle,
+          histPath,
+          buildClientBudgetHtml(budget, getCompanyMeta(budget.company))
+        );
+        written.push(histPath);
         exportedIds.add(budget.id);
         const monthKey = (budget.date || "").slice(0, 7) || "sin-fecha";
         const list = byMonth.get(monthKey) || [];
@@ -4967,6 +4978,14 @@ export default function App() {
         await writeFileToFolder(handle, path, buildBudgetsSummaryHtml(list, monthKey));
         written.push(path);
       }
+      // Resumen general del historial de presupuestos (todos los que se van presentando al cliente).
+      const histSummaryPath = `Presupuestos/Historial de presupuestos/Resumen de presupuestos.html`;
+      await writeFileToFolder(
+        handle,
+        histSummaryPath,
+        buildBudgetsHistorialHtml(visibleSavedBudgets)
+      );
+      written.push(histSummaryPath);
       // Marca los presupuestos exportados con la fecha, para que el resumen del historial aclare
       // que quedaron guardados en la carpeta del cliente (misma marca que el export individual).
       if (exportedIds.size > 0) {
@@ -4977,8 +4996,9 @@ export default function App() {
         );
       }
       setDocumentsMessage(
-        `Presupuestos exportados: ${written.length} archivo(s) en Presupuestos/<cliente>/(Vigentes|Vencidos)/. ` +
-          `${clientNamesForFolders.size} carpeta(s) de cliente. ${exportedIds.size} marcados como exportados en el historial.`
+        `Presupuestos exportados: ${written.length} archivo(s). Por cliente en Presupuestos/<cliente>/(Vigentes|Vencidos)/ ` +
+          `y para el cliente en Presupuestos/Historial de presupuestos/ (P-<n> - cliente - descripcion). ` +
+          `${clientNamesForFolders.size} carpeta(s) de cliente. ${exportedIds.size} marcados como exportados.`
       );
     } catch (err: any) {
       console.error("[documentos] export presupuestos:", err);

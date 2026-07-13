@@ -120,6 +120,139 @@ export function buildBudgetsSummaryHtml(budgets: SavedBudget[], monthKey: string
   return page(`Resumen presupuestos ${monthKey}`, body);
 }
 
+// ---- Presupuesto para el cliente (historial) ----
+
+// Nombre del archivo del historial: "P-<numero> - <cliente> - <descripcion>.html", como lo pidio el usuario.
+export const clientBudgetFileName = (b: SavedBudget): string =>
+  safeName(`P-${b.number} - ${b.client || "sin cliente"} - ${b.project || "sin descripcion"}`) +
+  ".html";
+
+// Documento del presupuesto TAL COMO SE PRESENTA AL CLIENTE: encabezado con color de empresa, datos,
+// descripcion/alcance y subpresupuestos con sus materiales incluidos y total con IVA. NO muestra el
+// desglose de costos interno (materiales/mano de obra/costos fijos). theme = colores de la empresa.
+export function buildClientBudgetHtml(
+  b: SavedBudget,
+  theme: { short: string; primary: string; soft: string }
+): string {
+  const snap: any = b.snapshot || {};
+  const bd: any = snap.budget || {};
+  const sections: any[] = snap.subBudgets || [];
+  const totals: any = snap.totals || {};
+  const meta = (label: string, value: string) =>
+    `<div><div class="eyebrow">${esc(label)}</div><div class="metaval">${esc(
+      value || "-"
+    )}</div></div>`;
+  const sectionsHtml = sections
+    .map((s: any, i: number) => {
+      const mats = (s.materials || []).map((m: any) => `<li>${esc(m.description)}</li>`).join("");
+      return `
+      <div class="card">
+        <div class="cardhead">
+          <div class="eyebrow">${esc(s.title || `Subpresupuesto ${i + 1}`)}</div>
+          <div class="pill">Total c/IVA ${money(s.totals?.finalPrice)}</div>
+        </div>
+        ${s.notes ? `<div class="muted">${esc(s.notes)}</div>` : ""}
+        <div class="eyebrow" style="margin-top:10px">Materiales incluidos</div>
+        <ul class="mats">${mats || `<li class="muted">Sin materiales cargados.</li>`}</ul>
+      </div>`;
+    })
+    .join("");
+  const body = `
+    <div class="head">
+      <div>
+        <div class="brand">${esc(theme.short)}</div>
+        <div class="muted">CUIT ${esc(bd.cuit || "-")}</div>
+      </div>
+      <div style="text-align:right">
+        <div class="eyebrow">Presupuesto</div>
+        <div class="num">N&deg; ${esc(b.number)}</div>
+        <div class="muted">${esc(bd.date || b.date || "-")}</div>
+      </div>
+    </div>
+    <div class="accent"></div>
+    <h1>${esc(b.project)}</h1>
+    <div>${esc(b.client)}</div>
+    ${bd.clientTaxId ? `<div class="muted">CUIT/CUIL cliente: ${esc(bd.clientTaxId)}</div>` : ""}
+    <div class="metagrid">
+      ${meta("Fecha", bd.date || b.date)}
+      ${meta("Plazo de entrega", bd.deliveryTerm || b.deliveryTerm)}
+      ${meta("Forma de pago", bd.paymentTerms)}
+      ${meta("Validez", bd.validity)}
+    </div>
+    ${
+      bd.notes
+        ? `<div class="accentcard"><div class="eyebrow">Descripcion</div><div>${esc(bd.notes)}</div></div>`
+        : ""
+    }
+    ${
+      bd.scope
+        ? `<div class="accentcard"><div class="eyebrow">Alcance</div><div>${esc(bd.scope)}</div></div>`
+        : ""
+    }
+    ${sectionsHtml}
+    <div class="total">
+      <div><span class="muted">Neto</span> ${money(totals.netPrice ?? b.netPrice)}</div>
+      <div class="final">Precio final c/IVA ${money(totals.finalPrice ?? b.finalPrice)}</div>
+    </div>`;
+  const css = `
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a2230;line-height:1.5;max-width:820px;margin:0 auto;padding:28px 22px;background:#fff}
+    .head{display:flex;justify-content:space-between;align-items:center}
+    .brand{font-size:18px;font-weight:600;color:${theme.primary}}
+    .num{font-size:20px;font-weight:600;color:${theme.primary}}
+    .muted{color:#8a94a6;font-size:12px}
+    .eyebrow{font-size:9.5px;letter-spacing:1.6px;text-transform:uppercase;color:${theme.primary};font-weight:700;margin-bottom:4px}
+    .accent{height:2px;background:${theme.primary};margin:14px 0}
+    h1{font-size:22px;margin:6px 0 2px}
+    .metagrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}
+    .metaval{font-size:13px}
+    .accentcard{border-left:4px solid ${theme.primary};background:${theme.soft}66;border-radius:8px;padding:10px 14px;margin-top:14px}
+    .card{border:1px solid #e6e9ee;border-radius:10px;padding:14px;margin-top:14px}
+    .cardhead{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .pill{font-size:12px;font-weight:700;color:${theme.primary};background:${theme.soft}b3;border:1px solid ${theme.primary};border-radius:999px;padding:3px 12px;white-space:nowrap}
+    .mats{margin:6px 0 0;padding-left:18px;columns:2;font-size:12.5px}
+    .total{display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:12px;border-top:2px solid ${theme.primary}}
+    .final{font-size:16px;font-weight:700;color:${theme.primary}}
+    footer{color:#94a3b8;font-size:12px;text-align:center;margin-top:24px}
+    @media print{body{padding:0}}
+  `;
+  return `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Presupuesto ${esc(
+    b.number
+  )} - ${esc(
+    b.client
+  )}</title><style>${css}</style></head><body>${body}<footer>${esc(theme.short)} &middot; Presupuesto N&deg; ${esc(
+    b.number
+  )}</footer></body></html>`;
+}
+
+// Resumen del historial: lista de todos los presupuestos que se van exportando para el cliente.
+export function buildBudgetsHistorialHtml(budgets: SavedBudget[]): string {
+  const rows = budgets
+    .slice()
+    .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+    .map(
+      (b) =>
+        `<tr><td>P-${esc(b.number)}</td><td>${esc(b.client)}</td><td>${esc(
+          b.project
+        )}</td><td>${esc(b.date || "-")}</td><td class="num">${money(
+          b.finalPrice
+        )}</td><td>${statusPill(b.status)}</td><td>${b.exportedAt ? "Si" : "-"}</td></tr>`
+    )
+    .join("");
+  const total = budgets.reduce((acc, b) => acc + Number(b.finalPrice || 0), 0);
+  const body = `
+    <h1>Historial de presupuestos</h1>
+    <p class="sub">${budgets.length} presupuesto(s) para presentar al cliente</p>
+    <table>
+      <thead><tr><th>N&deg;</th><th>Cliente</th><th>Proyecto</th><th>Fecha</th><th class="num">Final</th><th>Estado</th><th>Exportado</th></tr></thead>
+      <tbody>${rows || `<tr><td colspan="7">Sin presupuestos.</td></tr>`}</tbody>
+      <tfoot><tr class="tot"><td colspan="4">Total</td><td class="num">${money(
+        total
+      )}</td><td></td><td></td></tr></tfoot>
+    </table>`;
+  return page("Historial de presupuestos", body);
+}
+
 // ---- Trabajos aprobados ----
 
 export const jobFileName = (job: any): string =>
