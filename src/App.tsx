@@ -576,6 +576,21 @@ const uploadBudgetImage = async (file: File, opts?: ImageReadOpts): Promise<Budg
   }
 };
 
+// Sube a Storage una imagen que hoy vive como base64 (data URL) en el estado y devuelve la URL publica.
+// La usa la migracion de imagenes viejas: convierte el data URL a Blob (fetch) y lo sube a budget-images.
+const uploadDataUrlToStorage = async (dataUrl: string): Promise<string> => {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const ext = blob.type === "image/png" ? "png" : blob.type === "image/jpeg" ? "jpg" : "img";
+  const path = `budgets/migrated-${newId()}-${Math.floor(Math.random() * 1e6)}.${ext}`;
+  const { error } = await supabase.storage
+    .from("budget-images")
+    .upload(path, blob, { contentType: blob.type || undefined, upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from("budget-images").getPublicUrl(path);
+  return data.publicUrl;
+};
+
 const LOGO_IMAGE_OPTS: ImageReadOpts = { maxDimension: 480, mimeType: "image/png", quality: 1 };
 
 // Espera a que carguen las imagenes (URLs de Storage) antes de imprimir, para que aparezcan
@@ -2495,6 +2510,7 @@ export default function App() {
   const [stockIncreasePct, setStockIncreasePct] = useState(0);
   const [uploadMessage, setUploadMessage] = useState("");
   const [storageMessage, setStorageMessage] = useState("");
+  const [imageMigrationBusy, setImageMigrationBusy] = useState(false);
   // Solapa donde se acaba de guardar: ofrece el "reporte del mes" sin abrirse solo.
   const [monthReportPromptTab, setMonthReportPromptTab] = useState<TabKey | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState("");
@@ -6876,6 +6892,79 @@ export default function App() {
       console.error("[presupuesto] guardar en historial:", err);
       return false;
     }
+  };
+
+  // #14 Migracion (admin, one-time): sube a Storage las imagenes que todavia viven como base64 en el
+  // estado (logos/referencias de presupuestos guardados) y deja la URL. Aliviana el JSON global -> carga
+  // mas rapida. No pierde nada (si una subida falla, deja la base64 como estaba). Se corre a mano.
+  const migrateOldImagesToStorage = async () => {
+    setImageMigrationBusy(true);
+    setStorageMessage("Migrando imagenes viejas (base64) a Storage...");
+    const isBase64 = (s?: string) => typeof s === "string" && s.startsWith("data:");
+    let migrated = 0;
+    let failed = 0;
+    let already = 0;
+    const migrateList = async (
+      list?: BudgetImage[]
+    ): Promise<{ out: BudgetImage[]; changed: boolean }> => {
+      const out: BudgetImage[] = [];
+      let changed = false;
+      for (const img of list || []) {
+        if (isBase64(img.preview)) {
+          try {
+            const url = await uploadDataUrlToStorage(img.preview);
+            out.push({ ...img, preview: url });
+            migrated += 1;
+            changed = true;
+          } catch (e) {
+            console.error("[migracion imagenes] fallo una imagen:", e);
+            failed += 1;
+            out.push(img);
+          }
+        } else {
+          if (img.preview) already += 1;
+          out.push(img);
+        }
+      }
+      return { out, changed };
+    };
+    try {
+      const nextSaved: SavedBudget[] = [];
+      for (const sb of savedBudgets) {
+        const bd = sb.snapshot?.budget;
+        if (!bd) {
+          nextSaved.push(sb);
+          continue;
+        }
+        const logos = await migrateList(bd.logos);
+        const refs = await migrateList(bd.referenceImages);
+        if (logos.changed || refs.changed) {
+          nextSaved.push({
+            ...sb,
+            snapshot: {
+              ...sb.snapshot,
+              budget: { ...bd, logos: logos.out, referenceImages: refs.out },
+            },
+          });
+        } else {
+          nextSaved.push(sb);
+        }
+      }
+      if (migrated > 0) setSavedBudgets(nextSaved);
+      setStorageMessage(
+        `Migracion de imagenes: ${migrated} subida(s) a Storage${
+          failed ? `, ${failed} con error (quedaron como estaban)` : ""
+        }. ${already} ya estaban en URL. ${
+          migrated > 0
+            ? "El estado quedo mas liviano; se guarda solo."
+            : "No habia imagenes base64 para migrar."
+        }`
+      );
+    } catch (err: any) {
+      console.error("[migracion imagenes]:", err);
+      setStorageMessage("Error en la migracion de imagenes: " + (err?.message || String(err)));
+    }
+    setImageMigrationBusy(false);
   };
 
   // Revision que tendra el PROXIMO guardado de este presupuesto (misma logica que saveBudgetSnapshot).
@@ -12364,6 +12453,8 @@ export default function App() {
           downloadBackupFile={downloadBackupFile}
           importBackupFile={importBackupFile}
           clearLocalSave={clearLocalSave}
+          onMigrateImages={migrateOldImagesToStorage}
+          imageMigrationBusy={imageMigrationBusy}
         />
       )}
 

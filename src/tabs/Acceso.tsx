@@ -45,6 +45,8 @@ type AccesoTabProps = {
   downloadBackupFile: () => void;
   importBackupFile: (file: File | null) => void;
   clearLocalSave: () => void;
+  onMigrateImages: () => void;
+  imageMigrationBusy: boolean;
 };
 
 export function AccesoTab({
@@ -89,6 +91,8 @@ export function AccesoTab({
   downloadBackupFile,
   importBackupFile,
   clearLocalSave,
+  onMigrateImages,
+  imageMigrationBusy,
 }: AccesoTabProps) {
   return (
         !isSupabaseLoggedIn ? (
@@ -441,6 +445,11 @@ export function AccesoTab({
                   <ButtonLike onClick={clearLocalSave} secondary>
                     Borrar guardado local
                   </ButtonLike>
+                  {effectiveIsAdmin && (
+                    <ButtonLike onClick={onMigrateImages} secondary disabled={imageMigrationBusy}>
+                      {imageMigrationBusy ? "Migrando imagenes..." : "Migrar imagenes viejas a Storage"}
+                    </ButtonLike>
+                  )}
                 </div>
               }
             >
