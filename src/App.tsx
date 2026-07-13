@@ -2536,6 +2536,9 @@ export default function App() {
   const [isCommunicationExpanded, setIsCommunicationExpanded] = useState(false);
   const lastSupabaseSnapshotSavedAtRef = useRef("");
   const lastMarkerSourceKeyRef = useRef("");
+  // Marca que se exporto el PDF de un presupuesto ANTES de guardarlo: al guardar esa revision se
+  // estampa exportedAt. key = "<numero normalizado>__<empresa>". Ver exportPrint / saveBudgetSnapshot.
+  const pendingClientExportRef = useRef<{ key: string; at: string } | null>(null);
   const collaborationSessionIdRef = useRef(
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -6875,41 +6878,50 @@ export default function App() {
     }
   };
 
+  // Revision que tendra el PROXIMO guardado de este presupuesto (misma logica que saveBudgetSnapshot).
+  // Permite nombrar el PDF del cliente ANTES de guardar: el usuario edita, exporta y despues actualiza.
+  // revision 1 = original (sin ACT); 2 = ACT 1; etc.
+  const getNextBudgetRevision = (): { existing: SavedBudget | null; revisionNumber: number } => {
+    const key = normalizeBudgetNumberKey(budget.number);
+    const existing = editingBudgetId
+      ? savedBudgets.find((item) => item.id === editingBudgetId) || null
+      : savedBudgets.find(
+          (item) =>
+            key.length > 0 &&
+            normalizeBudgetNumberKey(item.number) === key &&
+            item.company === budget.company
+        ) || null;
+    const revisionNumber = existing
+      ? Math.max(
+          ...savedBudgets
+            .filter((item) => (item.rootBudgetId || item.id) === (existing.rootBudgetId ?? existing.id))
+            .map((item) => item.revisionNumber || 1),
+          existing.revisionNumber || 1
+        ) + 1
+      : 1;
+    return { existing, revisionNumber };
+  };
+
   const exportPrint = async (mode: PrintMode) => {
     if (!mode) return;
     if (mode === "client-budget") {
-      // Marcar como exportado el presupuesto que corresponde, este o no en modo edicion:
-      // si hay uno abierto se usa ese; si no, se busca la ultima revision guardada con el
-      // mismo numero y empresa. Asi NO hace falta reabrirlo para que quede marcado.
+      // FLUJO REAL DEL USUARIO: edita, exporta el PDF y DESPUES aprieta "actualizar" (guardar), que lo
+      // saca de la edicion. Por eso el nombre del PDF usa la revision que TENDRA el proximo guardado
+      // (prediccion), y se deja una marca para que, al guardar esa actualizacion, quede como exportado.
       const exportTimestamp = new Date().toISOString();
-      const candidates = editingBudgetId
-        ? savedBudgets.filter((item) => item.id === editingBudgetId)
-        : savedBudgets.filter(
-            (item) => item.number === budget.number && item.company === budget.company
-          );
-      const target = candidates.length
-        ? candidates.reduce((a, b) =>
-            (b.revisionNumber || 1) >= (a.revisionNumber || 1) ? b : a
-          )
-        : null;
-      if (target) {
-        setSavedBudgets((prev) =>
-          prev.map((item) =>
-            item.id === target.id ? { ...item, exportedAt: exportTimestamp } : item
-          )
-        );
-      }
-      // Ademas de marcarlo como exportado, guarda el documento del cliente directamente en la carpeta
-      // (Historial de presupuestos), con su marca ACT si es una actualizacion, asi se busca ahi y se
-      // envia sin tener que exportar de nuevo.
-      const savedToFolder = await saveClientBudgetToFolder(target?.revisionNumber);
-      const marcaMsg = target
-        ? `Presupuesto ${target.number} marcado como exportado.`
-        : "PDF exportado.";
+      const { revisionNumber } = getNextBudgetRevision();
+      pendingClientExportRef.current = {
+        key: `${normalizeBudgetNumberKey(budget.number)}__${budget.company}`,
+        at: exportTimestamp,
+      };
+      // Guarda el documento del cliente en la carpeta (Historial de presupuestos) con su marca ACT, asi
+      // se busca ahi y se envia sin tener que exportar de nuevo.
+      const savedToFolder = await saveClientBudgetToFolder(revisionNumber);
+      const actMsg = revisionNumber > 1 ? ` (ACT ${revisionNumber - 1})` : "";
       const folderMsg = savedToFolder
-        ? " Guardado en Presupuestos/Historial de presupuestos/ (ya podes buscarlo ahi y enviarlo)."
+        ? ` Guardado en Presupuestos/Historial de presupuestos/${actMsg} — ya podes buscarlo y enviarlo. Al guardar la actualizacion queda marcado como exportado.`
         : " (Para que se guarde solo en la carpeta, vincula la carpeta en Documentos.)";
-      setStorageMessage(marcaMsg + folderMsg);
+      setStorageMessage(`PDF exportado.${folderMsg}`);
     }
     const previousTitle = document.title;
     if (mode === "client-budget") {
@@ -7646,24 +7658,10 @@ export default function App() {
   };
 
   const saveBudgetSnapshot = async () => {
-    const currentBudgetNumberKey = normalizeBudgetNumberKey(budget.number);
-    const existing = editingBudgetId
-      ? savedBudgets.find((item) => item.id === editingBudgetId) || null
-      : savedBudgets.find(
-          (item) =>
-            currentBudgetNumberKey.length > 0 &&
-            normalizeBudgetNumberKey(item.number) === currentBudgetNumberKey &&
-            item.company === budget.company
-        ) || null;
+    // Misma logica de revision que usa el export del PDF (getNextBudgetRevision), para que el ACT del
+    // archivo exportado ANTES de guardar coincida con la revision que se crea aca.
+    const { existing, revisionNumber } = getNextBudgetRevision();
     const rootBudgetId = existing?.rootBudgetId ?? existing?.id ?? newId();
-    const revisionNumber = existing
-      ? Math.max(
-          ...savedBudgets
-            .filter((item) => (item.rootBudgetId || item.id) === rootBudgetId)
-            .map((item) => item.revisionNumber || 1),
-          existing.revisionNumber || 1
-        ) + 1
-      : 1;
     const nextBudgetData: BudgetData = {
       ...cloneBudget(budget),
       isUpdate: !!existing,
@@ -7758,6 +7756,13 @@ export default function App() {
         occupancyPct: consolidatedBudgetTotals.occupancyPct,
       },
     };
+    // Si se exporto el PDF de este presupuesto ANTES de guardar (flujo normal: editar, exportar, guardar),
+    // esta revision queda marcada como exportada (doble control).
+    const pendingExport = pendingClientExportRef.current;
+    const pendingExportKey = `${normalizeBudgetNumberKey(nextBudgetData.number)}__${nextBudgetData.company}`;
+    const exportedAtForNext =
+      pendingExport && pendingExport.key === pendingExportKey ? pendingExport.at : undefined;
+    if (exportedAtForNext) pendingClientExportRef.current = null;
     const next: SavedBudget = {
       // id NUEVO por cada version: la revision anterior queda guardada (misma rootBudgetId)
       // para poder revisarla, en vez de pisarse.
@@ -7783,7 +7788,7 @@ export default function App() {
       netPrice: consolidatedBudgetTotals.netPrice,
       finalPrice: consolidatedBudgetTotals.finalPrice,
       laborOccupancyPct: consolidatedBudgetTotals.occupancyPct,
-      exportedAt: undefined,
+      exportedAt: exportedAtForNext,
       snapshot: nextSnapshot,
     };
 
