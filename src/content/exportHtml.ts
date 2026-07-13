@@ -138,6 +138,17 @@ export function buildClientBudgetHtml(
   const bd: any = snap.budget || {};
   const sections: any[] = snap.subBudgets || [];
   const totals: any = snap.totals || {};
+  // El `preview` de una imagen es base64 (autocontenido) o una URL publica del bucket budget-images.
+  // Se usa tal cual (igual que la impresion al cliente); solo se neutraliza la comilla doble del atributo.
+  const srcAttr = (s: string) => String(s || "").replace(/"/g, "%22");
+  const logos: any[] = bd.logos || [];
+  const refImages: any[] = bd.referenceImages || [];
+  const logosHtml = logos
+    .map((img: any) => `<img class="logo" src="${srcAttr(img.preview)}" alt="${esc(img.name || "")}">`)
+    .join("");
+  const refHtml = refImages
+    .map((img: any) => `<img src="${srcAttr(img.preview)}" alt="${esc(img.name || "")}">`)
+    .join("");
   const meta = (label: string, value: string) =>
     `<div><div class="eyebrow">${esc(label)}</div><div class="metaval">${esc(
       value || "-"
@@ -159,9 +170,12 @@ export function buildClientBudgetHtml(
     .join("");
   const body = `
     <div class="head">
-      <div>
-        <div class="brand">${esc(theme.short)}</div>
-        <div class="muted">CUIT ${esc(bd.cuit || "-")}</div>
+      <div class="brandrow">
+        ${logosHtml}
+        <div>
+          <div class="brand">${esc(theme.short)}</div>
+          <div class="muted">CUIT ${esc(bd.cuit || "-")}</div>
+        </div>
       </div>
       <div style="text-align:right">
         <div class="eyebrow">Presupuesto</div>
@@ -189,6 +203,11 @@ export function buildClientBudgetHtml(
         ? `<div class="accentcard"><div class="eyebrow">Alcance</div><div>${esc(bd.scope)}</div></div>`
         : ""
     }
+    ${
+      refHtml
+        ? `<div class="card"><div class="eyebrow">Imagenes de referencia</div><div class="refgrid">${refHtml}</div></div>`
+        : ""
+    }
     ${sectionsHtml}
     <div class="total">
       <div><span class="muted">Neto</span> ${money(totals.netPrice ?? b.netPrice)}</div>
@@ -197,7 +216,11 @@ export function buildClientBudgetHtml(
   const css = `
     *{box-sizing:border-box}
     body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a2230;line-height:1.5;max-width:820px;margin:0 auto;padding:28px 22px;background:#fff}
-    .head{display:flex;justify-content:space-between;align-items:center}
+    .head{display:flex;justify-content:space-between;align-items:center;gap:14px}
+    .brandrow{display:flex;align-items:center;gap:12px}
+    .logo{height:46px;width:auto;max-width:150px;object-fit:contain}
+    .refgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:8px}
+    .refgrid img{width:100%;height:auto;border-radius:8px;border:1px solid #e6e9ee}
     .brand{font-size:18px;font-weight:600;color:${theme.primary}}
     .num{font-size:20px;font-weight:600;color:${theme.primary}}
     .muted{color:#8a94a6;font-size:12px}
