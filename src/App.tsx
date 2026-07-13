@@ -79,6 +79,7 @@ import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { AprobadosTab } from "./tabs/Aprobados";
+import { EmitirFacturasTab } from "./tabs/EmitirFacturas";
 import { StockTab } from "./tabs/Stock";
 import { FacturacionTab } from "./tabs/Facturacion";
 import { HistorialTab } from "./tabs/Historial";
@@ -194,6 +195,7 @@ import {
   buildGeneralSummaryHtml,
   buildComprasSummaryHtml,
   buildPersonalSummaryHtml,
+  buildPlanosPendientesHtml,
   pettyCashFundFolder,
   buildPettyCashFundHtml,
   pettyReceiptFileName,
@@ -241,7 +243,7 @@ type CompanyOption = {
   bankAlias: string;
   bankCbu: string;
   bankAccount: string;
-  fiscalYearStartMonth?: number; // mes de inicio del ano fiscal (1-12); default octubre (10)
+  fiscalYearStartMonth?: number; // mes de inicio del ano fiscal (1-12); default noviembre (11)
 };
 
 const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
@@ -255,7 +257,7 @@ const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
     bankAlias: "GRUPOBGA",
     bankCbu: "0720082320000000448536",
     bankAccount: "CC$ 082-004485/3",
-    fiscalYearStartMonth: 10,
+    fiscalYearStartMonth: 11,
   },
   {
     value: "De raiz s.r.l",
@@ -267,7 +269,7 @@ const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
     bankAlias: "DERAIZSRL",
     bankCbu: "0340041800419997078004",
     bankAccount: "CC $ 041-419997078-000",
-    fiscalYearStartMonth: 10,
+    fiscalYearStartMonth: 11,
   },
 ];
 
@@ -314,6 +316,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "acceso", label: "Acceso" },
   { key: "cashflow", label: "Balance, cash flow y resultados" },
   { key: "facturacion", label: "Facturacion y cobranzas" },
+  { key: "emitirFacturas", label: "Emitir facturas" },
   { key: "aprobados", label: "Trabajos aprobados" },
   { key: "fabricacion", label: "Fabricacion" },
   { key: "compras", label: "Compras" },
@@ -331,6 +334,7 @@ const NETA_TAB_KEYS: TabKey[] = ["presupuesto", "historial", "stock", "marcadore
 const BRUTA_TAB_KEYS: TabKey[] = [
   "cashflow",
   "facturacion",
+  "emitirFacturas",
   "aprobados",
   "fabricacion",
   "compras",
@@ -409,6 +413,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   historial: "CRM",
   aprobados: "TA",
   facturacion: "FC",
+  emitirFacturas: "EF",
   stock: "SA",
   personal: "PE",
   documentos: "DOC",
@@ -1596,6 +1601,7 @@ const ALL_APP_STATE_MODULE_KEYS: AppStateModuleKey[] =
 const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> = {
   cashflow: ["mensuales", "cash-flow"],
   facturacion: ["mensuales", "cash-flow", "trabajos-aprobados", "caja-chica", "compras"],
+  emitirFacturas: ["mensuales", "trabajos-aprobados", "cash-flow"],
   aprobados: ["mensuales", "trabajos-aprobados"],
   fabricacion: ["mensuales", "trabajos-aprobados", "compras", "stock-costos"],
   compras: ["mensuales", "compras", "caja-chica"],
@@ -2417,7 +2423,7 @@ export default function App() {
     "fiscalYear"
   );
   const [balanceFiscalStartYear, setBalanceFiscalStartYear] = useState<number>(() =>
-    currentFiscalStartYear(10, new Date())
+    currentFiscalStartYear(11, new Date())
   );
   const [balanceMonth, setBalanceMonth] = useState<string>(() => {
     const now = new Date();
@@ -2425,7 +2431,7 @@ export default function App() {
   });
   // Calendario anual (12 meses colapsables): ano fiscal de inicio (octubre por defecto).
   const [annualCalendarStartYear, setAnnualCalendarStartYear] = useState<number>(() =>
-    currentFiscalStartYear(10, new Date())
+    currentFiscalStartYear(11, new Date())
   );
   const [selectedFinancialItemId, setSelectedFinancialItemId] = useState<number | null>(
     defaultFinancialItems[0]?.id ?? null
@@ -3173,6 +3179,10 @@ export default function App() {
       .map((item) => item.tab_key)
       .filter((key): key is TabKey => TAB_OPTIONS.some((tab) => tab.key === key));
   }, [isSupabaseLoggedIn, supabaseTabPermissions]);
+
+  // Permiso para EMITIR facturas AFIP: superadmin, o usuario con acceso a la solapa "Emitir facturas".
+  // Gatea la solapa (via permisos normales) y el boton de emision en Trabajos aprobados.
+  const canEmitFacturas = effectiveIsAdmin || supabaseAllowedTabs.includes("emitirFacturas");
 
   const allowedCompaniesForSession = useMemo(
     () =>
@@ -4104,7 +4114,12 @@ export default function App() {
           (acc, item) => acc + Number(item.amount || 0),
           0
         );
-        const valueToCollect = job.soldNetPrice + additionalsTotal + invoiceVatAmount;
+        const discountsTotal = (job.discounts || []).reduce(
+          (acc, item) => acc + Number(item.amount || 0),
+          0
+        );
+        const valueToCollect =
+          job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount;
         // Manda el trabajo aprobado: el % anticipo se resuelve del job (fallback forma de pago) y
         // el IVA va SOLO sobre lo facturado (invoiceVatAmount). Anticipo = %anticipo x neto + IVA facturado.
         const anticipoPctResolved = resolveAdvancePct(
@@ -4147,6 +4162,7 @@ export default function App() {
           paymentsTotal,
           retentionsTotal,
           additionalsTotal,
+          discountsTotal,
           commissionPaidTotal,
           commissionPending: Math.max(0, Number(job.commissionAmount || 0) - commissionPaidTotal),
           collectedTotal: financialCollected,
@@ -4231,7 +4247,7 @@ export default function App() {
   // Calendario anual unificado: 12 meses del ano fiscal (arranca en octubre), cada uno con sus items
   // (facturacion/cobranza/pago) y totales, para una vista amplia y colapsable por mes.
   const annualCalendarMonths = useMemo(() => {
-    const FISCAL_START_MONTH = 10; // octubre
+    const FISCAL_START_MONTH = 11; // noviembre
     return Array.from({ length: 12 }, (_, i) => {
       const d = new Date(annualCalendarStartYear, FISCAL_START_MONTH - 1 + i, 1);
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -4322,10 +4338,10 @@ export default function App() {
 
   // Opciones para el selector: anos fiscales recientes (por su ano de inicio) y label legible.
   const balanceFiscalYearOptions = useMemo(() => {
-    const current = currentFiscalStartYear(10, new Date());
+    const current = currentFiscalStartYear(11, new Date());
     const years: { value: number; label: string }[] = [];
     for (let y = current; y >= current - 5; y--) {
-      years.push({ value: y, label: fiscalYearLabel(10, y) });
+      years.push({ value: y, label: fiscalYearLabel(11, y) });
     }
     return years;
   }, []);
@@ -4981,8 +4997,15 @@ export default function App() {
         buildPersonalSummaryHtml(visibleEmployees, todayIso())
       );
       written.push(personalPath);
+      const planosPath = `Resumenes/${periodKey}/Planos pendientes.html`;
+      await writeFileToFolder(
+        handle,
+        planosPath,
+        buildPlanosPendientesHtml(approvedJobsSummary, todayIso())
+      );
+      written.push(planosPath);
       setDocumentsMessage(
-        `Resumenes exportados en Resumenes/${periodKey}/ (general, compras, personal).`
+        `Resumenes exportados en Resumenes/${periodKey}/ (general, compras, personal, planos pendientes).`
       );
     } catch (err: any) {
       console.error("[documentos] export resumen:", err);
@@ -7501,6 +7524,25 @@ export default function App() {
       });
   };
 
+  // Best-effort al aprobar: crea la carpeta de Planos del cliente SIN pedir permiso (solo si la
+  // carpeta ya esta vinculada y con permiso concedido en esta sesion). Si no, no molesta: la carpeta
+  // se crea igual al exportar/sincronizar. Asi apenas aprobas ya tenes donde dejar los DWG/3DM.
+  const ensurePlanosFolderSilently = async (client: string, executionStatus: string) => {
+    try {
+      const handle = await loadDirHandle();
+      if (!handle) return;
+      const q = (handle as any).queryPermission;
+      const perm =
+        typeof q === "function" ? await q.call(handle, { mode: "readwrite" }) : "granted";
+      if (perm !== "granted") return;
+      const estado = executionStatus === "finalizado" ? "Trabajos finalizados" : "Trabajos en curso";
+      const cliente = safeName(client || "Sin cliente");
+      await ensureFolder(handle, `Trabajos aprobados/${estado}/${cliente}/Planos`);
+    } catch {
+      /* best-effort: si falla, se crea al exportar/sincronizar */
+    }
+  };
+
   const approveBudget = (item: SavedBudget) => {
     const approvalDate = todayIso();
     const startDate = approvalDate;
@@ -7559,6 +7601,7 @@ export default function App() {
         ? prev.map((row) => (row.budgetId === item.id ? nextJob : row))
         : [nextJob, ...prev];
     });
+    void ensurePlanosFolderSilently(item.client, "pendiente");
   };
 
   const createDirectApprovedJob = () => {
@@ -7621,6 +7664,7 @@ export default function App() {
     };
 
     setApprovedJobs((prev) => [nextJob, ...prev]);
+    void ensurePlanosFolderSilently(nextJob.client, nextJob.executionStatus);
     setSelectedApprovedJobId(nextJob.id);
     setActiveTab("aprobados");
   };
@@ -7988,6 +8032,52 @@ export default function App() {
               ...job,
               additionals: job.additionals.filter((item) => item.id !== additionalId),
             }
+          : job
+      )
+    );
+  };
+
+  const addDiscount = (jobId: number) => {
+    setApprovedJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId
+          ? {
+              ...job,
+              discounts: [
+                { id: newId(), date: todayIso(), description: "Descuento", amount: 0, notes: "" },
+                ...(job.discounts || []),
+              ],
+            }
+          : job
+      )
+    );
+  };
+
+  const updateDiscount = (
+    jobId: number,
+    discountId: number,
+    field: keyof AdditionalItem,
+    value: string | number
+  ) => {
+    setApprovedJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId
+          ? {
+              ...job,
+              discounts: (job.discounts || []).map((item) =>
+                item.id === discountId ? { ...item, [field]: value } : item
+              ),
+            }
+          : job
+      )
+    );
+  };
+
+  const removeDiscount = (jobId: number, discountId: number) => {
+    setApprovedJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId
+          ? { ...job, discounts: (job.discounts || []).filter((item) => item.id !== discountId) }
           : job
       )
     );
@@ -9442,6 +9532,15 @@ export default function App() {
     setStockIncreasePct(0);
   };
 
+  // Marca/desmarca los planos de un trabajo como terminados (confirmacion manual del usuario).
+  const confirmApprovedJobPlanos = (jobId: number, confirmed: boolean) => {
+    setApprovedJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId ? { ...job, planosConfirmedAt: confirmed ? todayIso() : "" } : job
+      )
+    );
+  };
+
   const removeApprovedJobWorkFile = (jobId: number, fileId: number) => {
     setApprovedJobs((prev) =>
       prev.map((job) =>
@@ -9453,6 +9552,85 @@ export default function App() {
           : job
       )
     );
+  };
+
+  // Combina datos de la emision AFIP en una factura del trabajo.
+  const setInvoiceAfip = (jobId: number, invoiceId: number, patch: Partial<Invoice>) => {
+    setApprovedJobs((prev) =>
+      prev.map((job) =>
+        job.id === jobId
+          ? {
+              ...job,
+              invoices: job.invoices.map((inv) =>
+                inv.id === invoiceId ? { ...inv, ...patch } : inv
+              ),
+            }
+          : job
+      )
+    );
+  };
+
+  // Emite una factura del trabajo en AFIP (WSFE) via la Edge Function afip-facturar. Pide confirmacion,
+  // guarda el CAE en la factura o el error. HOMOLOGACION por ahora (sin validez fiscal).
+  const emitInvoiceAfip = async (jobId: number, invoiceId: number) => {
+    const job = approvedJobs.find((j) => j.id === jobId);
+    const inv = job?.invoices.find((i) => i.id === invoiceId);
+    if (!inv) return;
+    const esA = (inv.invoiceType || "").trim().toUpperCase().startsWith("A");
+    const cbteTipo = esA ? 1 : 6;
+    const neto = Number(inv.subtotal || 0);
+    const iva = Number(inv.vat || 0);
+    const total = Number(inv.total || neto + iva);
+    if (total <= 0) {
+      setInvoiceAfip(jobId, invoiceId, { afipError: "Carga el subtotal antes de emitir." });
+      return;
+    }
+    const ok = window.confirm(
+      `Emitir en AFIP (HOMOLOGACION - sin validez fiscal):\n\n` +
+        `Factura ${esA ? "A" : "B"}\nNeto ${money(neto)} + IVA ${money(iva)} = ${money(total)}\n\n¿Confirmas la emision?`
+    );
+    if (!ok) return;
+    setInvoiceAfip(jobId, invoiceId, { afipError: "Emitiendo en AFIP..." });
+    const docNro = esA ? Number((inv.taxId || "").replace(/\D/g, "")) || 0 : 0;
+    const body = {
+      env: "homo",
+      cbteTipo,
+      neto,
+      iva,
+      total,
+      docTipo: esA ? 80 : 99,
+      docNro,
+      condicionIvaReceptorId: esA ? 1 : 5,
+      ivaAlicuotas: iva > 0 ? [{ id: 5, base: neto, importe: iva }] : [],
+    };
+    try {
+      const { data, error } = (await supabase.functions.invoke("afip-facturar", {
+        body,
+      })) as { data: any; error: any };
+      if (error || !data || data.ok === false) {
+        const msg =
+          (data?.errors || []).map((e: any) => `${e.code}: ${e.msg}`).join(" - ") ||
+          (data?.obs || []).map((o: any) => `${o.code}: ${o.msg}`).join(" - ") ||
+          data?.error ||
+          error?.message ||
+          "AFIP rechazo la factura.";
+        setInvoiceAfip(jobId, invoiceId, { afipError: msg, afipResultado: data?.resultado || "R" });
+        return;
+      }
+      setInvoiceAfip(jobId, invoiceId, {
+        afipCae: data.cae,
+        afipCaeVto: data.caeFchVto,
+        afipCbteNro: data.cbteNro,
+        afipPtoVta: data.ptoVta,
+        afipCbteTipo: data.cbteTipo,
+        afipResultado: "A",
+        afipEnv: "homo",
+        afipError: "",
+        invoiceNumber: `${String(data.ptoVta).padStart(4, "0")}-${String(data.cbteNro).padStart(8, "0")}`,
+      });
+    } catch (e: any) {
+      setInvoiceAfip(jobId, invoiceId, { afipError: String(e?.message || e) });
+    }
   };
 
   const removeInvoice = (jobId: number, invoiceId: number) => {
@@ -12118,9 +12296,23 @@ export default function App() {
         />
       )}
 
+      {activeTab === "emitirFacturas" && (
+        <EmitirFacturasTab
+          approvedJobsSummary={approvedJobsSummary}
+          getCompanyMeta={getCompanyMeta}
+          emitInvoiceAfip={emitInvoiceAfip}
+          addInvoice={addInvoice}
+          openJob={(jobId) => {
+            setSelectedApprovedJobId(jobId);
+            setActiveTab("aprobados");
+          }}
+        />
+      )}
+
       {activeTab === "aprobados" && (
         <AprobadosTab
           jobSemaphoreSummary={jobSemaphoreSummary}
+          canEmitFacturas={canEmitFacturas}
           approvedJobsSummary={approvedJobsSummary}
           companyApprovedSections={companyApprovedSections}
           approvedJobsTimelineRows={approvedJobsTimelineRows}
@@ -12137,8 +12329,11 @@ export default function App() {
           loadBudgetFromSnapshot={loadBudgetFromSnapshot}
           uploadApprovedJobWorkFiles={uploadApprovedJobWorkFiles}
           removeApprovedJobWorkFile={removeApprovedJobWorkFile}
+          confirmApprovedJobPlanos={confirmApprovedJobPlanos}
+          today={todayIso()}
           addInvoice={addInvoice}
           removeInvoice={removeInvoice}
+          emitInvoiceAfip={emitInvoiceAfip}
           updateInvoice={updateInvoice}
           addPayment={addPayment}
           removePayment={removePayment}
@@ -12146,6 +12341,9 @@ export default function App() {
           addAdditional={addAdditional}
           removeAdditional={removeAdditional}
           updateAdditional={updateAdditional}
+          addDiscount={addDiscount}
+          removeDiscount={removeDiscount}
+          updateDiscount={updateDiscount}
           addCommissionPayment={addCommissionPayment}
           removeCommissionPayment={removeCommissionPayment}
           updateCommissionPayment={updateCommissionPayment}

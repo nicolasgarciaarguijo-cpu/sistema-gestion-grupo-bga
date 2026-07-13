@@ -27,6 +27,7 @@ export type TabKey =
   | "historial"
   | "aprobados"
   | "facturacion"
+  | "emitirFacturas"
   | "stock"
   | "personal"
   | "documentos"
@@ -325,6 +326,15 @@ export type Invoice = {
   vat: number;
   total: number;
   attachmentName?: string;
+  // Datos de la emision en AFIP (WSFE). Vacios = no emitida por el sistema.
+  afipCae?: string;
+  afipCaeVto?: string;
+  afipCbteNro?: number;
+  afipPtoVta?: number;
+  afipCbteTipo?: number;
+  afipResultado?: string; // "A" aprobada / "R" rechazada
+  afipError?: string;
+  afipEnv?: string; // "homo" | "prod"
 };
 
 export type Payment = {
@@ -446,7 +456,14 @@ export type ApprovedJob = {
     kind: "plano" | "referencia";
     name: string;
   }[];
+  // Fecha (ISO) en que se confirmo que los planos de fabricacion estan terminados. Vacio/undefined =
+  // sin confirmar. Con archivos plano pero sin confirmar => "en proceso" (lo sabe el usuario, no el
+  // sistema: puede haber 20 planos y faltar 5 en un mismo archivo). Ver domain/planos.ts.
+  planosConfirmedAt?: string;
   additionals: AdditionalItem[];
+  // Descuentos aplicados DESPUES de aprobado el trabajo (el cliente da de baja algo). Misma forma que
+  // un adicional (fecha, descripcion, monto) pero RESTAN del valor a cobrar. Opcional: datos viejos no lo tienen.
+  discounts?: AdditionalItem[];
   commissionPayments: CommissionPayment[];
   invoices: Invoice[];
   payments: Payment[];

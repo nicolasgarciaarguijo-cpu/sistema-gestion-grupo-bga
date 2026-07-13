@@ -126,11 +126,30 @@ function SemaforoResumen({
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: string }) {
+// Estilo compacto de todo el sistema: etiqueta a la izquierda y numero pegado a la derecha (poco
+// recorrido para el ojo), en fila. tone: "out" pinta el monto en rojo (sale plata).
+function MiniMetric({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "out" | "in";
+}) {
   return (
-    <div style={styles.metric}>
-      <div style={styles.metricLabel}>{label}</div>
-      <div style={styles.metricValue}>{value}</div>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "3px 0" }}>
+      <span style={{ fontSize: 12.5, color: "#64748b", minWidth: 120, flexShrink: 0 }}>{label}</span>
+      <span
+        style={{
+          fontSize: 14,
+          fontWeight: 500,
+          color: tone === "out" ? "#dc2626" : "#0f172a",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
@@ -139,15 +158,17 @@ function SummaryRow({
   label,
   value,
   strong = false,
+  tone,
 }: {
   label: string;
   value: string;
   strong?: boolean;
+  tone?: "out" | "in";
 }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontWeight: strong ? 700 : 400 }}>
       <span>{label}</span>
-      <span>{value}</span>
+      <span style={tone === "out" ? styles.amountOut : undefined}>{value}</span>
     </div>
   );
 }

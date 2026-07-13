@@ -244,7 +244,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         blocks: [
           {
             type: "p",
-            text: "Elegis la empresa (Todas / BGA / De Raiz) y el periodo (Año fiscal / Mes / Todo). Todo lo que ves abajo respeta esa eleccion. El año fiscal arranca en octubre (configurable por empresa).",
+            text: "Elegis la empresa (Todas / BGA / De Raiz) y el periodo (Año fiscal / Mes / Todo). Todo lo que ves abajo respeta esa eleccion. El año fiscal arranca en noviembre (configurable por empresa).",
           },
           { type: "image", caption: "Selector de empresa y periodo", svg: MANUAL_FIGURES.cashflow },
         ],
@@ -280,7 +280,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         blocks: [
           {
             type: "p",
-            text: "En el desplegable 'Año fiscal por empresa' podes cambiar el mes de inicio de cada empresa (por defecto octubre). Sirve si sumas una empresa con otro calendario.",
+            text: "En el desplegable 'Año fiscal por empresa' podes cambiar el mes de inicio de cada empresa (por defecto noviembre). Sirve si sumas una empresa con otro calendario.",
           },
         ],
       },
@@ -578,7 +578,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
             items: [
               {
                 q: "¿Ya se usa esta solapa?",
-                a: "Todavia no del todo; se empieza a usar con el año fiscal nuevo (octubre). Es un area que aun tiene ajustes pendientes.",
+                a: "Todavia no del todo; se empieza a usar con el año fiscal nuevo (noviembre). Es un area que aun tiene ajustes pendientes.",
               },
               {
                 q: "¿Como se fija la fecha de entrega?",
@@ -863,7 +863,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
               },
               {
                 q: "¿Que conviene tener listo antes de empezar?",
-                a: "La carpeta de OneDrive con su estructura (Compras, Facturas emitidas, Personal/, etc.). La idea es migrar al sistema lo necesario y arrancar el año fiscal (octubre) sin errores.",
+                a: "La carpeta de OneDrive con su estructura (Compras, Facturas emitidas, Personal/, etc.). La idea es migrar al sistema lo necesario y arrancar el año fiscal (noviembre) sin errores.",
               },
             ],
           },

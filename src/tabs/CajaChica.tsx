@@ -224,7 +224,7 @@ export function CajaChicaTab({
                 <div style={styles.sectionHeader}>Circuito BLANCO</div>
                 <div style={styles.metricGrid}>
                   <MiniMetric label="Entro (origen)" value={money(pettyCashBalanceSummary.whiteIn)} />
-                  <MiniMetric label="Salio (gastos)" value={money(pettyCashBalanceSummary.whiteOut)} />
+                  <MiniMetric label="Salio (gastos)" value={money(pettyCashBalanceSummary.whiteOut)} tone="out" />
                   <MiniMetric label="Saldo" value={money(pettyCashBalanceSummary.whiteSaldo)} />
                 </div>
               </div>
@@ -232,7 +232,7 @@ export function CajaChicaTab({
                 <div style={styles.sectionHeader}>Circuito NEGRO</div>
                 <div style={styles.metricGrid}>
                   <MiniMetric label="Entro (origen)" value={money(pettyCashBalanceSummary.blackIn)} />
-                  <MiniMetric label="Salio (gastos)" value={money(pettyCashBalanceSummary.blackOut)} />
+                  <MiniMetric label="Salio (gastos)" value={money(pettyCashBalanceSummary.blackOut)} tone="out" />
                   <MiniMetric label="Saldo" value={money(pettyCashBalanceSummary.blackSaldo)} />
                 </div>
               </div>
@@ -574,7 +574,7 @@ export function CajaChicaTab({
                             <span style={styles.pettyCashExpenseSummaryLine}>
                               <strong>{expense.description || "Gasto sin descripcion"}</strong>
                             </span>
-                            <span style={styles.pettyCashExpenseSummaryLine}>
+                            <span style={{ ...styles.pettyCashExpenseSummaryLine, ...styles.amountOut }}>
                               {money(Number(expense.amount || 0))}
                             </span>
                             <span style={styles.pettyCashExpenseSummaryLine}>

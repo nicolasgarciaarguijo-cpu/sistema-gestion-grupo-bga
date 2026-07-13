@@ -2,6 +2,7 @@
 // archivo, dentro de la carpeta del cliente) y resumenes mensuales. Pensado para seguimiento.
 import type { SavedBudget, RemitoDraft, Payment } from "../domain/types";
 import { money } from "../lib/format";
+import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency } from "../domain/planos";
 
 const esc = (s: unknown): string =>
   String(s ?? "")
@@ -331,6 +332,43 @@ export function buildPersonalSummaryHtml(employees: any[], today: string): strin
       <tbody>${rows.join("") || `<tr><td colspan="5">Sin datos.</td></tr>`}</tbody>
     </table>`;
   return page("Resumen personal - vencimientos", body);
+}
+
+// Reporte de trabajos con planos de fabricacion pendientes (sin planos o cargados sin confirmar),
+// ordenados por urgencia contra la fecha de inicio de fabricacion. Pensado para leerlo desde la
+// carpeta o para que un agente lo use como recordatorio.
+export function buildPlanosPendientesHtml(jobs: any[], today: string): string {
+  const pend = jobs
+    .filter((j) => isPlanoPending(j))
+    .map((j) => ({ job: j, sem: getPlanoSemaphore(j, today) }))
+    .sort((a, b) => comparePlanoUrgency(a.sem, b.sem));
+  const rows = pend.map(({ job, sem }) => {
+    const dias =
+      sem.daysToStart === null
+        ? "sin fecha de inicio"
+        : sem.daysToStart < 0
+        ? `vencido hace ${-sem.daysToStart} d`
+        : sem.daysToStart === 0
+        ? "hoy"
+        : `faltan ${sem.daysToStart} d`;
+    const estado = sem.level === "sin" ? "Sin planos" : "Sin confirmar";
+    const cls = sem.overdue || sem.level === "sin" ? "no" : "dr";
+    return `<tr><td>${esc(job.company)}</td><td>${esc(job.client || "-")}</td><td>${esc(
+      job.project || "-"
+    )}</td><td><span class="pill ${cls}">${estado}</span></td><td>${esc(
+      (job.startDate || "").slice(0, 10) || "-"
+    )}</td><td>${dias}</td><td>${sem.fileCount}</td></tr>`;
+  });
+  const body = `
+    <h1>Planos de fabricacion pendientes</h1>
+    <p class="sub">${pend.length} trabajo(s) sin planos confirmados &middot; al ${esc(
+    today
+  )} &middot; urgencia medida contra la fecha de inicio de fabricacion</p>
+    <table>
+      <thead><tr><th>Empresa</th><th>Cliente</th><th>Proyecto</th><th>Planos</th><th>Inicio fabricacion</th><th>Estado</th><th>Archivos</th></tr></thead>
+      <tbody>${rows.join("") || `<tr><td colspan="7">No hay trabajos con planos pendientes. Todo al dia.</td></tr>`}</tbody>
+    </table>`;
+  return page("Planos de fabricacion pendientes", body);
 }
 
 // ---- Caja chica ----

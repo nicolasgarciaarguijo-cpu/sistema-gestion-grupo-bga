@@ -37,6 +37,45 @@ function BalanceTile({
   );
 }
 
+// Fila compacta etiqueta -> valor (lista vertical). tone="out" = sale plata (rojo); strong = total.
+function StatRow({
+  label,
+  value,
+  tone,
+  strong,
+  last,
+}: {
+  label: string;
+  value: string;
+  tone?: "out";
+  strong?: boolean;
+  last?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "baseline",
+        gap: 16,
+        padding: "5px 0",
+        borderBottom: last ? "none" : "1px solid #f1f5f9",
+      }}
+    >
+      <span style={{ fontSize: 13, color: "#475569", minWidth: 130, flexShrink: 0 }}>{label}</span>
+      <span
+        style={{
+          fontSize: 14,
+          fontWeight: strong ? 700 : 400,
+          color: tone === "out" ? "#dc2626" : "#0f172a",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
 const balanceGrid: React.CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
@@ -245,7 +284,7 @@ export function CashflowTab({
                   <Field key={company.value} label={company.short || company.value}>
                     <select
                       style={styles.input}
-                      value={company.fiscalYearStartMonth ?? 10}
+                      value={company.fiscalYearStartMonth ?? 11}
                       onChange={(e) => updateCompanyFiscalStartMonth(company.value, Number(e.target.value))}
                     >
                       {MONTH_OPTIONS.map((m) => (
@@ -263,39 +302,30 @@ export function CashflowTab({
             </details>
           </Panel>
 
-          <Panel title="Estado de resultados del periodo (percibido, operativo)" span="wide">
-            <div style={styles.grid2}>
-              <div>
-                <div style={styles.sectionHeader}>Circuito BLANCO</div>
-                <div style={styles.metricGrid}>
-                  <MiniMetric label="Cobrado blanco" value={money(periodStatement.whiteIncome)} />
-                  <MiniMetric label="Egresos blanco" value={money(periodStatement.whiteExpense)} />
-                  <MiniMetric label="Resultado blanco" value={money(periodStatement.whiteResult)} />
-                </div>
-              </div>
-              <div>
-                <div style={styles.sectionHeader}>Circuito NEGRO</div>
-                <div style={styles.metricGrid}>
-                  <MiniMetric label="Cobrado negro" value={money(periodStatement.blackIncome)} />
-                  <MiniMetric label="Egresos negro" value={money(periodStatement.blackExpense)} />
-                  <MiniMetric label="Resultado negro" value={money(periodStatement.blackResult)} />
-                </div>
-              </div>
-            </div>
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Ingresos totales" value={money(periodStatement.totalIncome)} />
-              <MiniMetric label="Egresos totales" value={money(periodStatement.totalExpense)} />
-              <MiniMetric label="Resultado total" value={money(periodStatement.totalResult)} />
-              <MiniMetric label="% en negro" value={`${periodStatement.blackSharePct.toFixed(1)}%`} />
-              <MiniMetric label="Desfasaje blanco vs negro" value={money(periodStatement.desfasaje)} />
-            </div>
-            <div style={styles.sectionHeader}>Egresos: nomina y amortizacion incluidos</div>
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Nomina blanca (periodo)" value={money(periodStatement.laborWhite)} />
-              <MiniMetric label="Premios / Acuerdos negros (periodo)" value={money(periodStatement.laborBlack)} />
-              <MiniMetric label="Amortizacion (periodo)" value={money(periodStatement.depreciation)} />
-            </div>
-            <div style={styles.noticeBox}>
+          <Panel title="Estado de resultados del periodo (percibido, operativo)" span="half">
+            <div style={balanceSection}>Circuito blanco</div>
+            <StatRow label="Cobrado" value={money(periodStatement.whiteIncome)} />
+            <StatRow label="Egresos" value={money(periodStatement.whiteExpense)} tone="out" />
+            <StatRow label="Resultado" value={money(periodStatement.whiteResult)} strong last />
+
+            <div style={balanceSection}>Circuito negro</div>
+            <StatRow label="Cobrado" value={money(periodStatement.blackIncome)} />
+            <StatRow label="Egresos" value={money(periodStatement.blackExpense)} tone="out" />
+            <StatRow label="Resultado" value={money(periodStatement.blackResult)} strong last />
+
+            <div style={balanceSection}>Total del periodo</div>
+            <StatRow label="Ingresos totales" value={money(periodStatement.totalIncome)} />
+            <StatRow label="Egresos totales" value={money(periodStatement.totalExpense)} tone="out" />
+            <StatRow label="Resultado total" value={money(periodStatement.totalResult)} strong />
+            <StatRow label="% en negro" value={`${periodStatement.blackSharePct.toFixed(1)}%`} />
+            <StatRow label="Desfasaje blanco vs negro" value={money(periodStatement.desfasaje)} last />
+
+            <div style={balanceSection}>Egresos: nomina y amortizacion</div>
+            <StatRow label="Nomina blanca (periodo)" value={money(periodStatement.laborWhite)} tone="out" />
+            <StatRow label="Premios / Acuerdos negros" value={money(periodStatement.laborBlack)} tone="out" />
+            <StatRow label="Amortizacion (periodo)" value={money(periodStatement.depreciation)} tone="out" last />
+
+            <div style={{ ...styles.noticeBox, marginTop: 10 }}>
               Base percibido: ingresos = cobros del periodo; egresos = compras + caja chica + comisiones
               pagadas + nomina + amortizacion. La nomina sale del historico por mes (un registro por
               empleado y mes); si faltan meses cargados, el costo laboral saldra bajo hasta completarlo.
@@ -305,13 +335,11 @@ export function CashflowTab({
           </Panel>
 
           <Panel title="Cash flow del periodo" span="half">
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Flujo operativo (cobros - pagos)" value={money(periodStatement.totalResult)} />
-              <MiniMetric label="Creditos banco" value={money(periodStatement.bankCredits)} />
-              <MiniMetric label="Debitos banco" value={money(periodStatement.bankDebits)} />
-              <MiniMetric label="Flujo banco (neto)" value={money(periodStatement.netBank)} />
-            </div>
-            <div style={styles.noticeBox}>
+            <StatRow label="Flujo operativo (cobros - pagos)" value={money(periodStatement.totalResult)} strong />
+            <StatRow label="Creditos banco" value={money(periodStatement.bankCredits)} />
+            <StatRow label="Debitos banco" value={money(periodStatement.bankDebits)} tone="out" />
+            <StatRow label="Flujo banco (neto)" value={money(periodStatement.netBank)} strong last />
+            <div style={{ ...styles.noticeBox, marginTop: 10 }}>
               Flujo operativo = cobros menos pagos del periodo. El banco se muestra aparte para no
               duplicar (un cobro ya cuenta como ingreso). Mas abajo, el detalle mensual y las deudas.
             </div>
@@ -323,7 +351,7 @@ export function CashflowTab({
                 <div style={styles.sectionHeader}>Circuito BLANCO</div>
                 <div style={styles.metricGrid}>
                   <MiniMetric label="Ingresos blanco" value={money(accountingResults.whiteIncome)} />
-                  <MiniMetric label="Egresos blanco" value={money(accountingResults.whiteExpense)} />
+                  <MiniMetric label="Egresos blanco" value={money(accountingResults.whiteExpense)} tone="out" />
                   <MiniMetric label="Resultado blanco" value={money(accountingResults.whiteResult)} />
                 </div>
               </div>
@@ -331,7 +359,7 @@ export function CashflowTab({
                 <div style={styles.sectionHeader}>Circuito NEGRO</div>
                 <div style={styles.metricGrid}>
                   <MiniMetric label="Ingresos negro" value={money(accountingResults.blackIncome)} />
-                  <MiniMetric label="Egresos negro" value={money(accountingResults.blackExpense)} />
+                  <MiniMetric label="Egresos negro" value={money(accountingResults.blackExpense)} tone="out" />
                   <MiniMetric label="Resultado negro" value={money(accountingResults.blackResult)} />
                 </div>
               </div>
@@ -364,7 +392,7 @@ export function CashflowTab({
             <div style={styles.metricGrid}>
               <MiniMetric label="Ingresos cobrados" value={money(cashFlowSummary.collected)} />
               <MiniMetric label="Compras" value={money(cashFlowSummary.purchaseInvoicesTotal)} />
-              <MiniMetric label="Egresos negro" value={money(cashFlowSummary.pettyCashBlackTotal)} />
+              <MiniMetric label="Egresos negro" value={money(cashFlowSummary.pettyCashBlackTotal)} tone="out" />
               <MiniMetric label="Comisiones" value={money(cashFlowSummary.commissionsPending)} />
               <MiniMetric label="Amortizacion" value={money(activeAssetsMonthlyDepreciation)} />
               <MiniMetric label="Creditos bancarios" value={money(cashFlowSummary.bankCredits)} />
@@ -543,7 +571,7 @@ export function CashflowTab({
           >
             <div style={styles.metricGrid}>
               <MiniMetric label="Ingresos banco" value={money(bankStatementSummary.credits)} />
-              <MiniMetric label="Egresos banco" value={money(bankStatementSummary.debits)} />
+              <MiniMetric label="Egresos banco" value={money(bankStatementSummary.debits)} tone="out" />
               <MiniMetric label="Neto banco" value={money(bankStatementSummary.net)} />
               <MiniMetric label="Ultimo saldo" value={money(bankStatementSummary.lastBalance)} />
             </div>

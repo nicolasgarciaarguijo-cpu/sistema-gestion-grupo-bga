@@ -123,11 +123,11 @@ export function ComprasTab({
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturas cargadas" value={String(purchaseInvoiceSummary.invoicesCount)} />
               <MiniMetric label="Carga asistida" value={String(purchaseInvoiceSummary.autoLoadedCount)} />
-              <MiniMetric label="Exento" value={money(purchaseInvoiceSummary.exemptAmount)} />
-              <MiniMetric label="Neto 21%" value={money(purchaseInvoiceSummary.net21)} />
-              <MiniMetric label="IVA credito fiscal" value={money(purchaseInvoiceSummary.vatAmount)} />
-              <MiniMetric label="Total compras" value={money(purchaseInvoiceSummary.totalAmount)} />
-              <MiniMetric label="Caja chica blanco" value={money(pettyCashSummary.whiteTotal)} />
+              <MiniMetric label="Exento" value={money(purchaseInvoiceSummary.exemptAmount)} tone="out" />
+              <MiniMetric label="Neto 21%" value={money(purchaseInvoiceSummary.net21)} tone="out" />
+              <MiniMetric label="IVA credito fiscal" value={money(purchaseInvoiceSummary.vatAmount)} tone="out" />
+              <MiniMetric label="Total compras" value={money(purchaseInvoiceSummary.totalAmount)} tone="out" />
+              <MiniMetric label="Caja chica blanco" value={money(pettyCashSummary.whiteTotal)} tone="out" />
             </div>
             <div style={styles.noticeBox}>
               Este bloque ya queda armado siguiendo la lógica de sus planillas auxiliares: proveedor, comprobante, moneda, neto gravado, exento e IVA separado para luego exportar al estudio contable.
@@ -159,7 +159,7 @@ export function ComprasTab({
                         <td>{item.supplier || "-"}</td>
                         <td>{item.description}</td>
                         <td>{item.invoiceNumber || "-"}</td>
-                        <td>{money(item.amount)}</td>
+                        <td style={styles.amountOut}>{money(item.amount)}</td>
                       </tr>
                     ))}
                 </tbody>

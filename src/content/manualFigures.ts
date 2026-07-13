@@ -200,7 +200,7 @@ const figFacturacion = (): string => {
   // calendario anual (chips de meses)
   const months = ["oct", "nov", "dic", "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep"];
   let mx = CX + 20;
-  let cal = txt(CX + 20, 300, "Año fiscal oct 2025 – sep 2026 · cada mes se abre o se minimiza", {
+  let cal = txt(CX + 20, 300, "Año fiscal nov 2025 – oct 2026 · cada mes se abre o se minimiza", {
     size: 10,
     color: C.muted,
   });
@@ -250,7 +250,7 @@ const figCashflow = (): string => {
     txt(CX + 250, 152, "Periodo", { size: 9, weight: 700, color: C.faint, ls: 0.5 }) +
     rect(CX + 250, 158, 150, 24, { r: 8, fill: C.soft, stroke: C.border }) +
     txt(CX + 262, 174, "Año fiscal 2026", { size: 10, color: C.text }) +
-    chip(CX + 420, 158, 120, "Oct 2025 – Sep 2026", C.genSoft, C.gen);
+    chip(CX + 420, 158, 120, "Nov 2025 – Oct 2026", C.genSoft, C.gen);
   const kpi = (x: number, w: number, label: string, value: string, sub: string, color: string): string =>
     rect(x, 244, w, 78, { r: 10, fill: C.soft, stroke: C.border }) +
     txt(x + 16, 268, label, { size: 9, weight: 700, color: C.faint, ls: 0.5 }) +

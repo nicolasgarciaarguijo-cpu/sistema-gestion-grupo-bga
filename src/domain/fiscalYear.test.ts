@@ -8,8 +8,8 @@ import {
 } from "./fiscalYear";
 
 describe("getFiscalYearStartMonth", () => {
-  it("default octubre si no esta configurado", () => {
-    expect(getFiscalYearStartMonth(undefined)).toBe(10);
+  it("default noviembre si no esta configurado", () => {
+    expect(getFiscalYearStartMonth(undefined)).toBe(11);
     expect(getFiscalYearStartMonth({})).toBe(DEFAULT_FISCAL_START_MONTH);
   });
   it("usa el valor configurado", () => {
@@ -17,8 +17,8 @@ describe("getFiscalYearStartMonth", () => {
     expect(getFiscalYearStartMonth({ fiscalYearStartMonth: 7 })).toBe(7);
   });
   it("ignora valores invalidos", () => {
-    expect(getFiscalYearStartMonth({ fiscalYearStartMonth: 0 })).toBe(10);
-    expect(getFiscalYearStartMonth({ fiscalYearStartMonth: 13 })).toBe(10);
+    expect(getFiscalYearStartMonth({ fiscalYearStartMonth: 0 })).toBe(11);
+    expect(getFiscalYearStartMonth({ fiscalYearStartMonth: 13 })).toBe(11);
   });
 });
 

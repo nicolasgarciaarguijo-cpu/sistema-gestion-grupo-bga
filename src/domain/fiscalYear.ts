@@ -1,10 +1,10 @@
-// Ano fiscal por empresa. El mes de inicio es configurable (default octubre). Todas las empresas hoy
-// arrancan en octubre, pero queda por empresa por si se suma una con otro calendario. Las funciones
-// son puras y trabajan con fechas ISO (yyyy-mm-dd) comparadas como texto para evitar husos horarios.
+// Ano fiscal por empresa. El mes de inicio es configurable (default noviembre). Ambas empresas
+// arrancan en noviembre (nov-oct), pero queda por empresa por si se suma una con otro calendario. Las
+// funciones son puras y trabajan con fechas ISO (yyyy-mm-dd) comparadas como texto para evitar husos.
 
-export const DEFAULT_FISCAL_START_MONTH = 10; // octubre
+export const DEFAULT_FISCAL_START_MONTH = 11; // noviembre
 
-// Mes de inicio (1-12) del ano fiscal de una empresa; default octubre si no esta configurado o es invalido.
+// Mes de inicio (1-12) del ano fiscal de una empresa; default noviembre si no esta configurado o es invalido.
 export function getFiscalYearStartMonth(
   company?: { fiscalYearStartMonth?: number } | null
 ): number {

@@ -13,8 +13,24 @@ import {
 } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { resolveAdvancePct } from "../domain/budgetTerms";
+import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency, type PlanoTone } from "../domain/planos";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
+
+// Tono del semaforo de planos -> nivel del componente Semaforo del sistema.
+const PLANO_TONE_LEVEL: Record<PlanoTone, SemaphoreLevel> = {
+  red: "rojo",
+  yellow: "amarillo",
+  green: "verde",
+};
+const planoDaysText = (days: number | null): string =>
+  days === null
+    ? "sin fecha de inicio"
+    : days < 0
+    ? `fabricacion empezo hace ${-days} d`
+    : days === 0
+    ? "fabricacion empieza hoy"
+    : `faltan ${days} d para fabricar`;
 
 type AprobadosTabProps = {
   jobSemaphoreSummary: any;
@@ -34,8 +50,12 @@ type AprobadosTabProps = {
   loadBudgetFromSnapshot: (snapshot: any, budgetId: any) => void;
   uploadApprovedJobWorkFiles: (jobId: number, kind: string, files: FileList | null) => void;
   removeApprovedJobWorkFile: (jobId: number, fileId: number) => void;
+  confirmApprovedJobPlanos: (jobId: number, confirmed: boolean) => void;
+  today: string;
   addInvoice: (jobId: number) => void;
   removeInvoice: (jobId: number, invoiceId: number) => void;
+  emitInvoiceAfip: (jobId: number, invoiceId: number) => void;
+  canEmitFacturas: boolean;
   updateInvoice: (jobId: number, invoiceId: number, field: string, value: string | number) => void;
   addPayment: (jobId: number) => void;
   removePayment: (jobId: number, paymentId: number) => void;
@@ -43,6 +63,9 @@ type AprobadosTabProps = {
   addAdditional: (jobId: number) => void;
   removeAdditional: (jobId: number, additionalId: number) => void;
   updateAdditional: (jobId: number, additionalId: number, field: string, value: string | number) => void;
+  addDiscount: (jobId: number) => void;
+  removeDiscount: (jobId: number, discountId: number) => void;
+  updateDiscount: (jobId: number, discountId: number, field: string, value: string | number) => void;
   addCommissionPayment: (jobId: number) => void;
   removeCommissionPayment: (jobId: number, paymentId: number) => void;
   updateCommissionPayment: (jobId: number, paymentId: number, field: string, value: string | number) => void;
@@ -71,8 +94,12 @@ export function AprobadosTab({
   loadBudgetFromSnapshot,
   uploadApprovedJobWorkFiles,
   removeApprovedJobWorkFile,
+  confirmApprovedJobPlanos,
+  today,
   addInvoice,
   removeInvoice,
+  emitInvoiceAfip,
+  canEmitFacturas,
   updateInvoice,
   addPayment,
   removePayment,
@@ -80,6 +107,9 @@ export function AprobadosTab({
   addAdditional,
   removeAdditional,
   updateAdditional,
+  addDiscount,
+  removeDiscount,
+  updateDiscount,
   addCommissionPayment,
   removeCommissionPayment,
   updateCommissionPayment,
@@ -89,6 +119,11 @@ export function AprobadosTab({
   uploadApprovedJobFile,
   exportPaymentReceipt,
 }: AprobadosTabProps) {
+  // Trabajos con planos de fabricacion pendientes (sin planos o cargados sin confirmar), por urgencia.
+  const planosPending = approvedJobsSummary
+    .filter((job) => isPlanoPending(job))
+    .map((job) => ({ job, sem: getPlanoSemaphore(job, today) }))
+    .sort((a, b) => comparePlanoUrgency(a.sem, b.sem));
   return (
         <div style={styles.column}>
           <Panel span="full" title="Semaforo de trabajos">
@@ -100,6 +135,54 @@ export function AprobadosTab({
               ]}
             />
           </Panel>
+
+          <Panel span="full" title="Planos de fabricacion pendientes">
+            {planosPending.length === 0 ? (
+              <div style={styles.empty}>
+                Todos los trabajos activos tienen los planos confirmados.
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th>Empresa</th>
+                    <th>Cliente</th>
+                    <th>Proyecto</th>
+                    <th>Inicio fabricacion</th>
+                    <th>Cuenta regresiva</th>
+                    <th>Planos</th>
+                    <th>Accion</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {planosPending.map(({ job, sem }) => (
+                    <tr key={job.id} style={sem.overdue ? { background: "#fef2f2" } : undefined}>
+                      <td>
+                        <Semaforo level={PLANO_TONE_LEVEL[sem.tone]} size={10} title={sem.label} />
+                      </td>
+                      <td>{getCompanyMeta(job.company).short}</td>
+                      <td>{job.client}</td>
+                      <td>{job.project}</td>
+                      <td>{formatDateDisplay(job.startDate)}</td>
+                      <td>{planoDaysText(sem.daysToStart)}</td>
+                      <td>
+                        {sem.level === "sin"
+                          ? "Sin planos"
+                          : `${sem.fileCount} archivo(s), sin confirmar`}
+                      </td>
+                      <td>
+                        <button style={styles.smallBtn} onClick={() => setSelectedApprovedJobId(job.id)}>
+                          Abrir
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+
     <Panel
       span="full"
       title="Trabajos aprobados por empresa"
@@ -135,6 +218,7 @@ export function AprobadosTab({
                     <th>Cobrado</th>
                     <th>Saldo</th>
                     <th>Estado</th>
+                    <th>Planos</th>
                     <th>Accion</th>
                   </tr>
                 </thead>
@@ -142,7 +226,7 @@ export function AprobadosTab({
                   {companyApprovedSections.map((group) => (
                     <React.Fragment key={group.value}>
                       <tr>
-                        <td colSpan={15} style={styles.sectionCell}>
+                        <td colSpan={16} style={styles.sectionCell}>
                           <div
                             style={{
                               ...styles.sectionHeader,
@@ -190,6 +274,28 @@ export function AprobadosTab({
                                 <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                                   <Semaforo level={sj.level} size={10} title={sj.label} />
                                   <span>{job.executionStatus}</span>
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td>
+                            {(() => {
+                              const ps = getPlanoSemaphore(job, today);
+                              return (
+                                <span
+                                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                                  title={`${ps.label}${
+                                    ps.daysToStart !== null ? " · " + planoDaysText(ps.daysToStart) : ""
+                                  }`}
+                                >
+                                  <Semaforo level={PLANO_TONE_LEVEL[ps.tone]} size={10} title={ps.label} />
+                                  <span>
+                                    {ps.level === "listo"
+                                      ? "Listos"
+                                      : ps.level === "proceso"
+                                      ? "Sin confirmar"
+                                      : "Sin planos"}
+                                  </span>
                                 </span>
                               );
                             })()}
@@ -428,6 +534,13 @@ export function AprobadosTab({
                   <SummaryRow label="Circuito negro" value={money(selectedApprovedJob.blackNet)} />
                   <SummaryRow label="IVA 21%" value={money(selectedApprovedJob.invoiceVatAmount)} />
                   <SummaryRow label="Adicionales" value={money(selectedApprovedJob.additionalsTotal)} />
+                  {(selectedApprovedJob.discountsTotal || 0) > 0 && (
+                    <SummaryRow
+                      label="Descuentos"
+                      value={"- " + money(selectedApprovedJob.discountsTotal || 0)}
+                      tone="out"
+                    />
+                  )}
                   <SummaryRow label="Valor a cobrar" value={money(selectedApprovedJob.valueToCollect)} strong />
                   <SummaryRow
                     label={`Anticipo a cobrar (${pct(selectedApprovedJob.anticipoPctResolved)} neto + IVA facturado)`}
@@ -436,18 +549,55 @@ export function AprobadosTab({
                   <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
                   <SummaryRow label="Cobrado" value={money(selectedApprovedJob.collectedTotal)} />
                   <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
-                  <SummaryRow label="Comision" value={money(selectedApprovedJob.commissionAmount)} />
-                  <SummaryRow label="Comision pagada" value={money(selectedApprovedJob.commissionPaidTotal)} />
-                  <SummaryRow label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} strong />
+                  <SummaryRow label="Comision" value={money(selectedApprovedJob.commissionAmount)} tone="out" />
+                  <SummaryRow label="Comision pagada" value={money(selectedApprovedJob.commissionPaidTotal)} tone="out" />
+                  <SummaryRow label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} strong tone="out" />
                 </Panel>
               </div>
 
               <Panel title="Planos y archivos de referencia" nested>
+                {(() => {
+                  const ps = getPlanoSemaphore(selectedApprovedJob, today);
+                  const confirmed = ps.level === "listo";
+                  return (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        flexWrap: "wrap",
+                        marginBottom: 10,
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        background:
+                          ps.tone === "green" ? "#f0fdf4" : ps.tone === "yellow" ? "#fffbeb" : "#fef2f2",
+                      }}
+                    >
+                      <Semaforo level={PLANO_TONE_LEVEL[ps.tone]} size={12} title={ps.label} />
+                      <strong>{ps.label}</strong>
+                      <span style={styles.muted}>
+                        {ps.fileCount} archivo(s) · {planoDaysText(ps.daysToStart)}
+                      </span>
+                      {confirmed ? (
+                        <ButtonLike
+                          secondary
+                          onClick={() => confirmApprovedJobPlanos(selectedApprovedJob.id, false)}
+                        >
+                          Desmarcar (volver a en proceso)
+                        </ButtonLike>
+                      ) : (
+                        <ButtonLike onClick={() => confirmApprovedJobPlanos(selectedApprovedJob.id, true)}>
+                          Confirmar planos terminados
+                        </ButtonLike>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div style={styles.uploadActions}>
                   <FileDropButton
                     label="Cargar planos"
                     allowMultiple
-                    accept="image/*,.pdf,application/pdf"
+                    accept=".dwg,.3dm,.dxf,.skp,.rvt,.pdf,image/*"
                     onFilesSelected={(files) =>
                       uploadApprovedJobWorkFiles(
                         selectedApprovedJob.id,
@@ -590,6 +740,45 @@ export function AprobadosTab({
                             <input style={styles.input} type="number" value={invoice.total} readOnly />
                           </Field>
                         </TwoCol>
+                        <div
+                          style={{
+                            marginTop: 8,
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            background: invoice.afipCae ? "#f0fdf4" : "#eff6ff",
+                            border: `1px solid ${invoice.afipCae ? "#bbf7d0" : "#bfdbfe"}`,
+                          }}
+                        >
+                          {invoice.afipCae ? (
+                            <div style={{ fontSize: 13, color: "#166534" }}>
+                              ✅ Emitida en AFIP{invoice.afipEnv === "homo" ? " (homologacion)" : ""} · CAE{" "}
+                              <strong>{invoice.afipCae}</strong> · vto {invoice.afipCaeVto} · N°{" "}
+                              {String(invoice.afipPtoVta ?? 0).padStart(4, "0")}-
+                              {String(invoice.afipCbteNro ?? 0).padStart(8, "0")}
+                            </div>
+                          ) : (
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                              {canEmitFacturas ? (
+                                <>
+                                  <ButtonLike onClick={() => emitInvoiceAfip(selectedApprovedJob.id, invoice.id)}>
+                                    Emitir en AFIP (homologacion)
+                                  </ButtonLike>
+                                  <span style={styles.muted}>
+                                    Factura {(invoice.invoiceType || "").trim().toUpperCase().startsWith("A") ? "A" : "B"} ·
+                                    el sistema pide confirmacion antes de emitir.
+                                  </span>
+                                </>
+                              ) : (
+                                <span style={styles.muted}>
+                                  La emision en AFIP se hace desde la solapa "Emitir facturas" (requiere permiso).
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          {invoice.afipError ? (
+                            <div style={{ color: "#dc2626", marginTop: 4, fontSize: 12 }}>⚠️ {invoice.afipError}</div>
+                          ) : null}
+                        </div>
                         <div style={styles.uploadActions}>
                           <label style={styles.buttonLikeLabel}>
                             Cargar factura digital
@@ -778,6 +967,60 @@ export function AprobadosTab({
                             style={styles.textarea}
                             value={item.notes}
                             onChange={(e) => updateAdditional(selectedApprovedJob.id, item.id, "notes", e.target.value)}
+                          />
+                        </Field>
+                      </div>
+                    ))
+                  )}
+                </Panel>
+
+                <Panel
+                  title="Descuentos"
+                  nested
+                  actions={<ButtonLike onClick={() => addDiscount(selectedApprovedJob.id)}>Agregar descuento</ButtonLike>}
+                >
+                  {(selectedApprovedJob.discounts || []).length === 0 ? (
+                    <div style={styles.empty}>
+                      No hay descuentos cargados. Se usan cuando el cliente da de baja algo despues de aprobado o pagado; RESTAN del valor a cobrar.
+                    </div>
+                  ) : (
+                    (selectedApprovedJob.discounts || []).map((item: any) => (
+                      <div key={item.id} style={styles.subCard}>
+                        <div style={styles.inlineActions}>
+                          <button style={styles.smallBtn} onClick={() => removeDiscount(selectedApprovedJob.id, item.id)}>
+                            Quitar descuento
+                          </button>
+                        </div>
+                        <TwoCol>
+                          <Field label="Fecha">
+                            <input
+                              style={styles.input}
+                              type="date"
+                              value={item.date}
+                              onChange={(e) => updateDiscount(selectedApprovedJob.id, item.id, "date", e.target.value)}
+                            />
+                          </Field>
+                          <Field label="Monto">
+                            <input
+                              style={styles.input}
+                              type="number"
+                              value={item.amount}
+                              onChange={(e) => updateDiscount(selectedApprovedJob.id, item.id, "amount", Number(e.target.value))}
+                            />
+                          </Field>
+                        </TwoCol>
+                        <Field label="Descripcion">
+                          <input
+                            style={styles.input}
+                            value={item.description}
+                            onChange={(e) => updateDiscount(selectedApprovedJob.id, item.id, "description", e.target.value)}
+                          />
+                        </Field>
+                        <Field label="Notas">
+                          <textarea
+                            style={styles.textarea}
+                            value={item.notes}
+                            onChange={(e) => updateDiscount(selectedApprovedJob.id, item.id, "notes", e.target.value)}
                           />
                         </Field>
                       </div>

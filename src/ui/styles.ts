@@ -521,9 +521,9 @@ export const styles: Record<string, CSSProperties> = {
   },
   metricGrid: {
     display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
-    gap: 10,
-    marginTop: 10,
+    gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+    gap: "2px 24px",
+    marginTop: 8,
   },
   rightStrong: {
     textAlign: "right",
@@ -1355,6 +1355,9 @@ export const styles: Record<string, CSSProperties> = {
   // Contraste de administracion: NEGRO = oscuro con texto claro; BLANCO = claro con borde.
   adminBlack: { background: "#1f2937", color: "#f9fafb", fontWeight: 700 },
   adminWhite: { background: "#f8fafc", color: "#0f172a", border: "1px solid #cbd5e1", fontWeight: 700 },
+  // Semantica de direccion de la plata (NO es color de empresa): SALE plata = rojo; ENTRA = oscuro normal.
+  amountOut: { color: "#dc2626" },
+  amountIn: { color: "#0f172a" },
   statusGray: { background: "#e2e8f0", color: "#334155" },
   rowGreen: { background: "#dcfce7" },
   financialBrown: { background: "#92400e", color: "white" },
