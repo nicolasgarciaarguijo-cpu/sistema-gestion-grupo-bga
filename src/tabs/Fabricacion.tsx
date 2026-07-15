@@ -1,6 +1,7 @@
+import { Fragment, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel, SemaforoResumen, Semaforo, MiniMetric, ButtonLike } from "../ui/primitives";
-import { formatDateDisplay } from "../lib/format";
+import { formatDateDisplay, money } from "../lib/format";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
 type FabricacionTabProps = {
@@ -42,6 +43,13 @@ export function FabricacionTab({
   exportPrint,
   updateApprovedJob,
 }: FabricacionTabProps) {
+  // Que trabajos tienen abierto el detalle de faltantes. Solo UI, no se persiste.
+  const [expandedJobIds, setExpandedJobIds] = useState<number[]>([]);
+  const toggleJobDetail = (jobId: number) =>
+    setExpandedJobIds((current) =>
+      current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]
+    );
+
   return (
         <div style={styles.column}>
           <Panel span="wide" title="Semaforo de fabricacion">
@@ -224,7 +232,8 @@ export function FabricacionTab({
                 </thead>
                 <tbody>
                   {fabricationCalendarRows.map((job) => (
-                    <tr key={job.id}>
+                    <Fragment key={job.id}>
+                    <tr>
                       <td>{getCompanyMeta(job.company).short}</td>
                       <td>{job.budgetNumber}</td>
                       <td>{job.client}</td>
@@ -295,6 +304,16 @@ export function FabricacionTab({
                       </td>
                       <td>
                         <span
+                          onClick={
+                            job.materialMissingCount === 0
+                              ? undefined
+                              : () => toggleJobDetail(job.id)
+                          }
+                          title={
+                            job.materialMissingCount === 0
+                              ? undefined
+                              : "Ver que materiales faltan"
+                          }
                           style={{
                             ...styles.statusPill,
                             ...(job.materialMissingCount === 0
@@ -302,14 +321,62 @@ export function FabricacionTab({
                               : job.materialMissingCount <= 2
                               ? styles.statusYellow
                               : styles.statusRed),
+                            ...(job.materialMissingCount === 0
+                              ? {}
+                              : { cursor: "pointer", userSelect: "none" as const }),
                           }}
                         >
                           {job.materialMissingCount === 0
                             ? "Completo"
-                            : `${job.materialMissingCount} faltantes`}
+                            : `${expandedJobIds.includes(job.id) ? "▾" : "▸"} ${
+                                job.materialMissingCount
+                              } faltantes`}
                         </span>
                       </td>
                     </tr>
+                    {expandedJobIds.includes(job.id) && job.materialMissingCount > 0 && (
+                      <tr>
+                        <td colSpan={10} style={{ padding: 0 }}>
+                          <div style={{ padding: "10px 14px", background: "#f8fafc" }}>
+                            <div style={{ ...styles.sectionNote, marginTop: 0 }}>
+                              Falta para fabricar {job.budgetNumber} ({job.client}). Estimado{" "}
+                              {money(job.materialEstimatedCost)}. Es una sugerencia de compra: el
+                              stock ya esta repartido entre los trabajos abiertos por fecha de
+                              inicio, y al finalizar el trabajo estos faltantes desaparecen.
+                            </div>
+                            <table style={styles.table}>
+                              <thead>
+                                <tr>
+                                  <th>Material</th>
+                                  <th>Necesita</th>
+                                  <th>De stock</th>
+                                  <th>Falta</th>
+                                  <th>Estimado</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {job.materialMissingRows.map((row: any, index: number) => (
+                                  <tr key={`${job.id}-${row.description}-${index}`}>
+                                    <td>{row.description}</td>
+                                    <td>
+                                      {row.required} {row.unit}
+                                    </td>
+                                    <td>
+                                      {row.allocated} {row.unit}
+                                    </td>
+                                    <td style={{ fontWeight: 700 }}>
+                                      {row.missing} {row.unit}
+                                    </td>
+                                    <td>{money(row.estimatedCost)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

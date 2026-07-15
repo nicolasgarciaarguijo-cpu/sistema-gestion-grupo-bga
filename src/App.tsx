@@ -51,6 +51,8 @@ import {
   fiscalMonthKeys,
   isAutoCostGroup,
 } from "./domain/costs";
+import { allocateMaterialNeeds } from "./domain/materialNeeds";
+import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, suggestGroupForConcept } from "./lib/bankStatement";
 import {
   buildBudgetNumberFromParts,
@@ -5888,6 +5890,35 @@ export default function App() {
     );
   }, [approvedJobsSummary, stockByCode, stockByDescription]);
 
+  // Faltante desglosado POR TRABAJO, con el stock repartido entre los trabajos abiertos por
+  // fecha de inicio (ver domain/materialNeeds). Complementa a stockNeedRows, que consolida por
+  // material: los faltantes de ambas vistas suman igual. Un trabajo finalizado no tiene faltantes
+  // ni compite por stock: si se termino, el material se consiguio de algun lado.
+  const jobMaterialNeedById = useMemo(() => {
+    const needs = allocateMaterialNeeds(
+      approvedJobsSummary
+        .filter((job) => job.executionStatus !== "finalizado")
+        .map((job) => ({
+          id: job.id,
+          startDate: job.startDate || "",
+          materials: job.snapshot.materials.map((material) => {
+            const stockMatch = matchStockForMaterial(material, stockByCode, stockByDescription);
+            return {
+              description: material.description,
+              unit: material.unit,
+              qty: Number(material.qty || 0),
+              unitPrice: Number(material.unitPrice || 0),
+              stockKey: stockMatch ? String(stockMatch.id) : null,
+              stockQty: Number(stockMatch?.quantity || 0),
+            };
+          }),
+        }))
+    );
+    const map = new Map<number, JobMaterialNeed>();
+    needs.forEach((need) => map.set(need.jobId, need));
+    return map;
+  }, [approvedJobsSummary, stockByCode, stockByDescription]);
+
   const purchaseCalendarRows = useMemo(
     () =>
       approvedJobsSummary
@@ -6446,10 +6477,7 @@ export default function App() {
             : job.executionStatus === "en_curso"
             ? 60
             : 12;
-        const materialMissingCount = job.snapshot.materials.filter((material) => {
-          const stockMatch = stockByDescription.get(material.description.trim().toLowerCase());
-          return Number(stockMatch?.quantity || 0) < Number(material.qty || 0);
-        }).length;
+        const need = jobMaterialNeedById.get(job.id);
         return {
           ...job,
           start,
@@ -6458,10 +6486,12 @@ export default function App() {
           elapsedDays,
           timeProgressPct,
           statusProgressPct,
-          materialMissingCount,
+          materialMissingCount: need?.missingCount ?? 0,
+          materialMissingRows: need?.missingRows ?? [],
+          materialEstimatedCost: need?.estimatedCost ?? 0,
         };
       }),
-    [approvedJobsSummary, stockByCode, stockByDescription]
+    [approvedJobsSummary, jobMaterialNeedById]
   );
 
   const activeAssetsMonthlyDepreciation = useMemo(
