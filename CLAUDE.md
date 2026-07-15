@@ -70,6 +70,30 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
   `app_state_snapshots`/`app_state_modules`. Por eso el aislamiento real por empresa requiere
   rediseñar la persistencia (sacar datos del JSON global a filas por empresa), no solo cambiar RLS.
 
+## Costos fijos y variables (solapa `costos`, administración BRUTA) — v1 2026-07-15
+
+Nueva solapa que tapa el agujero de los gastos. Estructura por **año fiscal** (nov-oct), mes a mes.
+
+- **Regla base: el GRUPO define fijo/variable**, no el ítem (`CostGroup.kind`).
+- **Grupos "auto"** (`CostGroup.auto`): `Compras y materiales` y `Caja chica` (variables) y `Personal`
+  (fijo) se **agregan solos** desde sus solapas y NO admiten carga manual — así el mismo gasto no se
+  cuenta dos veces. Los otros 5 (`Administrativos, Comerciales, Financieros, Edilicios, Operativos`)
+  son los mismos "grandes grupos" de Marcadores y se cargan a mano o por extracto.
+- Dominio puro en `src/domain/costs.ts` (+ tests): `buildCostRows` normaliza todas las fuentes,
+  `aggregateCosts` arma la grilla grupo × mes, `suggestedFixedMonthlyByGroup` promedia **solo sobre
+  los meses con datos** (para sugerir el monto mensual de Marcadores).
+- Import de extractos en `src/lib/bankStatement.ts` (+ tests): Excel/CSV/PDF → borrador revisable →
+  confirmar (mismo patrón que remitos). Excel vía **SheetJS por CDN con `ensureScript`** (igual que
+  Tesseract): sin dependencias nuevas en package.json. Los créditos vienen destildados (no son costos).
+- Persistencia: módulo `costos` (`costGroups`, `costEntries`), aislado por empresa en
+  `PER_COMPANY_MODULE_FIELDS`. **No requiere migración SQL**: el módulo es nuevo, no hay datos legacy
+  que partir y la RLS de `app_state_modules_v2` ya es genérica por empresa.
+
+PENDIENTE (acordado con el usuario, "lo vamos a seguir acomodando"): ajustar el parser al formato real
+del banco cuando pase el archivo; enganchar los costos al estado de resultados (hoy `periodStatement`
+en `App.tsx` NO usa esta sección: sumaría doble con compras/caja chica/personal — hay que reemplazar
+esas fuentes por la agregación de Costos, no agregarlas); y volcar el promedio sugerido a Marcadores.
+
 ## Trabajo pendiente (ver docs/formulas-y-vinculos.md para el detalle de fórmulas)
 
 1. Aislamiento por empresa (rediseño de persistencia + funciones de ayuda + RLS por empresa + frontend). Base de F4.
@@ -93,6 +117,14 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
 7. Estética/layout: que los bloques llenen la pantalla sin huecos y se redimensionen para ser legibles.
 8. Modularización continua de `App.tsx` (~20k líneas) extracción por extracción, verificando con tsc.
 9. IDs por UUID (hoy `Date.now()` puede colisionar entre usuarios) y merge por ítem en la sync realtime.
+10. **Asistente con Claude: LISTO, falta solo activar la API key** (a propósito, para no entrar en gastos
+    todavía). Ya está: Edge Function `claude-chat` desplegada (v2, ACTIVE, `verify_jwt=true`, en
+    `supabase/functions/claude-chat/index.ts`), cliente `src/lib/assistant.ts`, y `App.tsx` con
+    `buildAssistantContext()` (foto en vivo del sistema) + `sendAssistantQuestion()` async. Si no hay key,
+    cae en `buildSystemAssistantReply()` (respuestas locales) → hoy funciona igual y **no gasta nada**.
+    Para activar: crear key en console.anthropic.com + saldo en Billing, y cargar el secreto
+    `ANTHROPIC_API_KEY` en Supabase (Dashboard → Edge Functions → Secrets). Opcional `ANTHROPIC_MODEL`
+    (default `claude-opus-4-8`; `claude-sonnet-5` es más barato). No requiere tocar código.
 
 ## Cuándo conviene Claude Code
 

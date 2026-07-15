@@ -42,7 +42,16 @@ import {
   monthBounds,
   isIsoInRange,
   fiscalYearLabel,
+  DEFAULT_FISCAL_START_MONTH,
 } from "./domain/fiscalYear";
+import {
+  DEFAULT_COST_GROUP_SEEDS,
+  aggregateCosts,
+  buildCostRows,
+  fiscalMonthKeys,
+  isAutoCostGroup,
+} from "./domain/costs";
+import { readBankStatement, suggestGroupForConcept } from "./lib/bankStatement";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -86,6 +95,8 @@ import { StockTab } from "./tabs/Stock";
 import { FacturacionTab } from "./tabs/Facturacion";
 import { HistorialTab } from "./tabs/Historial";
 import { MarcadoresTab } from "./tabs/Marcadores";
+import { CostosTab } from "./tabs/Costos";
+import type { CostStatementDraftRow } from "./tabs/Costos";
 import { AccesoTab } from "./tabs/Acceso";
 import { PresupuestoTab } from "./tabs/Presupuesto";
 import { PersonalTab } from "./tabs/Personal";
@@ -138,6 +149,8 @@ import type {
   CompanyAsset,
   CostAnalysisGroup,
   CostAnalysisEntry,
+  CostGroup,
+  CostEntry,
   RemitoDraftRow,
   RemitoDraft,
   SupabaseActiveSession,
@@ -181,6 +194,7 @@ import {
 } from "./lib/folderSync";
 import { buildManualHtml } from "./content/manualHtml";
 import { readTicket } from "./lib/ocr";
+import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
   safeName,
@@ -336,6 +350,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "historial", label: "CRM" },
   { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
+  { key: "costos", label: "Costos fijos y variables" },
   { key: "documentos", label: "Documentos" },
   { key: "marcadores", label: "Marcadores" },
   { key: "manual", label: "Manual" },
@@ -351,6 +366,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "compras",
   "cajaChica",
   "personal",
+  "costos",
 ];
 const CARGA_TAB_KEYS: TabKey[] = ["documentos", "manual"];
 
@@ -427,6 +443,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   emitirFacturas: "EF",
   stock: "SA",
   personal: "PE",
+  costos: "CFV",
   documentos: "DOC",
   manual: "MAN",
 };
@@ -961,6 +978,21 @@ const defaultCostAnalysisGroups: CostAnalysisGroup[] = DEFAULT_FIXED_MARKER_GROU
     notes: "",
   })
 );
+
+// Grupos de costos. Los 5 primeros coinciden con DEFAULT_FIXED_MARKER_GROUPS (los "grandes
+// grupos" que Marcadores ya usa en "costos fijos por grupo"); los "auto" se alimentan solos
+// desde compras / caja chica / personal.
+const defaultCostGroups: CostGroup[] = DEFAULT_COST_GROUP_SEEDS.map((seed, index) => ({
+  id: index + 1,
+  name: seed.name,
+  kind: seed.kind,
+  company: "General",
+  active: true,
+  auto: seed.auto,
+  notes: "",
+}));
+
+const defaultCostEntries: CostEntry[] = [];
 
 const defaultCostAnalysisEntries: CostAnalysisEntry[] = [];
 const defaultRemitoDrafts: RemitoDraft[] = [];
@@ -1499,6 +1531,8 @@ type PersistedAppStateData = {
   stockItems: StockItem[];
   costAnalysisGroups: CostAnalysisGroup[];
   costAnalysisEntries: CostAnalysisEntry[];
+  costGroups: CostGroup[];
+  costEntries: CostEntry[];
   remitoDrafts: RemitoDraft[];
   companyAssets: CompanyAsset[];
   linkedDocuments: LinkedDocument[];
@@ -1534,6 +1568,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "mensuales",
     label: "Periodos mensuales",
     fields: ["operationalMonth", "monthlyHistorySnapshots"] as const,
+  },
+  {
+    key: "costos",
+    label: "Costos fijos y variables",
+    fields: ["costGroups", "costEntries"] as const,
   },
   {
     key: "presupuestos",
@@ -1636,8 +1675,10 @@ const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> 
   historial: ["mensuales", "historial-crm", "presupuestos"],
   stock: ["stock-costos", "marcadores", "trabajos-aprobados"],
   personal: ["personal"],
+  // Costos agrega compras/caja chica/personal, asi que necesita esos modulos para calcular.
+  costos: ["mensuales", "costos", "compras", "caja-chica", "personal"],
   documentos: ["documentos"],
-  marcadores: ["marcadores", "stock-costos", "personal"],
+  marcadores: ["marcadores", "stock-costos", "personal", "costos"],
 };
 
 const getPersistenceModuleKeysForTab = (tab: TabKey): AppStateModuleKey[] =>
@@ -2474,6 +2515,16 @@ export default function App() {
   const [costAnalysisGroups, setCostAnalysisGroups] = useState<CostAnalysisGroup[]>(
     defaultCostAnalysisGroups
   );
+  // --- Costos fijos y variables ---
+  const [costGroups, setCostGroups] = useState<CostGroup[]>(defaultCostGroups);
+  const [costEntries, setCostEntries] = useState<CostEntry[]>(defaultCostEntries);
+  const [costsFiscalStartYear, setCostsFiscalStartYear] = useState<number>(() =>
+    currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date())
+  );
+  const [costsCompanyScope, setCostsCompanyScope] = useState<string>("__ALL__");
+  const [costStatementDraft, setCostStatementDraft] = useState<CostStatementDraftRow[]>([]);
+  const [costStatementMessage, setCostStatementMessage] = useState("");
+  const [costStatementBusy, setCostStatementBusy] = useState(false);
   const [costAnalysisEntries, setCostAnalysisEntries] = useState<CostAnalysisEntry[]>(
     defaultCostAnalysisEntries
   );
@@ -2603,6 +2654,7 @@ export default function App() {
     savedAt: string;
   } | null>(null);
   const [assistantDraft, setAssistantDraft] = useState("");
+  const [assistantBusy, setAssistantBusy] = useState(false);
   const [assistantMessages, setAssistantMessages] = useState<InternalAssistantMessage[]>([
     {
       id: 1,
@@ -6255,12 +6307,69 @@ export default function App() {
     return "Puedo darte un resumen rapido de presupuestos, stock, caja chica, compras, CRM, guardado compartido y usuarios activos. Prueba con una pregunta concreta.";
   };
 
-  const sendAssistantQuestion = () => {
+  // Foto en vivo del estado del sistema que se le pasa a Claude como contexto.
+  // Sin esto el asistente responderia "en abstracto"; con esto responde sobre los datos reales
+  // que el usuario tiene delante (y respetando el aislamiento por empresa: son los datos "visible*").
+  const buildAssistantContext = () => {
+    const stockValue = visibleStockItems.reduce(
+      (acc, item) => acc + Number(item.quantity || 0) * Number(item.unitPrice || 0),
+      0
+    );
+    const activeUsers =
+      otherActiveSessions.length === 0
+        ? "ninguno"
+        : otherActiveSessions
+            .map((item) => `${item.full_name || item.email} en ${getTabLabel(item.active_tab)}`)
+            .join(", ");
+
+    return [
+      "Estado actual del sistema (datos reales de la sesion del usuario):",
+      `- Solapa abierta: ${getTabLabel(activeTab)}.`,
+      `- Ultimo guardado: ${formatDateTimeDisplay(lastSavedAt)}. ${
+        storageMessage || "Sin alertas de guardado."
+      }`,
+      `- Otros usuarios operando ahora: ${activeUsers}.`,
+      `- Presupuestos visibles: ${visibleSavedBudgets.length}. Presupuesto en pantalla: empresa ${
+        getCompanyMeta(budget.company).short
+      }, cliente ${budget.client || "sin cliente cargado"}.`,
+      `- Stock: ${visibleStockItems.length} item(s) visibles, valor estimado ${money(stockValue)}.`,
+      `- Caja chica: ${pettyCashTrackingRows.length} gasto(s) aplicado(s). Asignado ${money(
+        pettyCashSummary.assignedTotal
+      )}, rendido ${money(pettyCashSummary.renderedTotal)}, saldo pendiente ${money(
+        pettyCashSummary.pendingBalance
+      )}.`,
+      `- Compras: ${visiblePurchaseInvoices.length} factura(s) de compra visibles.`,
+      `- CRM: ${crmClientRows.length} cliente(s) consolidado(s).`,
+      "",
+      "Usa estos datos para responder. Si te preguntan algo que no esta en esta foto,",
+      "decilo con claridad y sugeri en que solapa lo puede ver. No inventes numeros.",
+    ].join("\n");
+  };
+
+  const sendAssistantQuestion = async () => {
     const trimmed = assistantDraft.trim();
-    if (!trimmed) return;
+    if (!trimmed || assistantBusy) return;
+
+    // Historial previo para que Claude entienda el hilo de la conversacion.
+    const history: AssistantMessage[] = assistantMessages.map((message) => ({
+      role: message.role,
+      content: message.text,
+    }));
+
     appendAssistantMessage("user", trimmed);
-    appendAssistantMessage("assistant", buildSystemAssistantReply(trimmed));
     setAssistantDraft("");
+    setAssistantBusy(true);
+
+    try {
+      const reply = await askAssistant(history, trimmed, buildAssistantContext());
+      appendAssistantMessage("assistant", reply.text);
+    } catch {
+      // Sin API key configurada (o sin red) el asistente sigue andando con las
+      // respuestas locales de siempre: el sistema nunca queda mudo.
+      appendAssistantMessage("assistant", buildSystemAssistantReply(trimmed));
+    } finally {
+      setAssistantBusy(false);
+    }
   };
 
   const purchaseInvoicesWithPettyCashWhite = useMemo(() => {
@@ -7241,6 +7350,8 @@ export default function App() {
     stockItems: stockItems.map((item) => ({ ...item })),
     costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
+    costGroups: costGroups.map((item) => ({ ...item })),
+    costEntries: costEntries.map((item) => ({ ...item })),
     remitoDrafts: remitoDrafts.map((draft) => ({
       ...draft,
       rows: draft.rows.map((row) => ({ ...row })),
@@ -7465,6 +7576,16 @@ export default function App() {
     );
     setCostAnalysisEntries(
       keepAccessibleByCompany(data.costAnalysisEntries || defaultCostAnalysisEntries).map((item) => ({ ...item }))
+    );
+    // Costos: si el payload viene sin grupos (primera vez), se siembran los defaults.
+    // El flag `auto` se re-deriva del nombre para que datos viejos no queden editables.
+    setCostGroups(
+      keepAccessibleByCompany(
+        (data.costGroups || []).length > 0 ? data.costGroups : defaultCostGroups
+      ).map((item) => ({ ...item, auto: isAutoCostGroup(item.name) }))
+    );
+    setCostEntries(
+      keepAccessibleByCompany(data.costEntries || defaultCostEntries).map((item) => ({ ...item }))
     );
     setRemitoDrafts(
       keepAccessibleByCompany(data.remitoDrafts || defaultRemitoDrafts).map((draft) => ({
@@ -11300,6 +11421,230 @@ export default function App() {
   // Estado de resultados del periodo (base percibido, operativo) por empresa+periodo. Ingresos = cobros
   // (del balance); egresos = compras + caja chica + comisiones pagadas + nomina (por mes cargado) +
   // amortizacion; banco aparte. Circuito blanco/negro. Definido aca porque usa getPayrollSummaryForScenario.
+  // --- Costos fijos y variables ---
+  // Los 12 meses del ano fiscal elegido (el ano fiscal arranca en noviembre por default).
+  const costsMonths = useMemo(
+    () => fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, costsFiscalStartYear),
+    [costsFiscalStartYear]
+  );
+
+  const costsFiscalLabel = useMemo(
+    () => fiscalYearLabel(DEFAULT_FISCAL_START_MONTH, costsFiscalStartYear),
+    [costsFiscalStartYear]
+  );
+
+  // Nomina por (empresa, mes): mismo calculo que usa el estado de resultados, para que los
+  // numeros de Costos y los del balance no se contradigan.
+  const costsPayrollRows = useMemo(() => {
+    const byKey = new Map<string, { company: CompanyName; month: string; white: number; black: number }>();
+    visibleEmployees.forEach((emp) => {
+      (emp.payrolls || []).forEach((pr) => {
+        if (!pr?.month) return;
+        const summary = getPayrollSummaryForScenario({
+          company: emp.company,
+          category: emp.category,
+          seniorityYears: emp.seniorityYears,
+          hourlyNetManual: emp.hourlyNetManual,
+          hourlyGrossManual: emp.hourlyGrossManual,
+          payroll: pr,
+          isTemporal: emp.employmentType === "temporal",
+          agreedSalary: Number(emp.agreedSalary || 0),
+        });
+        const key = `${emp.company}|${pr.month}`;
+        const acc = byKey.get(key) || { company: emp.company, month: pr.month, white: 0, black: 0 };
+        acc.white += Number(summary.employerImpact || 0);
+        acc.black += Number(summary.blackImpact || 0);
+        byKey.set(key, acc);
+      });
+    });
+    return Array.from(byKey.values());
+    // getPayrollSummaryForScenario se recrea en cada render; las deps reales son las que
+    // alimentan ese calculo (escala, config y provisiones), listadas abajo.
+  }, [visibleEmployees, scaleRows, employeeBaseConfig, personalProvisionMarkers]);
+
+  // Todas las fuentes de gasto normalizadas a filas comparables.
+  const costRows = useMemo(
+    () =>
+      buildCostRows({
+        entries: costEntries,
+        purchases: visiblePurchaseInvoices.map((inv) => ({
+          company: inv.company,
+          invoiceDate: inv.invoiceDate,
+          total: Number(inv.total || 0),
+          administration: inv.administration,
+        })),
+        pettyCash: visiblePettyCashExpenses.map((exp) => ({
+          company: exp.company,
+          date: exp.date,
+          amount: Number(exp.amount || 0),
+          administration: getPettyCashAdministration(exp),
+        })),
+        payroll: costsPayrollRows,
+      }),
+    [costEntries, visiblePurchaseInvoices, visiblePettyCashExpenses, costsPayrollRows]
+  );
+
+  const costsAggregation = useMemo(
+    () =>
+      aggregateCosts({
+        months: costsMonths,
+        groups: costGroups,
+        rows: costRows,
+        companyScope: costsCompanyScope === "__ALL__" ? "__ALL__" : costsCompanyScope,
+      }),
+    [costsMonths, costGroups, costRows, costsCompanyScope]
+  );
+
+  const addCostGroup = () => {
+    setCostGroups((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        name: "Nuevo grupo",
+        kind: "fijo",
+        company: "General",
+        active: true,
+        auto: false,
+        notes: "",
+      },
+    ]);
+  };
+
+  const removeCostGroup = (id: number) => {
+    setCostGroups((prev) => prev.filter((group) => group.id !== id || group.auto));
+  };
+
+  const updateCostGroup = (id: number, field: keyof CostGroup, value: any) => {
+    setCostGroups((prev) =>
+      prev.map((group) => {
+        if (group.id !== id) return group;
+        // Los grupos automaticos no se renombran: su nombre es el contrato con buildCostRows.
+        if (group.auto && field === "name") return group;
+        return { ...group, [field]: value };
+      })
+    );
+  };
+
+  const addCostEntry = () => {
+    const firstManualGroup =
+      costGroups.find((group) => group.active && !group.auto)?.name || "";
+    setCostEntries((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        company: costsCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : costsCompanyScope,
+        date: `${costsMonths[0]}-01`,
+        group: firstManualGroup,
+        description: "",
+        amount: 0,
+        administration: "blanco",
+        source: "manual",
+        supplier: "",
+        notes: "",
+      },
+    ]);
+  };
+
+  const removeCostEntry = (id: number) => {
+    setCostEntries((prev) => prev.filter((entry) => entry.id !== id));
+  };
+
+  const updateCostEntry = (id: number, field: keyof CostEntry, value: any) => {
+    setCostEntries((prev) =>
+      prev.map((entry) => {
+        if (entry.id !== id) return entry;
+        // Nunca se deja mandar un gasto manual a un grupo automatico: se contaria dos veces.
+        if (field === "group" && isAutoCostGroup(String(value))) return entry;
+        return { ...entry, [field]: value };
+      })
+    );
+  };
+
+  // Import del extracto: lee el archivo y arma el borrador para revisar. No impacta nada todavia.
+  const handleCostStatementFile = async (file: File | null) => {
+    if (!file) return;
+    setCostStatementBusy(true);
+    setCostStatementMessage("");
+    try {
+      const result = await readBankStatement(file);
+      const manualGroups = costGroups
+        .filter((group) => group.active && !group.auto)
+        .map((group) => group.name);
+      const draft: CostStatementDraftRow[] = result.entries.map((entry) => ({
+        id: newId(),
+        date: entry.date,
+        concept: entry.concept,
+        amount: entry.amount,
+        movementType: entry.movementType,
+        group: suggestGroupForConcept(entry.concept, manualGroups),
+        administration: "blanco",
+        // Solo los debitos son gastos; los creditos (plata que entra) vienen destildados.
+        include: entry.movementType === "debito",
+      }));
+      setCostStatementDraft(draft);
+      const debits = draft.filter((row) => row.include).length;
+      setCostStatementMessage(
+        `Lei ${result.entries.length} movimiento(s) del ${result.sourceType.toUpperCase()}: ${debits} debito(s) listos para cargar. Revisa el grupo de cada uno y confirma.`
+      );
+    } catch (err) {
+      setCostStatementDraft([]);
+      setCostStatementMessage(
+        err instanceof Error ? err.message : "No se pudo leer el extracto."
+      );
+    } finally {
+      setCostStatementBusy(false);
+    }
+  };
+
+  const updateCostStatementDraftRow = (
+    id: number,
+    field: keyof CostStatementDraftRow,
+    value: any
+  ) => {
+    setCostStatementDraft((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, [field]: value } : row))
+    );
+  };
+
+  const discardCostStatementDraft = () => {
+    setCostStatementDraft([]);
+    setCostStatementMessage("");
+  };
+
+  const commitCostStatementDraft = () => {
+    const company = costsCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : costsCompanyScope;
+    const selected = costStatementDraft.filter((row) => row.include && row.group);
+    const skipped = costStatementDraft.filter((row) => row.include && !row.group).length;
+    if (selected.length === 0) {
+      setCostStatementMessage(
+        skipped > 0
+          ? `Faltan clasificar ${skipped} movimiento(s): elegi un grupo para poder cargarlos.`
+          : "No hay movimientos tildados para cargar."
+      );
+      return;
+    }
+    const newEntries: CostEntry[] = selected.map((row) => ({
+      id: newId(),
+      company,
+      date: row.date,
+      group: row.group,
+      description: row.concept,
+      amount: row.amount,
+      administration: row.administration,
+      source: "extracto",
+      supplier: "",
+      notes: "Importado del extracto bancario",
+    }));
+    setCostEntries((prev) => [...prev, ...newEntries]);
+    setCostStatementDraft([]);
+    setCostStatementMessage(
+      `Cargue ${newEntries.length} gasto(s) en ${getCompanyMeta(company).short}.${
+        skipped > 0 ? ` Deje ${skipped} sin cargar porque no tenian grupo.` : ""
+      }`
+    );
+  };
+
+
   const periodStatement = useMemo(() => {
     const monthRange = monthBounds(balanceMonth);
     const makeInPeriod = (company: string): ((d: string) => boolean) => {
@@ -12744,6 +13089,35 @@ export default function App() {
         />
       )}
 
+      {activeTab === "costos" && (
+        <CostosTab
+          fiscalLabel={costsFiscalLabel}
+          months={costsMonths}
+          aggregation={costsAggregation}
+          costGroups={costGroups}
+          costEntries={costEntries}
+          costRows={costRows}
+          companyScope={costsCompanyScope}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          getCompanyMeta={getCompanyMeta}
+          onScopeChange={(scope) => setCostsCompanyScope(scope)}
+          onShiftFiscalYear={(delta) => setCostsFiscalStartYear((prev) => prev + delta)}
+          addCostGroup={addCostGroup}
+          removeCostGroup={removeCostGroup}
+          updateCostGroup={updateCostGroup}
+          addCostEntry={addCostEntry}
+          removeCostEntry={removeCostEntry}
+          updateCostEntry={updateCostEntry}
+          statementDraft={costStatementDraft}
+          statementMessage={costStatementMessage}
+          statementBusy={costStatementBusy}
+          onStatementFile={handleCostStatementFile}
+          updateStatementDraftRow={updateCostStatementDraftRow}
+          commitStatementDraft={commitCostStatementDraft}
+          discardStatementDraft={discardCostStatementDraft}
+        />
+      )}
+
       {activeTab === "documentos" && (
         <DocumentosTab
           linkedDocuments={linkedDocuments}
@@ -13385,6 +13759,7 @@ export default function App() {
                 <textarea
                   style={styles.chatTextarea}
                   value={assistantDraft}
+                  disabled={assistantBusy}
                   onChange={(e) => setAssistantDraft(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
@@ -13395,8 +13770,11 @@ export default function App() {
                   placeholder="Ejemplo: decime cuantos presupuestos hay, quien esta operando o como esta caja chica..."
                 />
                 <div style={styles.chatActions}>
-                  <ButtonLike onClick={sendAssistantQuestion}>
-                    Consultar asistente
+                  {assistantBusy && (
+                    <span style={styles.chatStatus}>Pensando...</span>
+                  )}
+                  <ButtonLike onClick={sendAssistantQuestion} disabled={assistantBusy}>
+                    {assistantBusy ? "Consultando..." : "Consultar asistente"}
                   </ButtonLike>
                 </div>
               </div>

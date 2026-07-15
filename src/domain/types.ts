@@ -30,6 +30,7 @@ export type TabKey =
   | "emitirFacturas"
   | "stock"
   | "personal"
+  | "costos"
   | "documentos"
   | "manual";
 
@@ -662,6 +663,38 @@ export type CostAnalysisEntry = {
   quantity: number;
   unitCost: number;
   active: boolean;
+  notes: string;
+};
+
+// --- Costos fijos y variables (solapa Costos) ---
+// La clasificacion fijo/variable vive en el GRUPO, no en el item: cada gasto hereda el tipo
+// de su grupo. Los grupos fijos son los mismos "grandes grupos" que Marcadores ya usa.
+export type CostKind = "fijo" | "variable";
+
+export type CostGroup = {
+  id: number;
+  name: string;
+  kind: CostKind;
+  company: CompanyScope;
+  active: boolean;
+  // Los grupos automaticos (compras, caja chica, personal) se alimentan solos desde otras
+  // solapas y no se pueden cargar a mano: evita contar el mismo gasto dos veces.
+  auto: boolean;
+  notes: string;
+};
+
+// Gasto cargado en la solapa Costos: lo que NO vive ya en otra solapa
+// (alquiler, servicios, impuestos...). Compras/caja chica/personal no se cargan aca.
+export type CostEntry = {
+  id: number;
+  company: CompanyName;
+  date: string; // ISO yyyy-mm-dd
+  group: string; // nombre de CostGroup
+  description: string;
+  amount: number;
+  administration: "blanco" | "negro";
+  source: "manual" | "extracto";
+  supplier: string;
   notes: string;
 };
 
