@@ -53,7 +53,7 @@ import {
 } from "./domain/costs";
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
-import { readBankStatement, suggestGroupForConcept } from "./lib/bankStatement";
+import { readBankStatement, suggestGroupForConcept, SHEETJS_CDN } from "./lib/bankStatement";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -195,7 +195,8 @@ import {
   scanDirectory,
 } from "./lib/folderSync";
 import { buildManualHtml } from "./content/manualHtml";
-import { readTicket } from "./lib/ocr";
+import { readTicket, ensureScript } from "./lib/ocr";
+import { buildClientCrmRows } from "./domain/clientCrm";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
@@ -5520,6 +5521,84 @@ export default function App() {
     } catch (err: any) {
       console.error("[documentos] export personal:", err);
       setDocumentsMessage("Error al exportar personal: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+    return written;
+  };
+
+  // Exporta el CRM: una fila POR CLIENTE (consolidado, ver domain/clientCrm) a un archivo Excel propio
+  // dentro de "CRM - Leads y Seguimiento/". Escribe un archivo NUEVO y aparte; NO pisa la planilla del
+  // usuario (que tiene la Bandeja de leads y el Tablero con formulas). El sistema manda el CRM.
+  const exportCrmToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando clientes al CRM...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return written;
+      }
+      const budgets = savedBudgets.filter((b) => canAccessCompany(b.company));
+      const rows = buildClientCrmRows(
+        budgets.map((b) => ({
+          number: String(b.number ?? ""),
+          client: String(b.client ?? ""),
+          project: String(b.project ?? ""),
+          date: String(b.date ?? ""),
+          status: String(b.status ?? ""),
+          revisionNumber: Number(b.revisionNumber ?? 0),
+          finalPrice: Number(b.finalPrice ?? 0),
+          company: String(b.company ?? ""),
+        }))
+      );
+
+      await ensureScript(SHEETJS_CDN);
+      const XLSX = (window as any).XLSX;
+      if (!XLSX?.utils) throw new Error("No se pudo cargar el generador de Excel.");
+
+      const header = [
+        "Cliente",
+        "Empresa",
+        "Que pidio",
+        "Ultima fecha",
+        "Presupuestos",
+        "Aprobados",
+        "Monto aprobado",
+        "Etapa",
+      ];
+      const aoa = [
+        header,
+        ...rows.map((r) => [
+          r.client,
+          r.companies.map((c) => getCompanyMeta(c as CompanyName).short).join(" / "),
+          r.projects.join(" · "),
+          r.lastDate,
+          r.budgetsCount,
+          r.approvedCount,
+          r.approvedAmount,
+          r.stage,
+        ]),
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws["!cols"] = [{ wch: 26 }, { wch: 12 }, { wch: 40 }, { wch: 12 }, { wch: 12 }, { wch: 10 }, { wch: 16 }, { wch: 14 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Clientes");
+      const buffer: ArrayBuffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+
+      const path = "CRM - Leads y Seguimiento/Clientes (export sistema).xlsx";
+      await writeFileToFolder(handle, path, blob);
+      written.push(path);
+      const totalAprob = rows.reduce((acc, r) => acc + r.approvedAmount, 0);
+      setDocumentsMessage(
+        `CRM exportado: ${rows.length} clientes en "${path}". Monto aprobado total: ${money(totalAprob)}.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export CRM:", err);
+      setDocumentsMessage("Error al exportar el CRM: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
     return written;
@@ -13163,6 +13242,7 @@ export default function App() {
           onRemove={removeLinkedDocument}
           onExportManuals={exportManualsToFolder}
           onExportBudgets={exportBudgetsToFolder}
+          onExportCrm={exportCrmToFolder}
           onExportJobs={exportApprovedJobsToFolder}
           onExportFacturas={exportFacturasGlobalToFolder}
           onExportFacturacion={exportFacturacionToFolder}

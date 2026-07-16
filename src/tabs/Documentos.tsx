@@ -18,6 +18,7 @@ type DocumentosTabProps = {
   onRemove: (id: number) => void;
   onExportManuals: () => void;
   onExportBudgets: () => void;
+  onExportCrm: () => void;
   onExportJobs: () => void;
   onExportFacturas: () => void;
   onExportFacturacion: () => void;
@@ -78,6 +79,7 @@ export function DocumentosTab({
   onRemove,
   onExportManuals,
   onExportBudgets,
+  onExportCrm,
   onExportJobs,
   onExportFacturas,
   onExportFacturacion,
@@ -190,6 +192,9 @@ export function DocumentosTab({
           </ButtonLike>
           <ButtonLike onClick={onExportBudgets} disabled={busy || !folderLinked} secondary>
             Presupuestos
+          </ButtonLike>
+          <ButtonLike onClick={onExportCrm} disabled={busy || !folderLinked} secondary>
+            CRM (clientes)
           </ButtonLike>
           <ButtonLike onClick={onExportJobs} disabled={busy || !folderLinked} secondary>
             Trabajos aprobados

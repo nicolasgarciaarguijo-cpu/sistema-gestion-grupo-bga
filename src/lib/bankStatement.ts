@@ -224,7 +224,7 @@ export function suggestGroupForConcept(concept: string, availableGroups: string[
 
 // --- Lectura de archivos (necesita navegador; no se testea en Jest) ---
 
-const SHEETJS_CDN = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
+export const SHEETJS_CDN = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
 
 async function readExcelRows(file: File): Promise<string[][]> {
   await ensureScript(SHEETJS_CDN);
