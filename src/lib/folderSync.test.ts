@@ -103,4 +103,49 @@ describe("classifyPath", () => {
       month: "",
     });
   });
+
+  // --- Estructura NUEVA: <carpeta>/<EMPRESA>/Ejercicio .../<AAAA-MM Mes>/... ---
+
+  it("nueva: personal con empresa, ejercicio fiscal y mes con nombre", () => {
+    expect(
+      classifyPath(
+        "Personal/DE RAIZ/MAXIMILIANO EZEQUIEL PACIFICO/Recibos/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo/2026-05_Sueldo.pdf"
+      )
+    ).toEqual({
+      docType: "personal",
+      company: "DE RAIZ",
+      employee: "MAXIMILIANO EZEQUIEL PACIFICO",
+      subArea: "Recibos",
+      month: "2026-05",
+    });
+  });
+
+  it("nueva: la documentacion cruda del empleado no tiene mes", () => {
+    const r = classifyPath("Personal/BGA/JUAN PEREZ/Documentacion/contrato.pdf");
+    expect(r.docType).toBe("personal");
+    expect(r.company).toBe("BGA");
+    expect(r.employee).toBe("JUAN PEREZ");
+    expect(r.subArea).toBe("Documentacion");
+    expect(r.month).toBe("");
+  });
+
+  it("nueva: detecta la empresa y el mes con nombre en otras carpetas", () => {
+    const r = classifyPath("Compras/DE RAIZ/Ejercicio 2025-2026 (nov-oct)/2026-03 Marzo/factura.pdf");
+    expect(r.docType).toBe("compras");
+    expect(r.company).toBe("DE RAIZ");
+    expect(r.month).toBe("2026-03");
+  });
+
+  it("nueva: GENERAL (la conjunta) se reconoce como empresa", () => {
+    expect(classifyPath("Compras/General/Ejercicio 2025-2026 (nov-oct)/2026-03 Marzo/x.pdf").company).toBe("GENERAL");
+  });
+
+  it("la estructura VIEJA (sin empresa) sigue funcionando", () => {
+    const r = classifyPath("Personal/ADALBERTO SORIA/Recibos/2026-05/recibo.pdf");
+    expect(r.docType).toBe("personal");
+    expect(r.employee).toBe("ADALBERTO SORIA");
+    expect(r.subArea).toBe("Recibos");
+    expect(r.month).toBe("2026-05");
+    expect(r.company).toBeUndefined();
+  });
 });

@@ -51,6 +51,7 @@ import {
   fiscalMonthKeys,
   isAutoCostGroup,
 } from "./domain/costs";
+import { companyFolderName, personalSectionPath, PERSONAL_SECTIONS } from "./domain/folderPaths";
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, suggestGroupForConcept, SHEETJS_CDN } from "./lib/bankStatement";
@@ -5499,19 +5500,30 @@ export default function App() {
         setDocumentsBusy(false);
         return written;
       }
-      const monthKey = todayIso().slice(0, 7);
-      const subfolders = ["Documentacion", "EPP", "Examenes", "Capacitaciones", "Presentismo"];
+      // Estructura: Personal/<EMPRESA>/<empleado>/<seccion>[/Ejercicio .../<AAAA-MM Mes>]
+      // La documentacion cruda (no vence) queda sin ejercicio ni mes; el resto se separa (ver
+      // domain/folderPaths). El sistema solo lleva el ejercicio en curso; la carpeta es el archivo.
+      const today = todayIso();
+      const monthKey = today.slice(0, 7);
       for (const emp of visibleEmployees) {
-        const base = `Personal/${safeName(emp.name || `Empleado ${emp.id}`)}`;
-        for (const sub of subfolders) {
-          await ensureFolder(handle, `${base}/${sub}`);
+        const meta = getCompanyMeta(emp.company);
+        const employeeFolder = safeName(emp.name || `Empleado ${emp.id}`);
+        const pathOf = (section: string) =>
+          personalSectionPath({
+            companyShort: meta.short,
+            employeeFolder,
+            section,
+            iso: today,
+            fiscalStartMonth: meta.fiscalYearStartMonth,
+          });
+        for (const sec of PERSONAL_SECTIONS) {
+          await ensureFolder(handle, pathOf(sec.name));
         }
-        // Recibos separados por mes.
-        await ensureFolder(handle, `${base}/Recibos/${monthKey}`);
+        const base = `Personal/${companyFolderName(meta.short)}/${employeeFolder}`;
         const resumenPath = `${base}/Resumen del legajo.html`;
-        await writeFileToFolder(handle, resumenPath, buildPersonalSummaryHtml([emp], todayIso()));
+        await writeFileToFolder(handle, resumenPath, buildPersonalSummaryHtml([emp], today));
         written.push(resumenPath);
-        const presPath = `${base}/Presentismo/Presentismo ${monthKey}.html`;
+        const presPath = `${pathOf("Presentismo")}/Presentismo ${monthKey}.html`;
         await writeFileToFolder(handle, presPath, buildPresentismoResumenHtml([emp], monthKey));
         written.push(presPath);
       }

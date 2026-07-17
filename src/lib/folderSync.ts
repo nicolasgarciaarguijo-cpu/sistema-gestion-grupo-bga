@@ -16,6 +16,7 @@ export type ScannedFile = {
 export type PathClassification = {
   docType: LinkedDocumentType | null;
   month: string; // "YYYY-MM" o ""
+  company?: string; // "BGA" | "DE RAIZ" | "GENERAL" si la ruta trae el nivel de empresa
   employee?: string;
   subArea?: string;
 };
@@ -67,7 +68,15 @@ const TOP_FOLDER_TO_TYPE: Record<string, LinkedDocumentType> = {
   personal: "personal",
 };
 
-const MONTH_RE = /^\d{4}-\d{2}$/;
+// Mes: acepta "2026-03" (estructura vieja) y "2026-03 Marzo" (nueva, ordena cronologicamente).
+const MONTH_RE = /^(\d{4}-\d{2})(\s+.+)?$/;
+// Nivel de EMPRESA (va siempre primero en la estructura nueva). "General" es la conjunta (reportes).
+const COMPANY_FOLDERS: Record<string, string> = {
+  bga: "BGA",
+  "de raiz": "DE RAIZ",
+  deraiz: "DE RAIZ",
+  general: "GENERAL",
+};
 const PERSONAL_SUBAREAS = [
   "documentacion",
   "epp",
@@ -103,7 +112,15 @@ export function classifyPath(relPath: string): PathClassification {
   const segments = relPath.split("/").filter(Boolean);
   if (segments.length === 0) return { docType: null, month: "" };
   const normSegs = segments.map(norm);
-  const month = normSegs.find((seg) => MONTH_RE.test(seg)) ?? "";
+  // Mes: primer segmento con forma "yyyy-mm" (con o sin el nombre del mes al lado).
+  let month = "";
+  for (const seg of normSegs) {
+    const m = seg.match(MONTH_RE);
+    if (m) { month = m[1]; break; }
+  }
+  // Empresa: si algun segmento es BGA / DE RAIZ / GENERAL (estructura nueva).
+  const companyIdx = normSegs.findIndex((seg) => COMPANY_FOLDERS[seg]);
+  const company = companyIdx >= 0 ? COMPANY_FOLDERS[normSegs[companyIdx]] : undefined;
 
   // La escala salarial tiene prioridad: si aparece en CUALQUIER segmento (incluso Personal/Escalas...),
   // se clasifica como "escalas" para que el sistema la lea e importe los valores.
@@ -125,11 +142,13 @@ export function classifyPath(relPath: string): PathClassification {
   const docType = TOP_FOLDER_TO_TYPE[top] ?? null;
 
   if (docType === "personal" && segments.length >= 2) {
-    const employee = segments[1];
-    const subAreaSeg = segments.slice(2).find((seg) => PERSONAL_SUBAREAS.includes(norm(seg)));
-    return { docType, month, employee, subArea: subAreaSeg };
+    // Nueva: Personal/<EMPRESA>/<empleado>/<subarea>/...  |  Vieja: Personal/<empleado>/<subarea>/...
+    const empIdx = companyIdx === 1 ? 2 : 1;
+    const employee = segments[empIdx];
+    const subAreaSeg = segments.slice(empIdx + 1).find((seg) => PERSONAL_SUBAREAS.includes(norm(seg)));
+    return { docType, month, company, employee, subArea: subAreaSeg };
   }
-  return { docType, month };
+  return { docType, month, company };
 }
 
 // ---- Wrappers del navegador (no testeados en Jest; requieren Chrome/Edge) ----
