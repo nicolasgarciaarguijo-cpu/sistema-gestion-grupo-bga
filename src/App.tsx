@@ -5505,6 +5505,15 @@ export default function App() {
       // domain/folderPaths). El sistema solo lleva el ejercicio en curso; la carpeta es el archivo.
       const today = todayIso();
       const monthKey = today.slice(0, 7);
+      // La escala salarial NO es de un empleado: va suelta en cada empresa. De Raíz se rige por
+      // convenio; BGA normalmente por acuerdo entre partes, pero le dejamos la carpeta lista por si
+      // adopta alguna escala (se carga ahí y alimenta al sistema igual).
+      for (const company of Array.from(new Set(visibleEmployees.map((e) => e.company)))) {
+        await ensureFolder(
+          handle,
+          `Personal/${companyFolderName(getCompanyMeta(company).short)}/ESCALAS SALARIALES`
+        );
+      }
       for (const emp of visibleEmployees) {
         const meta = getCompanyMeta(emp.company);
         const employeeFolder = safeName(emp.name || `Empleado ${emp.id}`);

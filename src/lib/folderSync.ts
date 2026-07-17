@@ -123,9 +123,10 @@ export function classifyPath(relPath: string): PathClassification {
   const company = companyIdx >= 0 ? COMPANY_FOLDERS[normSegs[companyIdx]] : undefined;
 
   // La escala salarial tiene prioridad: si aparece en CUALQUIER segmento (incluso Personal/Escalas...),
-  // se clasifica como "escalas" para que el sistema la lea e importe los valores.
+  // se clasifica como "escalas" para que el sistema la lea e importe los valores. La escala es POR
+  // EMPRESA (De Raíz se rige por convenio; BGA por acuerdo entre partes, pero puede cargar una).
   if (normSegs.some((seg) => ESCALA_KEYWORDS.includes(seg))) {
-    return { docType: "escalas", month };
+    return { docType: "escalas", month, company };
   }
 
   const top = normSegs[0];

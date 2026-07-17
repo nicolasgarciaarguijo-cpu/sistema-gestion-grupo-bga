@@ -140,12 +140,15 @@ describe("classifyPath", () => {
     expect(classifyPath("Compras/General/Ejercicio 2025-2026 (nov-oct)/2026-03 Marzo/x.pdf").company).toBe("GENERAL");
   });
 
-  it("nueva: la escala salarial es GENERAL (compartida, fuera de los empleados) y sigue siendo 'escalas'", () => {
-    // La escala se carga aparte para tener los valores reales de calculo: no es de una empresa
-    // ni de un empleado.
-    expect(
-      classifyPath("Personal/GENERAL/ESCALAS SALARIALES/Ejercicio 2025-2026 (nov-oct)/2026-06 a 09 Escala.pdf").docType
-    ).toBe("escalas");
+  it("nueva: la escala salarial va suelta POR EMPRESA (fuera de los empleados) y trae la empresa", () => {
+    // La escala se carga aparte para tener los valores reales de calculo: no es de un empleado.
+    // De Raíz se rige por convenio; BGA por acuerdo entre partes, pero puede cargar la suya.
+    const r = classifyPath(
+      "Personal/DE RAIZ/ESCALAS SALARIALES/Ejercicio 2025-2026 (nov-oct)/2026-06 a 09 Escala.pdf"
+    );
+    expect(r.docType).toBe("escalas");
+    expect(r.company).toBe("DE RAIZ");
+    expect(classifyPath("Personal/BGA/ESCALAS SALARIALES/UOM 2026.pdf").company).toBe("BGA");
   });
 
   it("la estructura VIEJA (sin empresa) sigue funcionando", () => {
