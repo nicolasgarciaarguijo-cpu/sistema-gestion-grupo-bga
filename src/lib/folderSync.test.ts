@@ -140,6 +140,14 @@ describe("classifyPath", () => {
     expect(classifyPath("Compras/General/Ejercicio 2025-2026 (nov-oct)/2026-03 Marzo/x.pdf").company).toBe("GENERAL");
   });
 
+  it("nueva: la escala salarial es GENERAL (compartida, fuera de los empleados) y sigue siendo 'escalas'", () => {
+    // La escala se carga aparte para tener los valores reales de calculo: no es de una empresa
+    // ni de un empleado.
+    expect(
+      classifyPath("Personal/GENERAL/ESCALAS SALARIALES/Ejercicio 2025-2026 (nov-oct)/2026-06 a 09 Escala.pdf").docType
+    ).toBe("escalas");
+  });
+
   it("la estructura VIEJA (sin empresa) sigue funcionando", () => {
     const r = classifyPath("Personal/ADALBERTO SORIA/Recibos/2026-05/recibo.pdf");
     expect(r.docType).toBe("personal");
