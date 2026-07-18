@@ -199,6 +199,7 @@ import { buildManualHtml } from "./content/manualHtml";
 import { readTicket, ensureScript } from "./lib/ocr";
 import { buildClientCrmRows } from "./domain/clientCrm";
 import { buildReservaFromSources, latestBankBalancesByAccount } from "./domain/reservaSources";
+import { summarizeContributions, type CapitalEntry } from "./domain/contributions";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
@@ -1151,6 +1152,8 @@ const defaultDebtPlans: DebtPlan[] = [
 
 const defaultBankStatementEntries: BankStatementEntry[] = [];
 
+const defaultCapitalEntries: CapitalEntry[] = [];
+
 const defaultCompanyAssets: CompanyAsset[] = [
   {
     id: 1,
@@ -1533,6 +1536,7 @@ type PersistedAppStateData = {
   pettyCashExpenses: PettyCashExpense[];
   debtPlans: DebtPlan[];
   bankStatementEntries: BankStatementEntry[];
+  capitalEntries: CapitalEntry[];
   stockItems: StockItem[];
   costAnalysisGroups: CostAnalysisGroup[];
   costAnalysisEntries: CostAnalysisEntry[];
@@ -1615,7 +1619,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries"] as const,
   },
   {
     key: "compras",
@@ -2516,6 +2520,7 @@ export default function App() {
   const [pettyCashExpenses, setPettyCashExpenses] = useState<PettyCashExpense[]>(defaultPettyCashExpenses);
   const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
+  const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>(defaultCapitalEntries);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
   const [costAnalysisGroups, setCostAnalysisGroups] = useState<CostAnalysisGroup[]>(
     defaultCostAnalysisGroups
@@ -3369,6 +3374,7 @@ export default function App() {
     prune(pettyCashExpenses, setPettyCashExpenses);
     prune(debtPlans, setDebtPlans);
     prune(bankStatementEntries, setBankStatementEntries);
+    prune(capitalEntries, setCapitalEntries);
     prune(stockItems, setStockItems);
     prune(costAnalysisGroups, setCostAnalysisGroups);
     prune(costAnalysisEntries, setCostAnalysisEntries);
@@ -3391,6 +3397,7 @@ export default function App() {
     pettyCashExpenses,
     debtPlans,
     bankStatementEntries,
+    capitalEntries,
     stockItems,
     costAnalysisGroups,
     costAnalysisEntries,
@@ -3695,6 +3702,11 @@ export default function App() {
   const visibleDebtPlans = useMemo(
     () => debtPlans.filter((item) => canAccessCompany(item.company)),
     [debtPlans, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  const visibleCapitalEntries = useMemo(
+    () => capitalEntries.filter((item) => canAccessCompany(item.company)),
+    [capitalEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleBankStatementEntries = useMemo(
@@ -7478,6 +7490,7 @@ export default function App() {
       ...item,
       date: stampDate(item.date),
     })),
+    capitalEntries: capitalEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
     stockItems: stockItems.map((item) => ({ ...item })),
     costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
@@ -7695,6 +7708,15 @@ export default function App() {
     setDebtPlans(keepAccessibleByCompany(data.debtPlans || defaultDebtPlans).map((item) => ({ ...item })));
     setBankStatementEntries(
       keepAccessibleByCompany(data.bankStatementEntries || defaultBankStatementEntries).map((item) => ({ ...item }))
+    );
+    setCapitalEntries(
+      keepAccessibleByCompany(data.capitalEntries || defaultCapitalEntries).map((item) => ({
+        ...item,
+        direction: item.direction === "devuelto" ? "devuelto" : "recibido",
+        kind: item.kind === "prestamo" ? "prestamo" : "aporte",
+        color: item.color === "negro" ? "negro" : "blanco",
+        notes: item.notes || "",
+      }))
     );
     setStockItems(
       keepAccessibleByCompany(data.stockItems || defaultStockItems).map((item) => ({
@@ -9736,6 +9758,7 @@ export default function App() {
     pettyCashExpenses,
     debtPlans,
     bankStatementEntries,
+    capitalEntries,
     stockItems,
     costAnalysisGroups,
     costAnalysisEntries,
@@ -10078,6 +10101,27 @@ export default function App() {
 
   const removeDebtPlan = (debtId: number) => {
     setDebtPlans((prev) => prev.filter((item) => item.id !== debtId));
+  };
+
+  const addCapitalEntry = () => {
+    setCapitalEntries((prev) => [
+      {
+        id: newId(),
+        company: budget.company,
+        date: todayIso(),
+        origin: "",
+        kind: "aporte",
+        direction: "recibido",
+        color: "blanco",
+        amount: 0,
+        notes: "",
+      },
+      ...prev,
+    ]);
+  };
+
+  const removeCapitalEntry = (entryId: number) => {
+    setCapitalEntries((prev) => prev.filter((item) => item.id !== entryId));
   };
 
   const addBankStatementEntry = () => {
@@ -10800,6 +10844,25 @@ export default function App() {
         })),
     });
   }, [reservaBankAccounts, visiblePettyCashFunds, visiblePettyCashExpenses, balanceCompanyScope]);
+
+  // DEUDAS Y APORTES (registro; ver domain/contributions.ts). Sigue el mismo selector de empresa.
+  const contributionsSummary = useMemo(
+    () =>
+      summarizeContributions(
+        visibleCapitalEntries.filter(
+          (item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope
+        )
+      ),
+    [visibleCapitalEntries, balanceCompanyScope]
+  );
+
+  const scopedCapitalEntries = useMemo(
+    () =>
+      visibleCapitalEntries
+        .filter((item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope)
+        .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id),
+    [visibleCapitalEntries, balanceCompanyScope]
+  );
 
   const annualCashFlowEntries = useMemo(() => {
     const entries: Array<{
@@ -13062,6 +13125,11 @@ export default function App() {
           bankStatementSummary={bankStatementSummary}
           reservaSummary={reservaSummary}
           reservaBankAccounts={reservaBankAccounts}
+          contributionsSummary={contributionsSummary}
+          capitalEntries={scopedCapitalEntries}
+          setCapitalEntries={setCapitalEntries}
+          addCapitalEntry={addCapitalEntry}
+          removeCapitalEntry={removeCapitalEntry}
           annualCashFlowByMonth={annualCashFlowByMonth}
           getCompanyMeta={getCompanyMeta}
           monthLabel={monthLabel}

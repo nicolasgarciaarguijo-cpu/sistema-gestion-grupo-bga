@@ -3,6 +3,7 @@ import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, TwoCol, Field } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, BankStatementEntry } from "../domain/types";
+import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
 
 // Tile de balance: blanco claro / negro oscuro para diferenciar las administraciones de un vistazo.
 function BalanceTile({
@@ -128,6 +129,11 @@ type CashflowTabProps = {
   bankStatementSummary: any;
   reservaSummary: any;
   reservaBankAccounts: { company: string; bank: string; date: string; balance: number }[];
+  contributionsSummary: CapitalSummary;
+  capitalEntries: CapitalEntry[];
+  setCapitalEntries: React.Dispatch<React.SetStateAction<CapitalEntry[]>>;
+  addCapitalEntry: () => void;
+  removeCapitalEntry: (entryId: number) => void;
   annualCashFlowByMonth: any[];
   getCompanyMeta: (company: CompanyName) => any;
   monthLabel: (month: string) => string;
@@ -166,6 +172,11 @@ export function CashflowTab({
   bankStatementSummary,
   reservaSummary,
   reservaBankAccounts,
+  contributionsSummary,
+  capitalEntries,
+  setCapitalEntries,
+  addCapitalEntry,
+  removeCapitalEntry,
   annualCashFlowByMonth,
   getCompanyMeta,
   monthLabel,
@@ -624,6 +635,198 @@ export function CashflowTab({
                   ))}
                 </div>
               </>
+            )}
+            {contributionsSummary.prestamosPendientes.total !== 0 &&
+              (() => {
+                const reservaArs =
+                  reservaSummary.totals.find((t: any) => t.currency === "ARS")?.closing || 0;
+                const pend = contributionsSummary.prestamosPendientes.total;
+                const excedente = reservaArs - pend;
+                return (
+                  <>
+                    <div style={balanceSection}>Excedente (reserva menos préstamos a devolver)</div>
+                    <div>
+                      <StatRow label="Reserva pesos" value={money(reservaArs)} />
+                      <StatRow label="− Préstamos pendientes" value={money(pend)} tone="out" />
+                      <StatRow
+                        label="Excedente sobre préstamos"
+                        value={money(excedente)}
+                        strong
+                        last
+                        tone={excedente < 0 ? "out" : undefined}
+                      />
+                    </div>
+                  </>
+                );
+              })()}
+          </Panel>
+
+          <Panel
+            title="Deudas y aportes · registro"
+            span="full"
+            actions={<ButtonLike onClick={addCapitalEntry}>Agregar movimiento</ButtonLike>}
+          >
+            <div style={styles.noticeBox}>
+              Registro de la plata que entró para funcionar (socios, banco, la otra empresa).{" "}
+              <strong>No toca resultados</strong> y no mueve la reserva (esa plata ya está en el banco);
+              acá solo se asienta para verla. <strong>Aporte</strong> = capital, no vuelve;{" "}
+              <strong>préstamo</strong> = se devuelve. Los dólares son un valor congelado de referencia,
+              no se suman con los pesos.
+            </div>
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Aportes (capital)" value={money(contributionsSummary.aportes.total)} />
+              <MiniMetric
+                label="Préstamos pendientes"
+                value={money(contributionsSummary.prestamosPendientes.total)}
+                tone="out"
+              />
+              <MiniMetric label="Total recibido" value={money(contributionsSummary.totalRecibido)} />
+              {contributionsSummary.usdReference !== 0 && (
+                <MiniMetric
+                  label="USD congelado (ref.)"
+                  value={`US$ ${contributionsSummary.usdReference.toLocaleString("es-AR")}`}
+                />
+              )}
+            </div>
+            {contributionsSummary.byOrigin.length > 0 && (
+              <>
+                <div style={balanceSection}>Quién puso cuánto</div>
+                <div style={{ marginBottom: 12 }}>
+                  {contributionsSummary.byOrigin.map((o) => (
+                    <StatRow
+                      key={o.origin}
+                      label={o.origin}
+                      value={`${money(o.total)}${
+                        o.prestamoPendiente !== 0 ? ` (préstamo ${money(o.prestamoPendiente)})` : ""
+                      }`}
+                      tone={o.total < 0 ? "out" : undefined}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
+            {capitalEntries.length === 0 ? (
+              <div style={styles.empty}>
+                No hay aportes ni préstamos cargados. Usá "Agregar movimiento" para asentar el primero.
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Empresa</th>
+                    <th>Origen</th>
+                    <th>Tipo</th>
+                    <th>Movimiento</th>
+                    <th>Color</th>
+                    <th>Monto $</th>
+                    <th>USD (ref.)</th>
+                    <th>Notas</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {capitalEntries.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <input
+                          style={styles.input}
+                          type="date"
+                          value={item.date}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "date", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={item.company}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "company", e.target.value)}
+                        >
+                          {COMPANY_OPTIONS.map((company) => (
+                            <option key={company.value} value={company.value}>
+                              {company.short}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          placeholder="Gustavo, Nicolás, banco..."
+                          value={item.origin}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "origin", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={item.kind}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "kind", e.target.value)}
+                        >
+                          <option value="aporte">Aporte</option>
+                          <option value="prestamo">Préstamo</option>
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={item.direction}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "direction", e.target.value)}
+                        >
+                          <option value="recibido">Recibido</option>
+                          <option value="devuelto">Devuelto</option>
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={item.color}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "color", e.target.value)}
+                        >
+                          <option value="blanco">Blanco</option>
+                          <option value="negro">Negro</option>
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          type="number"
+                          value={item.amount}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "amount", Number(e.target.value))}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          type="number"
+                          placeholder="opcional"
+                          value={item.usdValue ?? ""}
+                          onChange={(e) =>
+                            updateArrayItem(
+                              setCapitalEntries,
+                              item.id,
+                              "usdValue",
+                              e.target.value === "" ? (undefined as any) : Number(e.target.value)
+                            )
+                          }
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={item.notes}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "notes", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <button style={styles.smallBtn} onClick={() => removeCapitalEntry(item.id)}>
+                          Quitar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             )}
           </Panel>
 
