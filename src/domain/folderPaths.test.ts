@@ -1,5 +1,6 @@
 import {
   companyFolderName,
+  companyPeriodPath,
   fiscalStartYearOf,
   fiscalYearFolderName,
   monthFolderName,
@@ -107,5 +108,37 @@ describe("personalSectionPath", () => {
         iso: "2024-11-05",
       })
     ).toContain("Ejercicio 2024-2025 (nov-oct)/2024-11 Noviembre");
+  });
+});
+
+describe("companyPeriodPath (molde general por solapa)", () => {
+  it("arma <TOP>/<EMPRESA>/Ejercicio/<mes> con la empresa primero", () => {
+    expect(
+      companyPeriodPath({ top: "Compras", companyShort: "De raiz", iso: "2026-05-14" })
+    ).toBe("Compras/DE RAIZ/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo");
+  });
+
+  it("agrega la subcarpeta cuando se pasa", () => {
+    expect(
+      companyPeriodPath({
+        top: "Compras",
+        companyShort: "BGA",
+        iso: "2026-05",
+        sub: "Facturas de compra",
+      })
+    ).toBe("Compras/BGA/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo/Facturas de compra");
+  });
+
+  it("respeta el mes de inicio fiscal por empresa (ej. calendario ene-dic)", () => {
+    expect(
+      companyPeriodPath({ top: "Compras", companyShort: "BGA", iso: "2026-05", fiscalStartMonth: 1 })
+    ).toBe("Compras/BGA/Ejercicio 2026-2027 (ene-dic)/2026-05 Mayo");
+  });
+
+  it("un mes antes del inicio fiscal cae en el ejercicio anterior", () => {
+    // octubre con año fiscal nov-oct es el ULTIMO mes del ejercicio anterior
+    expect(
+      companyPeriodPath({ top: "Compras", companyShort: "De raiz", iso: "2026-10" })
+    ).toContain("Ejercicio 2025-2026 (nov-oct)/2026-10 Octubre");
   });
 });

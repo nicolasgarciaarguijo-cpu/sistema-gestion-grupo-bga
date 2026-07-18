@@ -55,6 +55,28 @@ export function monthFolderFromIso(iso: string): string {
   return monthFolderName(y, m);
 }
 
+// --- Molde general por solapa: <TOP>/<EMPRESA>/Ejercicio <A>-<B> (nov-oct)/<AAAA-MM Mes>[/<sub>] ---
+// Reutilizable para Compras, Facturas, Cobranzas, etc. (todo lo que va por empresa + ejercicio + mes).
+// Ej: Compras/DE RAIZ/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo/Facturas de compra
+export function companyPeriodPath(input: {
+  top: string; // carpeta de primer nivel ("Compras", "Facturas emitidas"...)
+  companyShort: string; // "BGA" | "De raiz" | "General"
+  iso: string; // fecha del documento (yyyy-mm o yyyy-mm-dd)
+  fiscalStartMonth?: number;
+  sub?: string; // subcarpeta opcional dentro del mes
+}): string {
+  const empresa = companyFolderName(input.companyShort);
+  const sm = getFiscalYearStartMonth({ fiscalYearStartMonth: input.fiscalStartMonth });
+  const parts = [
+    input.top,
+    empresa,
+    fiscalYearFolderFromIso(sm, input.iso),
+    monthFolderFromIso(input.iso),
+  ];
+  if (input.sub) parts.push(input.sub);
+  return parts.join("/");
+}
+
 // --- Personal ---
 
 // Subcarpetas de un empleado. `periodic` = se separa por ejercicio y mes.

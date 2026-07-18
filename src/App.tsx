@@ -51,7 +51,7 @@ import {
   fiscalMonthKeys,
   isAutoCostGroup,
 } from "./domain/costs";
-import { companyFolderName, personalSectionPath, PERSONAL_SECTIONS } from "./domain/folderPaths";
+import { companyFolderName, companyPeriodPath, personalSectionPath, PERSONAL_SECTIONS } from "./domain/folderPaths";
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, suggestGroupForConcept, SHEETJS_CDN } from "./lib/bankStatement";
@@ -4828,9 +4828,10 @@ export default function App() {
         );
       }
 
-      // Doble via con OCR en Compras/AAAA-MM/: una factura de compra dejada ahi crea la factura de
-      // compra (empresa = la activa, revisar). Dedup por ruta. La fecha cae al mes de la carpeta si el
-      // OCR no la detecta.
+      // Doble via con OCR en Compras/<EMPRESA>/Ejercicio/<mes>/Facturas de compra/: una factura de
+      // compra dejada ahi crea la factura de compra. La empresa sale del nivel <EMPRESA> de la carpeta
+      // (si no esta, cae a la activa); la fecha, del mes de la carpeta si el OCR no la detecta. Dedup
+      // por ruta. Acepta la estructura vieja (Compras/AAAA-MM/) y la nueva (con empresa y mes-nombre).
       const newComprasInvoices: PurchaseInvoice[] = [];
       for (const file of scanned) {
         if (/\.html$/i.test(file.name)) continue;
@@ -4838,7 +4839,11 @@ export default function App() {
         if (segs.length < 3) continue;
         if (cnorm(segs[0]) !== "compras") continue;
         if (purchaseInvoices.some((p) => p.attachmentName === file.relPath)) continue;
-        const monthSeg = segs.find((s) => /^\d{4}-\d{2}$/.test(s));
+        const monthSeg = segs.map((s) => s.match(/^(\d{4}-\d{2})/)?.[1]).find(Boolean) || "";
+        const empresaOpt = COMPANY_OPTIONS.find((o) =>
+          segs.some((s) => companyFolderName(s) === companyFolderName(o.short))
+        );
+        const folderCompany = empresaOpt ? empresaOpt.value : budget.company;
         try {
           const realFile = await file.handle.getFile();
           const ticket = await readTicket(realFile);
@@ -4846,7 +4851,7 @@ export default function App() {
           const { subtotal, vat } = split21(total);
           newComprasInvoices.push({
             id: newId(),
-            company: budget.company,
+            company: folderCompany,
             administration: "blanco",
             source: "compras",
             supplier: ticket.supplier || file.name,
@@ -5461,8 +5466,9 @@ export default function App() {
     return written;
   };
 
-  // Compras por MES: un resumen mensual (Compras/AAAA-MM/) + subcarpeta "Facturas de compra" para
-  // dejar los comprobantes (doble via: lo que dejes aca se lee al sincronizar como compra del mes).
+  // Compras por EMPRESA/EJERCICIO/MES (la regla del backup): un resumen mensual + subcarpeta
+  // "Facturas de compra" para dejar los comprobantes (doble via: lo que dejes aca se lee al
+  // sincronizar como compra del mes). Ruta: Compras/<EMPRESA>/Ejercicio <A>-<B>/<AAAA-MM Mes>/.
   const exportComprasToFolder = async (): Promise<string[]> => {
     const written: string[] = [];
     setDocumentsBusy(true);
@@ -5473,25 +5479,42 @@ export default function App() {
         setDocumentsBusy(false);
         return written;
       }
-      const byMonth = new Map<string, any[]>();
+      // Agrupa por empresa + mes (cada empresa tiene su propio arbol y su ano fiscal).
+      const groups = new Map<string, { company: CompanyName; monthIso: string; list: any[] }>();
       for (const inv of visiblePurchaseInvoices) {
-        const monthKey = (inv.invoiceDate || "").slice(0, 7) || "sin-fecha";
-        const list = byMonth.get(monthKey) || [];
-        list.push(inv);
-        byMonth.set(monthKey, list);
+        const monthIso = (inv.invoiceDate || "").slice(0, 7);
+        if (!/^\d{4}-\d{2}$/.test(monthIso)) continue; // sin fecha valida no se puede ubicar por periodo
+        const key = `${inv.company}|${monthIso}`;
+        const g = groups.get(key) || { company: inv.company, monthIso, list: [] };
+        g.list.push(inv);
+        groups.set(key, g);
       }
-      for (const [monthKey, list] of Array.from(byMonth.entries())) {
-        await ensureFolder(handle, `Compras/${monthKey}/Facturas de compra`);
-        const path = `Compras/${monthKey}/Resumen compras ${monthKey}.html`;
-        await writeFileToFolder(handle, path, buildComprasSummaryHtml(list, monthLabelEs(monthKey)));
+      for (const g of Array.from(groups.values())) {
+        const meta = getCompanyMeta(g.company);
+        const base = companyPeriodPath({
+          top: "Compras",
+          companyShort: meta.short,
+          iso: g.monthIso,
+          fiscalStartMonth: meta.fiscalYearStartMonth,
+        });
+        await ensureFolder(handle, `${base}/Facturas de compra`);
+        const path = `${base}/Resumen compras ${g.monthIso}.html`;
+        await writeFileToFolder(handle, path, buildComprasSummaryHtml(g.list, monthLabelEs(g.monthIso)));
         written.push(path);
       }
-      // Si no hay compras cargadas, deja al menos la carpeta del mes en curso lista para usar.
-      if (byMonth.size === 0) {
-        await ensureFolder(handle, `Compras/${todayIso().slice(0, 7)}/Facturas de compra`);
+      // Si no hay compras cargadas, deja lista la carpeta del mes en curso de la empresa activa.
+      if (groups.size === 0) {
+        const meta = getCompanyMeta(budget.company);
+        const base = companyPeriodPath({
+          top: "Compras",
+          companyShort: meta.short,
+          iso: todayIso().slice(0, 7),
+          fiscalStartMonth: meta.fiscalYearStartMonth,
+        });
+        await ensureFolder(handle, `${base}/Facturas de compra`);
       }
       setDocumentsMessage(
-        `Compras exportadas: ${written.length} resumen(es) mensual(es) en Compras/AAAA-MM/. Deja las facturas de compra en "Facturas de compra" de cada mes.`
+        `Compras exportadas: ${written.length} resumen(es) en Compras/<EMPRESA>/Ejercicio/<mes>/. Deja las facturas de compra en "Facturas de compra" de cada mes.`
       );
     } catch (err: any) {
       console.error("[documentos] export compras:", err);
