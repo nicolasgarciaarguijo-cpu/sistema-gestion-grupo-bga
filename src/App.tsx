@@ -6689,22 +6689,19 @@ export default function App() {
       commissionsPending,
       bankCredits,
       bankDebits,
+      // El banco NO entra al resultado: un cobro ya cuenta en cobranzas y una compra en compras, asi
+      // que sumar/restar el neto bancario duplicaria. El banco es el ESPEJO de la cuenta real y se
+      // muestra aparte como flujo de caja (bankNet), nunca dentro del resultado operativo.
       operatingResultWhite:
-        collected -
-        purchaseInvoicesTotal -
-        commissionsPending -
-        activeAssetsMonthlyDepreciation -
-        bankDebits +
-        bankCredits,
+        collected - purchaseInvoicesTotal - commissionsPending - activeAssetsMonthlyDepreciation,
       operatingResultBlack: approvedJobsBlackTotal - pettyCashBlackTotal,
       operatingResult:
         collected -
         purchaseInvoicesTotal -
         pettyCashBlackTotal -
         commissionsPending -
-        activeAssetsMonthlyDepreciation -
-        bankDebits +
-        bankCredits,
+        activeAssetsMonthlyDepreciation,
+      bankNet: bankCredits - bankDebits,
     };
   }, [
     approvedJobsSummary,

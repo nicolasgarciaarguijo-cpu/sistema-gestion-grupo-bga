@@ -413,21 +413,29 @@ export function CashflowTab({
             </div>
           </Panel>
 
-          <Panel title="Resultado preliminar" span="half">
+          <Panel title="Resultado preliminar (por registros)" span="half">
+            <div style={styles.sectionHeader}>Resultado — de cobranzas, compras y caja chica</div>
             <div style={styles.metricGrid}>
               <MiniMetric label="Ingresos cobrados" value={money(cashFlowSummary.collected)} />
-              <MiniMetric label="Compras" value={money(cashFlowSummary.purchaseInvoicesTotal)} />
+              <MiniMetric label="Compras" value={money(cashFlowSummary.purchaseInvoicesTotal)} tone="out" />
               <MiniMetric label="Egresos negro" value={money(cashFlowSummary.pettyCashBlackTotal)} tone="out" />
-              <MiniMetric label="Comisiones" value={money(cashFlowSummary.commissionsPending)} />
-              <MiniMetric label="Amortizacion" value={money(activeAssetsMonthlyDepreciation)} />
-              <MiniMetric label="Creditos bancarios" value={money(cashFlowSummary.bankCredits)} />
-              <MiniMetric label="Debitos bancarios" value={money(cashFlowSummary.bankDebits)} />
+              <MiniMetric label="Comisiones" value={money(cashFlowSummary.commissionsPending)} tone="out" />
+              <MiniMetric label="Amortizacion" value={money(activeAssetsMonthlyDepreciation)} tone="out" />
               <MiniMetric label="Resultado blanco" value={money(cashFlowSummary.operatingResultWhite)} />
               <MiniMetric label="Resultado negro" value={money(cashFlowSummary.operatingResultBlack)} />
               <MiniMetric label="Resultado operativo" value={money(cashFlowSummary.operatingResult)} />
             </div>
+            <div style={styles.sectionHeader}>El banco real — movimiento de la cuenta (NO es resultado)</div>
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Entró (créditos)" value={money(cashFlowSummary.bankCredits)} />
+              <MiniMetric label="Salió (débitos)" value={money(cashFlowSummary.bankDebits)} tone="out" />
+              <MiniMetric label="Flujo de caja del banco" value={money(cashFlowSummary.bankNet)} />
+            </div>
             <div style={styles.noticeBox}>
-              Esta solapa ya queda preparada como tablero inicial. Luego podemos separar flujo de caja real, devengado, impuestos y estado de resultados por empresa.
+              El <strong>resultado</strong> sale de los registros (cobranzas, compras, caja chica): cada
+              cobro y cada pago cuenta una sola vez. El <strong>banco</strong> es el espejo de la cuenta
+              real (cuánta plata entró y salió) y se muestra aparte — un cobro que ya está en cobranzas
+              NO se vuelve a sumar por aparecer en el banco.
             </div>
           </Panel>
 
