@@ -1,8 +1,8 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, MiniMetric, ButtonLike, TwoCol, Field } from "../ui/primitives";
+import { Panel, MiniMetric, ButtonLike, Field } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
-import type { CompanyName, DebtPlan, BankStatementEntry } from "../domain/types";
+import type { CompanyName, DebtPlan } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
 
 // Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
@@ -146,7 +146,6 @@ type CashflowTabProps = {
   removeCapitalEntry: (entryId: number) => void;
   annualCashFlowByMonth: any[];
   getCompanyMeta: (company: CompanyName) => any;
-  monthLabel: (month: string) => string;
   COMPANY_OPTIONS: any[];
   updateArrayItem: <T extends { id: number }>(
     setter: React.Dispatch<React.SetStateAction<T[]>>,
@@ -159,16 +158,6 @@ type CashflowTabProps = {
   addDebtPlan: () => void;
   removeDebtPlan: (debtId: number) => void;
   annualDebtByMonth: any[];
-  operationalMonth: string;
-  monthBankStatementEntries: any[];
-  addBankStatementEntry: () => void;
-  removeBankStatementEntry: (entryId: number) => void;
-  updateBankStatementEntry: (
-    entryId: number,
-    field: keyof BankStatementEntry,
-    value: string | number | boolean
-  ) => void;
-  uploadBankStatementFile: (entryId: number, file: File | null) => void;
 };
 
 export function CashflowTab({
@@ -189,7 +178,6 @@ export function CashflowTab({
   removeCapitalEntry,
   annualCashFlowByMonth,
   getCompanyMeta,
-  monthLabel,
   COMPANY_OPTIONS,
   updateArrayItem,
   debtPlans,
@@ -197,12 +185,6 @@ export function CashflowTab({
   addDebtPlan,
   removeDebtPlan,
   annualDebtByMonth,
-  operationalMonth,
-  monthBankStatementEntries,
-  addBankStatementEntry,
-  removeBankStatementEntry,
-  updateBankStatementEntry,
-  uploadBankStatementFile,
   billingBalance,
   periodStatement,
   balanceCompanyScope,
@@ -870,128 +852,6 @@ export function CashflowTab({
                   ))}
                 </tbody>
               </table>
-            )}
-          </Panel>
-
-          <Panel
-            title={`Movimientos bancarios - ${monthLabel(operationalMonth)}`}
-            span="full"
-            actions={<ButtonLike onClick={addBankStatementEntry}>Agregar movimiento</ButtonLike>}
-          >
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Ingresos banco" value={money(bankStatementSummary.credits)} />
-              <MiniMetric label="Egresos banco" value={money(bankStatementSummary.debits)} tone="out" />
-              <MiniMetric label="Neto banco" value={money(bankStatementSummary.net)} />
-              <MiniMetric label="Ultimo saldo" value={money(bankStatementSummary.lastBalance)} />
-            </div>
-            <div style={styles.noticeBox}>
-              Las métricas de arriba son <strong>acumuladas</strong> (todos los meses); la lista de abajo
-              muestra solo <strong>{monthLabel(operationalMonth)}</strong> — usá la barra de mes para navegar.
-              Este bloque también alimenta el calendario anual de cash flow.
-            </div>
-            {monthBankStatementEntries.length === 0 ? (
-              <div style={styles.empty}>No hay movimientos bancarios en {monthLabel(operationalMonth)}.</div>
-            ) : (
-              monthBankStatementEntries.map((entry) => (
-                <div key={entry.id} style={styles.subCard}>
-                  <div style={styles.inlineActions}>
-                    <button style={styles.smallBtn} onClick={() => removeBankStatementEntry(entry.id)}>
-                      Quitar movimiento
-                    </button>
-                  </div>
-                  <TwoCol>
-                    <Field label="Empresa">
-                      <select
-                        style={styles.input}
-                        value={entry.company}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.value}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Fecha">
-                      <input
-                        style={styles.input}
-                        type="date"
-                        value={entry.date}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "date", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Banco">
-                      <input
-                        style={styles.input}
-                        value={entry.bank}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "bank", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Tipo">
-                      <select
-                        style={styles.input}
-                        value={entry.movementType}
-                        onChange={(e) =>
-                          updateBankStatementEntry(
-                            entry.id,
-                            "movementType",
-                            e.target.value as "credito" | "debito"
-                          )
-                        }
-                      >
-                        <option value="credito">Credito</option>
-                        <option value="debito">Debito</option>
-                      </select>
-                    </Field>
-                    <Field label="Concepto">
-                      <input
-                        style={styles.input}
-                        value={entry.concept}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "concept", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Monto">
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={entry.amount}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "amount", Number(e.target.value))}
-                      />
-                    </Field>
-                    <Field label="Saldo">
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={entry.balance}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "balance", Number(e.target.value))}
-                      />
-                    </Field>
-                    <Field label="Carga asistida">
-                      <input style={styles.input} value={entry.extractedAutomatically ? "Si" : "Manual"} readOnly />
-                    </Field>
-                  </TwoCol>
-                  <Field label="Notas">
-                    <textarea
-                      style={styles.textarea}
-                      value={entry.notes}
-                      onChange={(e) => updateBankStatementEntry(entry.id, "notes", e.target.value)}
-                    />
-                  </Field>
-                  <div style={styles.uploadActions}>
-                    <label style={styles.buttonLikeLabel}>
-                      Cargar resumen / comprobante
-                      <input
-                        type="file"
-                        accept="image/*,.pdf,application/pdf"
-                        style={{ display: "none" }}
-                        onChange={(e) => uploadBankStatementFile(entry.id, e.target.files?.[0] || null)}
-                      />
-                    </label>
-                    {entry.attachmentName && <div style={styles.fileName}>{entry.attachmentName}</div>}
-                  </div>
-                </div>
-              ))
             )}
           </Panel>
         </div>

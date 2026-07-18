@@ -356,7 +356,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "historial", label: "CRM" },
   { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
-  { key: "costos", label: "Costos fijos y variables" },
+  { key: "costos", label: "Bancos y pagos · costos fijos/variables" },
   { key: "documentos", label: "Documentos" },
   { key: "marcadores", label: "Marcadores" },
   { key: "manual", label: "Manual" },
@@ -13152,7 +13152,6 @@ export default function App() {
           removeCapitalEntry={removeCapitalEntry}
           annualCashFlowByMonth={annualCashFlowByMonth}
           getCompanyMeta={getCompanyMeta}
-          monthLabel={monthLabel}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           updateArrayItem={updateArrayItem}
           debtPlans={debtPlans}
@@ -13160,12 +13159,6 @@ export default function App() {
           addDebtPlan={addDebtPlan}
           removeDebtPlan={removeDebtPlan}
           annualDebtByMonth={annualDebtByMonth}
-          operationalMonth={operationalMonth}
-          monthBankStatementEntries={monthBankStatementEntries}
-          addBankStatementEntry={addBankStatementEntry}
-          removeBankStatementEntry={removeBankStatementEntry}
-          updateBankStatementEntry={updateBankStatementEntry}
-          uploadBankStatementFile={uploadBankStatementFile}
         />
       )}
 
@@ -13373,6 +13366,15 @@ export default function App() {
           updateStatementDraftRow={updateCostStatementDraftRow}
           commitStatementDraft={commitCostStatementDraft}
           discardStatementDraft={discardCostStatementDraft}
+          bankStatementSummary={bankStatementSummary}
+          monthBankStatementEntries={monthBankStatementEntries}
+          operationalMonth={operationalMonth}
+          monthLabel={monthLabel}
+          shiftOperationalMonth={shiftOperationalMonth}
+          addBankStatementEntry={addBankStatementEntry}
+          removeBankStatementEntry={removeBankStatementEntry}
+          updateBankStatementEntry={updateBankStatementEntry}
+          uploadBankStatementFile={uploadBankStatementFile}
         />
       )}
 

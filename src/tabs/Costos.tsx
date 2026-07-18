@@ -56,6 +56,17 @@ type CostosTabProps = {
   updateStatementDraftRow: (id: number, field: keyof CostStatementDraftRow, value: any) => void;
   commitStatementDraft: () => void;
   discardStatementDraft: () => void;
+  // Movimientos bancarios (el banco real): mudado desde Balance/Cash Flow. Es el espejo de la cuenta,
+  // no suma al resultado. Se navega por mes con shiftOperationalMonth.
+  bankStatementSummary: any;
+  monthBankStatementEntries: any[];
+  operationalMonth: string;
+  monthLabel: (month: string) => string;
+  shiftOperationalMonth: (delta: number) => void;
+  addBankStatementEntry: () => void;
+  removeBankStatementEntry: (id: number) => void;
+  updateBankStatementEntry: (id: number, field: any, value: string | number | boolean) => void;
+  uploadBankStatementFile: (id: number, file: File | null) => void;
 };
 
 export function CostosTab({
@@ -82,6 +93,15 @@ export function CostosTab({
   updateStatementDraftRow,
   commitStatementDraft,
   discardStatementDraft,
+  bankStatementSummary,
+  monthBankStatementEntries,
+  operationalMonth,
+  monthLabel,
+  shiftOperationalMonth,
+  addBankStatementEntry,
+  removeBankStatementEntry,
+  updateBankStatementEntry,
+  uploadBankStatementFile,
 }: CostosTabProps) {
   const fixedRows = aggregation.rows.filter((row) => row.kind === "fijo");
   const variableRows = aggregation.rows.filter((row) => row.kind === "variable");
@@ -522,6 +542,146 @@ export function CostosTab({
             </tbody>
           </table>
         </div>
+      </Panel>
+
+      <Panel
+        title="Movimientos bancarios · el banco real"
+        span="full"
+        actions={<ButtonLike onClick={addBankStatementEntry}>Agregar movimiento</ButtonLike>}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <ButtonLike secondary onClick={() => shiftOperationalMonth(-1)}>
+            ‹ Mes anterior
+          </ButtonLike>
+          <strong style={{ minWidth: 150, textAlign: "center", textTransform: "capitalize" }}>
+            {monthLabel(operationalMonth)}
+          </strong>
+          <ButtonLike secondary onClick={() => shiftOperationalMonth(1)}>
+            Mes siguiente ›
+          </ButtonLike>
+        </div>
+        <div style={styles.metricGrid}>
+          <MiniMetric label="Entró (créditos)" value={money(bankStatementSummary.credits)} />
+          <MiniMetric label="Salió (débitos)" value={money(bankStatementSummary.debits)} />
+          <MiniMetric label="Neto banco" value={money(bankStatementSummary.net)} />
+          <MiniMetric label="Último saldo" value={money(bankStatementSummary.lastBalance)} />
+        </div>
+        <div style={styles.noticeBox}>
+          Las métricas son <strong>acumuladas</strong> (todos los meses); la lista muestra solo{" "}
+          <strong style={{ textTransform: "capitalize" }}>{monthLabel(operationalMonth)}</strong> —
+          navegá con los botones de mes. Es el <strong>espejo de la cuenta real</strong>: no suma al
+          resultado, solo refleja qué entró y salió.
+        </div>
+        {monthBankStatementEntries.length === 0 ? (
+          <div style={styles.empty}>No hay movimientos bancarios en {monthLabel(operationalMonth)}.</div>
+        ) : (
+          <div style={{ overflowX: "auto" }}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Empresa</th>
+                  <th>Banco</th>
+                  <th>Tipo</th>
+                  <th>Concepto</th>
+                  <th style={{ textAlign: "right" }}>Monto</th>
+                  <th style={{ textAlign: "right" }}>Saldo</th>
+                  <th>Arch.</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthBankStatementEntries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td>
+                      <input
+                        style={styles.input}
+                        type="date"
+                        value={entry.date}
+                        onChange={(e) => updateBankStatementEntry(entry.id, "date", e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        style={styles.input}
+                        value={entry.company}
+                        onChange={(e) => updateBankStatementEntry(entry.id, "company", e.target.value)}
+                      >
+                        {COMPANY_OPTIONS.map((company) => (
+                          <option key={company.value} value={company.value}>
+                            {company.short}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        value={entry.bank}
+                        onChange={(e) => updateBankStatementEntry(entry.id, "bank", e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        style={styles.input}
+                        value={entry.movementType}
+                        onChange={(e) =>
+                          updateBankStatementEntry(entry.id, "movementType", e.target.value)
+                        }
+                      >
+                        <option value="credito">Crédito</option>
+                        <option value="debito">Débito</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        style={{ ...styles.input, minWidth: 220 }}
+                        value={entry.concept}
+                        onChange={(e) => updateBankStatementEntry(entry.id, "concept", e.target.value)}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        style={{ ...styles.input, textAlign: "right" }}
+                        type="number"
+                        value={entry.amount}
+                        onChange={(e) =>
+                          updateBankStatementEntry(entry.id, "amount", Number(e.target.value))
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        style={{ ...styles.input, textAlign: "right" }}
+                        type="number"
+                        value={entry.balance}
+                        onChange={(e) =>
+                          updateBankStatementEntry(entry.id, "balance", Number(e.target.value))
+                        }
+                      />
+                    </td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      <label style={styles.buttonLikeLabel} title={entry.attachmentName || "Cargar resumen / comprobante"}>
+                        {entry.attachmentName ? "📎✓" : "📎"}
+                        <input
+                          type="file"
+                          accept="image/*,.pdf,application/pdf"
+                          style={{ display: "none" }}
+                          onChange={(e) => uploadBankStatementFile(entry.id, e.target.files?.[0] || null)}
+                        />
+                      </label>
+                    </td>
+                    <td>
+                      <button style={styles.smallBtn} onClick={() => removeBankStatementEntry(entry.id)}>
+                        Quitar
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Panel>
     </>
   );
