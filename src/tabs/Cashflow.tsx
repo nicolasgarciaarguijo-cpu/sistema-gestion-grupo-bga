@@ -5,6 +5,16 @@ import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, BankStatementEntry } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
 
+// Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
+// queda en el title (hover). Evita que un numero largo rompa una columna de ~80px.
+const compactAr = (n: number): string => {
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}$${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `${sign}$${Math.round(abs / 1_000)}k`;
+  return `${sign}$${Math.round(abs)}`;
+};
+
 // Tile de balance: blanco claro / negro oscuro para diferenciar las administraciones de un vistazo.
 function BalanceTile({
   label,
@@ -428,41 +438,49 @@ export function CashflowTab({
               <MiniMetric label="Compromisos deuda" value={String(annualDebtRows.length)} />
               <MiniMetric label="Ultimo saldo banco" value={money(bankStatementSummary.lastBalance)} />
             </div>
-            <div style={styles.yearCalendarGrid}>
-              {annualCashFlowByMonth.map((month) => (
-                <div key={month.key} style={styles.yearCalendarCard}>
-                  <div style={styles.yearCalendarTitle}>{month.label}</div>
-                  {month.items.length === 0 ? (
-                    <div style={styles.calendarEmpty}>Sin movimientos</div>
-                  ) : (
-                    month.items.slice(0, 10).map((item) => {
-                      const companyMetaItem = getCompanyMeta(item.company);
-                      return (
-                        <div
-                          key={item.id}
-                          style={{
-                            ...styles.yearCalendarEvent,
-                            borderLeft: `6px solid ${companyMetaItem.primary}`,
-                            background: `${companyMetaItem.soft}`,
-                          }}
-                        >
-                          <div style={styles.yearCalendarEventTitle}>
-                            {formatDateDisplay(item.date)} · {item.title}
-                          </div>
-                          <div style={styles.calendarItemMeta}>
-                            {item.kind} · {item.statusLabel}
-                            {item.amount ? ` · ${money(item.amount)}` : ""}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                  {month.items.length > 10 && (
-                    <div style={styles.calendarItemMeta}>+ {month.items.length - 10} eventos mas</div>
-                  )}
-                </div>
-              ))}
+            <div style={styles.noticeBox}>
+              Un vistazo del año en <strong>12 columnas</strong> (una por mes): cantidad de eventos y
+              monto movido. El detalle día por día está abajo, en la lista de movimientos del mes.
             </div>
+            {(() => {
+              const monthly = annualCashFlowByMonth.map((month) => ({
+                key: month.key,
+                label: month.label,
+                count: month.items.length,
+                monto: month.items.reduce((acc: number, it: any) => acc + Math.abs(Number(it.amount || 0)), 0),
+              }));
+              const maxMonto = Math.max(1, ...monthly.map((m) => m.monto));
+              return (
+                <div style={styles.yearMonthsStrip}>
+                  {monthly.map((m) => (
+                    <div key={m.key} style={styles.yearMonthCol}>
+                      <div style={styles.yearMonthColHead}>{m.label.slice(0, 3)}</div>
+                      {m.count === 0 ? (
+                        <div style={{ ...styles.yearMonthColSub, marginTop: 8 }}>—</div>
+                      ) : (
+                        <>
+                          <div style={styles.yearMonthColBig}>{m.count}</div>
+                          <div style={styles.yearMonthColSub}>evento{m.count === 1 ? "" : "s"}</div>
+                          {m.monto > 0 && (
+                            <div style={styles.yearMonthColSub} title={money(m.monto)}>
+                              {compactAr(m.monto)}
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div style={styles.yearMonthColBarTrack}>
+                        <div
+                          style={{
+                            ...styles.yearMonthColBarFill,
+                            width: `${Math.round((m.monto / maxMonto) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </Panel>
 
           <Panel
@@ -472,12 +490,25 @@ export function CashflowTab({
           >
             <div style={styles.metricGrid}>
               <MiniMetric
-                label="Deuda proxima"
+                label="Cuota mensual"
                 value={money(
-                  debtPlans.filter((item) => item.active).reduce(
-                    (acc, item) => acc + Number(item.nextInstallmentAmount || 0),
-                    0
-                  )
+                  debtPlans
+                    .filter((item) => item.active)
+                    .reduce((acc, item) => acc + Number(item.nextInstallmentAmount || 0), 0)
+                )}
+              />
+              <MiniMetric
+                label="Total comprometido (restante)"
+                value={money(
+                  debtPlans
+                    .filter((item) => item.active)
+                    .reduce(
+                      (acc, item) =>
+                        acc +
+                        Number(item.nextInstallmentAmount || 0) *
+                          Math.max(0, Number(item.remainingInstallments || 0)),
+                      0
+                    )
                 )}
               />
               <MiniMetric
@@ -544,39 +575,43 @@ export function CashflowTab({
           </Panel>
 
           <Panel title={`Calendario anual de desendeudamiento ${analysisYear}`} span="wide">
-            <div style={styles.yearCalendarGrid}>
-              {annualDebtByMonth.map((month) => (
-                <div key={month.key} style={styles.yearCalendarCard}>
-                  <div style={styles.yearCalendarTitle}>
-                    {month.label} · {money(month.total)}
-                  </div>
-                  {month.items.length === 0 ? (
-                    <div style={styles.calendarEmpty}>Sin cuotas</div>
-                  ) : (
-                    month.items.map((item) => {
-                      const companyMetaItem = getCompanyMeta(item.company);
-                      return (
-                        <div
-                          key={item.id}
-                          style={{
-                            ...styles.yearCalendarEvent,
-                            borderLeft: `6px solid ${companyMetaItem.primary}`,
-                            background: `${companyMetaItem.soft}`,
-                          }}
-                        >
-                          <div style={styles.yearCalendarEventTitle}>
-                            {formatDateDisplay(item.date)} · {item.concept}
-                          </div>
-                          <div style={styles.calendarItemMeta}>
-                            Cuota {item.installmentNumber}/{item.totalInstallments} · {money(item.amount)}
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              ))}
+            <div style={styles.noticeBox}>
+              La cuota de cada mes en <strong>12 columnas</strong>: la barra baja a medida que las
+              cuotas se terminan de pagar, así se ve el desendeudamiento avanzar.
             </div>
+            {(() => {
+              const maxTotal = Math.max(1, ...annualDebtByMonth.map((m) => Number(m.total || 0)));
+              return (
+                <div style={styles.yearMonthsStrip}>
+                  {annualDebtByMonth.map((month) => (
+                    <div key={month.key} style={styles.yearMonthCol}>
+                      <div style={styles.yearMonthColHead}>{month.label.slice(0, 3)}</div>
+                      {month.total > 0 ? (
+                        <>
+                          <div style={styles.yearMonthColBig} title={money(month.total)}>
+                            {compactAr(month.total)}
+                          </div>
+                          <div style={styles.yearMonthColSub}>
+                            {month.items.length} cuota{month.items.length === 1 ? "" : "s"}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ ...styles.yearMonthColSub, marginTop: 8 }}>—</div>
+                      )}
+                      <div style={styles.yearMonthColBarTrack}>
+                        <div
+                          style={{
+                            ...styles.yearMonthColBarFill,
+                            width: `${Math.round((Number(month.total || 0) / maxTotal) * 100)}%`,
+                            background: "#f59e0b",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </Panel>
 
           <Panel title="Reserva · billetera de la empresa" span="full">
