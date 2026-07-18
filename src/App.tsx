@@ -198,6 +198,7 @@ import {
 import { buildManualHtml } from "./content/manualHtml";
 import { readTicket, ensureScript } from "./lib/ocr";
 import { buildClientCrmRows } from "./domain/clientCrm";
+import { buildReservaFromSources, latestBankBalancesByAccount } from "./domain/reservaSources";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
@@ -10763,6 +10764,43 @@ export default function App() {
     };
   }, [visibleBankStatementEntries]);
 
+  // RESERVA (billetera de la empresa): ver domain/reserva.ts. Sigue el mismo selector de empresa que
+  // el balance. El saldo de banco se toma como el ULTIMO saldo conciliado por cuenta (dato firme,
+  // robusto a los meses de Patagonia que faltan cargar); el efectivo sale de caja chica (blanco/negro).
+  const reservaBankAccounts = useMemo(
+    () =>
+      latestBankBalancesByAccount(
+        visibleBankStatementEntries.filter(
+          (item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope
+        )
+      ),
+    [visibleBankStatementEntries, balanceCompanyScope]
+  );
+
+  const reservaSummary = useMemo(() => {
+    const inScope = (company: string) =>
+      balanceCompanyScope === "__ALL__" || company === balanceCompanyScope;
+    const openingBankArs = reservaBankAccounts.reduce((acc, a) => acc + a.balance, 0);
+    return buildReservaFromSources({
+      openingBankArs,
+      pettyCashFunds: visiblePettyCashFunds
+        .filter((f) => inScope(f.company))
+        .map((f) => ({
+          deliveredDate: f.deliveredDate,
+          assignedAmount: Number(f.assignedAmount || 0),
+          assignedWhite: f.assignedWhite,
+          assignedBlack: f.assignedBlack,
+        })),
+      pettyCashExpenses: visiblePettyCashExpenses
+        .filter((e) => inScope(e.company))
+        .map((e) => ({
+          date: e.date,
+          amount: Number(e.amount || 0),
+          administration: e.administration === "negro" ? "negro" : "blanco",
+        })),
+    });
+  }, [reservaBankAccounts, visiblePettyCashFunds, visiblePettyCashExpenses, balanceCompanyScope]);
+
   const annualCashFlowEntries = useMemo(() => {
     const entries: Array<{
       id: string;
@@ -13022,6 +13060,8 @@ export default function App() {
           bankStatementEntries={bankStatementEntries}
           annualDebtRows={annualDebtRows}
           bankStatementSummary={bankStatementSummary}
+          reservaSummary={reservaSummary}
+          reservaBankAccounts={reservaBankAccounts}
           annualCashFlowByMonth={annualCashFlowByMonth}
           getCompanyMeta={getCompanyMeta}
           monthLabel={monthLabel}

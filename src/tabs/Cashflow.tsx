@@ -126,6 +126,8 @@ type CashflowTabProps = {
   bankStatementEntries: any[];
   annualDebtRows: any[];
   bankStatementSummary: any;
+  reservaSummary: any;
+  reservaBankAccounts: { company: string; bank: string; date: string; balance: number }[];
   annualCashFlowByMonth: any[];
   getCompanyMeta: (company: CompanyName) => any;
   monthLabel: (month: string) => string;
@@ -162,6 +164,8 @@ export function CashflowTab({
   bankStatementEntries,
   annualDebtRows,
   bankStatementSummary,
+  reservaSummary,
+  reservaBankAccounts,
   annualCashFlowByMonth,
   getCompanyMeta,
   monthLabel,
@@ -562,6 +566,65 @@ export function CashflowTab({
                 </div>
               ))}
             </div>
+          </Panel>
+
+          <Panel title="Reserva · billetera de la empresa" span="full">
+            <div style={styles.noticeBox}>
+              La reserva es <strong>la plata que hay</strong> (banco + efectivo); <strong>no toca el
+              estado de resultados</strong>, solo balance y cash flow. El saldo de banco es el{" "}
+              <strong>último saldo conciliado de cada cuenta</strong> (dato firme aunque falten meses
+              intermedios sin cargar). Pesos y dólares nunca se suman; hoy dólares = 0.
+            </div>
+            <div style={balanceSection}>Total por moneda</div>
+            <div style={balanceGrid}>
+              {reservaSummary.totals.map((t: any) => (
+                <BalanceTile
+                  key={t.currency}
+                  label={`Reserva ${t.currency === "ARS" ? "pesos" : "dólares"}`}
+                  value={money(t.closing)}
+                  tone={t.negative ? "warn" : "strong"}
+                />
+              ))}
+            </div>
+            <div style={balanceSection}>Billeteras (banco / efectivo × pesos / dólares)</div>
+            <div style={balanceGrid}>
+              {reservaSummary.wallets.map((w: any) => (
+                <div
+                  key={`${w.currency}-${w.location}`}
+                  style={{
+                    ...styles.metric,
+                    background: w.negative ? "#fffbeb" : "#f8fafc",
+                    border: w.negative ? "1px solid #fde68a" : "1px solid #e2e8f0",
+                  }}
+                >
+                  <div style={styles.metricLabel}>
+                    {w.location === "banco" ? "Banco" : "Efectivo"} ·{" "}
+                    {w.currency === "ARS" ? "pesos" : "dólares"}
+                  </div>
+                  <div style={{ ...styles.metricValue, color: w.negative ? "#b45309" : "#0f172a" }}>
+                    {money(w.closing)}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                    Blanco {money(w.byColor.blanco.closing)} · Negro {money(w.byColor.negro.closing)}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {reservaBankAccounts.length > 0 && (
+              <>
+                <div style={balanceSection}>Último saldo por cuenta bancaria</div>
+                <div>
+                  {reservaBankAccounts.map((a) => (
+                    <StatRow
+                      key={`${a.company}-${a.bank}`}
+                      label={`${getCompanyMeta(a.company as CompanyName)?.short || a.company} · ${a.bank}`}
+                      value={`${money(a.balance)}  ·  ${formatDateDisplay(a.date)}`}
+                      tone={a.balance < 0 ? "out" : undefined}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
           </Panel>
 
           <Panel

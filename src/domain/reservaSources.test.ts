@@ -1,8 +1,10 @@
 import {
   bankEntriesToMovements,
   buildReservaFromSources,
+  latestBankBalancesByAccount,
   pettyCashToMovements,
   RESERVA_OPENING_BANK_ARS,
+  sumLatestBankBalances,
 } from "./reservaSources";
 
 const wallet = (r: ReturnType<typeof buildReservaFromSources>, cur: "ARS" | "USD", loc: "banco" | "efectivo") =>
@@ -99,5 +101,53 @@ describe("reservaSources", () => {
   it("el seed de octubre tiene las dos empresas", () => {
     expect(RESERVA_OPENING_BANK_ARS["De raiz s.r.l"]).toBeCloseTo(4302064.53, 2);
     expect(RESERVA_OPENING_BANK_ARS["BGA estudio de diseño y produccion industrial s.r.l"]).toBeCloseTo(461433.46, 2);
+  });
+
+  describe("latestBankBalancesByAccount / sumLatestBankBalances", () => {
+    // BGA tiene 2 cuentas; De Raíz 1. El ultimo saldo por cuenta es la plata que hay.
+    const entries = [
+      { company: "BGA", bank: "Santander", date: "2026-06-01", balance: 999, id: 10 },
+      { company: "BGA", bank: "Santander", date: "2026-06-29", balance: -20150.48, id: 20 },
+      { company: "BGA", bank: "Patagonia", date: "2026-07-15", balance: 25278.06, id: 5 },
+      { company: "De Raíz", bank: "Patagonia", date: "2026-05-29", balance: 3110482.54, id: 1 },
+    ];
+
+    it("toma el saldo del ultimo movimiento de cada cuenta", () => {
+      const rows = latestBankBalancesByAccount(entries);
+      expect(rows).toHaveLength(3);
+      const sant = rows.find((r) => r.bank === "Santander" && r.company === "BGA")!;
+      expect(sant.balance).toBeCloseTo(-20150.48, 2);
+      expect(sant.date).toBe("2026-06-29");
+    });
+
+    it("suma los ultimos saldos de todas las cuentas", () => {
+      expect(sumLatestBankBalances(entries)).toBeCloseTo(-20150.48 + 25278.06 + 3110482.54, 2);
+    });
+
+    // Santander se carga cronologico (id sube con la fecha): el dia-cierre es el id MAS ALTO.
+    it("desempate intradia Santander: id mas alto = cierre del dia", () => {
+      const sant = [
+        { company: "BGA", bank: "Santander", date: "2026-06-01", balance: 999, id: 700100 },
+        { company: "BGA", bank: "Santander", date: "2026-06-29", balance: 13660.51, id: 700487 },
+        { company: "BGA", bank: "Santander", date: "2026-06-29", balance: -20150.48, id: 700488 },
+      ];
+      expect(latestBankBalancesByAccount(sant)[0].balance).toBeCloseTo(-20150.48, 2);
+    });
+
+    // Patagonia sale del Excel al reves (id baja con la fecha): el dia-cierre es el id MAS BAJO.
+    // Caso real De Raíz 16/07: debe elegir 1.102.513,21 (id 246243), NO -1.088.715,53 (id 246247).
+    it("desempate intradia Patagonia: id mas bajo = cierre del dia", () => {
+      const pat = [
+        { company: "De raiz s.r.l", bank: "Patagonia", date: "2026-05-29", balance: 3110482.54, id: 246300 },
+        { company: "De raiz s.r.l", bank: "Patagonia", date: "2026-07-16", balance: 1102513.21, id: 246243 },
+        { company: "De raiz s.r.l", bank: "Patagonia", date: "2026-07-16", balance: -1088715.53, id: 246247 },
+      ];
+      expect(latestBankBalancesByAccount(pat)[0].balance).toBeCloseTo(1102513.21, 2);
+    });
+
+    it("respeta el corte por fecha (until)", () => {
+      // cortando en junio, Patagonia de julio no cuenta
+      expect(sumLatestBankBalances(entries, "2026-06-30")).toBeCloseTo(-20150.48 + 3110482.54, 2);
+    });
   });
 });

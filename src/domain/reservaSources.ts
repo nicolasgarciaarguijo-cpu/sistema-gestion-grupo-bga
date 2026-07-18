@@ -57,6 +57,80 @@ const num = (v: unknown) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// --- Saldo de banco "que hay" -------------------------------------------------------------------
+// Cada extracto trae el saldo acumulado por linea, asi que el saldo del ULTIMO movimiento (por fecha)
+// de una cuenta ES la plata que hay en esa cuenta. Tomar el ultimo saldo por cuenta es robusto a los
+// meses que falten cargar en el medio (p.ej. Patagonia nov–abril): no importa el hueco, el ultimo
+// saldo cargado ya es acumulado. Esto es lo correcto para la reserva; sumar opening+movimientos NO,
+// porque si faltan movimientos el neto queda mal por millones.
+
+export type BankBalanceEntryLike = {
+  company?: string;
+  bank?: string;
+  date: string; // "yyyy-mm-dd"
+  balance?: number;
+  id?: number;
+};
+
+export type BankAccountBalance = { company: string; bank: string; date: string; balance: number };
+
+// Detecta si en esta cuenta el id CRECE con la fecha (Santander se carga cronologico: id mas alto =
+// mas nuevo) o DECRECE (Patagonia sale del Excel al reves: id mas bajo = mas nuevo). Usa el signo de
+// la covarianza id~fecha sobre todos los movimientos, asi no depende de una convencion fija de carga.
+function idAscendsWithDate(list: BankBalanceEntryLike[]): boolean {
+  const dates = Array.from(new Set(list.map((e) => e.date))).sort();
+  const rank = new Map<string, number>();
+  dates.forEach((d, i) => rank.set(d, i));
+  const n = list.length;
+  const meanId = list.reduce((s, e) => s + num(e.id), 0) / n;
+  const meanRank = list.reduce((s, e) => s + (rank.get(e.date) ?? 0), 0) / n;
+  let cov = 0;
+  for (const e of list) cov += (num(e.id) - meanId) * ((rank.get(e.date) ?? 0) - meanRank);
+  return cov >= 0; // por defecto (empate o una sola fecha) tratamos id como ascendente
+}
+
+// El movimiento cronologicamente ultimo de una cuenta. La fecha manda; para el desempate intradia
+// elige el extremo de id correcto segun la direccion detectada (asi funciona igual para Santander
+// que para Patagonia, que cargan los ids en sentidos opuestos).
+function pickLatestEntry(list: BankBalanceEntryLike[]): BankBalanceEntryLike {
+  const maxDate = list.reduce((m, e) => (e.date > m ? e.date : m), list[0].date);
+  const sameDay = list.filter((e) => e.date === maxDate);
+  if (sameDay.length === 1) return sameDay[0];
+  const ascending = idAscendsWithDate(list);
+  return sameDay.reduce(
+    (best, e) => ((ascending ? num(e.id) > num(best.id) : num(e.id) < num(best.id)) ? e : best),
+    sameDay[0]
+  );
+}
+
+// Ultimo saldo por cuenta (empresa|banco). Opcional corte por `until`.
+export function latestBankBalancesByAccount(
+  entries: BankBalanceEntryLike[],
+  until?: string
+): BankAccountBalance[] {
+  const groups = new Map<string, BankBalanceEntryLike[]>();
+  for (const e of entries) {
+    if (!e || !e.date) continue;
+    if (until && e.date > until) continue;
+    const key = `${e.company ?? ""}||${e.bank ?? ""}`;
+    const list = groups.get(key);
+    if (list) list.push(e);
+    else groups.set(key, [e]);
+  }
+  return Array.from(groups.entries())
+    .map(([key, list]) => {
+      const [company, bank] = key.split("||");
+      const chosen = pickLatestEntry(list);
+      return { company, bank, date: chosen.date, balance: num(chosen.balance) };
+    })
+    .sort((a, b) => a.company.localeCompare(b.company) || a.bank.localeCompare(b.bank));
+}
+
+// Suma de los ultimos saldos de todas las cuentas = plata en banco de la reserva (pesos, blanco).
+export function sumLatestBankBalances(entries: BankBalanceEntryLike[], until?: string): number {
+  return latestBankBalancesByAccount(entries, until).reduce((acc, a) => acc + a.balance, 0);
+}
+
 // Mapea los extractos bancarios a movimientos de reserva (banco / pesos / blanco).
 export function bankEntriesToMovements(entries: BankEntryLike[]): ReservaMovementInput[] {
   return entries.map((e) => ({
