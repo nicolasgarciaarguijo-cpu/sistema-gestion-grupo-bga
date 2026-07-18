@@ -5227,40 +5227,65 @@ export default function App() {
     return written;
   };
 
-  // Repositorio GLOBAL de facturas: todas las facturas de todos los trabajos, en Facturas/AAAA/AAAA-MM/
-  // separadas por la fecha de emision. Cada factura vive tambien en la carpeta de su trabajo (doble via).
+  // Facturas emitidas = CONECTOR para el contable: un resumen mensual de las facturas del mes por
+  // empresa (FACTURAS EMITIDAS/<EMPRESA>/Ejercicio/<mes>/). El PDF/HTML de CADA factura vive una sola
+  // vez en Trabajos aprobados (no se duplica aca): contabilidad usa los datos, no una copia del PDF.
   const exportFacturasGlobalToFolder = async (): Promise<string[]> => {
     const written: string[] = [];
     setDocumentsBusy(true);
-    setDocumentsMessage("Exportando facturas (repositorio global) a la carpeta...");
+    setDocumentsMessage("Exportando conector de facturas emitidas a la carpeta...");
     try {
       const handle = await getWritableFolder();
       if (!handle) {
         setDocumentsBusy(false);
         return written;
       }
+      // agrupar facturas por empresa + mes (de emision)
+      const groups = new Map<string, { company: CompanyName; monthIso: string; rows: any[] }>();
       for (const job of approvedJobsSummary) {
         for (const inv of job.invoices || []) {
-          const monthKey = (inv.invoiceDate || "").slice(0, 7) || "sin-fecha";
-          const year = monthKey === "sin-fecha" ? "sin-fecha" : monthKey.slice(0, 4);
-          const path = `Facturas/${year}/${monthKey}/${invoiceFileName(job, inv)}`;
-          await writeFileToFolder(handle, path, buildInvoiceHtml(job, inv));
-          written.push(path);
+          const monthIso = (inv.invoiceDate || "").slice(0, 7);
+          if (!/^\d{4}-\d{2}$/.test(monthIso)) continue; // sin fecha valida no se ubica por periodo
+          const key = `${job.company}|${monthIso}`;
+          const g = groups.get(key) || { company: job.company, monthIso, rows: [] };
+          g.rows.push({
+            kind: "factura",
+            date: inv.invoiceDate || "",
+            client: job.client,
+            project: job.project,
+            detail: `${inv.invoiceType || ""} ${inv.invoiceNumber || ""}`.trim() || "Factura",
+            amount: Number(inv.total || 0),
+            admin: "blanco",
+          });
+          groups.set(key, g);
         }
       }
+      for (const g of Array.from(groups.values())) {
+        const meta = getCompanyMeta(g.company);
+        const base = companyPeriodPath({
+          top: "FACTURAS EMITIDAS",
+          companyShort: meta.short,
+          iso: g.monthIso,
+          fiscalStartMonth: meta.fiscalYearStartMonth,
+        });
+        const path = `${base}/Facturas del mes ${g.monthIso}.html`;
+        await writeFileToFolder(handle, path, buildFacturacionCobranzasHtml(g.rows, g.monthIso));
+        written.push(path);
+      }
       setDocumentsMessage(
-        `Facturas exportadas al repositorio global: ${written.length} en Facturas/AAAA/AAAA-MM/ (por fecha de emision).`
+        `Facturas emitidas (conector): ${written.length} resumen(es) por empresa/mes en FACTURAS EMITIDAS/<EMPRESA>/Ejercicio/<mes>/. El PDF de cada factura vive en Trabajos aprobados.`
       );
     } catch (err: any) {
-      console.error("[documentos] export facturas globales:", err);
+      console.error("[documentos] export conector facturas:", err);
       setDocumentsMessage("Error al exportar facturas: " + (err?.message || String(err)));
     }
     setDocumentsBusy(false);
     return written;
   };
 
-  // Facturacion y cobranzas por MES: un resumen cronologico por mes (facturas emitidas + cobranzas),
-  // en Facturacion y cobranzas/AAAA-MM/. El detalle por trabajo vive en la carpeta de cada trabajo.
+  // Facturacion y cobranzas por EMPRESA/EJERCICIO/MES: un resumen cronologico (facturas emitidas +
+  // cobranzas) en Facturacion y cobranzas/<EMPRESA>/Ejercicio/<mes>/, con subcarpeta "Recibos" para
+  // dejar los recibos de pago. El detalle por trabajo vive en la carpeta de cada trabajo.
   const exportFacturacionToFolder = async (): Promise<string[]> => {
     const written: string[] = [];
     setDocumentsBusy(true);
@@ -5271,16 +5296,18 @@ export default function App() {
         setDocumentsBusy(false);
         return written;
       }
-      const byMonth = new Map<string, any[]>();
-      const push = (monthKey: string, row: any) => {
-        const list = byMonth.get(monthKey) || [];
-        list.push(row);
-        byMonth.set(monthKey, list);
+      // agrupar por empresa + mes (cada fila cae en el mes de su fecha)
+      const groups = new Map<string, { company: CompanyName; monthIso: string; rows: any[] }>();
+      const push = (company: CompanyName, monthIso: string, row: any) => {
+        if (!/^\d{4}-\d{2}$/.test(monthIso)) return; // sin fecha valida no se ubica por periodo
+        const key = `${company}|${monthIso}`;
+        const g = groups.get(key) || { company, monthIso, rows: [] };
+        g.rows.push(row);
+        groups.set(key, g);
       };
       for (const job of approvedJobsSummary) {
         for (const inv of job.invoices || []) {
-          const monthKey = (inv.invoiceDate || "").slice(0, 7) || "sin-fecha";
-          push(monthKey, {
+          push(job.company, (inv.invoiceDate || "").slice(0, 7), {
             kind: "factura",
             date: inv.invoiceDate || "",
             client: job.client,
@@ -5291,8 +5318,7 @@ export default function App() {
           });
         }
         for (const payment of job.payments || []) {
-          const monthKey = (payment.paymentDate || "").slice(0, 7) || "sin-fecha";
-          push(monthKey, {
+          push(job.company, (payment.paymentDate || "").slice(0, 7), {
             kind: "cobranza",
             date: payment.paymentDate || "",
             client: job.client,
@@ -5303,13 +5329,21 @@ export default function App() {
           });
         }
       }
-      for (const [monthKey, rows] of Array.from(byMonth.entries())) {
-        const path = `Facturacion y cobranzas/${monthKey}/Resumen ${monthKey}.html`;
-        await writeFileToFolder(handle, path, buildFacturacionCobranzasHtml(rows, monthKey));
+      for (const g of Array.from(groups.values())) {
+        const meta = getCompanyMeta(g.company);
+        const base = companyPeriodPath({
+          top: "Facturacion y cobranzas",
+          companyShort: meta.short,
+          iso: g.monthIso,
+          fiscalStartMonth: meta.fiscalYearStartMonth,
+        });
+        await ensureFolder(handle, `${base}/Recibos`);
+        const path = `${base}/Resumen ${g.monthIso}.html`;
+        await writeFileToFolder(handle, path, buildFacturacionCobranzasHtml(g.rows, g.monthIso));
         written.push(path);
       }
       setDocumentsMessage(
-        `Facturacion y cobranzas exportada: ${written.length} resumen(es) mensual(es) en Facturacion y cobranzas/AAAA-MM/.`
+        `Facturacion y cobranzas exportada: ${written.length} resumen(es) por empresa/mes en Facturacion y cobranzas/<EMPRESA>/Ejercicio/<mes>/. Deja los recibos de pago en "Recibos" de cada mes.`
       );
     } catch (err: any) {
       console.error("[documentos] export facturacion:", err);

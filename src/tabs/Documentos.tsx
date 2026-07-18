@@ -157,9 +157,10 @@ export function DocumentosTab({
       Pagos y tickets/
       Planos/
       Remitos/
-  Facturas/AAAA/AAAA-MM/       (todas las facturas, por fecha de emision)
-  Facturacion y cobranzas/AAAA-MM/
-  Compras/AAAA-MM/
+  FACTURAS EMITIDAS/<EMPRESA>/Ejercicio/<mes>/   (conector: facturas del mes; el PDF vive en Trabajos aprobados)
+  Facturacion y cobranzas/<EMPRESA>/Ejercicio/<mes>/
+      Recibos/                 (recibos de pago)
+  Compras/<EMPRESA>/Ejercicio/<mes>/
       Facturas de compra/
   Personal/<empleado>/
       Documentacion/   EPP/   Examenes/   Capacitaciones/   Presentismo/
@@ -200,7 +201,7 @@ export function DocumentosTab({
             Trabajos aprobados
           </ButtonLike>
           <ButtonLike onClick={onExportFacturas} disabled={busy || !folderLinked} secondary>
-            Facturas (global)
+            Facturas emitidas (conector)
           </ButtonLike>
           <ButtonLike onClick={onExportFacturacion} disabled={busy || !folderLinked} secondary>
             Facturacion y cobranzas
@@ -223,8 +224,9 @@ export function DocumentosTab({
         </div>
         <div style={{ ...styles.muted, marginTop: 8 }}>
           Destinos: Trabajos aprobados/&lt;cliente&gt;/&lt;N&deg; presup - trabajo&gt;/ (con Facturas,
-          Pagos y tickets, Planos y Remitos adentro) · Facturas/AAAA/AAAA-MM/ (todas, por emision) ·
-          Facturacion y cobranzas/AAAA-MM/ · Compras/AAAA-MM/ (deja las facturas de compra ahi) ·
+          Pagos y tickets, Planos y Remitos adentro) · FACTURAS EMITIDAS/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/
+          (conector, facturas del mes) · Facturacion y cobranzas/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/ (+ Recibos) ·
+          Compras/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/ (deja las facturas de compra ahi) ·
           Personal/&lt;empleado&gt;/(Documentacion, EPP, Recibos/AAAA-MM, Examenes, Capacitaciones,
           Presentismo) · Remitos/AAAA/ · Caja chica/(abiertas|cerradas)/&lt;caja&gt;/ ·
           Presupuestos/&lt;cliente&gt;/ · Resumenes/&lt;periodo&gt;/. Doble via con OCR: si dejas una
