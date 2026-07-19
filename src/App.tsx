@@ -214,6 +214,7 @@ import {
   actSuffix,
   jobFolderName,
   buildJobHtml,
+  buildJobClientSummaryHtml,
   buildJobsSummaryHtml,
   invoiceFileName,
   buildInvoiceHtml,
@@ -5810,6 +5811,24 @@ export default function App() {
       )
     );
     setStorageMessage(`Se generaron ${derived.length} clientes desde el historial.`);
+  };
+
+  // Resumen de la ficha del trabajo para presentar al cliente: lo genera y lo abre en una pestana
+  // nueva (imprimible o "guardar como PDF"). No toca la carpeta ni guarda nada.
+  const openJobClientSummary = (job: any) => {
+    try {
+      const html = buildJobClientSummaryHtml(job);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const win = window.open(url, "_blank");
+      if (!win) {
+        setStorageMessage("Habilita las ventanas emergentes para ver el resumen del trabajo.");
+      }
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err: any) {
+      console.error("[aprobados] resumen cliente:", err);
+      setStorageMessage("No pude generar el resumen: " + (err?.message || String(err)));
+    }
   };
 
   const saveCrmAndBudgetsToSupabase = async () => {
@@ -13575,6 +13594,7 @@ export default function App() {
           updateRetention={updateRetention}
           uploadApprovedJobFile={uploadApprovedJobFile}
           exportPaymentReceipt={exportPaymentReceipt}
+          onClientSummary={openJobClientSummary}
         />
       )}
 

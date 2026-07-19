@@ -74,6 +74,7 @@ type AprobadosTabProps = {
   updateRetention: (jobId: number, retentionId: number, field: string, value: string | number) => void;
   uploadApprovedJobFile: (jobId: number, section: string, itemId: number, file: File | null) => void;
   exportPaymentReceipt: (job: any, payment: any) => void;
+  onClientSummary: (job: any) => void;
 };
 
 export function AprobadosTab({
@@ -118,6 +119,7 @@ export function AprobadosTab({
   updateRetention,
   uploadApprovedJobFile,
   exportPaymentReceipt,
+  onClientSummary,
 }: AprobadosTabProps) {
   // Trabajos con planos de fabricacion pendientes (sin planos o cargados sin confirmar), por urgencia.
   const planosPending = approvedJobsSummary
@@ -404,7 +406,16 @@ export function AprobadosTab({
             <Panel
               title={`Detalle ${selectedApprovedJob.isUpdate ? `${selectedApprovedJob.budgetNumber} · Act. ${selectedApprovedJob.revisionNumber - 1}` : selectedApprovedJob.budgetNumber}`}
               green={selectedApprovedJob.executionStatus === "finalizado"}
-              actions={<ButtonLike onClick={() => setSelectedApprovedJobId(null)} secondary>Cerrar detalle</ButtonLike>}
+              actions={
+                <>
+                  <ButtonLike onClick={() => onClientSummary(selectedApprovedJob)}>
+                    Resumen para el cliente
+                  </ButtonLike>
+                  <ButtonLike onClick={() => setSelectedApprovedJobId(null)} secondary>
+                    Cerrar detalle
+                  </ButtonLike>
+                </>
+              }
             >
               <div style={styles.metricGrid}>
                 <MiniMetric label="Empresa" value={getCompanyMeta(selectedApprovedJob.company).short} />
@@ -734,10 +745,10 @@ export function AprobadosTab({
                             />
                           </Field>
                           <Field label="IVA (calculado)">
-                            <input style={styles.input} type="number" value={invoice.vat} readOnly />
+                            <input style={styles.input} value={money(invoice.vat)} readOnly />
                           </Field>
                           <Field label="Total (calculado)">
-                            <input style={styles.input} type="number" value={invoice.total} readOnly />
+                            <input style={styles.input} value={money(invoice.total)} readOnly />
                           </Field>
                         </TwoCol>
                         <div

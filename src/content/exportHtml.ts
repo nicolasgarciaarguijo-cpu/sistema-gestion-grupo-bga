@@ -330,6 +330,61 @@ export function buildJobHtml(job: any): string {
   return page(`Trabajo ${job.budgetNumber} - ${job.client}`, body);
 }
 
+// Resumen de la ficha PARA PRESENTAR AL CLIENTE: cómo viene el trabajo, las facturas emitidas y el
+// detalle de pagos recibidos con el saldo. NO muestra blanco/negro ni datos internos.
+export function buildJobClientSummaryHtml(job: any): string {
+  const invoices = job.invoices || [];
+  const payments = job.payments || [];
+  const invRows = invoices.length
+    ? invoices
+        .slice()
+        .sort((a: any, b: any) => String(a.invoiceDate || "").localeCompare(String(b.invoiceDate || "")))
+        .map(
+          (inv: any) => `<tr>
+        <td>${esc(inv.invoiceDate || "-")}</td>
+        <td>${esc(`${inv.invoiceType || ""} ${inv.invoiceNumber || ""}`.trim() || "Factura")}</td>
+        <td class="num">${money(inv.total)}</td></tr>`
+        )
+        .join("")
+    : `<tr><td colspan="3" style="color:#94a3b8">Sin facturas emitidas.</td></tr>`;
+  const paymentsTotal = payments.reduce((a: number, p: any) => a + Number(p.amount || 0), 0);
+  const payRows = payments.length
+    ? payments
+        .slice()
+        .sort((a: any, b: any) => String(a.paymentDate || "").localeCompare(String(b.paymentDate || "")))
+        .map(
+          (p: any) => `<tr>
+        <td>${esc(p.paymentDate || "-")}</td>
+        <td>${esc(p.transactionType || "Cobranza")}</td>
+        <td class="num">${money(p.amount)}</td></tr>`
+        )
+        .join("")
+    : `<tr><td colspan="3" style="color:#94a3b8">Sin pagos registrados.</td></tr>`;
+  const body = `
+    <h1>Resumen del trabajo N&deg; ${esc(job.budgetNumber)}</h1>
+    <p class="sub">${esc(job.client)} &middot; ${esc(job.project || "-")} &middot; ${esc(job.company)}${
+    job.executionStatus ? " &middot; " + esc(job.executionStatus) : ""
+  }</p>
+    <div class="grid">
+      <div class="card"><div class="k">Valor del trabajo</div><div class="v">${money(
+        job.valueToCollect
+      )}</div></div>
+      <div class="card"><div class="k">Cobrado</div><div class="v">${money(job.collectedTotal)}</div></div>
+      <div class="card"><div class="k">Saldo pendiente</div><div class="v">${money(
+        job.remainingToPay
+      )}</div></div>
+    </div>
+    <h2>Facturas emitidas</h2>
+    <table><thead><tr><th>Fecha</th><th>Comprobante</th><th class="num">Total</th></tr></thead>
+      <tbody>${invRows}</tbody></table>
+    <h2>Pagos recibidos</h2>
+    <table><thead><tr><th>Fecha</th><th>Detalle</th><th class="num">Monto</th></tr></thead>
+      <tbody>${payRows}
+        <tr class="tot"><td colspan="2">Total cobrado</td><td class="num">${money(paymentsTotal)}</td></tr>
+      </tbody></table>`;
+  return page(`Resumen trabajo ${job.budgetNumber} - ${job.client}`, body);
+}
+
 // ---- Facturas (una por comprobante) ----
 
 // Nombre de archivo de una factura. Usa numero de comprobante (o el de AFIP) + cliente + fecha.

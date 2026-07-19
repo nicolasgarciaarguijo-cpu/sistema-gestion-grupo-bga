@@ -709,7 +709,10 @@ export function CashflowTab({
               {contributionsSummary.usdReference !== 0 && (
                 <MiniMetric
                   label="USD congelado (ref.)"
-                  value={`US$ ${contributionsSummary.usdReference.toLocaleString("es-AR")}`}
+                  value={`US$ ${contributionsSummary.usdReference.toLocaleString("es-AR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`}
                 />
               )}
             </div>
