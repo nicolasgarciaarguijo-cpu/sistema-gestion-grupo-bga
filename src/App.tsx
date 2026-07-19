@@ -5354,7 +5354,10 @@ export default function App() {
     return written;
   };
 
-  // Exporta cada remito importado a Remitos/.
+  // Remitos = movimientos de STOCK (la entrada actualiza el stock). Van a Stocks/<EMPRESA>/Remitos/.
+  // El modelo de remito NO tiene fecha propia -> sin ejercicio ni mes (como la documentacion cruda).
+  // El remito de PRODUCTO TERMINADO de un trabajo es otra cosa y vive en la carpeta del trabajo
+  // (Trabajos aprobados/<cliente>/<trabajo>/Remitos/), no toca stock.
   const exportRemitosToFolder = async (): Promise<string[]> => {
     const written: string[] = [];
     setDocumentsBusy(true);
@@ -5365,15 +5368,14 @@ export default function App() {
         setDocumentsBusy(false);
         return written;
       }
-      // Repositorio global de remitos separado por ano (el modelo de remito no tiene fecha propia; se
-      // usa el ano en curso). Cada remito de un trabajo se deja ademas en la carpeta Remitos/ del trabajo.
-      const year = todayIso().slice(0, 4) || "sin-fecha";
       for (const draft of remitoDrafts) {
-        const path = `Remitos/${year}/${remitoFileName(draft)}`;
+        const meta = getCompanyMeta(draft.company as CompanyName);
+        const short = (meta && meta.short) || String(draft.company || "");
+        const path = `Stocks/${companyFolderName(short)}/Remitos/${remitoFileName(draft)}`;
         await writeFileToFolder(handle, path, buildRemitoHtml(draft));
         written.push(path);
       }
-      setDocumentsMessage(`Remitos exportados: ${written.length} en Remitos/AAAA/.`);
+      setDocumentsMessage(`Remitos exportados: ${written.length} en Stocks/<EMPRESA>/Remitos/.`);
     } catch (err: any) {
       console.error("[documentos] export remitos:", err);
       setDocumentsMessage("Error al exportar remitos: " + (err?.message || String(err)));

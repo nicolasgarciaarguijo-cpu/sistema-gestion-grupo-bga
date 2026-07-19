@@ -24,6 +24,16 @@ describe("classifyPath", () => {
     expect(classifyPath("Cobranzas/2026-05/recibo.pdf").docType).toBe("cobranzas");
   });
 
+  it("remitos: top-level y dentro de Stocks/<EMPRESA>/Remitos", () => {
+    expect(classifyPath("Remitos/2026/remito.pdf").docType).toBe("remitos");
+    expect(classifyPath("Stocks/DE RAIZ/Remitos/remito-123.pdf")).toMatchObject({
+      docType: "remitos",
+      company: "DE RAIZ",
+    });
+    // el remito de producto terminado de un trabajo sigue clasificando por el flujo del trabajo
+    expect(classifyPath("Trabajos aprobados/Cliente/3400/Remitos/entrega.pdf").docType).toBe("remitos");
+  });
+
   it("personal: extrae empleado y subarea", () => {
     expect(classifyPath("Personal/Juan Perez/Documentacion/dni.pdf")).toEqual({
       docType: "personal",

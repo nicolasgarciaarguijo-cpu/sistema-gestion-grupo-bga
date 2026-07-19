@@ -140,6 +140,12 @@ export function classifyPath(relPath: string): PathClassification {
     return { docType: sub && !isHtml ? JOB_SUBFOLDER_TO_TYPE[sub] : null, month };
   }
 
+  // Remitos en cualquier nivel: ademas del top-folder "Remitos/", ahora viven en Stocks/<EMPRESA>/
+  // Remitos/ (los remitos son movimientos de stock). Si aparece un segmento "remitos", es un remito.
+  if (normSegs.includes("remitos")) {
+    return { docType: "remitos", month, company };
+  }
+
   const docType = TOP_FOLDER_TO_TYPE[top] ?? null;
 
   if (docType === "personal" && segments.length >= 2) {

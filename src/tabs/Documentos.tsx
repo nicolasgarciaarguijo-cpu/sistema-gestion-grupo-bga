@@ -170,7 +170,7 @@ export function DocumentosTab({
   Caja chica/(Cajas abiertas|cerradas)/<caja>/
       Rendicion de tickets y facturas/
       Recibos/AAAA-MM/
-  Remitos/AAAA/
+  Stocks/<EMPRESA>/Remitos/    (remitos = movimientos de stock; sin fecha)
   Escalas/AAAA-MM/             (escalas salariales)`}
           </div>
           <div style={{ ...styles.muted, marginTop: 6 }}>
@@ -228,7 +228,7 @@ export function DocumentosTab({
           (conector, facturas del mes) · Facturacion y cobranzas/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/ (+ Recibos) ·
           Compras/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/ (deja las facturas de compra ahi) ·
           Personal/&lt;empleado&gt;/(Documentacion, EPP, Recibos/AAAA-MM, Examenes, Capacitaciones,
-          Presentismo) · Remitos/AAAA/ · Caja chica/(abiertas|cerradas)/&lt;caja&gt;/ ·
+          Presentismo) · Stocks/&lt;empresa&gt;/Remitos/ · Caja chica/(abiertas|cerradas)/&lt;caja&gt;/ ·
           Presupuestos/&lt;cliente&gt;/ · Resumenes/&lt;periodo&gt;/. Doble via con OCR: si dejas una
           factura en Facturas/, un comprobante en Pagos y tickets/ de un trabajo, o una factura en
           Compras/&lt;mes&gt;/, al Sincronizar se leen los montos y se crea el registro (revisa los
