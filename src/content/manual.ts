@@ -712,7 +712,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         blocks: [
           {
             type: "p",
-            text: "Cada documento, EPP o insumo tiene una vigencia y un semaforo (verde vigente, amarillo vence pronto, rojo vencido). La vigencia sale de la entrega mas la periodicidad, o del vencimiento del documento. Se pueden cargar por la carpeta (Personal/<empleado>/) con la fecha en el nombre del archivo.",
+            text: "Cada documento, EPP o insumo tiene una vigencia y un semaforo (verde vigente, amarillo vence pronto, rojo vencido). La vigencia sale de la entrega mas la periodicidad, o del vencimiento del documento. Se pueden cargar por la carpeta (Personal/<EMPRESA>/<empleado>/) con la fecha en el nombre del archivo.",
           },
         ],
       },

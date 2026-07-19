@@ -162,9 +162,11 @@ export function DocumentosTab({
       Recibos/                 (recibos de pago)
   Compras/<EMPRESA>/Ejercicio/<mes>/
       Facturas de compra/
-  Personal/<empleado>/
-      Documentacion/   EPP/   Examenes/   Capacitaciones/   Presentismo/
-      Recibos/AAAA-MM/
+  Personal/<EMPRESA>/<empleado>/
+      Documentacion/                    (ficha de alta, DNI, contrato: no vence, sin fecha)
+      EPP/   Examenes/   Capacitaciones/   Presentismo/   Recibos/
+          Ejercicio AAAA-AAAA (nov-oct)/<AAAA-MM Mes>/    (lo periodico va aca adentro)
+  Personal/<EMPRESA>/ESCALAS SALARIALES/Ejercicio AAAA-AAAA (nov-oct)/
   Presupuestos/<cliente>/(Vigente|Viejo)/     (Vigente = ultima revision)
   Presupuestos/Historial de presupuestos/     (P-<n> - cliente - desc [- ACT k], para el cliente)
   Caja chica/(Cajas abiertas|cerradas)/<caja>/
@@ -227,8 +229,9 @@ export function DocumentosTab({
           Pagos y tickets, Planos y Remitos adentro) · FACTURAS EMITIDAS/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/
           (conector, facturas del mes) · Facturacion y cobranzas/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/ (+ Recibos) ·
           Compras/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/ (deja las facturas de compra ahi) ·
-          Personal/&lt;empleado&gt;/(Documentacion, EPP, Recibos/AAAA-MM, Examenes, Capacitaciones,
-          Presentismo) · Stocks/&lt;empresa&gt;/Remitos/ · Caja chica/(abiertas|cerradas)/&lt;caja&gt;/ ·
+          Personal/&lt;empresa&gt;/&lt;empleado&gt;/(Documentacion sin fecha; EPP, Recibos, Examenes,
+          Capacitaciones, Presentismo por Ejercicio/&lt;mes&gt;) + Personal/&lt;empresa&gt;/ESCALAS SALARIALES/ ·
+          Stocks/&lt;empresa&gt;/Remitos/ · Caja chica/(abiertas|cerradas)/&lt;caja&gt;/ ·
           Presupuestos/&lt;cliente&gt;/ · Resumenes/&lt;periodo&gt;/. Doble via con OCR: si dejas una
           factura en Facturas/, un comprobante en Pagos y tickets/ de un trabajo, o una factura en
           Compras/&lt;mes&gt;/, al Sincronizar se leen los montos y se crea el registro (revisa los
