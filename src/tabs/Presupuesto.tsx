@@ -8,6 +8,114 @@ import { matchStockForMaterial } from "../domain/stockMatch";
 import { WORK_TYPE_OPTIONS } from "../domain/types";
 import type { CompanyName, WorkTypeName } from "../domain/types";
 
+// Buscador de clientes del CRM: reemplaza al <datalist> nativo (que en varios navegadores no abre al
+// clickear, solo al tipear). Este SIEMPRE abre al enfocar, filtra por nombre y se elige con un clic.
+const pickerDropdown: React.CSSProperties = {
+  position: "absolute",
+  zIndex: 40,
+  top: "100%",
+  left: 0,
+  right: 0,
+  background: "#fff",
+  border: "1px solid #cbd5e1",
+  borderRadius: 8,
+  boxShadow: "0 8px 24px rgba(15,23,42,0.14)",
+  maxHeight: 260,
+  overflowY: "auto",
+  marginTop: 4,
+};
+const pickerItem: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  padding: "8px 10px",
+  border: "none",
+  borderBottom: "1px solid #f1f5f9",
+  background: "#fff",
+  cursor: "pointer",
+};
+const pickerEmpty: React.CSSProperties = { padding: "10px", fontSize: 13, color: "#64748b" };
+
+function ClientPicker({
+  value,
+  clients,
+  onPick,
+  onType,
+}: {
+  value: string;
+  clients: any[];
+  onPick: (client: any) => void;
+  onType: (name: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const boxRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const norm = (s: string) => (s || "").toLowerCase().trim();
+  const q = norm(query);
+  const filtered = (clients || [])
+    .filter((c) => c && c.name && (q === "" || norm(c.name).includes(q)))
+    .slice(0, 60);
+
+  return (
+    <div ref={boxRef} style={{ position: "relative" }}>
+      <input
+        style={styles.input}
+        value={value}
+        placeholder="Buscá o escribí el cliente…"
+        onFocus={() => {
+          setQuery("");
+          setOpen(true);
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          onType(e.target.value);
+          setOpen(true);
+        }}
+      />
+      {open && (
+        <div style={pickerDropdown}>
+          {filtered.length === 0 ? (
+            <div style={pickerEmpty}>
+              {clients && clients.length
+                ? "Sin coincidencias."
+                : "No hay clientes en el CRM todavía — cargalos o generalos desde la solapa CRM."}
+            </div>
+          ) : (
+            filtered.map((c) => (
+              <button
+                key={c.id}
+                type="button"
+                style={pickerItem}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onPick(c);
+                  setOpen(false);
+                }}
+              >
+                <div style={{ fontWeight: 600 }}>{c.name}</div>
+                {(c.taxId || c.contactName) && (
+                  <div style={{ fontSize: 11, color: "#64748b" }}>
+                    {[c.taxId, c.contactName].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 type PresupuestoTabProps = {
   budget: any;
   crmClients: any[];
@@ -203,15 +311,25 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   <input style={styles.input} value={formatDateDisplay(budgetEstimatedDeliveryDate)} readOnly />
                 </Field>
                 <Field label="Cliente">
-                  <input
-                    style={styles.input}
-                    list="crm-client-options"
+                  <ClientPicker
                     value={budget.client}
-                    onChange={(e) => {
-                      const name = e.target.value;
+                    clients={crmClients}
+                    onPick={(match) => {
+                      // Al elegir un cliente existente se traen sus datos y se fija el clientId.
+                      setBudget({
+                        ...budget,
+                        client: match.name,
+                        clientId: match.id,
+                        clientTaxId: match.taxId || budget.clientTaxId,
+                        contactName: match.contactName || budget.contactName,
+                        contactPhone: match.contactPhone || budget.contactPhone,
+                        contactEmail: match.contactEmail || budget.contactEmail,
+                        clientNotes: match.notes || budget.clientNotes,
+                      });
+                    }}
+                    onType={(name) => {
                       const match = findClientByName(crmClients, name);
                       if (match) {
-                        // Autocompletado: al elegir un cliente existente, se traen sus datos y se fija el clientId.
                         setBudget({
                           ...budget,
                           client: name,
@@ -227,11 +345,6 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       }
                     }}
                   />
-                  <datalist id="crm-client-options">
-                    {crmClients.map((c) => (
-                      <option key={c.id} value={c.name} />
-                    ))}
-                  </datalist>
                   {findClientByName(crmClients, budget.client) ? (
                     <div style={{ marginTop: 6 }}>
                       <span style={{ ...styles.statusPill, ...styles.statusGreen }}>
