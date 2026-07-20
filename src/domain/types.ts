@@ -697,13 +697,29 @@ export type CostEntry = {
   supplier: string;
   notes: string;
   // --- El gasto es el PAGO (regla del 2026-07-19). La factura es solo registro. ---
-  // De donde SALIO la plata. Es lo que impide contar dos veces: si salio del banco, el pago es el
-  // debito del extracto y no se carga a mano; si se pago en efectivo/negro, se carga a mano y no
-  // esta en el banco. Una misma plata no puede salir de dos lugares.
-  origin?: "banco" | "efectivo";
+  // COMO se pago. Ojo: "blanco" y "sale del banco" son cosas DISTINTAS (hay pagos blancos hechos en
+  // efectivo), por eso el medio va aparte de `administration`. De aca sale si el pago tiene que
+  // figurar en el extracto, que es lo que impide contar la misma plata dos veces.
+  // El CHEQUE se debita cuando lo cobran (30/60/90 dias), no el dia que se entrega.
+  paymentMethod?: PaymentMethod;
   supplierId?: number; // proveedor del listado (el nombre libre queda en `supplier`)
   bankEntryId?: number; // debito del extracto con el que quedo conciliado
+  invoiceRef?: string; // factura que respalda el pago (numero); la factura NO suma, solo respalda
 };
+
+export type PaymentMethod = "transferencia" | "cheque" | "efectivo" | "debito";
+
+export const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string }[] = [
+  { value: "transferencia", label: "Transferencia" },
+  { value: "cheque", label: "Cheque / echeq" },
+  { value: "efectivo", label: "Efectivo" },
+  { value: "debito", label: "Debito automatico" },
+];
+
+// Lo unico que se paga fuera del banco es el efectivo. Todo lo demas tiene que aparecer en el
+// extracto: por eso se puede cotejar.
+export const saleDelBanco = (method?: PaymentMethod): boolean =>
+  !!method && method !== "efectivo";
 
 // Proveedor: listado propio para vincular los pagos y poder cotejarlos contra el extracto.
 // El CUIT es la llave dura (el banco lo suele poner en el concepto); los alias cubren como aparece

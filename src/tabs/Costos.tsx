@@ -14,6 +14,7 @@ import { Panel, Field, MiniMetric, ButtonLike, FileDropButton } from "../ui/prim
 import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel } from "../domain/costs";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
+import { PAYMENT_METHOD_OPTIONS } from "../domain/types";
 import type { CompanyName, CostEntry, CostGroup, CostKind, Supplier } from "../domain/types";
 import type { ReconciliationSummary } from "../domain/suppliers";
 
@@ -590,7 +591,8 @@ export function CostosTab({
                 <th>Proveedor</th>
                 <th style={{ textAlign: "right" }}>Monto</th>
                 <th>Admin.</th>
-                <th>Salio de</th>
+                <th>Como se pago</th>
+                <th>Factura</th>
                 <th>Banco</th>
                 <th>Carga</th>
                 <th />
@@ -599,7 +601,7 @@ export function CostosTab({
             <tbody>
               {costEntries.length === 0 && (
                 <tr>
-                  <td colSpan={11} style={{ color: "#64748b" }}>
+                  <td colSpan={12} style={{ color: "#64748b" }}>
                     Todavia no cargaste gastos. Agrega uno a mano o importa el extracto bancario.
                   </td>
                 </tr>
@@ -686,16 +688,31 @@ export function CostosTab({
                     </select>
                   </td>
                   <td>
-                    {/* DE DONDE SALIO LA PLATA: es lo que impide contar dos veces. Lo del banco no
-                        se carga a mano; lo de efectivo/negro no esta en el extracto. */}
+                    {/* COMO se pago. De aca sale si tiene que figurar en el extracto: es lo que
+                        impide contar la misma plata dos veces. Ojo: blanco != sale del banco. */}
                     <select
                       style={styles.input}
-                      value={entry.origin || (entry.source === "extracto" ? "banco" : "efectivo")}
-                      onChange={(e) => updateCostEntry(entry.id, "origin", e.target.value)}
+                      value={
+                        entry.paymentMethod ||
+                        (entry.source === "extracto" ? "transferencia" : "efectivo")
+                      }
+                      onChange={(e) => updateCostEntry(entry.id, "paymentMethod", e.target.value)}
                     >
-                      <option value="banco">Banco</option>
-                      <option value="efectivo">Efectivo</option>
+                      {PAYMENT_METHOD_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
                     </select>
+                  </td>
+                  <td>
+                    {/* La factura NO suma: respalda que el pago es blanco. */}
+                    <input
+                      style={styles.input}
+                      value={entry.invoiceRef || ""}
+                      placeholder={entry.administration === "blanco" ? "N. factura" : "-"}
+                      onChange={(e) => updateCostEntry(entry.id, "invoiceRef", e.target.value)}
+                    />
                   </td>
                   <td>{renderCotejo(entry.id)}</td>
                   <td>{entry.source === "extracto" ? "Extracto" : "Manual"}</td>

@@ -9,7 +9,7 @@ import {
   todayIso,
   normalizeCompanyText,
 } from "./lib/format";
-import { WORK_TYPE_OPTIONS } from "./domain/types";
+import { WORK_TYPE_OPTIONS, saleDelBanco } from "./domain/types";
 import { getScaleForCategory as getScaleForCategoryPure } from "./domain/scale";
 import {
   splitModuleDataByCompany,
@@ -368,7 +368,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "historial", label: "CRM" },
   { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
-  { key: "costos", label: "Bancos y pagos · costos fijos/variables" },
+  { key: "costos", label: "Pago a proveedores · costos fijos y variables" },
   { key: "documentos", label: "Documentos" },
   { key: "marcadores", label: "Marcadores" },
   { key: "manual", label: "Manual" },
@@ -12019,7 +12019,7 @@ export default function App() {
         concept: `${entry.concept || ""} ${entry.notes || ""}`.trim(),
       }));
     const pagos = costEntries.filter(
-      (entry) => canAccessCompany(entry.company) && entry.origin === "banco"
+      (entry) => canAccessCompany(entry.company) && saleDelBanco(entry.paymentMethod)
     );
     return reconcilePayments(pagos, debits);
   }, [costEntries, visibleBankStatementEntries, allowedCompaniesForSession, effectiveIsAdmin]);

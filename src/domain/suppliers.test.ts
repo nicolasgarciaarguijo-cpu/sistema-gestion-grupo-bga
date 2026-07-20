@@ -29,7 +29,7 @@ const pago = (over: Partial<CostEntry> = {}): CostEntry => ({
   source: "manual",
   supplier: "DAC Maderas S.A.",
   notes: "",
-  origin: "banco",
+  paymentMethod: "transferencia",
   ...over,
 });
 
@@ -95,7 +95,7 @@ describe("reconcilePayment", () => {
   });
 
   it("no exige movimiento bancario si se pago en efectivo o en negro", () => {
-    expect(reconcilePayment(pago({ origin: "efectivo" }), debitos).status).toBe("no_aplica");
+    expect(reconcilePayment(pago({ paymentMethod: "efectivo" }), debitos).status).toBe("no_aplica");
     expect(reconcilePayment(pago({ administration: "negro" }), debitos).status).toBe("no_aplica");
   });
 
@@ -110,6 +110,21 @@ describe("reconcilePayment", () => {
   it("no concilia contra un movimiento de otra fecha lejana", () => {
     const lejos = [{ id: 9, date: "2026-08-01", amount: 150000, concept: "PAGO" }];
     expect(reconcilePayment(pago(), lejos).status).toBe("sin_movimiento");
+  });
+
+  // El cheque se debita cuando lo cobran, no cuando se entrega. Con la ventana corta darian todos
+  // como faltantes.
+  it("al cheque le da la ventana larga: se debita cuando lo cobran", () => {
+    const aDosMeses = [{ id: 9, date: "2026-08-10", amount: 150000, concept: "PAGO CHEQUE" }];
+    expect(reconcilePayment(pago({ paymentMethod: "cheque" }), aDosMeses).status).toBe("conciliado");
+    // el mismo movimiento, pagado por transferencia, no puede ser: son dos meses despues
+    expect(reconcilePayment(pago({ paymentMethod: "transferencia" }), aDosMeses).status).toBe(
+      "sin_movimiento"
+    );
+  });
+
+  it("el debito automatico tambien tiene que figurar en el banco", () => {
+    expect(reconcilePayment(pago({ paymentMethod: "debito" }), debitos).status).toBe("conciliado");
   });
 });
 

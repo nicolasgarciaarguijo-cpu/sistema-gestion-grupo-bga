@@ -7,6 +7,7 @@
 //
 // Puro: solo texto y aritmetica, sin estado ni fechas del sistema.
 
+import { saleDelBanco } from "./types";
 import type { CostEntry, Supplier } from "./types";
 
 const DIGITS = /\D+/g;
@@ -74,6 +75,15 @@ export type PaymentMatchStatus =
   | "sin_movimiento" // deberia estar en el banco y no aparece -> revisar
   | "no_aplica"; // efectivo o negro: no tiene por que estar en el banco
 
+// Dias de tolerancia para encontrar el debito. El cheque NO se debita el dia que se entrega sino
+// cuando lo cobran (30/60/90 dias es lo normal), asi que con la ventana corta darian todos como
+// faltantes. Para el resto, 5 dias alcanza: el banco debita 1-2 dias despues de lo anotado.
+export const DEFAULT_DAY_WINDOW = 5;
+export const CHEQUE_DAY_WINDOW = 120;
+
+export const dayWindowFor = (method?: string): number =>
+  method === "cheque" ? CHEQUE_DAY_WINDOW : DEFAULT_DAY_WINDOW;
+
 export type PaymentMatch = {
   paymentId: number;
   status: PaymentMatchStatus;
@@ -98,10 +108,11 @@ export function reconcilePayment(
   opts?: { amountTolerance?: number; dayWindow?: number }
 ): PaymentMatch {
   const amountTolerance = opts?.amountTolerance ?? 1;
-  const dayWindow = opts?.dayWindow ?? 5;
+  const dayWindow = opts?.dayWindow ?? dayWindowFor(payment.paymentMethod);
 
-  // Solo se cotejan los pagos que TIENEN que estar en el banco.
-  if (payment.administration !== "blanco" || payment.origin !== "banco") {
+  // Solo se cotejan los pagos que TIENEN que estar en el banco. "Blanco" no alcanza: un pago blanco
+  // puede haberse hecho en efectivo. Lo que manda es el medio de pago.
+  if (payment.administration !== "blanco" || !saleDelBanco(payment.paymentMethod)) {
     return {
       paymentId: payment.id,
       status: "no_aplica",
