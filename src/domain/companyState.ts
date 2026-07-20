@@ -29,6 +29,8 @@ export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   // Modulo nuevo (2026-07-14): no necesita entrada en el splitter SQL porque no hay datos
   // legacy en app_state_modules que partir; el frontend escribe v2 directo.
   costos: ["costEntries", "costGroups"],
+  // Cada factura emitida es de la empresa que la emitio.
+  "facturas-emitidas": ["issuedInvoices"],
   "historial-crm": ["savedBudgets"],
   // Marcadores aislados por empresa (decision 2026-06-17; reversible si F3 los comparte).
   marcadores: [

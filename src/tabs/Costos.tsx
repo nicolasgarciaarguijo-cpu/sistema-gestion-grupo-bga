@@ -17,7 +17,7 @@ import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel } from "../domain/costs";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
 import { PAYMENT_METHOD_OPTIONS } from "../domain/types";
-import type { CompanyName, CostEntry, CostGroup, CostKind, Supplier } from "../domain/types";
+import type { CompanyName, CostEntry, CostGroup, CostKind, IssuedInvoice, Supplier } from "../domain/types";
 import type { ReconciliationSummary } from "../domain/suppliers";
 import type { IntercompanyTransfer, IntercompanySummary } from "../domain/intercompany";
 
@@ -59,6 +59,9 @@ type CostosTabProps = {
   removeSupplier: (id: number) => void;
   updateSupplier: (id: number, field: keyof Supplier, value: any) => void;
   paymentsReconciliation: ReconciliationSummary;
+  // Facturas emitidas (listado de ARCA): registro, no suma al resultado.
+  issuedInvoices: IssuedInvoice[];
+  onImportArca: (file: File | null) => void;
   // Giros entre las empresas del grupo: no son pagos, pero hay que cruzarlos con factura o devolucion.
   intercompanyAccount: {
     transfers: IntercompanyTransfer[];
@@ -92,6 +95,8 @@ export function CostosTab({
   updateSupplier,
   paymentsReconciliation,
   intercompanyAccount,
+  issuedInvoices,
+  onImportArca,
   fiscalLabel,
   months,
   aggregation,
@@ -474,6 +479,80 @@ export function CostosTab({
             ))}
           </tbody>
         </table>
+      </Panel>
+
+      <Panel
+        title="Facturas emitidas (listado de ARCA)"
+        span="full"
+        actions={
+          <FileDropButton
+            label="Importar listado de ARCA"
+            accept=".xlsx,.xls,.csv"
+            onFileSelected={(file) => onImportArca(file)}
+          />
+        }
+      >
+        <div style={styles.sectionNote}>
+          Es el export <strong>"Mis Comprobantes Emitidos"</strong> tal como lo baja ARCA. Se guardan
+          los DATOS, no el PDF. <strong>La factura no suma ni resta al resultado</strong>: sirve para
+          tener el listado, para cruzar las facturas entre las dos empresas contra los giros, y para
+          saber lo que falta cobrar. La empresa emisora sale del CUIT del titulo del archivo, asi que
+          no importa desde que empresa lo cargues. Los comprobantes repetidos no se duplican.
+        </div>
+        {issuedInvoices.length === 0 ? (
+          <div style={{ ...styles.muted, marginTop: 8 }}>
+            Todavia no cargaste ningun listado.
+          </div>
+        ) : (
+          <>
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Comprobantes" value={String(issuedInvoices.length)} />
+              <MiniMetric
+                label="Total emitido"
+                value={money(issuedInvoices.reduce((acc, inv) => acc + Number(inv.total || 0), 0))}
+              />
+              <MiniMetric
+                label="Periodo"
+                value={`${issuedInvoices.reduce((a, i) => (a < i.date ? a : i.date), issuedInvoices[0].date)} a ${issuedInvoices.reduce((a, i) => (a > i.date ? a : i.date), issuedInvoices[0].date)}`}
+              />
+            </div>
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569" }}>
+                Ver los {issuedInvoices.length} comprobantes
+              </summary>
+              <div style={{ overflowX: "auto", marginTop: 8, maxHeight: 420, overflowY: "auto" }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Emisor</th>
+                      <th>Tipo</th>
+                      <th>Numero</th>
+                      <th>Receptor</th>
+                      <th style={{ textAlign: "right" }}>Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...issuedInvoices]
+                      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+                      .map((inv) => (
+                        <tr key={inv.id}>
+                          <td>{inv.date}</td>
+                          <td>{getCompanyMeta(inv.company)?.short || inv.company}</td>
+                          <td style={{ fontSize: 12 }}>{inv.kind}</td>
+                          <td style={{ fontSize: 12 }}>
+                            {inv.pointOfSale}-{inv.number}
+                          </td>
+                          <td style={{ fontSize: 12 }}>{(inv.receiverName || "").slice(0, 46)}</td>
+                          <td style={{ textAlign: "right" }}>{money(inv.total)}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </>
+        )}
       </Panel>
 
       <Panel title="Cuenta corriente entre las empresas del grupo" span="full">

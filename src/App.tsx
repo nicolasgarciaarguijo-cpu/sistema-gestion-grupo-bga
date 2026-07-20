@@ -64,7 +64,8 @@ import {
 } from "./domain/folderPaths";
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
-import { readBankStatement, suggestGroupForConcept, SHEETJS_CDN } from "./lib/bankStatement";
+import { readBankStatement, readSpreadsheetRows, suggestGroupForConcept, SHEETJS_CDN } from "./lib/bankStatement";
+import { rowsToIssuedInvoices, issuedInvoiceKey } from "./lib/arcaInvoices";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -165,6 +166,7 @@ import type {
   CostGroup,
   CostEntry,
   Supplier,
+  IssuedInvoice,
   RemitoDraftRow,
   RemitoDraft,
   SupabaseActiveSession,
@@ -1013,6 +1015,7 @@ const defaultCostGroups: CostGroup[] = DEFAULT_COST_GROUP_SEEDS.map((seed, index
 
 const defaultCostEntries: CostEntry[] = [];
 const defaultSuppliers: Supplier[] = [];
+const defaultIssuedInvoices: IssuedInvoice[] = [];
 
 const defaultCostAnalysisEntries: CostAnalysisEntry[] = [];
 const defaultRemitoDrafts: RemitoDraft[] = [];
@@ -1557,6 +1560,7 @@ type PersistedAppStateData = {
   costGroups: CostGroup[];
   costEntries: CostEntry[];
   suppliers: Supplier[];
+  issuedInvoices: IssuedInvoice[];
   remitoDrafts: RemitoDraft[];
   companyAssets: CompanyAsset[];
   linkedDocuments: LinkedDocument[];
@@ -1597,6 +1601,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "costos",
     label: "Costos fijos y variables",
     fields: ["costGroups", "costEntries", "suppliers"] as const,
+  },
+  {
+    key: "facturas-emitidas",
+    label: "Facturas emitidas (ARCA)",
+    fields: ["issuedInvoices"] as const,
   },
   {
     key: "presupuestos",
@@ -2544,6 +2553,7 @@ export default function App() {
   const [costGroups, setCostGroups] = useState<CostGroup[]>(defaultCostGroups);
   const [costEntries, setCostEntries] = useState<CostEntry[]>(defaultCostEntries);
   const [suppliers, setSuppliers] = useState<Supplier[]>(defaultSuppliers);
+  const [issuedInvoices, setIssuedInvoices] = useState<IssuedInvoice[]>(defaultIssuedInvoices);
   const [costsFiscalStartYear, setCostsFiscalStartYear] = useState<number>(() =>
     currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date())
   );
@@ -7779,6 +7789,7 @@ export default function App() {
     costGroups: costGroups.map((item) => ({ ...item })),
     costEntries: costEntries.map((item) => ({ ...item })),
     suppliers: suppliers.map((item) => ({ ...item })),
+    issuedInvoices: issuedInvoices.map((item) => ({ ...item })),
     remitoDrafts: remitoDrafts.map((draft) => ({
       ...draft,
       rows: draft.rows.map((row) => ({ ...row })),
@@ -8025,6 +8036,9 @@ export default function App() {
     );
     setSuppliers(
       keepAccessibleByCompany(data.suppliers || defaultSuppliers).map((item) => ({ ...item }))
+    );
+    setIssuedInvoices(
+      keepAccessibleByCompany(data.issuedInvoices || defaultIssuedInvoices).map((item) => ({ ...item }))
     );
     setRemitoDrafts(
       keepAccessibleByCompany(data.remitoDrafts || defaultRemitoDrafts).map((draft) => ({
@@ -11996,6 +12010,11 @@ export default function App() {
     [costEntries, visiblePettyCashExpenses, costsPayrollRows]
   );
 
+  const visibleIssuedInvoices = useMemo(
+    () => issuedInvoices.filter((item) => canAccessCompany(item.company)),
+    [issuedInvoices, allowedCompaniesForSession, effectiveIsAdmin]
+  );
+
   // Proveedores visibles segun la empresa (el listado puede ser de una empresa o "General").
   const visibleSuppliers = useMemo(
     () => suppliers.filter((item) => canAccessCompany(item.company as any)),
@@ -12039,10 +12058,61 @@ export default function App() {
       text: `${entry.concept || ""} ${entry.notes || ""}`.trim(),
     }));
     const transfers = detectIntercompanyTransfers(movements, companies);
-    // TODO: cuando se carguen las facturas ENTRE las dos empresas, pasarlas en `invoices` y el
-    // pendiente deja de ser "lo que no declara factura" para ser "lo que falta facturar de verdad".
-    return { transfers, summary: summarizeIntercompany({ transfers }) };
-  }, [visibleBankStatementEntries, companyCatalog, COMPANY_OPTIONS]);
+    // Las facturas ENTRE las dos empresas: las que le emitimos a una empresa del propio grupo.
+    // Con esto el pendiente deja de ser "lo que no declara factura" y pasa a ser el saldo real.
+    const porCuit = new Map(companies.map((c) => [c.taxId.replace(/\D/g, ""), c.company]));
+    const invoices = issuedInvoices
+      .map((inv) => {
+        const receptor = porCuit.get(String(inv.receiverTaxId || "").replace(/\D/g, ""));
+        if (!receptor || receptor === inv.company) return null;
+        return {
+          from: String(inv.company),
+          to: receptor,
+          date: inv.date,
+          amount: Number(inv.total || 0),
+        };
+      })
+      .filter(Boolean) as { from: string; to: string; date: string; amount: number }[];
+    return { transfers, invoices, summary: summarizeIntercompany({ transfers, invoices }) };
+  }, [visibleBankStatementEntries, issuedInvoices, companyCatalog, COMPANY_OPTIONS]);
+
+  // Import del export de ARCA "Mis Comprobantes Emitidos". La empresa emisora sale del CUIT del
+  // titulo del archivo, no de la empresa activa: asi no importa desde donde se cargue.
+  const importArcaInvoices = async (file: File | null) => {
+    if (!file) return;
+    setDocumentsMessage("Leyendo el listado de ARCA...");
+    try {
+      const rows = await readSpreadsheetRows(file);
+      const { emitterTaxId, invoices } = rowsToIssuedInvoices(rows);
+      if (invoices.length === 0) {
+        setDocumentsMessage("Lei el archivo pero no reconoci los comprobantes.");
+        return;
+      }
+      const emisor = COMPANY_OPTIONS.find(
+        (option) =>
+          String(getCompanyMeta(option.value).taxId || "").replace(/\D/g, "") === emitterTaxId
+      );
+      if (!emisor) {
+        setDocumentsMessage(
+          `El archivo es del CUIT ${emitterTaxId} y no coincide con ninguna empresa cargada. Revisa el CUIT en la configuracion de empresas.`
+        );
+        return;
+      }
+      const yaEstan = new Set(issuedInvoices.map((inv) => issuedInvoiceKey(inv)));
+      const nuevas = invoices
+        .filter((inv) => !yaEstan.has(issuedInvoiceKey(inv)))
+        .map((inv) => ({ ...inv, id: newId(), company: emisor.value as CompanyName, source: "arca" as const }));
+      setIssuedInvoices((prev) => [...prev, ...nuevas]);
+      const repetidas = invoices.length - nuevas.length;
+      setDocumentsMessage(
+        `Facturas de ${getCompanyMeta(emisor.value).short}: ${nuevas.length} nueva(s)` +
+          (repetidas > 0 ? `, ${repetidas} ya estaban (no se duplican).` : ".")
+      );
+    } catch (err: any) {
+      console.error("[arca] import:", err);
+      setDocumentsMessage("Error al leer el listado de ARCA: " + (err?.message || String(err)));
+    }
+  };
 
   // Sugerencia de proveedor para un movimiento del banco (por CUIT, nombre o alias).
   const suggestSupplierForConcept = (concept: string) =>
@@ -13656,6 +13726,8 @@ export default function App() {
           updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field, value)}
           paymentsReconciliation={paymentsReconciliation}
           intercompanyAccount={intercompanyAccount}
+          issuedInvoices={visibleIssuedInvoices}
+          onImportArca={importArcaInvoices}
           costRows={costRows}
           companyScope={costsCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}

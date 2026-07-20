@@ -721,6 +721,25 @@ export const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string }[] =
 export const saleDelBanco = (method?: PaymentMethod): boolean =>
   !!method && method !== "efectivo";
 
+// Factura EMITIDA, tal como viene del export de ARCA ("Mis Comprobantes Emitidos").
+// NO suma al resultado: es registro. Sirve para el listado del contable, para cruzar las facturas
+// entre las empresas del grupo contra los giros, y para saber lo que falta cobrar de cada cliente.
+export type IssuedInvoice = {
+  id: number;
+  company: CompanyName; // el EMISOR (se deduce del CUIT del titulo del archivo)
+  date: string; // yyyy-mm-dd
+  kind: string; // "1 - Factura A"
+  pointOfSale: string;
+  number: string;
+  receiverTaxId: string; // solo digitos
+  receiverName: string;
+  currency: string;
+  net: number;
+  vat: number;
+  total: number;
+  source: "arca" | "manual";
+};
+
 // Proveedor: listado propio para vincular los pagos y poder cotejarlos contra el extracto.
 // El CUIT es la llave dura (el banco lo suele poner en el concepto); los alias cubren como aparece
 // escrito en el resumen, que casi nunca coincide con el nombre de fantasia.

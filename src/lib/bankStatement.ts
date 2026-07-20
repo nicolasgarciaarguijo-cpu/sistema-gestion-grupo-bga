@@ -226,7 +226,8 @@ export function suggestGroupForConcept(concept: string, availableGroups: string[
 
 export const SHEETJS_CDN = "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
 
-async function readExcelRows(file: File): Promise<string[][]> {
+// Exportada para reusarla con otros Excel (ej. el listado de ARCA de facturas emitidas).
+export async function readSpreadsheetRows(file: File): Promise<string[][]> {
   await ensureScript(SHEETJS_CDN);
   const XLSX = (window as any).XLSX;
   if (!XLSX?.read) throw new Error("No se pudo cargar el lector de Excel.");
@@ -249,7 +250,7 @@ export async function readBankStatement(file: File): Promise<BankStatementParseR
   const name = file.name.toLowerCase();
 
   if (/\.(xlsx|xls)$/.test(name)) {
-    const rows = await readExcelRows(file);
+    const rows = await readSpreadsheetRows(file);
     const entries = rowsToStatementEntries(rows);
     if (entries.length === 0) {
       throw new Error(
