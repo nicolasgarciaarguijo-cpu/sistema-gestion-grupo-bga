@@ -696,6 +696,26 @@ export type CostEntry = {
   source: "manual" | "extracto";
   supplier: string;
   notes: string;
+  // --- El gasto es el PAGO (regla del 2026-07-19). La factura es solo registro. ---
+  // De donde SALIO la plata. Es lo que impide contar dos veces: si salio del banco, el pago es el
+  // debito del extracto y no se carga a mano; si se pago en efectivo/negro, se carga a mano y no
+  // esta en el banco. Una misma plata no puede salir de dos lugares.
+  origin?: "banco" | "efectivo";
+  supplierId?: number; // proveedor del listado (el nombre libre queda en `supplier`)
+  bankEntryId?: number; // debito del extracto con el que quedo conciliado
+};
+
+// Proveedor: listado propio para vincular los pagos y poder cotejarlos contra el extracto.
+// El CUIT es la llave dura (el banco lo suele poner en el concepto); los alias cubren como aparece
+// escrito en el resumen, que casi nunca coincide con el nombre de fantasia.
+export type Supplier = {
+  id: number;
+  company: CompanyScope;
+  name: string;
+  taxId: string;
+  aliases: string; // como figura en el extracto, separado por comas
+  active: boolean;
+  notes: string;
 };
 
 export type RemitoDraftRow = {

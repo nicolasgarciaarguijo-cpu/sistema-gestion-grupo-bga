@@ -14,7 +14,8 @@ import { Panel, Field, MiniMetric, ButtonLike, FileDropButton } from "../ui/prim
 import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel } from "../domain/costs";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
-import type { CompanyName, CostEntry, CostGroup, CostKind } from "../domain/types";
+import type { CompanyName, CostEntry, CostGroup, CostKind, Supplier } from "../domain/types";
+import type { ReconciliationSummary } from "../domain/suppliers";
 
 export type CostStatementDraftRow = {
   id: number;
@@ -48,6 +49,12 @@ type CostosTabProps = {
   addCostEntry: () => void;
   removeCostEntry: (id: number) => void;
   updateCostEntry: (id: number, field: keyof CostEntry, value: any) => void;
+  // proveedores + cotejo del pago contra el extracto
+  suppliers: Supplier[];
+  addSupplier: () => void;
+  removeSupplier: (id: number) => void;
+  updateSupplier: (id: number, field: keyof Supplier, value: any) => void;
+  paymentsReconciliation: ReconciliationSummary;
   // extracto
   statementDraft: CostStatementDraftRow[];
   statementMessage: string;
@@ -70,6 +77,11 @@ type CostosTabProps = {
 };
 
 export function CostosTab({
+  suppliers,
+  addSupplier,
+  removeSupplier,
+  updateSupplier,
+  paymentsReconciliation,
   fiscalLabel,
   months,
   aggregation,
@@ -110,6 +122,31 @@ export function CostosTab({
   const manualGroupOptions = costGroups
     .filter((group) => group.active && !group.auto)
     .map((group) => group.name);
+
+  // Cotejo del pago contra el extracto. Verde = el debito esta; ambar = deberia estar y no aparece
+  // (o falta cargar el extracto, o el pago esta mal); gris = no pasa por el banco, no se cerifica.
+  const matchByPayment = new Map(paymentsReconciliation.matches.map((m) => [m.paymentId, m]));
+  const renderCotejo = (entryId: number) => {
+    const match = matchByPayment.get(entryId);
+    if (!match || match.status === "no_aplica") {
+      return <span style={{ color: "#94a3b8", fontSize: 12 }}>-</span>;
+    }
+    const ok = match.status === "conciliado";
+    const montoDistinto = ok && Math.abs(match.diff || 0) > 1;
+    return (
+      <span
+        title={match.detail}
+        style={{
+          fontSize: 12,
+          fontWeight: 700,
+          color: ok && !montoDistinto ? "#15803d" : "#b45309",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {ok ? (montoDistinto ? "≠ monto" : "✓ en el banco") : "⚠ no figura"}
+      </span>
+    );
+  };
 
   const monthsWithData = months.filter((m) => (aggregation.totalByMonth[m] || 0) > 0).length;
   const fixedMonthlyAverage =
@@ -430,13 +467,118 @@ export function CostosTab({
       </Panel>
 
       <Panel
+        title="Proveedores"
+        span="full"
+        actions={<ButtonLike onClick={addSupplier}>Agregar proveedor</ButtonLike>}
+      >
+        <div style={styles.sectionNote}>
+          El listado sirve para vincular el pago y despues cotejarlo contra el extracto. El CUIT es lo
+          que mejor funciona (el banco lo escribe en el concepto). En "Como figura en el banco" pone
+          los alias con los que aparece en el resumen, separados por coma: casi nunca coincide con el
+          nombre real.
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Proveedor</th>
+                <th>CUIT</th>
+                <th>Como figura en el banco</th>
+                <th>Activo</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {suppliers.length === 0 && (
+                <tr>
+                  <td colSpan={6} style={{ color: "#64748b" }}>
+                    Todavia no cargaste proveedores. Sin listado el pago igual se carga, pero no se
+                    puede cotejar automaticamente contra el banco.
+                  </td>
+                </tr>
+              )}
+              {suppliers.map((supplier) => (
+                <tr key={supplier.id}>
+                  <td>
+                    <select
+                      style={styles.input}
+                      value={supplier.company}
+                      onChange={(e) => updateSupplier(supplier.id, "company", e.target.value)}
+                    >
+                      <option value="General">Las dos</option>
+                      {COMPANY_OPTIONS.map((company) => (
+                        <option key={company.value} value={company.value}>
+                          {company.short}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td>
+                    <input
+                      style={styles.input}
+                      value={supplier.name}
+                      onChange={(e) => updateSupplier(supplier.id, "name", e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      style={styles.input}
+                      value={supplier.taxId}
+                      placeholder="30-71234567-9"
+                      onChange={(e) => updateSupplier(supplier.id, "taxId", e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      style={styles.input}
+                      value={supplier.aliases}
+                      placeholder="DAC MADERAS, DACMAD"
+                      onChange={(e) => updateSupplier(supplier.id, "aliases", e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={supplier.active !== false}
+                      onChange={(e) => updateSupplier(supplier.id, "active", e.target.checked)}
+                    />
+                  </td>
+                  <td>
+                    <ButtonLike onClick={() => removeSupplier(supplier.id)} secondary>
+                      Quitar
+                    </ButtonLike>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel
         title="Gastos cargados"
         span="full"
         actions={<ButtonLike onClick={addCostEntry}>Agregar gasto</ButtonLike>}
       >
         <div style={styles.sectionNote}>
           Gastos que no vienen de compras, caja chica ni personal. {costEntries.length} cargado(s).
+          {paymentsReconciliation.sinMovimiento > 0 && (
+            <span style={{ color: "#b45309", fontWeight: 700 }}>
+              {" "}
+              · {paymentsReconciliation.sinMovimiento} pago(s) por{" "}
+              {money(paymentsReconciliation.montoSinMovimiento)} dicen salir del banco pero no figuran
+              en el extracto.
+            </span>
+          )}
         </div>
+        <datalist id="lista-proveedores">
+          {suppliers
+            .filter((s) => s.active !== false)
+            .map((s) => (
+              <option key={s.id} value={s.name} />
+            ))}
+        </datalist>
         <div style={{ overflowX: "auto" }}>
           <table style={styles.table}>
             <thead>
@@ -448,14 +590,16 @@ export function CostosTab({
                 <th>Proveedor</th>
                 <th style={{ textAlign: "right" }}>Monto</th>
                 <th>Admin.</th>
-                <th>Origen</th>
+                <th>Salio de</th>
+                <th>Banco</th>
+                <th>Carga</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {costEntries.length === 0 && (
                 <tr>
-                  <td colSpan={9} style={{ color: "#64748b" }}>
+                  <td colSpan={11} style={{ color: "#64748b" }}>
                     Todavia no cargaste gastos. Agrega uno a mano o importa el extracto bancario.
                   </td>
                 </tr>
@@ -505,10 +649,20 @@ export function CostosTab({
                     />
                   </td>
                   <td>
+                    {/* Texto libre con sugerencias del listado: al elegir uno del listado queda
+                        VINCULADO (supplierId), que es lo que permite cotejar contra el extracto. */}
                     <input
                       style={styles.input}
+                      list="lista-proveedores"
                       value={entry.supplier}
-                      onChange={(e) => updateCostEntry(entry.id, "supplier", e.target.value)}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        updateCostEntry(entry.id, "supplier", value);
+                        const match = suppliers.find(
+                          (s) => s.name.trim().toLowerCase() === value.trim().toLowerCase()
+                        );
+                        updateCostEntry(entry.id, "supplierId", match ? match.id : undefined);
+                      }}
                     />
                   </td>
                   <td>
@@ -531,6 +685,19 @@ export function CostosTab({
                       <option value="negro">Negro</option>
                     </select>
                   </td>
+                  <td>
+                    {/* DE DONDE SALIO LA PLATA: es lo que impide contar dos veces. Lo del banco no
+                        se carga a mano; lo de efectivo/negro no esta en el extracto. */}
+                    <select
+                      style={styles.input}
+                      value={entry.origin || (entry.source === "extracto" ? "banco" : "efectivo")}
+                      onChange={(e) => updateCostEntry(entry.id, "origin", e.target.value)}
+                    >
+                      <option value="banco">Banco</option>
+                      <option value="efectivo">Efectivo</option>
+                    </select>
+                  </td>
+                  <td>{renderCotejo(entry.id)}</td>
                   <td>{entry.source === "extracto" ? "Extracto" : "Manual"}</td>
                   <td>
                     <ButtonLike onClick={() => removeCostEntry(entry.id)} secondary>

@@ -50,6 +50,7 @@ import {
   fiscalMonthKeys,
   isAutoCostGroup,
 } from "./domain/costs";
+import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import {
   companyFolderName,
   companyPath,
@@ -162,6 +163,7 @@ import type {
   CostAnalysisEntry,
   CostGroup,
   CostEntry,
+  Supplier,
   RemitoDraftRow,
   RemitoDraft,
   SupabaseActiveSession,
@@ -1009,6 +1011,7 @@ const defaultCostGroups: CostGroup[] = DEFAULT_COST_GROUP_SEEDS.map((seed, index
 }));
 
 const defaultCostEntries: CostEntry[] = [];
+const defaultSuppliers: Supplier[] = [];
 
 const defaultCostAnalysisEntries: CostAnalysisEntry[] = [];
 const defaultRemitoDrafts: RemitoDraft[] = [];
@@ -1552,6 +1555,7 @@ type PersistedAppStateData = {
   costAnalysisEntries: CostAnalysisEntry[];
   costGroups: CostGroup[];
   costEntries: CostEntry[];
+  suppliers: Supplier[];
   remitoDrafts: RemitoDraft[];
   companyAssets: CompanyAsset[];
   linkedDocuments: LinkedDocument[];
@@ -1591,7 +1595,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "costos",
     label: "Costos fijos y variables",
-    fields: ["costGroups", "costEntries"] as const,
+    fields: ["costGroups", "costEntries", "suppliers"] as const,
   },
   {
     key: "presupuestos",
@@ -2538,6 +2542,7 @@ export default function App() {
   // --- Costos fijos y variables ---
   const [costGroups, setCostGroups] = useState<CostGroup[]>(defaultCostGroups);
   const [costEntries, setCostEntries] = useState<CostEntry[]>(defaultCostEntries);
+  const [suppliers, setSuppliers] = useState<Supplier[]>(defaultSuppliers);
   const [costsFiscalStartYear, setCostsFiscalStartYear] = useState<number>(() =>
     currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date())
   );
@@ -7772,6 +7777,7 @@ export default function App() {
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
     costGroups: costGroups.map((item) => ({ ...item })),
     costEntries: costEntries.map((item) => ({ ...item })),
+    suppliers: suppliers.map((item) => ({ ...item })),
     remitoDrafts: remitoDrafts.map((draft) => ({
       ...draft,
       rows: draft.rows.map((row) => ({ ...row })),
@@ -8015,6 +8021,9 @@ export default function App() {
     );
     setCostEntries(
       keepAccessibleByCompany(data.costEntries || defaultCostEntries).map((item) => ({ ...item }))
+    );
+    setSuppliers(
+      keepAccessibleByCompany(data.suppliers || defaultSuppliers).map((item) => ({ ...item }))
     );
     setRemitoDrafts(
       keepAccessibleByCompany(data.remitoDrafts || defaultRemitoDrafts).map((draft) => ({
@@ -11991,6 +12000,53 @@ export default function App() {
     [costEntries, visiblePurchaseInvoices, visiblePettyCashExpenses, costsPayrollRows]
   );
 
+  // Proveedores visibles segun la empresa (el listado puede ser de una empresa o "General").
+  const visibleSuppliers = useMemo(
+    () => suppliers.filter((item) => canAccessCompany(item.company as any)),
+    [suppliers, allowedCompaniesForSession, effectiveIsAdmin]
+  );
+
+  // COTEJO contra el extracto: un pago en BLANCO que sale del BANCO tiene que aparecer si o si como
+  // debito. Si no aparece, o falta cargar el extracto o el pago esta mal. Los pagos en efectivo o en
+  // negro no se cotejan: no pasan por el banco y no es un error que falten.
+  const paymentsReconciliation = useMemo(() => {
+    const debits = visibleBankStatementEntries
+      .filter((entry) => entry.movementType === "debito")
+      .map((entry) => ({
+        id: Number(entry.id),
+        date: String(entry.date || ""),
+        amount: Number(entry.amount || 0),
+        concept: `${entry.concept || ""} ${entry.notes || ""}`.trim(),
+      }));
+    const pagos = costEntries.filter(
+      (entry) => canAccessCompany(entry.company) && entry.origin === "banco"
+    );
+    return reconcilePayments(pagos, debits);
+  }, [costEntries, visibleBankStatementEntries, allowedCompaniesForSession, effectiveIsAdmin]);
+
+  // Sugerencia de proveedor para un movimiento del banco (por CUIT, nombre o alias).
+  const suggestSupplierForConcept = (concept: string) =>
+    findSupplierInText(concept, visibleSuppliers);
+
+  const addSupplier = () => {
+    setSuppliers((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        company: costsCompanyScope === "__ALL__" ? "General" : (costsCompanyScope as any),
+        name: "",
+        taxId: "",
+        aliases: "",
+        active: true,
+        notes: "",
+      },
+    ]);
+  };
+
+  const removeSupplier = (id: number) => {
+    setSuppliers((prev) => prev.filter((item) => item.id !== id));
+  };
+
   const costsAggregation = useMemo(
     () =>
       aggregateCosts({
@@ -13568,6 +13624,11 @@ export default function App() {
           aggregation={costsAggregation}
           costGroups={costGroups}
           costEntries={costEntries}
+          suppliers={visibleSuppliers}
+          addSupplier={addSupplier}
+          removeSupplier={removeSupplier}
+          updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field, value)}
+          paymentsReconciliation={paymentsReconciliation}
           costRows={costRows}
           companyScope={costsCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
