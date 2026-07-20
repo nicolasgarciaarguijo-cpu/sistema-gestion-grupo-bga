@@ -51,6 +51,7 @@ import {
   isAutoCostGroup,
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
+import { detectIntercompanyTransfers, summarizeIntercompany } from "./domain/intercompany";
 import {
   companyFolderName,
   companyPath,
@@ -12019,6 +12020,30 @@ export default function App() {
     return reconcilePayments(pagos, debits);
   }, [costEntries, visibleBankStatementEntries, allowedCompaniesForSession, effectiveIsAdmin]);
 
+  // CUENTA CORRIENTE ENTRE LAS EMPRESAS DEL GRUPO. Los giros entre BGA y De Raiz no son pagos ni
+  // cobros (para el grupo no entro ni salio nada), pero cada uno se cruza con una factura entre las
+  // dos o con una devolucion. Lo que no esta cruzado es lo que hay que definir.
+  const intercompanyAccount = useMemo(() => {
+    const companies = COMPANY_OPTIONS.filter((option) => option.value !== "General")
+      .map((option) => ({
+        company: String(option.value),
+        taxId: String(getCompanyMeta(option.value).taxId || ""),
+      }))
+      .filter((item) => item.taxId.replace(/\D/g, "").length >= 11);
+    const movements = visibleBankStatementEntries.map((entry) => ({
+      id: Number(entry.id),
+      company: String(entry.company),
+      date: String(entry.date || ""),
+      amount: Number(entry.amount || 0),
+      movementType: entry.movementType as "credito" | "debito",
+      text: `${entry.concept || ""} ${entry.notes || ""}`.trim(),
+    }));
+    const transfers = detectIntercompanyTransfers(movements, companies);
+    // TODO: cuando se carguen las facturas ENTRE las dos empresas, pasarlas en `invoices` y el
+    // pendiente deja de ser "lo que no declara factura" para ser "lo que falta facturar de verdad".
+    return { transfers, summary: summarizeIntercompany({ transfers }) };
+  }, [visibleBankStatementEntries, companyCatalog, COMPANY_OPTIONS]);
+
   // Sugerencia de proveedor para un movimiento del banco (por CUIT, nombre o alias).
   const suggestSupplierForConcept = (concept: string) =>
     findSupplierInText(concept, visibleSuppliers);
@@ -13630,6 +13655,7 @@ export default function App() {
           removeSupplier={removeSupplier}
           updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field, value)}
           paymentsReconciliation={paymentsReconciliation}
+          intercompanyAccount={intercompanyAccount}
           costRows={costRows}
           companyScope={costsCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}

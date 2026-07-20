@@ -19,6 +19,7 @@ import type { CostAggregation, CostSourceRow } from "../domain/costs";
 import { PAYMENT_METHOD_OPTIONS } from "../domain/types";
 import type { CompanyName, CostEntry, CostGroup, CostKind, Supplier } from "../domain/types";
 import type { ReconciliationSummary } from "../domain/suppliers";
+import type { IntercompanyTransfer, IntercompanySummary } from "../domain/intercompany";
 
 export type CostStatementDraftRow = {
   id: number;
@@ -58,6 +59,11 @@ type CostosTabProps = {
   removeSupplier: (id: number) => void;
   updateSupplier: (id: number, field: keyof Supplier, value: any) => void;
   paymentsReconciliation: ReconciliationSummary;
+  // Giros entre las empresas del grupo: no son pagos, pero hay que cruzarlos con factura o devolucion.
+  intercompanyAccount: {
+    transfers: IntercompanyTransfer[];
+    summary: IntercompanySummary;
+  };
   // extracto
   statementDraft: CostStatementDraftRow[];
   statementMessage: string;
@@ -85,6 +91,7 @@ export function CostosTab({
   removeSupplier,
   updateSupplier,
   paymentsReconciliation,
+  intercompanyAccount,
   fiscalLabel,
   months,
   aggregation,
@@ -467,6 +474,122 @@ export function CostosTab({
             ))}
           </tbody>
         </table>
+      </Panel>
+
+      <Panel title="Cuenta corriente entre las empresas del grupo" span="full">
+        <div style={styles.sectionNote}>
+          Lo que una empresa le gira a la otra <strong>no es un pago ni un cobro</strong>: para el grupo
+          no entro ni salio nada, solo cambio de bolsillo. Por eso no suma al resultado. Pero cada giro
+          se cruza con una <strong>factura entre las dos</strong> o con una <strong>devolucion</strong>,
+          y lo que no esta cruzado es lo que hay que definir. Los giros se detectan por el CUIT de la
+          otra empresa en la referencia del banco.
+        </div>
+        <div style={styles.metricGrid}>
+          <MiniMetric
+            label="Girado entre empresas"
+            value={money(intercompanyAccount.summary.totalTransferred)}
+          />
+          <MiniMetric
+            label="Giros detectados"
+            value={String(intercompanyAccount.transfers.length)}
+          />
+          <MiniMetric
+            label="Sin declarar factura"
+            value={money(
+              intercompanyAccount.summary.pairs.reduce((acc, p) => acc + p.withoutBacking, 0)
+            )}
+            tone="out"
+          />
+        </div>
+        {intercompanyAccount.transfers.length === 0 ? (
+          <div style={{ ...styles.muted, marginTop: 8 }}>
+            No se detectaron giros entre las empresas. Se necesitan los movimientos del banco cargados
+            y el CUIT de cada empresa configurado.
+          </div>
+        ) : (
+          <>
+            <div style={{ overflowX: "auto", marginTop: 10 }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Puso la plata</th>
+                    <th>La recibio</th>
+                    <th style={{ textAlign: "right" }}>Girado</th>
+                    <th style={{ textAlign: "right" }}>Dice factura</th>
+                    <th style={{ textAlign: "right" }}>Sin declarar</th>
+                    <th style={{ textAlign: "right" }}>Facturado</th>
+                    <th style={{ textAlign: "right" }}>A definir</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {intercompanyAccount.summary.pairs.map((p) => (
+                    <tr key={`${p.from}>${p.to}`}>
+                      <td>{getCompanyMeta(p.from as CompanyName)?.short || p.from}</td>
+                      <td>{getCompanyMeta(p.to as CompanyName)?.short || p.to}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{money(p.transferred)}</td>
+                      <td style={{ textAlign: "right" }}>{money(p.declaredWithInvoice)}</td>
+                      <td style={{ textAlign: "right", color: "#b45309" }}>
+                        {money(p.withoutBacking)}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{money(p.invoiced)}</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{money(p.pending)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div style={{ ...styles.noticeBox, marginTop: 10 }}>
+              <strong>"Dice factura" no es prueba de que exista.</strong> Es lo que tipeo quien hizo la
+              transferencia en el concepto del banco. La columna "Facturado" se llena cuando se carguen
+              las facturas emitidas ENTRE las dos empresas; hasta entonces "A definir" es todo lo
+              girado.
+            </div>
+            <details style={{ marginTop: 10 }}>
+              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569" }}>
+                Ver los {intercompanyAccount.transfers.length} giros
+              </summary>
+              <div style={{ overflowX: "auto", marginTop: 8 }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>De</th>
+                      <th>A</th>
+                      <th style={{ textAlign: "right" }}>Monto</th>
+                      <th>Respaldo</th>
+                      <th>Concepto del banco</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[...intercompanyAccount.transfers]
+                      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+                      .map((t) => (
+                        <tr key={t.id}>
+                          <td>{t.date}</td>
+                          <td>{getCompanyMeta(t.from as CompanyName)?.short || t.from}</td>
+                          <td>{getCompanyMeta(t.to as CompanyName)?.short || t.to}</td>
+                          <td style={{ textAlign: "right" }}>{money(t.amount)}</td>
+                          <td
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: t.declaresInvoice ? "#15803d" : "#b45309",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {t.declaresInvoice ? "dice factura" : "sin declarar"}
+                          </td>
+                          <td style={{ fontSize: 12, color: "#64748b" }}>
+                            {(t.text || "").slice(0, 70)}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </>
+        )}
       </Panel>
 
       <Panel
