@@ -11982,13 +11982,8 @@ export default function App() {
   const costRows = useMemo(
     () =>
       buildCostRows({
+        // Las compras (facturas) YA NO entran: el gasto es el pago, que vive en costEntries.
         entries: costEntries,
-        purchases: visiblePurchaseInvoices.map((inv) => ({
-          company: inv.company,
-          invoiceDate: inv.invoiceDate,
-          total: Number(inv.total || 0),
-          administration: inv.administration,
-        })),
         pettyCash: visiblePettyCashExpenses.map((exp) => ({
           company: exp.company,
           date: exp.date,
@@ -11997,7 +11992,7 @@ export default function App() {
         })),
         payroll: costsPayrollRows,
       }),
-    [costEntries, visiblePurchaseInvoices, visiblePettyCashExpenses, costsPayrollRows]
+    [costEntries, visiblePettyCashExpenses, costsPayrollRows]
   );
 
   // Proveedores visibles segun la empresa (el listado puede ser de una empresa o "General").
@@ -12221,12 +12216,18 @@ export default function App() {
     const inScope = (company: string) =>
       balanceCompanyScope === "__ALL__" || company === balanceCompanyScope;
 
+    // El gasto es el PAGO, no la factura (regla del 2026-07-19). Antes esto sumaba
+    // visiblePurchaseInvoices: la factura de compra ya no entra al resultado, es solo registro.
+    // Estos `costEntries` son los pagos a proveedores y los gastos del extracto (alquiler,
+    // servicios, impuestos), que ADEMAS antes no estaban en ningun lado: el resultado del periodo
+    // salia inflado porque le faltaban esos costos.
     let purchasesWhite = 0;
     let purchasesBlack = 0;
-    visiblePurchaseInvoices.forEach((inv) => {
-      if (!inScope(inv.company) || !makeInPeriod(inv.company)(inv.invoiceDate)) return;
-      if (inv.administration === "negro") purchasesBlack += Number(inv.total || 0);
-      else purchasesWhite += Number(inv.total || 0);
+    costEntries.forEach((pago) => {
+      if (!canAccessCompany(pago.company)) return;
+      if (!inScope(pago.company) || !makeInPeriod(pago.company)(pago.date)) return;
+      if (pago.administration === "negro") purchasesBlack += Number(pago.amount || 0);
+      else purchasesWhite += Number(pago.amount || 0);
     });
 
     let pettyCashWhite = 0;
@@ -12307,7 +12308,7 @@ export default function App() {
     });
   }, [
     billingBalance,
-    visiblePurchaseInvoices,
+    costEntries,
     visiblePettyCashExpenses,
     visibleBankStatementEntries,
     visibleCompanyAssets,

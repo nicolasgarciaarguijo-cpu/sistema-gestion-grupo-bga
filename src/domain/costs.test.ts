@@ -87,7 +87,8 @@ describe("resolveGroupKind / isAutoCostGroup", () => {
   });
 
   it("reconoce los grupos automaticos", () => {
-    expect(isAutoCostGroup(COST_GROUP_PURCHASES)).toBe(true);
+    // Compras dejo de ser automatico: la factura ya no es el gasto, se le imputan los PAGOS a mano.
+    expect(isAutoCostGroup(COST_GROUP_PURCHASES)).toBe(false);
     expect(isAutoCostGroup(COST_GROUP_PETTY_CASH)).toBe(true);
     expect(isAutoCostGroup(COST_GROUP_PAYROLL)).toBe(true);
     expect(isAutoCostGroup("Edilicios")).toBe(false);
@@ -95,17 +96,16 @@ describe("resolveGroupKind / isAutoCostGroup", () => {
 });
 
 describe("buildCostRows", () => {
-  it("manda compras a variable, caja chica a variable y nomina a fijo", () => {
+  it("manda el pago a su grupo, caja chica a variable y nomina a fijo", () => {
     const rows = buildCostRows({
-      entries: [],
-      purchases: [
-        { company: "BGA", invoiceDate: "2025-11-05", total: 500, administration: "blanco" },
-      ],
+      // El gasto es el PAGO: la factura de compra ya no entra (es solo registro).
+      entries: [entry({ group: COST_GROUP_PURCHASES, amount: 500, date: "2025-11-05" })],
       pettyCash: [{ company: "BGA", date: "2025-11-06", amount: 50, administration: "negro" }],
       payroll: [{ company: "BGA", month: "2025-11", white: 900, black: 100 }],
     });
 
-    expect(rows.find((r) => r.origin === "compras")?.group).toBe(COST_GROUP_PURCHASES);
+    expect(rows.find((r) => r.origin === "manual")?.group).toBe(COST_GROUP_PURCHASES);
+    expect(rows.some((r) => r.origin === "compras")).toBe(false);
     expect(rows.find((r) => r.origin === "cajaChica")?.group).toBe(COST_GROUP_PETTY_CASH);
     const payrollRows = rows.filter((r) => r.origin === "personal");
     expect(payrollRows).toHaveLength(2);
@@ -118,7 +118,6 @@ describe("buildCostRows", () => {
   it("descarta montos en cero o negativos", () => {
     const rows = buildCostRows({
       entries: [entry({ amount: 0 })],
-      purchases: [{ company: "BGA", invoiceDate: "2025-11-05", total: -10, administration: "blanco" }],
       pettyCash: [],
       payroll: [{ company: "BGA", month: "2025-11", white: 0, black: 0 }],
     });
@@ -128,7 +127,6 @@ describe("buildCostRows", () => {
   it("conserva la administracion del gasto manual", () => {
     const rows = buildCostRows({
       entries: [entry({ administration: "negro" })],
-      purchases: [],
       pettyCash: [],
       payroll: [],
     });
@@ -142,9 +140,9 @@ describe("aggregateCosts", () => {
 
   it("separa fijos de variables y suma por mes", () => {
     const rows = buildCostRows({
-      entries: [entry({ amount: 100, group: "Edilicios", date: "2025-11-10" })],
-      purchases: [
-        { company: "BGA", invoiceDate: "2025-11-05", total: 500, administration: "blanco" },
+      entries: [
+        entry({ amount: 100, group: "Edilicios", date: "2025-11-10" }),
+        entry({ amount: 500, group: COST_GROUP_PURCHASES, date: "2025-11-05" }),
       ],
       pettyCash: [],
       payroll: [],
@@ -162,7 +160,6 @@ describe("aggregateCosts", () => {
   it("ignora gastos fuera del ano fiscal", () => {
     const rows = buildCostRows({
       entries: [entry({ date: "2025-10-31", amount: 999 })], // el ano arranca 2025-11
-      purchases: [],
       pettyCash: [],
       payroll: [],
     });
@@ -176,7 +173,6 @@ describe("aggregateCosts", () => {
         entry({ id: 1, company: "BGA", amount: 100 }),
         entry({ id: 2, company: "De raiz s.r.l", amount: 70 }),
       ],
-      purchases: [],
       pettyCash: [],
       payroll: [],
     });
@@ -191,7 +187,6 @@ describe("aggregateCosts", () => {
         entry({ id: 1, administration: "blanco", amount: 100 }),
         entry({ id: 2, administration: "negro", amount: 30 }),
       ],
-      purchases: [],
       pettyCash: [],
       payroll: [],
     });
@@ -209,7 +204,6 @@ describe("aggregateCosts", () => {
   it("no pierde plata de un grupo huerfano (borrado o viejo)", () => {
     const rows = buildCostRows({
       entries: [entry({ group: "Grupo viejo", amount: 42 })],
-      purchases: [],
       pettyCash: [],
       payroll: [],
     });
@@ -232,7 +226,6 @@ describe("aggregateCosts", () => {
         entry({ id: 1, date: "2025-11-10", amount: 100 }),
         entry({ id: 2, date: "2025-12-10", amount: 120 }),
       ],
-      purchases: [],
       pettyCash: [],
       payroll: [],
     });
@@ -250,7 +243,6 @@ describe("suggestedFixedMonthlyByGroup", () => {
         entry({ id: 1, date: "2025-11-10", amount: 100 }),
         entry({ id: 2, date: "2025-12-10", amount: 200 }),
       ],
-      purchases: [],
       pettyCash: [],
       payroll: [],
     });
@@ -264,9 +256,6 @@ describe("suggestedFixedMonthlyByGroup", () => {
   it("no sugiere nada para grupos variables ni para grupos sin datos", () => {
     const rows = buildCostRows({
       entries: [],
-      purchases: [
-        { company: "BGA", invoiceDate: "2025-11-05", total: 500, administration: "blanco" },
-      ],
       pettyCash: [],
       payroll: [],
     });

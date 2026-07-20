@@ -19,11 +19,9 @@ export const COST_GROUP_PETTY_CASH = "Caja chica";
 export const COST_GROUP_PAYROLL = "Personal";
 
 // Grupos automaticos: se alimentan de otras solapas, no admiten carga manual.
-export const AUTO_COST_GROUPS: readonly string[] = [
-  COST_GROUP_PURCHASES,
-  COST_GROUP_PETTY_CASH,
-  COST_GROUP_PAYROLL,
-];
+// "Compras y materiales" SALIO de esta lista (2026-07-19): la factura de compra ya no es el gasto,
+// el gasto es el PAGO. Ahora es un grupo comun, para poder imputarle los pagos a proveedores.
+export const AUTO_COST_GROUPS: readonly string[] = [COST_GROUP_PETTY_CASH, COST_GROUP_PAYROLL];
 
 // Semilla de grupos. Los 5 primeros son los mismos "grandes grupos" que Marcadores ya usa
 // en "costos fijos por grupo" (DEFAULT_FIXED_MARKER_GROUPS en App.tsx).
@@ -34,7 +32,7 @@ export const DEFAULT_COST_GROUP_SEEDS: Array<{ name: string; kind: CostKind; aut
   { name: "Edilicios", kind: "fijo", auto: false },
   { name: "Operativos", kind: "fijo", auto: false },
   { name: COST_GROUP_PAYROLL, kind: "fijo", auto: true },
-  { name: COST_GROUP_PURCHASES, kind: "variable", auto: true },
+  { name: COST_GROUP_PURCHASES, kind: "variable", auto: false },
   { name: COST_GROUP_PETTY_CASH, kind: "variable", auto: true },
 ];
 
@@ -92,13 +90,8 @@ export type CostSourceRow = {
 };
 
 export type CostSourcesInput = {
+  // Los PAGOS (lo que salio de la empresa). Es el gasto real; la factura de compra es solo registro.
   entries: CostEntry[];
-  purchases: Array<{
-    company: CompanyName;
-    invoiceDate: string;
-    total: number;
-    administration: "blanco" | "negro";
-  }>;
   pettyCash: Array<{
     company: CompanyName;
     date: string;
@@ -128,19 +121,6 @@ export function buildCostRows(input: CostSourcesInput): CostSourceRow[] {
       amount,
       administration: entry.administration,
       origin: entry.source,
-    });
-  });
-
-  input.purchases.forEach((inv) => {
-    const amount = Number(inv.total || 0);
-    if (!(amount > 0)) return;
-    rows.push({
-      company: inv.company,
-      date: inv.invoiceDate,
-      group: COST_GROUP_PURCHASES,
-      amount,
-      administration: inv.administration,
-      origin: "compras",
     });
   });
 

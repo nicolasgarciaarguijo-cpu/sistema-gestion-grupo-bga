@@ -6,8 +6,10 @@
 //   - carga manual de gastos que no viven en otra solapa (alquiler, servicios, impuestos)
 //   - import del extracto bancario (Excel/PDF/CSV) con revision antes de impactar
 //
-// Compras, caja chica y personal NO se cargan aca: se agregan solos desde sus solapas
-// (grupos "auto"), asi el mismo gasto no se cuenta dos veces.
+// EL GASTO ES EL PAGO (regla del 2026-07-19): la factura de compra ya NO entra al resultado, es solo
+// registro. Los pagos a proveedores se cargan aca y son los que alimentan el resultado.
+// Caja chica y personal siguen agregandose solos desde sus solapas (grupos "auto"), asi el mismo
+// gasto no se cuenta dos veces.
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, FileDropButton } from "../ui/primitives";
@@ -563,7 +565,9 @@ export function CostosTab({
         actions={<ButtonLike onClick={addCostEntry}>Agregar gasto</ButtonLike>}
       >
         <div style={styles.sectionNote}>
-          Gastos que no vienen de compras, caja chica ni personal. {costEntries.length} cargado(s).
+          Los PAGOS: lo que salio de la empresa (proveedores, alquiler, servicios, impuestos). Esto es
+          lo que suma al resultado; la factura es solo el respaldo. Caja chica y sueldos se agregan
+          solos desde sus solapas. {costEntries.length} cargado(s).
           {paymentsReconciliation.sinMovimiento > 0 && (
             <span style={{ color: "#b45309", fontWeight: 700 }}>
               {" "}

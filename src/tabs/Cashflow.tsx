@@ -331,11 +331,14 @@ export function CashflowTab({
             <StatRow label="Amortizacion (periodo)" value={money(periodStatement.depreciation)} tone="out" last />
 
             <div style={{ ...styles.noticeBox, marginTop: 10 }}>
-              Base percibido: ingresos = cobros del periodo; egresos = compras + caja chica + comisiones
-              pagadas + nomina + amortizacion. La nomina sale del historico por mes (un registro por
-              empleado y mes); si faltan meses cargados, el costo laboral saldra bajo hasta completarlo.
-              La amortizacion se prorratea (ano fiscal = 12 meses, mes = 1). Compras a valor total (con
-              IVA). Respeta la empresa y el periodo elegidos arriba.
+              Base percibido: entra plata cuando el cliente paga, sale cuando pagamos. Ingresos =
+              cobros del periodo; egresos = <strong>pagos</strong> (proveedores, alquiler, servicios,
+              impuestos, cargados en "Pago a proveedores") + caja chica + comisiones pagadas + nomina
+              + amortizacion. <strong>La factura no suma ni resta</strong>: es el respaldo de que el
+              movimiento es blanco. La nomina sale del historico por mes (un registro por empleado y
+              mes); si faltan meses cargados, el costo laboral saldra bajo hasta completarlo. La
+              amortizacion se prorratea (ano fiscal = 12 meses, mes = 1). Respeta la empresa y el
+              periodo elegidos arriba.
             </div>
           </Panel>
 
