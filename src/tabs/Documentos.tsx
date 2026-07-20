@@ -171,9 +171,9 @@ export function DocumentosTab({
                                                        manda el cliente, no el mes)
   Presupuestos/<EMPRESA>/Historial de presupuestos/Ejercicio AAAA-AAAA (nov-oct)/<AAAA-MM Mes>/
                                                       (P-<n> - cliente - desc [- ACT k], para el cliente)
-  Caja chica/(Cajas abiertas|cerradas)/<caja>/
-      Rendicion de tickets y facturas/
-      Recibos/AAAA-MM/
+  Caja chica/<EMPRESA>/(Cajas abiertas|Cajas cerradas)/<caja>/
+      Rendicion de tickets y facturas/    (buzon: dejas los tickets aca, sin fecha)
+      Recibos/Ejercicio AAAA-AAAA (nov-oct)/<AAAA-MM Mes>/
   Stocks/<EMPRESA>/Remitos/    (remitos = movimientos de stock; sin fecha)
   Escalas/AAAA-MM/             (escalas salariales)`}
           </div>
@@ -233,7 +233,7 @@ export function DocumentosTab({
           Compras/&lt;empresa&gt;/Ejercicio/&lt;mes&gt;/ (deja las facturas de compra ahi) ·
           Personal/&lt;empresa&gt;/&lt;empleado&gt;/(Documentacion sin fecha; EPP, Recibos, Examenes,
           Capacitaciones, Presentismo por Ejercicio/&lt;mes&gt;) + Personal/&lt;empresa&gt;/ESCALAS SALARIALES/ ·
-          Stocks/&lt;empresa&gt;/Remitos/ · Caja chica/(abiertas|cerradas)/&lt;caja&gt;/ ·
+          Stocks/&lt;empresa&gt;/Remitos/ · Caja chica/&lt;empresa&gt;/(abiertas|cerradas)/&lt;caja&gt;/ ·
           Presupuestos/&lt;empresa&gt;/&lt;cliente&gt;/ (+ Historial de presupuestos y Resumen mensual por
           Ejercicio/&lt;mes&gt;) · Resumenes/&lt;periodo&gt;/. Doble via con OCR: si dejas una
           factura en Facturas/, un comprobante en Pagos y tickets/ de un trabajo, o una factura en

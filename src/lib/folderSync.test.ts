@@ -34,6 +34,22 @@ describe("classifyPath", () => {
     expect(classifyPath("Trabajos aprobados/Cliente/3400/Remitos/entrega.pdf").docType).toBe("remitos");
   });
 
+  it("caja chica: lee la estructura nueva (con empresa) y la vieja", () => {
+    expect(
+      classifyPath(
+        "Caja chica/BGA/Cajas cerradas/NICOLAS/Recibos/Ejercicio 2025-2026 (nov-oct)/2026-06 Junio/Recibo.html"
+      )
+    ).toMatchObject({ docType: "caja-chica", company: "BGA", month: "2026-06" });
+    expect(
+      classifyPath("Caja chica/BGA/Cajas abiertas/NICOLAS/Rendicion de tickets y facturas/ticket.pdf")
+    ).toMatchObject({ docType: "caja-chica", company: "BGA" });
+    // vieja (sin empresa, Recibos/AAAA-MM): sigue entrando
+    expect(classifyPath("Caja chica/Cajas cerradas/LUCAS/Recibos/2026-06/Recibo.html")).toMatchObject({
+      docType: "caja-chica",
+      month: "2026-06",
+    });
+  });
+
   it("presupuestos: lee la estructura nueva (con empresa) y la vieja", () => {
     expect(classifyPath("Presupuestos/DE RAIZ/CONTRACT RENT SA/Vigente/P-1043.html")).toMatchObject({
       docType: "presupuestos",

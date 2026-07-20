@@ -58,6 +58,16 @@ export function monthFolderFromIso(iso: string): string {
 // --- Molde general por solapa: <TOP>/<EMPRESA>/Ejercicio <A>-<B> (nov-oct)/<AAAA-MM Mes>[/<sub>] ---
 // Reutilizable para Compras, Facturas, Cobranzas, etc. (todo lo que va por empresa + ejercicio + mes).
 // Ej: Compras/DE RAIZ/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo/Facturas de compra
+// Tramo de periodo suelto: "Ejercicio <A>-<B> (nov-oct)/<AAAA-MM Mes>". Para colgarlo de una carpeta
+// que ya tiene su propio arbol (ej. los Recibos de una caja chica, que cuelgan de la caja).
+// Si la fecha no sirve devuelve "sin-fecha" para que nada quede suelto en la raiz.
+export function periodPath(iso: string, fiscalStartMonth?: number): string {
+  const month = (iso || "").slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(month)) return "sin-fecha";
+  const sm = getFiscalYearStartMonth({ fiscalYearStartMonth: fiscalStartMonth });
+  return `${fiscalYearFolderFromIso(sm, month)}/${monthFolderFromIso(month)}`;
+}
+
 export function companyPeriodPath(input: {
   top: string; // carpeta de primer nivel ("Compras", "Facturas emitidas"...)
   companyShort: string; // "BGA" | "De raiz" | "General"
@@ -70,7 +80,7 @@ export function companyPeriodPath(input: {
   const sm = getFiscalYearStartMonth({ fiscalYearStartMonth: input.fiscalStartMonth });
   const parts = [input.top, empresa];
   if (input.section) parts.push(input.section);
-  parts.push(fiscalYearFolderFromIso(sm, input.iso), monthFolderFromIso(input.iso));
+  parts.push(periodPath(input.iso, sm));
   if (input.sub) parts.push(input.sub);
   return parts.join("/");
 }

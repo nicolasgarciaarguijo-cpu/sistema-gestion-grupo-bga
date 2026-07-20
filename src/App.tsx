@@ -55,6 +55,7 @@ import {
   companyFolderName,
   companyPath,
   companyPeriodPath,
+  periodPath,
   personalSectionPath,
   PERSONAL_SECTIONS,
 } from "./domain/folderPaths";
@@ -5515,10 +5516,16 @@ export default function App() {
     return written;
   };
 
-  // Ruta base de una caja en la carpeta: Caja chica/(Cajas abiertas|Cajas cerradas)/<responsable - descripcion>.
+  // Ruta base de una caja: Caja chica/<EMPRESA>/(Cajas abiertas|Cajas cerradas)/<responsable - desc>.
+  // La caja NO se parte por mes (vive mientras este abierta); lo periodico son sus Recibos.
   const pettyCashFundBasePath = (fund: any): string => {
     const estado = fund.closed || fund.active === false ? "Cajas cerradas" : "Cajas abiertas";
-    return `Caja chica/${estado}/${pettyCashFundFolder(fund)}`;
+    return companyPath(
+      "Caja chica",
+      getCompanyMeta(fund.company).short,
+      estado,
+      pettyCashFundFolder(fund)
+    );
   };
 
   // Caja chica (doble via): por cada caja crea su carpeta con el Resumen de la caja y una subcarpeta
@@ -5542,11 +5549,14 @@ export default function App() {
         written.push(resumenPath);
         // Carpeta de rendicion (donde el usuario deja tickets/facturas).
         await ensureFolder(handle, `${base}/Rendicion de tickets y facturas`);
-        // Un recibo por cada pago/gasto de la caja (constancia de que se pago el servicio), separado
-        // por mes: Caja chica/<estado>/<caja>/Recibos/AAAA-MM/.
+        // Un recibo por cada pago/gasto de la caja (constancia de que se pago el servicio), por
+        // ejercicio y mes: Caja chica/<EMPRESA>/<estado>/<caja>/Recibos/Ejercicio .../<AAAA-MM Mes>/.
+        const fiscalStartMonth = getCompanyMeta(fund.company).fiscalYearStartMonth;
         for (const expense of fundExpenses) {
-          const monthKey = (expense.date || "").slice(0, 7) || "sin-fecha";
-          const reciboPath = `${base}/Recibos/${monthKey}/${pettyReceiptFileName(expense)}`;
+          const reciboPath = `${base}/Recibos/${periodPath(
+            expense.date,
+            fiscalStartMonth
+          )}/${pettyReceiptFileName(expense)}`;
           await writeFileToFolder(handle, reciboPath, buildPettyCashReceiptHtml(fund, expense));
           written.push(reciboPath);
         }

@@ -2,6 +2,7 @@ import {
   companyFolderName,
   companyPath,
   companyPeriodPath,
+  periodPath,
   fiscalStartYearOf,
   fiscalYearFolderName,
   monthFolderName,
@@ -49,6 +50,17 @@ describe("monthFolderName", () => {
     expect(monthFolderName(2024, 1)).toBe("2024-01 Enero");
     // dentro de "Ejercicio 2023-2024": 2023-11 < 2023-12 < 2024-01
     expect("2023-11 Noviembre" < "2024-01 Enero").toBe(true);
+  });
+});
+
+describe("periodPath (tramo suelto de periodo)", () => {
+  it("arma ejercicio + mes para colgar de una carpeta que ya tiene su arbol", () => {
+    expect(periodPath("2026-06-23")).toBe("Ejercicio 2025-2026 (nov-oct)/2026-06 Junio");
+    expect(periodPath("2025-11")).toBe("Ejercicio 2025-2026 (nov-oct)/2025-11 Noviembre");
+  });
+  it("sin fecha usable no deja nada suelto en la raiz", () => {
+    expect(periodPath("")).toBe("sin-fecha");
+    expect(periodPath("cualquiera")).toBe("sin-fecha");
   });
 });
 
