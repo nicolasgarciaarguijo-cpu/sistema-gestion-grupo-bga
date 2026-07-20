@@ -167,8 +167,10 @@ export function DocumentosTab({
       EPP/   Examenes/   Capacitaciones/   Presentismo/   Recibos/
           Ejercicio AAAA-AAAA (nov-oct)/<AAAA-MM Mes>/    (lo periodico va aca adentro)
   Personal/<EMPRESA>/ESCALAS SALARIALES/Ejercicio AAAA-AAAA (nov-oct)/
-  Presupuestos/<cliente>/(Vigente|Viejo)/     (Vigente = ultima revision)
-  Presupuestos/Historial de presupuestos/     (P-<n> - cliente - desc [- ACT k], para el cliente)
+  Presupuestos/<EMPRESA>/<cliente>/(Vigente|Viejo)/   (Vigente = ultima revision; sin fecha:
+                                                       manda el cliente, no el mes)
+  Presupuestos/<EMPRESA>/Historial de presupuestos/Ejercicio AAAA-AAAA (nov-oct)/<AAAA-MM Mes>/
+                                                      (P-<n> - cliente - desc [- ACT k], para el cliente)
   Caja chica/(Cajas abiertas|cerradas)/<caja>/
       Rendicion de tickets y facturas/
       Recibos/AAAA-MM/
@@ -232,7 +234,8 @@ export function DocumentosTab({
           Personal/&lt;empresa&gt;/&lt;empleado&gt;/(Documentacion sin fecha; EPP, Recibos, Examenes,
           Capacitaciones, Presentismo por Ejercicio/&lt;mes&gt;) + Personal/&lt;empresa&gt;/ESCALAS SALARIALES/ ·
           Stocks/&lt;empresa&gt;/Remitos/ · Caja chica/(abiertas|cerradas)/&lt;caja&gt;/ ·
-          Presupuestos/&lt;cliente&gt;/ · Resumenes/&lt;periodo&gt;/. Doble via con OCR: si dejas una
+          Presupuestos/&lt;empresa&gt;/&lt;cliente&gt;/ (+ Historial de presupuestos y Resumen mensual por
+          Ejercicio/&lt;mes&gt;) · Resumenes/&lt;periodo&gt;/. Doble via con OCR: si dejas una
           factura en Facturas/, un comprobante en Pagos y tickets/ de un trabajo, o una factura en
           Compras/&lt;mes&gt;/, al Sincronizar se leen los montos y se crea el registro (revisa los
           numeros despues). La primera vez el navegador pide permiso de escritura. Son HTML

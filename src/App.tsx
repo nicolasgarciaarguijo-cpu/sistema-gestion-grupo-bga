@@ -51,7 +51,13 @@ import {
   fiscalMonthKeys,
   isAutoCostGroup,
 } from "./domain/costs";
-import { companyFolderName, companyPeriodPath, personalSectionPath, PERSONAL_SECTIONS } from "./domain/folderPaths";
+import {
+  companyFolderName,
+  companyPath,
+  companyPeriodPath,
+  personalSectionPath,
+  PERSONAL_SECTIONS,
+} from "./domain/folderPaths";
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, suggestGroupForConcept, SHEETJS_CDN } from "./lib/bankStatement";
@@ -5073,8 +5079,29 @@ export default function App() {
     return handle;
   };
 
-  // Exporta cada presupuesto a Presupuestos/<cliente>/, crea la carpeta de cada cliente del CRM y
-  // arma un resumen mensual del historial en Presupuestos/Resumen mensual/.
+  // Carpeta del historial de presupuestos: Presupuestos/<EMPRESA>/Historial de presupuestos/
+  // Ejercicio .../<AAAA-MM Mes>. El historial SI es periodico (es el archivo de lo presentado).
+  // La usan el export masivo y el guardado individual al imprimir, para que no se separen.
+  const budgetHistorialFolder = (company: CompanyName, iso: string): string => {
+    const meta = getCompanyMeta(company);
+    const month = (iso || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      return companyPath("Presupuestos", meta.short, "Historial de presupuestos", "sin-fecha");
+    }
+    return companyPeriodPath({
+      top: "Presupuestos",
+      companyShort: meta.short,
+      iso: month,
+      fiscalStartMonth: meta.fiscalYearStartMonth,
+      section: "Historial de presupuestos",
+    });
+  };
+
+  // Exporta cada presupuesto a Presupuestos/<EMPRESA>/<cliente>/, crea la carpeta de cada cliente del
+  // CRM y arma el resumen mensual en Presupuestos/<EMPRESA>/Resumen mensual/Ejercicio/<mes>/.
+  // La EMPRESA va primero (la regla), pero adentro manda el CLIENTE y NO se parte por mes: un
+  // presupuesto se busca por cliente, y partirlo por fecha separaria una revision (ACT) de su original.
+  // Lo que si es periodico -Historial y Resumen mensual- va por ejercicio y mes.
   const exportBudgetsToFolder = async (): Promise<string[]> => {
     const written: string[] = [];
     setDocumentsBusy(true);
@@ -5090,17 +5117,25 @@ export default function App() {
       const allVisibleBudgets = savedBudgets.filter((b) => canAccessCompany(b.company));
       const latestIds = new Set(visibleSavedBudgets.map((b) => b.id));
       // CLIENTE PRIMERO: una carpeta por cada cliente (del CRM y/o con presupuestos).
+      // El cliente cuelga de SU empresa (la del CRM, o la del presupuesto). Si un cliente trabaja con
+      // las dos, tiene carpeta en cada una: son presupuestos de empresas distintas.
       const clientNamesForFolders = new Set<string>();
-      crmClients.forEach((c) => {
-        if (c.name?.trim()) clientNamesForFolders.add(c.name.trim());
-      });
-      allVisibleBudgets.forEach((b) => {
-        if ((b.client || "").trim()) clientNamesForFolders.add(b.client.trim());
-      });
-      for (const clientName of Array.from(clientNamesForFolders)) {
-        await ensureFolder(handle, `Presupuestos/${safeName(clientName)}`);
+      const clientFolderKeys = new Set<string>();
+      const addClientFolder = (company: CompanyName, name: string) => {
+        const clean = (name || "").trim();
+        if (!clean) return;
+        clientNamesForFolders.add(clean);
+        clientFolderKeys.add(
+          companyPath("Presupuestos", getCompanyMeta(company).short, safeName(clean))
+        );
+      };
+      crmClients.forEach((c) => addClientFolder(c.company, c.name));
+      allVisibleBudgets.forEach((b) => addClientFolder(b.company, b.client));
+      for (const folder of Array.from(clientFolderKeys)) {
+        await ensureFolder(handle, folder);
       }
-      const byMonth = new Map<string, SavedBudget[]>();
+      // Resumen mensual: por EMPRESA y mes (antes era uno solo, mezclando las dos empresas).
+      const byMonth = new Map<string, { company: CompanyName; month: string; list: SavedBudget[] }>();
       const exportedIds = new Set<number>();
       const exportTimestamp = new Date().toISOString();
       for (const budget of allVisibleBudgets) {
@@ -5114,39 +5149,63 @@ export default function App() {
                 budget.revisionNumber
               )}`
             ) + ".html";
-        const path = `Presupuestos/${cliente}/${isVigente ? "Vigente" : "Viejo"}/${fileName}`;
+        const meta = getCompanyMeta(budget.company);
+        const path = companyPath(
+          "Presupuestos",
+          meta.short,
+          cliente,
+          isVigente ? "Vigente" : "Viejo",
+          fileName
+        );
         await writeFileToFolder(handle, path, buildBudgetHtml(budget));
         written.push(path);
         // Historial: el presupuesto TAL COMO SE PRESENTA AL CLIENTE, TODAS las revisiones con su ACT.
-        const histPath = `Presupuestos/Historial de presupuestos/${clientBudgetFileName(budget)}`;
-        await writeFileToFolder(
-          handle,
-          histPath,
-          buildClientBudgetHtml(budget, getCompanyMeta(budget.company))
-        );
+        const histPath = `${budgetHistorialFolder(budget.company, budget.date)}/${clientBudgetFileName(
+          budget
+        )}`;
+        await writeFileToFolder(handle, histPath, buildClientBudgetHtml(budget, meta));
         written.push(histPath);
         if (isVigente) {
           exportedIds.add(budget.id);
           const monthKey = (budget.date || "").slice(0, 7) || "sin-fecha";
-          const list = byMonth.get(monthKey) || [];
-          list.push(budget);
-          byMonth.set(monthKey, list);
+          const key = `${budget.company}|${monthKey}`;
+          const entry = byMonth.get(key) || { company: budget.company, month: monthKey, list: [] };
+          entry.list.push(budget);
+          byMonth.set(key, entry);
         }
       }
-      // Resumen mensual (sobre las vigentes).
-      for (const [monthKey, list] of Array.from(byMonth.entries())) {
-        const path = `Presupuestos/Resumen mensual/${monthKey} - Resumen presupuestos.html`;
-        await writeFileToFolder(handle, path, buildBudgetsSummaryHtml(list, monthKey));
+      // Resumen mensual (sobre las vigentes), por empresa y mes.
+      for (const { company, month, list } of Array.from(byMonth.values())) {
+        const meta = getCompanyMeta(company);
+        const folder =
+          month === "sin-fecha"
+            ? companyPath("Presupuestos", meta.short, "Resumen mensual", "sin-fecha")
+            : companyPeriodPath({
+                top: "Presupuestos",
+                companyShort: meta.short,
+                iso: month,
+                fiscalStartMonth: meta.fiscalYearStartMonth,
+                section: "Resumen mensual",
+              });
+        const path = `${folder}/${month} - Resumen presupuestos.html`;
+        await writeFileToFolder(handle, path, buildBudgetsSummaryHtml(list, month));
         written.push(path);
       }
-      // Resumen general del historial (las vigentes que se van presentando al cliente).
-      const histSummaryPath = `Presupuestos/Historial de presupuestos/Resumen de presupuestos.html`;
-      await writeFileToFolder(
-        handle,
-        histSummaryPath,
-        buildBudgetsHistorialHtml(visibleSavedBudgets)
-      );
-      written.push(histSummaryPath);
+      // Resumen general del historial (las vigentes que se van presentando al cliente), por empresa.
+      for (const company of Array.from(new Set(allVisibleBudgets.map((b) => b.company)))) {
+        const histSummaryPath = companyPath(
+          "Presupuestos",
+          getCompanyMeta(company).short,
+          "Historial de presupuestos",
+          "Resumen de presupuestos.html"
+        );
+        await writeFileToFolder(
+          handle,
+          histSummaryPath,
+          buildBudgetsHistorialHtml(visibleSavedBudgets.filter((b) => b.company === company))
+        );
+        written.push(histSummaryPath);
+      }
       // Marca los presupuestos exportados con la fecha, para que el resumen del historial aclare
       // que quedaron guardados en la carpeta del cliente (misma marca que el export individual).
       if (exportedIds.size > 0) {
@@ -5157,8 +5216,8 @@ export default function App() {
         );
       }
       setDocumentsMessage(
-        `Presupuestos exportados: ${written.length} archivo(s). Por cliente en Presupuestos/<cliente>/(Vigente|Viejo)/ ` +
-          `(Vigente = ultima revision) y en Presupuestos/Historial de presupuestos/ (P-<n> - cliente - desc, cada ACT). ` +
+        `Presupuestos exportados: ${written.length} archivo(s). Por cliente en Presupuestos/<EMPRESA>/<cliente>/(Vigente|Viejo)/ ` +
+          `(Vigente = ultima revision) y en Presupuestos/<EMPRESA>/Historial de presupuestos/Ejercicio/<mes>/ (P-<n> - cliente - desc, cada ACT). ` +
           `${clientNamesForFolders.size} carpeta(s) de cliente. ${exportedIds.size} vigentes marcados como exportados.`
       );
     } catch (err: any) {
@@ -7249,7 +7308,8 @@ export default function App() {
     [fixedMarkerGroupOptions, fixedMarkers, budget.workType, activeCostAnalysisEntriesForBudget]
   );
 
-  // Guarda el presupuesto TAL COMO SE PRESENTA AL CLIENTE en Presupuestos/Historial de presupuestos/
+  // Guarda el presupuesto TAL COMO SE PRESENTA AL CLIENTE en el historial de SU empresa
+  // (Presupuestos/<EMPRESA>/Historial de presupuestos/Ejercicio/<mes>/)
   // (mismo documento que el PDF, con logos e imagenes). Best-effort: si no hay carpeta vinculada o no
   // se concede permiso de escritura, devuelve false sin romper la impresion. Usa el borrador en edicion.
   const saveClientBudgetToFolder = async (revisionNumber?: number): Promise<boolean> => {
@@ -7271,7 +7331,9 @@ export default function App() {
           totals: consolidatedBudgetTotals,
         },
       };
-      const path = `Presupuestos/Historial de presupuestos/${clientBudgetFileName(input)}`;
+      const path = `${budgetHistorialFolder(budget.company, budget.date)}/${clientBudgetFileName(
+        input
+      )}`;
       await writeFileToFolder(
         handle,
         path,

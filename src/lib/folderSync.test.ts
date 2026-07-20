@@ -34,6 +34,20 @@ describe("classifyPath", () => {
     expect(classifyPath("Trabajos aprobados/Cliente/3400/Remitos/entrega.pdf").docType).toBe("remitos");
   });
 
+  it("presupuestos: lee la estructura nueva (con empresa) y la vieja", () => {
+    expect(classifyPath("Presupuestos/DE RAIZ/CONTRACT RENT SA/Vigente/P-1043.html")).toMatchObject({
+      docType: "presupuestos",
+      company: "DE RAIZ",
+    });
+    expect(
+      classifyPath(
+        "Presupuestos/BGA/Historial de presupuestos/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo/P-1043 - Perez.html"
+      )
+    ).toMatchObject({ docType: "presupuestos", company: "BGA", month: "2026-05" });
+    // vieja (sin empresa): sigue entrando
+    expect(classifyPath("Presupuestos/Perez SA/Vigente/P-1043.html").docType).toBe("presupuestos");
+  });
+
   it("personal: extrae empleado y subarea", () => {
     expect(classifyPath("Personal/Juan Perez/Documentacion/dni.pdf")).toEqual({
       docType: "personal",

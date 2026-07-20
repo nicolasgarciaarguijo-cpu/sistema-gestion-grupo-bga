@@ -63,18 +63,23 @@ export function companyPeriodPath(input: {
   companyShort: string; // "BGA" | "De raiz" | "General"
   iso: string; // fecha del documento (yyyy-mm o yyyy-mm-dd)
   fiscalStartMonth?: number;
-  sub?: string; // subcarpeta opcional dentro del mes
+  section?: string; // seccion dentro de la empresa, ANTES del ejercicio ("Historial de presupuestos")
+  sub?: string; // subcarpeta opcional DENTRO del mes
 }): string {
   const empresa = companyFolderName(input.companyShort);
   const sm = getFiscalYearStartMonth({ fiscalYearStartMonth: input.fiscalStartMonth });
-  const parts = [
-    input.top,
-    empresa,
-    fiscalYearFolderFromIso(sm, input.iso),
-    monthFolderFromIso(input.iso),
-  ];
+  const parts = [input.top, empresa];
+  if (input.section) parts.push(input.section);
+  parts.push(fiscalYearFolderFromIso(sm, input.iso), monthFolderFromIso(input.iso));
   if (input.sub) parts.push(input.sub);
   return parts.join("/");
+}
+
+// Molde SIN periodo: <TOP>/<EMPRESA>/<parte>/<parte>...  Para lo que no se ordena por fecha.
+// Ej: Presupuestos/DE RAIZ/CONTRACT RENT SA/Vigente  ·  Stocks/DE RAIZ/Remitos
+// (un presupuesto se busca por cliente, no por mes; partirlo por mes separaria las revisiones).
+export function companyPath(top: string, companyShort: string, ...parts: string[]): string {
+  return [top, companyFolderName(companyShort), ...parts.filter(Boolean)].join("/");
 }
 
 // --- Personal ---

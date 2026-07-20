@@ -1,5 +1,6 @@
 import {
   companyFolderName,
+  companyPath,
   companyPeriodPath,
   fiscalStartYearOf,
   fiscalYearFolderName,
@@ -48,6 +49,38 @@ describe("monthFolderName", () => {
     expect(monthFolderName(2024, 1)).toBe("2024-01 Enero");
     // dentro de "Ejercicio 2023-2024": 2023-11 < 2023-12 < 2024-01
     expect("2023-11 Noviembre" < "2024-01 Enero").toBe(true);
+  });
+});
+
+describe("companyPath (sin periodo)", () => {
+  it("empresa primero y despues lo que se le cuelgue", () => {
+    expect(companyPath("Presupuestos", "De raiz", "CONTRACT RENT SA", "Vigente")).toBe(
+      "Presupuestos/DE RAIZ/CONTRACT RENT SA/Vigente"
+    );
+    expect(companyPath("Stocks", "BGA", "Remitos")).toBe("Stocks/BGA/Remitos");
+  });
+  it("ignora partes vacias", () => {
+    expect(companyPath("Presupuestos", "BGA", "Cliente", "")).toBe("Presupuestos/BGA/Cliente");
+  });
+});
+
+describe("companyPeriodPath con seccion", () => {
+  it("la seccion va entre la empresa y el ejercicio", () => {
+    expect(
+      companyPeriodPath({
+        top: "Presupuestos",
+        companyShort: "De raiz",
+        iso: "2026-05-14",
+        section: "Historial de presupuestos",
+      })
+    ).toBe(
+      "Presupuestos/DE RAIZ/Historial de presupuestos/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo"
+    );
+  });
+  it("sin seccion sigue igual que antes (Compras, Facturas...)", () => {
+    expect(
+      companyPeriodPath({ top: "Compras", companyShort: "BGA", iso: "2026-05" })
+    ).toBe("Compras/BGA/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo");
   });
 });
 
