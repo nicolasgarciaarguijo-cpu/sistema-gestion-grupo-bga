@@ -241,6 +241,7 @@ import {
   buildPettyCashFundHtml,
   pettyReceiptFileName,
   buildPettyCashReceiptHtml,
+  buildMarcadoresHtml,
 } from "./content/exportHtml";
 
 declare global {
@@ -5574,6 +5575,66 @@ export default function App() {
     return written;
   };
 
+  // Marcadores = los parametros con los que se calcula el PRECIO de los presupuestos. En el sistema
+  // solo vive el valor de HOY, asi que se guarda un RESUMEN DE VALORES por empresa y mes (un archivo
+  // por mes = la evolucion mensual, que es para lo que lo quiere el usuario; el detalle de cada
+  // marcador se ve en la solapa):
+  // Marcadores/<EMPRESA>/Ejercicio .../<AAAA-MM Mes>/Marcadores AAAA-MM.html
+  // Sin esa foto no hay forma de explicar por que un presupuesto viejo salio lo que salio.
+  // Los marcadores y los porcentajes son los de la EMPRESA ACTIVA (cada empresa tiene su modulo).
+  const exportMarcadoresToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando marcadores a la carpeta...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return written;
+      }
+      const company = budget.company;
+      const meta = getCompanyMeta(company);
+      const monthKey = todayIso().slice(0, 7);
+      const path = `${companyPeriodPath({
+        top: "Marcadores",
+        companyShort: meta.short,
+        iso: monthKey,
+        fiscalStartMonth: meta.fiscalYearStartMonth,
+      })}/Marcadores ${monthKey}.html`;
+      await writeFileToFolder(
+        handle,
+        path,
+        buildMarcadoresHtml({
+          companyLabel: String(company),
+          monthKey,
+          percentages: {
+            markupPct,
+            deviationPct,
+            laborDeviationPct,
+            vatPct,
+            commissionPct,
+            stockIncreasePct,
+            allocationMode,
+            manualAllocationPct,
+          },
+          fixedMarkers,
+          supplyMarkers,
+          laborMarkers,
+          personalProvisionMarkers,
+        })
+      );
+      written.push(path);
+      setDocumentsMessage(
+        `Marcadores exportados: foto de ${monthKey} de ${company} en ${path}. Cambia de empresa y volve a exportar para la otra.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export marcadores:", err);
+      setDocumentsMessage("Error al exportar marcadores: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+    return written;
+  };
+
   // Documentacion de la EMPRESA (estatuto, CUIT, poderes, seguros, habilitaciones). No hay nada que
   // generar: es un BUZON. El export solo deja las carpetas armadas para que el usuario sepa donde
   // dejar cada cosa y, al sincronizar, el documento entre con su empresa (y su mes si vence).
@@ -5820,6 +5881,10 @@ export default function App() {
   // generados por el sistema; nunca los tickets/fotos/PDF que carga el usuario.
   // OJO: esta lista tiene que seguir a donde ESCRIBE cada export. Si una solapa se muda de carpeta y
   // aca queda la vieja, sus sobrantes no se limpian nunca (y se barre una carpeta que ya no recibe nada).
+  // Solo va lo que el export REGENERA COMPLETO cada vez. Quedan afuera a proposito:
+  //  - "Marcadores": es una foto del mes en curso; los meses anteriores no se pueden regenerar y la
+  //    limpieza (que borra todo .html que no se escribio en esta corrida) se llevaria el archivo entero.
+  //  - "Documentacion": es un buzon, el sistema no escribe HTML ahi.
   const EXPORT_MANAGED_FOLDERS = [
     "Manuales",
     "Presupuestos",
@@ -5844,6 +5909,7 @@ export default function App() {
     written.push(...(await exportRemitosToFolder()));
     written.push(...(await exportPettyCashToFolder()));
     written.push(...(await exportDocumentacionToFolder()));
+    written.push(...(await exportMarcadoresToFolder()));
     written.push(...(await exportSummaryToFolder()));
     let removed = 0;
     try {
@@ -13580,6 +13646,7 @@ export default function App() {
           onExportRemitos={exportRemitosToFolder}
           onExportPettyCash={exportPettyCashToFolder}
           onExportDocumentacion={exportDocumentacionToFolder}
+          onExportMarcadores={exportMarcadoresToFolder}
           onExportSummary={exportSummaryToFolder}
           onExportAll={exportAllToFolder}
         />

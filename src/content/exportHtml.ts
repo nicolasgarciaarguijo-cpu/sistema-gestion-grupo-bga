@@ -869,3 +869,121 @@ export function buildPresentismoResumenHtml(employees: any[], monthKey: string):
     </table>`;
   return page(`Presentismo ${monthKey}`, body);
 }
+
+// ---- Marcadores (parametros economicos) ----
+// RESUMEN DE VALORES del mes, no el detalle de cada marcador: la gracia es poner los archivos de
+// varios meses uno al lado del otro y ver la EVOLUCION. Los marcadores son la fuente de verdad del
+// precio de los presupuestos y en el sistema solo vive el valor de HOY; esta foto mensual es la unica
+// forma de explicar despues por que un presupuesto viejo salio lo que salio.
+export function buildMarcadoresHtml(input: {
+  companyLabel: string;
+  monthKey: string;
+  percentages: {
+    markupPct: number;
+    deviationPct: number;
+    laborDeviationPct: number;
+    vatPct: number;
+    commissionPct: number;
+    stockIncreasePct: number;
+    allocationMode: string;
+    manualAllocationPct: number;
+  };
+  fixedMarkers: any[];
+  supplyMarkers: any[];
+  laborMarkers: any[];
+  personalProvisionMarkers: any[];
+}): string {
+  const p = input.percentages;
+  const pct = (n: number) => `${Number(n || 0).toFixed(2)}%`;
+  const activos = (list: any[]) => (list || []).filter((m) => m.active !== false);
+
+  const fixed = activos(input.fixedMarkers);
+  const fixedTotal = fixed.reduce((a, m) => a + Number(m.amount || 0), 0);
+  // Por grupo: es el corte que importa (el grupo define si el costo es fijo o variable).
+  const porGrupo = new Map<string, number>();
+  fixed.forEach((m) => {
+    const g = String(m.group || "Sin grupo");
+    porGrupo.set(g, (porGrupo.get(g) || 0) + Number(m.amount || 0));
+  });
+  const grupoRows = Array.from(porGrupo.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([g, total]) => `<tr><td>${esc(g)}</td><td class="num">${money(total)}</td></tr>`)
+    .join("");
+
+  const suppliesTotal = activos(input.supplyMarkers).reduce(
+    (a, m) => a + Number(m.qty || 0) * Number(m.unitPrice || 0),
+    0
+  );
+  const labor = activos(input.laborMarkers);
+  const laborMensual = labor.reduce(
+    (a, m) =>
+      a +
+      Number(m.employees || 0) * Number(m.monthlyHoursPerEmployee || 0) * Number(m.hourlyRate || 0),
+    0
+  );
+  const provisionesMensual = activos(input.personalProvisionMarkers).reduce((a, m) => {
+    const meses = Number(m.periodicityMonths || 0);
+    return a + (meses > 0 ? Number(m.amountPerDelivery || 0) / meses : 0);
+  }, 0);
+
+  const fila = (k: string, v: string, nota = "") =>
+    `<tr><td>${esc(k)}</td><td class="num">${v}</td><td>${esc(nota)}</td></tr>`;
+
+  const body = `
+    <h1>Marcadores - resumen de valores</h1>
+    <p class="sub">${esc(input.companyLabel)} &middot; ${monthLabelEs(
+    input.monthKey
+  )} &middot; foto del mes (para comparar contra los otros meses)</p>
+    <div class="grid">
+      <div class="card"><div class="k">Markup</div><div class="v">${pct(p.markupPct)}</div></div>
+      <div class="card"><div class="k">Comision</div><div class="v">${pct(p.commissionPct)}</div></div>
+      <div class="card"><div class="k">Costos fijos / mes</div><div class="v">${money(fixedTotal)}</div></div>
+      <div class="card"><div class="k">Mano de obra / mes</div><div class="v">${money(laborMensual)}</div></div>
+    </div>
+
+    <h2>Porcentajes</h2>
+    <table>
+      <thead><tr><th>Concepto</th><th class="num">Valor</th><th>Nota</th></tr></thead>
+      <tbody>
+        ${fila("Markup", pct(p.markupPct))}
+        ${fila("Desvio de materiales", pct(p.deviationPct))}
+        ${fila("Desvio de mano de obra", pct(p.laborDeviationPct))}
+        ${fila("IVA", pct(p.vatPct))}
+        ${fila("Comision", pct(p.commissionPct))}
+        ${fila("Aumento de stock", pct(p.stockIncreasePct))}
+        ${fila(
+          "Imputacion de costos fijos",
+          String(p.allocationMode || "-").toLowerCase().includes("manual")
+            ? pct(p.manualAllocationPct)
+            : "auto",
+          String(p.allocationMode || "")
+        )}
+      </tbody>
+    </table>
+
+    <h2>Montos mensuales</h2>
+    <table>
+      <thead><tr><th>Concepto</th><th class="num">Monto</th><th>Nota</th></tr></thead>
+      <tbody>
+        ${fila("Costos fijos", money(fixedTotal), `${fixed.length} marcador(es) activo(s)`)}
+        ${fila("Mano de obra", money(laborMensual), `${labor.length} categoria(s)`)}
+        ${fila(
+          "Provisiones de personal",
+          money(provisionesMensual),
+          "EPP, insumos, examenes y capacitaciones prorrateados"
+        )}
+        ${fila("Insumos, flete, entrega, embalaje", money(suppliesTotal), "por presupuesto, no mensual")}
+        <tr class="tot"><td>Costo fijo mensual del negocio</td><td class="num">${money(
+          fixedTotal + laborMensual + provisionesMensual
+        )}</td><td></td></tr>
+      </tbody>
+    </table>
+
+    <h2>Costos fijos por grupo</h2>
+    <table>
+      <thead><tr><th>Grupo</th><th class="num">Monto mensual</th></tr></thead>
+      <tbody>${grupoRows || `<tr><td colspan="2">Sin costos fijos activos.</td></tr>`}</tbody>
+    </table>`;
+  return page(`Marcadores ${input.companyLabel} ${input.monthKey}`, body);
+}
+
