@@ -2,6 +2,8 @@ import {
   companyFolderName,
   companyPath,
   companyPeriodPath,
+  documentacionSectionPath,
+  DOCUMENTACION_SECTIONS,
   periodPath,
   fiscalStartYearOf,
   fiscalYearFolderName,
@@ -93,6 +95,33 @@ describe("companyPeriodPath con seccion", () => {
     expect(
       companyPeriodPath({ top: "Compras", companyShort: "BGA", iso: "2026-05" })
     ).toBe("Compras/BGA/Ejercicio 2025-2026 (nov-oct)/2026-05 Mayo");
+  });
+});
+
+describe("documentacionSectionPath", () => {
+  it("lo permanente va suelto, sin fecha (el estatuto no vence)", () => {
+    expect(
+      documentacionSectionPath({ companyShort: "De raiz", section: "Societario y permanente" })
+    ).toBe("Documentacion/DE RAIZ/Societario y permanente");
+    // aunque se le pase una fecha, no la usa
+    expect(
+      documentacionSectionPath({
+        companyShort: "De raiz",
+        section: "Societario y permanente",
+        iso: "2026-07-19",
+      })
+    ).toBe("Documentacion/DE RAIZ/Societario y permanente");
+  });
+  it("lo que vence se separa por ejercicio y mes", () => {
+    expect(
+      documentacionSectionPath({ companyShort: "BGA", section: "Vencimientos", iso: "2026-07-19" })
+    ).toBe("Documentacion/BGA/Vencimientos/Ejercicio 2025-2026 (nov-oct)/2026-07 Julio");
+  });
+  it("son las dos secciones acordadas", () => {
+    expect(DOCUMENTACION_SECTIONS.map((s) => s.name)).toEqual([
+      "Societario y permanente",
+      "Vencimientos",
+    ]);
   });
 });
 

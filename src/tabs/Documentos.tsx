@@ -26,6 +26,7 @@ type DocumentosTabProps = {
   onExportPersonal: () => void;
   onExportRemitos: () => void;
   onExportPettyCash: () => void;
+  onExportDocumentacion: () => void;
   onExportSummary: () => void;
   onExportAll: () => void;
 };
@@ -87,6 +88,7 @@ export function DocumentosTab({
   onExportPersonal,
   onExportRemitos,
   onExportPettyCash,
+  onExportDocumentacion,
   onExportSummary,
   onExportAll,
 }: DocumentosTabProps) {
@@ -175,6 +177,9 @@ export function DocumentosTab({
       Rendicion de tickets y facturas/    (buzon: dejas los tickets aca, sin fecha)
       Recibos/Ejercicio AAAA-AAAA (nov-oct)/<AAAA-MM Mes>/
   Stocks/<EMPRESA>/Remitos/    (remitos = movimientos de stock; sin fecha)
+  Documentacion/<EMPRESA>/
+      Societario y permanente/          (estatuto, CUIT, poderes: no vence, sin fecha)
+      Vencimientos/Ejercicio AAAA-AAAA (nov-oct)/<AAAA-MM Mes>/   (seguros, habilitaciones)
   Escalas/AAAA-MM/             (escalas salariales)`}
           </div>
           <div style={{ ...styles.muted, marginTop: 6 }}>
@@ -222,6 +227,9 @@ export function DocumentosTab({
           <ButtonLike onClick={onExportPettyCash} disabled={busy || !folderLinked} secondary>
             Caja chica
           </ButtonLike>
+          <ButtonLike onClick={onExportDocumentacion} disabled={busy || !folderLinked} secondary>
+            Documentacion (carpetas)
+          </ButtonLike>
           <ButtonLike onClick={onExportSummary} disabled={busy || !folderLinked} secondary>
             Resumenes
           </ButtonLike>
@@ -234,6 +242,7 @@ export function DocumentosTab({
           Personal/&lt;empresa&gt;/&lt;empleado&gt;/(Documentacion sin fecha; EPP, Recibos, Examenes,
           Capacitaciones, Presentismo por Ejercicio/&lt;mes&gt;) + Personal/&lt;empresa&gt;/ESCALAS SALARIALES/ ·
           Stocks/&lt;empresa&gt;/Remitos/ · Caja chica/&lt;empresa&gt;/(abiertas|cerradas)/&lt;caja&gt;/ ·
+          Documentacion/&lt;empresa&gt;/(Societario y permanente | Vencimientos/Ejercicio/&lt;mes&gt;) ·
           Presupuestos/&lt;empresa&gt;/&lt;cliente&gt;/ (+ Historial de presupuestos y Resumen mensual por
           Ejercicio/&lt;mes&gt;) · Resumenes/&lt;periodo&gt;/. Doble via con OCR: si dejas una
           factura en Facturas/, un comprobante en Pagos y tickets/ de un trabajo, o una factura en

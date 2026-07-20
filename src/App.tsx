@@ -55,8 +55,10 @@ import {
   companyFolderName,
   companyPath,
   companyPeriodPath,
+  documentacionSectionPath,
   periodPath,
   personalSectionPath,
+  DOCUMENTACION_SECTIONS,
   PERSONAL_SECTIONS,
 } from "./domain/folderPaths";
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
@@ -5572,6 +5574,53 @@ export default function App() {
     return written;
   };
 
+  // Documentacion de la EMPRESA (estatuto, CUIT, poderes, seguros, habilitaciones). No hay nada que
+  // generar: es un BUZON. El export solo deja las carpetas armadas para que el usuario sepa donde
+  // dejar cada cosa y, al sincronizar, el documento entre con su empresa (y su mes si vence).
+  // Documentacion/<EMPRESA>/Societario y permanente/  |  .../Vencimientos/Ejercicio .../<mes>/
+  const exportDocumentacionToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
+    setDocumentsBusy(true);
+    setDocumentsMessage("Preparando las carpetas de documentacion...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return written;
+      }
+      const today = todayIso();
+      // Las empresas REALES a las que llega el usuario (General es la conjunta de reportes: no tiene
+      // documentacion societaria propia).
+      const companies = COMPANY_OPTIONS.filter(
+        (option) => option.value !== "General" && canAccessCompany(option.value)
+      ).map((option) => option.value);
+      for (const company of companies) {
+        const meta = getCompanyMeta(company);
+        for (const sec of DOCUMENTACION_SECTIONS) {
+          // La del mes en curso: es donde va a caer lo que se cargue ahora.
+          await ensureFolder(
+            handle,
+            documentacionSectionPath({
+              companyShort: meta.short,
+              section: sec.name,
+              iso: sec.periodic ? today : undefined,
+              fiscalStartMonth: meta.fiscalYearStartMonth,
+            })
+          );
+        }
+      }
+      setDocumentsMessage(
+        `Documentacion lista: ${companies.length} empresa(s) con "Societario y permanente" (no vence, sin fecha) y ` +
+          `"Vencimientos/Ejercicio/<mes>" (seguros, habilitaciones). Deja los archivos ahi y toca Sincronizar.`
+      );
+    } catch (err: any) {
+      console.error("[documentos] export documentacion:", err);
+      setDocumentsMessage("Error al preparar documentacion: " + (err?.message || String(err)));
+    }
+    setDocumentsBusy(false);
+    return written;
+  };
+
   // Compras por EMPRESA/EJERCICIO/MES (la regla del backup): un resumen mensual + subcarpeta
   // "Facturas de compra" para dejar los comprobantes (doble via: lo que dejes aca se lee al
   // sincronizar como compra del mes). Ruta: Compras/<EMPRESA>/Ejercicio <A>-<B>/<AAAA-MM Mes>/.
@@ -5794,6 +5843,7 @@ export default function App() {
     written.push(...(await exportPersonalToFolder()));
     written.push(...(await exportRemitosToFolder()));
     written.push(...(await exportPettyCashToFolder()));
+    written.push(...(await exportDocumentacionToFolder()));
     written.push(...(await exportSummaryToFolder()));
     let removed = 0;
     try {
@@ -13529,6 +13579,7 @@ export default function App() {
           onExportPersonal={exportPersonalToFolder}
           onExportRemitos={exportRemitosToFolder}
           onExportPettyCash={exportPettyCashToFolder}
+          onExportDocumentacion={exportDocumentacionToFolder}
           onExportSummary={exportSummaryToFolder}
           onExportAll={exportAllToFolder}
         />

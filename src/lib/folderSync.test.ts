@@ -34,6 +34,17 @@ describe("classifyPath", () => {
     expect(classifyPath("Trabajos aprobados/Cliente/3400/Remitos/entrega.pdf").docType).toBe("remitos");
   });
 
+  it("documentacion de la empresa: permanente sin fecha y vencimientos con mes", () => {
+    expect(
+      classifyPath("Documentacion/DE RAIZ/Societario y permanente/Estatuto.pdf")
+    ).toMatchObject({ docType: "documentacion", company: "DE RAIZ", month: "" });
+    expect(
+      classifyPath(
+        "Documentacion/BGA/Vencimientos/Ejercicio 2025-2026 (nov-oct)/2026-07 Julio/Seguro ART.pdf"
+      )
+    ).toMatchObject({ docType: "documentacion", company: "BGA", month: "2026-07" });
+  });
+
   it("caja chica: lee la estructura nueva (con empresa) y la vieja", () => {
     expect(
       classifyPath(

@@ -92,11 +92,36 @@ export function companyPath(top: string, companyShort: string, ...parts: string[
   return [top, companyFolderName(companyShort), ...parts.filter(Boolean)].join("/");
 }
 
+// Seccion de una carpeta: `periodic` = se separa por ejercicio y mes; si no, va suelta (no vence).
+export type FolderSection = { name: string; periodic: boolean };
+
+// --- Documentacion de la EMPRESA (estatuto, CUIT, poderes, seguros, habilitaciones) ---
+// Mismo criterio que el legajo del empleado: lo que NO vence va suelto y sin fecha; lo que vence se
+// separa por ejercicio y mes, para que el vigente no quede mezclado con el vencido.
+export const DOCUMENTACION_SECTIONS: PersonalSection[] = [
+  { name: "Societario y permanente", periodic: false },
+  { name: "Vencimientos", periodic: true },
+];
+
+export function documentacionSectionPath(input: {
+  companyShort: string;
+  section: string;
+  iso?: string; // fecha del documento; requerida si la seccion es periodica
+  fiscalStartMonth?: number;
+}): string {
+  const base = companyPath("Documentacion", input.companyShort, input.section);
+  const periodic =
+    DOCUMENTACION_SECTIONS.find((s) => s.name.toLowerCase() === (input.section || "").toLowerCase())
+      ?.periodic ?? true;
+  if (!periodic || !input.iso) return base;
+  return `${base}/${periodPath(input.iso, input.fiscalStartMonth)}`;
+}
+
 // --- Personal ---
 
-// Subcarpetas de un empleado. `periodic` = se separa por ejercicio y mes.
-// La documentacion cruda (ficha de alta, DNI, contrato) NO vence -> sin ejercicio ni mes.
-export type PersonalSection = { name: string; periodic: boolean };
+// Subcarpetas de un empleado. La documentacion cruda (ficha de alta, DNI, contrato) NO vence ->
+// sin ejercicio ni mes.
+export type PersonalSection = FolderSection;
 export const PERSONAL_SECTIONS: PersonalSection[] = [
   { name: "Documentacion", periodic: false },
   { name: "EPP", periodic: true },
