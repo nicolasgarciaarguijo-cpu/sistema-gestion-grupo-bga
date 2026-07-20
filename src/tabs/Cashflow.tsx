@@ -118,7 +118,6 @@ const MONTH_OPTIONS = [
 
 type CashflowTabProps = {
   cashFlowSummary: any;
-  accountingResults: any;
   billingBalance: any;
   periodStatement: any;
   balanceCompanyScope: string;
@@ -162,7 +161,6 @@ type CashflowTabProps = {
 
 export function CashflowTab({
   cashFlowSummary,
-  accountingResults,
   activeAssetsMonthlyDepreciation,
   analysisYear,
   annualCashFlowEntries,
@@ -352,36 +350,10 @@ export function CashflowTab({
             </div>
           </Panel>
 
-          <Panel title="Contabilidad general blanco / negro (devengado, con sueldos y amortizacion)" span="wide">
-            <div style={styles.grid2}>
-              <div>
-                <div style={styles.sectionHeader}>Circuito BLANCO</div>
-                <div style={styles.metricGrid}>
-                  <MiniMetric label="Ingresos blanco" value={money(accountingResults.whiteIncome)} />
-                  <MiniMetric label="Egresos blanco" value={money(accountingResults.whiteExpense)} tone="out" />
-                  <MiniMetric label="Resultado blanco" value={money(accountingResults.whiteResult)} />
-                </div>
-              </div>
-              <div>
-                <div style={styles.sectionHeader}>Circuito NEGRO</div>
-                <div style={styles.metricGrid}>
-                  <MiniMetric label="Ingresos negro" value={money(accountingResults.blackIncome)} />
-                  <MiniMetric label="Egresos negro" value={money(accountingResults.blackExpense)} tone="out" />
-                  <MiniMetric label="Resultado negro" value={money(accountingResults.blackResult)} />
-                </div>
-              </div>
-            </div>
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Resultado total" value={money(accountingResults.totalResult)} />
-              <MiniMetric label="% operacion en negro" value={`${accountingResults.blackSharePct.toFixed(1)}%`} />
-              <MiniMetric label="Desfasaje blanco vs negro" value={money(accountingResults.desfasaje)} />
-            </div>
-            <div style={styles.noticeBox}>
-              Dos resultados separados por circuito. Las compras y la caja chica se imputan segun su
-              administracion (blanco/negro), y los premios segun su origen. Verifica que cada concepto
-              caiga en el circuito que esperas; lo ajustamos si hace falta.
-            </div>
-          </Panel>
+          {/* Aca habia un segundo panel de resultado ("Contabilidad general blanco / negro") que
+              contaba la plata dos veces (sumaba el banco ademas del cobro y de la compra) y no
+              respetaba la empresa ni el periodo. El resultado por circuito, el total, el % en negro y
+              el desfasaje ya estan arriba, en "Estado de resultados del periodo", bien calculados. */}
           <Panel title="Cash flow y estado de resultados" span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturado bruto" value={money(cashFlowSummary.billedGross)} />

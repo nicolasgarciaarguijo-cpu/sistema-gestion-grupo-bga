@@ -32,7 +32,6 @@ import {
 } from "./domain/clients";
 import { buildPersonalReminders } from "./domain/personalReminders";
 import { matchStockForMaterial, applyStockMovement } from "./domain/stockMatch";
-import { computeAccountingResults } from "./domain/accounting";
 import { computeBillingTotals } from "./domain/billingTotals";
 import { computeIncomeStatement } from "./domain/incomeStatement";
 import {
@@ -6806,7 +6805,20 @@ export default function App() {
         extractedAutomatically: false,
       }));
 
-    return [...visiblePurchaseInvoices, ...linkedWhiteInvoices];
+    // OJO: un gasto de caja chica puede APUNTAR a una factura de compra real (linkedPurchaseInvoiceId
+    // / pettyCashExpenseId). Esa factura ya esta en visiblePurchaseInvoices, asi que si se concatena
+    // la copia sintetica el mismo gasto suma DOS VECES (en compras y en el resultado operativo).
+    // Se deja una sola: la factura real manda.
+    const yaEstan = new Set(
+      visiblePurchaseInvoices.flatMap((inv) => [
+        `id:${inv.id}`,
+        inv.pettyCashExpenseId ? `gasto:${inv.pettyCashExpenseId}` : "",
+      ])
+    );
+    const sinDuplicar = linkedWhiteInvoices.filter(
+      (inv) => !yaEstan.has(`id:${inv.id}`) && !yaEstan.has(`gasto:${inv.pettyCashExpenseId}`)
+    );
+    return [...visiblePurchaseInvoices, ...sinDuplicar];
   }, [visiblePurchaseInvoices, visiblePettyCashExpenses]);
 
   const purchaseInvoiceSummary = useMemo(() => {
@@ -12267,46 +12279,12 @@ export default function App() {
     [visibleEmployees, payrollMonth, scaleRows, employeeBaseConfig, visibleStockItems, personalProvisionMarkers]
   );
 
-  // F4 Contabilidad blanco/negro: dos resultados separados + desfasaje. Arma los agregados de cada
-  // circuito (compras por administracion, premios por origen) y los pasa a la funcion pura.
-  const accountingResults = useMemo(() => {
-    const whiteIncome = approvedJobsSummary.reduce((acc, j) => acc + Number(j.billedNet || 0), 0);
-    const blackIncome = approvedJobsSummary.reduce((acc, j) => acc + Number(j.blackNet || 0), 0);
-    const whitePurchases = purchaseInvoicesWithPettyCashWhite
-      .filter((item) => item.administration === "blanco")
-      .reduce((acc, item) => acc + Number(item.total || 0), 0);
-    const blackPurchases = purchaseInvoicesWithPettyCashWhite
-      .filter((item) => item.administration === "negro")
-      .reduce((acc, item) => acc + Number(item.total || 0), 0);
-    const premioWhite = visibleEmployees.reduce(
-      (acc, e) => acc + Number(getCurrentPayroll(e).whiteBonus || 0),
-      0
-    );
-    const premioBlack = visibleEmployees.reduce(
-      (acc, e) => acc + Number(getCurrentPayroll(e).cashBonus || 0),
-      0
-    );
-    return computeAccountingResults({
-      whiteIncome,
-      blackIncome,
-      whitePurchases,
-      blackPurchases,
-      pettyCashBlack: cashFlowSummary.pettyCashBlackTotal,
-      commissions: cashFlowSummary.commissionsPending,
-      depreciation: activeAssetsMonthlyDepreciation,
-      bankCredits: cashFlowSummary.bankCredits,
-      bankDebits: cashFlowSummary.bankDebits,
-      premioWhite,
-      premioBlack,
-    });
-  }, [
-    approvedJobsSummary,
-    purchaseInvoicesWithPettyCashWhite,
-    visibleEmployees,
-    payrollMonth,
-    cashFlowSummary,
-    activeAssetsMonthlyDepreciation,
-  ]);
+  // Habia un segundo calculo de resultado (computeAccountingResults) que se mostraba al lado del
+  // estado de resultados, en la misma pantalla, y CONTABA LA PLATA DOS VECES: sumaba los creditos del
+  // banco ADEMAS del cobro del cliente, y restaba los debitos ADEMAS de la compra. Encima no filtraba
+  // por empresa ni por periodo, asi que los dos numeros nunca podian coincidir.
+  // Se elimino: el unico resultado es `periodStatement` (computeIncomeStatement), que deja el banco
+  // afuera como referencia. El banco es el ESPEJO de la cuenta, no calcula resultado.
 
   const categoryBaseRows = useMemo(
     () =>
@@ -13368,7 +13346,6 @@ export default function App() {
       {activeTab === "cashflow" && (
         <CashflowTab
           cashFlowSummary={cashFlowSummary}
-          accountingResults={accountingResults}
           billingBalance={billingBalance}
           periodStatement={periodStatement}
           balanceCompanyScope={balanceCompanyScope}
