@@ -5769,16 +5769,17 @@ export default function App() {
 
   // Exporta TODO y ademas LIMPIA los HTML sobrantes (lo borrado del sistema). Solo borra archivos .html
   // generados por el sistema; nunca los tickets/fotos/PDF que carga el usuario.
+  // OJO: esta lista tiene que seguir a donde ESCRIBE cada export. Si una solapa se muda de carpeta y
+  // aca queda la vieja, sus sobrantes no se limpian nunca (y se barre una carpeta que ya no recibe nada).
   const EXPORT_MANAGED_FOLDERS = [
     "Manuales",
     "Presupuestos",
     "Trabajos aprobados",
-    "Facturas",
+    "FACTURAS EMITIDAS", // antes "Facturas"
     "Facturacion y cobranzas",
     "Compras",
     "Personal",
-    "Recibos",
-    "Remitos",
+    "Stocks", // los remitos viven en Stocks/<EMPRESA>/Remitos/ (antes "Remitos")
     "Caja chica",
     "Resumenes",
   ];
