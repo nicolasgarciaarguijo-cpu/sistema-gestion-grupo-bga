@@ -12167,12 +12167,43 @@ export default function App() {
           `${getCompanyMeta(empresa.value).short} ${direction}: ${nuevas} de ${invoices.length}`
         );
       }
+      // ALTA AUTOMATICA DE PROVEEDORES: el archivo de comprobantes recibidos trae el nombre y el CUIT
+      // del emisor, que es justo lo que hace falta para cotejar los pagos contra el banco. Se dan de
+      // alta solo los CUIT que no estan, y NUNCA los de las propias empresas del grupo (esos giros
+      // son cuenta corriente entre empresas, no compras a un proveedor).
+      const cuitsGrupo = COMPANY_OPTIONS.map((option) =>
+        String(getCompanyMeta(option.value).taxId || "").replace(/\D/g, "")
+      ).filter((c) => c.length >= 11);
+      const cuitsConocidos = new Set(
+        suppliers.map((s) => String(s.taxId || "").replace(/\D/g, "")).filter(Boolean)
+      );
+      const proveedoresNuevos: Supplier[] = [];
+      for (const inv of compraNuevas) {
+        const cuit = String(inv.taxId || "").replace(/\D/g, "");
+        if (cuit.length < 11) continue;
+        if (cuitsGrupo.includes(cuit)) continue;
+        if (cuitsConocidos.has(cuit)) continue;
+        cuitsConocidos.add(cuit);
+        proveedoresNuevos.push({
+          id: newId(),
+          company: "General", // los proveedores son de las dos empresas; el pago define cual
+          name: inv.supplier || `CUIT ${cuit}`,
+          taxId: cuit.replace(/^(\d{2})(\d{8})(\d)$/, "$1-$2-$3"),
+          aliases: "",
+          active: true,
+          notes: "Alta automatica desde el listado de ARCA",
+        });
+      }
+
       if (emitidasNuevas.length > 0) setIssuedInvoices((prev) => [...prev, ...emitidasNuevas]);
       if (compraNuevas.length > 0) setPurchaseInvoices((prev) => [...prev, ...compraNuevas]);
+      if (proveedoresNuevos.length > 0) setSuppliers((prev) => [...prev, ...proveedoresNuevos]);
       setDocumentsMessage(
-        `ARCA: ${emitidasNuevas.length} factura(s) emitida(s) y ${compraNuevas.length} de compra nuevas. ` +
-          resumen.join(" · ") +
-          " (lo repetido no se duplica)."
+        `ARCA: ${emitidasNuevas.length} factura(s) emitida(s), ${compraNuevas.length} de compra` +
+          (proveedoresNuevos.length > 0
+            ? ` y ${proveedoresNuevos.length} proveedor(es) dados de alta.`
+            : ".") +
+          ` ${resumen.join(" · ")} (lo repetido no se duplica).`
       );
     } catch (err: any) {
       console.error("[arca] import:", err);
