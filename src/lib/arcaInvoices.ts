@@ -11,13 +11,15 @@
 //
 // Puro: recibe la matriz de celdas ya leida. El que abre el Excel es el caller.
 
-export type ParsedIssuedInvoice = {
+export type ArcaDirection = "emitidas" | "recibidas";
+
+export type ParsedArcaInvoice = {
   date: string; // yyyy-mm-dd
   kind: string; // "1 - Factura A"
   pointOfSale: string;
   number: string;
-  receiverTaxId: string; // solo digitos
-  receiverName: string;
+  counterpartyTaxId: string; // solo digitos (el receptor si emitimos, el emisor si nos emitieron)
+  counterpartyName: string;
   currency: string;
   net: number;
   vat: number;
@@ -25,8 +27,9 @@ export type ParsedIssuedInvoice = {
 };
 
 export type ArcaParseResult = {
-  emitterTaxId: string; // CUIT del emisor, sacado del titulo
-  invoices: ParsedIssuedInvoice[];
+  ownTaxId: string; // CUIT NUESTRO, sacado del titulo del archivo
+  direction: ArcaDirection; // lo dice el propio titulo: Emitidos o Recibidos
+  invoices: ParsedArcaInvoice[];
 };
 
 const norm = (s: string): string =>
@@ -66,18 +69,22 @@ export const parseArcaDate = (raw: string): string => {
   return "";
 };
 
-const HEADER_ALIASES: Record<keyof ParsedIssuedInvoice | "netExento", string[]> = {
+const HEADER_ALIASES = {
   date: ["fecha"],
   kind: ["tipo"],
   pointOfSale: ["punto de venta"],
   number: ["numero desde", "nro desde"],
-  receiverTaxId: ["nro doc receptor", "numero doc receptor", "nro documento receptor"],
-  receiverName: ["denominacion receptor"],
   currency: ["moneda"],
-  net: ["imp neto gravado", "neto gravado"],
-  vat: ["iva", "imp iva"],
+  // "Neto Gravado Total" aparece en los Recibidos; "Imp. Neto Gravado" en los Emitidos.
+  net: ["imp neto gravado", "neto gravado", "neto gravado total"],
+  // "Total IVA" en los Recibidos, "IVA" en los Emitidos.
+  vat: ["iva", "imp iva", "total iva"],
   total: ["imp total", "importe total"],
-  netExento: ["imp neto no gravado", "imp op exentas"],
+  // La CONTRAPARTE cambia de nombre segun la direccion del archivo.
+  counterpartyTaxIdOut: ["nro doc receptor", "numero doc receptor", "nro documento receptor"],
+  counterpartyNameOut: ["denominacion receptor"],
+  counterpartyTaxIdIn: ["nro doc emisor", "numero doc emisor", "nro documento emisor"],
+  counterpartyNameIn: ["denominacion emisor"],
 };
 
 // Busca el indice de la columna cuyo encabezado coincide EXACTO con alguno de los alias.
@@ -85,25 +92,36 @@ const HEADER_ALIASES: Record<keyof ParsedIssuedInvoice | "netExento", string[]> 
 const findColumn = (headers: string[], aliases: string[]): number =>
   headers.findIndex((h) => aliases.includes(norm(h)));
 
-export function rowsToIssuedInvoices(rows: string[][]): ArcaParseResult {
-  const emitterRow = (rows || []).slice(0, 5).find((r) => /comprobantes/i.test(r?.[0] || ""));
-  const emitterTaxId = digits(emitterRow?.[0] || "");
+export function rowsToArcaInvoices(rows: string[][]): ArcaParseResult {
+  const tituloRow = (rows || []).slice(0, 5).find((r) => /comprobantes/i.test(r?.[0] || ""));
+  const titulo = tituloRow?.[0] || "";
+  const ownTaxId = digits(titulo);
+  // El propio titulo dice si son los que emitimos o los que nos emitieron.
+  const direction: ArcaDirection = /recibido/i.test(titulo) ? "recibidas" : "emitidas";
 
   const headerIndex = (rows || []).findIndex(
     (r) =>
       (r || []).some((c) => norm(c) === "fecha") &&
-      (r || []).some((c) => norm(c).includes("receptor"))
+      (r || []).some((c) => norm(c).includes("receptor") || norm(c).includes("emisor"))
   );
-  if (headerIndex < 0) return { emitterTaxId, invoices: [] };
+  if (headerIndex < 0) return { ownTaxId, direction, invoices: [] };
 
   const headers = rows[headerIndex] || [];
+  // Si nos emitieron, la contraparte es el EMISOR; si emitimos, es el RECEPTOR.
+  const esRecibida = direction === "recibidas";
   const col = {
     date: findColumn(headers, HEADER_ALIASES.date),
     kind: findColumn(headers, HEADER_ALIASES.kind),
     pointOfSale: findColumn(headers, HEADER_ALIASES.pointOfSale),
     number: findColumn(headers, HEADER_ALIASES.number),
-    receiverTaxId: findColumn(headers, HEADER_ALIASES.receiverTaxId),
-    receiverName: findColumn(headers, HEADER_ALIASES.receiverName),
+    counterpartyTaxId: findColumn(
+      headers,
+      esRecibida ? HEADER_ALIASES.counterpartyTaxIdIn : HEADER_ALIASES.counterpartyTaxIdOut
+    ),
+    counterpartyName: findColumn(
+      headers,
+      esRecibida ? HEADER_ALIASES.counterpartyNameIn : HEADER_ALIASES.counterpartyNameOut
+    ),
     currency: findColumn(headers, HEADER_ALIASES.currency),
     net: findColumn(headers, HEADER_ALIASES.net),
     vat: findColumn(headers, HEADER_ALIASES.vat),
@@ -113,26 +131,25 @@ export function rowsToIssuedInvoices(rows: string[][]): ArcaParseResult {
   const at = (row: string[], index: number): string =>
     index >= 0 ? String(row?.[index] ?? "").trim() : "";
 
-  const invoices: ParsedIssuedInvoice[] = [];
+  const invoices: ParsedArcaInvoice[] = [];
   for (let i = headerIndex + 1; i < (rows || []).length; i += 1) {
     const row = rows[i] || [];
     const date = parseArcaDate(at(row, col.date));
     if (!date) continue; // fila vacia o de totales
-    const total = parseArcaAmount(at(row, col.total));
     invoices.push({
       date,
       kind: at(row, col.kind),
       pointOfSale: at(row, col.pointOfSale),
       number: at(row, col.number),
-      receiverTaxId: digits(at(row, col.receiverTaxId)),
-      receiverName: at(row, col.receiverName),
+      counterpartyTaxId: digits(at(row, col.counterpartyTaxId)),
+      counterpartyName: at(row, col.counterpartyName),
       currency: at(row, col.currency) || "$",
       net: parseArcaAmount(at(row, col.net)),
       vat: parseArcaAmount(at(row, col.vat)),
-      total,
+      total: parseArcaAmount(at(row, col.total)),
     });
   }
-  return { emitterTaxId, invoices };
+  return { ownTaxId, direction, invoices };
 }
 
 // Clave para no cargar dos veces el mismo comprobante (los export de ARCA se pisan entre si).
@@ -140,17 +157,17 @@ export function rowsToIssuedInvoices(rows: string[][]): ArcaParseResult {
 // ellos ("1"): se comparan como numero para que sea el mismo comprobante.
 const sinCeros = (s: string): string => String(Number(digits(s) || 0));
 
-export const issuedInvoiceKey = (inv: {
+export const arcaInvoiceKey = (inv: {
   pointOfSale: string;
   number: string;
   kind: string;
-  receiverTaxId: string;
+  counterpartyTaxId: string;
   date: string;
 }): string =>
   [
     norm(inv.kind).split(" ")[0] || norm(inv.kind),
     sinCeros(inv.pointOfSale),
     sinCeros(inv.number),
-    inv.receiverTaxId,
+    inv.counterpartyTaxId,
     inv.date,
   ].join("|");

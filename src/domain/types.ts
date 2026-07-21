@@ -731,8 +731,8 @@ export type IssuedInvoice = {
   kind: string; // "1 - Factura A"
   pointOfSale: string;
   number: string;
-  receiverTaxId: string; // solo digitos
-  receiverName: string;
+  counterpartyTaxId: string; // solo digitos (el receptor)
+  counterpartyName: string;
   currency: string;
   net: number;
   vat: number;

@@ -65,7 +65,7 @@ import {
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, readSpreadsheetRows, suggestGroupForConcept, SHEETJS_CDN } from "./lib/bankStatement";
-import { rowsToIssuedInvoices, issuedInvoiceKey } from "./lib/arcaInvoices";
+import { rowsToArcaInvoices, arcaInvoiceKey } from "./lib/arcaInvoices";
 import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
@@ -12063,7 +12063,7 @@ export default function App() {
     const porCuit = new Map(companies.map((c) => [c.taxId.replace(/\D/g, ""), c.company]));
     const invoices = issuedInvoices
       .map((inv) => {
-        const receptor = porCuit.get(String(inv.receiverTaxId || "").replace(/\D/g, ""));
+        const receptor = porCuit.get(String(inv.counterpartyTaxId || "").replace(/\D/g, ""));
         if (!receptor || receptor === inv.company) return null;
         return {
           from: String(inv.company),
@@ -12076,37 +12076,103 @@ export default function App() {
     return { transfers, invoices, summary: summarizeIntercompany({ transfers, invoices }) };
   }, [visibleBankStatementEntries, issuedInvoices, companyCatalog, COMPANY_OPTIONS]);
 
-  // Import del export de ARCA "Mis Comprobantes Emitidos". La empresa emisora sale del CUIT del
-  // titulo del archivo, no de la empresa activa: asi no importa desde donde se cargue.
-  const importArcaInvoices = async (file: File | null) => {
-    if (!file) return;
-    setDocumentsMessage("Leyendo el listado de ARCA...");
+  // Import de ARCA, "Mis Comprobantes EMITIDOS" o "RECIBIDOS": el propio archivo dice cual es y de
+  // que CUIT, asi que la empresa sale del titulo y no de la empresa activa. Acepta varios archivos
+  // (uno por mes) y no duplica lo que ya esta cargado.
+  //   emitidas  -> issuedInvoices (lo que facturamos)
+  //   recibidas -> purchaseInvoices (lo que nos facturaron). NINGUNA suma al resultado: son registro.
+  const importArcaFiles = async (files: FileList | File[] | null) => {
+    const lista = Array.from(files || []);
+    if (lista.length === 0) return;
+    setDocumentsMessage(`Leyendo ${lista.length} archivo(s) de ARCA...`);
+    const resumen: string[] = [];
+    let emitidasNuevas: IssuedInvoice[] = [];
+    let compraNuevas: PurchaseInvoice[] = [];
+    const clavesEmitidas = new Set(issuedInvoices.map((inv) => arcaInvoiceKey(inv)));
+    const clavesCompras = new Set(
+      purchaseInvoices.map((inv) =>
+        arcaInvoiceKey({
+          kind: inv.receiptKind || "",
+          pointOfSale: "",
+          number: inv.invoiceNumber || "",
+          counterpartyTaxId: String(inv.taxId || "").replace(/\D/g, ""),
+          date: inv.invoiceDate || "",
+        })
+      )
+    );
+
     try {
-      const rows = await readSpreadsheetRows(file);
-      const { emitterTaxId, invoices } = rowsToIssuedInvoices(rows);
-      if (invoices.length === 0) {
-        setDocumentsMessage("Lei el archivo pero no reconoci los comprobantes.");
-        return;
-      }
-      const emisor = COMPANY_OPTIONS.find(
-        (option) =>
-          String(getCompanyMeta(option.value).taxId || "").replace(/\D/g, "") === emitterTaxId
-      );
-      if (!emisor) {
-        setDocumentsMessage(
-          `El archivo es del CUIT ${emitterTaxId} y no coincide con ninguna empresa cargada. Revisa el CUIT en la configuracion de empresas.`
+      for (const file of lista) {
+        const rows = await readSpreadsheetRows(file);
+        const { ownTaxId, direction, invoices } = rowsToArcaInvoices(rows);
+        if (invoices.length === 0) {
+          resumen.push(`${file.name}: no reconoci comprobantes`);
+          continue;
+        }
+        const empresa = COMPANY_OPTIONS.find(
+          (option) => String(getCompanyMeta(option.value).taxId || "").replace(/\D/g, "") === ownTaxId
         );
-        return;
+        if (!empresa) {
+          resumen.push(`${file.name}: CUIT ${ownTaxId} no coincide con ninguna empresa`);
+          continue;
+        }
+        let nuevas = 0;
+        for (const inv of invoices) {
+          const clave = arcaInvoiceKey(inv);
+          if (direction === "emitidas") {
+            if (clavesEmitidas.has(clave)) continue;
+            clavesEmitidas.add(clave);
+            emitidasNuevas.push({
+              id: newId(),
+              company: empresa.value as CompanyName,
+              date: inv.date,
+              kind: inv.kind,
+              pointOfSale: inv.pointOfSale,
+              number: inv.number,
+              counterpartyTaxId: inv.counterpartyTaxId,
+              counterpartyName: inv.counterpartyName,
+              currency: inv.currency,
+              net: inv.net,
+              vat: inv.vat,
+              total: inv.total,
+              source: "arca",
+            });
+          } else {
+            if (clavesCompras.has(clave)) continue;
+            clavesCompras.add(clave);
+            compraNuevas.push({
+              id: newId(),
+              company: empresa.value as CompanyName,
+              administration: "blanco", // viene de ARCA: es factura fiscal
+              source: "compras",
+              supplier: inv.counterpartyName,
+              taxId: inv.counterpartyTaxId,
+              receiptKind: inv.kind,
+              receiptLetter: "",
+              invoiceNumber: `${inv.pointOfSale}-${inv.number}`,
+              invoiceDate: inv.date,
+              currency: inv.currency,
+              exemptAmount: 0,
+              net21: inv.net,
+              subtotal: inv.net,
+              vat: inv.vat,
+              total: inv.total,
+              notes: "Importado del listado de ARCA",
+              extractedAutomatically: true,
+            });
+          }
+          nuevas += 1;
+        }
+        resumen.push(
+          `${getCompanyMeta(empresa.value).short} ${direction}: ${nuevas} de ${invoices.length}`
+        );
       }
-      const yaEstan = new Set(issuedInvoices.map((inv) => issuedInvoiceKey(inv)));
-      const nuevas = invoices
-        .filter((inv) => !yaEstan.has(issuedInvoiceKey(inv)))
-        .map((inv) => ({ ...inv, id: newId(), company: emisor.value as CompanyName, source: "arca" as const }));
-      setIssuedInvoices((prev) => [...prev, ...nuevas]);
-      const repetidas = invoices.length - nuevas.length;
+      if (emitidasNuevas.length > 0) setIssuedInvoices((prev) => [...prev, ...emitidasNuevas]);
+      if (compraNuevas.length > 0) setPurchaseInvoices((prev) => [...prev, ...compraNuevas]);
       setDocumentsMessage(
-        `Facturas de ${getCompanyMeta(emisor.value).short}: ${nuevas.length} nueva(s)` +
-          (repetidas > 0 ? `, ${repetidas} ya estaban (no se duplican).` : ".")
+        `ARCA: ${emitidasNuevas.length} factura(s) emitida(s) y ${compraNuevas.length} de compra nuevas. ` +
+          resumen.join(" · ") +
+          " (lo repetido no se duplica)."
       );
     } catch (err: any) {
       console.error("[arca] import:", err);
@@ -13727,7 +13793,7 @@ export default function App() {
           paymentsReconciliation={paymentsReconciliation}
           intercompanyAccount={intercompanyAccount}
           issuedInvoices={visibleIssuedInvoices}
-          onImportArca={importArcaInvoices}
+          onImportArca={importArcaFiles}
           costRows={costRows}
           companyScope={costsCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}

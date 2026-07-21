@@ -61,7 +61,7 @@ type CostosTabProps = {
   paymentsReconciliation: ReconciliationSummary;
   // Facturas emitidas (listado de ARCA): registro, no suma al resultado.
   issuedInvoices: IssuedInvoice[];
-  onImportArca: (file: File | null) => void;
+  onImportArca: (files: FileList | File[] | null) => void;
   // Giros entre las empresas del grupo: no son pagos, pero hay que cruzarlos con factura o devolucion.
   intercompanyAccount: {
     transfers: IntercompanyTransfer[];
@@ -486,9 +486,10 @@ export function CostosTab({
         span="full"
         actions={
           <FileDropButton
-            label="Importar listado de ARCA"
+            label="Importar listados de ARCA"
             accept=".xlsx,.xls,.csv"
-            onFileSelected={(file) => onImportArca(file)}
+            allowMultiple
+            onFilesSelected={(files) => onImportArca(files)}
           />
         }
       >
@@ -543,7 +544,7 @@ export function CostosTab({
                           <td style={{ fontSize: 12 }}>
                             {inv.pointOfSale}-{inv.number}
                           </td>
-                          <td style={{ fontSize: 12 }}>{(inv.receiverName || "").slice(0, 46)}</td>
+                          <td style={{ fontSize: 12 }}>{(inv.counterpartyName || "").slice(0, 46)}</td>
                           <td style={{ textAlign: "right" }}>{money(inv.total)}</td>
                         </tr>
                       ))}
