@@ -49,6 +49,10 @@ export type ReservaSourcesInput = {
   bankEntries?: BankEntryLike[];
   pettyCashFunds?: PettyFundLike[];
   pettyCashExpenses?: PettyExpenseLike[];
+  // Movimientos ya listos que no salen de las fuentes de arriba. Se usan para los cobros en USD de
+  // los trabajos: los dolares NO aparecen en los extractos en pesos, asi que se inyectan aca sin
+  // riesgo de doble conteo (a diferencia de un cobro en pesos, que ya viene por el banco).
+  extraMovements?: ReservaMovementInput[];
   until?: string; // corte por fecha (yyyy-mm-dd) para ver la reserva a un mes dado
 };
 
@@ -175,6 +179,28 @@ export function pettyCashToMovements(
   return out;
 }
 
+export type UsdPaymentLike = {
+  paymentDate?: string;
+  amount: number;
+  administration?: ReservaColor; // "blanco" | "negro"
+  transactionType?: string; // "efectivo" | "transferencia" | "cheque" | "otros"
+};
+
+// Cobros en USD de los trabajos aprobados -> movimientos de reserva (ingreso, moneda USD).
+// Ubicacion: transferencia va a "banco"; efectivo/cheque/otros van a "efectivo" (donde estan los
+// dolares billete). Color por administracion (blanco/negro). Son SOLO ingresos: la conversion de
+// USD a pesos, si algun dia se modela, seria un pasaje aparte (isTransfer).
+export function usdPaymentsToMovements(payments: UsdPaymentLike[]): ReservaMovementInput[] {
+  return payments.map((p) => ({
+    date: p.paymentDate || "",
+    currency: "USD" as const,
+    location: p.transactionType === "transferencia" ? ("banco" as const) : ("efectivo" as const),
+    color: p.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+    kind: "ingreso" as const,
+    amount: num(p.amount),
+  }));
+}
+
 // Arma la reserva de UNA empresa desde las fuentes del sistema.
 export function buildReservaFromSources(input: ReservaSourcesInput): ReservaSummary {
   const openings: ReservaOpening[] = [
@@ -187,6 +213,7 @@ export function buildReservaFromSources(input: ReservaSourcesInput): ReservaSumm
   const movements: ReservaMovementInput[] = [
     ...bankEntriesToMovements(input.bankEntries || []),
     ...pettyCashToMovements(input.pettyCashFunds || [], input.pettyCashExpenses || []),
+    ...(input.extraMovements || []),
   ];
 
   return aggregateReserva({ openings, movements, until: input.until });

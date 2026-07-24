@@ -5,6 +5,7 @@ import {
   pettyCashToMovements,
   RESERVA_OPENING_BANK_ARS,
   sumLatestBankBalances,
+  usdPaymentsToMovements,
 } from "./reservaSources";
 
 const wallet = (r: ReturnType<typeof buildReservaFromSources>, cur: "ARS" | "USD", loc: "banco" | "efectivo") =>
@@ -148,6 +149,35 @@ describe("reservaSources", () => {
     it("respeta el corte por fecha (until)", () => {
       // cortando en junio, Patagonia de julio no cuenta
       expect(sumLatestBankBalances(entries, "2026-06-30")).toBeCloseTo(-20150.48 + 3110482.54, 2);
+    });
+  });
+
+  describe("cobros en USD -> billetera USD", () => {
+    it("un pago USD en efectivo entra a USD/efectivo con su color", () => {
+      const movs = usdPaymentsToMovements([
+        { paymentDate: "2026-04-14", amount: 10000, administration: "negro", transactionType: "efectivo" },
+      ]);
+      expect(movs).toEqual([
+        { date: "2026-04-14", currency: "USD", location: "efectivo", color: "negro", kind: "ingreso", amount: 10000 },
+      ]);
+    });
+
+    it("un pago USD por transferencia va a USD/banco", () => {
+      const [m] = usdPaymentsToMovements([{ amount: 500, transactionType: "transferencia" }]);
+      expect(m.location).toBe("banco");
+      expect(m.color).toBe("blanco"); // sin administracion = blanco
+    });
+
+    it("los USD suman a la billetera USD sin tocar los pesos", () => {
+      const r = buildReservaFromSources({
+        openingBankArs: 1000000,
+        extraMovements: usdPaymentsToMovements([
+          { paymentDate: "2026-04-14", amount: 10000, transactionType: "efectivo" },
+        ]),
+      });
+      expect(total(r, "USD").closing).toBeCloseTo(10000, 2);
+      expect(total(r, "ARS").closing).toBeCloseTo(1000000, 2); // los pesos quedan intactos
+      expect(wallet(r, "USD", "efectivo").closing).toBeCloseTo(10000, 2);
     });
   });
 });

@@ -584,7 +584,8 @@ export function CashflowTab({
               La reserva es <strong>la plata que hay</strong> (banco + efectivo); <strong>no toca el
               estado de resultados</strong>, solo balance y cash flow. El saldo de banco es el{" "}
               <strong>último saldo conciliado de cada cuenta</strong> (dato firme aunque falten meses
-              intermedios sin cargar). Pesos y dólares nunca se suman; hoy dólares = 0.
+              intermedios sin cargar). Pesos y dólares nunca se suman. Los dólares salen de los cobros
+              en U$S cargados en los trabajos aprobados.
             </div>
             <div style={balanceSection}>Total por moneda</div>
             <div style={balanceGrid}>
@@ -592,7 +593,7 @@ export function CashflowTab({
                 <BalanceTile
                   key={t.currency}
                   label={`Reserva ${t.currency === "ARS" ? "pesos" : "dólares"}`}
-                  value={money(t.closing)}
+                  value={money(t.closing, t.currency)}
                   tone={t.negative ? "warn" : "strong"}
                 />
               ))}
@@ -613,10 +614,11 @@ export function CashflowTab({
                     {w.currency === "ARS" ? "pesos" : "dólares"}
                   </div>
                   <div style={{ ...styles.metricValue, color: w.negative ? "#b45309" : "#0f172a" }}>
-                    {money(w.closing)}
+                    {money(w.closing, w.currency)}
                   </div>
                   <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                    Blanco {money(w.byColor.blanco.closing)} · Negro {money(w.byColor.negro.closing)}
+                    Blanco {money(w.byColor.blanco.closing, w.currency)} · Negro{" "}
+                    {money(w.byColor.negro.closing, w.currency)}
                   </div>
                 </div>
               ))}

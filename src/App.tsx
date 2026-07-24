@@ -211,7 +211,7 @@ import {
 import { buildManualHtml } from "./content/manualHtml";
 import { readTicket, ensureScript } from "./lib/ocr";
 import { buildClientCrmRows } from "./domain/clientCrm";
-import { buildReservaFromSources, latestBankBalancesByAccount } from "./domain/reservaSources";
+import { buildReservaFromSources, latestBankBalancesByAccount, usdPaymentsToMovements } from "./domain/reservaSources";
 import { summarizeContributions, type CapitalEntry } from "./domain/contributions";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
@@ -11136,8 +11136,17 @@ export default function App() {
     const inScope = (company: string) =>
       balanceCompanyScope === "__ALL__" || company === balanceCompanyScope;
     const openingBankArs = reservaBankAccounts.reduce((acc, a) => acc + a.balance, 0);
+    // Cobros en USD de los trabajos: se inyectan a la billetera USD. No hay doble conteo porque los
+    // dolares no aparecen en los extractos en pesos (a diferencia de un cobro en pesos, que ya viene
+    // por el banco y por eso NO se suma aca).
+    const usdPaymentMovements = usdPaymentsToMovements(
+      visibleApprovedJobs
+        .filter((job) => inScope(job.company))
+        .flatMap((job) => (job.payments || []).filter((p) => p.currency === "USD"))
+    );
     return buildReservaFromSources({
       openingBankArs,
+      extraMovements: usdPaymentMovements,
       pettyCashFunds: visiblePettyCashFunds
         .filter((f) => inScope(f.company))
         .map((f) => ({
@@ -11154,7 +11163,7 @@ export default function App() {
           administration: e.administration === "negro" ? "negro" : "blanco",
         })),
     });
-  }, [reservaBankAccounts, visiblePettyCashFunds, visiblePettyCashExpenses, balanceCompanyScope]);
+  }, [reservaBankAccounts, visiblePettyCashFunds, visiblePettyCashExpenses, visibleApprovedJobs, balanceCompanyScope]);
 
   // DEUDAS Y APORTES (registro; ver domain/contributions.ts). Sigue el mismo selector de empresa.
   const contributionsSummary = useMemo(
