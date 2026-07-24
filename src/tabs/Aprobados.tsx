@@ -559,6 +559,13 @@ export function AprobadosTab({
                   />
                   <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
                   <SummaryRow label="Cobrado" value={money(selectedApprovedJob.collectedTotal)} />
+                  {Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0 && (
+                    <SummaryRow
+                      label="Cobrado U$S"
+                      value={money(selectedApprovedJob.paymentsUsdTotal, "USD")}
+                      strong
+                    />
+                  )}
                   <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
                   <SummaryRow label="Comision" value={money(selectedApprovedJob.commissionAmount)} tone="out" />
                   <SummaryRow label="Comision pagada" value={money(selectedApprovedJob.commissionPaidTotal)} tone="out" />
@@ -840,6 +847,11 @@ export function AprobadosTab({
                           >
                             {payment.administration === "negro" ? "NEGRO" : "BLANCO"}
                           </span>
+                          {payment.currency === "USD" && (
+                            <span style={{ ...styles.statusPill, background: "#065f46", color: "#ffffff" }}>
+                              {money(Number(payment.amount || 0), "USD")}
+                            </span>
+                          )}
                           <button style={styles.smallBtn} onClick={() => exportPaymentReceipt(selectedApprovedJob, payment)}>
                             Recibo
                           </button>
@@ -893,7 +905,19 @@ export function AprobadosTab({
                               <option value="negro">Negro</option>
                             </select>
                           </Field>
-                          <Field label="Monto">
+                          <Field label="Moneda">
+                            <select
+                              style={styles.input}
+                              value={payment.currency || "ARS"}
+                              onChange={(e) =>
+                                updatePayment(selectedApprovedJob.id, payment.id, "currency", e.target.value)
+                              }
+                            >
+                              <option value="ARS">$ Pesos</option>
+                              <option value="USD">U$S Dolares</option>
+                            </select>
+                          </Field>
+                          <Field label={`Monto (${payment.currency === "USD" ? "U$S" : "$"})`}>
                             <input
                               style={styles.input}
                               type="number"

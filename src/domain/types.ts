@@ -344,6 +344,7 @@ export type Payment = {
   paymentDate: string;
   transactionType: "efectivo" | "transferencia" | "cheque" | "otros";
   administration?: "blanco" | "negro"; // circuito del pago; default blanco si no se elige
+  currency?: "ARS" | "USD"; // moneda del pago; ausente = ARS (pesos). USD y ARS nunca se suman.
   amount: number;
   attachmentName?: string;
 };

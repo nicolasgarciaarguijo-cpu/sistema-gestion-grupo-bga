@@ -4318,7 +4318,14 @@ export default function App() {
         const saldoToCharge = Math.max(0, valueToCollect - anticipoToCharge);
         const estimatedProductionDays =
           totalAvailableHours > 0 ? job.estimatedJobHours / (totalAvailableHours / 22 || 1) : 0;
-        const paymentsTotal = job.payments.reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        // Los totales del modelo financiero estan en PESOS: los pagos en USD NO se suman aca (mezclar
+        // 10.000 USD como si fueran 10.000 pesos rompe todo). Se totalizan aparte y se muestran solos.
+        const paymentsTotal = job.payments
+          .filter((item) => item.currency !== "USD")
+          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        const paymentsUsdTotal = job.payments
+          .filter((item) => item.currency === "USD")
+          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
         const retentionsTotal = job.retentions.reduce((acc, item) => acc + Number(item.amount || 0), 0);
         const commissionPaidTotal = (job.commissionPayments || []).reduce(
           (acc, item) => acc + Number(item.amount || 0),
@@ -4346,6 +4353,7 @@ export default function App() {
           blackNet,
           valueToCollect,
           paymentsTotal,
+          paymentsUsdTotal,
           retentionsTotal,
           additionalsTotal,
           discountsTotal,
@@ -4483,19 +4491,20 @@ export default function App() {
           .filter((inv) => inPeriod(inv.invoiceDate))
           .reduce((acc, inv) => acc + Number(inv.subtotal || 0), 0);
         const invoicedNetAllTime = invoices.reduce((acc, inv) => acc + Number(inv.subtotal || 0), 0);
+        // Cobrado en PESOS por circuito. Los pagos en USD quedan afuera (no se mezclan monedas).
         const whiteCollectedPeriod = payments
-          .filter((pay) => pay.administration !== "negro" && inPeriod(pay.paymentDate))
+          .filter((pay) => pay.currency !== "USD" && pay.administration !== "negro" && inPeriod(pay.paymentDate))
           .reduce((acc, pay) => acc + Number(pay.amount || 0), 0);
         const blackCollectedPeriod = payments
-          .filter((pay) => pay.administration === "negro" && inPeriod(pay.paymentDate))
+          .filter((pay) => pay.currency !== "USD" && pay.administration === "negro" && inPeriod(pay.paymentDate))
           .reduce((acc, pay) => acc + Number(pay.amount || 0), 0);
         const whiteCollectedAllTime =
           payments
-            .filter((pay) => pay.administration !== "negro")
+            .filter((pay) => pay.currency !== "USD" && pay.administration !== "negro")
             .reduce((acc, pay) => acc + Number(pay.amount || 0), 0) +
           (job.retentions || []).reduce((acc, ret) => acc + Number(ret.amount || 0), 0);
         const blackCollectedAllTime = payments
-          .filter((pay) => pay.administration === "negro")
+          .filter((pay) => pay.currency !== "USD" && pay.administration === "negro")
           .reduce((acc, pay) => acc + Number(pay.amount || 0), 0);
         return {
           invoicedTotalPeriod,
@@ -5397,6 +5406,7 @@ export default function App() {
           });
         }
         for (const payment of job.payments || []) {
+          if (payment.currency === "USD") continue; // el cash flow es en pesos; USD va aparte
           push(job.company, (payment.paymentDate || "").slice(0, 7), {
             kind: "cobranza",
             date: payment.paymentDate || "",
@@ -7125,6 +7135,7 @@ export default function App() {
     });
 
     (job.payments || []).forEach((pay) => {
+      if (pay.currency === "USD") return; // el cash flow es en pesos; los cobros en USD no entran aca
       items.push({
         id: newId(),
         company: job.company,

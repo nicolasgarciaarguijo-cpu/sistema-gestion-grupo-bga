@@ -17,6 +17,12 @@ describe("money", () => {
     expect(money(NaN)).toBe("$ 0,00");
     expect(money(Infinity)).toBe("$ 0,00");
   });
+  it("formatea USD con simbolo U$S", () => {
+    expect(money(1234.5, "USD")).toBe("U$S 1.234,50");
+  });
+  it("ARS por defecto (sin pasar moneda)", () => {
+    expect(money(1000)).toBe("$ 1.000,00");
+  });
 });
 
 describe("pct", () => {
