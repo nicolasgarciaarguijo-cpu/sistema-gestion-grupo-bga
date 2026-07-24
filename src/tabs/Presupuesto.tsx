@@ -219,6 +219,7 @@ type PresupuestoTabProps = {
   loadSubBudgetIntoEditor: any;
   removeSubBudget: any;
   saveCurrentAsSubBudget: any;
+  clearCurrentBlock: () => void;
   restoreAllBudgetBlocksFromMarkers: any;
   restoreBasicSuppliesFromMarkers: any;
   restoreFixedCostsFromMarkers: any;
@@ -247,7 +248,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
     applyStockSuggestionToMaterial, removeLabor, removeFixedCost, removeBasicSupply,
     addBudgetDiscount, removeBudgetDiscount, addBudgetIncrease, removeBudgetIncrease,
     loadBudgetFromSnapshot, loadSubBudgetIntoEditor, removeSubBudget,
-    saveCurrentAsSubBudget, restoreAllBudgetBlocksFromMarkers,
+    saveCurrentAsSubBudget, clearCurrentBlock, restoreAllBudgetBlocksFromMarkers,
     restoreBasicSuppliesFromMarkers, restoreFixedCostsFromMarkers,
     restoreLaborFromMarkers, exportPrint, uploadBudgetImage,
     effectiveIsAdmin, allowedCompaniesForSession, canAccessCompany,
@@ -1326,6 +1327,26 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   placeholder="Observaciones internas o alcance de este bloque"
                 />
               </Field>
+
+              <div style={{ marginTop: 8 }}>
+                <ButtonLike
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "¿Vaciar el bloque actual? Se borran los materiales, mano de obra, insumos, costos fijos y ajustes del editor. Los subpresupuestos ya guardados NO se tocan."
+                      )
+                    ) {
+                      clearCurrentBlock();
+                    }
+                  }}
+                >
+                  Quitar todo (vaciar bloque actual)
+                </ButtonLike>
+                <div style={{ ...styles.muted, marginTop: 4 }}>
+                  Guardá cada bloque y, al terminar, usá esto para sacar el último del editor: así no
+                  queda contado dos veces.
+                </div>
+              </div>
 
               <div style={styles.metricGrid}>
                 <MiniMetric label="Subpresupuestos guardados" value={String(subBudgets.length)} />

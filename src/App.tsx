@@ -7746,6 +7746,21 @@ export default function App() {
     resetBudgetWorkspace();
   };
 
+  // Vacia SOLO el editor del bloque actual (materiales, insumos, mano de obra, costos fijos, ajustes,
+  // titulo y notas). NO toca los subpresupuestos ya guardados ni el encabezado (cliente, numero,
+  // parametros). Sirve para: (a) empezar el bloque siguiente en limpio, y (b) despues de guardar el
+  // ultimo bloque, sacarlo del editor para que no quede contado dos veces (guardado + en el editor).
+  const clearCurrentBlock = () => {
+    setMaterials([]);
+    setBasicSupplies([]);
+    setLabor([]);
+    setFixedCosts([]);
+    setBudgetIncreases([]);
+    setBudgetDiscounts([]);
+    setSubBudgetTitle("");
+    setSubBudgetNotes("");
+  };
+
   const buildPersistedAppData = (): PersistedAppStateData => ({
     companyCatalog: companyCatalog.map((item) => ({ ...item })),
     crmClients: crmClients.map((item) => ({ ...item })),
@@ -13790,6 +13805,7 @@ export default function App() {
           loadSubBudgetIntoEditor={loadSubBudgetIntoEditor}
           removeSubBudget={removeSubBudget}
           saveCurrentAsSubBudget={saveCurrentAsSubBudget}
+          clearCurrentBlock={clearCurrentBlock}
           restoreAllBudgetBlocksFromMarkers={restoreAllBudgetBlocksFromMarkers}
           restoreBasicSuppliesFromMarkers={restoreBasicSuppliesFromMarkers}
           restoreFixedCostsFromMarkers={restoreFixedCostsFromMarkers}
