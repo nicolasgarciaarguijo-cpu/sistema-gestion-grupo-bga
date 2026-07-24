@@ -10,6 +10,7 @@ import {
   Field,
   SummaryRow,
   FileDropButton,
+  AmountInput,
 } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { resolveAdvancePct } from "../domain/budgetTerms";
@@ -732,12 +733,11 @@ export function AprobadosTab({
                             />
                           </Field>
                           <Field label="Subtotal">
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={invoice.subtotal}
-                              onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "subtotal", Number(e.target.value))
+                              onChange={(n) =>
+                                updateInvoice(selectedApprovedJob.id, invoice.id, "subtotal", n)
                               }
                             />
                           </Field>
@@ -918,12 +918,11 @@ export function AprobadosTab({
                             </select>
                           </Field>
                           <Field label={`Monto (${payment.currency === "USD" ? "U$S" : "$"})`}>
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={payment.amount}
-                              onChange={(e) =>
-                                updatePayment(selectedApprovedJob.id, payment.id, "amount", Number(e.target.value))
+                              onChange={(n) =>
+                                updatePayment(selectedApprovedJob.id, payment.id, "amount", n)
                               }
                             />
                           </Field>
@@ -982,11 +981,10 @@ export function AprobadosTab({
                             />
                           </Field>
                           <Field label="Monto">
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={item.amount}
-                              onChange={(e) => updateAdditional(selectedApprovedJob.id, item.id, "amount", Number(e.target.value))}
+                              onChange={(n) => updateAdditional(selectedApprovedJob.id, item.id, "amount", n)}
                             />
                           </Field>
                         </TwoCol>
@@ -1036,11 +1034,10 @@ export function AprobadosTab({
                             />
                           </Field>
                           <Field label="Monto">
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={item.amount}
-                              onChange={(e) => updateDiscount(selectedApprovedJob.id, item.id, "amount", Number(e.target.value))}
+                              onChange={(n) => updateDiscount(selectedApprovedJob.id, item.id, "amount", n)}
                             />
                           </Field>
                         </TwoCol>
@@ -1093,11 +1090,10 @@ export function AprobadosTab({
                             />
                           </Field>
                           <Field label="Monto">
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={payment.amount}
-                              onChange={(e) => updateCommissionPayment(selectedApprovedJob.id, payment.id, "amount", Number(e.target.value))}
+                              onChange={(n) => updateCommissionPayment(selectedApprovedJob.id, payment.id, "amount", n)}
                             />
                           </Field>
                         </TwoCol>
@@ -1179,12 +1175,11 @@ export function AprobadosTab({
                           />
                         </Field>
                         <Field label="Monto">
-                          <input
+                          <AmountInput
                             style={styles.input}
-                            type="number"
                             value={retention.amount}
-                            onChange={(e) =>
-                              updateRetention(selectedApprovedJob.id, retention.id, "amount", Number(e.target.value))
+                            onChange={(n) =>
+                              updateRetention(selectedApprovedJob.id, retention.id, "amount", n)
                             }
                           />
                         </Field>

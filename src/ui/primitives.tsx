@@ -1,6 +1,49 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { styles } from "./styles";
 import { SEMAPHORE_PALETTE, type SemaphoreLevel } from "./theme";
+import { formatAmountInput, formatAmountTyping, parseAmountInput } from "../lib/format";
+
+// Campo para tipear plata: miles con "." y decimal con "," (es-AR), y VACIO en vez de "0" (asi no
+// queda el cero adelante al empezar a escribir). Mantiene el texto en progreso mientras el foco esta
+// puesto y se sincroniza con el numero de afuera al perder foco. Emite numeros por onChange.
+function AmountInput({
+  value,
+  onChange,
+  style,
+  placeholder,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  style?: React.CSSProperties;
+  placeholder?: string;
+}) {
+  const [text, setText] = useState<string>(() => formatAmountInput(value));
+  const [editing, setEditing] = useState(false);
+
+  // Si el valor cambia desde afuera (carga, reset) y no lo estoy editando, refresco el texto.
+  useEffect(() => {
+    if (!editing) setText(formatAmountInput(value));
+  }, [value, editing]);
+
+  return (
+    <input
+      style={style}
+      type="text"
+      inputMode="decimal"
+      placeholder={placeholder ?? "0"}
+      value={text}
+      onFocus={() => setEditing(true)}
+      onBlur={() => {
+        setEditing(false);
+        setText(formatAmountInput(value)); // al salir, dejo el numero prolijo
+      }}
+      onChange={(e) => {
+        setText(formatAmountTyping(e.target.value));
+        onChange(parseAmountInput(e.target.value));
+      }}
+    />
+  );
+}
 
 function PrintReport({
   id,
@@ -286,4 +329,5 @@ export {
   SummaryRow,
   ButtonLike,
   FileDropButton,
+  AmountInput,
 };
