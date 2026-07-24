@@ -8,6 +8,7 @@ import {
   ButtonLike,
   Field,
   FileDropButton,
+  AmountInput,
 } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
@@ -180,11 +181,10 @@ export function CajaChicaTab({
                     />
                   </Field>
                   <Field label="Monto (verificalo)">
-                    <input
+                    <AmountInput
                       style={styles.input}
-                      type="number"
                       value={pettyTicketDraft.amount}
-                      onChange={(e) => onUpdateTicketDraft("amount", Number(e.target.value))}
+                      onChange={(n) => onUpdateTicketDraft("amount", n)}
                     />
                   </Field>
                   <Field label="Descripcion / proveedor">
@@ -420,27 +420,24 @@ export function CajaChicaTab({
                           />
                         </td>
                         <td>
-                          <input
+                          <AmountInput
                             style={styles.input}
-                            type="number"
                             value={fund.assignedAmount}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "assignedAmount", Number(e.target.value))}
+                            onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedAmount", n)}
                           />
                         </td>
                         <td>
-                          <input
+                          <AmountInput
                             style={styles.input}
-                            type="number"
                             value={fund.assignedWhite ?? 0}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "assignedWhite", Number(e.target.value))}
+                            onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedWhite", n)}
                           />
                         </td>
                         <td>
-                          <input
+                          <AmountInput
                             style={styles.input}
-                            type="number"
                             value={fund.assignedBlack ?? 0}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "assignedBlack", Number(e.target.value))}
+                            onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedBlack", n)}
                           />
                         </td>
                         <td>
@@ -605,11 +602,10 @@ export function CajaChicaTab({
                               />
                             </Field>
                             <Field label="Monto">
-                              <input
+                              <AmountInput
                                 style={styles.input}
-                                type="number"
                                 value={expense.amount}
-                                onChange={(e) => updatePettyCashExpense(expense.id, "amount", Number(e.target.value))}
+                                onChange={(n) => updatePettyCashExpense(expense.id, "amount", n)}
                               />
                             </Field>
                             <Field label="Categoria">
@@ -702,13 +698,10 @@ export function CajaChicaTab({
                       </td>
                       <td>{row.responsible}</td>
                       <td>
-                        <input
+                        <AmountInput
                           style={styles.input}
-                          type="number"
                           value={row.amount}
-                          onChange={(e) =>
-                            updatePettyCashExpense(row.id, "amount", Number(e.target.value))
-                          }
+                          onChange={(n) => updatePettyCashExpense(row.id, "amount", n)}
                         />
                       </td>
                       <td>

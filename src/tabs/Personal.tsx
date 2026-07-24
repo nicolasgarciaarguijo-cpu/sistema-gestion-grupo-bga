@@ -9,6 +9,7 @@ import {
   Semaforo,
   SemaforoResumen,
   TwoCol,
+  AmountInput,
 } from "../ui/primitives";
 import { money, pct, localMonthKey, formatDateDisplay } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
@@ -373,14 +374,13 @@ export function PersonalTab(props: PersonalTabProps) {
                         />
                       </Field>
                       <Field label="Costo neto">
-                        <input
+                        <AmountInput
                           style={styles.input}
-                          type="number"
                           value={employeeProvisionModal.unitPrice}
-                          onChange={(e) =>
+                          onChange={(n) =>
                             setEmployeeProvisionModal({
                               ...employeeProvisionModal,
-                              unitPrice: Number(e.target.value),
+                              unitPrice: n,
                             })
                           }
                         />
@@ -628,19 +628,17 @@ export function PersonalTab(props: PersonalTabProps) {
                     />
                   </Field>
                   <Field label="EPP cada 6 meses (respaldo)">
-                    <input
+                    <AmountInput
                       style={styles.input}
-                      type="number"
                       value={employeeBaseConfig.eppSemiannualCost}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, eppSemiannualCost: Number(e.target.value) })}
+                      onChange={(n) => setEmployeeBaseConfig({ ...employeeBaseConfig, eppSemiannualCost: n })}
                     />
                   </Field>
                   <Field label="Insumos cada 6 meses (respaldo)">
-                    <input
+                    <AmountInput
                       style={styles.input}
-                      type="number"
                       value={employeeBaseConfig.suppliesSemiannualCost}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, suppliesSemiannualCost: Number(e.target.value) })}
+                      onChange={(n) => setEmployeeBaseConfig({ ...employeeBaseConfig, suppliesSemiannualCost: n })}
                     />
                   </Field>
                 </TwoCol>
@@ -916,42 +914,39 @@ export function PersonalTab(props: PersonalTabProps) {
                             </select>
                           </td>
                           <td>
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={row.baseHourly}
-                              onChange={(e) =>
+                              onChange={(n) =>
                                 setScaleRows((prev) =>
                                   prev.map((item) =>
-                                    item.id === row.id ? { ...item, baseHourly: Number(e.target.value) } : item
+                                    item.id === row.id ? { ...item, baseHourly: n } : item
                                   )
                                 )
                               }
                             />
                           </td>
                           <td>
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={row.nonRemHourly}
-                              onChange={(e) =>
+                              onChange={(n) =>
                                 setScaleRows((prev) =>
                                   prev.map((item) =>
-                                    item.id === row.id ? { ...item, nonRemHourly: Number(e.target.value) } : item
+                                    item.id === row.id ? { ...item, nonRemHourly: n } : item
                                   )
                                 )
                               }
                             />
                           </td>
                           <td>
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={row.vht}
-                              onChange={(e) =>
+                              onChange={(n) =>
                                 setScaleRows((prev) =>
                                   prev.map((item) =>
-                                    item.id === row.id ? { ...item, vht: Number(e.target.value) } : item
+                                    item.id === row.id ? { ...item, vht: n } : item
                                   )
                                 )
                               }
@@ -1261,15 +1256,14 @@ export function PersonalTab(props: PersonalTabProps) {
                           </Field>
                           {selectedEmployee.employmentType === "temporal" ? (
                             <Field label="Sueldo acordado (temporal, negro)">
-                              <input
+                              <AmountInput
                                 style={styles.input}
-                                type="number"
                                 value={selectedEmployee.agreedSalary ?? 0}
-                                onChange={(e) =>
+                                onChange={(n) =>
                                   updateEmployeeField(
                                     selectedEmployee.id,
                                     "agreedSalary",
-                                    Number(e.target.value)
+                                    n
                                   )
                                 }
                                 placeholder="Monto acordado"
@@ -1808,46 +1802,43 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Anticipos">
-                              <input
+                              <AmountInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.anticipos}
-                                onChange={(e) =>
+                                onChange={(n) =>
                                   updateEmployeePayrollManual(
                                     selectedEmployee.id,
                                     payrollMonth,
                                     "anticipos",
-                                    Number(e.target.value)
+                                    n
                                   )
                                 }
                               />
                             </Field>
                             <Field label="Premios / Acuerdo (negro)">
-                              <input
+                              <AmountInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.cashBonus}
-                                onChange={(e) =>
+                                onChange={(n) =>
                                   updateEmployeePayrollManual(
                                     selectedEmployee.id,
                                     payrollMonth,
                                     "cashBonus",
-                                    Number(e.target.value)
+                                    n
                                   )
                                 }
                               />
                             </Field>
                             <Field label="Adicional en blanco (con cargas)">
-                              <input
+                              <AmountInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.whiteBonus || 0}
-                                onChange={(e) =>
+                                onChange={(n) =>
                                   updateEmployeePayrollManual(
                                     selectedEmployee.id,
                                     payrollMonth,
                                     "whiteBonus",
-                                    Number(e.target.value)
+                                    n
                                   )
                                 }
                               />

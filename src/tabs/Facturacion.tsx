@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Semaforo, ButtonLike, Field } from "../ui/primitives";
+import { Panel, Semaforo, ButtonLike, Field, AmountInput } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode } from "../domain/types";
@@ -542,12 +542,11 @@ export function FacturacionTab({
                   />
                 </Field>
                 <Field label="Monto">
-                  <input
+                  <AmountInput
                     style={styles.input}
-                    type="number"
                     value={selectedFinancialItem.amount}
-                    onChange={(e) =>
-                      updateFinancialItem(selectedFinancialItem.id, "amount", Number(e.target.value))
+                    onChange={(n) =>
+                      updateFinancialItem(selectedFinancialItem.id, "amount", n)
                     }
                   />
                 </Field>

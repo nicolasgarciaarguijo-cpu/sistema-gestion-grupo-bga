@@ -12,7 +12,7 @@
 // gasto no se cuenta dos veces.
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Field, MiniMetric, ButtonLike, FileDropButton } from "../ui/primitives";
+import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput } from "../ui/primitives";
 import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel } from "../domain/costs";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
@@ -875,13 +875,10 @@ export function CostosTab({
                     />
                   </td>
                   <td>
-                    <input
-                      type="number"
+                    <AmountInput
                       style={{ ...styles.input, textAlign: "right" }}
                       value={entry.amount}
-                      onChange={(e) =>
-                        updateCostEntry(entry.id, "amount", Number(e.target.value || 0))
-                      }
+                      onChange={(n) => updateCostEntry(entry.id, "amount", n)}
                     />
                   </td>
                   <td>
@@ -1032,23 +1029,17 @@ export function CostosTab({
                       />
                     </td>
                     <td>
-                      <input
+                      <AmountInput
                         style={{ ...styles.input, textAlign: "right" }}
-                        type="number"
                         value={entry.amount}
-                        onChange={(e) =>
-                          updateBankStatementEntry(entry.id, "amount", Number(e.target.value))
-                        }
+                        onChange={(n) => updateBankStatementEntry(entry.id, "amount", n)}
                       />
                     </td>
                     <td>
-                      <input
+                      <AmountInput
                         style={{ ...styles.input, textAlign: "right" }}
-                        type="number"
                         value={entry.balance}
-                        onChange={(e) =>
-                          updateBankStatementEntry(entry.id, "balance", Number(e.target.value))
-                        }
+                        onChange={(n) => updateBankStatementEntry(entry.id, "balance", n)}
                       />
                     </td>
                     <td style={{ whiteSpace: "nowrap" }}>

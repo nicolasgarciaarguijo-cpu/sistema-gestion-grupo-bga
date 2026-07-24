@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol } from "../ui/primitives";
+import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol, AmountInput } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { resolveAdvancePct } from "../domain/budgetTerms";
 import { findClientByName } from "../domain/clients";
@@ -863,16 +863,15 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                                 }
                               />
                             ) : (
-                              <input
+                              <AmountInput
                                 style={styles.input}
-                                type="number"
                                 value={item.amount}
-                                onChange={(e) =>
+                                onChange={(n) =>
                                   updateArrayItem(
                                     setBudgetDiscounts,
                                     item.id,
                                     "amount",
-                                    Number(e.target.value)
+                                    n
                                   )
                                 }
                               />
@@ -990,11 +989,10 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                           />
                         </td>
                         <td>
-                          <input
+                          <AmountInput
                             style={styles.input}
-                            type="number"
                             value={item.unitPrice}
-                            onChange={(e) => updateArrayItem(setMaterials, item.id, "unitPrice", Number(e.target.value))}
+                            onChange={(n) => updateArrayItem(setMaterials, item.id, "unitPrice", n)}
                           />
                         </td>
                         <td>{money(item.qty * item.unitPrice)}</td>
@@ -1082,12 +1080,11 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         />
                       </td>
                       <td>
-                        <input
+                        <AmountInput
                           style={styles.input}
-                          type="number"
                           value={item.unitPrice}
-                          onChange={(e) =>
-                            updateArrayItem(setBasicSupplies, item.id, "unitPrice", Number(e.target.value))
+                          onChange={(n) =>
+                            updateArrayItem(setBasicSupplies, item.id, "unitPrice", n)
                           }
                         />
                       </td>
@@ -1165,11 +1162,10 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       </td>
                       <td>{Number(item.totalMonthlyHours.toFixed(2))}</td>
                       <td>
-                        <input
+                        <AmountInput
                           style={styles.input}
-                          type="number"
                           value={item.hourlyRate}
-                          onChange={(e) => updateArrayItem(setLabor, item.id, "hourlyRate", Number(e.target.value))}
+                          onChange={(n) => updateArrayItem(setLabor, item.id, "hourlyRate", n)}
                         />
                       </td>
                       <td>{pct(laborDeviationPct)}</td>
@@ -1282,11 +1278,10 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         />
                       </td>
                       <td>
-                        <input
+                        <AmountInput
                           style={styles.input}
-                          type="number"
                           value={item.amount}
-                          onChange={(e) => updateArrayItem(setFixedCosts, item.id, "amount", Number(e.target.value))}
+                          onChange={(n) => updateArrayItem(setFixedCosts, item.id, "amount", n)}
                         />
                       </td>
                       <td>
@@ -1606,16 +1601,15 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                                 }
                               />
                             ) : (
-                              <input
+                              <AmountInput
                                 style={styles.input}
-                                type="number"
                                 value={item.amount}
-                                onChange={(e) =>
+                                onChange={(n) =>
                                   updateArrayItem(
                                     setBudgetDiscounts,
                                     item.id,
                                     "amount",
-                                    Number(e.target.value)
+                                    n
                                   )
                                 }
                               />

@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Field, MiniMetric, ButtonLike } from "../ui/primitives";
+import { Panel, Field, MiniMetric, ButtonLike, AmountInput } from "../ui/primitives";
 import { money } from "../lib/format";
 import { WORK_TYPE_OPTIONS, PERSONAL_PROVISION_KINDS } from "../domain/types";
 import type {
@@ -304,11 +304,10 @@ export function MarcadoresTab({
                       />
                     </td>
                     <td>
-                      <input
+                      <AmountInput
                         style={styles.input}
-                        type="number"
                         value={item.amount}
-                        onChange={(e) => updateArrayItem(setFixedMarkers, item.id, "amount", Number(e.target.value))}
+                        onChange={(n) => updateArrayItem(setFixedMarkers, item.id, "amount", n)}
                       />
                     </td>
                     <td>
@@ -433,11 +432,10 @@ export function MarcadoresTab({
                       />
                     </td>
                     <td>
-                      <input
+                      <AmountInput
                         style={styles.input}
-                        type="number"
                         value={item.unitPrice}
-                        onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "unitPrice", Number(e.target.value))}
+                        onChange={(n) => updateArrayItem(setSupplyMarkers, item.id, "unitPrice", n)}
                       />
                     </td>
                     <td>{money(item.qty * item.unitPrice)}</td>
@@ -558,11 +556,10 @@ export function MarcadoresTab({
                       />
                     </td>
                     <td>
-                      <input
+                      <AmountInput
                         style={styles.input}
-                        type="number"
                         value={item.hourlyRate}
-                        onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "hourlyRate", Number(e.target.value))}
+                        onChange={(n) => updateArrayItem(setLaborMarkers, item.id, "hourlyRate", n)}
                       />
                     </td>
                     <td>
@@ -676,11 +673,10 @@ export function MarcadoresTab({
                         />
                       </td>
                       <td>
-                        <input
+                        <AmountInput
                           style={styles.input}
-                          type="number"
                           value={item.amountPerDelivery}
-                          onChange={(e) => updateArrayItem(setPersonalProvisionMarkers, item.id, "amountPerDelivery", Number(e.target.value))}
+                          onChange={(n) => updateArrayItem(setPersonalProvisionMarkers, item.id, "amountPerDelivery", n)}
                         />
                       </td>
                       <td>

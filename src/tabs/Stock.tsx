@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, SemaforoResumen, ButtonLike, MiniMetric, Field } from "../ui/primitives";
+import { Panel, SemaforoResumen, ButtonLike, MiniMetric, Field, AmountInput } from "../ui/primitives";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import { matchStockForMaterial } from "../domain/stockMatch";
@@ -345,11 +345,10 @@ export function StockTab({
                       />
                     </td>
                     <td>
-                      <input
+                      <AmountInput
                         style={styles.input}
-                        type="number"
                         value={item.unitPrice}
-                        onChange={(e) => updateStockItem(item.id, "unitPrice", Number(e.target.value))}
+                        onChange={(n) => updateStockItem(item.id, "unitPrice", n)}
                       />
                     </td>
                     <td>{money(item.quantity * item.unitPrice)}</td>
@@ -554,12 +553,11 @@ export function StockTab({
                       />
                     </td>
                     <td>
-                      <input
+                      <AmountInput
                         style={styles.input}
-                        type="number"
                         value={entry.unitCost}
-                        onChange={(e) =>
-                          updateCostAnalysisEntry(entry.id, "unitCost", Number(e.target.value))
+                        onChange={(n) =>
+                          updateCostAnalysisEntry(entry.id, "unitCost", n)
                         }
                       />
                     </td>
@@ -744,16 +742,15 @@ export function StockTab({
                             />
                           </td>
                           <td>
-                            <input
+                            <AmountInput
                               style={styles.input}
-                              type="number"
                               value={row.unitPrice}
-                              onChange={(e) =>
+                              onChange={(n) =>
                                 updateRemitoDraftRow(
                                   draft.id,
                                   row.id,
                                   "unitPrice",
-                                  Number(e.target.value)
+                                  n
                                 )
                               }
                             />
@@ -986,7 +983,7 @@ export function StockTab({
                       <input style={styles.input} type="number" value={item.quantity} onChange={(e) => updateStockItem(item.id, "quantity", Number(e.target.value))} />
                     </td>
                     <td>
-                      <input style={styles.input} type="number" value={item.unitPrice} onChange={(e) => updateStockItem(item.id, "unitPrice", Number(e.target.value))} />
+                      <AmountInput style={styles.input}value={item.unitPrice} onChange={(n) => updateStockItem(item.id, "unitPrice", n)} />
                     </td>
                     <td>{money(Number(item.quantity || 0) * Number(item.unitPrice || 0))}</td>
                     <td>
@@ -1096,7 +1093,7 @@ export function StockTab({
                       <input style={styles.input} value={asset.description} onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "description", e.target.value)} />
                     </td>
                     <td>
-                      <input style={styles.input} type="number" value={asset.value} onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "value", Number(e.target.value))} />
+                      <AmountInput style={styles.input}value={asset.value} onChange={(n) => updateArrayItem(setCompanyAssets, asset.id, "value", n)} />
                     </td>
                     <td>
                       <input style={styles.input} type="number" value={asset.usefulLifeMonths} onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "usefulLifeMonths", Number(e.target.value))} />

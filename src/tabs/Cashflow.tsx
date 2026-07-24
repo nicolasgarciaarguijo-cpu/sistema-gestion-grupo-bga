@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, MiniMetric, ButtonLike, Field } from "../ui/primitives";
+import { Panel, MiniMetric, ButtonLike, Field, AmountInput } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
@@ -517,7 +517,7 @@ export function CashflowTab({
                       <input style={styles.input} type="number" value={item.dueDay} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "dueDay", Number(e.target.value))} />
                     </td>
                     <td>
-                      <input style={styles.input} type="number" value={item.nextInstallmentAmount} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "nextInstallmentAmount", Number(e.target.value))} />
+                      <AmountInput style={styles.input}value={item.nextInstallmentAmount} onChange={(n) => updateArrayItem(setDebtPlans, item.id, "nextInstallmentAmount", n)} />
                     </td>
                     <td>
                       <input style={styles.input} type="number" value={item.remainingInstallments} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "remainingInstallments", Number(e.target.value))} />
@@ -793,11 +793,10 @@ export function CashflowTab({
                         </select>
                       </td>
                       <td>
-                        <input
+                        <AmountInput
                           style={styles.input}
-                          type="number"
                           value={item.amount}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "amount", Number(e.target.value))}
+                          onChange={(n) => updateArrayItem(setCapitalEntries, item.id, "amount", n)}
                         />
                       </td>
                       <td>

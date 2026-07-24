@@ -8,6 +8,7 @@ import {
   Field,
   TwoCol,
   FileDropButton,
+  AmountInput,
 } from "../ui/primitives";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
 import type { CompanyName, PurchaseInvoice } from "../domain/types";
@@ -350,19 +351,19 @@ export function ComprasTab({
                       <input style={styles.input} value={invoice.currency} onChange={(e) => updatePurchaseInvoice(invoice.id, "currency", e.target.value)} />
                     </Field>
                     <Field label="Exento">
-                      <input style={styles.input} type="number" value={invoice.exemptAmount} onChange={(e) => updatePurchaseInvoice(invoice.id, "exemptAmount", Number(e.target.value))} />
+                      <AmountInput style={styles.input} value={invoice.exemptAmount} onChange={(n) => updatePurchaseInvoice(invoice.id, "exemptAmount", n)} />
                     </Field>
                     <Field label="Neto 21%">
-                      <input style={styles.input} type="number" value={invoice.net21} onChange={(e) => updatePurchaseInvoice(invoice.id, "net21", Number(e.target.value))} />
+                      <AmountInput style={styles.input} value={invoice.net21} onChange={(n) => updatePurchaseInvoice(invoice.id, "net21", n)} />
                     </Field>
                     <Field label="Subtotal">
-                      <input style={styles.input} type="number" value={invoice.subtotal} onChange={(e) => updatePurchaseInvoice(invoice.id, "subtotal", Number(e.target.value))} />
+                      <AmountInput style={styles.input} value={invoice.subtotal} onChange={(n) => updatePurchaseInvoice(invoice.id, "subtotal", n)} />
                     </Field>
                     <Field label="IVA">
-                      <input style={styles.input} type="number" value={invoice.vat} onChange={(e) => updatePurchaseInvoice(invoice.id, "vat", Number(e.target.value))} />
+                      <AmountInput style={styles.input} value={invoice.vat} onChange={(n) => updatePurchaseInvoice(invoice.id, "vat", n)} />
                     </Field>
                     <Field label="Total">
-                      <input style={styles.input} type="number" value={invoice.total} onChange={(e) => updatePurchaseInvoice(invoice.id, "total", Number(e.target.value))} />
+                      <AmountInput style={styles.input} value={invoice.total} onChange={(n) => updatePurchaseInvoice(invoice.id, "total", n)} />
                     </Field>
                     <Field label="Carga automatica">
                       <input style={styles.input} value={invoice.extractedAutomatically ? "Si" : "Manual"} readOnly />
