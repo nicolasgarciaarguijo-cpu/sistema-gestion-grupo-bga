@@ -551,11 +551,13 @@ export function buildComprasSummaryHtml(purchases: any[], periodLabel: string): 
         }</td></tr>`
     )
     .join("");
+  // Totales en PESOS: las compras en USD no se suman (no se mezclan monedas).
+  const isPeso = (p: any) => String(p.currency || "").toUpperCase() !== "USD";
   const totalWhite = purchases
-    .filter((p) => p.administration !== "negro")
+    .filter((p) => isPeso(p) && p.administration !== "negro")
     .reduce((a, p) => a + Number(p.total || 0), 0);
   const totalBlack = purchases
-    .filter((p) => p.administration === "negro")
+    .filter((p) => isPeso(p) && p.administration === "negro")
     .reduce((a, p) => a + Number(p.total || 0), 0);
   const body = `
     <h1>Resumen de compras</h1>

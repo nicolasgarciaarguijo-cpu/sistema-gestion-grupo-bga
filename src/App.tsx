@@ -6850,13 +6850,18 @@ export default function App() {
   const purchaseInvoiceSummary = useMemo(() => {
     const invoicesCount = purchaseInvoicesWithPettyCashWhite.length;
     const autoLoadedCount = purchaseInvoicesWithPettyCashWhite.filter((item) => item.extractedAutomatically).length;
-    const exemptAmount = purchaseInvoicesWithPettyCashWhite.reduce(
-      (acc, item) => acc + Number(item.exemptAmount || 0),
-      0
+    // Los totales de compras estan en PESOS: las facturas en USD NO se suman aca (no se mezclan
+    // monedas). Se totalizan aparte. currency ausente / cualquier cosa que no sea "USD" = pesos.
+    const pesoInvoices = purchaseInvoicesWithPettyCashWhite.filter(
+      (item) => String(item.currency || "").toUpperCase() !== "USD"
     );
-    const net21 = purchaseInvoicesWithPettyCashWhite.reduce((acc, item) => acc + Number(item.net21 || 0), 0);
-    const vatAmount = purchaseInvoicesWithPettyCashWhite.reduce((acc, item) => acc + Number(item.vat || 0), 0);
-    const totalAmount = purchaseInvoicesWithPettyCashWhite.reduce((acc, item) => acc + Number(item.total || 0), 0);
+    const exemptAmount = pesoInvoices.reduce((acc, item) => acc + Number(item.exemptAmount || 0), 0);
+    const net21 = pesoInvoices.reduce((acc, item) => acc + Number(item.net21 || 0), 0);
+    const vatAmount = pesoInvoices.reduce((acc, item) => acc + Number(item.vat || 0), 0);
+    const totalAmount = pesoInvoices.reduce((acc, item) => acc + Number(item.total || 0), 0);
+    const usdTotalAmount = purchaseInvoicesWithPettyCashWhite
+      .filter((item) => String(item.currency || "").toUpperCase() === "USD")
+      .reduce((acc, item) => acc + Number(item.total || 0), 0);
     return {
       invoicesCount,
       autoLoadedCount,
@@ -6864,6 +6869,7 @@ export default function App() {
       net21,
       vatAmount,
       totalAmount,
+      usdTotalAmount,
     };
   }, [purchaseInvoicesWithPettyCashWhite]);
 
@@ -6933,10 +6939,10 @@ export default function App() {
       (acc, item) => acc + Number(item.collectedTotal || 0),
       0
     );
-    const purchaseInvoicesTotal = purchaseInvoicesWithPettyCashWhite.reduce(
-      (acc, item) => acc + Number(item.total || 0),
-      0
-    );
+    // Solo compras en PESOS (los resultados son en pesos). Las compras en USD no entran aca.
+    const purchaseInvoicesTotal = purchaseInvoicesWithPettyCashWhite
+      .filter((item) => String(item.currency || "").toUpperCase() !== "USD")
+      .reduce((acc, item) => acc + Number(item.total || 0), 0);
     const approvedJobsBlackTotal = approvedJobsSummary.reduce(
       (acc, item) => acc + Number(item.blackNet || 0),
       0

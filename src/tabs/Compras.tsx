@@ -128,6 +128,13 @@ export function ComprasTab({
               <MiniMetric label="Neto 21%" value={money(purchaseInvoiceSummary.net21)} tone="out" />
               <MiniMetric label="IVA credito fiscal" value={money(purchaseInvoiceSummary.vatAmount)} tone="out" />
               <MiniMetric label="Total compras" value={money(purchaseInvoiceSummary.totalAmount)} tone="out" />
+              {Number(purchaseInvoiceSummary.usdTotalAmount || 0) > 0 && (
+                <MiniMetric
+                  label="Total compras U$S"
+                  value={money(purchaseInvoiceSummary.usdTotalAmount, "USD")}
+                  tone="out"
+                />
+              )}
               <MiniMetric label="Caja chica blanco" value={money(pettyCashSummary.whiteTotal)} tone="out" />
             </div>
             <div style={styles.noticeBox}>
@@ -348,7 +355,14 @@ export function ComprasTab({
                       <input style={styles.input} type="date" value={invoice.invoiceDate} onChange={(e) => updatePurchaseInvoice(invoice.id, "invoiceDate", e.target.value)} />
                     </Field>
                     <Field label="Moneda">
-                      <input style={styles.input} value={invoice.currency} onChange={(e) => updatePurchaseInvoice(invoice.id, "currency", e.target.value)} />
+                      <select
+                        style={styles.input}
+                        value={String(invoice.currency || "").toUpperCase() === "USD" ? "USD" : "ARS"}
+                        onChange={(e) => updatePurchaseInvoice(invoice.id, "currency", e.target.value)}
+                      >
+                        <option value="ARS">$ Pesos</option>
+                        <option value="USD">U$S Dolares</option>
+                      </select>
                     </Field>
                     <Field label="Exento">
                       <AmountInput style={styles.input} value={invoice.exemptAmount} onChange={(n) => updatePurchaseInvoice(invoice.id, "exemptAmount", n)} />
