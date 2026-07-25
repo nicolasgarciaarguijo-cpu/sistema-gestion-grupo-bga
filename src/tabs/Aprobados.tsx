@@ -560,14 +560,26 @@ export function AprobadosTab({
                   />
                   <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
                   <SummaryRow label="Cobrado" value={money(selectedApprovedJob.collectedTotal)} />
-                  {Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0 && (
-                    <SummaryRow
-                      label="Cobrado U$S"
-                      value={money(selectedApprovedJob.paymentsUsdTotal, "USD")}
-                      strong
-                    />
-                  )}
                   <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
+                  {(Number(selectedApprovedJob.soldNetPriceUsd || 0) > 0 ||
+                    Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0) && (
+                    <>
+                      <SummaryRow
+                        label="Vendido U$S"
+                        value={money(selectedApprovedJob.soldNetPriceUsd || 0, "USD")}
+                        strong
+                      />
+                      <SummaryRow
+                        label="Cobrado U$S"
+                        value={money(selectedApprovedJob.paymentsUsdTotal || 0, "USD")}
+                      />
+                      <SummaryRow
+                        label="Saldo U$S"
+                        value={money(selectedApprovedJob.remainingToPayUsd || 0, "USD")}
+                        strong
+                      />
+                    </>
+                  )}
                   <SummaryRow label="Comision" value={money(selectedApprovedJob.commissionAmount)} tone="out" />
                   <SummaryRow label="Comision pagada" value={money(selectedApprovedJob.commissionPaidTotal)} tone="out" />
                   <SummaryRow label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} strong tone="out" />

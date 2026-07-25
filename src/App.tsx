@@ -4365,6 +4365,10 @@ export default function App() {
           commissionPending: Math.max(0, Number(job.commissionAmount || 0) - commissionPaidTotal),
           collectedTotal: financialCollected,
           remainingToPay: Math.max(0, valueToCollect - financialCollected),
+          // Track en USD (bloques dolarizados del presupuesto). Neto y saldo se siguen aparte del
+          // circuito en pesos; el cobrado en USD es paymentsUsdTotal (pagos cargados en U$S).
+          soldNetPriceUsd: Number(job.soldNetPriceUsd || 0),
+          remainingToPayUsd: Math.max(0, Number(job.soldNetPriceUsd || 0) - paymentsUsdTotal),
           // Bruto corregido: IVA solo sobre lo facturado (no sobre el neto completo).
           soldGrossPrice: Number((job.soldNetPrice + invoiceVatAmount).toFixed(2)),
           anticipoPctResolved,
@@ -8555,6 +8559,7 @@ export default function App() {
       totalDiscountAmount: consolidatedBudgetTotals.totalDiscountAmount,
       netPrice: consolidatedBudgetTotals.netPrice,
       finalPrice: consolidatedBudgetTotals.finalPrice,
+      netPriceUsd: consolidatedBudgetTotalsUsd.netPrice,
       laborOccupancyPct: consolidatedBudgetTotals.occupancyPct,
       exportedAt: exportedAtForNext,
       snapshot: nextSnapshot,
@@ -8583,6 +8588,7 @@ export default function App() {
             maxRequirementDate: next.maxRequirementDate,
             soldNetPrice: next.netPrice,
             soldGrossPrice: next.finalPrice,
+            soldNetPriceUsd: next.netPriceUsd,
             commissionPct: next.commissionPct,
             commissionAmount: next.commissionAmount,
             totalDiscountAmount: next.totalDiscountAmount,
@@ -8732,6 +8738,7 @@ export default function App() {
         maxRequirementDate: item.maxRequirementDate,
         soldNetPrice: item.netPrice,
         soldGrossPrice: item.finalPrice,
+        soldNetPriceUsd: item.netPriceUsd,
         billedPct: existing?.billedPct ?? 100,
         advancePct: existing?.advancePct ?? item.snapshot?.budget?.advancePct,
         commissionPct: item.commissionPct,

@@ -313,6 +313,7 @@ export type SavedBudget = {
   totalDiscountAmount: number;
   netPrice: number;
   finalPrice: number;
+  netPriceUsd?: number; // neto de los bloques dolarizados (0 si no hay). No se suma con netPrice.
   laborOccupancyPct: number;
   exportedAt?: string;
   snapshot: BudgetSnapshot;
@@ -444,6 +445,9 @@ export type ApprovedJob = {
   maxRequirementDate: string;
   soldNetPrice: number;
   soldGrossPrice: number;
+  // Neto vendido en USD (suma de los bloques dolarizados del presupuesto). Ausente/0 = todo pesos.
+  // NUNCA se suma con soldNetPrice (pesos): el saldo en dolares se sigue por separado.
+  soldNetPriceUsd?: number;
   billedPct: number;
   // % de anticipo numerico (sincronizado desde el presupuesto). Si es undefined, el calculo
   // cae al parseo de la forma de pago del snapshot.
