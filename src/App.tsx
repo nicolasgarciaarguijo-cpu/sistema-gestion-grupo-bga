@@ -14413,7 +14413,10 @@ export default function App() {
                       <span style={styles.chatContactUnread}>{groupUnreadCount}</span>
                     )}
                   </button>
-                  {chatPeers.map((peer) => {
+                  {chatPeers.length === 0 && (
+                    <div style={styles.chatContactGroupLabel}>No hay otros usuarios cargados.</div>
+                  )}
+                  {chatPeers.map((peer, index) => {
                     const unreadCount = privateUnreadByUser[peer.user_id] || 0;
                     const initials = (peer.full_name || peer.email || "U")
                       .split(" ")
@@ -14421,36 +14424,54 @@ export default function App() {
                       .join("")
                       .slice(0, 2)
                       .toUpperCase();
+                    // Encabezados de grupo: el primer conectado abre "Conectados ahora"; el primer
+                    // no-conectado abre "Directorio (todos)". chatPeers ya viene ordenado activos primero.
+                    const prev = chatPeers[index - 1];
+                    const showConnectedHeader = peer.isActive && (index === 0 || !prev.isActive);
+                    const showDirectoryHeader = !peer.isActive && (index === 0 || prev.isActive);
                     return (
-                      <button
-                        key={`peer-bubble-${peer.user_id}`}
-                        type="button"
-                        style={{
-                          ...styles.chatContactBubble,
-                          ...(selectedChatRecipientId === peer.user_id
-                            ? styles.chatContactBubbleActive
-                            : {}),
-                        }}
-                        onClick={() => {
-                          setSelectedChatRecipientId(peer.user_id);
-                          setSelectedChatRecipientName(peer.full_name || peer.email || "Usuario");
-                          void markChatThreadAsRead(peer.user_id).then(() => {
-                            void loadSupabaseChatMessages();
-                          });
-                          setWorkspaceWidgetMode("chat");
-                          setWorkspaceWidgetOpen(true);
-                          setShowChatContacts(true);
-                        }}
-                        title={peer.full_name || peer.email}
-                      >
-                        <span style={styles.chatContactAvatar}>{initials}</span>
-                        <span style={styles.chatContactLabel}>
-                          {peer.full_name || peer.email || "Usuario"}
-                        </span>
-                        {unreadCount > 0 && (
-                          <span style={styles.chatContactUnread}>{unreadCount}</span>
+                      <React.Fragment key={`peer-bubble-${peer.user_id}`}>
+                        {showConnectedHeader && (
+                          <div style={styles.chatContactGroupLabel}>🟢 Conectados ahora</div>
                         )}
-                      </button>
+                        {showDirectoryHeader && (
+                          <div style={styles.chatContactGroupLabel}>👥 Directorio (todos)</div>
+                        )}
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.chatContactBubble,
+                            ...(selectedChatRecipientId === peer.user_id
+                              ? styles.chatContactBubbleActive
+                              : {}),
+                          }}
+                          onClick={() => {
+                            setSelectedChatRecipientId(peer.user_id);
+                            setSelectedChatRecipientName(peer.full_name || peer.email || "Usuario");
+                            void markChatThreadAsRead(peer.user_id).then(() => {
+                              void loadSupabaseChatMessages();
+                            });
+                            setWorkspaceWidgetMode("chat");
+                            setWorkspaceWidgetOpen(true);
+                            setShowChatContacts(true);
+                          }}
+                          title={
+                            (peer.full_name || peer.email || "Usuario") +
+                            (peer.isActive ? " · conectado" : "")
+                          }
+                        >
+                          <span style={{ position: "relative", display: "inline-flex" }}>
+                            <span style={styles.chatContactAvatar}>{initials}</span>
+                            {peer.isActive && <span style={styles.chatContactOnlineDot} />}
+                          </span>
+                          <span style={styles.chatContactLabel}>
+                            {peer.full_name || peer.email || "Usuario"}
+                          </span>
+                          {unreadCount > 0 && (
+                            <span style={styles.chatContactUnread}>{unreadCount}</span>
+                          )}
+                        </button>
+                      </React.Fragment>
                     );
                   })}
                 </div>
