@@ -1535,6 +1535,7 @@ type PersistedAppStateData = {
   subBudgets: BudgetSection[];
   subBudgetTitle: string;
   subBudgetNotes: string;
+  subBudgetCurrency?: "ARS" | "USD";
   materials: Material[];
   basicSupplies: Material[];
   labor: LaborRow[];
@@ -1615,6 +1616,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
       "subBudgets",
       "subBudgetTitle",
       "subBudgetNotes",
+      "subBudgetCurrency",
       "materials",
       "basicSupplies",
       "labor",
@@ -2529,6 +2531,7 @@ export default function App() {
   const [subBudgets, setSubBudgets] = useState<BudgetSection[]>([]);
   const [subBudgetTitle, setSubBudgetTitle] = useState("");
   const [subBudgetNotes, setSubBudgetNotes] = useState("");
+  const [subBudgetCurrency, setSubBudgetCurrency] = useState<"ARS" | "USD">("ARS");
   const [fixedMarkers, setFixedMarkers] = useState<FixedMarker[]>(defaultFixedMarkers);
   const [supplyMarkers, setSupplyMarkers] = useState<SupplyMarker[]>(defaultSupplyMarkers);
   const [laborMarkers, setLaborMarkers] = useState<LaborMarker[]>(defaultLaborMarkers);
@@ -4182,6 +4185,7 @@ export default function App() {
               id: -1,
               title: subBudgetTitle.trim() || "Bloque actual",
               notes: subBudgetNotes,
+              currency: subBudgetCurrency,
               materials: materials.map((item) => ({ ...item })),
               basicSupplies: basicSupplies.map((item) => ({ ...item })),
               labor: labor.map((item) => ({ ...item })),
@@ -4199,6 +4203,7 @@ export default function App() {
       currentWorkingHasContent,
       subBudgetTitle,
       subBudgetNotes,
+      subBudgetCurrency,
       materials,
       basicSupplies,
       labor,
@@ -4209,60 +4214,59 @@ export default function App() {
     ]
   );
 
-  const consolidatedBudgetTotals = useMemo(
-    () => {
-      const reduced = workingBudgetSections.reduce(
-        (acc, section) => ({
-          totalMaterials: acc.totalMaterials + Number(section.totals.totalMaterials || 0),
-          totalBasicSupplies:
-            acc.totalBasicSupplies + Number(section.totals.totalBasicSupplies || 0),
-          totalLabor: acc.totalLabor + Number(section.totals.totalLabor || 0),
-          laborDeviationAmount:
-            acc.laborDeviationAmount + Number(section.totals.laborDeviationAmount || 0),
-          fixedCostsApplied:
-            acc.fixedCostsApplied + Number(section.totals.fixedCostsApplied || 0),
-          deviationAmount: acc.deviationAmount + Number(section.totals.deviationAmount || 0),
-          totalCost: acc.totalCost + Number(section.totals.totalCost || 0),
-          totalIncreaseAmount:
-            acc.totalIncreaseAmount + Number(section.totals.totalIncreaseAmount || 0),
-          preDiscountNetPrice:
-            acc.preDiscountNetPrice + Number(section.totals.preDiscountNetPrice || 0),
-          totalDiscountAmount:
-            acc.totalDiscountAmount + Number(section.totals.totalDiscountAmount || 0),
-          netPrice: acc.netPrice + Number(section.totals.netPrice || 0),
-          finalPrice: acc.finalPrice + Number(section.totals.finalPrice || 0),
-          totalJobHours: acc.totalJobHours + Number(section.totals.totalJobHours || 0),
-          totalAvailableHours:
-            acc.totalAvailableHours + Number(section.totals.totalAvailableHours || 0),
-          occupancyPct: 0,
-        }),
-        {
-          totalMaterials: 0,
-          totalBasicSupplies: 0,
-          totalLabor: 0,
-          laborDeviationAmount: 0,
-          fixedCostsApplied: 0,
-          deviationAmount: 0,
-          totalCost: 0,
-          totalIncreaseAmount: 0,
-          preDiscountNetPrice: 0,
-          totalDiscountAmount: 0,
-          netPrice: 0,
-          finalPrice: 0,
-          totalJobHours: 0,
-          totalAvailableHours: 0,
-          occupancyPct: 0,
-        } as BudgetSectionTotals
-      );
+  // Suma los totales de un conjunto de bloques. Se usa por moneda: los bloques en pesos por un lado
+  // y los bloques en USD por otro, para NO mezclar monedas.
+  const sumBudgetSections = (sections: BudgetSection[]): BudgetSectionTotals => {
+    const reduced = sections.reduce(
+      (acc, section) => ({
+        totalMaterials: acc.totalMaterials + Number(section.totals.totalMaterials || 0),
+        totalBasicSupplies: acc.totalBasicSupplies + Number(section.totals.totalBasicSupplies || 0),
+        totalLabor: acc.totalLabor + Number(section.totals.totalLabor || 0),
+        laborDeviationAmount: acc.laborDeviationAmount + Number(section.totals.laborDeviationAmount || 0),
+        fixedCostsApplied: acc.fixedCostsApplied + Number(section.totals.fixedCostsApplied || 0),
+        deviationAmount: acc.deviationAmount + Number(section.totals.deviationAmount || 0),
+        totalCost: acc.totalCost + Number(section.totals.totalCost || 0),
+        totalIncreaseAmount: acc.totalIncreaseAmount + Number(section.totals.totalIncreaseAmount || 0),
+        preDiscountNetPrice: acc.preDiscountNetPrice + Number(section.totals.preDiscountNetPrice || 0),
+        totalDiscountAmount: acc.totalDiscountAmount + Number(section.totals.totalDiscountAmount || 0),
+        netPrice: acc.netPrice + Number(section.totals.netPrice || 0),
+        finalPrice: acc.finalPrice + Number(section.totals.finalPrice || 0),
+        totalJobHours: acc.totalJobHours + Number(section.totals.totalJobHours || 0),
+        totalAvailableHours: acc.totalAvailableHours + Number(section.totals.totalAvailableHours || 0),
+        occupancyPct: 0,
+      }),
+      {
+        totalMaterials: 0, totalBasicSupplies: 0, totalLabor: 0, laborDeviationAmount: 0,
+        fixedCostsApplied: 0, deviationAmount: 0, totalCost: 0, totalIncreaseAmount: 0,
+        preDiscountNetPrice: 0, totalDiscountAmount: 0, netPrice: 0, finalPrice: 0,
+        totalJobHours: 0, totalAvailableHours: 0, occupancyPct: 0,
+      } as BudgetSectionTotals
+    );
+    return {
+      ...reduced,
+      occupancyPct:
+        reduced.totalAvailableHours > 0 ? (reduced.totalJobHours / reduced.totalAvailableHours) * 100 : 0,
+    };
+  };
 
-      return {
-        ...reduced,
-        occupancyPct:
-          reduced.totalAvailableHours > 0
-            ? (reduced.totalJobHours / reduced.totalAvailableHours) * 100
-            : 0,
-      };
-    },
+  const isUsdSection = (s: BudgetSection) => s.currency === "USD";
+
+  // Bloques en USD del presupuesto (para consolidar y mostrar aparte).
+  const workingBudgetSectionsUsd = useMemo(
+    () => workingBudgetSections.filter(isUsdSection),
+    [workingBudgetSections]
+  );
+  const hasUsdBudgetSections = workingBudgetSectionsUsd.length > 0;
+
+  // Total en USD (solo los bloques dolarizados). Nunca se mezcla con el total en pesos.
+  const consolidatedBudgetTotalsUsd = useMemo(
+    () => sumBudgetSections(workingBudgetSectionsUsd),
+    [workingBudgetSectionsUsd]
+  );
+
+  // Total en PESOS: SOLO los bloques en pesos (los USD se excluyen, no se pueden sumar con pesos).
+  const consolidatedBudgetTotals = useMemo(
+    () => sumBudgetSections(workingBudgetSections.filter((s) => !isUsdSection(s))),
     [workingBudgetSections]
   );
 
@@ -7743,6 +7747,7 @@ export default function App() {
     setSubBudgets([]);
     setSubBudgetTitle("");
     setSubBudgetNotes("");
+    setSubBudgetCurrency("ARS");
     // Los parametros economicos (markup, desvio, IVA, comision, etc.) NO se resetean aca: se fijan
     // desde el bloque "Parametros economicos" en Marcadores (fuente de verdad) y se mantienen al
     // armar un presupuesto nuevo.
@@ -7765,6 +7770,7 @@ export default function App() {
     setBudgetDiscounts([]);
     setSubBudgetTitle("");
     setSubBudgetNotes("");
+    setSubBudgetCurrency("ARS");
   };
 
   const buildPersistedAppData = (): PersistedAppStateData => ({
@@ -7788,6 +7794,7 @@ export default function App() {
     })),
     subBudgetTitle,
     subBudgetNotes,
+    subBudgetCurrency,
     materials: materials.map((item) => ({ ...item })),
     basicSupplies: basicSupplies.map((item) => ({ ...item })),
     labor: labor.map((item) => ({ ...item })),
@@ -7996,6 +8003,7 @@ export default function App() {
     );
     setSubBudgetTitle(data.subBudgetTitle || "");
     setSubBudgetNotes(data.subBudgetNotes || "");
+    setSubBudgetCurrency(data.subBudgetCurrency === "USD" ? "USD" : "ARS");
     setMaterials((data.materials || defaultMaterials).map((item) => ({ ...item })));
     setBasicSupplies((data.basicSupplies || defaultBasicSupplies).map((item) => ({ ...item })));
     setLabor((data.labor || defaultLabor).map((item) => ({ ...item })));
@@ -8617,6 +8625,7 @@ export default function App() {
         subBudgets: [],
         subBudgetTitle: "",
         subBudgetNotes: "",
+        subBudgetCurrency: "ARS",
         materials: [],
         basicSupplies: [],
         labor: [],
@@ -9337,6 +9346,7 @@ export default function App() {
       id: newId(),
       title: subBudgetTitle.trim() || `Subpresupuesto ${subBudgets.length + 1}`,
       notes: subBudgetNotes.trim(),
+      currency: subBudgetCurrency,
       materials: materials.map((item) => ({ ...item })),
       basicSupplies: basicSupplies.map((item) => ({ ...item })),
       labor: labor.map((item) => ({ ...item })),
@@ -9366,6 +9376,7 @@ export default function App() {
 
     setSubBudgetTitle(target.title);
     setSubBudgetNotes(target.notes);
+    setSubBudgetCurrency(target.currency === "USD" ? "USD" : "ARS");
     setMaterials(target.materials.map((item) => ({ ...item })));
     setBasicSupplies(target.basicSupplies.map((item) => ({ ...item })));
     setLabor(target.labor.map((item) => ({ ...item })));
@@ -10072,6 +10083,7 @@ export default function App() {
     subBudgets,
     subBudgetTitle,
     subBudgetNotes,
+    subBudgetCurrency,
     materials,
     basicSupplies,
     labor,
@@ -13749,6 +13761,10 @@ export default function App() {
           subBudgets={subBudgets}
           subBudgetTitle={subBudgetTitle}
           subBudgetNotes={subBudgetNotes}
+          subBudgetCurrency={subBudgetCurrency}
+          setSubBudgetCurrency={setSubBudgetCurrency}
+          consolidatedBudgetTotalsUsd={consolidatedBudgetTotalsUsd}
+          hasUsdBudgetSections={hasUsdBudgetSections}
           markupPct={markupPct}
           deviationPct={deviationPct}
           laborDeviationPct={laborDeviationPct}

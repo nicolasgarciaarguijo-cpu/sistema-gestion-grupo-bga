@@ -193,6 +193,9 @@ export type BudgetSection = {
   id: number;
   title: string;
   notes: string;
+  // Moneda del bloque. Ausente = ARS (pesos). Un presupuesto puede tener bloques en pesos y bloques
+  // en USD; sus totales NUNCA se suman entre si (se consolidan por moneda por separado).
+  currency?: "ARS" | "USD";
   materials: Material[];
   basicSupplies: Material[];
   labor: LaborRow[];

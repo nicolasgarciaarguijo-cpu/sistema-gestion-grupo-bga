@@ -128,6 +128,10 @@ type PresupuestoTabProps = {
   subBudgets: any[];
   subBudgetTitle: string;
   subBudgetNotes: string;
+  subBudgetCurrency: "ARS" | "USD";
+  setSubBudgetCurrency: (c: "ARS" | "USD") => void;
+  consolidatedBudgetTotalsUsd: any;
+  hasUsdBudgetSections: boolean;
   markupPct: number;
   deviationPct: number;
   laborDeviationPct: number;
@@ -232,6 +236,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
   const {
     budget, crmClients, materials, labor, fixedCosts, basicSupplies, budgetDiscounts,
     budgetIncreases, subBudgets, subBudgetTitle, subBudgetNotes, markupPct,
+    subBudgetCurrency, setSubBudgetCurrency, consolidatedBudgetTotalsUsd, hasUsdBudgetSections,
     deviationPct, laborDeviationPct, vatPct, commissionPct, manualAllocationPct,
     allocationMode, editingBudgetId, consolidatedBudgetTotals,
     consolidatedCommissionAmount, currentClientHistory, totalMaterials,
@@ -1314,6 +1319,22 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   placeholder="Ej. Cocina, vestidor, oficina"
                 />
               </Field>
+              <Field label="Moneda del bloque">
+                <select
+                  style={styles.input}
+                  value={subBudgetCurrency}
+                  onChange={(e) => setSubBudgetCurrency(e.target.value === "USD" ? "USD" : "ARS")}
+                >
+                  <option value="ARS">$ Pesos</option>
+                  <option value="USD">U$S Dolares</option>
+                </select>
+                {subBudgetCurrency === "USD" && (
+                  <div style={{ ...styles.muted, marginTop: 4 }}>
+                    Este bloque se expresa en dólares. Cargá los precios en U$S; su total no se suma
+                    con los bloques en pesos.
+                  </div>
+                )}
+              </Field>
               <Field label="Notas del bloque">
                 <textarea
                   style={styles.textarea}
@@ -1350,13 +1371,19 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   value={String(workingBudgetSections.length)}
                 />
                 <MiniMetric
-                  label="Neto bloque actual"
-                  value={money(currentWorkingSectionTotals.netPrice)}
+                  label={`Neto bloque actual${subBudgetCurrency === "USD" ? " (U$S)" : ""}`}
+                  value={money(currentWorkingSectionTotals.netPrice, subBudgetCurrency)}
                 />
                 <MiniMetric
-                  label="Neto presupuesto total"
+                  label={hasUsdBudgetSections ? "Neto total (pesos)" : "Neto presupuesto total"}
                   value={money(consolidatedBudgetTotals.netPrice)}
                 />
+                {hasUsdBudgetSections && (
+                  <MiniMetric
+                    label="Neto total (U$S)"
+                    value={money(consolidatedBudgetTotalsUsd.netPrice, "USD")}
+                  />
+                )}
               </div>
 
               {subBudgets.length === 0 ? (
@@ -1371,6 +1398,20 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                         <div>
                           <strong>{item.title || `Subpresupuesto ${index + 1}`}</strong>
+                          {item.currency === "USD" && (
+                            <span
+                              style={{
+                                marginLeft: 8,
+                                padding: "1px 8px",
+                                borderRadius: 999,
+                                background: "#065f46",
+                                color: "#fff",
+                                fontSize: 12,
+                              }}
+                            >
+                              U$S
+                            </span>
+                          )}
                           <div style={styles.muted}>
                             Guardado: {formatDateDisplay(item.savedAt.slice(0, 10))}
                           </div>
@@ -1392,13 +1433,13 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       </div>
                       {item.notes && <div style={{ marginTop: 8 }}>{item.notes}</div>}
                       <div style={{ ...styles.metricGrid, marginTop: 12 }}>
-                        <MiniMetric label="Materiales" value={money(item.totals.totalMaterials)} />
+                        <MiniMetric label="Materiales" value={money(item.totals.totalMaterials, item.currency === "USD" ? "USD" : "ARS")} />
                         <MiniMetric
                           label="Insumos y fletes"
-                          value={money(item.totals.totalBasicSupplies)}
+                          value={money(item.totals.totalBasicSupplies, item.currency === "USD" ? "USD" : "ARS")}
                         />
-                        <MiniMetric label="Mano de obra" value={money(item.totals.totalLabor)} />
-                        <MiniMetric label="Valor neto" value={money(item.totals.netPrice)} />
+                        <MiniMetric label="Mano de obra" value={money(item.totals.totalLabor, item.currency === "USD" ? "USD" : "ARS")} />
+                        <MiniMetric label="Valor neto" value={money(item.totals.netPrice, item.currency === "USD" ? "USD" : "ARS")} />
                       </div>
                     </div>
                   ))}
