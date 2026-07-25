@@ -99,6 +99,7 @@ import {
   ButtonLike,
   FileDropButton,
 } from "./ui/primitives";
+import { TopStatusBar, type DollarRate } from "./ui/TopStatusBar";
 import { CashflowTab } from "./tabs/Cashflow";
 import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
@@ -2679,6 +2680,8 @@ export default function App() {
   const [supabaseNewPasswordConfirm, setSupabaseNewPasswordConfirm] = useState("");
   const [supabaseUserDirectory, setSupabaseUserDirectory] = useState<SupabaseDirectoryUser[]>([]);
   const [supabaseActiveSessions, setSupabaseActiveSessions] = useState<SupabaseActiveSession[]>([]);
+  const [dollarRates, setDollarRates] = useState<DollarRate[]>([]);
+  const [dollarRatesUpdatedAt, setDollarRatesUpdatedAt] = useState("");
   const [supabaseChatMessages, setSupabaseChatMessages] = useState<SupabaseInternalChatMessage[]>([]);
   const [supabaseChatDraft, setSupabaseChatDraft] = useState("");
   const [selectedChatRecipientId, setSelectedChatRecipientId] = useState<string | null>(null);
@@ -3520,6 +3523,40 @@ export default function App() {
       ),
     [supabaseActiveSessions]
   );
+
+  // Cotizacion del dolar para la barra superior. Fuente publica (dolarapi.com, con CORS): trae
+  // oficial (BNA), blue, mayorista, MEP, CCL y tarjeta. Refresca al entrar y cada 30 min. Si falla,
+  // la barra muestra "cotizacion no disponible" (nunca rompe la app).
+  useEffect(() => {
+    let cancelled = false;
+    const fetchRates = async () => {
+      try {
+        const res = await fetch("https://dolarapi.com/v1/dolares");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (cancelled || !Array.isArray(data)) return;
+        setDollarRates(
+          data
+            .filter((d) => d && d.casa)
+            .map((d) => ({
+              casa: String(d.casa),
+              nombre: String(d.nombre || d.casa),
+              compra: Number(d.compra) || 0,
+              venta: Number(d.venta) || 0,
+            }))
+        );
+        setDollarRatesUpdatedAt(new Date().toISOString());
+      } catch {
+        // sin conexion o API caida: se deja la ultima cotizacion (o vacio)
+      }
+    };
+    void fetchRates();
+    const id = setInterval(() => void fetchRates(), 30 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   const visibleChatMessages = useMemo(() => {
     if (!selectedChatRecipientId) {
@@ -13318,6 +13355,14 @@ export default function App() {
           }
         }
       `}</style>
+      {isSupabaseLoggedIn && activeTab !== "acceso" && (
+        <TopStatusBar
+          rates={dollarRates}
+          ratesUpdatedAt={dollarRatesUpdatedAt}
+          connectedUsers={otherActiveSessions}
+          primary={workspaceTheme.primary}
+        />
+      )}
       <div style={{ ...styles.headerBar, borderTop: `8px solid ${workspaceTheme.primary}` }}>
         <div>
           <div style={{ ...styles.companyRibbon, background: workspaceTheme.soft, color: workspaceTheme.primary }}>
