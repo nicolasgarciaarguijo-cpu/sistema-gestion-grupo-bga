@@ -792,6 +792,16 @@ export type SupabaseActiveSession = {
   last_seen_at: string;
 };
 
+// Fila de la bitácora de cambios (tabla system_change_log): quién guardó qué módulo/empresa y cuándo.
+export type SystemChangeRow = {
+  id: number;
+  module_key: string;
+  module_label: string | null;
+  company: string | null;
+  user_id: string;
+  created_at: string;
+};
+
 export type SupabaseInternalChatMessage = {
   id: number;
   user_id: string;

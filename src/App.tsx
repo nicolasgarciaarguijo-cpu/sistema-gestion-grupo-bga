@@ -100,6 +100,7 @@ import {
   FileDropButton,
 } from "./ui/primitives";
 import { TopStatusBar, type DollarRate } from "./ui/TopStatusBar";
+import { ChangeReport } from "./ui/ChangeReport";
 import { CashflowTab } from "./tabs/Cashflow";
 import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
@@ -171,6 +172,7 @@ import type {
   RemitoDraftRow,
   RemitoDraft,
   SupabaseActiveSession,
+  SystemChangeRow,
   SupabaseInternalChatMessage,
   SupabaseDirectoryUser,
   SupabaseSnapshotRecord,
@@ -2299,6 +2301,13 @@ const writeSupabasePersistedAppStateModules = async (
     (entry) => supabaseModuleCompanySignatures.get(entry.cacheKey) !== entry.signature
   );
 
+  // Para la bitácora: solo las (modulo, empresa) que YA tenían firma previa = ediciones reales.
+  // Las que no tenían firma son la hidratación inicial tras el login (no son un cambio del usuario)
+  // y NO se registran, así el reporte no se llena de falsos "cambió todo".
+  const rowsToLog = rowsToWrite.filter((entry) =>
+    supabaseModuleCompanySignatures.has(entry.cacheKey)
+  );
+
   // #16 Anti-pisado por item: antes de escribir, releemos la version FRESCA de cada fila y fusionamos
   // por id (3-way con la base ya sincronizada), asi no perdemos lo que otro usuario agrego/edito en la
   // misma (modulo, empresa) mientras tanto. Best-effort: si la relectura falla o no hay base, se escribe
@@ -2372,6 +2381,32 @@ const writeSupabasePersistedAppStateModules = async (
     // Recien tras escribir OK actualizamos la firma cacheada.
     for (const entry of batch) {
       supabaseModuleCompanySignatures.set(entry.cacheKey, entry.signature);
+    }
+  }
+
+  // Bitácora de cambios (best-effort: nunca frena ni rompe el guardado). 1 fila por (modulo, empresa)
+  // que el usuario efectivamente editó (rowsToLog ya excluye la hidratación inicial).
+  if (rowsToLog.length > 0) {
+    try {
+      const seen = new Set<string>();
+      const logRows = rowsToLog
+        .filter((entry) => {
+          const key = `${entry.row.module_key}|${entry.row.company}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .map((entry) => ({
+          module_key: entry.row.module_key,
+          module_label: entry.label,
+          company: entry.row.company,
+          user_id: userId,
+        }));
+      if (logRows.length > 0) {
+        await supabase.from("system_change_log").insert(logRows);
+      }
+    } catch (logError) {
+      console.error("[bitacora] no pude registrar cambios:", logError);
     }
   }
 
@@ -2682,6 +2717,11 @@ export default function App() {
   const [supabaseActiveSessions, setSupabaseActiveSessions] = useState<SupabaseActiveSession[]>([]);
   const [dollarRates, setDollarRates] = useState<DollarRate[]>([]);
   const [dollarRatesUpdatedAt, setDollarRatesUpdatedAt] = useState("");
+  const [systemChangeLog, setSystemChangeLog] = useState<SystemChangeRow[]>([]);
+  const [changeReportOpen, setChangeReportOpen] = useState(false);
+  // Valor del "último reporte visto" AL ENTRAR (viejo): con esto se filtra "desde tu último ingreso"
+  // durante toda la sesión. En la base se pisa a "ahora" apenas se abre el reporte (próximo login limpio).
+  const [lastReportSeenAt, setLastReportSeenAt] = useState<string | null>(null);
   const [supabaseChatMessages, setSupabaseChatMessages] = useState<SupabaseInternalChatMessage[]>([]);
   const [supabaseChatDraft, setSupabaseChatDraft] = useState("");
   const [selectedChatRecipientId, setSelectedChatRecipientId] = useState<string | null>(null);
@@ -2747,6 +2787,7 @@ export default function App() {
   // vacio habiendo tenido datos, se bloquea (no se pisan los datos buenos con estado vacio).
   const lastNonEmptyContentCountRef = useRef(0);
   const presenceAnnouncementReadyRef = useRef(false);
+  const changeReportInitDoneRef = useRef(false); // el reporte "desde tu último ingreso" se abre 1 vez por login
   const knownOtherSessionIdsRef = useRef<string[]>([]);
   const isSupabaseLoggedIn = !!supabaseSession?.user;
   const isChatWidgetVisible = workspaceWidgetOpen && workspaceWidgetMode === "chat";
@@ -2790,6 +2831,50 @@ export default function App() {
         return Number.isFinite(lastSeen) && lastSeen >= threshold;
       }) as SupabaseActiveSession[]
     );
+  };
+
+  // Trae la bitácora de cambios de los últimos ~31 días (para "desde tu último ingreso" y los
+  // reportes diario/semanal/mensual). Best-effort: si falla, deja el log como estaba.
+  const loadSystemChangeLog = async (): Promise<SystemChangeRow[]> => {
+    try {
+      const since = new Date(Date.now() - 31 * 24 * 3600 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("system_change_log")
+        .select("id, module_key, module_label, company, user_id, created_at")
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(1000);
+      if (!error && Array.isArray(data)) {
+        const rows = data as SystemChangeRow[];
+        setSystemChangeLog(rows);
+        return rows;
+      }
+    } catch {
+      // sin conexión o tabla nueva aún no visible: se ignora
+    }
+    return [];
+  };
+
+  // Al entrar: guarda el "último visto" viejo (para filtrar "desde tu último ingreso" esta sesión),
+  // carga el log, y si hay cambios de OTROS desde entonces abre el reporte solo. Luego pisa el
+  // "último visto" a ahora en la base (así el próximo login arranca limpio).
+  const initChangeReportOnLogin = async (profile: any) => {
+    const previousSeen: string | null = profile?.last_report_seen_at || null;
+    setLastReportSeenAt(previousSeen);
+    const rows = await loadSystemChangeLog();
+    const userId = profile?.id;
+    const hasNews = rows.some(
+      (row) => row.user_id !== userId && (!previousSeen || row.created_at > previousSeen)
+    );
+    if (hasNews) setChangeReportOpen(true);
+    try {
+      const nowIso = new Date().toISOString();
+      if (userId) {
+        await supabase.from("profiles").update({ last_report_seen_at: nowIso }).eq("id", userId);
+      }
+    } catch {
+      // no crítico: si no se pudo pisar, el próximo login repetirá algún cambio ya visto
+    }
   };
 
   const syncSupabasePresence = async () => {
@@ -2967,7 +3052,7 @@ export default function App() {
     const companiesCatalogResult = await supabase.from("companies").select("*");
     const profileResult = await supabase
       .from("profiles")
-      .select("id, full_name, is_superadmin, active")
+      .select("id, full_name, is_superadmin, active, last_report_seen_at")
       .order("full_name", { ascending: true });
     const companyPermissionsResult = await supabase
       .from("user_company_permissions")
@@ -2979,9 +3064,8 @@ export default function App() {
     setSupabaseCompaniesCatalog(companiesCatalogResult.data || []);
     const profileDirectory = (profileResult.data || []) as SupabaseDirectoryUser[];
     setSupabaseUserDirectory(profileDirectory);
-    setSupabaseProfile(
-      profileDirectory.find((item) => item.id === session.user.id) || null
-    );
+    const ownProfile = profileDirectory.find((item) => item.id === session.user.id) || null;
+    setSupabaseProfile(ownProfile);
     setSupabaseCompanyPermissions(companyPermissionsResult.data || []);
     setSupabaseTabPermissions(tabPermissionsResult.data || []);
     try {
@@ -2989,6 +3073,11 @@ export default function App() {
       await loadSupabaseChatMessages();
     } catch (error) {
       console.log("COLLAB LOAD ERROR:", error);
+    }
+    // Reporte "desde tu último ingreso": una sola vez por login (no en cada refresh de acceso).
+    if (!changeReportInitDoneRef.current && ownProfile) {
+      changeReportInitDoneRef.current = true;
+      void initChangeReportOnLogin(ownProfile);
     }
   };
 
@@ -3523,6 +3612,18 @@ export default function App() {
       ),
     [supabaseActiveSessions]
   );
+
+  // id de usuario -> nombre, para el reporte de cambios (resuelve quién tocó cada módulo).
+  const userNamesById = useMemo(() => {
+    const map = new Map<string, string>();
+    supabaseUserDirectory.forEach((u: any) => {
+      if (u?.id) map.set(u.id, u.full_name || "Usuario");
+    });
+    supabaseActiveSessions.forEach((s) => {
+      if (s.user_id && !map.has(s.user_id)) map.set(s.user_id, s.full_name || s.email || "Usuario");
+    });
+    return map;
+  }, [supabaseUserDirectory, supabaseActiveSessions]);
 
   // Cotizacion del dolar para la barra superior. Fuente publica (dolarapi.com, con CORS): trae
   // oficial (BNA), blue, mayorista, MEP, CCL y tarjeta. Refresca al entrar y cada 30 min. Si falla,
@@ -13404,6 +13505,15 @@ export default function App() {
                   Reporte del mes
                 </ButtonLike>
               )}
+              <ButtonLike
+                onClick={() => {
+                  void loadSystemChangeLog();
+                  setChangeReportOpen(true);
+                }}
+                secondary
+              >
+                Novedades
+              </ButtonLike>
             </>
           )}
         </div>
@@ -14480,6 +14590,19 @@ export default function App() {
           </aside>
         )}
       </div>
+
+      {isSupabaseLoggedIn && (
+        <ChangeReport
+          open={changeReportOpen}
+          onClose={() => setChangeReportOpen(false)}
+          rows={systemChangeLog}
+          userNames={userNamesById}
+          currentUserId={supabaseSession?.user?.id}
+          lastSeenAt={lastReportSeenAt}
+          onReload={() => void loadSystemChangeLog()}
+          primary={workspaceTheme.primary}
+        />
+      )}
 
       {isSupabaseLoggedIn && isChatWidgetVisible && (
         <div style={styles.chatOverlay}>
