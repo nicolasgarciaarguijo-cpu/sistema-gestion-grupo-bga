@@ -14,7 +14,14 @@
 //   Dólares = 0 (confirmado). Efectivo inicial = 0 (caja chica se arranca de cero).
 
 import { aggregateReserva } from "./reserva";
-import type { ReservaColor, ReservaMovementInput, ReservaOpening, ReservaSummary } from "./reserva";
+import type {
+  ReservaColor,
+  ReservaCurrency,
+  ReservaKind,
+  ReservaMovementInput,
+  ReservaOpening,
+  ReservaSummary,
+} from "./reserva";
 
 // Saldo inicial banco/pesos por empresa (cierre oct-2025). Clave = CompanyName tal cual en el sistema.
 export const RESERVA_OPENING_BANK_ARS: Record<string, number> = {
@@ -53,6 +60,8 @@ export type ReservaSourcesInput = {
   // los trabajos: los dolares NO aparecen en los extractos en pesos, asi que se inyectan aca sin
   // riesgo de doble conteo (a diferencia de un cobro en pesos, que ya viene por el banco).
   extraMovements?: ReservaMovementInput[];
+  // Efectivo fuera del banco y de caja chica (caja de seguridad, etc.), cargado a mano.
+  cashHoldings?: CashHoldingLike[];
   until?: string; // corte por fecha (yyyy-mm-dd) para ver la reserva a un mes dado
 };
 
@@ -155,12 +164,14 @@ export function pettyCashToMovements(
   const out: ReservaMovementInput[] = [];
 
   funds.forEach((f) => {
-    const white = f.assignedWhite !== undefined ? num(f.assignedWhite) : num(f.assignedAmount);
+    // Origen OBLIGATORIO: la caja chica NO se asume blanca. Solo entra a la reserva la plata con
+    // circuito cargado (blanco/negro), segun de donde vino el efectivo. Lo que quede sin clasificar
+    // (assignedAmount − blanco − negro) no se cuenta como blanco ni como negro: asi no se mezclan
+    // administraciones. El sistema muestra ese remanente aparte para que el usuario lo clasifique.
+    const white = num(f.assignedWhite);
     const black = num(f.assignedBlack);
-    // Si no hay desglose, todo el fondo se considera blanco.
-    const whiteAmount = f.assignedWhite === undefined && f.assignedBlack === undefined ? num(f.assignedAmount) : white;
-    if (whiteAmount > 0)
-      out.push({ date: f.deliveredDate, currency: "ARS", location: "efectivo", color: "blanco", kind: "ingreso", amount: whiteAmount });
+    if (white > 0)
+      out.push({ date: f.deliveredDate, currency: "ARS", location: "efectivo", color: "blanco", kind: "ingreso", amount: white });
     if (black > 0)
       out.push({ date: f.deliveredDate, currency: "ARS", location: "efectivo", color: "negro", kind: "ingreso", amount: black });
   });
@@ -185,6 +196,28 @@ export type UsdPaymentLike = {
   administration?: ReservaColor; // "blanco" | "negro"
   transactionType?: string; // "efectivo" | "transferencia" | "cheque" | "otros"
 };
+
+export type CashHoldingLike = {
+  date: string; // "yyyy-mm-dd"
+  currency?: ReservaCurrency; // ARS | USD (default ARS)
+  color?: ReservaColor; // blanco | negro (default blanco)
+  kind?: ReservaKind; // ingreso | egreso (default ingreso)
+  amount: number;
+};
+
+// Efectivo fuera del banco y de caja chica (caja de seguridad, plata en mano) -> movimientos de
+// reserva. Ubicacion SIEMPRE "efectivo"; color segun el origen que cargo el usuario (no se asume
+// nada). Cada fila es un ingreso o egreso; la reserva lo suma en la billetera de efectivo por color.
+export function cashHoldingsToMovements(items: CashHoldingLike[]): ReservaMovementInput[] {
+  return items.map((h) => ({
+    date: h.date,
+    currency: h.currency === "USD" ? "USD" : "ARS",
+    location: "efectivo",
+    color: h.color === "negro" ? "negro" : "blanco",
+    kind: h.kind === "egreso" ? "egreso" : "ingreso",
+    amount: num(h.amount),
+  }));
+}
 
 // Cobros en USD de los trabajos aprobados -> movimientos de reserva (ingreso, moneda USD).
 // Ubicacion: transferencia va a "banco"; efectivo/cheque/otros van a "efectivo" (donde estan los
@@ -213,6 +246,7 @@ export function buildReservaFromSources(input: ReservaSourcesInput): ReservaSumm
   const movements: ReservaMovementInput[] = [
     ...bankEntriesToMovements(input.bankEntries || []),
     ...pettyCashToMovements(input.pettyCashFunds || [], input.pettyCashExpenses || []),
+    ...cashHoldingsToMovements(input.cashHoldings || []),
     ...(input.extraMovements || []),
   ];
 

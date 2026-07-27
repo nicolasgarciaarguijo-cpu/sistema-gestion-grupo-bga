@@ -367,6 +367,7 @@ export function CajaChicaTab({
                     <th>Monto asignado</th>
                     <th>Blanca</th>
                     <th>Negra</th>
+                    <th>Sin clasificar</th>
                     <th>Entrega</th>
                     <th>Rendido</th>
                     <th>Saldo</th>
@@ -439,6 +440,26 @@ export function CajaChicaTab({
                             value={fund.assignedBlack ?? 0}
                             onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedBlack", n)}
                           />
+                        </td>
+                        <td>
+                          {(() => {
+                            const sinClasificar =
+                              Number(fund.assignedAmount || 0) -
+                              Number(fund.assignedWhite || 0) -
+                              Number(fund.assignedBlack || 0);
+                            return (
+                              <span
+                                style={sinClasificar !== 0 ? { color: "#b45309", fontWeight: 600 } : undefined}
+                                title={
+                                  sinClasificar !== 0
+                                    ? "Cargá el origen blanco/negro: esta plata NO entra a la reserva hasta clasificarla."
+                                    : "Todo el fondo tiene origen cargado."
+                                }
+                              >
+                                {money(sinClasificar)}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td>
                           <input

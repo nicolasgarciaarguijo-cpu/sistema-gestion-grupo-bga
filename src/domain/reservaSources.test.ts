@@ -43,18 +43,53 @@ describe("reservaSources", () => {
     expect(wallet(r, "ARS", "banco").closing).toBeCloseTo(990055.86, 2);
   });
 
-  it("caja chica: el fondo entra al efectivo y el gasto sale, con su color", () => {
+  it("caja chica: el fondo (con origen blanco) entra al efectivo y el gasto sale, con su color", () => {
     const r = buildReservaFromSources({
-      pettyCashFunds: [{ deliveredDate: "2025-11-01", assignedAmount: 100000 }],
+      pettyCashFunds: [{ deliveredDate: "2025-11-01", assignedAmount: 100000, assignedWhite: 100000 }],
       pettyCashExpenses: [
         { date: "2025-11-05", amount: 30000, administration: "blanco" },
         { date: "2025-11-06", amount: 20000, administration: "negro" },
       ],
     });
     const ef = wallet(r, "ARS", "efectivo");
-    expect(ef.byColor.blanco.closing).toBe(70000); // 100000 asignado − 30000 blanco
+    expect(ef.byColor.blanco.closing).toBe(70000); // 100000 blanco − 30000 blanco
     expect(ef.byColor.negro.closing).toBe(-20000); // gasto negro sin fondo negro
     expect(ef.closing).toBe(50000);
+  });
+
+  it("origen obligatorio: un fondo SIN desglose blanco/negro no se asume blanco (queda en 0)", () => {
+    const r = buildReservaFromSources({
+      pettyCashFunds: [{ deliveredDate: "2025-11-01", assignedAmount: 100000 }],
+    });
+    const ef = wallet(r, "ARS", "efectivo");
+    expect(ef.byColor.blanco.closing).toBe(0);
+    expect(ef.byColor.negro.closing).toBe(0);
+    expect(ef.closing).toBe(0);
+  });
+
+  it("efectivo fuera del banco (caja de seguridad) entra a la billetera de efectivo por color", () => {
+    const r = buildReservaFromSources({
+      cashHoldings: [
+        { date: "2025-11-02", currency: "ARS", color: "blanco", kind: "ingreso", amount: 500000 },
+        { date: "2025-11-03", currency: "ARS", color: "negro", kind: "ingreso", amount: 200000 },
+        { date: "2025-11-10", currency: "ARS", color: "negro", kind: "egreso", amount: 50000 },
+      ],
+    });
+    const ef = wallet(r, "ARS", "efectivo");
+    expect(ef.byColor.blanco.closing).toBe(500000);
+    expect(ef.byColor.negro.closing).toBe(150000); // 200000 − 50000
+    expect(ef.closing).toBe(650000);
+  });
+
+  it("efectivo fuera del banco respeta el corte por fecha (until)", () => {
+    const r = buildReservaFromSources({
+      cashHoldings: [
+        { date: "2025-11-02", color: "blanco", kind: "ingreso", amount: 500000 },
+        { date: "2025-12-05", color: "blanco", kind: "ingreso", amount: 999999 },
+      ],
+      until: "2025-11-30",
+    });
+    expect(wallet(r, "ARS", "efectivo").byColor.blanco.closing).toBe(500000);
   });
 
   it("un fondo con desglose blanco/negro parte el ingreso por color", () => {
@@ -70,7 +105,7 @@ describe("reservaSources", () => {
   it("banco y efectivo conviven sin mezclarse en el total de pesos", () => {
     const r = buildReservaFromSources({
       openingBankArs: 500000,
-      pettyCashFunds: [{ deliveredDate: "2025-11-01", assignedAmount: 100000 }],
+      pettyCashFunds: [{ deliveredDate: "2025-11-01", assignedAmount: 100000, assignedWhite: 100000 }],
     });
     expect(wallet(r, "ARS", "banco").closing).toBe(500000);
     expect(wallet(r, "ARS", "efectivo").closing).toBe(100000);

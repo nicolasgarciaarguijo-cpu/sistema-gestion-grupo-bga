@@ -576,6 +576,21 @@ export type DebtPlan = {
   active: boolean;
 };
 
+// Efectivo fuera del banco Y fuera de caja chica (caja de seguridad, plata en mano). Se asienta a
+// mano como movimientos para que la reserva lo muestre en la billetera de efectivo. El color
+// (blanco/negro) depende del origen de esa plata: NO se asume blanco. Pesos y dolares nunca se suman.
+export type CashHolding = {
+  id: number;
+  company: CompanyName;
+  date: string; // "yyyy-mm-dd"
+  description: string;
+  currency: "ARS" | "USD";
+  color: "blanco" | "negro";
+  kind: "ingreso" | "egreso";
+  amount: number;
+  notes: string;
+};
+
 export type BankStatementEntry = {
   id: number;
   company: CompanyName;

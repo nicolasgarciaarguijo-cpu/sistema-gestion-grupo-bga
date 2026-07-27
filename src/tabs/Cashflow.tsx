@@ -2,7 +2,7 @@ import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, Field, AmountInput } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
-import type { CompanyName, DebtPlan } from "../domain/types";
+import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
 
 // Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
@@ -144,6 +144,10 @@ type CashflowTabProps = {
   setCapitalEntries: React.Dispatch<React.SetStateAction<CapitalEntry[]>>;
   addCapitalEntry: () => void;
   removeCapitalEntry: (entryId: number) => void;
+  cashHoldings: CashHolding[];
+  setCashHoldings: React.Dispatch<React.SetStateAction<CashHolding[]>>;
+  addCashHolding: () => void;
+  removeCashHolding: (entryId: number) => void;
   annualCashFlowByMonth: any[];
   getCompanyMeta: (company: CompanyName) => any;
   COMPANY_OPTIONS: any[];
@@ -176,6 +180,10 @@ export function CashflowTab({
   setCapitalEntries,
   addCapitalEntry,
   removeCapitalEntry,
+  cashHoldings,
+  setCashHoldings,
+  addCashHolding,
+  removeCashHolding,
   annualCashFlowByMonth,
   getCompanyMeta,
   COMPANY_OPTIONS,
@@ -897,6 +905,147 @@ export function CashflowTab({
                       </td>
                       <td>
                         <button style={styles.smallBtn} onClick={() => removeCapitalEntry(item.id)}>
+                          Quitar
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+
+          <Panel
+            title="Efectivo fuera del banco · caja de seguridad"
+            span="full"
+            actions={<ButtonLike onClick={addCashHolding}>Agregar movimiento</ButtonLike>}
+          >
+            <div style={styles.noticeBox}>
+              Efectivo que <strong>no</strong> está en el banco ni en caja chica (caja de seguridad,
+              plata en mano). Se asienta como ingreso/egreso y alimenta la{" "}
+              <strong>billetera de efectivo</strong> de la reserva de arriba, con su color. El{" "}
+              <strong>color (blanco/negro) depende del origen</strong> de esa plata: no se asume nada.
+              Pesos y dólares nunca se suman. Respeta el corte por período elegido.
+            </div>
+            {(() => {
+              const net = (currency: "ARS" | "USD", color: "blanco" | "negro") =>
+                cashHoldings
+                  .filter((h) => (h.currency || "ARS") === currency && (h.color || "blanco") === color)
+                  .reduce((acc, h) => acc + (h.kind === "egreso" ? -1 : 1) * Number(h.amount || 0), 0);
+              const arsB = net("ARS", "blanco");
+              const arsN = net("ARS", "negro");
+              const usdB = net("USD", "blanco");
+              const usdN = net("USD", "negro");
+              return (
+                <div style={styles.metricGrid}>
+                  <MiniMetric label="Efectivo $ blanco" value={money(arsB)} />
+                  <MiniMetric label="Efectivo $ negro" value={money(arsN)} />
+                  {(usdB !== 0 || usdN !== 0) && (
+                    <>
+                      <MiniMetric label="Efectivo U$S blanco" value={money(usdB, "USD")} />
+                      <MiniMetric label="Efectivo U$S negro" value={money(usdN, "USD")} />
+                    </>
+                  )}
+                </div>
+              );
+            })()}
+            {cashHoldings.length === 0 ? (
+              <div style={styles.empty}>
+                No hay efectivo fuera del banco cargado. Usá "Agregar movimiento" para asentar el primero.
+              </div>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Empresa</th>
+                    <th>Descripción</th>
+                    <th>Moneda</th>
+                    <th>Color</th>
+                    <th>Movimiento</th>
+                    <th>Monto</th>
+                    <th>Notas</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cashHoldings.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <input
+                          style={styles.input}
+                          type="date"
+                          value={item.date}
+                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "date", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={item.company}
+                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "company", e.target.value)}
+                        >
+                          {COMPANY_OPTIONS.map((company) => (
+                            <option key={company.value} value={company.value}>
+                              {company.short}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          placeholder="Ej: caja de seguridad, plata en mano"
+                          value={item.description}
+                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "description", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={item.currency}
+                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "currency", e.target.value)}
+                        >
+                          <option value="ARS">$ Pesos</option>
+                          <option value="USD">U$S Dólares</option>
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={item.color}
+                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "color", e.target.value)}
+                        >
+                          <option value="blanco">Blanco</option>
+                          <option value="negro">Negro</option>
+                        </select>
+                      </td>
+                      <td>
+                        <select
+                          style={styles.input}
+                          value={item.kind}
+                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "kind", e.target.value)}
+                        >
+                          <option value="ingreso">Ingreso</option>
+                          <option value="egreso">Egreso</option>
+                        </select>
+                      </td>
+                      <td>
+                        <AmountInput
+                          style={styles.input}
+                          value={item.amount}
+                          onChange={(n) => updateArrayItem(setCashHoldings, item.id, "amount", n)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          style={styles.input}
+                          value={item.notes}
+                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "notes", e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <button style={styles.smallBtn} onClick={() => removeCashHolding(item.id)}>
                           Quitar
                         </button>
                       </td>
