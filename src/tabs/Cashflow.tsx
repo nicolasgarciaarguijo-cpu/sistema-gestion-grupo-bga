@@ -138,6 +138,7 @@ type CashflowTabProps = {
   bankStatementSummary: any;
   reservaSummary: any;
   reservaBankAccounts: { company: string; bank: string; date: string; balance: number }[];
+  reservaUntil?: string;
   contributionsSummary: CapitalSummary;
   capitalEntries: CapitalEntry[];
   setCapitalEntries: React.Dispatch<React.SetStateAction<CapitalEntry[]>>;
@@ -169,6 +170,7 @@ export function CashflowTab({
   bankStatementSummary,
   reservaSummary,
   reservaBankAccounts,
+  reservaUntil,
   contributionsSummary,
   capitalEntries,
   setCapitalEntries,
@@ -480,6 +482,26 @@ export function CashflowTab({
                 label="Compromisos activos"
                 value={String(debtPlans.filter((item) => item.active).length)}
               />
+              {(() => {
+                const usdPend = debtPlans
+                  .filter((item) => item.active)
+                  .reduce(
+                    (acc, item) =>
+                      acc +
+                      Number(item.usdValuePerInstallment || 0) *
+                        Math.max(0, Number(item.remainingInstallments || 0)),
+                    0
+                  );
+                return usdPend > 0 ? (
+                  <MiniMetric
+                    label="USD congelado restante (ref.)"
+                    value={`US$ ${usdPend.toLocaleString("es-AR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}`}
+                  />
+                ) : null;
+              })()}
             </div>
             <table style={styles.table}>
               <thead>
@@ -489,6 +511,7 @@ export function CashflowTab({
                   <th>Concepto</th>
                   <th>Dia</th>
                   <th>Proxima cuota</th>
+                  <th>USD/cuota (ref.)</th>
                   <th>Cuotas restantes</th>
                   <th>Prox. vencimiento</th>
                   <th>Notas</th>
@@ -518,6 +541,22 @@ export function CashflowTab({
                     </td>
                     <td>
                       <AmountInput style={styles.input}value={item.nextInstallmentAmount} onChange={(n) => updateArrayItem(setDebtPlans, item.id, "nextInstallmentAmount", n)} />
+                    </td>
+                    <td>
+                      <input
+                        style={styles.input}
+                        type="number"
+                        placeholder="opcional"
+                        value={item.usdValuePerInstallment ?? ""}
+                        onChange={(e) =>
+                          updateArrayItem(
+                            setDebtPlans,
+                            item.id,
+                            "usdValuePerInstallment",
+                            e.target.value === "" ? (undefined as any) : Number(e.target.value)
+                          )
+                        }
+                      />
                     </td>
                     <td>
                       <input style={styles.input} type="number" value={item.remainingInstallments} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "remainingInstallments", Number(e.target.value))} />
@@ -586,6 +625,15 @@ export function CashflowTab({
               <strong>último saldo conciliado de cada cuenta</strong> (dato firme aunque falten meses
               intermedios sin cargar). Pesos y dólares nunca se suman. Los dólares salen de los cobros
               en U$S cargados en los trabajos aprobados.
+              {reservaUntil ? (
+                <>
+                  {" "}
+                  <strong>Cortada al {formatDateDisplay(reservaUntil)}</strong> (fin del período
+                  elegido): muestra la plata que había hasta esa fecha.
+                </>
+              ) : (
+                <> Muestra la <strong>última fecha cargada</strong> (período "todo").</>
+              )}
             </div>
             <div style={balanceSection}>Total por moneda</div>
             <div style={balanceGrid}>
@@ -638,29 +686,54 @@ export function CashflowTab({
                 </div>
               </>
             )}
-            {contributionsSummary.prestamosPendientes.total !== 0 &&
-              (() => {
-                const reservaArs =
-                  reservaSummary.totals.find((t: any) => t.currency === "ARS")?.closing || 0;
-                const pend = contributionsSummary.prestamosPendientes.total;
-                const excedente = reservaArs - pend;
-                return (
-                  <>
-                    <div style={balanceSection}>Excedente (reserva menos préstamos a devolver)</div>
-                    <div>
-                      <StatRow label="Reserva pesos" value={money(reservaArs)} />
-                      <StatRow label="− Préstamos pendientes" value={money(pend)} tone="out" />
-                      <StatRow
-                        label="Excedente sobre préstamos"
-                        value={money(excedente)}
-                        strong
-                        last
-                        tone={excedente < 0 ? "out" : undefined}
-                      />
-                    </div>
-                  </>
+            {(() => {
+              const pend = contributionsSummary.prestamosPendientes.total;
+              // Desendeudamiento pendiente en scope: cuota × cuotas restantes de los compromisos
+              // activos de la(s) empresa(s) elegida(s). Es plata que todavía hay que pagar (echeqs de
+              // equipos, planes de impuestos), así que también achica el excedente real.
+              const desendeudPend = debtPlans
+                .filter(
+                  (item) =>
+                    item.active &&
+                    (balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope)
+                )
+                .reduce(
+                  (acc, item) =>
+                    acc +
+                    Number(item.nextInstallmentAmount || 0) *
+                      Math.max(0, Number(item.remainingInstallments || 0)),
+                  0
                 );
-              })()}
+              if (pend === 0 && desendeudPend === 0) return null;
+              const reservaArs =
+                reservaSummary.totals.find((t: any) => t.currency === "ARS")?.closing || 0;
+              const excedente = reservaArs - pend - desendeudPend;
+              return (
+                <>
+                  <div style={balanceSection}>Excedente (reserva menos lo que falta pagar)</div>
+                  <div>
+                    <StatRow label="Reserva pesos" value={money(reservaArs)} />
+                    {pend !== 0 && (
+                      <StatRow label="− Préstamos pendientes" value={money(pend)} tone="out" />
+                    )}
+                    {desendeudPend !== 0 && (
+                      <StatRow
+                        label="− Desendeudamiento pendiente"
+                        value={money(desendeudPend)}
+                        tone="out"
+                      />
+                    )}
+                    <StatRow
+                      label="Excedente disponible"
+                      value={money(excedente)}
+                      strong
+                      last
+                      tone={excedente < 0 ? "out" : undefined}
+                    />
+                  </div>
+                </>
+              );
+            })()}
           </Panel>
 
           <Panel

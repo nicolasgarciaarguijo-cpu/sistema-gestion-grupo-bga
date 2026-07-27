@@ -569,6 +569,9 @@ export type DebtPlan = {
   nextInstallmentAmount: number;
   remainingInstallments: number;
   nextDueDate: string;
+  // Valor congelado en USD por cuota (referencia; equipos importados como la enchapadora). Es solo un
+  // valor de referencia: NUNCA se suma con los pesos, igual que en deudas y aportes.
+  usdValuePerInstallment?: number;
   notes: string;
   active: boolean;
 };

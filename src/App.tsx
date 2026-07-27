@@ -11300,14 +11300,28 @@ export default function App() {
   // RESERVA (billetera de la empresa): ver domain/reserva.ts. Sigue el mismo selector de empresa que
   // el balance. El saldo de banco se toma como el ULTIMO saldo conciliado por cuenta (dato firme,
   // robusto a los meses de Patagonia que faltan cargar); el efectivo sale de caja chica (blanco/negro).
+  // Corte por período para la reserva: el FIN del período elegido (mes / año fiscal), o sin corte en
+  // "todo". La reserva es una foto "a esa fecha": el saldo de banco toma el último saldo conciliado
+  // hasta `until`, y los movimientos de efectivo/USD se filtran por fecha. Si el fin es futuro (año
+  // fiscal en curso), no recorta nada y muestra lo último cargado.
+  const reservaUntil = useMemo(() => {
+    if (balancePeriodMode === "all") return undefined;
+    if (balancePeriodMode === "month") return monthBounds(balanceMonth).endIso;
+    const startMonth = getFiscalYearStartMonth(
+      companyCatalog.find((c) => c.value === balanceCompanyScope)
+    );
+    return fiscalYearBounds(startMonth, balanceFiscalStartYear).endIso;
+  }, [balancePeriodMode, balanceMonth, balanceFiscalStartYear, balanceCompanyScope, companyCatalog]);
+
   const reservaBankAccounts = useMemo(
     () =>
       latestBankBalancesByAccount(
         visibleBankStatementEntries.filter(
           (item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope
-        )
+        ),
+        reservaUntil
       ),
-    [visibleBankStatementEntries, balanceCompanyScope]
+    [visibleBankStatementEntries, balanceCompanyScope, reservaUntil]
   );
 
   const reservaSummary = useMemo(() => {
@@ -11324,6 +11338,7 @@ export default function App() {
     );
     return buildReservaFromSources({
       openingBankArs,
+      until: reservaUntil,
       extraMovements: usdPaymentMovements,
       pettyCashFunds: visiblePettyCashFunds
         .filter((f) => inScope(f.company))
@@ -11341,7 +11356,7 @@ export default function App() {
           administration: e.administration === "negro" ? "negro" : "blanco",
         })),
     });
-  }, [reservaBankAccounts, visiblePettyCashFunds, visiblePettyCashExpenses, visibleApprovedJobs, balanceCompanyScope]);
+  }, [reservaBankAccounts, reservaUntil, visiblePettyCashFunds, visiblePettyCashExpenses, visibleApprovedJobs, balanceCompanyScope]);
 
   // DEUDAS Y APORTES (registro; ver domain/contributions.ts). Sigue el mismo selector de empresa.
   const contributionsSummary = useMemo(
@@ -13830,6 +13845,7 @@ export default function App() {
           bankStatementSummary={bankStatementSummary}
           reservaSummary={reservaSummary}
           reservaBankAccounts={reservaBankAccounts}
+          reservaUntil={reservaUntil}
           contributionsSummary={contributionsSummary}
           capitalEntries={scopedCapitalEntries}
           setCapitalEntries={setCapitalEntries}
