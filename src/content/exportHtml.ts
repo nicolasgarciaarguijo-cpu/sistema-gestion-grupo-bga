@@ -175,14 +175,20 @@ export function buildClientBudgetHtml(
     `<div><div class="eyebrow">${esc(label)}</div><div class="metaval">${esc(
       value || "-"
     )}</div></div>`;
+  // Moneda del bloque: por defecto pesos. Un bloque en U$S debe exportarse con su signo (U$S), no "$".
+  const sectionCurrency = (s: any): "ARS" | "USD" =>
+    String(s?.currency || "").toUpperCase() === "USD" ? "USD" : "ARS";
   const sectionsHtml = sections
     .map((s: any, i: number) => {
       const mats = (s.materials || []).map((m: any) => `<li>${esc(m.description)}</li>`).join("");
+      const cur = sectionCurrency(s);
       return `
       <div class="card">
         <div class="cardhead">
-          <div class="eyebrow">${esc(s.title || `Subpresupuesto ${i + 1}`)}</div>
-          <div class="pill">Total c/IVA ${money(s.totals?.finalPrice)}</div>
+          <div class="eyebrow">${esc(s.title || `Subpresupuesto ${i + 1}`)}${
+        cur === "USD" ? ' <span class="pill" style="margin-left:6px">U$S</span>' : ""
+      }</div>
+          <div class="pill">Total c/IVA ${money(s.totals?.finalPrice, cur)}</div>
         </div>
         ${s.notes ? `<div class="muted">${esc(s.notes)}</div>` : ""}
         <div class="eyebrow" style="margin-top:10px">Materiales incluidos</div>
@@ -231,10 +237,30 @@ export function buildClientBudgetHtml(
         : ""
     }
     ${sectionsHtml}
-    <div class="total">
-      <div><span class="muted">Neto</span> ${money(totals.netPrice ?? b.netPrice)}</div>
-      <div class="final">Precio final c/IVA ${money(totals.finalPrice ?? b.finalPrice)}</div>
+    ${(() => {
+      // Los bloques en U$S NO se suman con los pesos (misma regla que el editor y la reserva). El
+      // total consolidado (`totals`) es SOLO pesos; los dólares se totalizan aparte desde los bloques
+      // dolarizados. Si el presupuesto es todo en dólares, no mostramos un "$ 0" que confunda.
+      const usdSections = sections.filter((s: any) => sectionCurrency(s) === "USD");
+      const pesoSections = sections.filter((s: any) => sectionCurrency(s) !== "USD");
+      const usdNet = usdSections.reduce((a: number, s: any) => a + Number(s.totals?.netPrice || 0), 0);
+      const usdFinal = usdSections.reduce((a: number, s: any) => a + Number(s.totals?.finalPrice || 0), 0);
+      const hasUsd = usdSections.length > 0 && (usdNet !== 0 || usdFinal !== 0);
+      const showPesos = pesoSections.length > 0 || !hasUsd;
+      const pesoLabel = hasUsd ? " (pesos)" : "";
+      const pesoBlock = showPesos
+        ? `<div><span class="muted">Neto${pesoLabel}</span> ${money(totals.netPrice ?? b.netPrice)}</div>
+      <div class="final">Precio final c/IVA${pesoLabel} ${money(totals.finalPrice ?? b.finalPrice)}</div>`
+        : "";
+      const usdBlock = hasUsd
+        ? `<div style="margin-top:6px"><span class="muted">Neto (U$S)</span> ${money(usdNet, "USD")}</div>
+      <div class="final">Precio final c/IVA (U$S) ${money(usdFinal, "USD")}</div>`
+        : "";
+      return `<div class="total">
+      ${pesoBlock}
+      ${usdBlock}
     </div>`;
+    })()}`;
   const css = `
     *{box-sizing:border-box}
     body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:#1a2230;line-height:1.5;max-width:820px;margin:0 auto;padding:28px 22px;background:#fff}
