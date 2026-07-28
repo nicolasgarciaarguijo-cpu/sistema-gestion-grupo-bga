@@ -83,9 +83,19 @@ export type BankBalanceEntryLike = {
   date: string; // "yyyy-mm-dd"
   balance?: number;
   id?: number;
+  currency?: string; // "ARS" | "USD"; ausente = ARS (pesos). Una cuenta en USD es OTRA cuenta.
 };
 
-export type BankAccountBalance = { company: string; bank: string; date: string; balance: number };
+export type BankAccountBalance = {
+  company: string;
+  bank: string;
+  currency: "ARS" | "USD";
+  date: string;
+  balance: number;
+};
+
+const normCurrency = (c?: string): "ARS" | "USD" =>
+  String(c || "").toUpperCase() === "USD" ? "USD" : "ARS";
 
 // Detecta si en esta cuenta el id CRECE con la fecha (Santander se carga cronologico: id mas alto =
 // mas nuevo) o DECRECE (Patagonia sale del Excel al reves: id mas bajo = mas nuevo). Usa el signo de
@@ -125,18 +135,31 @@ export function latestBankBalancesByAccount(
   for (const e of entries) {
     if (!e || !e.date) continue;
     if (until && e.date > until) continue;
-    const key = `${e.company ?? ""}||${e.bank ?? ""}`;
+    // La moneda entra en la clave: una cuenta en USD (misma "bank") es una cuenta DISTINTA de la de
+    // pesos, y sus saldos NUNCA se mezclan (el peso y el dólar conviven, no se suman).
+    const key = `${e.company ?? ""}||${e.bank ?? ""}||${normCurrency(e.currency)}`;
     const list = groups.get(key);
     if (list) list.push(e);
     else groups.set(key, [e]);
   }
   return Array.from(groups.entries())
     .map(([key, list]) => {
-      const [company, bank] = key.split("||");
+      const [company, bank, currency] = key.split("||");
       const chosen = pickLatestEntry(list);
-      return { company, bank, date: chosen.date, balance: num(chosen.balance) };
+      return {
+        company,
+        bank,
+        currency: currency as "ARS" | "USD",
+        date: chosen.date,
+        balance: num(chosen.balance),
+      };
     })
-    .sort((a, b) => a.company.localeCompare(b.company) || a.bank.localeCompare(b.bank));
+    .sort(
+      (a, b) =>
+        a.company.localeCompare(b.company) ||
+        a.bank.localeCompare(b.bank) ||
+        a.currency.localeCompare(b.currency)
+    );
 }
 
 // Suma de los ultimos saldos de todas las cuentas = plata en banco de la reserva (pesos, blanco).

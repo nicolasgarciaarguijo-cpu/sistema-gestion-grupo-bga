@@ -600,6 +600,10 @@ export type BankStatementEntry = {
   concept: string;
   amount: number;
   balance: number;
+  // Moneda de la cuenta. Ausente = ARS (pesos), así que todo lo ya cargado se lee como pesos sin
+  // migración. Una cuenta en USD es OTRA cuenta: su saldo alimenta la billetera USD-banco de la
+  // reserva y NUNCA se suma con los pesos.
+  currency?: "ARS" | "USD";
   notes: string;
   attachmentName?: string;
   extractedAutomatically: boolean;

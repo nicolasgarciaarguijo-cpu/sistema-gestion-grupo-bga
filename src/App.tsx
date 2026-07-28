@@ -11325,13 +11325,15 @@ export default function App() {
   }, [analysisYear, annualDebtRows]);
 
   const bankStatementSummary = useMemo(() => {
-    const credits = visibleBankStatementEntries
+    // Resumen en PESOS: las cuentas en USD (currency==="USD") se excluyen para no mezclar monedas.
+    const arsEntries = visibleBankStatementEntries.filter((item) => item.currency !== "USD");
+    const credits = arsEntries
       .filter((item) => item.movementType === "credito")
       .reduce((acc, item) => acc + Number(item.amount || 0), 0);
-    const debits = visibleBankStatementEntries
+    const debits = arsEntries
       .filter((item) => item.movementType === "debito")
       .reduce((acc, item) => acc + Number(item.amount || 0), 0);
-    const lastBalance = [...visibleBankStatementEntries]
+    const lastBalance = [...arsEntries]
       .sort((a, b) => a.date.localeCompare(b.date))
       .at(-1)?.balance || 0;
     return {
@@ -11372,7 +11374,14 @@ export default function App() {
   const reservaSummary = useMemo(() => {
     const inScope = (company: string) =>
       balanceCompanyScope === "__ALL__" || company === balanceCompanyScope;
-    const openingBankArs = reservaBankAccounts.reduce((acc, a) => acc + a.balance, 0);
+    // Saldo de banco por moneda: las cuentas en pesos alimentan la billetera banco-pesos y las cuentas
+    // en dólares (082-004486/0) la billetera banco-USD. NUNCA se suman entre sí.
+    const openingBankArs = reservaBankAccounts
+      .filter((a) => a.currency !== "USD")
+      .reduce((acc, a) => acc + a.balance, 0);
+    const openingBankUsd = reservaBankAccounts
+      .filter((a) => a.currency === "USD")
+      .reduce((acc, a) => acc + a.balance, 0);
     // Cobros en USD de los trabajos: se inyectan a la billetera USD. No hay doble conteo porque los
     // dolares no aparecen en los extractos en pesos (a diferencia de un cobro en pesos, que ya viene
     // por el banco y por eso NO se suma aca).
@@ -11383,6 +11392,7 @@ export default function App() {
     );
     return buildReservaFromSources({
       openingBankArs,
+      openingBankUsd,
       until: reservaUntil,
       extraMovements: usdPaymentMovements,
       pettyCashFunds: visiblePettyCashFunds

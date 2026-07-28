@@ -185,6 +185,21 @@ describe("reservaSources", () => {
       // cortando en junio, Patagonia de julio no cuenta
       expect(sumLatestBankBalances(entries, "2026-06-30")).toBeCloseTo(-20150.48 + 3110482.54, 2);
     });
+
+    // Una cuenta en USD (misma "bank") es OTRA cuenta: su saldo NO se mezcla con el de pesos.
+    it("separa la cuenta en USD de la cuenta en pesos del mismo banco", () => {
+      const mixed = [
+        { company: "BGA", bank: "Santander", date: "2026-07-21", balance: 3720701.04, id: 700540 },
+        { company: "BGA", bank: "Santander", date: "2026-07-17", balance: 0, id: 800100, currency: "USD" },
+        { company: "BGA", bank: "Santander", date: "2026-07-13", balance: 10579.25, id: 800099, currency: "USD" },
+      ];
+      const accounts = latestBankBalancesByAccount(mixed);
+      expect(accounts).toHaveLength(2); // pesos y dólares por separado
+      const ars = accounts.find((a) => a.currency === "ARS")!;
+      const usd = accounts.find((a) => a.currency === "USD")!;
+      expect(ars.balance).toBeCloseTo(3720701.04, 2);
+      expect(usd.balance).toBeCloseTo(0, 2); // último saldo USD (17/07), no el de 13/07
+    });
   });
 
   describe("cobros en USD -> billetera USD", () => {

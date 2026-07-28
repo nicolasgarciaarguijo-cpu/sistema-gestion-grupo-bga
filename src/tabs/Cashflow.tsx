@@ -137,7 +137,7 @@ type CashflowTabProps = {
   annualDebtRows: any[];
   bankStatementSummary: any;
   reservaSummary: any;
-  reservaBankAccounts: { company: string; bank: string; date: string; balance: number }[];
+  reservaBankAccounts: { company: string; bank: string; currency?: "ARS" | "USD"; date: string; balance: number }[];
   reservaUntil?: string;
   contributionsSummary: CapitalSummary;
   capitalEntries: CapitalEntry[];
@@ -685,9 +685,11 @@ export function CashflowTab({
                 <div>
                   {reservaBankAccounts.map((a) => (
                     <StatRow
-                      key={`${a.company}-${a.bank}`}
-                      label={`${getCompanyMeta(a.company as CompanyName)?.short || a.company} · ${a.bank}`}
-                      value={`${money(a.balance)}  ·  ${formatDateDisplay(a.date)}`}
+                      key={`${a.company}-${a.bank}-${a.currency || "ARS"}`}
+                      label={`${getCompanyMeta(a.company as CompanyName)?.short || a.company} · ${a.bank}${
+                        a.currency === "USD" ? " (U$S)" : ""
+                      }`}
+                      value={`${money(a.balance, a.currency === "USD" ? "USD" : "ARS")}  ·  ${formatDateDisplay(a.date)}`}
                       tone={a.balance < 0 ? "out" : undefined}
                     />
                   ))}
