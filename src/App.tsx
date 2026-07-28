@@ -15434,6 +15434,17 @@ function BudgetDocument({
   const companyBankingLines = getCompanyBankingLines(budget.company);
   const mutedLabel = "#9aa3b2";
   const inkColor = "#1a2230";
+  // Moneda por bloque: un bloque en U$S se muestra con su signo (U$S), NUNCA como pesos. Los bloques
+  // en dolares no se suman con los pesos: el consolidado (`consolidatedTotals`) es SOLO pesos y el
+  // total en dolares se calcula aparte desde los bloques dolarizados (misma regla que el editor).
+  const sectionCurrency = (s: BudgetSection): "ARS" | "USD" =>
+    String(s.currency || "").toUpperCase() === "USD" ? "USD" : "ARS";
+  const usdSections = sections.filter((s) => sectionCurrency(s) === "USD");
+  const pesoSections = sections.filter((s) => sectionCurrency(s) !== "USD");
+  const usdNetTotal = usdSections.reduce((acc, s) => acc + Number(s.totals?.netPrice || 0), 0);
+  const usdFinalTotal = usdSections.reduce((acc, s) => acc + Number(s.totals?.finalPrice || 0), 0);
+  const hasUsdSections = usdSections.length > 0 && (usdNetTotal !== 0 || usdFinalTotal !== 0);
+  const showPesosTotal = pesoSections.length > 0 || !hasUsdSections;
   const eyebrow: React.CSSProperties = {
     fontSize: 9.5,
     letterSpacing: 1.8,
@@ -15582,14 +15593,22 @@ function BudgetDocument({
         <div key={section.id} style={card}>
           <div style={styles.printSectionHeader}>
             <div>
-              <div style={eyebrow}>{section.title || `Subpresupuesto ${index + 1}`}</div>
+              <div style={eyebrow}>
+                {section.title || `Subpresupuesto ${index + 1}`}
+                {sectionCurrency(section) === "USD" && (
+                  <span style={{ marginLeft: 6, color: companyTheme.primary }}>· U$S</span>
+                )}
+              </div>
               {section.notes && (
                 <div style={{ fontSize: 12, color: mutedLabel }}>{section.notes}</div>
               )}
             </div>
             <div style={styles.printSectionMeta}>
               <div style={{ fontSize: 12, color: mutedLabel }}>
-                Neto <span style={{ color: inkColor }}>{money(section.totals.netPrice)}</span>
+                Neto{" "}
+                <span style={{ color: inkColor }}>
+                  {money(section.totals.netPrice, sectionCurrency(section))}
+                </span>
               </div>
               <div
                 style={{
@@ -15603,7 +15622,7 @@ function BudgetDocument({
                   justifySelf: "end",
                 }}
               >
-                Total c/IVA {money(section.totals.finalPrice)}
+                Total c/IVA {money(section.totals.finalPrice, sectionCurrency(section))}
               </div>
             </div>
           </div>
@@ -15623,13 +15642,19 @@ function BudgetDocument({
 
           {section.discounts.length > 0 && (
             <div style={{ marginTop: 12, fontSize: 12 }}>
-              <div>Neto antes de descuentos: {money(section.totals.preDiscountNetPrice)}</div>
+              <div>
+                Neto antes de descuentos:{" "}
+                {money(section.totals.preDiscountNetPrice, sectionCurrency(section))}
+              </div>
               {section.discounts.map((item) => (
                 <div key={item.id}>
-                  {item.description}: -{money(item.amount)}
+                  {item.description}: -{money(item.amount, sectionCurrency(section))}
                 </div>
               ))}
-              <div><strong>Total descuentos:</strong> -{money(section.totals.totalDiscountAmount)}</div>
+              <div>
+                <strong>Total descuentos:</strong> -
+                {money(section.totals.totalDiscountAmount, sectionCurrency(section))}
+              </div>
             </div>
           )}
         </div>
@@ -15655,31 +15680,53 @@ function BudgetDocument({
             padding: "14px 18px",
           }}
         >
-          {consolidatedTotals.totalDiscountAmount > 0 && (
+          {showPesosTotal && (
             <>
+              {consolidatedTotals.totalDiscountAmount > 0 && (
+                <>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
+                    <span>Neto antes de descuentos</span>
+                    <span>{money(consolidatedTotals.preDiscountNetPrice)}</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
+                    <span>Total descuentos</span>
+                    <span>-{money(consolidatedTotals.totalDiscountAmount)}</span>
+                  </div>
+                </>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
-                <span>Neto antes de descuentos</span>
-                <span>{money(consolidatedTotals.preDiscountNetPrice)}</span>
+                <span>Valor neto total{hasUsdSections ? " (pesos)" : ""}</span>
+                <span style={{ color: inkColor }}>{money(consolidatedTotals.netPrice)}</span>
               </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
-                <span>Total descuentos</span>
-                <span>-{money(consolidatedTotals.totalDiscountAmount)}</span>
+              <div style={{ height: 1, background: hexToRgba(companyTheme.primary, 0.25), margin: "10px 0" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ ...eyebrow, marginBottom: 0 }}>
+                  Total con IVA ({vatPct}%){hasUsdSections ? " · pesos" : ""}
+                </span>
+                <span style={{ fontSize: 26, fontWeight: 700, color: companyTheme.primary }}>
+                  {money(consolidatedTotals.finalPrice)}
+                </span>
               </div>
             </>
           )}
-          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
-            <span>Valor neto total</span>
-            <span style={{ color: inkColor }}>{money(consolidatedTotals.netPrice)}</span>
-          </div>
-          <div style={{ height: 1, background: hexToRgba(companyTheme.primary, 0.25), margin: "10px 0" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-            <span style={{ ...eyebrow, marginBottom: 0 }}>
-              Total con IVA ({vatPct}%)
-            </span>
-            <span style={{ fontSize: 26, fontWeight: 700, color: companyTheme.primary }}>
-              {money(consolidatedTotals.finalPrice)}
-            </span>
-          </div>
+          {hasUsdSections && (
+            <>
+              {showPesosTotal && (
+                <div style={{ height: 1, background: hexToRgba(companyTheme.primary, 0.25), margin: "10px 0" }} />
+              )}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: mutedLabel, padding: "3px 0" }}>
+                <span>Valor neto total (U$S)</span>
+                <span style={{ color: inkColor }}>{money(usdNetTotal, "USD")}</span>
+              </div>
+              <div style={{ height: 1, background: hexToRgba(companyTheme.primary, 0.25), margin: "10px 0" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+                <span style={{ ...eyebrow, marginBottom: 0 }}>Total con IVA ({vatPct}%) · U$S</span>
+                <span style={{ fontSize: 26, fontWeight: 700, color: companyTheme.primary }}>
+                  {money(usdFinalTotal, "USD")}
+                </span>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
