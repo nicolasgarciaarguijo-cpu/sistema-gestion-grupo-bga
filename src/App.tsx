@@ -384,8 +384,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "historial", label: "CRM" },
   { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
-  { key: "costos", label: "Pago a proveedores · costos fijos y variables" },
-  { key: "tarjetas", label: "Tarjetas" },
+  { key: "costos", label: "Pago a proveedores · Bancos · Tarjetas · (Costos fijos y variables)" },
   { key: "documentos", label: "Documentos" },
   { key: "marcadores", label: "Marcadores" },
   { key: "manual", label: "Manual" },
@@ -402,7 +401,6 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "cajaChica",
   "personal",
   "costos",
-  "tarjetas",
 ];
 const CARGA_TAB_KEYS: TabKey[] = ["documentos", "manual"];
 
@@ -1739,9 +1737,8 @@ const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> 
   stock: ["stock-costos", "marcadores", "trabajos-aprobados"],
   personal: ["personal"],
   // Costos agrega compras/caja chica/personal, asi que necesita esos modulos para calcular.
-  costos: ["mensuales", "costos", "compras", "caja-chica", "personal"],
-  // Tarjetas: sus consumos se clasifican con los grupos de Costos (para cotización/marcadores).
-  tarjetas: ["tarjetas", "costos"],
+  // Costos: incluye Pago a proveedores, Bancos y Tarjetas (todo en la misma solapa).
+  costos: ["mensuales", "costos", "compras", "caja-chica", "personal", "tarjetas"],
   documentos: ["documentos"],
   marcadores: ["marcadores", "stock-costos", "personal", "costos"],
 };
@@ -14552,7 +14549,7 @@ export default function App() {
         />
       )}
 
-      {activeTab === "tarjetas" && (
+      {activeTab === "costos" && (
         <TarjetasTab
           companyScope={tarjetasCompanyScope}
           onScopeChange={setTarjetasCompanyScope}
