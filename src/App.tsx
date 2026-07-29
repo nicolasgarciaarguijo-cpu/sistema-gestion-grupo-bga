@@ -52,6 +52,8 @@ import {
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
+import { aggregateCardCosts } from "./domain/cardCosts";
+import { TarjetasTab } from "./tabs/Tarjetas";
 import { detectIntercompanyTransfers, summarizeIntercompany } from "./domain/intercompany";
 import {
   companyFolderName,
@@ -172,6 +174,9 @@ import type {
   CostEntry,
   CostRule,
   CostKind,
+  CreditCard,
+  CreditCardStatement,
+  CreditCardConsumption,
   Supplier,
   IssuedInvoice,
   RemitoDraftRow,
@@ -380,6 +385,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
   { key: "costos", label: "Pago a proveedores · costos fijos y variables" },
+  { key: "tarjetas", label: "Tarjetas" },
   { key: "documentos", label: "Documentos" },
   { key: "marcadores", label: "Marcadores" },
   { key: "manual", label: "Manual" },
@@ -396,6 +402,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "cajaChica",
   "personal",
   "costos",
+  "tarjetas",
 ];
 const CARGA_TAB_KEYS: TabKey[] = ["documentos", "manual"];
 
@@ -473,6 +480,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   stock: "SA",
   personal: "PE",
   costos: "CFV",
+  tarjetas: "TAR",
   documentos: "DOC",
   manual: "MAN",
 };
@@ -1572,6 +1580,9 @@ type PersistedAppStateData = {
   costGroups: CostGroup[];
   costEntries: CostEntry[];
   costRules: CostRule[];
+  creditCards: CreditCard[];
+  creditCardStatements: CreditCardStatement[];
+  creditCardConsumptions: CreditCardConsumption[];
   suppliers: Supplier[];
   issuedInvoices: IssuedInvoice[];
   remitoDrafts: RemitoDraft[];
@@ -1690,6 +1701,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     ] as const,
   },
   {
+    key: "tarjetas",
+    label: "Tarjetas de crédito",
+    fields: ["creditCards", "creditCardStatements", "creditCardConsumptions"] as const,
+  },
+  {
     key: "archivos",
     label: "Archivos, logos y datos de empresas",
     fields: ["companyAssets"] as const,
@@ -1724,6 +1740,8 @@ const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> 
   personal: ["personal"],
   // Costos agrega compras/caja chica/personal, asi que necesita esos modulos para calcular.
   costos: ["mensuales", "costos", "compras", "caja-chica", "personal"],
+  // Tarjetas: sus consumos se clasifican con los grupos de Costos (para cotización/marcadores).
+  tarjetas: ["tarjetas", "costos"],
   documentos: ["documentos"],
   marcadores: ["marcadores", "stock-costos", "personal", "costos"],
 };
@@ -2602,6 +2620,10 @@ export default function App() {
   const [costGroups, setCostGroups] = useState<CostGroup[]>(defaultCostGroups);
   const [costEntries, setCostEntries] = useState<CostEntry[]>(defaultCostEntries);
   const [costRules, setCostRules] = useState<CostRule[]>([]);
+  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
+  const [creditCardStatements, setCreditCardStatements] = useState<CreditCardStatement[]>([]);
+  const [creditCardConsumptions, setCreditCardConsumptions] = useState<CreditCardConsumption[]>([]);
+  const [tarjetasCompanyScope, setTarjetasCompanyScope] = useState<string>("__ALL__");
   const [suppliers, setSuppliers] = useState<Supplier[]>(defaultSuppliers);
   const [issuedInvoices, setIssuedInvoices] = useState<IssuedInvoice[]>(defaultIssuedInvoices);
   const [costsFiscalStartYear, setCostsFiscalStartYear] = useState<number>(() =>
@@ -3508,6 +3530,9 @@ export default function App() {
     prune(bankStatementEntries, setBankStatementEntries);
     prune(capitalEntries, setCapitalEntries);
     prune(cashHoldings, setCashHoldings);
+    prune(creditCards, setCreditCards);
+    prune(creditCardStatements, setCreditCardStatements);
+    prune(creditCardConsumptions, setCreditCardConsumptions);
     prune(stockItems, setStockItems);
     prune(costAnalysisGroups, setCostAnalysisGroups);
     prune(costAnalysisEntries, setCostAnalysisEntries);
@@ -3532,6 +3557,9 @@ export default function App() {
     bankStatementEntries,
     capitalEntries,
     cashHoldings,
+    creditCards,
+    creditCardStatements,
+    creditCardConsumptions,
     stockItems,
     costAnalysisGroups,
     costAnalysisEntries,
@@ -3893,6 +3921,31 @@ export default function App() {
   const visibleCashHoldings = useMemo(
     () => cashHoldings.filter((item) => canAccessCompany(item.company)),
     [cashHoldings, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  const visibleCreditCards = useMemo(
+    () => creditCards.filter((item) => canAccessCompany(item.company)),
+    [creditCards, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+  const visibleCreditCardStatements = useMemo(
+    () => creditCardStatements.filter((item) => canAccessCompany(item.company)),
+    [creditCardStatements, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+  const visibleCreditCardConsumptions = useMemo(
+    () => creditCardConsumptions.filter((item) => canAccessCompany(item.company)),
+    [creditCardConsumptions, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+  const scopedCardConsumptions = useMemo(
+    () =>
+      visibleCreditCardConsumptions.filter(
+        (c) => tarjetasCompanyScope === "__ALL__" || c.company === tarjetasCompanyScope
+      ),
+    [visibleCreditCardConsumptions, tarjetasCompanyScope]
+  );
+  // Agregación fijo/variable de los consumos de tarjeta: SOLO para cotización/marcadores.
+  const cardCostSummary = useMemo(
+    () => aggregateCardCosts(scopedCardConsumptions, costGroups),
+    [scopedCardConsumptions, costGroups]
   );
 
   const visibleBankStatementEntries = useMemo(
@@ -7990,6 +8043,9 @@ export default function App() {
     costGroups: costGroups.map((item) => ({ ...item })),
     costEntries: costEntries.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
+    creditCards: creditCards.map((item) => ({ ...item })),
+    creditCardStatements: creditCardStatements.map((item) => ({ ...item })),
+    creditCardConsumptions: creditCardConsumptions.map((item) => ({ ...item })),
     suppliers: suppliers.map((item) => ({ ...item })),
     issuedInvoices: issuedInvoices.map((item) => ({ ...item })),
     remitoDrafts: remitoDrafts.map((draft) => ({
@@ -8256,6 +8312,23 @@ export default function App() {
         active: item.active !== false,
         hits: Number(item.hits || 0),
         notes: item.notes || "",
+      }))
+    );
+    setCreditCards(
+      keepAccessibleByCompany(data.creditCards || []).map((item) => ({ ...item }))
+    );
+    setCreditCardStatements(
+      keepAccessibleByCompany(data.creditCardStatements || []).map((item) => ({
+        ...item,
+        paid: Boolean(item.paid),
+      }))
+    );
+    setCreditCardConsumptions(
+      keepAccessibleByCompany(data.creditCardConsumptions || []).map((item) => ({
+        ...item,
+        currency: item.currency === "USD" ? "USD" : "ARS",
+        recurring: Boolean(item.recurring),
+        group: item.group || "",
       }))
     );
     setSuppliers(
@@ -10291,6 +10364,9 @@ export default function App() {
     bankStatementEntries,
     capitalEntries,
     cashHoldings,
+    creditCards,
+    creditCardStatements,
+    creditCardConsumptions,
     stockItems,
     costAnalysisGroups,
     costAnalysisEntries,
@@ -12753,6 +12829,111 @@ export default function App() {
     setCostRules((prev) => prev.filter((rule) => rule.id !== id));
   };
 
+  // --- TARJETAS DE CRÉDITO ---
+  const tarjetasNewCompany = (): CompanyName =>
+    (tarjetasCompanyScope === "__ALL__"
+      ? COMPANY_OPTIONS[0].value
+      : tarjetasCompanyScope) as CompanyName;
+
+  const addCreditCard = () =>
+    setCreditCards((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        company: tarjetasNewCompany(),
+        name: "Nueva tarjeta",
+        bank: "",
+        lastDigits: "",
+        active: true,
+        notes: "",
+      },
+    ]);
+  const removeCreditCard = (id: number) =>
+    setCreditCards((prev) => prev.filter((c) => c.id !== id));
+  const updateCreditCard = (id: number, field: keyof CreditCard, value: any) =>
+    setCreditCards((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
+
+  const addCreditCardStatement = () =>
+    setCreditCardStatements((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        company: tarjetasNewCompany(),
+        cardId: visibleCreditCards[0]?.id ?? 0,
+        closingDate: todayIso(),
+        dueDate: "",
+        totalArs: 0,
+        totalUsd: 0,
+        minPaymentArs: 0,
+        paid: false,
+        notes: "",
+      },
+    ]);
+  const removeCreditCardStatement = (id: number) =>
+    setCreditCardStatements((prev) => prev.filter((s) => s.id !== id));
+  const updateCreditCardStatement = (id: number, field: keyof CreditCardStatement, value: any) =>
+    setCreditCardStatements((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
+
+  const addCreditCardConsumption = () =>
+    setCreditCardConsumptions((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        company: tarjetasNewCompany(),
+        cardId: visibleCreditCards[0]?.id ?? 0,
+        date: todayIso(),
+        description: "",
+        amount: 0,
+        currency: "ARS",
+        group: "",
+        installments: "",
+        recurring: false,
+        notes: "",
+      },
+    ]);
+  const removeCreditCardConsumption = (id: number) =>
+    setCreditCardConsumptions((prev) => prev.filter((c) => c.id !== id));
+  const updateCreditCardConsumption = (
+    id: number,
+    field: keyof CreditCardConsumption,
+    value: any
+  ) => {
+    setCreditCardConsumptions((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        const next = { ...c, [field]: value };
+        // Al escribir la descripción, si no tiene grupo, se sugiere desde las reglas aprendidas.
+        if (field === "description" && !c.group) {
+          const s = suggestGroupFromRules(
+            { company: String(c.company), concept: String(value), amount: c.amount },
+            costRules
+          );
+          if (s) next.group = s.group;
+        }
+        return next;
+      })
+    );
+    // Clasificar a un grupo aprende la regla (memoria compartida con Costos).
+    if (field === "group" && value && !isAutoCostGroup(String(value))) {
+      const entry = creditCardConsumptions.find((c) => c.id === id);
+      if (entry) {
+        setCostRules(
+          (rules) =>
+            learnCostRule(
+              rules,
+              {
+                company: String(entry.company),
+                group: String(value),
+                concept: entry.description,
+                amount: entry.amount,
+              },
+              newId()
+            ).rules
+        );
+      }
+    }
+  };
+
   // Import del extracto: lee el archivo y arma el borrador para revisar. No impacta nada todavia.
   const handleCostStatementFile = async (file: File | null) => {
     if (!file) return;
@@ -14368,6 +14549,30 @@ export default function App() {
           removeBankStatementEntry={removeBankStatementEntry}
           updateBankStatementEntry={updateBankStatementEntry}
           uploadBankStatementFile={uploadBankStatementFile}
+        />
+      )}
+
+      {activeTab === "tarjetas" && (
+        <TarjetasTab
+          companyScope={tarjetasCompanyScope}
+          onScopeChange={setTarjetasCompanyScope}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          getCompanyMeta={getCompanyMeta}
+          cards={visibleCreditCards}
+          statements={visibleCreditCardStatements}
+          consumptions={visibleCreditCardConsumptions}
+          cardCostSummary={cardCostSummary}
+          manualGroupOptions={costGroups.filter((g) => g.active && !g.auto).map((g) => g.name)}
+          createCostGroup={createCostGroup}
+          addCreditCard={addCreditCard}
+          removeCreditCard={removeCreditCard}
+          updateCreditCard={updateCreditCard}
+          addCreditCardStatement={addCreditCardStatement}
+          removeCreditCardStatement={removeCreditCardStatement}
+          updateCreditCardStatement={updateCreditCardStatement}
+          addCreditCardConsumption={addCreditCardConsumption}
+          removeCreditCardConsumption={removeCreditCardConsumption}
+          updateCreditCardConsumption={updateCreditCardConsumption}
         />
       )}
 

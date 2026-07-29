@@ -31,6 +31,7 @@ export type TabKey =
   | "stock"
   | "personal"
   | "costos"
+  | "tarjetas"
   | "documentos"
   | "manual";
 
@@ -738,6 +739,51 @@ export type CostEntry = {
 };
 
 export type PaymentMethod = "transferencia" | "cheque" | "efectivo" | "debito";
+
+// TARJETAS DE CRÉDITO. El itemizado de consumos sirve para IDENTIFICAR costos fijos/variables para
+// COTIZAR y preparar los marcadores. NO suma al estado de resultados (el resultado sale de los pagos
+// reales; la tarjeta es insumo de cotización, igual que los marcadores). Por eso no hay doble conteo:
+// el pago del resumen en el banco es un movimiento aparte y no se cruza con estos consumos.
+export type CreditCard = {
+  id: number;
+  company: CompanyName;
+  name: string; // "Visa Santander", "Visa Business", "Visa Corporate"
+  bank: string; // Santander / Patagonia
+  lastDigits: string;
+  active: boolean;
+  notes: string;
+};
+
+// Resumen/cierre de la tarjeta: para ver vencimientos y saldos (previsión de pago). Pesos y dólares
+// nunca se suman.
+export type CreditCardStatement = {
+  id: number;
+  company: CompanyName;
+  cardId: number;
+  closingDate: string; // cierre
+  dueDate: string; // vencimiento
+  totalArs: number; // saldo actual $
+  totalUsd: number; // saldo actual U$S
+  minPaymentArs: number;
+  paid: boolean;
+  notes: string;
+};
+
+// Consumo itemizado de la tarjeta, clasificado a un grupo de costo (fijo/variable lo define el grupo,
+// igual que en la solapa Costos). SOLO para cotización/marcadores; NO impacta resultados.
+export type CreditCardConsumption = {
+  id: number;
+  company: CompanyName;
+  cardId: number;
+  date: string;
+  description: string;
+  amount: number;
+  currency: "ARS" | "USD";
+  group: string; // nombre de CostGroup (fijo/variable)
+  installments: string; // "3/12" cuotas (texto libre)
+  recurring: boolean; // consumo mensual que se repite (útil para el marcador)
+  notes: string;
+};
 
 // REGLA DE CLASIFICACION con memoria: cuando el usuario clasifica un gasto a un grupo, se aprende una
 // regla para que el próximo gasto "del mismo tipo" SUGIERA ese grupo (nunca lo aplica solo: el usuario

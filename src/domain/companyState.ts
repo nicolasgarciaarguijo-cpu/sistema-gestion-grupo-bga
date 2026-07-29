@@ -41,6 +41,9 @@ export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   ],
   personal: ["employees"],
   "stock-costos": ["costAnalysisGroups", "stockItems", "costAnalysisEntries"],
+  // Tarjetas por empresa (cada tarjeta/resumen/consumo pertenece a una empresa). Modulo nuevo sin
+  // datos legacy: no necesita entrada en el splitter SQL (el frontend escribe v2 directo).
+  tarjetas: ["creditCards", "creditCardStatements", "creditCardConsumptions"],
   "trabajos-aprobados": ["approvedJobs"],
 };
 
