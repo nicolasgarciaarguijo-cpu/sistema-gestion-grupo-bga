@@ -100,6 +100,7 @@ import {
   FileDropButton,
 } from "./ui/primitives";
 import { TopStatusBar, type DollarRate } from "./ui/TopStatusBar";
+import { PlataDisponible } from "./ui/PlataDisponible";
 import { ChangeReport } from "./ui/ChangeReport";
 import { CashflowTab } from "./tabs/Cashflow";
 import { ComprasTab } from "./tabs/Compras";
@@ -11424,6 +11425,90 @@ export default function App() {
     });
   }, [reservaBankAccounts, reservaUntil, visiblePettyCashFunds, visiblePettyCashExpenses, visibleCashHoldings, visibleApprovedJobs, balanceCompanyScope]);
 
+  // PLATA DISPONIBLE (tablero superior): la reserva calculada POR empresa (no sigue el selector del
+  // balance), para ver de un vistazo cuánta plata hay en cada banco de cada empresa y cuánto en negro,
+  // y decidir de dónde gastar. Solo empresas accesibles (canAccessCompany). Es sensible (muestra
+  // negro): App lo renderiza solo para admins. Es una foto de HOY (sin corte por período).
+  const plataDisponibleByCompany = useMemo(() => {
+    const realCompanies = COMPANY_OPTIONS.filter(
+      (c) => c.value && c.value !== "General" && canAccessCompany(c.value as CompanyName)
+    );
+    return realCompanies.map((c) => {
+      const company = c.value as CompanyName;
+      const banks = latestBankBalancesByAccount(
+        visibleBankStatementEntries.filter((e) => e.company === company)
+      );
+      const openingBankArs = banks
+        .filter((b) => b.currency !== "USD")
+        .reduce((acc, b) => acc + b.balance, 0);
+      const openingBankUsd = banks
+        .filter((b) => b.currency === "USD")
+        .reduce((acc, b) => acc + b.balance, 0);
+      const reserva = buildReservaFromSources({
+        openingBankArs,
+        openingBankUsd,
+        pettyCashFunds: visiblePettyCashFunds
+          .filter((f) => f.company === company)
+          .map((f) => ({
+            deliveredDate: f.deliveredDate,
+            assignedAmount: Number(f.assignedAmount || 0),
+            assignedWhite: f.assignedWhite,
+            assignedBlack: f.assignedBlack,
+          })),
+        pettyCashExpenses: visiblePettyCashExpenses
+          .filter((e) => e.company === company)
+          .map((e) => ({
+            date: e.date,
+            amount: Number(e.amount || 0),
+            administration: e.administration === "negro" ? "negro" : "blanco",
+          })),
+        cashHoldings: visibleCashHoldings
+          .filter((h) => h.company === company)
+          .map((h) => ({
+            date: h.date,
+            currency: h.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+            color: h.color === "negro" ? ("negro" as const) : ("blanco" as const),
+            kind: h.kind === "egreso" ? ("egreso" as const) : ("ingreso" as const),
+            amount: Number(h.amount || 0),
+          })),
+        extraMovements: usdPaymentsToMovements(
+          visibleApprovedJobs
+            .filter((j) => j.company === company)
+            .flatMap((j) => (j.payments || []).filter((p) => p.currency === "USD"))
+        ),
+      });
+      const totArs = reserva.totals.find((t) => t.currency === "ARS");
+      const totUsd = reserva.totals.find((t) => t.currency === "USD");
+      const proximoPagar = visibleDebtPlans
+        .filter((d) => d.company === company && d.active)
+        .reduce((acc, d) => acc + Number(d.nextInstallmentAmount || 0), 0);
+      return {
+        company,
+        short: c.short || company,
+        primary: c.primary || "#475569",
+        soft: c.soft || "#e2e8f0",
+        banks: banks.map((b) => ({ bank: b.bank, currency: b.currency, balance: b.balance })),
+        totalArs: totArs?.closing || 0,
+        blancoArs: totArs?.byColor.blanco.closing || 0,
+        negroArs: totArs?.byColor.negro.closing || 0,
+        totalUsd: totUsd?.closing || 0,
+        negroUsd: totUsd?.byColor.negro.closing || 0,
+        proximoPagar,
+      };
+    });
+  }, [
+    COMPANY_OPTIONS,
+    visibleBankStatementEntries,
+    visiblePettyCashFunds,
+    visiblePettyCashExpenses,
+    visibleCashHoldings,
+    visibleApprovedJobs,
+    visibleDebtPlans,
+    effectiveIsAdmin,
+    isSupabaseLoggedIn,
+    allowedCompaniesForSession,
+  ]);
+
   // DEUDAS Y APORTES (registro; ver domain/contributions.ts). Sigue el mismo selector de empresa.
   const contributionsSummary = useMemo(
     () =>
@@ -13552,6 +13637,9 @@ export default function App() {
           connectedUsers={otherActiveSessions}
           primary={workspaceTheme.primary}
         />
+      )}
+      {isSupabaseLoggedIn && activeTab !== "acceso" && effectiveIsAdmin && (
+        <PlataDisponible companies={plataDisponibleByCompany} />
       )}
       <div style={{ ...styles.headerBar, borderTop: `8px solid ${workspaceTheme.primary}` }}>
         <div>
