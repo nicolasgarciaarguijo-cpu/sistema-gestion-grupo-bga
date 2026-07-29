@@ -17,7 +17,15 @@ import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel } from "../domain/costs";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
 import { PAYMENT_METHOD_OPTIONS } from "../domain/types";
-import type { CompanyName, CostEntry, CostGroup, CostKind, IssuedInvoice, Supplier } from "../domain/types";
+import type {
+  CompanyName,
+  CostEntry,
+  CostGroup,
+  CostKind,
+  CostRule,
+  IssuedInvoice,
+  Supplier,
+} from "../domain/types";
 import type { ReconciliationSummary } from "../domain/suppliers";
 import type { IntercompanyTransfer, IntercompanySummary } from "../domain/intercompany";
 
@@ -30,6 +38,11 @@ export type CostStatementDraftRow = {
   group: string;
   administration: "blanco" | "negro";
   include: boolean;
+  // Precompletado por el motor de reglas (para mostrar un indicio "sugerido"): quién detectó el grupo.
+  suggestedVia?: "supplier" | "keyword" | "amount";
+  // Proveedor detectado en el concepto (para vincular el gasto y aprender la regla al confirmar).
+  supplierId?: number;
+  supplierName?: string;
 };
 
 type CostosTabProps = {
@@ -53,6 +66,10 @@ type CostosTabProps = {
   addCostEntry: () => void;
   removeCostEntry: (id: number) => void;
   updateCostEntry: (id: number, field: keyof CostEntry, value: any) => void;
+  // reglas de clasificación con memoria
+  costRules: CostRule[];
+  updateCostRule: (id: number, field: keyof CostRule, value: any) => void;
+  removeCostRule: (id: number) => void;
   // proveedores + cotejo del pago contra el extracto
   suppliers: Supplier[];
   addSupplier: () => void;
@@ -113,6 +130,9 @@ export function CostosTab({
   addCostEntry,
   removeCostEntry,
   updateCostEntry,
+  costRules,
+  updateCostRule,
+  removeCostRule,
   statementDraft,
   statementMessage,
   statementBusy,
@@ -137,6 +157,20 @@ export function CostosTab({
   const manualGroupOptions = costGroups
     .filter((group) => group.active && !group.auto)
     .map((group) => group.name);
+
+  // Helpers para el panel de reglas de clasificación.
+  const supplierNameById = new Map(suppliers.map((s) => [s.id, s.name]));
+  const companyShortLabel = (c: string) =>
+    c === "General" ? "General" : getCompanyMeta(c as CompanyName)?.short || c;
+  const ruleCriterioLabel = (rule: CostRule) => {
+    if (rule.matchType === "supplier") {
+      return supplierNameById.get(Number(rule.matchValue)) || `proveedor #${rule.matchValue}`;
+    }
+    if (rule.matchType === "amount") return money(Number(rule.matchValue));
+    return `"${rule.matchValue}"`;
+  };
+  const ruleViaLabel = (rule: CostRule) =>
+    rule.matchType === "supplier" ? "Proveedor" : rule.matchType === "keyword" ? "Palabra clave" : "Monto";
 
   // Cotejo del pago contra el extracto. Verde = el debito esta; ambar = deberia estar y no aparece
   // (o falta cargar el extracto, o el pago esta mal); gris = no pasa por el banco, no se cerifica.
@@ -388,6 +422,14 @@ export function CostosTab({
                             </option>
                           ))}
                         </select>
+                        {row.suggestedVia && row.group && (
+                          <div
+                            style={{ fontSize: 10, color: "#7c3aed", marginTop: 2 }}
+                            title="Grupo sugerido por una regla aprendida. Confirmalo o cambialo."
+                          >
+                            🧠 sugerido{row.supplierName ? ` · ${row.supplierName}` : ""}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <select
@@ -479,6 +521,95 @@ export function CostosTab({
             ))}
           </tbody>
         </table>
+      </Panel>
+
+      <Panel title="Reglas de clasificación · memoria" span="full">
+        <div style={styles.sectionNote}>
+          Cuando clasificás un gasto a un grupo, el sistema <strong>aprende una regla</strong> y el
+          próximo gasto del mismo <strong>proveedor</strong> o <strong>concepto</strong> ya viene{" "}
+          <strong>sugerido</strong> a ese grupo (siempre confirmás vos). Si un mismo criterio se
+          clasificó a <strong>dos grupos distintos</strong>, la regla queda <strong>ambigua</strong> y
+          deja de sugerir hasta que la resuelvas acá (elegí el grupo correcto).
+        </div>
+        {costRules.length === 0 ? (
+          <div style={{ ...styles.muted, marginTop: 8 }}>
+            Todavía no hay reglas. Se crean solas a medida que clasificás gastos (importando el extracto
+            o a mano en "Gastos cargados").
+          </div>
+        ) : (
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th>Empresa</th>
+                <th>Criterio</th>
+                <th>Grupo sugerido</th>
+                <th style={{ textAlign: "center" }}>Veces</th>
+                <th>Estado</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...costRules]
+                .sort(
+                  (a, b) =>
+                    Number(b.ambiguous) - Number(a.ambiguous) ||
+                    Number(b.hits || 0) - Number(a.hits || 0)
+                )
+                .map((rule) => (
+                  <tr
+                    key={rule.id}
+                    style={
+                      rule.ambiguous
+                        ? { background: "#fffbeb" }
+                        : rule.active
+                        ? undefined
+                        : { opacity: 0.5 }
+                    }
+                  >
+                    <td>{companyShortLabel(rule.company)}</td>
+                    <td>
+                      <span style={{ color: "#64748b", fontSize: 12 }}>{ruleViaLabel(rule)}:</span>{" "}
+                      <strong>{ruleCriterioLabel(rule)}</strong>
+                    </td>
+                    <td>
+                      <select
+                        style={styles.input}
+                        value={rule.group}
+                        onChange={(e) => updateCostRule(rule.id, "group", e.target.value)}
+                      >
+                        <option value="">(elegí grupo)</option>
+                        {manualGroupOptions.map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td style={{ textAlign: "center" }}>{rule.hits}</td>
+                    <td>
+                      {rule.ambiguous ? (
+                        <span style={{ color: "#b45309", fontWeight: 600, fontSize: 12 }}>
+                          ⚠ Ambigua — fijá el grupo
+                        </span>
+                      ) : (
+                        <label style={{ fontSize: 12 }}>
+                          <input
+                            type="checkbox"
+                            checked={rule.active}
+                            onChange={(e) => updateCostRule(rule.id, "active", e.target.checked)}
+                          />{" "}
+                          Activa
+                        </label>
+                      )}
+                    </td>
+                    <td>
+                      <ButtonLike onClick={() => removeCostRule(rule.id)}>Borrar</ButtonLike>
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        )}
       </Panel>
 
       <Panel

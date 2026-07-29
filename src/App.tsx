@@ -51,6 +51,7 @@ import {
   isAutoCostGroup,
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
+import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
 import { detectIntercompanyTransfers, summarizeIntercompany } from "./domain/intercompany";
 import {
   companyFolderName,
@@ -169,6 +170,7 @@ import type {
   CostAnalysisEntry,
   CostGroup,
   CostEntry,
+  CostRule,
   Supplier,
   IssuedInvoice,
   RemitoDraftRow,
@@ -1568,6 +1570,7 @@ type PersistedAppStateData = {
   costAnalysisEntries: CostAnalysisEntry[];
   costGroups: CostGroup[];
   costEntries: CostEntry[];
+  costRules: CostRule[];
   suppliers: Supplier[];
   issuedInvoices: IssuedInvoice[];
   remitoDrafts: RemitoDraft[];
@@ -1609,7 +1612,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "costos",
     label: "Costos fijos y variables",
-    fields: ["costGroups", "costEntries", "suppliers"] as const,
+    fields: ["costGroups", "costEntries", "suppliers", "costRules"] as const,
   },
   {
     key: "facturas-emitidas",
@@ -2597,6 +2600,7 @@ export default function App() {
   // --- Costos fijos y variables ---
   const [costGroups, setCostGroups] = useState<CostGroup[]>(defaultCostGroups);
   const [costEntries, setCostEntries] = useState<CostEntry[]>(defaultCostEntries);
+  const [costRules, setCostRules] = useState<CostRule[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>(defaultSuppliers);
   const [issuedInvoices, setIssuedInvoices] = useState<IssuedInvoice[]>(defaultIssuedInvoices);
   const [costsFiscalStartYear, setCostsFiscalStartYear] = useState<number>(() =>
@@ -3530,6 +3534,7 @@ export default function App() {
     stockItems,
     costAnalysisGroups,
     costAnalysisEntries,
+    costRules,
     remitoDrafts,
     companyAssets,
     employees,
@@ -7983,6 +7988,7 @@ export default function App() {
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
     costGroups: costGroups.map((item) => ({ ...item })),
     costEntries: costEntries.map((item) => ({ ...item })),
+    costRules: costRules.map((item) => ({ ...item })),
     suppliers: suppliers.map((item) => ({ ...item })),
     issuedInvoices: issuedInvoices.map((item) => ({ ...item })),
     remitoDrafts: remitoDrafts.map((draft) => ({
@@ -8239,6 +8245,17 @@ export default function App() {
     );
     setCostEntries(
       keepAccessibleByCompany(data.costEntries || defaultCostEntries).map((item) => ({ ...item }))
+    );
+    // Reglas de clasificación (memoria): no se filtran por acceso (son memoria de clasificación,
+    // incluye reglas "General"); se normalizan flags para datos viejos.
+    setCostRules(
+      (data.costRules || []).map((item) => ({
+        ...item,
+        ambiguous: Boolean(item.ambiguous),
+        active: item.active !== false,
+        hits: Number(item.hits || 0),
+        notes: item.notes || "",
+      }))
     );
     setSuppliers(
       keepAccessibleByCompany(data.suppliers || defaultSuppliers).map((item) => ({ ...item }))
@@ -10276,6 +10293,7 @@ export default function App() {
     stockItems,
     costAnalysisGroups,
     costAnalysisEntries,
+    costRules,
     remitoDrafts,
     companyAssets,
     employees,
@@ -12680,6 +12698,42 @@ export default function App() {
         return { ...entry, [field]: value };
       })
     );
+    // MEMORIA: clasificar a mano un gasto también aprende la regla (para el próximo similar).
+    if (field === "group" && value && !isAutoCostGroup(String(value))) {
+      const entry = costEntries.find((e) => e.id === id);
+      if (entry) {
+        setCostRules(
+          (rules) =>
+            learnCostRule(
+              rules,
+              {
+                company: String(entry.company),
+                group: String(value),
+                concept: entry.description,
+                supplierId: entry.supplierId ?? null,
+                amount: entry.amount,
+              },
+              newId()
+            ).rules
+        );
+      }
+    }
+  };
+
+  // Panel de reglas de clasificación: editar/activar/borrar. "Resolver ambigüedad" = fijar el grupo y
+  // desmarcar `ambiguous` para que vuelva a sugerir.
+  const updateCostRule = (id: number, field: keyof CostRule, value: any) => {
+    setCostRules((prev) =>
+      prev.map((rule) => {
+        if (rule.id !== id) return rule;
+        const next = { ...rule, [field]: value };
+        if (field === "group") next.ambiguous = false; // fijar grupo resuelve la ambigüedad
+        return next;
+      })
+    );
+  };
+  const removeCostRule = (id: number) => {
+    setCostRules((prev) => prev.filter((rule) => rule.id !== id));
   };
 
   // Import del extracto: lee el archivo y arma el borrador para revisar. No impacta nada todavia.
@@ -12692,17 +12746,36 @@ export default function App() {
       const manualGroups = costGroups
         .filter((group) => group.active && !group.auto)
         .map((group) => group.name);
-      const draft: CostStatementDraftRow[] = result.entries.map((entry) => ({
-        id: newId(),
-        date: entry.date,
-        concept: entry.concept,
-        amount: entry.amount,
-        movementType: entry.movementType,
-        group: suggestGroupForConcept(entry.concept, manualGroups),
-        administration: "blanco",
-        // Solo los debitos son gastos; los creditos (plata que entra) vienen destildados.
-        include: entry.movementType === "debito",
-      }));
+      const ruleCompany =
+        costsCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : costsCompanyScope;
+      const draft: CostStatementDraftRow[] = result.entries.map((entry) => {
+        const sup = suggestSupplierForConcept(entry.concept);
+        // Reglas aprendidas SUGIEREN el grupo (por proveedor/palabra clave/monto). Si no hay regla o
+        // es ambigua, cae a la tabla estática de hints. En cualquier caso el usuario confirma.
+        const suggestion = suggestGroupFromRules(
+          {
+            company: String(ruleCompany),
+            concept: entry.concept,
+            supplierId: sup?.id ?? null,
+            amount: entry.amount,
+          },
+          costRules
+        );
+        return {
+          id: newId(),
+          date: entry.date,
+          concept: entry.concept,
+          amount: entry.amount,
+          movementType: entry.movementType,
+          group: suggestion?.group || suggestGroupForConcept(entry.concept, manualGroups),
+          suggestedVia: suggestion?.via,
+          supplierId: sup?.id,
+          supplierName: sup?.name,
+          administration: "blanco",
+          // Solo los debitos son gastos; los creditos (plata que entra) vienen destildados.
+          include: entry.movementType === "debito",
+        };
+      });
       setCostStatementDraft(draft);
       const debits = draft.filter((row) => row.include).length;
       setCostStatementMessage(
@@ -12754,10 +12827,29 @@ export default function App() {
       amount: row.amount,
       administration: row.administration,
       source: "extracto",
-      supplier: "",
+      supplier: row.supplierName || "",
+      supplierId: row.supplierId,
       notes: "Importado del extracto bancario",
     }));
     setCostEntries((prev) => [...prev, ...newEntries]);
+    // MEMORIA: aprender una regla de cada clasificación confirmada (no de los grupos automáticos).
+    // Así el próximo gasto del mismo proveedor/concepto ya viene sugerido a este grupo.
+    let learnedRules = costRules;
+    for (const row of selected) {
+      if (isAutoCostGroup(row.group)) continue;
+      learnedRules = learnCostRule(
+        learnedRules,
+        {
+          company: String(company),
+          group: row.group,
+          concept: row.concept,
+          supplierId: row.supplierId ?? null,
+          amount: row.amount,
+        },
+        newId()
+      ).rules;
+    }
+    if (learnedRules !== costRules) setCostRules(learnedRules);
     setCostStatementDraft([]);
     setCostStatementMessage(
       `Cargue ${newEntries.length} gasto(s) en ${getCompanyMeta(company).short}.${
@@ -14239,6 +14331,9 @@ export default function App() {
           addCostEntry={addCostEntry}
           removeCostEntry={removeCostEntry}
           updateCostEntry={updateCostEntry}
+          costRules={costRules}
+          updateCostRule={updateCostRule}
+          removeCostRule={removeCostRule}
           statementDraft={costStatementDraft}
           statementMessage={costStatementMessage}
           statementBusy={costStatementBusy}

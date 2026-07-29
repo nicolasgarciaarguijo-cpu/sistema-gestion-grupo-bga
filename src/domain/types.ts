@@ -739,6 +739,24 @@ export type CostEntry = {
 
 export type PaymentMethod = "transferencia" | "cheque" | "efectivo" | "debito";
 
+// REGLA DE CLASIFICACION con memoria: cuando el usuario clasifica un gasto a un grupo, se aprende una
+// regla para que el próximo gasto "del mismo tipo" SUGIERA ese grupo (nunca lo aplica solo: el usuario
+// confirma). Match por proveedor (más confiable), por palabra clave del concepto, o por monto fijo.
+// Si un mismo criterio se clasificó a MÁS DE UN grupo, la regla queda `ambiguous` y deja de sugerir
+// (pide clasificación manual): un proveedor puede dar 2 tipos de gasto distintos.
+export type CostRuleMatchType = "supplier" | "keyword" | "amount";
+export type CostRule = {
+  id: number;
+  company: CompanyScope;
+  matchType: CostRuleMatchType;
+  matchValue: string; // supplierId (texto), palabra clave normalizada, o monto (texto)
+  group: string; // nombre de CostGroup sugerido
+  ambiguous: boolean; // true = el mismo criterio apunta a >1 grupo → no sugiere, pide manual
+  hits: number; // cuántas veces se confirmó (para orden/confianza)
+  active: boolean;
+  notes: string;
+};
+
 export const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string }[] = [
   { value: "transferencia", label: "Transferencia" },
   { value: "cheque", label: "Cheque / echeq" },
