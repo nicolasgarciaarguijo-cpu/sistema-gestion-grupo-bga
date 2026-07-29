@@ -62,6 +62,8 @@ type CostosTabProps = {
   addCostGroup: () => void;
   removeCostGroup: (id: number) => void;
   updateCostGroup: (id: number, field: keyof CostGroup, value: any) => void;
+  // Crea un grupo "en el momento" desde el desplegable de clasificación. Devuelve el nombre creado.
+  createCostGroup: (name: string, kind: CostKind) => string;
   // gastos
   addCostEntry: () => void;
   removeCostEntry: (id: number) => void;
@@ -127,6 +129,7 @@ export function CostosTab({
   addCostGroup,
   removeCostGroup,
   updateCostGroup,
+  createCostGroup,
   addCostEntry,
   removeCostEntry,
   updateCostEntry,
@@ -171,6 +174,23 @@ export function CostosTab({
   };
   const ruleViaLabel = (rule: CostRule) =>
     rule.matchType === "supplier" ? "Proveedor" : rule.matchType === "keyword" ? "Palabra clave" : "Monto";
+
+  // Manejo de los desplegables de grupo: si se elige "➕ nuevo grupo", pide nombre y tipo y lo crea al
+  // momento (para no tener que ir al panel de Grupos y volver). Si no, asigna el grupo elegido.
+  const NEW_GROUP_OPTION = "__NEW_GROUP__";
+  const pickGroupOrCreate = (raw: string, apply: (name: string) => void) => {
+    if (raw !== NEW_GROUP_OPTION) {
+      apply(raw);
+      return;
+    }
+    const name = (window.prompt("Nombre del grupo nuevo (ej: Impuestos, Herrajes, Salud):") || "").trim();
+    if (!name) return; // cancelado
+    const esFijo = window.confirm(
+      `"${name}": ¿es un costo FIJO?\n\nAceptar = FIJO (se repite todos los meses)\nCancelar = VARIABLE`
+    );
+    const created = createCostGroup(name, esFijo ? "fijo" : "variable");
+    if (created) apply(created);
+  };
 
   // Cotejo del pago contra el extracto. Verde = el debito esta; ambar = deberia estar y no aparece
   // (o falta cargar el extracto, o el pago esta mal); gris = no pasa por el banco, no se cerifica.
@@ -413,7 +433,11 @@ export function CostosTab({
                         <select
                           style={styles.input}
                           value={row.group}
-                          onChange={(e) => updateStatementDraftRow(row.id, "group", e.target.value)}
+                          onChange={(e) =>
+                            pickGroupOrCreate(e.target.value, (name) =>
+                              updateStatementDraftRow(row.id, "group", name)
+                            )
+                          }
                         >
                           <option value="">Sin clasificar</option>
                           {manualGroupOptions.map((group) => (
@@ -421,6 +445,7 @@ export function CostosTab({
                               {group}
                             </option>
                           ))}
+                          <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
                         </select>
                         {row.suggestedVia && row.group && (
                           <div
@@ -575,7 +600,11 @@ export function CostosTab({
                       <select
                         style={styles.input}
                         value={rule.group}
-                        onChange={(e) => updateCostRule(rule.id, "group", e.target.value)}
+                        onChange={(e) =>
+                          pickGroupOrCreate(e.target.value, (name) =>
+                            updateCostRule(rule.id, "group", name)
+                          )
+                        }
                       >
                         <option value="">(elegí grupo)</option>
                         {manualGroupOptions.map((g) => (
@@ -583,6 +612,7 @@ export function CostosTab({
                             {g}
                           </option>
                         ))}
+                        <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
                       </select>
                     </td>
                     <td style={{ textAlign: "center" }}>{rule.hits}</td>
@@ -971,7 +1001,11 @@ export function CostosTab({
                     <select
                       style={styles.input}
                       value={entry.group}
-                      onChange={(e) => updateCostEntry(entry.id, "group", e.target.value)}
+                      onChange={(e) =>
+                        pickGroupOrCreate(e.target.value, (name) =>
+                          updateCostEntry(entry.id, "group", name)
+                        )
+                      }
                     >
                       <option value="">Sin clasificar</option>
                       {manualGroupOptions.map((group) => (
@@ -979,6 +1013,7 @@ export function CostosTab({
                           {group}
                         </option>
                       ))}
+                      <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
                     </select>
                   </td>
                   <td>

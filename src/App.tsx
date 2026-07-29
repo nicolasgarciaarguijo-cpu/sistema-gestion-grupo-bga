@@ -171,6 +171,7 @@ import type {
   CostGroup,
   CostEntry,
   CostRule,
+  CostKind,
   Supplier,
   IssuedInvoice,
   RemitoDraftRow,
@@ -12654,6 +12655,22 @@ export default function App() {
     setCostGroups((prev) => prev.filter((group) => group.id !== id || group.auto));
   };
 
+  // Crea un grupo con nombre y tipo dados (para crear "en el momento" desde el desplegable al
+  // clasificar un gasto). Idempotente: si ya existe un grupo con ese nombre, lo reusa. Devuelve el
+  // nombre para que el llamador lo asigne al gasto. No permite pisar un grupo automatico.
+  const createCostGroup = (name: string, kind: CostKind = "variable"): string => {
+    const clean = String(name || "").trim();
+    if (!clean || isAutoCostGroup(clean)) return "";
+    setCostGroups((prev) => {
+      if (prev.some((g) => g.name.trim().toLowerCase() === clean.toLowerCase())) return prev;
+      return [
+        ...prev,
+        { id: newId(), name: clean, kind, company: "General", active: true, auto: false, notes: "" },
+      ];
+    });
+    return clean;
+  };
+
   const updateCostGroup = (id: number, field: keyof CostGroup, value: any) => {
     setCostGroups((prev) =>
       prev.map((group) => {
@@ -14328,6 +14345,7 @@ export default function App() {
           addCostGroup={addCostGroup}
           removeCostGroup={removeCostGroup}
           updateCostGroup={updateCostGroup}
+          createCostGroup={createCostGroup}
           addCostEntry={addCostEntry}
           removeCostEntry={removeCostEntry}
           updateCostEntry={updateCostEntry}
