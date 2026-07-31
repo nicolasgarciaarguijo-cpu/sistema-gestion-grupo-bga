@@ -119,7 +119,39 @@ export function StockTab({
   const [movType, setMovType] = React.useState<"entrada" | "salida">("entrada");
   const [movQty, setMovQty] = React.useState(0);
   const [movNote, setMovNote] = React.useState("");
+  // Filtro del inventario: texto libre (matchea descripción/código/grupo/ubicación/unidad) + grupo.
+  const [stockSearch, setStockSearch] = React.useState("");
+  const [stockGroupFilter, setStockGroupFilter] = React.useState("");
   const generalStock = visibleStockItems.filter((item) => item.kind === "general");
+
+  // Grupos existentes (para el desplegable del filtro), ordenados.
+  const generalStockGroups = Array.from(
+    new Set(generalStock.map((item) => (item.group || "").trim()).filter(Boolean))
+  ).sort((a, b) => a.localeCompare(b));
+
+  const normalizeStock = (s: string) =>
+    (s || "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .trim();
+  const stockSearchNorm = normalizeStock(stockSearch);
+  const matchesStockFilter = (item: (typeof generalStock)[number]) => {
+    if (stockGroupFilter && (item.group || "").trim() !== stockGroupFilter) return false;
+    if (!stockSearchNorm) return true;
+    const haystack = normalizeStock(
+      [item.description, item.code, item.group, item.location, item.unit].join(" ")
+    );
+    // cada palabra tipeada tiene que aparecer (búsqueda "por lo que sea", en cualquier orden)
+    return stockSearchNorm.split(/\s+/).every((token) => haystack.includes(token));
+  };
+  const filteredGeneralStock = generalStock
+    .filter(matchesStockFilter)
+    .sort((a, b) => {
+      const groupCompare = (a.group || "").localeCompare(b.group || "");
+      if (groupCompare !== 0) return groupCompare;
+      return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
+    });
   const recentMovements = generalStock
     .flatMap((item) =>
       (item.movements || []).map((m: any) => ({ ...m, itemDescription: item.description }))
@@ -239,6 +271,48 @@ export function StockTab({
               </div>
             }
           >
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                alignItems: "center",
+                flexWrap: "wrap",
+                marginBottom: 10,
+              }}
+            >
+              <input
+                style={{ ...styles.input, minWidth: 240, flex: 1 }}
+                placeholder="🔎 Buscar material (descripción, código, grupo, ubicación...)"
+                value={stockSearch}
+                onChange={(e) => setStockSearch(e.target.value)}
+              />
+              <select
+                style={{ ...styles.input, maxWidth: 220 }}
+                value={stockGroupFilter}
+                onChange={(e) => setStockGroupFilter(e.target.value)}
+              >
+                <option value="">Todos los grupos</option>
+                {generalStockGroups.map((group) => (
+                  <option key={group} value={group}>
+                    {group}
+                  </option>
+                ))}
+              </select>
+              {(stockSearch || stockGroupFilter) && (
+                <ButtonLike
+                  secondary
+                  onClick={() => {
+                    setStockSearch("");
+                    setStockGroupFilter("");
+                  }}
+                >
+                  Limpiar
+                </ButtonLike>
+              )}
+              <span style={{ ...styles.muted, whiteSpace: "nowrap" }}>
+                {filteredGeneralStock.length} de {generalStock.length}
+              </span>
+            </div>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -257,14 +331,14 @@ export function StockTab({
                 </tr>
               </thead>
               <tbody>
-                {visibleStockItems
-                  .filter((item) => item.kind === "general")
-                  .sort((a, b) => {
-                    const groupCompare = (a.group || "").localeCompare(b.group || "");
-                    if (groupCompare !== 0) return groupCompare;
-                    return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
-                  })
-                  .map((item) => (
+                {filteredGeneralStock.length === 0 && (
+                  <tr>
+                    <td colSpan={12} style={{ ...styles.muted, textAlign: "center", padding: 12 }}>
+                      No hay materiales que coincidan con el filtro.
+                    </td>
+                  </tr>
+                )}
+                {filteredGeneralStock.map((item) => (
                   <tr key={item.id}>
                     <td>
                       <span
