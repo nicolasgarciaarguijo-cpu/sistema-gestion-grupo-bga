@@ -64,6 +64,9 @@ type CostosTabProps = {
   updateCostGroup: (id: number, field: keyof CostGroup, value: any) => void;
   // Crea un grupo "en el momento" desde el desplegable de clasificación. Devuelve el nombre creado.
   createCostGroup: (name: string, kind: CostKind) => string;
+  // Bloque de Tarjetas: se renderiza DENTRO de esta solapa (orden: pago proveedores → bancos →
+  // tarjetas → costos fijos/variables), no como solapa aparte.
+  tarjetasSlot?: React.ReactNode;
   // gastos
   addCostEntry: () => void;
   removeCostEntry: (id: number) => void;
@@ -130,6 +133,7 @@ export function CostosTab({
   removeCostGroup,
   updateCostGroup,
   createCostGroup,
+  tarjetasSlot,
   addCostEntry,
   removeCostEntry,
   updateCostEntry,
@@ -307,67 +311,6 @@ export function CostosTab({
           Compras, caja chica y personal se agregan solos desde sus solapas (grupos "auto"): no se
           cargan aca para no contar el mismo gasto dos veces. Aca cargas lo que no vive en ninguna
           otra solapa (alquiler, servicios, impuestos), a mano o importando el extracto.
-        </div>
-      </Panel>
-
-      <Panel title="Costos por grupo y mes" span="full">
-        <div style={{ overflowX: "auto" }}>
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th>Grupo</th>
-                {months.map((month) => (
-                  <th key={month} style={{ textAlign: "right" }}>
-                    {monthKeyLabel(month)}
-                  </th>
-                ))}
-                <th style={{ textAlign: "right" }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {renderGroupRows(fixedRows, "Costos fijos")}
-              <tr>
-                <td style={{ fontWeight: 800 }}>Subtotal fijos</td>
-                {months.map((month) => (
-                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
-                    {(aggregation.fixedByMonth[month] || 0) > 0
-                      ? money(aggregation.fixedByMonth[month])
-                      : "-"}
-                  </td>
-                ))}
-                <td style={{ textAlign: "right", fontWeight: 800 }}>
-                  {money(aggregation.fixedTotal)}
-                </td>
-              </tr>
-
-              {renderGroupRows(variableRows, "Costos variables")}
-              <tr>
-                <td style={{ fontWeight: 800 }}>Subtotal variables</td>
-                {months.map((month) => (
-                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
-                    {(aggregation.variableByMonth[month] || 0) > 0
-                      ? money(aggregation.variableByMonth[month])
-                      : "-"}
-                  </td>
-                ))}
-                <td style={{ textAlign: "right", fontWeight: 800 }}>
-                  {money(aggregation.variableTotal)}
-                </td>
-              </tr>
-
-              <tr>
-                <td style={{ fontWeight: 800 }}>TOTAL</td>
-                {months.map((month) => (
-                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
-                    {(aggregation.totalByMonth[month] || 0) > 0
-                      ? money(aggregation.totalByMonth[month])
-                      : "-"}
-                  </td>
-                ))}
-                <td style={{ textAlign: "right", fontWeight: 800 }}>{money(aggregation.total)}</td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </Panel>
 
@@ -1230,6 +1173,70 @@ export function CostosTab({
             </table>
           </div>
         )}
+      </Panel>
+
+      {/* TARJETAS: dentro de esta solapa, entre Bancos y el resumen de costos fijos/variables. */}
+      {tarjetasSlot}
+
+      <Panel title="Costos por grupo y mes (fijos / variables)" span="full">
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th>Grupo</th>
+                {months.map((month) => (
+                  <th key={month} style={{ textAlign: "right" }}>
+                    {monthKeyLabel(month)}
+                  </th>
+                ))}
+                <th style={{ textAlign: "right" }}>Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {renderGroupRows(fixedRows, "Costos fijos")}
+              <tr>
+                <td style={{ fontWeight: 800 }}>Subtotal fijos</td>
+                {months.map((month) => (
+                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
+                    {(aggregation.fixedByMonth[month] || 0) > 0
+                      ? money(aggregation.fixedByMonth[month])
+                      : "-"}
+                  </td>
+                ))}
+                <td style={{ textAlign: "right", fontWeight: 800 }}>
+                  {money(aggregation.fixedTotal)}
+                </td>
+              </tr>
+
+              {renderGroupRows(variableRows, "Costos variables")}
+              <tr>
+                <td style={{ fontWeight: 800 }}>Subtotal variables</td>
+                {months.map((month) => (
+                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
+                    {(aggregation.variableByMonth[month] || 0) > 0
+                      ? money(aggregation.variableByMonth[month])
+                      : "-"}
+                  </td>
+                ))}
+                <td style={{ textAlign: "right", fontWeight: 800 }}>
+                  {money(aggregation.variableTotal)}
+                </td>
+              </tr>
+
+              <tr>
+                <td style={{ fontWeight: 800 }}>TOTAL</td>
+                {months.map((month) => (
+                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
+                    {(aggregation.totalByMonth[month] || 0) > 0
+                      ? money(aggregation.totalByMonth[month])
+                      : "-"}
+                  </td>
+                ))}
+                <td style={{ textAlign: "right", fontWeight: 800 }}>{money(aggregation.total)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </Panel>
     </>
   );

@@ -14524,6 +14524,29 @@ export default function App() {
           removeCostGroup={removeCostGroup}
           updateCostGroup={updateCostGroup}
           createCostGroup={createCostGroup}
+          tarjetasSlot={
+            <TarjetasTab
+              companyScope={tarjetasCompanyScope}
+              onScopeChange={setTarjetasCompanyScope}
+              COMPANY_OPTIONS={COMPANY_OPTIONS}
+              getCompanyMeta={getCompanyMeta}
+              cards={visibleCreditCards}
+              statements={visibleCreditCardStatements}
+              consumptions={visibleCreditCardConsumptions}
+              cardCostSummary={cardCostSummary}
+              manualGroupOptions={costGroups.filter((g) => g.active && !g.auto).map((g) => g.name)}
+              createCostGroup={createCostGroup}
+              addCreditCard={addCreditCard}
+              removeCreditCard={removeCreditCard}
+              updateCreditCard={updateCreditCard}
+              addCreditCardStatement={addCreditCardStatement}
+              removeCreditCardStatement={removeCreditCardStatement}
+              updateCreditCardStatement={updateCreditCardStatement}
+              addCreditCardConsumption={addCreditCardConsumption}
+              removeCreditCardConsumption={removeCreditCardConsumption}
+              updateCreditCardConsumption={updateCreditCardConsumption}
+            />
+          }
           addCostEntry={addCostEntry}
           removeCostEntry={removeCostEntry}
           updateCostEntry={updateCostEntry}
@@ -14549,29 +14572,6 @@ export default function App() {
         />
       )}
 
-      {activeTab === "costos" && (
-        <TarjetasTab
-          companyScope={tarjetasCompanyScope}
-          onScopeChange={setTarjetasCompanyScope}
-          COMPANY_OPTIONS={COMPANY_OPTIONS}
-          getCompanyMeta={getCompanyMeta}
-          cards={visibleCreditCards}
-          statements={visibleCreditCardStatements}
-          consumptions={visibleCreditCardConsumptions}
-          cardCostSummary={cardCostSummary}
-          manualGroupOptions={costGroups.filter((g) => g.active && !g.auto).map((g) => g.name)}
-          createCostGroup={createCostGroup}
-          addCreditCard={addCreditCard}
-          removeCreditCard={removeCreditCard}
-          updateCreditCard={updateCreditCard}
-          addCreditCardStatement={addCreditCardStatement}
-          removeCreditCardStatement={removeCreditCardStatement}
-          updateCreditCardStatement={updateCreditCardStatement}
-          addCreditCardConsumption={addCreditCardConsumption}
-          removeCreditCardConsumption={removeCreditCardConsumption}
-          updateCreditCardConsumption={updateCreditCardConsumption}
-        />
-      )}
 
       {activeTab === "documentos" && (
         <DocumentosTab
