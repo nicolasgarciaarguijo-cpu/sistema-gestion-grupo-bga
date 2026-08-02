@@ -14152,9 +14152,35 @@ export default function App() {
                 </select>
               </div>
               <div style={styles.workspaceToolbarInfo}>
-                {workspaceCompanyScope === "General"
-                  ? "Estas viendo informacion general y compartida entre empresas."
-                  : `Estas trabajando enfocado en ${getCompanyMeta(workspaceCompanyScope).short}, pero los registros generales siguen visibles.`}
+                {workspaceCompanyScope === "General" ? (
+                  "Estas viendo informacion general y compartida entre empresas."
+                ) : (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: 8,
+                      color: "#b45309",
+                      fontWeight: 600,
+                    }}
+                  >
+                    ⚠ Enfocado en {getCompanyMeta(workspaceCompanyScope).short}: los trabajos, la plata y
+                    los datos de las <strong>demás empresas están OCULTOS</strong> en esta vista.
+                    <button
+                      type="button"
+                      style={{
+                        ...styles.button,
+                        ...styles.buttonSecondary,
+                        padding: "2px 10px",
+                        fontSize: 12,
+                      }}
+                      onClick={() => setWorkspaceCompanyScope("General")}
+                    >
+                      Ver todas las empresas
+                    </button>
+                  </span>
+                )}
               </div>
             </div>
           )}

@@ -169,16 +169,67 @@ function SemaforoResumen({
   );
 }
 
+// Convención de color de plata para TODO el sistema:
+//   - lo que SUMA / entra  -> verde
+//   - lo que RESTA / sale   -> rojo
+//   - neutro (saldo, dato)  -> tinta oscura
+export const MONEY_IN_COLOR = "#16a34a"; // verde (entra / suma)
+export const MONEY_OUT_COLOR = "#dc2626"; // rojo (sale / resta)
+export const moneyToneColor = (tone?: "in" | "out"): string =>
+  tone === "in" ? MONEY_IN_COLOR : tone === "out" ? MONEY_OUT_COLOR : "#0f172a";
+
+// Aclaración de PROCEDENCIA de un monto: círculo blanco con "B" (blanco) o negro con "N" (negro).
+// Se pone al lado del número. Reutilizable en todo el sistema.
+function ColorTag({
+  color,
+  size = 15,
+  style,
+}: {
+  color: "blanco" | "negro";
+  size?: number;
+  style?: React.CSSProperties;
+}) {
+  const isNegro = color === "negro";
+  return (
+    <span
+      title={isNegro ? "Negro" : "Blanco"}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        borderRadius: 999,
+        fontSize: Math.round(size * 0.62),
+        fontWeight: 800,
+        lineHeight: 1,
+        marginLeft: 5,
+        verticalAlign: "middle",
+        flex: "none",
+        background: isNegro ? "#0f172a" : "#ffffff",
+        color: isNegro ? "#ffffff" : "#0f172a",
+        border: isNegro ? "1px solid #0f172a" : "1px solid #94a3b8",
+        ...style,
+      }}
+    >
+      {isNegro ? "N" : "B"}
+    </span>
+  );
+}
+
 // Estilo compacto de todo el sistema: etiqueta a la izquierda y numero pegado a la derecha (poco
-// recorrido para el ojo), en fila. tone: "out" pinta el monto en rojo (sale plata).
+// recorrido para el ojo), en fila. tone: "out" pinta el monto en rojo (sale plata), "in" en verde
+// (entra). `color` agrega el badge B/N de procedencia al lado del número.
 function MiniMetric({
   label,
   value,
   tone,
+  color,
 }: {
   label: string;
   value: string;
   tone?: "out" | "in";
+  color?: "blanco" | "negro";
 }) {
   return (
     <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "3px 0" }}>
@@ -187,11 +238,12 @@ function MiniMetric({
         style={{
           fontSize: 14,
           fontWeight: 500,
-          color: tone === "out" ? "#dc2626" : "#0f172a",
+          color: moneyToneColor(tone),
           whiteSpace: "nowrap",
         }}
       >
         {value}
+        {color && <ColorTag color={color} />}
       </span>
     </div>
   );
@@ -202,16 +254,21 @@ function SummaryRow({
   value,
   strong = false,
   tone,
+  color,
 }: {
   label: string;
   value: string;
   strong?: boolean;
   tone?: "out" | "in";
+  color?: "blanco" | "negro";
 }) {
   return (
     <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontWeight: strong ? 700 : 400 }}>
       <span>{label}</span>
-      <span style={tone === "out" ? styles.amountOut : undefined}>{value}</span>
+      <span style={{ color: tone ? moneyToneColor(tone) : undefined }}>
+        {value}
+        {color && <ColorTag color={color} />}
+      </span>
     </div>
   );
 }
@@ -330,4 +387,5 @@ export {
   ButtonLike,
   FileDropButton,
   AmountInput,
+  ColorTag,
 };
