@@ -1726,6 +1726,36 @@ export function PersonalTab(props: PersonalTabProps) {
                                 readOnly
                               />
                             </Field>
+                            <Field label="Hs nocturnas al 50% (+13,33%)">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.night50Hours}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "night50Hours",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Hs nocturnas (+13,33%)">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                value={payroll.nightHours}
+                                onChange={(e) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "nightHours",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
                             <Field label="Horas feriado">
                               <input
                                 style={styles.input}
