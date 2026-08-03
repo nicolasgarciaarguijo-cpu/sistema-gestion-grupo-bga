@@ -8953,7 +8953,21 @@ export default function App() {
     }
   };
 
+  // Escritura por empresa: si la sesión no puede ESCRIBIR esta empresa, el guardado por-empresa
+  // descartaría el trabajo en silencio (splitModuleDataByCompany) y se perdería al recargar. Lo
+  // bloqueamos con aviso claro en vez de perder datos.
+  const canWriteCompany = (company: string): boolean =>
+    effectiveIsAdmin || allowedCompaniesForSession.includes(company as CompanyName);
+
   const approveBudget = (item: SavedBudget) => {
+    if (!canWriteCompany(item.company)) {
+      window.alert(
+        `No tenés permiso de ESCRITURA sobre ${getCompanyMeta(item.company).short}.\n\n` +
+          `Si aprobás este trabajo NO se guardaría (se perdería al recargar). ` +
+          `Ingresá con un usuario que tenga acceso a esa empresa, o pedí que te den el permiso.`
+      );
+      return;
+    }
     const approvalDate = todayIso();
     const startDate = approvalDate;
     const deliveryDate = buildDeliveryDateFromTerm(approvalDate, item.deliveryTerm);
@@ -9020,6 +9034,14 @@ export default function App() {
   };
 
   const createDirectApprovedJob = () => {
+    if (!canWriteCompany(budget.company)) {
+      window.alert(
+        `No tenés permiso de ESCRITURA sobre ${getCompanyMeta(budget.company).short}.\n\n` +
+          `El trabajo NO se guardaría (se perdería al recargar). Ingresá con un usuario que tenga ` +
+          `acceso a esa empresa.`
+      );
+      return;
+    }
     const approvalDate = todayIso();
     const deliveryTerm = budget.deliveryTerm || "30 dias";
     const generatedId = newId();
