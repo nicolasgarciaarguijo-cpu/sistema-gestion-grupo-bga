@@ -11593,9 +11593,26 @@ export default function App() {
       });
       const totArs = reserva.totals.find((t) => t.currency === "ARS");
       const totUsd = reserva.totals.find((t) => t.currency === "USD");
-      const proximoPagar = visibleDebtPlans
+      // Billetera desglosada (los números GRANDES del tablero): banco vs efectivo blanco vs negro.
+      const wBanco = reserva.wallets.find((w) => w.currency === "ARS" && w.location === "banco");
+      const wEfectivo = reserva.wallets.find((w) => w.currency === "ARS" && w.location === "efectivo");
+      const bancoArs = wBanco?.closing || 0;
+      const efectivoBlancoArs = wEfectivo?.byColor.blanco.closing || 0;
+      const efectivoNegroArs = wEfectivo?.byColor.negro.closing || 0;
+      // Desendeudamiento del mes: la cuota de los compromisos activos (lo que hay que abonar este mes).
+      const desendeudamientoMes = visibleDebtPlans
         .filter((d) => d.company === company && d.active)
         .reduce((acc, d) => acc + Number(d.nextInstallmentAmount || 0), 0);
+      // Dinero a cobrar (blanco = saldo facturado pendiente; negro = neto negro no cobrado).
+      let aCobrarBlanco = 0;
+      let aCobrarNegro = 0;
+      for (const j of approvedJobsSummary.filter((x) => x.company === company)) {
+        aCobrarBlanco += Number(j.remainingToPay || 0);
+        const blackCollected = (j.payments || [])
+          .filter((p: any) => p.administration === "negro" && p.currency !== "USD")
+          .reduce((a: number, p: any) => a + Number(p.amount || 0), 0);
+        aCobrarNegro += Math.max(0, Number(j.blackNet || 0) - blackCollected);
+      }
       return {
         company,
         short: c.short || company,
@@ -11605,9 +11622,14 @@ export default function App() {
         totalArs: totArs?.closing || 0,
         blancoArs: totArs?.byColor.blanco.closing || 0,
         negroArs: totArs?.byColor.negro.closing || 0,
+        bancoArs,
+        efectivoBlancoArs,
+        efectivoNegroArs,
         totalUsd: totUsd?.closing || 0,
         negroUsd: totUsd?.byColor.negro.closing || 0,
-        proximoPagar,
+        desendeudamientoMes,
+        aCobrarBlanco,
+        aCobrarNegro,
       };
     });
   }, [
@@ -11618,6 +11640,7 @@ export default function App() {
     visibleCashHoldings,
     visibleApprovedJobs,
     visibleDebtPlans,
+    approvedJobsSummary,
     effectiveIsAdmin,
     isSupabaseLoggedIn,
     allowedCompaniesForSession,
