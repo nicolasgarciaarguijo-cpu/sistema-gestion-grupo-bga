@@ -9,8 +9,15 @@ import {
   TwoCol,
   FileDropButton,
   AmountInput,
+  ColorTag,
+  MONEY_OUT_COLOR,
 } from "../ui/primitives";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
+
+// Procedencia efectiva de una factura de compra: con numero de factura es SIEMPRE blanco (una factura
+// no puede ser negra); si no, manda el campo administracion. Mismo criterio que el select de la ficha.
+const invoiceOrigin = (invoice: { invoiceNumber?: string; administration?: string }): "blanco" | "negro" =>
+  invoice.invoiceNumber?.trim() ? "blanco" : invoice.administration === "negro" ? "negro" : "blanco";
 import type { CompanyName, PurchaseInvoice } from "../domain/types";
 
 type ComprasTabProps = {
@@ -290,7 +297,17 @@ export function ComprasTab({
             ) : (
               monthPurchaseInvoices.map((invoice) => (
                 <div key={invoice.id} style={styles.subCard}>
-                  <div style={styles.inlineActions}>
+                  <div style={{ ...styles.inlineActions, justifyContent: "space-between" }}>
+                    <span style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                      <strong style={{ fontSize: 14 }}>{invoice.supplier || "Proveedor sin nombre"}</strong>
+                      <span style={{ color: MONEY_OUT_COLOR, fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {money(
+                          Number(invoice.total || 0),
+                          String(invoice.currency || "").toUpperCase() === "USD" ? "USD" : "ARS"
+                        )}
+                        <ColorTag color={invoiceOrigin(invoice)} />
+                      </span>
+                    </span>
                     <button style={styles.smallBtn} onClick={() => removePurchaseInvoice(invoice.id)}>
                       Quitar factura
                     </button>
