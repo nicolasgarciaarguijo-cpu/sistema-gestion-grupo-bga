@@ -9,6 +9,7 @@ import {
   Field,
   FileDropButton,
   AmountInput,
+  ColorTag,
 } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
@@ -223,7 +224,7 @@ export function CajaChicaTab({
               <div>
                 <div style={styles.sectionHeader}>Circuito BLANCO</div>
                 <div style={styles.metricGrid}>
-                  <MiniMetric label="Entro (origen)" value={money(pettyCashBalanceSummary.whiteIn)} />
+                  <MiniMetric label="Entro (origen)" value={money(pettyCashBalanceSummary.whiteIn)} tone="in" />
                   <MiniMetric label="Salio (gastos)" value={money(pettyCashBalanceSummary.whiteOut)} tone="out" />
                   <MiniMetric label="Saldo" value={money(pettyCashBalanceSummary.whiteSaldo)} />
                 </div>
@@ -231,7 +232,7 @@ export function CajaChicaTab({
               <div>
                 <div style={styles.sectionHeader}>Circuito NEGRO</div>
                 <div style={styles.metricGrid}>
-                  <MiniMetric label="Entro (origen)" value={money(pettyCashBalanceSummary.blackIn)} />
+                  <MiniMetric label="Entro (origen)" value={money(pettyCashBalanceSummary.blackIn)} tone="in" />
                   <MiniMetric label="Salio (gastos)" value={money(pettyCashBalanceSummary.blackOut)} tone="out" />
                   <MiniMetric label="Saldo" value={money(pettyCashBalanceSummary.blackSaldo)} />
                 </div>
@@ -594,6 +595,7 @@ export function CajaChicaTab({
                             </span>
                             <span style={{ ...styles.pettyCashExpenseSummaryLine, ...styles.amountOut }}>
                               {money(Number(expense.amount || 0))}
+                              <ColorTag color={expense.administration === "negro" ? "negro" : "blanco"} />
                             </span>
                             <span style={styles.pettyCashExpenseSummaryLine}>
                               {formatDateDisplay(expense.date)}

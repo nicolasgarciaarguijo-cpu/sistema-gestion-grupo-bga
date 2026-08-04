@@ -13,6 +13,7 @@ import {
   AmountInput,
 } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
+import { moneyToneColor } from "../ui/primitives";
 import { resolveAdvancePct } from "../domain/budgetTerms";
 import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency, type PlanoTone } from "../domain/planos";
 import type { SemaphoreLevel } from "../ui/theme";
@@ -265,10 +266,10 @@ export function AprobadosTab({
                           <td>{formatDateDisplay(job.estimatedDeliveryDate)}</td>
                           <td>{money(job.soldNetPrice)}</td>
                           <td>{pct(job.billedPct)}</td>
-                          <td>{money(job.commissionAmount)}</td>
-                          <td>{money(job.commissionPending)}</td>
+                          <td style={{ color: moneyToneColor("out") }}>{money(job.commissionAmount)}</td>
+                          <td style={{ color: moneyToneColor("out") }}>{money(job.commissionPending)}</td>
                           <td>{money(job.valueToCollect)}</td>
-                          <td>{money(job.collectedTotal)}</td>
+                          <td style={{ color: moneyToneColor("in") }}>{money(job.collectedTotal)}</td>
                           <td>{money(job.remainingToPay)}</td>
                           <td>
                             {(() => {
@@ -425,7 +426,7 @@ export function AprobadosTab({
                 <MiniMetric label="Aprobacion" value={formatDateDisplay(selectedApprovedJob.approvalDate)} />
                 <MiniMetric label="Entrega" value={formatDateDisplay(selectedApprovedJob.deliveryDate)} />
                 <MiniMetric label="Neto presupuesto" value={money(selectedApprovedJob.soldNetPrice)} />
-                <MiniMetric label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} />
+                <MiniMetric label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} tone="out" />
               </div>
 
               <div style={styles.grid2}>
@@ -559,7 +560,7 @@ export function AprobadosTab({
                     value={money(selectedApprovedJob.anticipoToCharge)}
                   />
                   <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
-                  <SummaryRow label="Cobrado" value={money(selectedApprovedJob.collectedTotal)} />
+                  <SummaryRow label="Cobrado" value={money(selectedApprovedJob.collectedTotal)} tone="in" />
                   <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
                   {(Number(selectedApprovedJob.soldNetPriceUsd || 0) > 0 ||
                     Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0) && (
@@ -572,6 +573,7 @@ export function AprobadosTab({
                       <SummaryRow
                         label="Cobrado U$S"
                         value={money(selectedApprovedJob.paymentsUsdTotal || 0, "USD")}
+                        tone="in"
                       />
                       <SummaryRow
                         label="Saldo U$S"

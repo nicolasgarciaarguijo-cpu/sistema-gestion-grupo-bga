@@ -12,7 +12,7 @@
 // gasto no se cuenta dos veces.
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput } from "../ui/primitives";
+import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, moneyToneColor } from "../ui/primitives";
 import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel } from "../domain/costs";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
@@ -371,7 +371,14 @@ export function CostosTab({
                       <td>{row.date}</td>
                       <td>{row.concept}</td>
                       <td>{row.movementType === "debito" ? "Debito" : "Credito"}</td>
-                      <td style={{ textAlign: "right" }}>{money(row.amount)}</td>
+                      <td
+                        style={{
+                          textAlign: "right",
+                          color: moneyToneColor(row.movementType === "debito" ? "out" : "in"),
+                        }}
+                      >
+                        {money(row.amount)}
+                      </td>
                       <td>
                         <select
                           style={styles.input}
@@ -1058,8 +1065,8 @@ export function CostosTab({
           </ButtonLike>
         </div>
         <div style={styles.metricGrid}>
-          <MiniMetric label="Entró (créditos)" value={money(bankStatementSummary.credits)} />
-          <MiniMetric label="Salió (débitos)" value={money(bankStatementSummary.debits)} />
+          <MiniMetric label="Entró (créditos)" value={money(bankStatementSummary.credits)} tone="in" />
+          <MiniMetric label="Salió (débitos)" value={money(bankStatementSummary.debits)} tone="out" />
           <MiniMetric label="Neto banco" value={money(bankStatementSummary.net)} />
           <MiniMetric label="Último saldo" value={money(bankStatementSummary.lastBalance)} />
         </div>

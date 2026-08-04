@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, MiniMetric, ButtonLike, Field, AmountInput } from "../ui/primitives";
+import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, moneyToneColor } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
@@ -48,17 +48,20 @@ function BalanceTile({
   );
 }
 
-// Fila compacta etiqueta -> valor (lista vertical). tone="out" = sale plata (rojo); strong = total.
+// Fila compacta etiqueta -> valor (lista vertical). tone="in" = entra plata (verde), tone="out" = sale
+// plata (rojo); strong = total. `color` agrega el badge B/N de procedencia (blanco/negro) al lado del monto.
 function StatRow({
   label,
   value,
   tone,
+  color,
   strong,
   last,
 }: {
   label: string;
   value: string;
-  tone?: "out";
+  tone?: "in" | "out";
+  color?: "blanco" | "negro";
   strong?: boolean;
   last?: boolean;
 }) {
@@ -77,11 +80,12 @@ function StatRow({
         style={{
           fontSize: 14,
           fontWeight: strong ? 700 : 400,
-          color: tone === "out" ? "#dc2626" : "#0f172a",
+          color: moneyToneColor(tone),
           whiteSpace: "nowrap",
         }}
       >
         {value}
+        {color && <ColorTag color={color} />}
       </span>
     </div>
   );
@@ -319,17 +323,17 @@ export function CashflowTab({
 
           <Panel title="Estado de resultados del periodo (percibido, operativo)" span="half">
             <div style={balanceSection}>Circuito blanco</div>
-            <StatRow label="Cobrado" value={money(periodStatement.whiteIncome)} />
+            <StatRow label="Cobrado" value={money(periodStatement.whiteIncome)} tone="in" />
             <StatRow label="Egresos" value={money(periodStatement.whiteExpense)} tone="out" />
             <StatRow label="Resultado" value={money(periodStatement.whiteResult)} strong last />
 
             <div style={balanceSection}>Circuito negro</div>
-            <StatRow label="Cobrado" value={money(periodStatement.blackIncome)} />
+            <StatRow label="Cobrado" value={money(periodStatement.blackIncome)} tone="in" />
             <StatRow label="Egresos" value={money(periodStatement.blackExpense)} tone="out" />
             <StatRow label="Resultado" value={money(periodStatement.blackResult)} strong last />
 
             <div style={balanceSection}>Total del periodo</div>
-            <StatRow label="Ingresos totales" value={money(periodStatement.totalIncome)} />
+            <StatRow label="Ingresos totales" value={money(periodStatement.totalIncome)} tone="in" />
             <StatRow label="Egresos totales" value={money(periodStatement.totalExpense)} tone="out" />
             <StatRow label="Resultado total" value={money(periodStatement.totalResult)} strong />
             <StatRow label="% en negro" value={`${periodStatement.blackSharePct.toFixed(1)}%`} />
@@ -354,7 +358,7 @@ export function CashflowTab({
 
           <Panel title="Cash flow del periodo" span="half">
             <StatRow label="Flujo operativo (cobros - pagos)" value={money(periodStatement.totalResult)} strong />
-            <StatRow label="Creditos banco" value={money(periodStatement.bankCredits)} />
+            <StatRow label="Creditos banco" value={money(periodStatement.bankCredits)} tone="in" />
             <StatRow label="Debitos banco" value={money(periodStatement.bankDebits)} tone="out" />
             <StatRow label="Flujo banco (neto)" value={money(periodStatement.netBank)} strong last />
             <div style={{ ...styles.noticeBox, marginTop: 10 }}>
@@ -370,22 +374,22 @@ export function CashflowTab({
           <Panel title="Cash flow y estado de resultados" span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturado bruto" value={money(cashFlowSummary.billedGross)} />
-              <MiniMetric label="Cobrado" value={money(cashFlowSummary.collected)} />
+              <MiniMetric label="Cobrado" value={money(cashFlowSummary.collected)} tone="in" />
               <MiniMetric label="Pendiente de cobro" value={money(cashFlowSummary.pendingCollections)} />
-              <MiniMetric label="Compras cargadas" value={money(cashFlowSummary.purchaseInvoicesTotal)} />
-              <MiniMetric label="Caja chica negro" value={money(cashFlowSummary.pettyCashBlackTotal)} />
-              <MiniMetric label="Caja chica blanco" value={money(cashFlowSummary.pettyCashWhiteTotal)} />
-              <MiniMetric label="Comisiones pendientes" value={money(cashFlowSummary.commissionsPending)} />
-              <MiniMetric label="Amortizacion mensual" value={money(activeAssetsMonthlyDepreciation)} />
+              <MiniMetric label="Compras cargadas" value={money(cashFlowSummary.purchaseInvoicesTotal)} tone="out" />
+              <MiniMetric label="Caja chica negro" value={money(cashFlowSummary.pettyCashBlackTotal)} tone="out" color="negro" />
+              <MiniMetric label="Caja chica blanco" value={money(cashFlowSummary.pettyCashWhiteTotal)} tone="out" color="blanco" />
+              <MiniMetric label="Comisiones pendientes" value={money(cashFlowSummary.commissionsPending)} tone="out" />
+              <MiniMetric label="Amortizacion mensual" value={money(activeAssetsMonthlyDepreciation)} tone="out" />
             </div>
           </Panel>
 
           <Panel title="Resultado preliminar (por registros)" span="half">
             <div style={styles.sectionHeader}>Resultado — de cobranzas, compras y caja chica</div>
             <div style={styles.metricGrid}>
-              <MiniMetric label="Ingresos cobrados" value={money(cashFlowSummary.collected)} />
+              <MiniMetric label="Ingresos cobrados" value={money(cashFlowSummary.collected)} tone="in" />
               <MiniMetric label="Compras" value={money(cashFlowSummary.purchaseInvoicesTotal)} tone="out" />
-              <MiniMetric label="Egresos negro" value={money(cashFlowSummary.pettyCashBlackTotal)} tone="out" />
+              <MiniMetric label="Egresos negro" value={money(cashFlowSummary.pettyCashBlackTotal)} tone="out" color="negro" />
               <MiniMetric label="Comisiones" value={money(cashFlowSummary.commissionsPending)} tone="out" />
               <MiniMetric label="Amortizacion" value={money(activeAssetsMonthlyDepreciation)} tone="out" />
               <MiniMetric label="Resultado blanco" value={money(cashFlowSummary.operatingResultWhite)} />
@@ -394,7 +398,7 @@ export function CashflowTab({
             </div>
             <div style={styles.sectionHeader}>El banco real — movimiento de la cuenta (NO es resultado)</div>
             <div style={styles.metricGrid}>
-              <MiniMetric label="Entró (créditos)" value={money(cashFlowSummary.bankCredits)} />
+              <MiniMetric label="Entró (créditos)" value={money(cashFlowSummary.bankCredits)} tone="in" />
               <MiniMetric label="Salió (débitos)" value={money(cashFlowSummary.bankDebits)} tone="out" />
               <MiniMetric label="Flujo de caja del banco" value={money(cashFlowSummary.bankNet)} />
             </div>
@@ -759,13 +763,13 @@ export function CashflowTab({
               no se suman con los pesos.
             </div>
             <div style={styles.metricGrid}>
-              <MiniMetric label="Aportes (capital)" value={money(contributionsSummary.aportes.total)} />
+              <MiniMetric label="Aportes (capital)" value={money(contributionsSummary.aportes.total)} tone="in" />
               <MiniMetric
                 label="Préstamos pendientes"
                 value={money(contributionsSummary.prestamosPendientes.total)}
                 tone="out"
               />
-              <MiniMetric label="Total recibido" value={money(contributionsSummary.totalRecibido)} />
+              <MiniMetric label="Total recibido" value={money(contributionsSummary.totalRecibido)} tone="in" />
               {contributionsSummary.usdReference !== 0 && (
                 <MiniMetric
                   label="USD congelado (ref.)"
@@ -787,7 +791,7 @@ export function CashflowTab({
                       value={`${money(o.total)}${
                         o.prestamoPendiente !== 0 ? ` (préstamo ${money(o.prestamoPendiente)})` : ""
                       }`}
-                      tone={o.total < 0 ? "out" : undefined}
+                      tone={o.total < 0 ? "out" : "in"}
                     />
                   ))}
                 </div>
