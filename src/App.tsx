@@ -2293,12 +2293,28 @@ const writeSupabasePersistedAppStateModules = async (
   }
 
   // Cada modulo se parte en 1 fila por (module_key, company), con su firma de contenido.
+  // Red de seguridad anti-perdida-silenciosa: el split DESCARTA items de empresas NO escribibles (ver
+  // splitModuleDataByCompany). Antes eso se notaba recien al recargar (el trabajo aprobado "desaparecia").
+  // Ahora comparamos, por campo, cuantos items entran vs cuantos quedan repartidos en los buckets: si el
+  // split dejo alguno afuera, NO guardamos en silencio.
+  const droppedByModule: string[] = [];
   const candidateRows = modulePayloads.flatMap((modulePayload) => {
     const buckets = splitModuleDataByCompany(
       modulePayload.moduleKey,
       modulePayload.data,
       writableCompanies
     );
+    for (const [field, value] of Object.entries(modulePayload.data)) {
+      if (!Array.isArray(value)) continue;
+      let kept = 0;
+      for (const bucket of Object.values(buckets)) {
+        const bucketField = (bucket as Record<string, unknown>)[field];
+        if (Array.isArray(bucketField)) kept += bucketField.length;
+      }
+      if (kept < value.length) {
+        droppedByModule.push(`${modulePayload.moduleLabel} · ${field}: ${value.length - kept}`);
+      }
+    }
     return Object.entries(buckets).map(([company, data]) => ({
       row: {
         module_key: modulePayload.moduleKey,
@@ -2318,6 +2334,18 @@ const writeSupabasePersistedAppStateModules = async (
       label: modulePayload.moduleLabel,
     }));
   });
+
+  // Si el split dejo items afuera, frenamos con aviso: NO se perdio nada local; el autosave reintenta
+  // solo cuando la empresa vuelva a ser escribible (p.ej. tras cargar permisos/catalogo de empresas).
+  if (droppedByModule.length > 0) {
+    throw new SupabasePersistError(
+      "Freno el guardado para no perder datos en silencio: hay registros de una empresa que esta sesion " +
+        "no puede escribir (quiza el catalogo de empresas o los permisos todavia no terminaron de cargar). " +
+        "No se perdio nada local; el autosave reintenta solo. Detalle: " +
+        droppedByModule.join("; ") +
+        "."
+    );
+  }
 
   // Solo escribir las filas cuyo contenido cambio respecto a lo ultimo guardado OK
   // (editar una empresa ya no reescribe las otras dos -> menos viajes de red).
@@ -8956,15 +8984,21 @@ export default function App() {
   // Escritura por empresa: si la sesión no puede ESCRIBIR esta empresa, el guardado por-empresa
   // descartaría el trabajo en silencio (splitModuleDataByCompany) y se perdería al recargar. Lo
   // bloqueamos con aviso claro en vez de perder datos.
+  // Escribible = la empresa esta en allowedCompaniesForSession, que es EXACTAMENTE el set que usa el
+  // guardado por-empresa (splitModuleDataByCompany). No alcanza con ser admin: si la empresa no esta en
+  // ese set (catalogo a medio cargar, o empresa huerfana), el split la descartaria y el trabajo se
+  // perderia en silencio. Para admin, allowedCompaniesForSession ya = todo el catalogo, asi que aprobar
+  // cualquier empresa real sigue funcionando.
   const canWriteCompany = (company: string): boolean =>
-    effectiveIsAdmin || allowedCompaniesForSession.includes(company as CompanyName);
+    allowedCompaniesForSession.includes(company as CompanyName);
 
   const approveBudget = (item: SavedBudget) => {
     if (!canWriteCompany(item.company)) {
       window.alert(
-        `No tenés permiso de ESCRITURA sobre ${getCompanyMeta(item.company).short}.\n\n` +
-          `Si aprobás este trabajo NO se guardaría (se perdería al recargar). ` +
-          `Ingresá con un usuario que tenga acceso a esa empresa, o pedí que te den el permiso.`
+        `No puedo guardar trabajos de ${getCompanyMeta(item.company).short} en esta sesión.\n\n` +
+          `Si aprobás ahora NO se guardaría (se perdería al recargar). Puede ser que el catálogo de ` +
+          `empresas / permisos todavía esté cargando: esperá unos segundos y reintentá. Si persiste, ` +
+          `ingresá con un usuario que tenga acceso a esa empresa.`
       );
       return;
     }
@@ -9036,9 +9070,10 @@ export default function App() {
   const createDirectApprovedJob = () => {
     if (!canWriteCompany(budget.company)) {
       window.alert(
-        `No tenés permiso de ESCRITURA sobre ${getCompanyMeta(budget.company).short}.\n\n` +
-          `El trabajo NO se guardaría (se perdería al recargar). Ingresá con un usuario que tenga ` +
-          `acceso a esa empresa.`
+        `No puedo guardar trabajos de ${getCompanyMeta(budget.company).short} en esta sesión.\n\n` +
+          `El trabajo NO se guardaría (se perdería al recargar). Puede ser que el catálogo de empresas / ` +
+          `permisos todavía esté cargando: esperá unos segundos y reintentá. Si persiste, ingresá con un ` +
+          `usuario que tenga acceso a esa empresa.`
       );
       return;
     }
