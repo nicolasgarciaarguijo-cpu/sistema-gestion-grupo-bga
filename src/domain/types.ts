@@ -194,6 +194,10 @@ export type BudgetSection = {
   id: number;
   title: string;
   notes: string;
+  // Cantidad cotizada del bloque. El bloque se cotiza como 1 unidad y se escala x N (N unidades
+  // identicas) sin rehacer el presupuesto. Ausente = 1 (presupuestos viejos). Escala precio, costo,
+  // horas de trabajo y ocupacion; los totales por unidad quedan guardados en `totals`.
+  quantity?: number;
   // Moneda del bloque. Ausente = ARS (pesos). Un presupuesto puede tener bloques en pesos y bloques
   // en USD; sus totales NUNCA se suman entre si (se consolidan por moneda por separado).
   currency?: "ARS" | "USD";

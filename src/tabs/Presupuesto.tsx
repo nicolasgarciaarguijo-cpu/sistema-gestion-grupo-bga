@@ -130,6 +130,8 @@ type PresupuestoTabProps = {
   subBudgetNotes: string;
   subBudgetCurrency: "ARS" | "USD";
   setSubBudgetCurrency: (c: "ARS" | "USD") => void;
+  subBudgetQuantity: number;
+  setSubBudgetQuantity: React.Dispatch<React.SetStateAction<number>>;
   consolidatedBudgetTotalsUsd: any;
   hasUsdBudgetSections: boolean;
   markupPct: number;
@@ -236,7 +238,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
   const {
     budget, crmClients, materials, labor, fixedCosts, basicSupplies, budgetDiscounts,
     budgetIncreases, subBudgets, subBudgetTitle, subBudgetNotes, markupPct,
-    subBudgetCurrency, setSubBudgetCurrency, consolidatedBudgetTotalsUsd, hasUsdBudgetSections,
+    subBudgetCurrency, setSubBudgetCurrency, subBudgetQuantity, setSubBudgetQuantity,
+    consolidatedBudgetTotalsUsd, hasUsdBudgetSections,
     deviationPct, laborDeviationPct, vatPct, commissionPct, manualAllocationPct,
     allocationMode, editingBudgetId, consolidatedBudgetTotals,
     consolidatedCommissionAmount, currentClientHistory, totalMaterials,
@@ -1335,6 +1338,30 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   </div>
                 )}
               </Field>
+              <Field label="Cantidad cotizada (× unidades)">
+                <input
+                  style={styles.input}
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={subBudgetQuantity}
+                  onChange={(e) =>
+                    setSubBudgetQuantity(Math.max(1, Math.floor(Number(e.target.value) || 1)))
+                  }
+                />
+                <div style={{ ...styles.muted, marginTop: 4 }}>
+                  Cotizá el bloque por <strong>una unidad</strong> y poné acá cuántas piden: se
+                  multiplica × {subBudgetQuantity} (precio, costo y horas) sin rehacer el presupuesto.
+                  {subBudgetQuantity > 1 && (
+                    <>
+                      {" "}
+                      Neto del bloque:{" "}
+                      {money(currentWorkingSectionTotals.netPrice, subBudgetCurrency)} × {subBudgetQuantity}{" "}
+                      = <strong>{money(currentWorkingSectionTotals.netPrice * subBudgetQuantity, subBudgetCurrency)}</strong>.
+                    </>
+                  )}
+                </div>
+              </Field>
               <Field label="Notas del bloque">
                 <textarea
                   style={styles.textarea}
@@ -1371,8 +1398,13 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   value={String(workingBudgetSections.length)}
                 />
                 <MiniMetric
-                  label={`Neto bloque actual${subBudgetCurrency === "USD" ? " (U$S)" : ""}`}
-                  value={money(currentWorkingSectionTotals.netPrice, subBudgetCurrency)}
+                  label={`Neto bloque actual${subBudgetQuantity > 1 ? ` (× ${subBudgetQuantity})` : ""}${
+                    subBudgetCurrency === "USD" ? " (U$S)" : ""
+                  }`}
+                  value={money(
+                    currentWorkingSectionTotals.netPrice * (subBudgetQuantity > 0 ? subBudgetQuantity : 1),
+                    subBudgetCurrency
+                  )}
                 />
                 <MiniMetric
                   label={hasUsdBudgetSections ? "Neto total (pesos)" : "Neto presupuesto total"}
@@ -1393,11 +1425,29 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 </div>
               ) : (
                 <div style={{ marginTop: 12 }}>
-                  {subBudgets.map((item, index) => (
+                  {subBudgets.map((item, index) => {
+                    const qty = Number(item.quantity) > 0 ? Number(item.quantity) : 1;
+                    const cur = item.currency === "USD" ? "USD" : "ARS";
+                    return (
                     <div key={item.id} style={styles.subCard}>
                       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
                         <div>
                           <strong>{item.title || `Subpresupuesto ${index + 1}`}</strong>
+                          {qty > 1 && (
+                            <span
+                              style={{
+                                marginLeft: 8,
+                                padding: "1px 8px",
+                                borderRadius: 999,
+                                background: "#1e3a8a",
+                                color: "#fff",
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              × {qty} unidades
+                            </span>
+                          )}
                           {item.currency === "USD" && (
                             <span
                               style={{
@@ -1433,16 +1483,26 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       </div>
                       {item.notes && <div style={{ marginTop: 8 }}>{item.notes}</div>}
                       <div style={{ ...styles.metricGrid, marginTop: 12 }}>
-                        <MiniMetric label="Materiales" value={money(item.totals.totalMaterials, item.currency === "USD" ? "USD" : "ARS")} />
+                        <MiniMetric label="Materiales" value={money(item.totals.totalMaterials, cur)} />
                         <MiniMetric
                           label="Insumos y fletes"
-                          value={money(item.totals.totalBasicSupplies, item.currency === "USD" ? "USD" : "ARS")}
+                          value={money(item.totals.totalBasicSupplies, cur)}
                         />
-                        <MiniMetric label="Mano de obra" value={money(item.totals.totalLabor, item.currency === "USD" ? "USD" : "ARS")} />
-                        <MiniMetric label="Valor neto" value={money(item.totals.netPrice, item.currency === "USD" ? "USD" : "ARS")} />
+                        <MiniMetric label="Mano de obra" value={money(item.totals.totalLabor, cur)} />
+                        <MiniMetric
+                          label={qty > 1 ? "Valor neto (× unidad)" : "Valor neto"}
+                          value={money(item.totals.netPrice, cur)}
+                        />
+                        {qty > 1 && (
+                          <MiniMetric
+                            label={`Neto del bloque (× ${qty})`}
+                            value={money(item.totals.netPrice * qty, cur)}
+                          />
+                        )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Panel>

@@ -182,14 +182,24 @@ export function buildClientBudgetHtml(
     .map((s: any, i: number) => {
       const mats = (s.materials || []).map((m: any) => `<li>${esc(m.description)}</li>`).join("");
       const cur = sectionCurrency(s);
+      // Cantidad cotizada del bloque (1 = una unidad). El total del bloque = unitario x cantidad.
+      const qty = Number(s.quantity) > 0 ? Number(s.quantity) : 1;
+      const unitFinal = Number(s.totals?.finalPrice || 0);
       return `
       <div class="card">
         <div class="cardhead">
           <div class="eyebrow">${esc(s.title || `Subpresupuesto ${i + 1}`)}${
+        qty > 1 ? ` <span class="pill" style="margin-left:6px">Cantidad: ${qty}</span>` : ""
+      }${
         cur === "USD" ? ' <span class="pill" style="margin-left:6px">U$S</span>' : ""
       }</div>
-          <div class="pill">Total c/IVA ${money(s.totals?.finalPrice, cur)}</div>
+          <div class="pill">Total c/IVA ${money(unitFinal * qty, cur)}</div>
         </div>
+        ${
+          qty > 1
+            ? `<div class="muted">Cantidad: ${qty} &middot; Unitario c/IVA: ${money(unitFinal, cur)} &middot; Total: ${money(unitFinal * qty, cur)}</div>`
+            : ""
+        }
         ${s.notes ? `<div class="muted">${esc(s.notes)}</div>` : ""}
         <div class="eyebrow" style="margin-top:10px">Materiales incluidos</div>
         <ul class="mats">${mats || `<li class="muted">Sin materiales cargados.</li>`}</ul>
@@ -243,8 +253,10 @@ export function buildClientBudgetHtml(
       // dolarizados. Si el presupuesto es todo en dólares, no mostramos un "$ 0" que confunda.
       const usdSections = sections.filter((s: any) => sectionCurrency(s) === "USD");
       const pesoSections = sections.filter((s: any) => sectionCurrency(s) !== "USD");
-      const usdNet = usdSections.reduce((a: number, s: any) => a + Number(s.totals?.netPrice || 0), 0);
-      const usdFinal = usdSections.reduce((a: number, s: any) => a + Number(s.totals?.finalPrice || 0), 0);
+      // Escala cada bloque por su cantidad cotizada (igual que el consolidado del editor).
+      const qtyOf = (s: any) => (Number(s.quantity) > 0 ? Number(s.quantity) : 1);
+      const usdNet = usdSections.reduce((a: number, s: any) => a + Number(s.totals?.netPrice || 0) * qtyOf(s), 0);
+      const usdFinal = usdSections.reduce((a: number, s: any) => a + Number(s.totals?.finalPrice || 0) * qtyOf(s), 0);
       const hasUsd = usdSections.length > 0 && (usdNet !== 0 || usdFinal !== 0);
       const showPesos = pesoSections.length > 0 || !hasUsd;
       const pesoLabel = hasUsd ? " (pesos)" : "";

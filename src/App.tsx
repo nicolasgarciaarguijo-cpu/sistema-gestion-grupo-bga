@@ -1552,6 +1552,7 @@ type PersistedAppStateData = {
   subBudgetTitle: string;
   subBudgetNotes: string;
   subBudgetCurrency?: "ARS" | "USD";
+  subBudgetQuantity?: number;
   materials: Material[];
   basicSupplies: Material[];
   labor: LaborRow[];
@@ -1638,6 +1639,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
       "subBudgetTitle",
       "subBudgetNotes",
       "subBudgetCurrency",
+      "subBudgetQuantity",
       "materials",
       "basicSupplies",
       "labor",
@@ -2620,6 +2622,8 @@ export default function App() {
   const [subBudgetTitle, setSubBudgetTitle] = useState("");
   const [subBudgetNotes, setSubBudgetNotes] = useState("");
   const [subBudgetCurrency, setSubBudgetCurrency] = useState<"ARS" | "USD">("ARS");
+  // Cantidad cotizada del bloque en edicion (default 1 = una unidad).
+  const [subBudgetQuantity, setSubBudgetQuantity] = useState(1);
   const [fixedMarkers, setFixedMarkers] = useState<FixedMarker[]>(defaultFixedMarkers);
   const [supplyMarkers, setSupplyMarkers] = useState<SupplyMarker[]>(defaultSupplyMarkers);
   const [laborMarkers, setLaborMarkers] = useState<LaborMarker[]>(defaultLaborMarkers);
@@ -4421,6 +4425,7 @@ export default function App() {
               title: subBudgetTitle.trim() || "Bloque actual",
               notes: subBudgetNotes,
               currency: subBudgetCurrency,
+              quantity: Number(subBudgetQuantity) > 0 ? Number(subBudgetQuantity) : 1,
               materials: materials.map((item) => ({ ...item })),
               basicSupplies: basicSupplies.map((item) => ({ ...item })),
               labor: labor.map((item) => ({ ...item })),
@@ -4439,6 +4444,7 @@ export default function App() {
       subBudgetTitle,
       subBudgetNotes,
       subBudgetCurrency,
+      subBudgetQuantity,
       materials,
       basicSupplies,
       labor,
@@ -4453,23 +4459,29 @@ export default function App() {
   // y los bloques en USD por otro, para NO mezclar monedas.
   const sumBudgetSections = (sections: BudgetSection[]): BudgetSectionTotals => {
     const reduced = sections.reduce(
-      (acc, section) => ({
-        totalMaterials: acc.totalMaterials + Number(section.totals.totalMaterials || 0),
-        totalBasicSupplies: acc.totalBasicSupplies + Number(section.totals.totalBasicSupplies || 0),
-        totalLabor: acc.totalLabor + Number(section.totals.totalLabor || 0),
-        laborDeviationAmount: acc.laborDeviationAmount + Number(section.totals.laborDeviationAmount || 0),
-        fixedCostsApplied: acc.fixedCostsApplied + Number(section.totals.fixedCostsApplied || 0),
-        deviationAmount: acc.deviationAmount + Number(section.totals.deviationAmount || 0),
-        totalCost: acc.totalCost + Number(section.totals.totalCost || 0),
-        totalIncreaseAmount: acc.totalIncreaseAmount + Number(section.totals.totalIncreaseAmount || 0),
-        preDiscountNetPrice: acc.preDiscountNetPrice + Number(section.totals.preDiscountNetPrice || 0),
-        totalDiscountAmount: acc.totalDiscountAmount + Number(section.totals.totalDiscountAmount || 0),
-        netPrice: acc.netPrice + Number(section.totals.netPrice || 0),
-        finalPrice: acc.finalPrice + Number(section.totals.finalPrice || 0),
-        totalJobHours: acc.totalJobHours + Number(section.totals.totalJobHours || 0),
+      (acc, section) => {
+        // Cantidad cotizada del bloque: el bloque se cotiza como 1 unidad y se escala x N (N unidades
+        // identicas). Escala TODO el bloque: precio, costo, horas y ocupacion. Ausente/<=0 => 1.
+        const qty = Number(section.quantity) > 0 ? Number(section.quantity) : 1;
+        return {
+        totalMaterials: acc.totalMaterials + Number(section.totals.totalMaterials || 0) * qty,
+        totalBasicSupplies: acc.totalBasicSupplies + Number(section.totals.totalBasicSupplies || 0) * qty,
+        totalLabor: acc.totalLabor + Number(section.totals.totalLabor || 0) * qty,
+        laborDeviationAmount: acc.laborDeviationAmount + Number(section.totals.laborDeviationAmount || 0) * qty,
+        fixedCostsApplied: acc.fixedCostsApplied + Number(section.totals.fixedCostsApplied || 0) * qty,
+        deviationAmount: acc.deviationAmount + Number(section.totals.deviationAmount || 0) * qty,
+        totalCost: acc.totalCost + Number(section.totals.totalCost || 0) * qty,
+        totalIncreaseAmount: acc.totalIncreaseAmount + Number(section.totals.totalIncreaseAmount || 0) * qty,
+        preDiscountNetPrice: acc.preDiscountNetPrice + Number(section.totals.preDiscountNetPrice || 0) * qty,
+        totalDiscountAmount: acc.totalDiscountAmount + Number(section.totals.totalDiscountAmount || 0) * qty,
+        netPrice: acc.netPrice + Number(section.totals.netPrice || 0) * qty,
+        finalPrice: acc.finalPrice + Number(section.totals.finalPrice || 0) * qty,
+        totalJobHours: acc.totalJobHours + Number(section.totals.totalJobHours || 0) * qty,
+        // Capacidad del taller = pool fijo, NO escala con la cantidad de unidades producidas.
         totalAvailableHours: acc.totalAvailableHours + Number(section.totals.totalAvailableHours || 0),
         occupancyPct: 0,
-      }),
+        };
+      },
       {
         totalMaterials: 0, totalBasicSupplies: 0, totalLabor: 0, laborDeviationAmount: 0,
         fixedCostsApplied: 0, deviationAmount: 0, totalCost: 0, totalIncreaseAmount: 0,
@@ -7929,6 +7941,7 @@ export default function App() {
     setSubBudgets(
       (snapshot.subBudgets || []).map((item) => ({
         ...item,
+        quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
         materials: item.materials.map((row) => ({ ...row })),
         basicSupplies: item.basicSupplies.map((row) => ({ ...row })),
         labor: item.labor.map((row) => ({ ...row })),
@@ -7987,6 +8000,7 @@ export default function App() {
     setSubBudgetTitle("");
     setSubBudgetNotes("");
     setSubBudgetCurrency("ARS");
+    setSubBudgetQuantity(1);
     // Los parametros economicos (markup, desvio, IVA, comision, etc.) NO se resetean aca: se fijan
     // desde el bloque "Parametros economicos" en Marcadores (fuente de verdad) y se mantienen al
     // armar un presupuesto nuevo.
@@ -8010,6 +8024,7 @@ export default function App() {
     setSubBudgetTitle("");
     setSubBudgetNotes("");
     setSubBudgetCurrency("ARS");
+    setSubBudgetQuantity(1);
   };
 
   const buildPersistedAppData = (): PersistedAppStateData => ({
@@ -8034,6 +8049,7 @@ export default function App() {
     subBudgetTitle,
     subBudgetNotes,
     subBudgetCurrency,
+    subBudgetQuantity,
     materials: materials.map((item) => ({ ...item })),
     basicSupplies: basicSupplies.map((item) => ({ ...item })),
     labor: labor.map((item) => ({ ...item })),
@@ -8236,6 +8252,7 @@ export default function App() {
     setSubBudgets(
       (data.subBudgets || []).map((item) => ({
         ...item,
+        quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
         materials: item.materials.map((row) => ({ ...row })),
         basicSupplies: item.basicSupplies.map((row) => ({ ...row })),
         labor: item.labor.map((row) => ({ ...row })),
@@ -8248,6 +8265,7 @@ export default function App() {
     setSubBudgetTitle(data.subBudgetTitle || "");
     setSubBudgetNotes(data.subBudgetNotes || "");
     setSubBudgetCurrency(data.subBudgetCurrency === "USD" ? "USD" : "ARS");
+    setSubBudgetQuantity(Number(data.subBudgetQuantity) > 0 ? Number(data.subBudgetQuantity) : 1);
     setMaterials((data.materials || defaultMaterials).map((item) => ({ ...item })));
     setBasicSupplies((data.basicSupplies || defaultBasicSupplies).map((item) => ({ ...item })));
     setLabor((data.labor || defaultLabor).map((item) => ({ ...item })));
@@ -8910,6 +8928,7 @@ export default function App() {
         subBudgetTitle: "",
         subBudgetNotes: "",
         subBudgetCurrency: "ARS",
+        subBudgetQuantity: 1,
         materials: [],
         basicSupplies: [],
         labor: [],
@@ -9661,6 +9680,7 @@ export default function App() {
       title: subBudgetTitle.trim() || `Subpresupuesto ${subBudgets.length + 1}`,
       notes: subBudgetNotes.trim(),
       currency: subBudgetCurrency,
+      quantity: Number(subBudgetQuantity) > 0 ? Number(subBudgetQuantity) : 1,
       materials: materials.map((item) => ({ ...item })),
       basicSupplies: basicSupplies.map((item) => ({ ...item })),
       labor: labor.map((item) => ({ ...item })),
@@ -9691,6 +9711,7 @@ export default function App() {
     setSubBudgetTitle(target.title);
     setSubBudgetNotes(target.notes);
     setSubBudgetCurrency(target.currency === "USD" ? "USD" : "ARS");
+    setSubBudgetQuantity(Number(target.quantity) > 0 ? Number(target.quantity) : 1);
     setMaterials(target.materials.map((item) => ({ ...item })));
     setBasicSupplies(target.basicSupplies.map((item) => ({ ...item })));
     setLabor(target.labor.map((item) => ({ ...item })));
@@ -10398,6 +10419,7 @@ export default function App() {
     subBudgetTitle,
     subBudgetNotes,
     subBudgetCurrency,
+    subBudgetQuantity,
     materials,
     basicSupplies,
     labor,
@@ -14500,6 +14522,8 @@ export default function App() {
           subBudgetNotes={subBudgetNotes}
           subBudgetCurrency={subBudgetCurrency}
           setSubBudgetCurrency={setSubBudgetCurrency}
+          subBudgetQuantity={subBudgetQuantity}
+          setSubBudgetQuantity={setSubBudgetQuantity}
           consolidatedBudgetTotalsUsd={consolidatedBudgetTotalsUsd}
           hasUsdBudgetSections={hasUsdBudgetSections}
           markupPct={markupPct}
@@ -15958,10 +15982,14 @@ function BudgetDocument({
   // total en dolares se calcula aparte desde los bloques dolarizados (misma regla que el editor).
   const sectionCurrency = (s: BudgetSection): "ARS" | "USD" =>
     String(s.currency || "").toUpperCase() === "USD" ? "USD" : "ARS";
+  // Cantidad cotizada del bloque (1 = una unidad): escala el total del bloque (unitario x cantidad),
+  // igual que el consolidado del editor.
+  const sectionQty = (s: BudgetSection): number =>
+    Number(s.quantity) > 0 ? Number(s.quantity) : 1;
   const usdSections = sections.filter((s) => sectionCurrency(s) === "USD");
   const pesoSections = sections.filter((s) => sectionCurrency(s) !== "USD");
-  const usdNetTotal = usdSections.reduce((acc, s) => acc + Number(s.totals?.netPrice || 0), 0);
-  const usdFinalTotal = usdSections.reduce((acc, s) => acc + Number(s.totals?.finalPrice || 0), 0);
+  const usdNetTotal = usdSections.reduce((acc, s) => acc + Number(s.totals?.netPrice || 0) * sectionQty(s), 0);
+  const usdFinalTotal = usdSections.reduce((acc, s) => acc + Number(s.totals?.finalPrice || 0) * sectionQty(s), 0);
   const hasUsdSections = usdSections.length > 0 && (usdNetTotal !== 0 || usdFinalTotal !== 0);
   const showPesosTotal = pesoSections.length > 0 || !hasUsdSections;
   const eyebrow: React.CSSProperties = {
@@ -16108,13 +16136,20 @@ function BudgetDocument({
         </div>
       )}
 
-      {sections.map((section, index) => (
+      {sections.map((section, index) => {
+        const secCur = sectionCurrency(section);
+        const secQty = sectionQty(section);
+        const secUnitFinal = Number(section.totals.finalPrice || 0);
+        return (
         <div key={section.id} style={card}>
           <div style={styles.printSectionHeader}>
             <div>
               <div style={eyebrow}>
                 {section.title || `Subpresupuesto ${index + 1}`}
-                {sectionCurrency(section) === "USD" && (
+                {secQty > 1 && (
+                  <span style={{ marginLeft: 6, color: companyTheme.primary }}>· Cantidad: {secQty}</span>
+                )}
+                {secCur === "USD" && (
                   <span style={{ marginLeft: 6, color: companyTheme.primary }}>· U$S</span>
                 )}
               </div>
@@ -16124,10 +16159,17 @@ function BudgetDocument({
             </div>
             <div style={styles.printSectionMeta}>
               <div style={{ fontSize: 12, color: mutedLabel }}>
-                Neto{" "}
+                {secQty > 1 ? "Neto x unidad" : "Neto"}{" "}
                 <span style={{ color: inkColor }}>
-                  {money(section.totals.netPrice, sectionCurrency(section))}
+                  {money(section.totals.netPrice, secCur)}
                 </span>
+                {secQty > 1 && (
+                  <span>
+                    {" "}
+                    · x {secQty} ={" "}
+                    <span style={{ color: inkColor }}>{money(section.totals.netPrice * secQty, secCur)}</span>
+                  </span>
+                )}
               </div>
               <div
                 style={{
@@ -16141,7 +16183,13 @@ function BudgetDocument({
                   justifySelf: "end",
                 }}
               >
-                Total c/IVA {money(section.totals.finalPrice, sectionCurrency(section))}
+                Total c/IVA {money(secUnitFinal * secQty, secCur)}
+                {secQty > 1 && (
+                  <span style={{ fontWeight: 400, fontSize: 11 }}>
+                    {" "}
+                    ({money(secUnitFinal, secCur)} x {secQty})
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -16177,7 +16225,8 @@ function BudgetDocument({
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
 
       <div
         style={{
