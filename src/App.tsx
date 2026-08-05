@@ -120,6 +120,7 @@ import type { CostStatementDraftRow } from "./tabs/Costos";
 import { AccesoTab } from "./tabs/Acceso";
 import { PresupuestoTab } from "./tabs/Presupuesto";
 import { PersonalTab } from "./tabs/Personal";
+import { AsistenciaTab } from "./tabs/Asistencia";
 import { createPortal } from "react-dom";
 import type {
   CompanyName,
@@ -384,6 +385,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "historial", label: "CRM" },
   { key: "stock", label: "Stock, agenda y analisis de costos" },
   { key: "personal", label: "Personal" },
+  { key: "asistencia", label: "Asistencia" },
   { key: "costos", label: "Pago a proveedores · Bancos · Tarjetas · (Costos fijos y variables)" },
   { key: "documentos", label: "Documentos" },
   { key: "marcadores", label: "Marcadores" },
@@ -400,6 +402,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "compras",
   "cajaChica",
   "personal",
+  "asistencia",
   "costos",
 ];
 const CARGA_TAB_KEYS: TabKey[] = ["documentos", "manual"];
@@ -477,6 +480,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   emitirFacturas: "EF",
   stock: "SA",
   personal: "PE",
+  asistencia: "ASI",
   costos: "CFV",
   tarjetas: "TAR",
   documentos: "DOC",
@@ -15037,6 +15041,15 @@ export default function App() {
           updateEmployeeField={updateEmployeeField}
           updateEmployeePayrollManual={updateEmployeePayrollManual}
           updateEmployeeProvisionItem={updateEmployeeProvisionItem}
+        />
+      )}
+
+      {activeTab === "asistencia" && (
+        <AsistenciaTab
+          employees={visibleEmployees}
+          initialMonth={operationalMonth}
+          companyOptions={COMPANY_OPTIONS}
+          getCompanyMeta={getCompanyMeta}
         />
       )}
 

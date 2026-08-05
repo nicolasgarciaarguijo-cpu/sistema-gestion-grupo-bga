@@ -1673,6 +1673,41 @@ export function PersonalTab(props: PersonalTabProps) {
                                       </Field>
                                     </div>
 
+                                    {status === "presente" && (
+                                      <div style={styles.attendanceHoursGrid}>
+                                        <Field label="Entrada">
+                                          <input
+                                            style={styles.input}
+                                            type="time"
+                                            value={record?.checkIn ?? ""}
+                                            onChange={(e) =>
+                                              updateAttendanceRecord(
+                                                selectedEmployee.id,
+                                                day.key,
+                                                "checkIn",
+                                                e.target.value
+                                              )
+                                            }
+                                          />
+                                        </Field>
+                                        <Field label="Salida">
+                                          <input
+                                            style={styles.input}
+                                            type="time"
+                                            value={record?.checkOut ?? ""}
+                                            onChange={(e) =>
+                                              updateAttendanceRecord(
+                                                selectedEmployee.id,
+                                                day.key,
+                                                "checkOut",
+                                                e.target.value
+                                              )
+                                            }
+                                          />
+                                        </Field>
+                                      </div>
+                                    )}
+
                                     {status === "ausente_justificado" && (
                                       <div style={{ marginTop: 8 }}>
                                         <FileDropButton

@@ -30,6 +30,7 @@ export type TabKey =
   | "emitirFacturas"
   | "stock"
   | "personal"
+  | "asistencia"
   | "costos"
   | "tarjetas"
   | "documentos"
@@ -975,6 +976,10 @@ export type AttendanceRecord = {
   normalHours: number;
   extra50Hours: number;
   extra100Hours: number;
+  // Horario exacto del dia (HH:MM). Fuente: fichaje del reloj Dahua o carga manual. Opcionales: los
+  // registros viejos no los tienen. Alimentan el semaforo de asistencia (en horario / tarde).
+  checkIn?: string;
+  checkOut?: string;
   attachmentName: string;
   notes: string;
 };
