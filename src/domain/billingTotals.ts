@@ -14,7 +14,12 @@ export type BillingTotalsInput = {
   invoicedNetAllTime: number; // neto facturado historico (todas las facturas) - a la fecha
   billedGross: number; // bruto comprometido/emitido en blanco (neto factura + IVA) - a la fecha
   blackNet: number; // neto que corre por negro (no facturado) - a la fecha
-  additionalsTotal: number; // adicionales (circuito blanco) - a la fecha
+  // Adicionales por circuito. `additionalsWhite` = adicionales blancos (neto + IVA), suma al circuito
+  // blanco. `additionalsBlack` = adicionales negros (neto), suma al circuito negro. `additionalsTotal`
+  // queda como legacy: si no vienen los dos nuevos, se lo trata como blanco (comportamiento anterior).
+  additionalsWhite?: number;
+  additionalsBlack?: number;
+  additionalsTotal?: number;
   whiteCollectedPeriod: number; // cobrado en blanco dentro del periodo (pagos)
   blackCollectedPeriod: number; // cobrado en negro dentro del periodo (pagos)
   whiteCollectedAllTime: number; // cobrado en blanco historico (pagos + retenciones) - a la fecha
@@ -57,8 +62,10 @@ export function computeBillingTotals(jobs: BillingTotalsInput[]): BillingTotals 
   let whiteBase = 0;
   let blackBase = 0;
   for (const j of jobs) {
-    const whiteToCollect = j.billedGross + j.additionalsTotal;
-    const blackToCollect = j.blackNet;
+    const addWhite = j.additionalsWhite ?? j.additionalsTotal ?? 0;
+    const addBlack = j.additionalsBlack ?? 0;
+    const whiteToCollect = j.billedGross + addWhite;
+    const blackToCollect = j.blackNet + addBlack;
     t.count += 1;
     // flujos del periodo
     t.invoicedTotal += j.invoicedTotalPeriod;

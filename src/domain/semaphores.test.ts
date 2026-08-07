@@ -3,10 +3,27 @@ import {
   getDateSemaphore,
   getJobSemaphore,
   getJobBillingSemaphore,
+  getInvoicingSemaphore,
   getBudgetSemaphore,
   getStockSemaphore,
   getClientSemaphore,
 } from "./semaphores";
+
+describe("getInvoicingSemaphore", () => {
+  it("facturo todo lo comprometido -> verde", () => {
+    expect(getInvoicingSemaphore(1000, 1000).level).toBe("verde");
+    expect(getInvoicingSemaphore(1200, 1000).level).toBe("verde"); // facturó de más
+  });
+  it("facturo algo pero falta -> amarillo", () => {
+    expect(getInvoicingSemaphore(400, 1000).level).toBe("amarillo");
+  });
+  it("no facturo nada habiendo monto por facturar -> rojo", () => {
+    expect(getInvoicingSemaphore(0, 1000).level).toBe("rojo");
+  });
+  it("no hay nada por facturar -> verde", () => {
+    expect(getInvoicingSemaphore(0, 0).level).toBe("verde");
+  });
+});
 
 // Fecha ISO (yyyy-mm-dd) a N dias de hoy, para tests deterministicos.
 const isoOffset = (days: number): string => {

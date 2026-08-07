@@ -142,6 +142,22 @@ const getJobBillingSemaphore = (job: {
   return { level: "amarillo", label: `falta ${what}`, needsInvoice, needsCollect };
 };
 
+// Semaforo SOLO de facturacion de un trabajo (lo que el usuario ve al lado del % facturado):
+//   verde   = se facturo todo lo comprometido (o no hay nada por facturar);
+//   amarillo = se facturo algo pero todavia falta para llegar al monto comprometido;
+//   rojo    = no se facturo nada (habiendo un monto por facturar).
+// billedNetReal = neto facturado real (suma de facturas). billedNetTarget = neto comprometido a facturar.
+const getInvoicingSemaphore = (
+  billedNetReal: number,
+  billedNetTarget: number
+): { level: SemaphoreLevel; label: string } => {
+  const TOL = 1; // $1 de tolerancia por redondeos
+  if (billedNetTarget <= TOL) return { level: "verde", label: "nada por facturar" };
+  if (billedNetReal <= TOL) return { level: "rojo", label: "sin facturar" };
+  if (billedNetReal + TOL >= billedNetTarget) return { level: "verde", label: "facturado" };
+  return { level: "amarillo", label: "falta facturar" };
+};
+
 // Semaforo de stock/faltante de un material: verde cubierto, amarillo parcial, rojo faltante total.
 const getStockSemaphore = (row: {
   available: number;
@@ -179,6 +195,7 @@ export {
   getDateSemaphore,
   getJobSemaphore,
   getJobBillingSemaphore,
+  getInvoicingSemaphore,
   getBudgetSemaphore,
   getStockSemaphore,
   getClientSemaphore,

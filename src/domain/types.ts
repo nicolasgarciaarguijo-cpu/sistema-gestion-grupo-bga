@@ -416,7 +416,13 @@ export type AdditionalItem = {
   id: number;
   date: string;
   description: string;
-  amount: number;
+  amount: number; // neto del adicional (sin IVA)
+  // Circuito del adicional. Ausente = blanco (compat con datos viejos). Blanco discrimina IVA y suma
+  // al circuito blanco; negro va por fuera (sin IVA), al circuito negro.
+  administration?: "blanco" | "negro";
+  // Alicuota de IVA del adicional blanco (%). Ausente = usa el vatPct del presupuesto (o 21%). En los
+  // adicionales negros no aplica.
+  vatRate?: number;
   notes: string;
 };
 

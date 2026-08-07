@@ -16,7 +16,19 @@ import { money, pct, formatDateDisplay } from "../lib/format";
 import { moneyToneColor } from "../ui/primitives";
 import { resolveAdvancePct } from "../domain/budgetTerms";
 import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency, type PlanoTone } from "../domain/planos";
+import { getInvoicingSemaphore } from "../domain/semaphores";
 import type { SemaphoreLevel } from "../ui/theme";
+
+// % de facturacion real de un trabajo (neto facturado por facturas reales) contra el neto comprometido
+// (soldNetPrice x billedPct). Devuelve el nivel del semaforo para el circulo verde/amarillo/rojo.
+const jobInvoicingSem = (job: any) => {
+  const invoicedNetReal = (job?.invoices || []).reduce(
+    (acc: number, inv: any) => acc + Number(inv?.subtotal || 0),
+    0
+  );
+  const billedNetTarget = Number(job?.soldNetPrice || 0) * (Number(job?.billedPct || 0) / 100);
+  return getInvoicingSemaphore(invoicedNetReal, billedNetTarget);
+};
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
 // Tono del semaforo de planos -> nivel del componente Semaforo del sistema.
@@ -265,7 +277,17 @@ export function AprobadosTab({
                           <td>{formatDateDisplay(job.startDate)}</td>
                           <td>{formatDateDisplay(job.estimatedDeliveryDate)}</td>
                           <td>{money(job.soldNetPrice)}</td>
-                          <td>{pct(job.billedPct)}</td>
+                          <td>
+                            {(() => {
+                              const sem = jobInvoicingSem(job);
+                              return (
+                                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                                  <Semaforo level={sem.level} size={11} title={sem.label} />
+                                  {pct(job.billedPct)}
+                                </span>
+                              );
+                            })()}
+                          </td>
                           <td style={{ color: moneyToneColor("out") }}>{money(job.commissionAmount)}</td>
                           <td style={{ color: moneyToneColor("out") }}>{money(job.commissionPending)}</td>
                           <td>{money(job.valueToCollect)}</td>
@@ -543,10 +565,55 @@ export function AprobadosTab({
                   <SummaryRow label="Neto presupuesto" value={money(selectedApprovedJob.soldNetPrice)} />
                   <SummaryRow label="Descuentos" value={money(selectedApprovedJob.totalDiscountAmount)} />
                   <SummaryRow label="% facturado" value={pct(selectedApprovedJob.billedPct)} />
+                  {(() => {
+                    const sem = jobInvoicingSem(selectedApprovedJob);
+                    const invoicedNetReal = (selectedApprovedJob.invoices || []).reduce(
+                      (a: number, i: any) => a + Number(i?.subtotal || 0),
+                      0
+                    );
+                    const target =
+                      Number(selectedApprovedJob.soldNetPrice || 0) *
+                      (Number(selectedApprovedJob.billedPct || 0) / 100);
+                    const missing = Math.max(0, target - invoicedNetReal);
+                    return (
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          marginBottom: 8,
+                        }}
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <Semaforo level={sem.level} size={14} title={sem.label} /> Estado facturacion
+                        </span>
+                        <span style={{ fontWeight: 600 }}>
+                          {sem.level === "verde" ? "OK" : `falta facturar ${money(missing)}`}
+                        </span>
+                      </div>
+                    );
+                  })()}
                   <SummaryRow label="Neto factura" value={money(selectedApprovedJob.billedNet)} />
                   <SummaryRow label="Circuito negro" value={money(selectedApprovedJob.blackNet)} />
                   <SummaryRow label="IVA 21%" value={money(selectedApprovedJob.invoiceVatAmount)} />
-                  <SummaryRow label="Adicionales" value={money(selectedApprovedJob.additionalsTotal)} />
+                  <SummaryRow
+                    label="Adicionales blanco (neto)"
+                    value={money(selectedApprovedJob.additionalsWhiteNet || 0)}
+                    color="blanco"
+                  />
+                  {(selectedApprovedJob.additionalsVat || 0) > 0 && (
+                    <SummaryRow
+                      label="IVA adicionales"
+                      value={money(selectedApprovedJob.additionalsVat || 0)}
+                    />
+                  )}
+                  {(selectedApprovedJob.additionalsBlackNet || 0) > 0 && (
+                    <SummaryRow
+                      label="Adicionales negro"
+                      value={money(selectedApprovedJob.additionalsBlackNet || 0)}
+                      color="negro"
+                    />
+                  )}
                   {(selectedApprovedJob.discountsTotal || 0) > 0 && (
                     <SummaryRow
                       label="Descuentos"
@@ -994,13 +1061,52 @@ export function AprobadosTab({
                               onChange={(e) => updateAdditional(selectedApprovedJob.id, item.id, "date", e.target.value)}
                             />
                           </Field>
-                          <Field label="Monto">
+                          <Field label="Monto (neto)">
                             <AmountInput
                               style={styles.input}
                               value={item.amount}
                               onChange={(n) => updateAdditional(selectedApprovedJob.id, item.id, "amount", n)}
                             />
                           </Field>
+                        </TwoCol>
+                        <TwoCol>
+                          <Field label="Administracion">
+                            <select
+                              style={styles.input}
+                              value={item.administration || "blanco"}
+                              onChange={(e) =>
+                                updateAdditional(selectedApprovedJob.id, item.id, "administration", e.target.value)
+                              }
+                            >
+                              <option value="blanco">Blanco (factura IVA)</option>
+                              <option value="negro">Negro (sin IVA)</option>
+                            </select>
+                          </Field>
+                          {(item.administration || "blanco") === "blanco" ? (
+                            <Field label="IVA %">
+                              <input
+                                style={styles.input}
+                                type="number"
+                                min={0}
+                                step={0.5}
+                                value={item.vatRate ?? 21}
+                                onChange={(e) =>
+                                  updateAdditional(
+                                    selectedApprovedJob.id,
+                                    item.id,
+                                    "vatRate",
+                                    Number(e.target.value)
+                                  )
+                                }
+                              />
+                            </Field>
+                          ) : (
+                            <Field label="IVA">
+                              <div style={{ color: "#94a3b8", fontSize: 12, padding: "8px 0" }}>
+                                No aplica (negro)
+                              </div>
+                            </Field>
+                          )}
                         </TwoCol>
                         <Field label="Descripcion">
                           <input

@@ -4552,16 +4552,30 @@ export default function App() {
           : billedNet * (Number(job.snapshot?.params?.vatPct ?? INVOICE_VAT_PCT) / 100);
         const billedGross = billedNet + invoiceVatAmount;
         const blackNet = Math.max(0, Number(job.soldNetPrice || 0) - billedNet);
-        const additionalsTotal = (job.additionals || []).reduce(
-          (acc, item) => acc + Number(item.amount || 0),
-          0
-        );
+        // Adicionales por circuito: blanco discrimina IVA (suma al blanco), negro va sin IVA (al negro).
+        const addVatDefaultPct = Number(job.snapshot?.params?.vatPct ?? INVOICE_VAT_PCT);
+        const isWhiteAdditional = (item: { administration?: string }) =>
+          (item.administration || "blanco") === "blanco";
+        const additionalsWhiteNet = (job.additionals || [])
+          .filter(isWhiteAdditional)
+          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        const additionalsBlackNet = (job.additionals || [])
+          .filter((item) => item.administration === "negro")
+          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        const additionalsVat = (job.additionals || [])
+          .filter(isWhiteAdditional)
+          .reduce(
+            (acc, item) =>
+              acc + Number(item.amount || 0) * (Number(item.vatRate ?? addVatDefaultPct) / 100),
+            0
+          );
+        const additionalsTotal = additionalsWhiteNet + additionalsBlackNet; // neto total (compat)
         const discountsTotal = (job.discounts || []).reduce(
           (acc, item) => acc + Number(item.amount || 0),
           0
         );
         const valueToCollect =
-          job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount;
+          job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount + additionalsVat;
         // Manda el trabajo aprobado: el % anticipo se resuelve del job (fallback forma de pago) y
         // el IVA va SOLO sobre lo facturado (invoiceVatAmount). Anticipo = %anticipo x neto + IVA facturado.
         const anticipoPctResolved = resolveAdvancePct(
@@ -4612,6 +4626,9 @@ export default function App() {
           paymentsUsdTotal,
           retentionsTotal,
           additionalsTotal,
+          additionalsWhiteNet,
+          additionalsBlackNet,
+          additionalsVat,
           discountsTotal,
           commissionPaidTotal,
           commissionPending: Math.max(0, Number(job.commissionAmount || 0) - commissionPaidTotal),
@@ -4773,7 +4790,8 @@ export default function App() {
           invoicedNetAllTime,
           billedGross: job.billedGross,
           blackNet: job.blackNet,
-          additionalsTotal: job.additionalsTotal,
+          additionalsWhite: job.additionalsWhiteNet + job.additionalsVat,
+          additionalsBlack: job.additionalsBlackNet,
           whiteCollectedPeriod,
           blackCollectedPeriod,
           whiteCollectedAllTime,

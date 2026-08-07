@@ -73,6 +73,26 @@ describe("computeBillingTotals", () => {
     expect(t.owedBlack).toBe(0);
   });
 
+  it("adicionales blancos (con IVA) suman al blanco; negros al negro", () => {
+    const t = computeBillingTotals([
+      job({
+        billedGross: 1000,
+        blackNet: 500,
+        additionalsWhite: 121, // adicional blanco 100 + 21 IVA
+        additionalsBlack: 200, // adicional negro 200
+      }),
+    ]);
+    expect(t.owedWhite).toBe(1121); // 1000 + 121
+    expect(t.owedBlack).toBe(700); // 500 + 200
+    expect(t.owedTotal).toBe(0); // no se pasó remainingToPay
+  });
+
+  it("additionalsTotal legacy se sigue tratando como blanco", () => {
+    const t = computeBillingTotals([job({ billedGross: 1000, additionalsTotal: 300 })]);
+    expect(t.owedWhite).toBe(1300);
+    expect(t.owedBlack).toBe(0);
+  });
+
   it("blackSharePct = negro / (blanco+negro) comprometido", () => {
     const t = computeBillingTotals([
       job({ billedGross: 0, blackNet: 250 }),
