@@ -138,6 +138,110 @@ export const computeMonthAttendance = (
   return out;
 };
 
+// ---------------------------------------------------------------------------------------------
+// PRECARGA de horas del convenio a partir de la entrada/salida (CCT 335/75 muebles, ver marco legal).
+// Es una SUGERENCIA editable: el sistema estima, el usuario revisa y ajusta (almuerzo, casos raros).
+//
+// Reglas acordadas con el usuario:
+//   - Jornada normal: L-V 07:30-17:00, Sáb 07:30-13:00 (WORKSHOP_SCHEDULE). Domingo: todo al 100%.
+//   - Normales   = tiempo trabajado DENTRO de la ventana de jornada.
+//   - Extra 50%  = tiempo fuera de jornada en día hábil (y sábado antes de las 07:30).
+//   - Extra 100% = sábado después de 13:00, domingos y feriados.
+//   - Nocturnas 50% = franja 21:00-06:00 del tiempo extra (se separa de extra 50 para no duplicar).
+//   - Almuerzo 13:30-14:00 (30 min) NO computa: se descuenta del tiempo trabajado antes de clasificar.
+export type ConvenioHours = {
+  normalHours: number;
+  extra50Hours: number;
+  extra100Hours: number;
+  night50Hours: number;
+};
+
+const NIGHT_START = 21 * 60; // 21:00
+const NIGHT_END = 6 * 60; // 06:00
+export const LUNCH_START = 13 * 60 + 30; // 13:30
+export const LUNCH_END = 14 * 60; // 14:00 — la media hora de almuerzo no computa
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+// Minutos del intervalo [start,end) (end puede pasar de 1440 si cruza medianoche) que caen en franja
+// nocturna (>=21:00 o <06:00), evaluando cada día que toca el intervalo.
+const nightMinutesIn = (start: number, end: number): number => {
+  let night = 0;
+  for (let base = Math.floor(start / 1440) * 1440; base < end; base += 1440) {
+    const nA = base + NIGHT_START; // 21:00 de ese día
+    const nB = base + 1440 + NIGHT_END; // 06:00 del día siguiente
+    night += Math.max(0, Math.min(end, nB) - Math.max(start, nA));
+  }
+  return night;
+};
+
+// Minutos de solape entre [s,e) y [ws,we).
+const overlap = (s: number, e: number, ws: number, we: number) => Math.max(0, Math.min(e, we) - Math.max(s, ws));
+
+// Clasifica UN tramo contiguo [s,e) (en minutos) en las 4 categorías, en MINUTOS. Sin lógica de
+// almuerzo (eso se resuelve afuera partiendo el intervalo). dow = día de la semana (0=Dom..6=Sáb).
+const categorizeMinutes = (dow: number, s: number, e: number): ConvenioHours => {
+  if (e <= s) return { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
+  const night = nightMinutesIn(s, e);
+  if (dow === 0) {
+    // Domingo: todo al 100%; la parte nocturna se separa como nocturna 50 (informativa).
+    return { normalHours: 0, extra50Hours: 0, extra100Hours: e - s - night, night50Hours: night };
+  }
+  if (dow === 6) {
+    // Sábado: normal 07:30-13:00; después de 13:00 = 100%; antes de 07:30 = extra 50.
+    const ws = timeToMinutes(WORKSHOP_SCHEDULE.entry)!; // 450
+    const we = timeToMinutes(WORKSHOP_SCHEDULE.exitSaturday)!; // 780
+    const normal = overlap(s, e, ws, we);
+    const after = overlap(s, e, we, 100000);
+    const before = overlap(s, e, 0, ws);
+    const nightExtra = Math.min(night, after + before);
+    return { normalHours: normal, extra50Hours: before, extra100Hours: after - nightExtra, night50Hours: nightExtra };
+  }
+  // Día hábil (L-V): normal 07:30-17:00; el resto es extra (nocturno -> nocturna 50, resto -> extra 50).
+  const ws = timeToMinutes(WORKSHOP_SCHEDULE.entry)!; // 450
+  const we = timeToMinutes(WORKSHOP_SCHEDULE.exitWeekday)!; // 1020
+  const normal = overlap(s, e, ws, we);
+  const overtime = e - s - normal;
+  const nightExtra = Math.min(night, overtime);
+  return { normalHours: normal, extra50Hours: overtime - nightExtra, extra100Hours: 0, night50Hours: nightExtra };
+};
+
+// Deriva las 4 categorías de horas del convenio para un día, a partir de checkIn/checkOut.
+// Descuenta el almuerzo (13:30-14:00) partiendo el tiempo trabajado en dos tramos. Devuelve todo en 0
+// si falta algún dato o el rango no es válido.
+export const deriveConvenioHours = (
+  dateKey: string,
+  checkIn?: string,
+  checkOut?: string
+): ConvenioHours => {
+  const zero: ConvenioHours = { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
+  const inMin = timeToMinutes(checkIn);
+  let outMin = timeToMinutes(checkOut);
+  if (inMin == null || outMin == null) return zero;
+  if (outMin <= inMin) outMin += 1440; // cruzó medianoche
+  if (outMin <= inMin) return zero;
+
+  const dow = dayOfWeek(dateKey);
+  // Tramos trabajados sacando el almuerzo (13:30-14:00): antes y después del hueco.
+  const segments: Array<[number, number]> = [
+    [inMin, Math.min(outMin, LUNCH_START)],
+    [Math.max(inMin, LUNCH_END), outMin],
+  ];
+  const acc = { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
+  for (const [s, e] of segments) {
+    const part = categorizeMinutes(dow, s, e);
+    acc.normalHours += part.normalHours;
+    acc.extra50Hours += part.extra50Hours;
+    acc.extra100Hours += part.extra100Hours;
+    acc.night50Hours += part.night50Hours;
+  }
+  return {
+    normalHours: round2(acc.normalHours / 60),
+    extra50Hours: round2(acc.extra50Hours / 60),
+    extra100Hours: round2(acc.extra100Hours / 60),
+    night50Hours: round2(acc.night50Hours / 60),
+  };
+};
+
 // Resumen del mes para un empleado (para la tabla de abajo del calendario).
 export type MonthAttendanceSummary = {
   present: number;

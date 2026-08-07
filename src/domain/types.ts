@@ -976,8 +976,12 @@ export type AttendanceRecord = {
   normalHours: number;
   extra50Hours: number;
   extra100Hours: number;
+  // Horas nocturnas al 50% (franja 21:00-06:00 del tiempo extra). Opcional: registros viejos no la
+  // tienen (se lee como 0). Se precarga desde checkIn/checkOut y alimenta night50Hours de la liquidacion.
+  night50Hours?: number;
   // Horario exacto del dia (HH:MM). Fuente: fichaje del reloj Dahua o carga manual. Opcionales: los
-  // registros viejos no los tienen. Alimentan el semaforo de asistencia (en horario / tarde).
+  // registros viejos no los tienen. Alimentan el semaforo de asistencia (en horario / tarde) y la
+  // precarga de horas del convenio (ver deriveConvenioHours).
   checkIn?: string;
   checkOut?: string;
   attachmentName: string;

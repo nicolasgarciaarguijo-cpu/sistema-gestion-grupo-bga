@@ -23,6 +23,7 @@ import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
 import { computePayrollSummary } from "./domain/payroll";
+import { deriveConvenioHours } from "./domain/attendance";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
 import {
   buildCrmRows,
@@ -12063,6 +12064,10 @@ export default function App() {
             (acc, item) => acc + Number(item.extra100Hours || 0),
             0
           );
+          const night50Hours = monthAttendance.reduce(
+            (acc, item) => acc + Number(item.night50Hours || 0),
+            0
+          );
           const justifiedAbsenceHours =
             monthAttendance.filter((item) => item.status === "ausente_justificado").length *
             standardDayHours;
@@ -12075,6 +12080,7 @@ export default function App() {
             normalHours,
             extra50Hours,
             extra100Hours,
+            night50Hours,
             justifiedAbsenceHours,
             unjustifiedAbsenceHours,
             vacationsDays,
@@ -12137,7 +12143,24 @@ export default function App() {
                 [field]: value,
               },
             ];
-        const monthPayrollFromAttendance = recalcMonthPayroll(nextAttendance);
+        // Precarga de horas del convenio al cargar/editar entrada o salida: si el día ya tiene las dos,
+        // se estiman normales/extra 50/extra 100/nocturna 50 (editable después). Ver deriveConvenioHours.
+        const attendanceWithHours =
+          field === "checkIn" || field === "checkOut"
+            ? nextAttendance.map((item) => {
+                if (item.date !== date || !item.checkIn || !item.checkOut) return item;
+                const derived = deriveConvenioHours(item.date, item.checkIn, item.checkOut);
+                return {
+                  ...item,
+                  status: item.status === "sin_cargar" ? ("presente" as AttendanceStatus) : item.status,
+                  normalHours: derived.normalHours,
+                  extra50Hours: derived.extra50Hours,
+                  extra100Hours: derived.extra100Hours,
+                  night50Hours: derived.night50Hours,
+                };
+              })
+            : nextAttendance;
+        const monthPayrollFromAttendance = recalcMonthPayroll(attendanceWithHours);
         const existsPayroll = employee.payrolls.some((item) => item.month === month);
         const nextPayrolls = existsPayroll
           ? employee.payrolls.map((item) =>
@@ -12157,7 +12180,7 @@ export default function App() {
                 manualOverride: false,
               },
             ];
-        return { ...employee, attendance: nextAttendance, payrolls: nextPayrolls };
+        return { ...employee, attendance: attendanceWithHours, payrolls: nextPayrolls };
       })
     );
   };

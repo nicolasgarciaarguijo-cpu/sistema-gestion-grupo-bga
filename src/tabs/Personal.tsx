@@ -14,6 +14,8 @@ import {
 import { money, pct, localMonthKey, formatDateDisplay } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import type { CompanyName } from "../domain/types";
+import { computeMonthAttendance, deriveConvenioHours } from "../domain/attendance";
+import type { DayAttendance } from "../domain/attendance";
 
 type PersonalTabProps = {
   employees: any[];
@@ -1184,6 +1186,33 @@ export function PersonalTab(props: PersonalTabProps) {
                 const payroll = getCurrentPayroll(selectedEmployee);
                 const payrollSummary = getEmployeePayrollSummary(selectedEmployee);
                 const attendanceWeeks = attendanceMonthData.weeks;
+                // Semaforo de puntualidad por dia (verde/amarillo/rojo) para colorear el calendario.
+                const monthSemaphore: Map<string, DayAttendance> = computeMonthAttendance(
+                  selectedEmployee.attendance || [],
+                  payrollMonth
+                );
+                const semColorFor = (level?: string) =>
+                  level === "green"
+                    ? "#16a34a"
+                    : level === "yellow"
+                    ? "#ca8a04"
+                    : level === "red"
+                    ? "#dc2626"
+                    : level === "off"
+                    ? "#2563eb"
+                    : "#cbd5e1";
+                // Precarga en masa: recalcula las horas de todos los dias del mes que ya tienen entrada
+                // y salida (util para los dias traidos del reloj). Reaplica checkOut -> dispara la precarga.
+                const precargarMesDesdeFichadas = () => {
+                  (selectedEmployee.attendance || [])
+                    .filter(
+                      (r: any) =>
+                        r.date.startsWith(`${payrollMonth}-`) && r.checkIn && r.checkOut
+                    )
+                    .forEach((r: any) =>
+                      updateAttendanceRecord(selectedEmployee.id, r.date, "checkOut", r.checkOut)
+                    );
+                };
 
                 return (
                   <>
@@ -1561,6 +1590,13 @@ export function PersonalTab(props: PersonalTabProps) {
                           >
                             Mes siguiente
                           </button>
+                          <button
+                            style={{ ...styles.smallBtn, background: "#0f172a", color: "#fff", borderColor: "#0f172a" }}
+                            title="Recalcula las horas (normales/extra/nocturnas) de todos los días del mes que ya tienen entrada y salida cargadas."
+                            onClick={precargarMesDesdeFichadas}
+                          >
+                            ⧗ Precargar horas del mes
+                          </button>
                         </div>
                       </div>
                       <div style={styles.attendanceWeekdayHeader}>
@@ -1596,13 +1632,77 @@ export function PersonalTab(props: PersonalTabProps) {
                                     : status === "vacaciones"
                                     ? styles.statusBlue
                                     : styles.statusGray;
+                                const sem = monthSemaphore.get(day.key);
+                                const semColor = semColorFor(sem?.level);
+                                const cInput = { ...styles.input, padding: "4px 6px", fontSize: 12 };
+                                const hourInput = (
+                                  label: string,
+                                  field: string,
+                                  val: number
+                                ) => (
+                                  <div>
+                                    <span
+                                      style={{
+                                        fontSize: 10,
+                                        fontWeight: 800,
+                                        color: "#64748b",
+                                        letterSpacing: 0.2,
+                                        display: "block",
+                                        marginBottom: 1,
+                                      }}
+                                    >
+                                      {label}
+                                    </span>
+                                    <input
+                                      style={cInput}
+                                      type="number"
+                                      min={0}
+                                      step={0.5}
+                                      value={val}
+                                      onChange={(e) =>
+                                        updateAttendanceRecord(
+                                          selectedEmployee.id,
+                                          day.key,
+                                          field,
+                                          Number(e.target.value)
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                );
                                 return (
-                                  <div key={day.key} style={styles.attendanceCard}>
-                                    <div style={styles.attendanceDayTitle}>
-                                      <strong>{day.day}</strong> {day.weekday}
+                                  <div
+                                    key={day.key}
+                                    style={{ ...styles.attendanceCard, borderLeft: `4px solid ${semColor}` }}
+                                  >
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "baseline",
+                                        marginBottom: 4,
+                                      }}
+                                    >
+                                      <div>
+                                        <strong style={{ fontSize: 16, color: "#0f172a" }}>{day.day}</strong>{" "}
+                                        <span style={{ fontSize: 11, color: "#64748b", textTransform: "capitalize" }}>
+                                          {day.weekday}
+                                        </span>
+                                      </div>
+                                      <span
+                                        title={sem?.label || status.replaceAll("_", " ")}
+                                        style={{
+                                          width: 11,
+                                          height: 11,
+                                          borderRadius: "50%",
+                                          background: semColor,
+                                          flexShrink: 0,
+                                          marginTop: 3,
+                                        }}
+                                      />
                                     </div>
                                     <select
-                                      style={styles.input}
+                                      style={{ ...styles.input, padding: "4px 6px", fontSize: 12 }}
                                       value={status}
                                       onChange={(e) =>
                                         updateAttendanceRecord(selectedEmployee.id, day.key, "status", e.target.value)
@@ -1610,101 +1710,100 @@ export function PersonalTab(props: PersonalTabProps) {
                                     >
                                       <option value="sin_cargar">Sin cargar</option>
                                       <option value="presente">Presente</option>
-                                      <option value="ausente_injustificado">Ausente sin justificar</option>
+                                      <option value="ausente_injustificado">Ausente s/ justificar</option>
                                       <option value="ausente_justificado">Ausente justificado</option>
                                       <option value="vacaciones">Vacaciones</option>
                                     </select>
-                                    <div style={{ marginTop: 8 }}>
-                                      <span style={{ ...styles.statusPill, ...statusStyle }}>
-                                        {status.replaceAll("_", " ")}
-                                      </span>
-                                    </div>
-                                    <div style={styles.attendanceHoursGrid}>
-                                      <Field label="Normales">
-                                        <input
-                                          style={styles.input}
-                                          type="number"
-                                          min={0}
-                                          step={0.5}
-                                          value={record?.normalHours ?? 0}
-                                          onChange={(e) =>
-                                            updateAttendanceRecord(
-                                              selectedEmployee.id,
-                                              day.key,
-                                              "normalHours",
-                                              Number(e.target.value)
-                                            )
-                                          }
-                                        />
-                                      </Field>
-                                      <Field label="50%">
-                                        <input
-                                          style={styles.input}
-                                          type="number"
-                                          min={0}
-                                          step={0.5}
-                                          value={record?.extra50Hours ?? 0}
-                                          onChange={(e) =>
-                                            updateAttendanceRecord(
-                                              selectedEmployee.id,
-                                              day.key,
-                                              "extra50Hours",
-                                              Number(e.target.value)
-                                            )
-                                          }
-                                        />
-                                      </Field>
-                                      <Field label="100%">
-                                        <input
-                                          style={styles.input}
-                                          type="number"
-                                          min={0}
-                                          step={0.5}
-                                          value={record?.extra100Hours ?? 0}
-                                          onChange={(e) =>
-                                            updateAttendanceRecord(
-                                              selectedEmployee.id,
-                                              day.key,
-                                              "extra100Hours",
-                                              Number(e.target.value)
-                                            )
-                                          }
-                                        />
-                                      </Field>
-                                    </div>
 
                                     {status === "presente" && (
-                                      <div style={styles.attendanceHoursGrid}>
-                                        <Field label="Entrada">
-                                          <input
-                                            style={styles.input}
-                                            type="time"
-                                            value={record?.checkIn ?? ""}
-                                            onChange={(e) =>
-                                              updateAttendanceRecord(
-                                                selectedEmployee.id,
-                                                day.key,
-                                                "checkIn",
-                                                e.target.value
-                                              )
-                                            }
-                                          />
-                                        </Field>
-                                        <Field label="Salida">
-                                          <input
-                                            style={styles.input}
-                                            type="time"
-                                            value={record?.checkOut ?? ""}
-                                            onChange={(e) =>
-                                              updateAttendanceRecord(
-                                                selectedEmployee.id,
-                                                day.key,
-                                                "checkOut",
-                                                e.target.value
-                                              )
-                                            }
-                                          />
-                                        </Field>
+                                      <>
+                                        <div
+                                          style={{
+                                            display: "grid",
+                                            gridTemplateColumns: "1fr 1fr",
+                                            gap: 6,
+                                            marginTop: 6,
+                                          }}
+                                        >
+                                          <div>
+                                            <span
+                                              style={{
+                                                fontSize: 10,
+                                                fontWeight: 800,
+                                                color: "#64748b",
+                                                display: "block",
+                                                marginBottom: 1,
+                                              }}
+                                            >
+                                              ENTRADA
+                                            </span>
+                                            <input
+                                              style={cInput}
+                                              type="time"
+                                              value={record?.checkIn ?? ""}
+                                              onChange={(e) =>
+                                                updateAttendanceRecord(
+                                                  selectedEmployee.id,
+                                                  day.key,
+                                                  "checkIn",
+                                                  e.target.value
+                                                )
+                                              }
+                                            />
+                                          </div>
+                                          <div>
+                                            <span
+                                              style={{
+                                                fontSize: 10,
+                                                fontWeight: 800,
+                                                color: "#64748b",
+                                                display: "block",
+                                                marginBottom: 1,
+                                              }}
+                                            >
+                                              SALIDA
+                                            </span>
+                                            <input
+                                              style={cInput}
+                                              type="time"
+                                              value={record?.checkOut ?? ""}
+                                              onChange={(e) =>
+                                                updateAttendanceRecord(
+                                                  selectedEmployee.id,
+                                                  day.key,
+                                                  "checkOut",
+                                                  e.target.value
+                                                )
+                                              }
+                                            />
+                                          </div>
+                                        </div>
+                                        {sem?.label && (
+                                          <div style={{ fontSize: 11, fontWeight: 700, color: semColor, marginTop: 4 }}>
+                                            {sem.label}
+                                          </div>
+                                        )}
+                                        <div
+                                          style={{
+                                            display: "grid",
+                                            gridTemplateColumns: "repeat(4, 1fr)",
+                                            gap: 4,
+                                            marginTop: 6,
+                                          }}
+                                        >
+                                          {hourInput("NORM", "normalHours", record?.normalHours ?? 0)}
+                                          {hourInput("50%", "extra50Hours", record?.extra50Hours ?? 0)}
+                                          {hourInput("100%", "extra100Hours", record?.extra100Hours ?? 0)}
+                                          {hourInput("NOC", "night50Hours", record?.night50Hours ?? 0)}
+                                        </div>
+                                      </>
+                                    )}
+
+                                    {status !== "presente" && status !== "sin_cargar" && (
+                                      <div style={{ marginTop: 6 }}>
+                                        <span style={{ ...styles.statusPill, ...statusStyle }}>
+                                          {status.replaceAll("_", " ")}
+                                        </span>
                                       </div>
                                     )}
 
