@@ -293,8 +293,8 @@ export function buildClientBudgetHtml(
     .card{border:1px solid #e6e9ee;border-radius:10px;padding:14px;margin-top:14px}
     .cardhead{display:flex;justify-content:space-between;align-items:center;gap:12px}
     .pill{font-size:12px;font-weight:700;color:${theme.primary};background:${theme.soft}b3;border:1px solid ${theme.primary};border-radius:999px;padding:3px 12px;white-space:nowrap}
-    .mats{margin:6px 0 0;padding-left:16px;columns:2;column-gap:28px;font-size:10.5px;line-height:1.35}
-    .mats li{margin:1px 0;break-inside:avoid}
+    .mats{margin:6px 0 0;padding-left:16px;columns:2;column-gap:28px;font-size:9.5px;line-height:1.3;font-weight:400}
+    .mats li{margin:1px 0;break-inside:avoid;font-weight:400}
     .total{display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:12px;border-top:2px solid ${theme.primary}}
     .final{font-size:16px;font-weight:700;color:${theme.primary}}
     footer{color:#94a3b8;font-size:12px;text-align:center;margin-top:24px}
