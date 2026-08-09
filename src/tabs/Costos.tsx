@@ -77,6 +77,8 @@ type CostosTabProps = {
   pettyCashExpenses: any[];
   updatePettyCashExpense: (id: number, field: keyof PettyCashExpense, value: any) => void;
   getPettyCashAdministration: (exp: any) => "blanco" | "negro";
+  // Auto-clasificacion: ubica de una los gastos sin grupo con las reglas aprendidas. Devuelve cuantos.
+  autoClassifyUnassigned: () => number;
   costRows: CostSourceRow[];
   companyScope: string;
   // Objetos { value, short, ... } del catalogo de empresas (misma forma que en las otras solapas).
@@ -153,6 +155,7 @@ export function CostosTab({
   pettyCashExpenses,
   updatePettyCashExpense,
   getPettyCashAdministration,
+  autoClassifyUnassigned,
   companyScope,
   COMPANY_OPTIONS,
   getCompanyMeta,
@@ -943,7 +946,23 @@ export function CostosTab({
       <Panel
         title="Gastos cargados"
         span="full"
-        actions={<ButtonLike onClick={addCostEntry}>Agregar gasto</ButtonLike>}
+        actions={
+          <span style={{ display: "inline-flex", gap: 8 }}>
+            <ButtonLike
+              onClick={() => {
+                const n = autoClassifyUnassigned();
+                window.alert(
+                  n > 0
+                    ? `Se ubicaron ${n} gasto(s) sin clasificar usando las reglas aprendidas. Revisá que hayan quedado bien.`
+                    : "No hubo gastos con una sugerencia confiable. Clasificá algunos a mano para que el sistema aprenda y la próxima los ubique solo."
+                );
+              }}
+            >
+              🧠 Auto-clasificar
+            </ButtonLike>
+            <ButtonLike onClick={addCostEntry}>Agregar gasto</ButtonLike>
+          </span>
+        }
       >
         <div style={styles.sectionNote}>
           Los PAGOS: lo que salio de la empresa (proveedores, alquiler, servicios, impuestos). Esto es

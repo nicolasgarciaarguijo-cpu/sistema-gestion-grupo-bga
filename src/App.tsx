@@ -13059,6 +13059,42 @@ export default function App() {
     setCostEntries((prev) => prev.filter((entry) => entry.id !== id));
   };
 
+  // Fase 3: ubica de una los gastos SIN clasificar (pagos y caja chica) usando las reglas ya aprendidas.
+  // Sugiere-y-aplica en batch: solo mueve lo que tiene una sugerencia confiable; lo ambiguo/desconocido
+  // queda sin clasificar (para revisar a mano). Devuelve cuantos ubico, para el aviso en la UI.
+  const autoClassifyUnassigned = (): number => {
+    let count = 0;
+    setCostEntries((prev) =>
+      prev.map((e) => {
+        if (e.group) return e;
+        const sug = suggestGroupFromRules(
+          { company: e.company, concept: e.description, supplierId: e.supplierId, amount: e.amount },
+          costRules
+        );
+        if (sug && sug.group) {
+          count += 1;
+          return { ...e, group: sug.group };
+        }
+        return e;
+      })
+    );
+    setPettyCashExpenses((prev) =>
+      prev.map((e) => {
+        if (e.costGroup) return e;
+        const sug = suggestGroupFromRules(
+          { company: e.company, concept: e.description, amount: e.amount },
+          costRules
+        );
+        if (sug && sug.group) {
+          count += 1;
+          return { ...e, costGroup: sug.group };
+        }
+        return e;
+      })
+    );
+    return count;
+  };
+
   const updateCostEntry = (id: number, field: keyof CostEntry, value: any) => {
     setCostEntries((prev) =>
       prev.map((entry) => {
@@ -14822,6 +14858,7 @@ export default function App() {
           pettyCashExpenses={visiblePettyCashExpenses}
           updatePettyCashExpense={updatePettyCashExpense}
           getPettyCashAdministration={getPettyCashAdministration}
+          autoClassifyUnassigned={autoClassifyUnassigned}
           suppliers={visibleSuppliers}
           addSupplier={addSupplier}
           removeSupplier={removeSupplier}
