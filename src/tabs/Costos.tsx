@@ -69,6 +69,70 @@ const KindPill = ({ kind }: { kind: CostKind }) => (
   </span>
 );
 
+// Menú contextual (click derecho) reutilizable: aparece en la posición del cursor y se cierra al hacer
+// click afuera o Escape. Base para la edición rápida de pills en todo el sistema (Fase 7).
+const quickMenuItem: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  width: "100%",
+  textAlign: "left",
+  padding: "5px 8px",
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  fontSize: 13,
+  borderRadius: 6,
+};
+function QuickMenu({
+  x,
+  y,
+  onClose,
+  children,
+}: {
+  x: number;
+  y: number;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  React.useEffect(() => {
+    const close = () => onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        position: "fixed",
+        left: Math.min(x, window.innerWidth - 240),
+        top: Math.min(y, window.innerHeight - 320),
+        zIndex: 1000,
+        background: "#fff",
+        border: "1px solid #cbd5e1",
+        borderRadius: 8,
+        boxShadow: "0 8px 28px rgba(0,0,0,0.20)",
+        padding: 6,
+        minWidth: 210,
+        maxHeight: 320,
+        overflowY: "auto",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 type CostosTabProps = {
   fiscalLabel: string;
   months: string[];
@@ -205,6 +269,18 @@ export function CostosTab({
 
   // Tipo (fijo/variable) del grupo de un gasto, para la pill F/V.
   const kindOfGroup = (groupName: string): CostKind => resolveGroupKind(costGroups, groupName);
+
+  // Menú contextual (click derecho) para clasificar rápido un gasto sin abrir toda la fila.
+  const [ctxMenu, setCtxMenu] = React.useState<null | {
+    x: number;
+    y: number;
+    kind: "pago" | "caja";
+    id: number;
+  }>(null);
+  const openCtxMenu = (ev: React.MouseEvent, kind: "pago" | "caja", id: number) => {
+    ev.preventDefault();
+    setCtxMenu({ x: ev.clientX, y: ev.clientY, kind, id });
+  };
 
   // Buscador de gastos: filtra por concepto, proveedor, grupo, admin (blanco/negro), fecha o monto.
   const [search, setSearch] = React.useState("");
@@ -1104,7 +1180,11 @@ export function CostosTab({
                       ))}
                       <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
                     </select>
-                    <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+                    <div
+                      title="Click derecho: clasificar rápido"
+                      onContextMenu={(ev) => openCtxMenu(ev, "pago", entry.id)}
+                      style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center", cursor: "context-menu" }}
+                    >
                       {entry.group ? (
                         <KindPill kind={kindOfGroup(entry.group)} />
                       ) : (
@@ -1398,7 +1478,11 @@ export function CostosTab({
                       ))}
                       <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
                     </select>
-                    <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+                    <div
+                      title="Click derecho: clasificar rápido"
+                      onContextMenu={(ev) => openCtxMenu(ev, "caja", e.id)}
+                      style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center", cursor: "context-menu" }}
+                    >
                       {e.costGroup ? (
                         <KindPill kind={kindOfGroup(e.costGroup)} />
                       ) : (
@@ -1659,6 +1743,66 @@ export function CostosTab({
           </table>
         </div>
       </Panel>
+
+      {ctxMenu &&
+        (() => {
+          const isPago = ctxMenu.kind === "pago";
+          const entry: any = isPago
+            ? costEntries.find((e) => e.id === ctxMenu.id)
+            : pettyCashExpenses.find((e: any) => e.id === ctxMenu.id);
+          if (!entry) return null;
+          const currentGroup = isPago ? entry.group : entry.costGroup;
+          const setGroup = (name: string) => {
+            if (isPago) updateCostEntry(ctxMenu.id, "group", name);
+            else updatePettyCashExpense(ctxMenu.id, "costGroup", name);
+          };
+          return (
+            <QuickMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)}>
+              <div style={{ fontSize: 11, color: "#64748b", padding: "4px 8px", fontWeight: 700 }}>
+                Clasificar en un grupo…
+              </div>
+              <button
+                style={quickMenuItem}
+                onClick={() => {
+                  setGroup("");
+                  setCtxMenu(null);
+                }}
+              >
+                {isPago ? "Sin clasificar" : "Caja chica (sin clasificar)"}
+              </button>
+              {manualGroupOptions.map((g) => (
+                <button
+                  key={g}
+                  style={{ ...quickMenuItem, ...(g === currentGroup ? { background: "#eff6ff", fontWeight: 700 } : {}) }}
+                  onClick={() => {
+                    setGroup(g);
+                    setCtxMenu(null);
+                  }}
+                >
+                  <KindPill kind={kindOfGroup(g)} /> {g}
+                </button>
+              ))}
+              {isPago && (
+                <>
+                  <div style={{ borderTop: "1px solid #e2e8f0", margin: "4px 0" }} />
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      updateCostEntry(
+                        ctxMenu.id,
+                        "administration",
+                        entry.administration === "negro" ? "blanco" : "negro"
+                      );
+                      setCtxMenu(null);
+                    }}
+                  >
+                    Cambiar a {entry.administration === "negro" ? "BLANCO (B)" : "NEGRO (N)"}
+                  </button>
+                </>
+              )}
+            </QuickMenu>
+          );
+        })()}
     </>
   );
 }
