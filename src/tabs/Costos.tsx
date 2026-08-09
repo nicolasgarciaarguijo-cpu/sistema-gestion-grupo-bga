@@ -24,6 +24,7 @@ import type {
   CostKind,
   CostRule,
   IssuedInvoice,
+  PettyCashExpense,
   Supplier,
 } from "../domain/types";
 import type { ReconciliationSummary } from "../domain/suppliers";
@@ -73,6 +74,9 @@ type CostosTabProps = {
   aggregation: CostAggregation;
   costGroups: CostGroup[];
   costEntries: CostEntry[];
+  pettyCashExpenses: any[];
+  updatePettyCashExpense: (id: number, field: keyof PettyCashExpense, value: any) => void;
+  getPettyCashAdministration: (exp: any) => "blanco" | "negro";
   costRows: CostSourceRow[];
   companyScope: string;
   // Objetos { value, short, ... } del catalogo de empresas (misma forma que en las otras solapas).
@@ -146,6 +150,9 @@ export function CostosTab({
   aggregation,
   costGroups,
   costEntries,
+  pettyCashExpenses,
+  updatePettyCashExpense,
+  getPettyCashAdministration,
   companyScope,
   COMPANY_OPTIONS,
   getCompanyMeta,
@@ -212,6 +219,18 @@ export function CostosTab({
 
   // Vista jerarquica fijo/variable -> grupo (con total) -> gastos asignados debajo. Respeta el buscador.
   const composition = composeCostEntriesByGroup(filteredEntries, costGroups, companyScope);
+
+  // Bloque de caja chica: gastos que entraron por caja chica, para clasificarlos a un grupo de costo.
+  const cajaChicaList = pettyCashExpenses
+    .filter((e) => (companyScope === "__ALL__" || e.company === companyScope) && Number(e.amount || 0) > 0)
+    .filter((e) => {
+      if (!searchLc) return true;
+      return [e.description, e.category, e.supplier, e.costGroup || "", getPettyCashAdministration(e), e.date, String(e.amount)]
+        .join(" ")
+        .toLowerCase()
+        .includes(searchLc);
+    })
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
 
   // Helpers para el panel de reglas de clasificación.
   const supplierNameById = new Map(suppliers.map((s) => [s.id, s.name]));
@@ -1275,6 +1294,88 @@ export function CostosTab({
 
       {/* TARJETAS: dentro de esta solapa, entre Bancos y el resumen de costos fijos/variables. */}
       {tarjetasSlot}
+
+      <Panel title="Gastos de caja chica (clasificar a un grupo)" span="full">
+        <div style={styles.sectionNote}>
+          Compras/gastos que entraron por caja chica. Asignales un grupo de costo (fijo/variable) para que
+          compongan los costos donde corresponde. Es el MISMO gasto: no se cuenta dos veces (por defecto va
+          al grupo "Caja chica"). {cajaChicaList.length} gasto(s).
+        </div>
+        <div style={{ overflowX: "auto" }}>
+          <table style={styles.table}>
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Concepto</th>
+                <th>Proveedor</th>
+                <th style={{ textAlign: "right" }}>Monto</th>
+                <th>Grupo de costo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cajaChicaList.length === 0 && (
+                <tr>
+                  <td colSpan={5} style={{ color: "#64748b" }}>
+                    {searchLc ? "Ningun gasto de caja chica coincide con la busqueda." : "Sin gastos de caja chica en el alcance."}
+                  </td>
+                </tr>
+              )}
+              {cajaChicaList.map((e) => (
+                <tr key={e.id}>
+                  <td style={{ width: 110 }}>{e.date}</td>
+                  <td>{e.description || e.category || "-"}</td>
+                  <td>{e.supplier || "-"}</td>
+                  <td style={{ textAlign: "right", width: 120 }}>{money(e.amount)}</td>
+                  <td>
+                    <select
+                      style={styles.input}
+                      value={e.costGroup || ""}
+                      onChange={(ev) =>
+                        pickGroupOrCreate(ev.target.value, (name) =>
+                          updatePettyCashExpense(e.id, "costGroup", name)
+                        )
+                      }
+                    >
+                      <option value="">Caja chica (sin clasificar)</option>
+                      {manualGroupOptions.map((g) => (
+                        <option key={g} value={g}>
+                          {g}
+                        </option>
+                      ))}
+                      <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
+                    </select>
+                    <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+                      {e.costGroup ? (
+                        <KindPill kind={kindOfGroup(e.costGroup)} />
+                      ) : (
+                        <span
+                          title="En caja chica sin clasificar a un grupo"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: 16,
+                            height: 16,
+                            padding: "0 3px",
+                            borderRadius: 4,
+                            fontSize: 10,
+                            fontWeight: 800,
+                            background: "#fef08a",
+                            color: "#854d0e",
+                          }}
+                        >
+                          D
+                        </span>
+                      )}
+                      <ColorTag color={getPettyCashAdministration(e)} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
 
       <Panel title="Composicion: fijos / variables → grupo → gastos" span="full">
         <div style={styles.sectionNote}>

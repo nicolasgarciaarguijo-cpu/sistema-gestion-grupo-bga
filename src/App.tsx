@@ -12734,6 +12734,7 @@ export default function App() {
           date: exp.date,
           amount: Number(exp.amount || 0),
           administration: getPettyCashAdministration(exp),
+          costGroup: exp.costGroup,
         })),
         payroll: costsPayrollRows,
       }),
@@ -13018,6 +13019,10 @@ export default function App() {
       const oldName = target.name;
       setCostEntries((prev) =>
         prev.map((e) => (e.group === oldName ? { ...e, group: String(value) } : e))
+      );
+      // Los gastos de caja chica clasificados a este grupo también se reetiquetan.
+      setPettyCashExpenses((prev) =>
+        prev.map((e) => (e.costGroup === oldName ? { ...e, costGroup: String(value) } : e))
       );
     }
     setCostGroups((prev) =>
@@ -14814,6 +14819,9 @@ export default function App() {
           aggregation={costsAggregation}
           costGroups={costGroups}
           costEntries={costEntries}
+          pettyCashExpenses={visiblePettyCashExpenses}
+          updatePettyCashExpense={updatePettyCashExpense}
+          getPettyCashAdministration={getPettyCashAdministration}
           suppliers={visibleSuppliers}
           addSupplier={addSupplier}
           removeSupplier={removeSupplier}

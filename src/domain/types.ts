@@ -571,6 +571,9 @@ export type PettyCashExpense = {
   notes: string;
   attachmentName?: string;
   linkedPurchaseInvoiceId?: number | null;
+  // Grupo de costo al que se imputa este gasto (fijo/variable) para la solapa Costos. Ausente/"" = cae
+  // en el grupo auto "Caja chica". NO genera doble conteo: es el MISMO gasto, solo cambia a qué grupo va.
+  costGroup?: string;
 };
 
 export type DebtPlan = {

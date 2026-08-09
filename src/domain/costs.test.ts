@@ -326,3 +326,20 @@ describe("composeCostEntriesByGroup", () => {
     expect(r.variables.find((g) => g.group === "Materiales")!.total).toBe(1000);
   });
 });
+
+describe("buildCostRows: caja chica clasificable", () => {
+  it("caja chica va a su grupo asignado si lo tiene; si no, al grupo auto Caja chica", () => {
+    const rows = buildCostRows({
+      entries: [],
+      pettyCash: [
+        { company: "BGA", date: "2025-11-06", amount: 100, administration: "blanco", costGroup: "Edilicios" },
+        { company: "BGA", date: "2025-11-07", amount: 50, administration: "negro" },
+      ],
+      payroll: [],
+    });
+    expect(rows.find((r) => r.amount === 100)?.group).toBe("Edilicios");
+    expect(rows.find((r) => r.amount === 50)?.group).toBe(COST_GROUP_PETTY_CASH);
+    // sigue siendo origen cajaChica (no se convierte en CostEntry -> no hay doble conteo)
+    expect(rows.every((r) => r.origin === "cajaChica")).toBe(true);
+  });
+});

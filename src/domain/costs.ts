@@ -149,6 +149,8 @@ export type CostSourcesInput = {
     date: string;
     amount: number;
     administration: "blanco" | "negro";
+    // Grupo asignado al gasto de caja chica. Ausente/"" -> cae en el grupo auto "Caja chica".
+    costGroup?: string;
   }>;
   // Nomina ya resuelta por mes: blanco = impacto patronal, negro = pagos en negro.
   payroll: Array<{
@@ -182,7 +184,8 @@ export function buildCostRows(input: CostSourcesInput): CostSourceRow[] {
     rows.push({
       company: exp.company,
       date: exp.date,
-      group: COST_GROUP_PETTY_CASH,
+      // Si el usuario clasifico el gasto de caja chica a un grupo, va ahi; si no, al grupo auto.
+      group: exp.costGroup && exp.costGroup.trim() ? exp.costGroup.trim() : COST_GROUP_PETTY_CASH,
       amount,
       administration: exp.administration,
       origin: "cajaChica",
