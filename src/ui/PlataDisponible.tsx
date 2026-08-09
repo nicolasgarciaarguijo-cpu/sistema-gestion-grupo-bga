@@ -25,6 +25,10 @@ export type PlataDisponibleCompany = {
   desendeudamientoMes: number;
   aCobrarBlanco: number;
   aCobrarNegro: number;
+  // Posición de IVA (desde el último VEP): débito (ventas) − crédito (compras blanco). >0 = a pagar.
+  ivaDebito: number;
+  ivaCredito: number;
+  ivaPosicion: number;
 };
 
 const wrap: React.CSSProperties = {
@@ -201,6 +205,23 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                       <b style={{ color: "#fca5a5" }}>{money(c.desendeudamientoMes)}</b>
                     </span>
                   )}
+                  <span
+                    style={c.ivaPosicion > 1 ? pagarTag : c.ivaPosicion < -1 ? cobrarTag : chip}
+                    title="IVA débito (ventas) − crédito (compras blanco), desde el último VEP"
+                  >
+                    IVA:{" "}
+                    {c.ivaPosicion > 1 ? (
+                      <>
+                        a pagar <b style={{ color: "#fca5a5" }}>{money(c.ivaPosicion)}</b>
+                      </>
+                    ) : c.ivaPosicion < -1 ? (
+                      <>
+                        a favor <b style={{ color: "#86efac" }}>{money(-c.ivaPosicion)}</b>
+                      </>
+                    ) : (
+                      <b style={{ color: "#cbd5e1" }}>equilibrado</b>
+                    )}
+                  </span>
                 </div>
               </div>
             );

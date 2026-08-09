@@ -603,6 +603,18 @@ export type CashHolding = {
   notes: string;
 };
 
+// VEP de pago de IVA (trimestral). Al cargarlo, la posicion de IVA de esa empresa se reinicia: el
+// contador de debito/credito cuenta solo lo POSTERIOR a `date`. Ver domain/vatBalance.ts.
+export type IvaVepPayment = {
+  id: number;
+  company: CompanyName;
+  date: string; // "yyyy-mm-dd" — fecha del VEP; reinicia el contador de esa empresa
+  period: string; // etiqueta del periodo pagado, ej. "3T 2026"
+  amount: number; // monto pagado (informativo)
+  notes: string;
+  attachmentName?: string;
+};
+
 export type BankStatementEntry = {
   id: number;
   company: CompanyName;

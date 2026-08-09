@@ -152,6 +152,21 @@ type CashflowTabProps = {
   setCashHoldings: React.Dispatch<React.SetStateAction<CashHolding[]>>;
   addCashHolding: () => void;
   removeCashHolding: (entryId: number) => void;
+  vatPositionByCompany: {
+    company: string;
+    short: string;
+    primary: string;
+    debito: number;
+    credito: number;
+    posicion: number;
+    lastVepDate: string | null;
+    ventas: number;
+    compras: number;
+  }[];
+  ivaVepPayments: any[];
+  addIvaVepPayment: () => void;
+  updateIvaVepPayment: (entryId: number, field: string, value: string | number) => void;
+  removeIvaVepPayment: (entryId: number) => void;
   annualCashFlowByMonth: any[];
   getCompanyMeta: (company: CompanyName) => any;
   COMPANY_OPTIONS: any[];
@@ -188,6 +203,11 @@ export function CashflowTab({
   setCashHoldings,
   addCashHolding,
   removeCashHolding,
+  vatPositionByCompany,
+  ivaVepPayments,
+  addIvaVepPayment,
+  updateIvaVepPayment,
+  removeIvaVepPayment,
   annualCashFlowByMonth,
   getCompanyMeta,
   COMPANY_OPTIONS,
@@ -319,6 +339,113 @@ export function CashflowTab({
                 Hoy ambas empresas arrancan en octubre. Cambialo aca si sumas una empresa con otro calendario.
               </div>
             </details>
+          </Panel>
+
+          <Panel title="Posicion de IVA (desde el ultimo VEP)" span="wide">
+            <div style={{ ...styles.muted, marginBottom: 10 }}>
+              Debito (IVA de ventas emitidas) menos credito (IVA de compras en blanco), acumulado desde el
+              ultimo VEP de pago. Positivo = <strong>a pagar</strong> (conviene comprar en blanco con esa
+              empresa); negativo = <strong>a favor</strong> (conviene facturar con esa empresa). El IVA es
+              por CUIT: no se suma entre empresas.
+            </div>
+            {vatPositionByCompany.length === 0 ? (
+              <div style={styles.empty}>Sin empresas en el alcance seleccionado.</div>
+            ) : (
+              vatPositionByCompany.map((v) => (
+                <div key={v.company} style={{ marginBottom: 12 }}>
+                  <div style={{ ...balanceSection, borderLeft: `4px solid ${v.primary}`, paddingLeft: 8 }}>
+                    {v.short}
+                    {v.lastVepDate
+                      ? ` · desde el VEP del ${formatDateDisplay(v.lastVepDate)}`
+                      : " · sin VEP (cuenta todo el historico)"}
+                  </div>
+                  <div style={balanceGrid}>
+                    <BalanceTile
+                      label={`IVA debito · ventas (${v.ventas})`}
+                      value={money(v.debito)}
+                      tone="white"
+                    />
+                    <BalanceTile
+                      label={`IVA credito · compras blanco (${v.compras})`}
+                      value={money(v.credito)}
+                      tone="white"
+                    />
+                    <BalanceTile
+                      label={
+                        v.posicion > 1
+                          ? "Posicion: A PAGAR"
+                          : v.posicion < -1
+                          ? "Posicion: A FAVOR"
+                          : "Posicion: equilibrado"
+                      }
+                      value={money(v.posicion)}
+                      tone={v.posicion > 1 ? "warn" : "strong"}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+
+            <div style={{ ...balanceSection, marginTop: 8 }}>
+              VEP de pago de IVA (al cargarlo se reinicia el contador de esa empresa)
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <ButtonLike onClick={addIvaVepPayment}>Cargar VEP de pago</ButtonLike>
+            </div>
+            {ivaVepPayments.length === 0 ? (
+              <div style={styles.empty}>
+                Sin VEP cargados. Al cargar el pago trimestral, el contador de esa empresa arranca de nuevo
+                desde la fecha del VEP.
+              </div>
+            ) : (
+              ivaVepPayments.map((v: any) => (
+                <div key={v.id} style={styles.subCard}>
+                  <div style={styles.inlineActions}>
+                    <button style={styles.smallBtn} onClick={() => removeIvaVepPayment(v.id)}>
+                      Quitar
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    <Field label="Empresa">
+                      <select
+                        style={styles.input}
+                        value={v.company}
+                        onChange={(e) => updateIvaVepPayment(v.id, "company", e.target.value)}
+                      >
+                        {COMPANY_OPTIONS.filter((c: any) => c.value && c.value !== "General").map((c: any) => (
+                          <option key={c.value} value={c.value}>
+                            {c.short || c.value}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Fecha del VEP">
+                      <input
+                        style={styles.input}
+                        type="date"
+                        value={v.date}
+                        onChange={(e) => updateIvaVepPayment(v.id, "date", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Periodo">
+                      <input
+                        style={styles.input}
+                        value={v.period}
+                        placeholder="3T 2026"
+                        onChange={(e) => updateIvaVepPayment(v.id, "period", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Monto pagado">
+                      <AmountInput
+                        style={styles.input}
+                        value={v.amount}
+                        onChange={(n) => updateIvaVepPayment(v.id, "amount", n)}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              ))
+            )}
           </Panel>
 
           <Panel title="Estado de resultados del periodo (percibido, operativo)" span="half">

@@ -24,6 +24,7 @@ import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash
 import { computeBudgetPricing } from "./domain/budgetPricing";
 import { computePayrollSummary } from "./domain/payroll";
 import { deriveConvenioHours } from "./domain/attendance";
+import { computeVatPosition } from "./domain/vatBalance";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
 import {
   buildCrmRows,
@@ -167,6 +168,7 @@ import type {
   PettyCashExpense,
   DebtPlan,
   CashHolding,
+  IvaVepPayment,
   BankStatementEntry,
   StockItem,
   CompanyAsset,
@@ -1192,6 +1194,8 @@ const defaultCapitalEntries: CapitalEntry[] = [];
 
 const defaultCashHoldings: CashHolding[] = [];
 
+const defaultIvaVepPayments: IvaVepPayment[] = [];
+
 const defaultCompanyAssets: CompanyAsset[] = [
   {
     id: 1,
@@ -1578,6 +1582,7 @@ type PersistedAppStateData = {
   bankStatementEntries: BankStatementEntry[];
   capitalEntries: CapitalEntry[];
   cashHoldings: CashHolding[];
+  ivaVepPayments: IvaVepPayment[];
   stockItems: StockItem[];
   costAnalysisGroups: CostAnalysisGroup[];
   costAnalysisEntries: CostAnalysisEntry[];
@@ -1673,7 +1678,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments"] as const,
   },
   {
     key: "compras",
@@ -2646,6 +2651,7 @@ export default function App() {
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>(defaultCapitalEntries);
   const [cashHoldings, setCashHoldings] = useState<CashHolding[]>(defaultCashHoldings);
+  const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
   const [costAnalysisGroups, setCostAnalysisGroups] = useState<CostAnalysisGroup[]>(
     defaultCostAnalysisGroups
@@ -3564,6 +3570,7 @@ export default function App() {
     prune(bankStatementEntries, setBankStatementEntries);
     prune(capitalEntries, setCapitalEntries);
     prune(cashHoldings, setCashHoldings);
+    prune(ivaVepPayments, setIvaVepPayments);
     prune(creditCards, setCreditCards);
     prune(creditCardStatements, setCreditCardStatements);
     prune(creditCardConsumptions, setCreditCardConsumptions);
@@ -3591,6 +3598,7 @@ export default function App() {
     bankStatementEntries,
     capitalEntries,
     cashHoldings,
+    ivaVepPayments,
     creditCards,
     creditCardStatements,
     creditCardConsumptions,
@@ -3955,6 +3963,11 @@ export default function App() {
   const visibleCashHoldings = useMemo(
     () => cashHoldings.filter((item) => canAccessCompany(item.company)),
     [cashHoldings, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  const visibleIvaVepPayments = useMemo(
+    () => ivaVepPayments.filter((item) => canAccessCompany(item.company)),
+    [ivaVepPayments, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleCreditCards = useMemo(
@@ -8101,6 +8114,7 @@ export default function App() {
     })),
     capitalEntries: capitalEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
     cashHoldings: cashHoldings.map((item) => ({ ...item, date: stampDate(item.date) })),
+    ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
     stockItems: stockItems.map((item) => ({ ...item })),
     costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
@@ -8344,6 +8358,14 @@ export default function App() {
         color: item.color === "negro" ? "negro" : "blanco",
         kind: item.kind === "egreso" ? "egreso" : "ingreso",
         description: item.description || "",
+        notes: item.notes || "",
+      }))
+    );
+    setIvaVepPayments(
+      keepAccessibleByCompany(data.ivaVepPayments || defaultIvaVepPayments).map((item) => ({
+        ...item,
+        period: item.period || "",
+        amount: Number(item.amount || 0),
         notes: item.notes || "",
       }))
     );
@@ -10463,6 +10485,7 @@ export default function App() {
     bankStatementEntries,
     capitalEntries,
     cashHoldings,
+    ivaVepPayments,
     creditCards,
     creditCardStatements,
     creditCardConsumptions,
@@ -10851,6 +10874,34 @@ export default function App() {
 
   const removeCashHolding = (entryId: number) => {
     setCashHoldings((prev) => prev.filter((item) => item.id !== entryId));
+  };
+
+  const addIvaVepPayment = () => {
+    setIvaVepPayments((prev) => [
+      {
+        id: newId(),
+        company: budget.company,
+        date: todayIso(),
+        period: "",
+        amount: 0,
+        notes: "",
+      },
+      ...prev,
+    ]);
+  };
+
+  const updateIvaVepPayment = (
+    entryId: number,
+    field: keyof IvaVepPayment,
+    value: string | number
+  ) => {
+    setIvaVepPayments((prev) =>
+      prev.map((item) => (item.id === entryId ? { ...item, [field]: value } : item))
+    );
+  };
+
+  const removeIvaVepPayment = (entryId: number) => {
+    setIvaVepPayments((prev) => prev.filter((item) => item.id !== entryId));
   };
 
   const addBankStatementEntry = () => {
@@ -11693,6 +11744,22 @@ export default function App() {
           .reduce((a: number, p: any) => a + Number(p.amount || 0), 0);
         aCobrarNegro += Math.max(0, Number(j.blackNet || 0) - blackCollected);
       }
+      // Posicion de IVA de la empresa desde el ultimo VEP (debito ventas - credito compras blanco).
+      const ivaPos = computeVatPosition({
+        company,
+        issued: issuedInvoices.map((inv) => ({
+          company: inv.company,
+          date: inv.date,
+          vat: Number(inv.vat || 0),
+        })),
+        purchases: visiblePurchaseInvoices.map((p) => ({
+          company: p.company,
+          date: p.invoiceDate,
+          vat: Number(p.vat || 0),
+          administration: p.administration,
+        })),
+        veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })),
+      });
       return {
         company,
         short: c.short || company,
@@ -11710,6 +11777,9 @@ export default function App() {
         desendeudamientoMes,
         aCobrarBlanco,
         aCobrarNegro,
+        ivaDebito: ivaPos.debito,
+        ivaCredito: ivaPos.credito,
+        ivaPosicion: ivaPos.posicion,
       };
     });
   }, [
@@ -11720,6 +11790,9 @@ export default function App() {
     visibleCashHoldings,
     visibleApprovedJobs,
     visibleDebtPlans,
+    issuedInvoices,
+    visiblePurchaseInvoices,
+    visibleIvaVepPayments,
     approvedJobsSummary,
     effectiveIsAdmin,
     isSupabaseLoggedIn,
@@ -11752,6 +11825,52 @@ export default function App() {
         .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id),
     [visibleCashHoldings, balanceCompanyScope]
   );
+
+  const scopedIvaVepPayments = useMemo(
+    () =>
+      visibleIvaVepPayments
+        .filter((item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope)
+        .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id),
+    [visibleIvaVepPayments, balanceCompanyScope]
+  );
+
+  // Posicion de IVA por empresa (para el panel de Balance): debito ventas - credito compras blanco,
+  // desde el ultimo VEP. Una fila por empresa accesible (el IVA es por CUIT, no se suma entre empresas).
+  const vatPositionByCompany = useMemo(() => {
+    const realCompanies = COMPANY_OPTIONS.filter(
+      (c) => c.value && c.value !== "General" && canAccessCompany(c.value as CompanyName)
+    );
+    return realCompanies
+      .filter((c) => balanceCompanyScope === "__ALL__" || c.value === balanceCompanyScope)
+      .map((c) => {
+        const company = c.value as CompanyName;
+        const pos = computeVatPosition({
+          company,
+          issued: issuedInvoices.map((inv) => ({
+            company: inv.company,
+            date: inv.date,
+            vat: Number(inv.vat || 0),
+          })),
+          purchases: visiblePurchaseInvoices.map((p) => ({
+            company: p.company,
+            date: p.invoiceDate,
+            vat: Number(p.vat || 0),
+            administration: p.administration,
+          })),
+          veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })),
+        });
+        return { company, short: c.short || company, primary: c.primary || "#475569", ...pos };
+      });
+  }, [
+    COMPANY_OPTIONS,
+    balanceCompanyScope,
+    issuedInvoices,
+    visiblePurchaseInvoices,
+    visibleIvaVepPayments,
+    effectiveIsAdmin,
+    isSupabaseLoggedIn,
+    allowedCompaniesForSession,
+  ]);
 
   const annualCashFlowEntries = useMemo(() => {
     const entries: Array<{
@@ -14477,6 +14596,11 @@ export default function App() {
           setCashHoldings={setCashHoldings}
           addCashHolding={addCashHolding}
           removeCashHolding={removeCashHolding}
+          vatPositionByCompany={vatPositionByCompany}
+          ivaVepPayments={scopedIvaVepPayments}
+          addIvaVepPayment={addIvaVepPayment}
+          updateIvaVepPayment={updateIvaVepPayment}
+          removeIvaVepPayment={removeIvaVepPayment}
           annualCashFlowByMonth={annualCashFlowByMonth}
           getCompanyMeta={getCompanyMeta}
           COMPANY_OPTIONS={COMPANY_OPTIONS}

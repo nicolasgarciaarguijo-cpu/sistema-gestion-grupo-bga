@@ -23,7 +23,7 @@ export const GENERAL_COMPANY = "General";
 export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   archivos: ["companyAssets"],
   "caja-chica": ["pettyCashExpenses", "pettyCashFunds"],
-  "cash-flow": ["debtPlans", "financialItems", "bankStatementEntries"],
+  "cash-flow": ["debtPlans", "financialItems", "bankStatementEntries", "ivaVepPayments"],
   compras: ["purchaseInvoices", "remitoDrafts"],
   // Costos: los gastos van por empresa; los grupos tambien (cada empresa arma los suyos).
   // Modulo nuevo (2026-07-14): no necesita entrada en el splitter SQL porque no hay datos
