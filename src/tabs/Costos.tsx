@@ -12,9 +12,9 @@
 // gasto no se cuenta dos veces.
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, moneyToneColor } from "../ui/primitives";
+import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, moneyToneColor } from "../ui/primitives";
 import { money } from "../lib/format";
-import { isAutoCostGroup, monthKeyLabel } from "../domain/costs";
+import { isAutoCostGroup, monthKeyLabel, composeCostEntriesByGroup, resolveGroupKind } from "../domain/costs";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
 import { PAYMENT_METHOD_OPTIONS } from "../domain/types";
 import type {
@@ -44,6 +44,28 @@ export type CostStatementDraftRow = {
   supplierId?: number;
   supplierName?: string;
 };
+
+// Pill F/V: reconoce de un vistazo si un gasto es fijo o variable, en cualquier lugar de la solapa.
+const KindPill = ({ kind }: { kind: CostKind }) => (
+  <span
+    title={kind === "fijo" ? "Costo fijo" : "Costo variable"}
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: 16,
+      height: 16,
+      padding: "0 3px",
+      borderRadius: 4,
+      fontSize: 10,
+      fontWeight: 800,
+      background: kind === "fijo" ? "#dbeafe" : "#fef3c7",
+      color: kind === "fijo" ? "#1e40af" : "#92400e",
+    }}
+  >
+    {kind === "fijo" ? "F" : "V"}
+  </span>
+);
 
 type CostosTabProps = {
   fiscalLabel: string;
@@ -164,6 +186,32 @@ export function CostosTab({
   const manualGroupOptions = costGroups
     .filter((group) => group.active && !group.auto)
     .map((group) => group.name);
+
+  // Tipo (fijo/variable) del grupo de un gasto, para la pill F/V.
+  const kindOfGroup = (groupName: string): CostKind => resolveGroupKind(costGroups, groupName);
+
+  // Buscador de gastos: filtra por concepto, proveedor, grupo, admin (blanco/negro), fecha o monto.
+  const [search, setSearch] = React.useState("");
+  const searchLc = search.trim().toLowerCase();
+  const matchesSearch = (e: CostEntry) => {
+    if (!searchLc) return true;
+    const hay = [
+      e.description,
+      e.supplier,
+      e.group,
+      e.administration,
+      e.date,
+      String(e.amount),
+      e.company,
+    ]
+      .join(" ")
+      .toLowerCase();
+    return hay.includes(searchLc);
+  };
+  const filteredEntries = costEntries.filter(matchesSearch);
+
+  // Vista jerarquica fijo/variable -> grupo (con total) -> gastos asignados debajo. Respeta el buscador.
+  const composition = composeCostEntriesByGroup(filteredEntries, costGroups, companyScope);
 
   // Helpers para el panel de reglas de clasificación.
   const supplierNameById = new Map(suppliers.map((s) => [s.id, s.name]));
@@ -898,6 +946,22 @@ export function CostosTab({
               <option key={s.id} value={s.name} />
             ))}
         </datalist>
+        <div style={{ marginBottom: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            style={{ ...styles.input, maxWidth: 360 }}
+            placeholder="🔎 Buscar: concepto, proveedor, grupo, blanco/negro, fecha, monto…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {searchLc && (
+            <span style={{ fontSize: 12, color: "#64748b" }}>
+              {filteredEntries.length} de {costEntries.length}
+              <button style={{ ...styles.smallBtn, marginLeft: 8 }} onClick={() => setSearch("")}>
+                Limpiar
+              </button>
+            </span>
+          )}
+        </div>
         <div style={{ overflowX: "auto" }}>
           <table style={styles.table}>
             <thead>
@@ -917,14 +981,16 @@ export function CostosTab({
               </tr>
             </thead>
             <tbody>
-              {costEntries.length === 0 && (
+              {filteredEntries.length === 0 && (
                 <tr>
                   <td colSpan={12} style={{ color: "#64748b" }}>
-                    Todavia no cargaste gastos. Agrega uno a mano o importa el extracto bancario.
+                    {searchLc
+                      ? `Ningun gasto coincide con "${search}".`
+                      : "Todavia no cargaste gastos. Agrega uno a mano o importa el extracto bancario."}
                   </td>
                 </tr>
               )}
-              {costEntries.map((entry) => (
+              {filteredEntries.map((entry) => (
                 <tr key={entry.id}>
                   <td>
                     <select
@@ -965,6 +1031,31 @@ export function CostosTab({
                       ))}
                       <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
                     </select>
+                    <div style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center" }}>
+                      {entry.group ? (
+                        <KindPill kind={kindOfGroup(entry.group)} />
+                      ) : (
+                        <span
+                          title="Sin clasificar: ubicá este gasto en un grupo"
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            minWidth: 16,
+                            height: 16,
+                            padding: "0 3px",
+                            borderRadius: 4,
+                            fontSize: 10,
+                            fontWeight: 800,
+                            background: "#fef08a",
+                            color: "#854d0e",
+                          }}
+                        >
+                          D
+                        </span>
+                      )}
+                      <ColorTag color={entry.administration} />
+                    </div>
                   </td>
                   <td>
                     <input
@@ -1184,6 +1275,95 @@ export function CostosTab({
 
       {/* TARJETAS: dentro de esta solapa, entre Bancos y el resumen de costos fijos/variables. */}
       {tarjetasSlot}
+
+      <Panel title="Composicion: fijos / variables → grupo → gastos" span="full">
+        <div style={styles.sectionNote}>
+          Cada grupo con su TOTAL y, debajo, los gastos asignados: así ves cómo se compone cada tipo de
+          costo a medida que cargás. El buscador de "Gastos cargados" también filtra esta vista.
+        </div>
+        {[
+          { title: "COSTOS FIJOS", comps: composition.fijos },
+          { title: "COSTOS VARIABLES", comps: composition.variables },
+        ].map((sec) => (
+          <div key={sec.title} style={{ marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, color: "#334155", margin: "8px 0 4px" }}>{sec.title}</div>
+            {sec.comps
+              .filter((c) => !(c.auto && c.entries.length === 0))
+              .map((c) => (
+                <div
+                  key={c.group}
+                  style={{ border: "1px solid #e2e8f0", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      background: "#f8fafc",
+                    }}
+                  >
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontWeight: 700 }}>
+                      <KindPill kind={c.kind} /> {c.group}
+                      {c.auto && <span style={{ fontSize: 11, color: "#94a3b8" }}>(auto)</span>}
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>· {c.entries.length} gasto(s)</span>
+                    </span>
+                    <span style={{ fontWeight: 800 }}>{money(c.total)}</span>
+                  </div>
+                  {c.entries.length > 0 && (
+                    <table style={styles.table}>
+                      <tbody>
+                        {c.entries.map((e) => (
+                          <tr key={e.id}>
+                            <td style={{ width: 92 }}>{e.date}</td>
+                            <td>{e.description || "-"}</td>
+                            <td>{e.supplier || "-"}</td>
+                            <td style={{ width: 26 }}>
+                              <ColorTag color={e.administration} />
+                            </td>
+                            <td style={{ textAlign: "right", width: 120 }}>{money(e.amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              ))}
+          </div>
+        ))}
+        {composition.sinClasificar.entries.length > 0 && (
+          <div style={{ border: "1px solid #fde68a", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                padding: "6px 10px",
+                background: "#fffbeb",
+                fontWeight: 700,
+              }}
+            >
+              <span>⚠ Sin clasificar ({composition.sinClasificar.entries.length}) — ubicalos en un grupo</span>
+              <span style={{ fontWeight: 800 }}>{money(composition.sinClasificar.total)}</span>
+            </div>
+            <table style={styles.table}>
+              <tbody>
+                {composition.sinClasificar.entries.map((e) => (
+                  <tr key={e.id}>
+                    <td style={{ width: 92 }}>{e.date}</td>
+                    <td>{e.description || "-"}</td>
+                    <td>{e.supplier || "-"}</td>
+                    <td style={{ width: 26 }}>
+                      <ColorTag color={e.administration} />
+                    </td>
+                    <td style={{ textAlign: "right", width: 120 }}>{money(e.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Panel>
 
       <Panel title="Costos por grupo y mes (fijos / variables)" span="full">
         <div style={{ overflowX: "auto" }}>

@@ -5,6 +5,7 @@ import {
   DEFAULT_COST_GROUP_SEEDS,
   aggregateCosts,
   buildCostRows,
+  composeCostEntriesByGroup,
   costMonthKey,
   fiscalMonthKeys,
   isAutoCostGroup,
@@ -263,5 +264,65 @@ describe("suggestedFixedMonthlyByGroup", () => {
     const suggestions = suggestedFixedMonthlyByGroup(agg);
     expect(suggestions.find((s) => s.group === COST_GROUP_PURCHASES)).toBeUndefined();
     expect(suggestions).toHaveLength(0);
+  });
+});
+
+describe("composeCostEntriesByGroup", () => {
+  const grp: CostGroup[] = [
+    { id: 1, name: "Alquiler", kind: "fijo", company: "General", active: true, auto: false, notes: "" },
+    { id: 2, name: "Materiales", kind: "variable", company: "General", active: true, auto: false, notes: "" },
+    { id: 3, name: "Servicios", kind: "fijo", company: "General", active: true, auto: false, notes: "" },
+  ];
+  const e = (over: Partial<CostEntry>): CostEntry => ({
+    id: Math.floor(Math.random() * 1e6),
+    company: "BGA estudio de diseño y produccion industrial s.r.l" as any,
+    date: "2026-07-01",
+    group: "",
+    description: "",
+    amount: 0,
+    administration: "blanco",
+    source: "manual",
+    supplier: "",
+    notes: "",
+    ...over,
+  });
+
+  it("agrupa por grupo, separa fijos/variables y suma el total de cada uno", () => {
+    const r = composeCostEntriesByGroup(
+      [
+        e({ group: "Alquiler", amount: 100000 }),
+        e({ group: "Alquiler", amount: 50000 }),
+        e({ group: "Materiales", amount: 30000 }),
+      ],
+      grp
+    );
+    const alq = r.fijos.find((g) => g.group === "Alquiler")!;
+    expect(alq.total).toBe(150000);
+    expect(alq.entries.length).toBe(2);
+    expect(alq.kind).toBe("fijo");
+    expect(r.variables.find((g) => g.group === "Materiales")!.total).toBe(30000);
+  });
+
+  it("los gastos sin grupo van a sinClasificar", () => {
+    const r = composeCostEntriesByGroup([e({ group: "", amount: 7000 })], grp);
+    expect(r.sinClasificar.total).toBe(7000);
+  });
+
+  it("un grupo activo sin gastos aparece igual con total 0", () => {
+    const r = composeCostEntriesByGroup([], grp);
+    expect(r.fijos.map((g) => g.group).sort()).toEqual(["Alquiler", "Servicios"]);
+    expect(r.fijos.every((g) => g.total === 0)).toBe(true);
+  });
+
+  it("respeta el scope de empresa", () => {
+    const r = composeCostEntriesByGroup(
+      [
+        e({ group: "Materiales", amount: 1000, company: "De raiz s.r.l" as any }),
+        e({ group: "Materiales", amount: 2000, company: "BGA estudio de diseño y produccion industrial s.r.l" as any }),
+      ],
+      grp,
+      "De raiz s.r.l"
+    );
+    expect(r.variables.find((g) => g.group === "Materiales")!.total).toBe(1000);
   });
 });

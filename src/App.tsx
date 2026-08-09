@@ -13011,6 +13011,15 @@ export default function App() {
   };
 
   const updateCostGroup = (id: number, field: keyof CostGroup, value: any) => {
+    // Cascada al RENOMBRAR un grupo no-auto: los gastos se asignan por nombre, así que hay que
+    // reetiquetar todos los CostEntry que apuntaban al nombre viejo (si no, se desenganchan).
+    const target = costGroups.find((g) => g.id === id);
+    if (target && field === "name" && !target.auto && value && value !== target.name) {
+      const oldName = target.name;
+      setCostEntries((prev) =>
+        prev.map((e) => (e.group === oldName ? { ...e, group: String(value) } : e))
+      );
+    }
     setCostGroups((prev) =>
       prev.map((group) => {
         if (group.id !== id) return group;

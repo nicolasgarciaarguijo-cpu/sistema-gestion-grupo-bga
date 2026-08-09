@@ -79,6 +79,58 @@ export function resolveGroupKind(groups: CostGroup[], name: string): CostKind {
   return seed ? seed.kind : "variable";
 }
 
+// Vista jerarquica: fijo/variable -> grupo -> gastos individuales (CostEntry) asignados debajo.
+// Solo los PAGOS cargados (costEntries); caja chica y sueldos van por grupos auto y no son CostEntry.
+export type CostGroupComposition = {
+  group: string;
+  kind: CostKind;
+  auto: boolean;
+  entries: CostEntry[];
+  total: number;
+};
+
+const sumEntries = (es: CostEntry[]) => es.reduce((a, e) => a + Number(e.amount || 0), 0);
+const sortEntriesByDateDesc = (es: CostEntry[]) =>
+  [...es].sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
+
+export function composeCostEntriesByGroup(
+  entries: CostEntry[],
+  groups: CostGroup[],
+  companyScope: string = "__ALL__"
+): {
+  fijos: CostGroupComposition[];
+  variables: CostGroupComposition[];
+  sinClasificar: { entries: CostEntry[]; total: number };
+} {
+  const inScope = entries.filter((e) => companyScope === "__ALL__" || e.company === companyScope);
+  const byGroup = new Map<string, CostEntry[]>();
+  for (const e of inScope) {
+    const g = e.group || "";
+    if (!byGroup.has(g)) byGroup.set(g, []);
+    byGroup.get(g)!.push(e);
+  }
+  const activeGroups = groups.filter((g) => g.active !== false);
+  const activeNames = new Set(activeGroups.map((g) => g.name));
+  const comps: CostGroupComposition[] = [];
+  // Grupos activos (aparecen aunque no tengan gastos, para ver la estructura completa).
+  for (const g of activeGroups) {
+    const es = byGroup.get(g.name) || [];
+    comps.push({ group: g.name, kind: g.kind, auto: !!g.auto, entries: sortEntriesByDateDesc(es), total: sumEntries(es) });
+  }
+  // Grupos "huerfanos": nombres usados por gastos que ya no existen como grupo activo.
+  byGroup.forEach((es, name) => {
+    if (!name || activeNames.has(name)) return;
+    comps.push({ group: name, kind: resolveGroupKind(groups, name), auto: false, entries: sortEntriesByDateDesc(es), total: sumEntries(es) });
+  });
+  const byName = (a: CostGroupComposition, b: CostGroupComposition) => a.group.localeCompare(b.group);
+  const sinEs = sortEntriesByDateDesc(byGroup.get("") || []);
+  return {
+    fijos: comps.filter((c) => c.kind === "fijo").sort(byName),
+    variables: comps.filter((c) => c.kind === "variable").sort(byName),
+    sinClasificar: { entries: sinEs, total: sumEntries(sinEs) },
+  };
+}
+
 // Fila normalizada: todo gasto (venga de donde venga) se reduce a esto antes de agregar.
 export type CostSourceRow = {
   company: CompanyName;
