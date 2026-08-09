@@ -14859,6 +14859,8 @@ export default function App() {
           updatePettyCashExpense={updatePettyCashExpense}
           getPettyCashAdministration={getPettyCashAdministration}
           autoClassifyUnassigned={autoClassifyUnassigned}
+          purchaseInvoices={visiblePurchaseInvoices}
+          updatePurchaseInvoice={updatePurchaseInvoice}
           suppliers={visibleSuppliers}
           addSupplier={addSupplier}
           removeSupplier={removeSupplier}

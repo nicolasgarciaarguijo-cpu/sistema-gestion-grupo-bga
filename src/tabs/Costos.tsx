@@ -15,6 +15,7 @@ import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, moneyToneColor } from "../ui/primitives";
 import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel, composeCostEntriesByGroup, resolveGroupKind } from "../domain/costs";
+import { computeSupplierAccounts } from "../domain/supplierAccounts";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
 import { PAYMENT_METHOD_OPTIONS } from "../domain/types";
 import type {
@@ -79,6 +80,9 @@ type CostosTabProps = {
   getPettyCashAdministration: (exp: any) => "blanco" | "negro";
   // Auto-clasificacion: ubica de una los gastos sin grupo con las reglas aprendidas. Devuelve cuantos.
   autoClassifyUnassigned: () => number;
+  // Cuenta corriente proveedores: facturas de compra + vincularlas a un pago.
+  purchaseInvoices: any[];
+  updatePurchaseInvoice: (id: number, field: any, value: any) => void;
   costRows: CostSourceRow[];
   companyScope: string;
   // Objetos { value, short, ... } del catalogo de empresas (misma forma que en las otras solapas).
@@ -156,6 +160,8 @@ export function CostosTab({
   updatePettyCashExpense,
   getPettyCashAdministration,
   autoClassifyUnassigned,
+  purchaseInvoices,
+  updatePurchaseInvoice,
   companyScope,
   COMPANY_OPTIONS,
   getCompanyMeta,
@@ -234,6 +240,35 @@ export function CostosTab({
         .includes(searchLc);
     })
     .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
+
+  // Cuenta corriente proveedores: facturas de compra por proveedor; deuda = las que no tienen pago vinculado.
+  const supplierAccounts = computeSupplierAccounts(
+    purchaseInvoices.map((i) => ({
+      id: i.id,
+      company: i.company,
+      supplier: i.supplier,
+      taxId: i.taxId,
+      invoiceNumber: i.invoiceNumber,
+      invoiceDate: i.invoiceDate,
+      total: Number(i.total || 0),
+      paidByCostEntryId: i.paidByCostEntryId,
+    })),
+    companyScope
+  ).accounts.filter((a) => {
+    if (!searchLc) return true;
+    return `${a.supplier} ${a.taxId}`.toLowerCase().includes(searchLc);
+  });
+  const deudaTotalProv = supplierAccounts.reduce((s, a) => s + a.deuda, 0);
+  // Pagos (CostEntry) que se pueden vincular a una factura: misma empresa; se muestran todos (el usuario
+  // elige). Etiqueta con fecha, proveedor y monto para reconocerlos.
+  const paymentsForInvoice = (invCompany: string, supplierName: string) =>
+    costEntries.filter(
+      (e) =>
+        e.company === invCompany &&
+        (!supplierName ||
+          !e.supplier ||
+          e.supplier.trim().toLowerCase() === supplierName.trim().toLowerCase())
+    );
 
   // Helpers para el panel de reglas de clasificación.
   const supplierNameById = new Map(suppliers.map((s) => [s.id, s.name]));
@@ -1394,6 +1429,85 @@ export function CostosTab({
             </tbody>
           </table>
         </div>
+      </Panel>
+
+      <Panel title="Cuenta corriente proveedores (deuda por pagar)" span="full">
+        <div style={styles.sectionNote}>
+          Facturas de compra por proveedor. Una factura SIN pago vinculado queda como DEUDA hasta que le
+          vincules el pago (elegilo del desplegable). Así sabés si le debemos plata a alguien.{" "}
+          <strong style={{ color: deudaTotalProv > 1 ? "#b45309" : "#16a34a" }}>
+            Deuda total: {money(deudaTotalProv)}
+          </strong>
+          .
+        </div>
+        {supplierAccounts.length === 0 ? (
+          <div style={styles.empty}>Sin facturas de compra en el alcance seleccionado.</div>
+        ) : (
+          supplierAccounts.map((a) => (
+            <div
+              key={a.key}
+              style={{ border: "1px solid #e2e8f0", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "6px 10px",
+                  background: a.deuda > 1 ? "#fffbeb" : "#f0fdf4",
+                }}
+              >
+                <span style={{ fontWeight: 700 }}>
+                  {a.supplier}{" "}
+                  {a.taxId && <span style={{ fontSize: 11, color: "#94a3b8" }}>({a.taxId})</span>}
+                </span>
+                <span style={{ display: "inline-flex", gap: 12, alignItems: "baseline" }}>
+                  <span style={{ fontSize: 12, color: "#64748b" }}>
+                    Facturado {money(a.facturado)} · Pagado {money(a.pagado)}
+                  </span>
+                  <span style={{ fontWeight: 800, color: a.deuda > 1 ? "#b45309" : "#16a34a" }}>
+                    {a.deuda > 1 ? `Debemos ${money(a.deuda)}` : "Al día ✓"}
+                  </span>
+                </span>
+              </div>
+              {a.pendientes.length > 0 && (
+                <table style={styles.table}>
+                  <tbody>
+                    {a.pendientes.map((inv) => (
+                      <tr key={inv.id}>
+                        <td style={{ width: 100 }}>{inv.invoiceDate}</td>
+                        <td>{inv.invoiceNumber || "factura"}</td>
+                        <td style={{ textAlign: "right", width: 130 }}>{money(inv.total)}</td>
+                        <td style={{ width: 300 }}>
+                          <select
+                            style={styles.input}
+                            value=""
+                            onChange={(e) =>
+                              updatePurchaseInvoice(
+                                inv.id,
+                                "paidByCostEntryId",
+                                e.target.value ? Number(e.target.value) : null
+                              )
+                            }
+                          >
+                            <option value="">🟡 Sin pago (deuda)</option>
+                            {paymentsForInvoice(inv.company, inv.supplier).map((p) => (
+                              <option key={p.id} value={p.id}>
+                                Vincular pago: {p.date} · {money(p.amount)}
+                                {p.description ? ` · ${p.description}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          ))
+        )}
       </Panel>
 
       <Panel title="Composicion: fijos / variables → grupo → gastos" span="full">

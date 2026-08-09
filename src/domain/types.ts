@@ -538,6 +538,9 @@ export type PurchaseInvoice = {
   notes: string;
   attachmentName?: string;
   extractedAutomatically: boolean;
+  // Pago (CostEntry) vinculado a esta factura de compra. Ausente/null = sin pago -> deuda con el
+  // proveedor (cuenta corriente). Ver domain/supplierAccounts.ts.
+  paidByCostEntryId?: number | null;
 };
 
 export type PettyCashFund = {
