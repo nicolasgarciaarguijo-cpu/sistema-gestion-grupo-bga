@@ -62,6 +62,8 @@ type AprobadosTabProps = {
   importLegacyApprovedJobs: () => void;
   exportPrint: (mode: PrintMode) => void;
   updateApprovedJob: (jobId: number, field: keyof ApprovedJob, value: string | number) => void;
+  issuedInvoices: any[];
+  updateIssuedInvoice: (id: number, field: any, value: any) => void;
   loadBudgetFromSnapshot: (snapshot: any, budgetId: any) => void;
   uploadApprovedJobWorkFiles: (jobId: number, kind: string, files: FileList | null) => void;
   removeApprovedJobWorkFile: (jobId: number, fileId: number) => void;
@@ -107,6 +109,8 @@ export function AprobadosTab({
   importLegacyApprovedJobs,
   exportPrint,
   updateApprovedJob,
+  issuedInvoices,
+  updateIssuedInvoice,
   loadBudgetFromSnapshot,
   uploadApprovedJobWorkFiles,
   removeApprovedJobWorkFile,
@@ -750,6 +754,78 @@ export function AprobadosTab({
                   </table>
                 )}
               </Panel>
+
+              {(() => {
+                const linked = issuedInvoices.filter(
+                  (i: any) => i.jobBudgetNumber === selectedApprovedJob.budgetNumber
+                );
+                const linkedTotal = linked.reduce((s: number, i: any) => s + Number(i.total || 0), 0);
+                const unlinked = issuedInvoices.filter(
+                  (i: any) => !i.jobBudgetNumber && i.company === selectedApprovedJob.company
+                );
+                return (
+                  <Panel title="Facturas ARCA vinculadas a este trabajo" span="full" nested>
+                    <div style={styles.muted}>
+                      Facturas emitidas (del listado ARCA) atadas a este presupuesto. Se vinculan/desvinculan
+                      acá o desde Costos: es el mismo dato, queda sincronizado.
+                      {linked.length > 0 && (
+                        <>
+                          {" "}
+                          · <strong>{linked.length}</strong> vinculada(s) por{" "}
+                          <strong>{money(linkedTotal)}</strong>
+                        </>
+                      )}
+                    </div>
+                    {linked.length > 0 && (
+                      <table style={styles.table}>
+                        <tbody>
+                          {linked.map((i: any) => (
+                            <tr key={i.id}>
+                              <td style={{ width: 96 }}>{i.date}</td>
+                              <td style={{ fontSize: 12 }}>
+                                {i.pointOfSale}-{i.number}
+                              </td>
+                              <td style={{ fontSize: 12 }}>{(i.counterpartyName || "").slice(0, 40)}</td>
+                              <td style={{ textAlign: "right", width: 120 }}>{money(i.total)}</td>
+                              <td style={{ width: 96 }}>
+                                <button
+                                  style={styles.smallBtn}
+                                  onClick={() => updateIssuedInvoice(i.id, "jobBudgetNumber", "")}
+                                >
+                                  Desvincular
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>Vincular una factura emitida:</span>
+                      <select
+                        style={{ ...styles.input, maxWidth: 360 }}
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value)
+                            updateIssuedInvoice(
+                              Number(e.target.value),
+                              "jobBudgetNumber",
+                              selectedApprovedJob.budgetNumber
+                            );
+                        }}
+                      >
+                        <option value="">— elegir factura sin vincular —</option>
+                        {unlinked.map((i: any) => (
+                          <option key={i.id} value={i.id}>
+                            {i.date} · {i.pointOfSale}-{i.number} · {money(i.total)} ·{" "}
+                            {(i.counterpartyName || "").slice(0, 24)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </Panel>
+                );
+              })()}
 
               <div style={styles.grid2}>
                 <Panel

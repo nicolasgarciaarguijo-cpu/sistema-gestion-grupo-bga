@@ -147,6 +147,9 @@ type CostosTabProps = {
   // Cuenta corriente proveedores: facturas de compra + vincularlas a un pago.
   purchaseInvoices: any[];
   updatePurchaseInvoice: (id: number, field: any, value: any) => void;
+  // Vínculo factura emitida (ARCA) -> trabajo aprobado (por número de presupuesto).
+  approvedJobsForLink: { budgetNumber: string; client: string; company: string }[];
+  updateIssuedInvoice: (id: number, field: any, value: any) => void;
   costRows: CostSourceRow[];
   companyScope: string;
   // Objetos { value, short, ... } del catalogo de empresas (misma forma que en las otras solapas).
@@ -226,6 +229,8 @@ export function CostosTab({
   autoClassifyUnassigned,
   purchaseInvoices,
   updatePurchaseInvoice,
+  approvedJobsForLink,
+  updateIssuedInvoice,
   companyScope,
   COMPANY_OPTIONS,
   getCompanyMeta,
@@ -823,6 +828,7 @@ export function CostosTab({
                       <th>Numero</th>
                       <th>Receptor</th>
                       <th style={{ textAlign: "right" }}>Total</th>
+                      <th>Trabajo vinculado</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -838,6 +844,22 @@ export function CostosTab({
                           </td>
                           <td style={{ fontSize: 12 }}>{(inv.counterpartyName || "").slice(0, 46)}</td>
                           <td style={{ textAlign: "right" }}>{money(inv.total)}</td>
+                          <td>
+                            <select
+                              style={{ ...styles.input, fontSize: 12, minWidth: 180 }}
+                              value={inv.jobBudgetNumber || ""}
+                              onChange={(e) => updateIssuedInvoice(inv.id, "jobBudgetNumber", e.target.value)}
+                            >
+                              <option value="">— sin vincular —</option>
+                              {approvedJobsForLink
+                                .filter((j) => j.company === inv.company)
+                                .map((j) => (
+                                  <option key={j.budgetNumber} value={j.budgetNumber}>
+                                    {j.budgetNumber} · {j.client}
+                                  </option>
+                                ))}
+                            </select>
+                          </td>
                         </tr>
                       ))}
                   </tbody>

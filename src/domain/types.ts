@@ -861,6 +861,9 @@ export type IssuedInvoice = {
   vat: number;
   total: number;
   source: "arca" | "manual";
+  // Trabajo aprobado al que corresponde esta factura (por número de presupuesto). Ausente = sin
+  // vincular. Se puede setear desde Costos o desde Trabajos Aprobados: es el MISMO array, queda sincronizado.
+  jobBudgetNumber?: string;
 };
 
 // Proveedor: listado propio para vincular los pagos y poder cotejarlos contra el extracto.

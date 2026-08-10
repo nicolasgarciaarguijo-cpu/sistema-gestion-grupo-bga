@@ -10644,6 +10644,12 @@ export default function App() {
     setPurchaseInvoices((prev) => prev.filter((item) => item.id !== invoiceId));
   };
 
+  // Vincula/edita una factura emitida (ARCA). Se usa para atarla a un trabajo (jobBudgetNumber) desde
+  // Costos o desde Trabajos Aprobados: como es el mismo array, ambos lados quedan sincronizados.
+  const updateIssuedInvoice = (id: number, field: keyof IssuedInvoice, value: string | number) => {
+    setIssuedInvoices((prev) => prev.map((inv) => (inv.id === id ? { ...inv, [field]: value } : inv)));
+  };
+
   const addPettyCashFund = () => {
     setPettyCashFunds((prev) => [
       {
@@ -14861,6 +14867,12 @@ export default function App() {
           autoClassifyUnassigned={autoClassifyUnassigned}
           purchaseInvoices={visiblePurchaseInvoices}
           updatePurchaseInvoice={updatePurchaseInvoice}
+          approvedJobsForLink={visibleApprovedJobs.map((j) => ({
+            budgetNumber: j.budgetNumber,
+            client: j.client,
+            company: j.company,
+          }))}
+          updateIssuedInvoice={updateIssuedInvoice}
           suppliers={visibleSuppliers}
           addSupplier={addSupplier}
           removeSupplier={removeSupplier}
@@ -15054,6 +15066,8 @@ export default function App() {
         <AprobadosTab
           jobSemaphoreSummary={jobSemaphoreSummary}
           canEmitFacturas={canEmitFacturas}
+          issuedInvoices={visibleIssuedInvoices}
+          updateIssuedInvoice={updateIssuedInvoice}
           approvedJobsSummary={approvedJobsSummary}
           companyApprovedSections={companyApprovedSections}
           approvedJobsTimelineRows={approvedJobsTimelineRows}
