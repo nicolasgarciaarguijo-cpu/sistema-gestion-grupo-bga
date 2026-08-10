@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Semaforo, ButtonLike, Field, AmountInput } from "../ui/primitives";
+import { Panel, Semaforo, ButtonLike, Field, AmountInput, ColorTagToggle } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode } from "../domain/types";
@@ -513,6 +513,13 @@ export function FacturacionTab({
                     <option value="blanco">Blanco</option>
                     <option value="negro">Negro</option>
                   </select>
+                  <div style={{ marginTop: 4 }}>
+                    <ColorTagToggle
+                      value={selectedFinancialItem.administration || "blanco"}
+                      onSet={(v) => updateFinancialItem(selectedFinancialItem.id, "administration", v)}
+                      size={16}
+                    />
+                  </div>
                 </Field>
                 <Field label="Titulo">
                   <input

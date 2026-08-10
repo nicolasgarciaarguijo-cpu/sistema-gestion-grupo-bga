@@ -11,6 +11,7 @@ import {
   SummaryRow,
   FileDropButton,
   AmountInput,
+  ColorTagToggle,
 } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { moneyToneColor } from "../ui/primitives";
@@ -928,6 +929,11 @@ export function AprobadosTab({
                           >
                             {payment.administration === "negro" ? "NEGRO" : "BLANCO"}
                           </span>
+                          <ColorTagToggle
+                            value={payment.administration || "blanco"}
+                            onSet={(v) => updatePayment(selectedApprovedJob.id, payment.id, "administration", v)}
+                            size={16}
+                          />
                           {payment.currency === "USD" && (
                             <span style={{ ...styles.statusPill, background: "#065f46", color: "#ffffff" }}>
                               {money(Number(payment.amount || 0), "USD")}

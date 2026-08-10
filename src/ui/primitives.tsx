@@ -217,6 +217,125 @@ function ColorTag({
   );
 }
 
+// Pill de circuito con EDICION RAPIDA: muestra B (blanco) / N (negro), o una "D" amarilla si el origen
+// es desconocido (allowUnknown). Click o click DERECHO abre un mini-menú para fijar blanco/negro. Es el
+// patrón único de todo el sistema (Fase 7): reconocer/cambiar el circuito sin abrir la fila.
+function ColorTagToggle({
+  value,
+  onSet,
+  size = 15,
+  allowUnknown = true,
+  style,
+}: {
+  value?: "blanco" | "negro" | null;
+  onSet: (v: "blanco" | "negro") => void;
+  size?: number;
+  allowUnknown?: boolean;
+  style?: React.CSSProperties;
+}) {
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [menu]);
+  const open = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY });
+  };
+  const pick = (v: "blanco" | "negro") => {
+    onSet(v);
+    setMenu(null);
+  };
+  const item: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    width: "100%",
+    textAlign: "left",
+    padding: "6px 10px",
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    fontSize: 13,
+    borderRadius: 6,
+  };
+  return (
+    <>
+      <span
+        onClick={open}
+        onContextMenu={open}
+        title="Click para reconocer/cambiar el circuito (blanco/negro)"
+        style={{ cursor: "pointer", display: "inline-flex", verticalAlign: "middle", ...style }}
+      >
+        {value ? (
+          <ColorTag color={value} size={size} />
+        ) : allowUnknown ? (
+          <span
+            title="Origen desconocido: reconocer blanco/negro"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: size,
+              height: size,
+              borderRadius: 999,
+              fontSize: Math.round(size * 0.62),
+              fontWeight: 800,
+              lineHeight: 1,
+              marginLeft: 5,
+              background: "#fde047",
+              color: "#854d0e",
+              border: "1px solid #ca8a04",
+            }}
+          >
+            D
+          </span>
+        ) : null}
+      </span>
+      {menu && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{
+            position: "fixed",
+            left: Math.min(menu.x, window.innerWidth - 170),
+            top: Math.min(menu.y, window.innerHeight - 120),
+            zIndex: 1000,
+            background: "#fff",
+            border: "1px solid #cbd5e1",
+            borderRadius: 8,
+            boxShadow: "0 8px 28px rgba(0,0,0,0.2)",
+            padding: 6,
+            minWidth: 150,
+          }}
+        >
+          <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px 4px", fontWeight: 700 }}>
+            Circuito
+          </div>
+          <button style={item} onClick={() => pick("blanco")}>
+            <ColorTag color="blanco" /> Blanco
+          </button>
+          <button style={item} onClick={() => pick("negro")}>
+            <ColorTag color="negro" /> Negro
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+
 // Estilo compacto de todo el sistema: etiqueta a la izquierda y numero pegado a la derecha (poco
 // recorrido para el ojo), en fila. tone: "out" pinta el monto en rojo (sale plata), "in" en verde
 // (entra). `color` agrega el badge B/N de procedencia al lado del número.
@@ -388,4 +507,5 @@ export {
   FileDropButton,
   AmountInput,
   ColorTag,
+  ColorTagToggle,
 };

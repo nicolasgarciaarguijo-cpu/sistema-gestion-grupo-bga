@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, moneyToneColor } from "../ui/primitives";
+import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, ColorTagToggle, moneyToneColor } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
@@ -1005,6 +1005,11 @@ export function CashflowTab({
                           <option value="blanco">Blanco</option>
                           <option value="negro">Negro</option>
                         </select>
+                        <ColorTagToggle
+                          value={item.color}
+                          onSet={(v) => updateArrayItem(setCapitalEntries, item.id, "color", v)}
+                          size={16}
+                        />
                       </td>
                       <td>
                         <AmountInput
@@ -1152,6 +1157,11 @@ export function CashflowTab({
                           <option value="blanco">Blanco</option>
                           <option value="negro">Negro</option>
                         </select>
+                        <ColorTagToggle
+                          value={item.color}
+                          onSet={(v) => updateArrayItem(setCashHoldings, item.id, "color", v)}
+                          size={16}
+                        />
                       </td>
                       <td>
                         <select
