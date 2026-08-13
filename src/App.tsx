@@ -4603,11 +4603,21 @@ export default function App() {
           totalAvailableHours > 0 ? job.estimatedJobHours / (totalAvailableHours / 22 || 1) : 0;
         // Los totales del modelo financiero estan en PESOS: los pagos en USD NO se suman aca (mezclar
         // 10.000 USD como si fueran 10.000 pesos rompe todo). Se totalizan aparte y se muestran solos.
-        const paymentsTotal = job.payments
+        // EXCEPCION: un pago en USD PESIFICADO (arsApplied + cotización) se convierte a pesos con su
+        // cotización y SÍ descuenta del saldo en pesos; deja de contar como dólar cobrado.
+        const isUsdPesified = (item: Payment) =>
+          item.currency === "USD" && item.arsApplied === true && Number(item.exchangeRate || 0) > 0;
+        const paymentsArsNative = job.payments
           .filter((item) => item.currency !== "USD")
           .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        // Equivalente en pesos de los pagos USD pesificados (monto × cotización de ese cobro).
+        const usdPesifiedArs = job.payments
+          .filter(isUsdPesified)
+          .reduce((acc, item) => acc + Number(item.amount || 0) * Number(item.exchangeRate || 0), 0);
+        const paymentsTotal = paymentsArsNative + usdPesifiedArs;
+        // Cobrado en U$S = SOLO los dólares que quedaron como dólar (no los pesificados).
         const paymentsUsdTotal = job.payments
-          .filter((item) => item.currency === "USD")
+          .filter((item) => item.currency === "USD" && !isUsdPesified(item))
           .reduce((acc, item) => acc + Number(item.amount || 0), 0);
         const retentionsTotal = job.retentions.reduce((acc, item) => acc + Number(item.amount || 0), 0);
         const commissionPaidTotal = (job.commissionPayments || []).reduce(
@@ -4637,6 +4647,7 @@ export default function App() {
           valueToCollect,
           paymentsTotal,
           paymentsUsdTotal,
+          usdPesifiedArs,
           retentionsTotal,
           additionalsTotal,
           additionalsWhiteNet,
@@ -9464,7 +9475,7 @@ export default function App() {
     jobId: number,
     paymentId: number,
     field: keyof Payment,
-    value: string | number
+    value: string | number | boolean
   ) => {
     setApprovedJobs((prev) =>
       prev.map((job) =>
@@ -11640,7 +11651,13 @@ export default function App() {
     const usdPaymentMovements = usdPaymentsToMovements(
       visibleApprovedJobs
         .filter((job) => inScope(job.company))
-        .flatMap((job) => (job.payments || []).filter((p) => p.currency === "USD"))
+        // Los pagos USD pesificados (arsApplied + cotización) ya entraron como pesos por el banco:
+        // NO se inyectan como dólares a la billetera USD (evita doble conteo).
+        .flatMap((job) =>
+          (job.payments || []).filter(
+            (p) => p.currency === "USD" && !(p.arsApplied === true && Number(p.exchangeRate || 0) > 0)
+          )
+        )
     );
     return buildReservaFromSources({
       openingBankArs,
@@ -11725,7 +11742,12 @@ export default function App() {
         extraMovements: usdPaymentsToMovements(
           visibleApprovedJobs
             .filter((j) => j.company === company)
-            .flatMap((j) => (j.payments || []).filter((p) => p.currency === "USD"))
+            // Ver nota arriba: los USD pesificados no entran a la billetera USD.
+            .flatMap((j) =>
+              (j.payments || []).filter(
+                (p) => p.currency === "USD" && !(p.arsApplied === true && Number(p.exchangeRate || 0) > 0)
+              )
+            )
         ),
       });
       const totArs = reserva.totals.find((t) => t.currency === "ARS");

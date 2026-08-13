@@ -356,6 +356,14 @@ export type Payment = {
   administration?: "blanco" | "negro"; // circuito del pago; default blanco si no se elige
   currency?: "ARS" | "USD"; // moneda del pago; ausente = ARS (pesos). USD y ARS nunca se suman.
   amount: number;
+  // Cotización U$S→$ a la que se tomó el billete (solo aplica a pagos en USD). Es "a cuánto se
+  // tomó el dólar" en ese cobro puntual.
+  exchangeRate?: number;
+  // Si es true (y hay exchangeRate>0), el pago en USD se PESIFICA: su equivalente en pesos
+  // (amount × exchangeRate) descuenta del saldo en PESOS del trabajo y sale del circuito U$S
+  // (no cuenta como dólar cobrado ni entra a la billetera USD de la reserva). Ausente/false =
+  // dólar puro (descuenta del saldo U$S, como siempre).
+  arsApplied?: boolean;
   attachmentName?: string;
 };
 

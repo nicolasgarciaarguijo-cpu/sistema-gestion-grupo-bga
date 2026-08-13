@@ -76,7 +76,12 @@ type AprobadosTabProps = {
   updateInvoice: (jobId: number, invoiceId: number, field: string, value: string | number) => void;
   addPayment: (jobId: number) => void;
   removePayment: (jobId: number, paymentId: number) => void;
-  updatePayment: (jobId: number, paymentId: number, field: string, value: string | number) => void;
+  updatePayment: (
+    jobId: number,
+    paymentId: number,
+    field: string,
+    value: string | number | boolean
+  ) => void;
   addAdditional: (jobId: number) => void;
   removeAdditional: (jobId: number, additionalId: number) => void;
   updateAdditional: (jobId: number, additionalId: number, field: string, value: string | number) => void;
@@ -554,7 +559,29 @@ export function AprobadosTab({
                         <option value="finalizado">Finalizado</option>
                       </select>
                     </Field>
+                    <Field label="Neto acordado ($)">
+                      <AmountInput
+                        style={styles.input}
+                        value={selectedApprovedJob.soldNetPrice}
+                        onChange={(n) =>
+                          updateApprovedJob(selectedApprovedJob.id, "soldNetPrice", n)
+                        }
+                      />
+                    </Field>
+                    <Field label="Neto acordado (U$S)">
+                      <AmountInput
+                        style={styles.input}
+                        value={selectedApprovedJob.soldNetPriceUsd || 0}
+                        onChange={(n) =>
+                          updateApprovedJob(selectedApprovedJob.id, "soldNetPriceUsd", n)
+                        }
+                      />
+                    </Field>
                   </TwoCol>
+                  <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 8 }}>
+                    Editá el neto para cerrar un valor acordado. Poné todo el neto en U$S (y $ en 0)
+                    para dolarizar el presupuesto completo, o combiná ambas monedas.
+                  </div>
                   <Field label="Notas">
                     <textarea
                       style={styles.textarea}
@@ -633,6 +660,13 @@ export function AprobadosTab({
                   />
                   <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
                   <SummaryRow label="Cobrado" value={money(selectedApprovedJob.collectedTotal)} tone="in" />
+                  {(selectedApprovedJob.usdPesifiedArs || 0) > 0 && (
+                    <SummaryRow
+                      label="  (incluye U$S pesificados)"
+                      value={money(selectedApprovedJob.usdPesifiedArs || 0)}
+                      tone="in"
+                    />
+                  )}
                   <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
                   {(Number(selectedApprovedJob.soldNetPriceUsd || 0) > 0 ||
                     Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0) && (
@@ -1090,6 +1124,74 @@ export function AprobadosTab({
                             />
                           </Field>
                         </TwoCol>
+                        {payment.currency === "USD" && (
+                          <div
+                            style={{
+                              marginTop: 8,
+                              padding: 8,
+                              borderRadius: 8,
+                              background: "rgba(6,95,70,0.08)",
+                            }}
+                          >
+                            <TwoCol>
+                              <Field label="Cotizacion (a cuanto se tomo el U$S)">
+                                <AmountInput
+                                  style={styles.input}
+                                  value={payment.exchangeRate || 0}
+                                  onChange={(n) =>
+                                    updatePayment(
+                                      selectedApprovedJob.id,
+                                      payment.id,
+                                      "exchangeRate",
+                                      n
+                                    )
+                                  }
+                                />
+                              </Field>
+                              <Field label="Aplicacion del pago">
+                                <label
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 8,
+                                    padding: "6px 0",
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={payment.arsApplied === true}
+                                    onChange={(e) =>
+                                      updatePayment(
+                                        selectedApprovedJob.id,
+                                        payment.id,
+                                        "arsApplied",
+                                        e.target.checked
+                                      )
+                                    }
+                                  />
+                                  Descontar del saldo en $ (pesificar)
+                                </label>
+                              </Field>
+                            </TwoCol>
+                            {payment.arsApplied === true && Number(payment.exchangeRate || 0) > 0 ? (
+                              <div style={{ marginTop: 4, fontSize: 13 }}>
+                                Equivale a{" "}
+                                <strong>
+                                  {money(
+                                    Number(payment.amount || 0) * Number(payment.exchangeRate || 0)
+                                  )}
+                                </strong>{" "}
+                                — descuenta del saldo en pesos.
+                              </div>
+                            ) : (
+                              <div style={{ marginTop: 4, fontSize: 13, opacity: 0.75 }}>
+                                Queda como dolar: descuenta del Saldo U$S.
+                                {payment.arsApplied === true &&
+                                  " Cargá la cotizacion para pesificarlo."}
+                              </div>
+                            )}
+                          </div>
+                        )}
                         <div style={styles.uploadActions}>
                           <label style={styles.buttonLikeLabel}>
                             Cargar comprobante
