@@ -1229,7 +1229,8 @@ export function AprobadosTab({
                       No hay adicionales cargados. Funcionan como continuidad del presupuesto original y suman al saldo a cobrar.
                     </div>
                   ) : (
-                    selectedApprovedJob.additionals.map((item) => (
+                    <>
+                    {selectedApprovedJob.additionals.map((item) => (
                       <div key={item.id} style={styles.subCard}>
                         <div style={styles.inlineActions}>
                           <button style={styles.smallBtn} onClick={() => removeAdditional(selectedApprovedJob.id, item.id)}>
@@ -1245,7 +1246,7 @@ export function AprobadosTab({
                               onChange={(e) => updateAdditional(selectedApprovedJob.id, item.id, "date", e.target.value)}
                             />
                           </Field>
-                          <Field label="Monto (neto)">
+                          <Field label="Monto neto ($)">
                             <AmountInput
                               style={styles.input}
                               value={item.amount}
@@ -1292,6 +1293,32 @@ export function AprobadosTab({
                             </Field>
                           )}
                         </TwoCol>
+                        {(() => {
+                          const sub = Number(item.amount || 0);
+                          const isWhite = (item.administration || "blanco") === "blanco";
+                          const iva = isWhite ? sub * (Number(item.vatRate ?? 21) / 100) : 0;
+                          return (
+                            <div
+                              style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: 18,
+                                fontSize: 13,
+                                margin: "2px 0 8px",
+                                padding: "8px 10px",
+                                background: "rgba(2,6,23,0.04)",
+                                borderRadius: 8,
+                              }}
+                            >
+                              <span>Subtotal: <strong>{money(sub)}</strong></span>
+                              <span>
+                                IVA{isWhite ? ` ${item.vatRate ?? 21}%` : ""}: <strong>{money(iva)}</strong>
+                              </span>
+                              <span>Total: <strong>{money(sub + iva)}</strong></span>
+                              {!isWhite && <span style={{ color: "#94a3b8" }}>(negro, sin IVA)</span>}
+                            </div>
+                          );
+                        })()}
                         <Field label="Descripcion">
                           <input
                             style={styles.input}
@@ -1307,7 +1334,32 @@ export function AprobadosTab({
                           />
                         </Field>
                       </div>
-                    ))
+                    ))}
+                    {(() => {
+                      const sub =
+                        (selectedApprovedJob.additionalsWhiteNet || 0) +
+                        (selectedApprovedJob.additionalsBlackNet || 0);
+                      const iva = selectedApprovedJob.additionalsVat || 0;
+                      return (
+                        <div
+                          style={{
+                            borderTop: "2px solid #e2e8f0",
+                            marginTop: 6,
+                            paddingTop: 10,
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 20,
+                            fontSize: 14,
+                            fontWeight: 700,
+                          }}
+                        >
+                          <span>Subtotal adicionales: {money(sub)}</span>
+                          <span>IVA: {money(iva)}</span>
+                          <span>Total c/IVA: {money(sub + iva)}</span>
+                        </div>
+                      );
+                    })()}
+                    </>
                   )}
                 </Panel>
 
