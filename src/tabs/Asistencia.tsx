@@ -1,6 +1,7 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { styles } from "../ui/styles";
 import { Panel, ButtonLike } from "../ui/primitives";
+import { supabase } from "../lib/supabase";
 import {
   computeMonthAttendance,
   summarizeMonthAttendance,
@@ -52,6 +53,100 @@ const buildMonthGrid = (month: string): Array<Array<{ key: string; day: number }
   for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
   return weeks;
 };
+
+// Empresa con reloj Dahua conectado hoy (De Raíz). Cuando se sume BGA, esto pasa a depender del filtro.
+const SYNC_COMPANY = "De raiz s.r.l";
+
+type DahuaSyncRow = {
+  requested_at: string | null;
+  last_run_at: string | null;
+  last_status: string | null;
+  last_message: string | null;
+  last_count: number | null;
+};
+
+// Botón "Sincronizar asistencia" + estado. El botón NO lee el reloj (es de red local): deja un pedido
+// en Supabase (RPC) y la PC de la oficina (watcher) lo ejecuta y reporta el resultado acá.
+function SyncReloj() {
+  const [row, setRow] = useState<DahuaSyncRow | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const load = useCallback(async () => {
+    const { data } = await supabase
+      .from("dahua_sync")
+      .select("requested_at,last_run_at,last_status,last_message,last_count")
+      .eq("company", SYNC_COMPANY)
+      .maybeSingle();
+    if (data) setRow(data as DahuaSyncRow);
+  }, []);
+
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 15000); // refresca el estado cada 15s
+    return () => clearInterval(t);
+  }, [load]);
+
+  const pedir = async () => {
+    setBusy(true);
+    setMsg("");
+    const { error } = await supabase.rpc("request_attendance_sync", { p_company: SYNC_COMPANY });
+    if (error) {
+      setMsg("No se pudo pedir la sincronización: " + error.message);
+    } else {
+      setMsg(
+        "Pedido enviado. La PC de la oficina lo procesa en 1–3 min (tiene que estar prendida y el reloj en red)."
+      );
+    }
+    setBusy(false);
+    load();
+  };
+
+  const pendiente =
+    !!row?.requested_at && (!row?.last_run_at || row.requested_at > row.last_run_at);
+  const st = row?.last_status || "";
+  const color =
+    st === "ok" ? "#16a34a" : st === "error" ? "#dc2626" : st === "running" ? "#ca8a04" : "#64748b";
+  const fmt = (iso: string | null) =>
+    iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—";
+  const estadoTxt =
+    st === "ok"
+      ? "OK"
+      : st === "error"
+      ? "Error"
+      : st === "running"
+      ? "Sincronizando…"
+      : st === "nada"
+      ? "Sin novedades"
+      : "—";
+
+  return (
+    <Panel title="Sincronización con el reloj (Dahua)" span="full">
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14 }}>
+        <ButtonLike onClick={pedir} disabled={busy}>
+          {busy ? "Enviando pedido…" : "Sincronizar asistencia ahora"}
+        </ButtonLike>
+        <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+          <div>
+            <strong>Última sincronización:</strong> {fmt(row?.last_run_at || null)}{" "}
+            <span style={{ color, fontWeight: 600 }}>· {estadoTxt}</span>
+          </div>
+          {row?.last_message && (
+            <div style={{ color: "#64748b" }}>{row.last_message}</div>
+          )}
+          {pendiente && (
+            <div style={{ color: "#ca8a04" }}>Pedido en cola — esperando a la PC de la oficina…</div>
+          )}
+        </div>
+      </div>
+      {msg && <div style={{ ...styles.noticeBox, marginTop: 10 }}>{msg}</div>}
+      <div style={{ ...styles.noticeBox, marginTop: 10, fontSize: 12 }}>
+        El botón deja un pedido; el reloj lo lee la PC de la oficina (es un equipo de red local). Requiere
+        esa PC prendida y en la red del reloj. También corre solo cada mañana. Solo De Raíz por ahora.
+      </div>
+    </Panel>
+  );
+}
 
 export function AsistenciaTab({
   employees,
@@ -127,6 +222,7 @@ export function AsistenciaTab({
 
   return (
     <div style={styles.column}>
+      <SyncReloj />
       <Panel
         title="Asistencia — calendario del taller"
         span="full"
