@@ -15,7 +15,16 @@ type Entry = {
   kind: string;
   amount: number;
   statusLabel?: string;
+  subcat?: string;
 };
+
+// Subtítulos de la sección INGRESOS (debajo de "Cobranzas · Ingreso").
+const INCOME_SUBCATS: Array<{ key: string; label: string }> = [
+  { key: "trabajo", label: "Cobranza de trabajo (ppto · cliente)" },
+  { key: "prestamo", label: "Préstamos recibidos" },
+  { key: "financiero", label: "Ingresos financieros" },
+  { key: "varios", label: "Ingresos varios" },
+];
 
 const KIND_LABEL: Record<string, string> = {
   facturacion: "Facturación",
@@ -28,7 +37,6 @@ const KIND_LABEL: Record<string, string> = {
   trabajo: "Trabajos",
 };
 const ROW_ORDER: Array<{ kind: string; dir: "in" | "out" | "none" }> = [
-  { kind: "cobranza", dir: "in" },
   { kind: "facturacion", dir: "none" },
   { kind: "pago", dir: "out" },
   { kind: "compra", dir: "out" },
@@ -97,6 +105,7 @@ export function CalendarioAnualTab({
     client: string;
     jobCode: string;
     notes: string;
+    incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
   }) => void;
   money: (n: number, currency?: string) => string;
 }) {
@@ -108,6 +117,8 @@ export function CalendarioAnualTab({
     amount: number;
     administration: "blanco" | "negro";
     party: string;
+    jobCode: string;
+    incomeCategory: "trabajo" | "prestamo" | "financiero" | "varios";
     notes: string;
   }>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -117,19 +128,24 @@ export function CalendarioAnualTab({
       next.has(kind) ? next.delete(kind) : next.add(kind);
       return next;
     });
+  const baseForm = (iso: string) => ({
+    date: iso,
+    company: companyScope !== "__ALL__" ? companyScope : companyOptions[0]?.value || "",
+    amount: 0,
+    administration: "blanco" as const,
+    party: "",
+    jobCode: "",
+    incomeCategory: "trabajo" as const,
+    notes: "",
+  });
   const openAdd = (kind: string, iso: string) =>
-    setAddForm({
-      date: iso,
-      company: companyScope !== "__ALL__" ? companyScope : companyOptions[0]?.value || "",
-      type: KIND_TO_TYPE[kind] || "pago",
-      amount: 0,
-      administration: "blanco",
-      party: "",
-      notes: "",
-    });
+    setAddForm({ ...baseForm(iso), type: KIND_TO_TYPE[kind] || "pago" });
+  const openAddIncome = (subcat: string, iso: string) =>
+    setAddForm({ ...baseForm(iso), type: "cobranza", incomeCategory: subcat as any });
   const confirmAdd = () => {
     if (!addForm || !(Number(addForm.amount) > 0) || !addForm.company) return;
     const party = addForm.party.trim();
+    const ppto = addForm.jobCode.trim();
     onAddMovement({
       company: addForm.company,
       date: addForm.date,
@@ -138,8 +154,9 @@ export function CalendarioAnualTab({
       administration: addForm.administration,
       title: party || (addForm.type === "cobranza" ? "Cobranza" : addForm.type === "pago" ? "Pago" : "Facturación"),
       client: party,
-      jobCode: "",
+      jobCode: addForm.type === "cobranza" && addForm.incomeCategory === "trabajo" ? ppto : "",
       notes: addForm.notes,
+      incomeCategory: addForm.type === "cobranza" ? addForm.incomeCategory : undefined,
     });
     setAddForm(null);
   };
@@ -154,33 +171,55 @@ export function CalendarioAnualTab({
     return cols;
   }, [months]);
 
-  // Agregación: total por (kind, día) + detalle por (kind, título, día) para el zoom.
-  const { byKindDate, detailByKind, dayNet, hasData } = useMemo(() => {
+  // Agregación: total por (kind, día) + detalle por (kind, título, día) para el zoom. Además, los
+  // INGRESOS (kind cobranza) se agrupan por subcategoría (trabajo/préstamo/financiero/varios).
+  const {
+    byKindDate, detailByKind, dayNet, hasData,
+    incomeBySubcatDate, incomeDetailBySubcat, incomeTotalByDate, incomeHas,
+  } = useMemo(() => {
     const firstIso = dayCols[0]?.iso || "";
     const lastIso = dayCols[dayCols.length - 1]?.iso || "";
     const byKindDate = new Map<string, Map<string, number>>();
     const detailByKind = new Map<string, Map<string, Map<string, number>>>();
     const dayNet = new Map<string, number>();
     const hasData = new Set<string>();
+    const incomeBySubcatDate = new Map<string, Map<string, number>>();
+    const incomeDetailBySubcat = new Map<string, Map<string, Map<string, number>>>();
+    const incomeTotalByDate = new Map<string, number>();
+    const incomeHas = new Set<string>();
+    const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
     entries.forEach((e) => {
       if (companyScope !== "__ALL__" && e.company !== companyScope) return;
       if (!e.date || e.date < firstIso || e.date > lastIso) return;
       const amt = Number(e.amount || 0);
+      const title = (e.title || "—").trim();
+      if (e.kind === "cobranza") {
+        const sub = e.subcat || "trabajo";
+        if (!incomeBySubcatDate.has(sub)) incomeBySubcatDate.set(sub, new Map());
+        add(incomeBySubcatDate.get(sub)!, e.date, amt);
+        if (!incomeDetailBySubcat.has(sub)) incomeDetailBySubcat.set(sub, new Map());
+        const det = incomeDetailBySubcat.get(sub)!;
+        if (!det.has(title)) det.set(title, new Map());
+        add(det.get(title)!, e.date, amt);
+        add(incomeTotalByDate, e.date, amt);
+        incomeHas.add(sub);
+        add(dayNet, e.date, amt); // el ingreso entra al neto del día
+        return;
+      }
       if (!byKindDate.has(e.kind)) byKindDate.set(e.kind, new Map());
-      const row = byKindDate.get(e.kind)!;
-      row.set(e.date, (row.get(e.date) || 0) + amt);
-      // detalle por título (proveedor / descripción)
+      add(byKindDate.get(e.kind)!, e.date, amt);
       if (!detailByKind.has(e.kind)) detailByKind.set(e.kind, new Map());
       const det = detailByKind.get(e.kind)!;
-      const title = (e.title || "—").trim();
       if (!det.has(title)) det.set(title, new Map());
-      const drow = det.get(title)!;
-      drow.set(e.date, (drow.get(e.date) || 0) + amt);
+      add(det.get(title)!, e.date, amt);
       hasData.add(e.kind);
       const dir = ROW_ORDER.find((r) => r.kind === e.kind)?.dir || "none";
-      if (dir !== "none") dayNet.set(e.date, (dayNet.get(e.date) || 0) + (dir === "in" ? amt : -amt));
+      if (dir !== "none") add(dayNet, e.date, dir === "in" ? amt : -amt);
     });
-    return { byKindDate, detailByKind, dayNet, hasData };
+    return {
+      byKindDate, detailByKind, dayNet, hasData,
+      incomeBySubcatDate, incomeDetailBySubcat, incomeTotalByDate, incomeHas,
+    };
   }, [entries, companyScope, dayCols]);
 
   const rows = ROW_ORDER.filter((r) => !onlyWithData || hasData.has(r.kind));
@@ -233,6 +272,78 @@ export function CalendarioAnualTab({
               </tr>
             </thead>
             <tbody>
+              {/* ===== SECCIÓN INGRESOS ===== */}
+              <tr>
+                <td style={{ ...tdStickyLabel, background: "#dcfce7", fontWeight: 800, color: "#065f46" }}>
+                  COBRANZAS · INGRESO
+                </td>
+                {dayCols.map((c) => <td key={`ih-${c.iso}`} style={{ ...tdCell, background: "#dcfce7" }}></td>)}
+              </tr>
+              {INCOME_SUBCATS.filter((s) => !onlyWithData || incomeHas.has(s.key)).map((s) => {
+                const openKey = `income:${s.key}`;
+                const isOpen = expanded.has(openKey);
+                const det = incomeDetailBySubcat.get(s.key);
+                const dateMap = incomeBySubcatDate.get(s.key);
+                return (
+                  <React.Fragment key={s.key}>
+                    <tr>
+                      <td
+                        style={{ ...tdStickyLabel, cursor: "pointer", userSelect: "none", paddingLeft: 20 }}
+                        onClick={() => toggle(openKey)}
+                        title="Zoom: ver el detalle"
+                      >
+                        {det && det.size > 0 ? (isOpen ? "▾ " : "▸ ") : ""}
+                        {s.label}
+                      </td>
+                      {dayCols.map((c) => {
+                        const v = dateMap?.get(c.iso) || 0;
+                        return (
+                          <td
+                            key={`${s.key}-${c.iso}`}
+                            onClick={() => openAddIncome(s.key, c.iso)}
+                            title="Cargar un ingreso en este día"
+                            style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? "#16a34a" : "#cbd5e1" }}
+                          >
+                            {v ? money(v) : "+"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {isOpen && det &&
+                      Array.from(det.entries())
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([title, drow]) => (
+                          <tr key={`${s.key}::${title}`} style={{ background: "#f8fafc" }}>
+                            <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>
+                              {title}
+                            </td>
+                            {dayCols.map((c) => {
+                              const v = drow.get(c.iso) || 0;
+                              return (
+                                <td key={`${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#334155" : "#e2e8f0" }}>
+                                  {v ? money(v) : "·"}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                  </React.Fragment>
+                );
+              })}
+              <tr>
+                <td style={{ ...tdStickyLabel, background: "#ecfdf5", fontWeight: 800, color: "#065f46" }}>
+                  Total ingresos percibidos
+                </td>
+                {dayCols.map((c) => {
+                  const v = incomeTotalByDate.get(c.iso) || 0;
+                  return (
+                    <td key={`itot-${c.iso}`} style={{ ...tdCell, background: "#ecfdf5", fontWeight: 800, color: v ? "#16a34a" : "#cbd5e1" }}>
+                      {v ? money(v) : "·"}
+                    </td>
+                  );
+                })}
+              </tr>
+              {/* ===== RESTO DE CONCEPTOS ===== */}
               {rows.map((r) => {
                 const isOpen = expanded.has(r.kind);
                 const det = detailByKind.get(r.kind);
@@ -319,6 +430,22 @@ export function CalendarioAnualTab({
                   <option value="facturacion">Facturación (registro)</option>
                 </select>
               </label>
+              {addForm.type === "cobranza" && (
+                <label style={lblStyle}>
+                  Tipo de ingreso
+                  <select style={styles.input} value={addForm.incomeCategory} onChange={(e) => setAddForm({ ...addForm, incomeCategory: e.target.value as any })}>
+                    {INCOME_SUBCATS.map((s) => (
+                      <option key={s.key} value={s.key}>{s.label}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              {addForm.type === "cobranza" && addForm.incomeCategory === "trabajo" && (
+                <label style={lblStyle}>
+                  N° presupuesto
+                  <input style={styles.input} value={addForm.jobCode} placeholder="Ej: 3199" onChange={(e) => setAddForm({ ...addForm, jobCode: e.target.value })} />
+                </label>
+              )}
               <label style={lblStyle}>
                 Monto ($)
                 <input style={styles.input} type="number" value={addForm.amount || ""} onChange={(e) => setAddForm({ ...addForm, amount: Number(e.target.value) })} />

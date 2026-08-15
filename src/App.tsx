@@ -10553,6 +10553,7 @@ export default function App() {
     client: string;
     jobCode: string;
     notes: string;
+    incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
   }) => {
     const item: FinancialCalendarItem = {
       id: newId(),
@@ -10566,6 +10567,7 @@ export default function App() {
       amount: Number(m.amount || 0),
       notes: m.notes || "",
       administration: m.administration,
+      incomeCategory: m.type === "cobranza" ? m.incomeCategory || "trabajo" : undefined,
     };
     setFinancialItems((prev) => [item, ...prev]);
   };
@@ -11955,18 +11957,23 @@ export default function App() {
         | "trabajo";
       amount: number;
       statusLabel: string;
+      subcat?: string;
     }> = [];
 
     visibleFinancialItems.forEach((item) => {
       if (!item.date || !item.date.startsWith(String(analysisYear))) return;
+      const isCobranza = item.type === "cobranza";
+      const cobranzaTitle =
+        `${item.jobCode ? item.jobCode + " · " : ""}${item.client || item.title || "Cliente"}`.trim();
       entries.push({
         id: `financial-${item.id}`,
         date: item.date,
         company: item.company,
-        title: item.title || item.jobCode || "Movimiento financiero",
+        title: isCobranza ? cobranzaTitle : item.title || item.jobCode || "Movimiento financiero",
         kind: item.type,
         amount: Number(item.amount || 0),
         statusLabel: item.status,
+        subcat: isCobranza ? item.incomeCategory || "trabajo" : undefined,
       });
     });
 

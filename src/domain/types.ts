@@ -521,6 +521,9 @@ export type FinancialCalendarItem = {
   preset?: "factura" | "anticipo" | "saldo" | "cobranza";
   // Circuito del movimiento (blanco/negro). Permite separar administraciones y ver cruces.
   administration?: "blanco" | "negro";
+  // Subcategoría de ingreso (solo cobranzas), para el Calendario anual: cobranza de trabajo (ppto +
+  // cliente), préstamo recibido, ingreso financiero o ingreso vario. Ausente = trabajo.
+  incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
   // Si el usuario editó a mano un item autogenerado (p.ej. partió el saldo en cuotas),
   // la regeneración NO lo recalcula: respeta lo cargado a mano ("sin pisarse").
   userEdited?: boolean;
