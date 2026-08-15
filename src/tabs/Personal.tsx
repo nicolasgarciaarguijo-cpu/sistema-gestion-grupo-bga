@@ -1309,6 +1309,14 @@ export function PersonalTab(props: PersonalTabProps) {
                               onChange={(e) => updateEmployeeField(selectedEmployee.id, "name", e.target.value)}
                             />
                           </Field>
+                          <Field label="CUIL">
+                            <input
+                              style={styles.input}
+                              value={selectedEmployee.cuil || ""}
+                              placeholder="20-12345678-9"
+                              onChange={(e) => updateEmployeeField(selectedEmployee.id, "cuil", e.target.value)}
+                            />
+                          </Field>
                           {selectedEmployee.employmentType === "temporal" ? (
                             <Field label="Sueldo acordado (temporal, negro)">
                               <AmountInput

@@ -1059,6 +1059,8 @@ export type Employee = {
   company: CompanyName;
   legajo: string;
   name: string;
+  // CUIL del trabajador (lo exige el recibo, LCT art. 140). Opcional para datos viejos.
+  cuil?: string;
   category: string;
   // Tipo de vinculo: "convenio" (por escala, default), "temporal" (negro, por acuerdo, se paga por
   // caja chica hasta efectivizar) o "fuera_convenio" (socio/gerente/administrativo con sueldo acordado
