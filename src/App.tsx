@@ -10541,6 +10541,35 @@ export default function App() {
     setter((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   };
 
+  // Alta rápida desde el Calendario anual: crea un movimiento financiero ya clasificado (cobranza/pago/
+  // facturación) con su circuito blanco/negro. Aparece directo en la grilla del calendario.
+  const addCalendarMovement = (m: {
+    company: CompanyName;
+    date: string;
+    type: FinancialItemType;
+    amount: number;
+    administration: "blanco" | "negro";
+    title: string;
+    client: string;
+    jobCode: string;
+    notes: string;
+  }) => {
+    const item: FinancialCalendarItem = {
+      id: newId(),
+      company: m.company,
+      date: m.date,
+      type: m.type,
+      status: "realizado",
+      title: m.title || "",
+      jobCode: m.jobCode || "",
+      client: m.client || "",
+      amount: Number(m.amount || 0),
+      notes: m.notes || "",
+      administration: m.administration,
+    };
+    setFinancialItems((prev) => [item, ...prev]);
+  };
+
   const addFinancialItem = (date?: string, company?: CompanyName) => {
     const item: FinancialCalendarItem = {
       id: newId(),
@@ -14691,6 +14720,7 @@ export default function App() {
           setFiscalStartYear={setBalanceFiscalStartYear}
           fiscalYearOptions={balanceFiscalYearOptions}
           companyOptions={COMPANY_OPTIONS}
+          onAddMovement={addCalendarMovement}
           money={money}
         />
       )}

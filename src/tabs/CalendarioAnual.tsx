@@ -38,6 +38,18 @@ const ROW_ORDER: Array<{ kind: string; dir: "in" | "out" | "none" }> = [
   { kind: "trabajo", dir: "none" },
 ];
 
+// Tipo de movimiento por defecto según la fila donde se carga (el usuario lo puede cambiar).
+const KIND_TO_TYPE: Record<string, "facturacion" | "cobranza" | "pago"> = {
+  cobranza: "cobranza",
+  trabajo: "cobranza",
+  facturacion: "facturacion",
+  pago: "pago",
+  compra: "pago",
+  "caja-chica": "pago",
+  desendeudamiento: "pago",
+  banco: "pago",
+};
+
 const MES = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
   "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
@@ -64,6 +76,7 @@ export function CalendarioAnualTab({
   fiscalYearOptions,
   companyOptions,
   fiscalStartMonth = 11,
+  onAddMovement,
   money,
 }: {
   entries: Entry[];
@@ -74,9 +87,29 @@ export function CalendarioAnualTab({
   fiscalYearOptions: Array<{ value: number; label: string }>;
   companyOptions: Array<{ value: string; short?: string }>;
   fiscalStartMonth?: number;
+  onAddMovement: (m: {
+    company: string;
+    date: string;
+    type: "facturacion" | "cobranza" | "pago";
+    amount: number;
+    administration: "blanco" | "negro";
+    title: string;
+    client: string;
+    jobCode: string;
+    notes: string;
+  }) => void;
   money: (n: number, currency?: string) => string;
 }) {
   const [onlyWithData, setOnlyWithData] = useState(true);
+  const [addForm, setAddForm] = useState<null | {
+    date: string;
+    company: string;
+    type: "facturacion" | "cobranza" | "pago";
+    amount: number;
+    administration: "blanco" | "negro";
+    party: string;
+    notes: string;
+  }>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const toggle = (kind: string) =>
     setExpanded((prev) => {
@@ -84,6 +117,32 @@ export function CalendarioAnualTab({
       next.has(kind) ? next.delete(kind) : next.add(kind);
       return next;
     });
+  const openAdd = (kind: string, iso: string) =>
+    setAddForm({
+      date: iso,
+      company: companyScope !== "__ALL__" ? companyScope : companyOptions[0]?.value || "",
+      type: KIND_TO_TYPE[kind] || "pago",
+      amount: 0,
+      administration: "blanco",
+      party: "",
+      notes: "",
+    });
+  const confirmAdd = () => {
+    if (!addForm || !(Number(addForm.amount) > 0) || !addForm.company) return;
+    const party = addForm.party.trim();
+    onAddMovement({
+      company: addForm.company,
+      date: addForm.date,
+      type: addForm.type,
+      amount: Number(addForm.amount),
+      administration: addForm.administration,
+      title: party || (addForm.type === "cobranza" ? "Cobranza" : addForm.type === "pago" ? "Pago" : "Facturación"),
+      client: party,
+      jobCode: "",
+      notes: addForm.notes,
+    });
+    setAddForm(null);
+  };
 
   const months = useMemo(() => fiscalMonths(fiscalStartMonth || 11, fiscalStartYear), [fiscalStartMonth, fiscalStartYear]);
 
@@ -191,8 +250,13 @@ export function CalendarioAnualTab({
                       {dayCols.map((c) => {
                         const v = cell(r.kind, c.iso);
                         return (
-                          <td key={`${r.kind}-${c.iso}`} style={{ ...tdCell, fontWeight: 600, color: v ? (r.dir === "out" ? "#dc2626" : "#0f172a") : "#cbd5e1" }}>
-                            {v ? money(v) : "·"}
+                          <td
+                            key={`${r.kind}-${c.iso}`}
+                            onClick={() => openAdd(r.kind, c.iso)}
+                            title="Cargar un movimiento en este día"
+                            style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (r.dir === "out" ? "#dc2626" : "#0f172a") : "#cbd5e1" }}
+                          >
+                            {v ? money(v) : "+"}
                           </td>
                         );
                       })}
@@ -233,9 +297,76 @@ export function CalendarioAnualTab({
           </table>
         </div>
       </Panel>
+
+      {addForm && (
+        <div style={overlayStyle} onClick={() => setAddForm(null)}>
+          <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginTop: 0, marginBottom: 12 }}>Cargar movimiento — {addForm.date}</h3>
+            <div style={{ display: "grid", gap: 10 }}>
+              <label style={lblStyle}>
+                Empresa
+                <select style={styles.input} value={addForm.company} onChange={(e) => setAddForm({ ...addForm, company: e.target.value })}>
+                  {companyOptions.map((c) => (
+                    <option key={c.value} value={c.value}>{c.short || c.value}</option>
+                  ))}
+                </select>
+              </label>
+              <label style={lblStyle}>
+                ¿Qué es?
+                <select style={styles.input} value={addForm.type} onChange={(e) => setAddForm({ ...addForm, type: e.target.value as any })}>
+                  <option value="cobranza">Cobranza (entra plata)</option>
+                  <option value="pago">Pago (sale plata)</option>
+                  <option value="facturacion">Facturación (registro)</option>
+                </select>
+              </label>
+              <label style={lblStyle}>
+                Monto ($)
+                <input style={styles.input} type="number" value={addForm.amount || ""} onChange={(e) => setAddForm({ ...addForm, amount: Number(e.target.value) })} />
+              </label>
+              <label style={lblStyle}>
+                Circuito
+                <select style={styles.input} value={addForm.administration} onChange={(e) => setAddForm({ ...addForm, administration: e.target.value as "blanco" | "negro" })}>
+                  <option value="blanco">Blanco</option>
+                  <option value="negro">Negro</option>
+                </select>
+              </label>
+              <label style={lblStyle}>
+                {addForm.type === "pago" ? "Proveedor / a quién" : "Cliente / de quién"}
+                <input style={styles.input} value={addForm.party} placeholder="Nombre" onChange={(e) => setAddForm({ ...addForm, party: e.target.value })} />
+              </label>
+              <label style={lblStyle}>
+                Notas (opcional)
+                <input style={styles.input} value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} />
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+              <button style={btnSecondary} onClick={() => setAddForm(null)}>Cancelar</button>
+              <button style={btnPrimary} onClick={confirmAdd} disabled={!(Number(addForm.amount) > 0) || !addForm.company}>
+                Guardar en el sistema
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+const overlayStyle: React.CSSProperties = {
+  position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50,
+  display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+};
+const modalStyle: React.CSSProperties = {
+  background: "#fff", borderRadius: 12, padding: 18, width: "min(440px, 96vw)",
+  boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+};
+const lblStyle: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13, fontWeight: 600 };
+const btnSecondary: React.CSSProperties = {
+  padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer", fontWeight: 600,
+};
+const btnPrimary: React.CSSProperties = {
+  padding: "8px 14px", borderRadius: 8, border: "none", background: "#14213d", color: "#fff", cursor: "pointer", fontWeight: 700,
+};
 
 const thStickyCorner: React.CSSProperties = {
   position: "sticky", left: 0, zIndex: 3, background: "#f1f5f9", textAlign: "left",
