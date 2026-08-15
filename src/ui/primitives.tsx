@@ -178,6 +178,42 @@ export const MONEY_OUT_COLOR = "#dc2626"; // rojo (sale / resta)
 export const moneyToneColor = (tone?: "in" | "out"): string =>
   tone === "in" ? MONEY_IN_COLOR : tone === "out" ? MONEY_OUT_COLOR : "#0f172a";
 
+// Pill "D" = falta completar / dato sin definir. Marca universal: aparece en cualquier registro al que
+// le falte información. El tooltip lista qué falta. Reutilizable en todo el sistema.
+export function PillD({
+  missing,
+  title,
+  size = 20,
+}: {
+  missing?: string[];
+  title?: string;
+  size?: number;
+}) {
+  const tip =
+    title || (missing && missing.length ? `Falta: ${missing.join(", ")}` : "Falta completar");
+  return (
+    <span
+      title={tip}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        borderRadius: 999,
+        background: "#f59e0b",
+        color: "#1f2937",
+        fontSize: Math.round(size * 0.62),
+        fontWeight: 800,
+        lineHeight: 1,
+        flex: "0 0 auto",
+      }}
+    >
+      D
+    </span>
+  );
+}
+
 // Aclaración de PROCEDENCIA de un monto: círculo blanco con "B" (blanco) o negro con "N" (negro).
 // Se pone al lado del número. Reutilizable en todo el sistema.
 function ColorTag({

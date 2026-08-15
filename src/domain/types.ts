@@ -643,6 +643,14 @@ export type BankStatementEntry = {
   // reserva y NUNCA se suma con los pesos.
   currency?: "ARS" | "USD";
   notes: string;
+  // Asignación / conciliación (Fase 1): "darle un lugar" a la plata que entró o salió.
+  // assignedKind vacío = SIN ASIGNAR (muestra la pill D). cobro/pago pueden apuntar a un trabajo
+  // (assignedJobBudget) y/o a un tercero (assignedParty, texto libre o tomado del sistema).
+  assignedKind?: "cobro" | "pago" | "interno" | "aporte" | "impuesto" | "otro";
+  assignedJobBudget?: string;
+  assignedParty?: string;
+  administration?: "blanco" | "negro";
+  assignmentNote?: string;
   attachmentName?: string;
   extractedAutomatically: boolean;
 };

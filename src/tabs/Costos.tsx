@@ -12,7 +12,8 @@
 // gasto no se cuenta dos veces.
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, moneyToneColor } from "../ui/primitives";
+import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, PillD, moneyToneColor } from "../ui/primitives";
+import { bankEntryMissingInfo } from "../domain/bankAssignment";
 import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel, composeCostEntriesByGroup, resolveGroupKind } from "../domain/costs";
 import { computeSupplierAccounts } from "../domain/supplierAccounts";
@@ -266,6 +267,16 @@ export function CostosTab({
 }: CostosTabProps) {
   const fixedRows = aggregation.rows.filter((row) => row.kind === "fijo");
   const variableRows = aggregation.rows.filter((row) => row.kind === "variable");
+
+  // Conciliación de movimientos bancarios (Fase 1): fila desplegada para asignarle un lugar a la plata.
+  const [assignOpenId, setAssignOpenId] = React.useState<number | null>(null);
+  // Opciones del buscador, tomadas de lo que YA existe en el sistema (trabajos + proveedores/clientes).
+  const partyOptions = React.useMemo(() => {
+    const set = new Set<string>();
+    approvedJobsForLink.forEach((j) => j.client && set.add(j.client.trim()));
+    suppliers.forEach((s) => s.name && set.add(s.name.trim()));
+    return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
+  }, [approvedJobsForLink, suppliers]);
 
   // Solo los grupos no automaticos admiten carga manual.
   const manualGroupOptions = costGroups
@@ -1346,9 +1357,22 @@ export function CostosTab({
           <div style={styles.empty}>No hay movimientos bancarios en {monthLabel(operationalMonth)}.</div>
         ) : (
           <div style={{ overflowX: "auto" }}>
+            <datalist id="bank-assign-jobs">
+              {approvedJobsForLink.map((j) => (
+                <option key={j.budgetNumber} value={j.budgetNumber}>
+                  {j.budgetNumber} — {j.client}
+                </option>
+              ))}
+            </datalist>
+            <datalist id="bank-assign-parties">
+              {partyOptions.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
             <table style={styles.table}>
               <thead>
                 <tr>
+                  <th>Asignación</th>
                   <th>Fecha</th>
                   <th>Empresa</th>
                   <th>Banco</th>
@@ -1361,8 +1385,34 @@ export function CostosTab({
                 </tr>
               </thead>
               <tbody>
-                {monthBankStatementEntries.map((entry) => (
-                  <tr key={entry.id}>
+                {monthBankStatementEntries.map((entry) => {
+                  const missing = bankEntryMissingInfo(entry);
+                  const kind = entry.assignedKind as string | undefined;
+                  const open = assignOpenId === entry.id;
+                  const isCobroPago = kind === "cobro" || kind === "pago";
+                  return (
+                  <React.Fragment key={entry.id}>
+                  <tr>
+                    <td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        {missing.length > 0 ? (
+                          <PillD missing={missing} />
+                        ) : (
+                          <span title="Asignado" style={{ color: "#16a34a", fontWeight: 800 }}>✓</span>
+                        )}
+                        <button style={styles.smallBtn} onClick={() => setAssignOpenId(open ? null : entry.id)}>
+                          {open ? "Cerrar ▲" : kind ? "Editar ▾" : "Asignar ▾"}
+                        </button>
+                      </div>
+                      {kind && !open && (
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                          {kind}
+                          {entry.assignedJobBudget ? ` · ${entry.assignedJobBudget}` : ""}
+                          {entry.assignedParty ? ` · ${entry.assignedParty}` : ""}
+                          {entry.administration ? ` · ${entry.administration}` : ""}
+                        </div>
+                      )}
+                    </td>
                     <td>
                       <input
                         style={styles.input}
@@ -1441,7 +1491,81 @@ export function CostosTab({
                       </button>
                     </td>
                   </tr>
-                ))}
+                  {open && (
+                    <tr>
+                      <td colSpan={10} style={{ background: "rgba(2,6,23,0.04)" }}>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, padding: "10px 4px", alignItems: "flex-end" }}>
+                          <Field label="¿Qué es? (de dónde viene / a dónde va)">
+                            <select
+                              style={styles.input}
+                              value={entry.assignedKind || ""}
+                              onChange={(e) => updateBankStatementEntry(entry.id, "assignedKind", e.target.value)}
+                            >
+                              <option value="">— Elegir —</option>
+                              <option value="cobro">Cobro (entró de un trabajo/cliente)</option>
+                              <option value="pago">Pago (a un proveedor)</option>
+                              <option value="interno">Interno (entre cuentas/empresas)</option>
+                              <option value="aporte">Aporte / préstamo del dueño</option>
+                              <option value="impuesto">Impuesto / comisión bancaria</option>
+                              <option value="otro">Otro</option>
+                            </select>
+                          </Field>
+                          {kind === "cobro" && (
+                            <Field label="Trabajo (buscá por ppto o cliente)">
+                              <input
+                                style={{ ...styles.input, minWidth: 200 }}
+                                list="bank-assign-jobs"
+                                placeholder="Ej: 3199"
+                                value={entry.assignedJobBudget || ""}
+                                onChange={(e) => updateBankStatementEntry(entry.id, "assignedJobBudget", e.target.value)}
+                              />
+                            </Field>
+                          )}
+                          {isCobroPago && (
+                            <Field label={kind === "pago" ? "Proveedor" : "Cliente / tercero"}>
+                              <input
+                                style={{ ...styles.input, minWidth: 220 }}
+                                list="bank-assign-parties"
+                                placeholder="Buscá o escribí uno nuevo"
+                                value={entry.assignedParty || ""}
+                                onChange={(e) => updateBankStatementEntry(entry.id, "assignedParty", e.target.value)}
+                              />
+                            </Field>
+                          )}
+                          {isCobroPago && (
+                            <Field label="Circuito">
+                              <select
+                                style={styles.input}
+                                value={entry.administration || ""}
+                                onChange={(e) => updateBankStatementEntry(entry.id, "administration", e.target.value)}
+                              >
+                                <option value="">—</option>
+                                <option value="blanco">Blanco</option>
+                                <option value="negro">Negro</option>
+                              </select>
+                            </Field>
+                          )}
+                          <Field label="Nota (opcional)">
+                            <input
+                              style={{ ...styles.input, minWidth: 180 }}
+                              value={entry.assignmentNote || ""}
+                              onChange={(e) => updateBankStatementEntry(entry.id, "assignmentNote", e.target.value)}
+                            />
+                          </Field>
+                          {missing.length > 0 ? (
+                            <div style={{ fontSize: 12, color: "#b45309", fontWeight: 600 }}>
+                              Falta: {missing.join(", ")}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>✓ Completo</div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>
