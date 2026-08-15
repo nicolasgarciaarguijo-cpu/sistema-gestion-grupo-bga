@@ -12,9 +12,11 @@ import {
   FileDropButton,
   AmountInput,
   ColorTagToggle,
+  PillD,
 } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { moneyToneColor } from "../ui/primitives";
+import { jobPaymentMissing } from "../domain/completeness";
 import { resolveAdvancePct } from "../domain/budgetTerms";
 import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency, type PlanoTone } from "../domain/planos";
 import { getInvoicingSemaphore } from "../domain/semaphores";
@@ -1031,6 +1033,9 @@ export function AprobadosTab({
                         }}
                       >
                         <div style={styles.inlineActions}>
+                          {jobPaymentMissing(payment).length > 0 && (
+                            <PillD missing={jobPaymentMissing(payment)} size={18} />
+                          )}
                           <span
                             style={{
                               ...styles.statusPill,

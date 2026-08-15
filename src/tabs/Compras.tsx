@@ -10,9 +10,11 @@ import {
   FileDropButton,
   AmountInput,
   ColorTag,
+  PillD,
   MONEY_OUT_COLOR,
 } from "../ui/primitives";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
+import { purchaseInvoiceMissing } from "../domain/completeness";
 
 // Procedencia efectiva de una factura de compra: con numero de factura es SIEMPRE blanco (una factura
 // no puede ser negra); si no, manda el campo administracion. Mismo criterio que el select de la ficha.
@@ -298,7 +300,10 @@ export function ComprasTab({
               monthPurchaseInvoices.map((invoice) => (
                 <div key={invoice.id} style={styles.subCard}>
                   <div style={{ ...styles.inlineActions, justifyContent: "space-between" }}>
-                    <span style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      {purchaseInvoiceMissing(invoice).length > 0 && (
+                        <PillD missing={purchaseInvoiceMissing(invoice)} />
+                      )}
                       <strong style={{ fontSize: 14 }}>{invoice.supplier || "Proveedor sin nombre"}</strong>
                       <span style={{ color: MONEY_OUT_COLOR, fontWeight: 700, whiteSpace: "nowrap" }}>
                         {money(
