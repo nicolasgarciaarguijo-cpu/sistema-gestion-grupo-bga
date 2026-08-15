@@ -17,6 +17,11 @@ export type PayrollConfig = {
   unionPct: number;
   insurancePct: number;
   employerInsurancePct: number;
+  // Desglose real de contribuciones patronales. Si están, mandan sobre el % lumpeado (employerExtraPct).
+  employerJubilacionPct?: number;
+  employerObraSocialPct?: number;
+  employerArtPct?: number;
+  employerLifeInsuranceFixed?: number;
   aguinaldoAnnualMonths: number;
   normalHoursDefault: number;
   // Dias/año no trabajados (feriados + vacaciones) para el costo-hora productivo. Opcionales:
@@ -113,12 +118,29 @@ export function computePayrollSummary({
   // El blanco "tal cual" (sin cargas) se recibe entero y cuesta entero, sin descuentos de ley.
   const net = totalGross - descuentos - payroll.anticipos + flatAgreedWhite;
   const netWithCashBonus = net + cashBonus;
-  const employerContrib = grossRem * ((payroll.employerExtraPct || 0) / 100);
-  const employerInsurance = grossRem * ((config.employerInsurancePct || 0) / 100);
+  // Contribuciones patronales: si hay desglose real (jubilación/OO.SS/ART), manda; si no, el % lumpeado
+  // por mes (employerExtraPct). El seguro de vida es un monto FIJO (no escala con SAC).
+  const hasEmployerBreakdown =
+    config.employerJubilacionPct != null ||
+    config.employerObraSocialPct != null ||
+    config.employerArtPct != null;
+  const employerContribPct = hasEmployerBreakdown
+    ? Number(config.employerJubilacionPct || 0) +
+      Number(config.employerObraSocialPct || 0) +
+      Number(config.employerArtPct || 0)
+    : Number(payroll.employerExtraPct || 0);
+  const employerJubilacion = grossRem * (Number(config.employerJubilacionPct || 0) / 100);
+  const employerObraSocial = grossRem * (Number(config.employerObraSocialPct || 0) / 100);
+  const employerArt = grossRem * (Number(config.employerArtPct || 0) / 100);
+  const employerLifeInsurance = hasEmployerBreakdown ? Number(config.employerLifeInsuranceFixed || 0) : 0;
+  const employerContrib = grossRem * (employerContribPct / 100);
+  const employerInsurance = hasEmployerBreakdown
+    ? employerLifeInsurance
+    : grossRem * ((config.employerInsurancePct || 0) / 100);
   const annualSACBase = totalGross * (config.aguinaldoAnnualMonths || 0);
   const annualSACCharges =
     annualSACBase *
-    (((payroll.employerExtraPct || 0) + (config.employerInsurancePct || 0)) / 100);
+    ((employerContribPct + (hasEmployerBreakdown ? 0 : Number(config.employerInsurancePct || 0))) / 100);
   // Aguinaldo NEGRO: mismo criterio que el blanco (bruto x meses de aguinaldo) pero SIN cargas y todo
   // dentro del circuito negro. Solo aguinaldo (el negro no genera contribuciones ni descuentos de ley).
   const annualBlackSAC = blackMonthly * (config.aguinaldoAnnualMonths || 0);
@@ -165,6 +187,11 @@ export function computePayrollSummary({
     presentismo,
     employerContrib,
     employerInsurance,
+    employerContribPct,
+    employerJubilacion,
+    employerObraSocial,
+    employerArt,
+    employerLifeInsurance,
     monthlyProvisionCost,
     annualSACBase,
     monthlySACProration,

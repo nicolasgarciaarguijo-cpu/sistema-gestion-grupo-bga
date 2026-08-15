@@ -144,6 +144,30 @@ describe("computePayrollSummary", () => {
   });
 });
 
+describe("contribuciones patronales desglosadas", () => {
+  it("con desglose: employerContrib = (jub+OS+ART)% y seguro fijo", () => {
+    const r = run(
+      {},
+      {
+        config: {
+          ...config,
+          employerJubilacionPct: 18,
+          employerObraSocialPct: 6,
+          employerArtPct: 11.38,
+          employerLifeInsuranceFixed: 424.62,
+        },
+      }
+    );
+    // grossRem = 200000 (bruto normal), 35.38% => 70760
+    expect(r.employerContribPct).toBeCloseTo(35.38);
+    expect(r.employerContrib).toBeCloseTo(200000 * 0.3538);
+    expect(r.employerJubilacion).toBeCloseTo(36000);
+    expect(r.employerObraSocial).toBeCloseTo(12000);
+    expect(r.employerArt).toBeCloseTo(22760);
+    expect(r.employerInsurance).toBeCloseTo(424.62); // seguro fijo, no %
+  });
+});
+
 describe("fuera de convenio", () => {
   it("flat (sin cargas): el blanco entra tal cual y el negro flat", () => {
     const r = run(

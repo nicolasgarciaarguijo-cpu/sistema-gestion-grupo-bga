@@ -1051,6 +1051,11 @@ const defaultBaseConfig: EmployeeBaseConfig = {
   seniorityPctPerYear: 1,
   employerContributionPct: 22,
   employerInsurancePct: 1.6,
+  // Desglose real (del recibo De Raíz jul-2026): jubilación 18 + OO.SS 6 + ART 11,38 = 35,38% + seguro fijo.
+  employerJubilacionPct: 18,
+  employerObraSocialPct: 6,
+  employerArtPct: 11.38,
+  employerLifeInsuranceFixed: 424.62,
   unionPct: 3,
   insurancePct: 1.5,
   aguinaldoAnnualMonths: 1,

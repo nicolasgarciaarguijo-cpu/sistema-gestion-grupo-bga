@@ -1118,6 +1118,12 @@ export type EmployeeBaseConfig = {
   seniorityPctPerYear: number;
   employerContributionPct: number;
   employerInsurancePct: number;
+  // Desglose REAL de contribuciones patronales (para el recibo y el costo). Si están cargados, mandan
+  // sobre el % lumpeado employerContributionPct. La ART es por actividad/empresa (carpintería paga alto).
+  employerJubilacionPct?: number; // jubilación patronal (bundle SIPA), ej. 18
+  employerObraSocialPct?: number; // obra social patronal, ej. 6
+  employerArtPct?: number; // ART, por actividad, ej. 11.38
+  employerLifeInsuranceFixed?: number; // seguro de vida obligatorio, monto fijo mensual (ej. 424.62)
   unionPct: number;
   insurancePct: number;
   aguinaldoAnnualMonths: number;

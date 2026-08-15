@@ -592,21 +592,51 @@ export function PersonalTab(props: PersonalTabProps) {
                       onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, seniorityPctPerYear: Number(e.target.value) })}
                     />
                   </Field>
-                  <Field label="Impacto empresa %">
+                  <Field label="Jubilación patronal %">
                     <input
                       style={styles.input}
                       type="number"
-                      value={employeeBaseConfig.employerContributionPct}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerContributionPct: Number(e.target.value) })}
+                      step={0.01}
+                      value={employeeBaseConfig.employerJubilacionPct ?? 18}
+                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerJubilacionPct: Number(e.target.value) })}
                     />
                   </Field>
-                  <Field label="Seguro patronal %">
+                  <Field label="OO.SS patronal %">
                     <input
                       style={styles.input}
                       type="number"
-                      value={employeeBaseConfig.employerInsurancePct}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerInsurancePct: Number(e.target.value) })}
+                      step={0.01}
+                      value={employeeBaseConfig.employerObraSocialPct ?? 6}
+                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerObraSocialPct: Number(e.target.value) })}
                     />
+                  </Field>
+                  <Field label="ART % (por actividad)">
+                    <input
+                      style={styles.input}
+                      type="number"
+                      step={0.01}
+                      value={employeeBaseConfig.employerArtPct ?? 11.38}
+                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerArtPct: Number(e.target.value) })}
+                    />
+                  </Field>
+                  <Field label="Seguro de vida (fijo $)">
+                    <input
+                      style={styles.input}
+                      type="number"
+                      step={0.01}
+                      value={employeeBaseConfig.employerLifeInsuranceFixed ?? 424.62}
+                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerLifeInsuranceFixed: Number(e.target.value) })}
+                    />
+                  </Field>
+                  <Field label="Total contribuciones patronales">
+                    <div style={{ padding: "8px 0", fontWeight: 700 }}>
+                      {(
+                        Number(employeeBaseConfig.employerJubilacionPct ?? 18) +
+                        Number(employeeBaseConfig.employerObraSocialPct ?? 6) +
+                        Number(employeeBaseConfig.employerArtPct ?? 11.38)
+                      ).toFixed(2)}
+                      % + seguro fijo
+                    </div>
                   </Field>
                   <Field label="Sindicato %">
                     <input
