@@ -2,6 +2,7 @@ import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, ColorTagToggle, moneyToneColor } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
+import { CalendarioAnualPanel } from "./CalendarioAnual";
 import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
 
@@ -536,6 +537,14 @@ export function CashflowTab({
               NO se vuelve a sumar por aparecer en el banco.
             </div>
           </Panel>
+
+          <CalendarioAnualPanel
+            entries={annualCashFlowEntries}
+            companyScope={balanceCompanyScope}
+            fiscalStartMonth={11}
+            fiscalStartYear={balanceFiscalStartYear}
+            money={money}
+          />
 
           <Panel title={`Calendario anual unificado ${analysisYear}`} span="wide">
             <div style={styles.metricGrid}>
