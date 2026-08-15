@@ -108,6 +108,7 @@ import { TopStatusBar, type DollarRate } from "./ui/TopStatusBar";
 import { PlataDisponible } from "./ui/PlataDisponible";
 import { ChangeReport } from "./ui/ChangeReport";
 import { CashflowTab } from "./tabs/Cashflow";
+import { CalendarioAnualTab } from "./tabs/CalendarioAnual";
 import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
 import { FabricacionTab } from "./tabs/Fabricacion";
@@ -378,6 +379,7 @@ const STOCK_GROUP_CODE_PREFIX: Record<StockGeneralGroupName, string> = {
 const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "acceso", label: "Acceso" },
   { key: "cashflow", label: "Balance, cash flow y resultados" },
+  { key: "calendarioAnual", label: "Calendario anual" },
   { key: "facturacion", label: "Facturacion y cobranzas" },
   { key: "emitirFacturas", label: "Emitir facturas" },
   { key: "aprobados", label: "Trabajos aprobados" },
@@ -398,6 +400,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
 const NETA_TAB_KEYS: TabKey[] = ["presupuesto", "historial", "stock", "marcadores"];
 const BRUTA_TAB_KEYS: TabKey[] = [
   "cashflow",
+  "calendarioAnual",
   "facturacion",
   "emitirFacturas",
   "aprobados",
@@ -472,6 +475,7 @@ const getTabLabel = (tabKey: string) =>
 const TAB_SHORT_LABELS: Record<TabKey, string> = {
   acceso: "AC",
   cashflow: "CF",
+  calendarioAnual: "CAL",
   fabricacion: "FB",
   compras: "CP",
   cajaChica: "CC",
@@ -14678,6 +14682,18 @@ export default function App() {
         />
       )}
 
+      {activeTab === "calendarioAnual" && (
+        <CalendarioAnualTab
+          entries={annualCashFlowEntries}
+          companyScope={balanceCompanyScope}
+          setCompanyScope={setBalanceCompanyScope}
+          fiscalStartYear={balanceFiscalStartYear}
+          setFiscalStartYear={setBalanceFiscalStartYear}
+          fiscalYearOptions={balanceFiscalYearOptions}
+          companyOptions={COMPANY_OPTIONS}
+          money={money}
+        />
+      )}
       {activeTab === "cashflow" && (
         <CashflowTab
           cashFlowSummary={cashFlowSummary}

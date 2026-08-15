@@ -19,6 +19,7 @@ export type WorkTypeName = (typeof WORK_TYPE_OPTIONS)[number];
 export type TabKey =
   | "acceso"
   | "cashflow"
+  | "calendarioAnual"
   | "fabricacion"
   | "compras"
   | "cajaChica"
