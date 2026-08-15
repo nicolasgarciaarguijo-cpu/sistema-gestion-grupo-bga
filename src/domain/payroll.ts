@@ -40,6 +40,12 @@ export type PayrollSummaryInput = {
   // Su sueldo acordado mensual entra al costo hora hombre (dinero de la empresa) como negro.
   isTemporal?: boolean;
   agreedSalary?: number;
+  // Empleado FUERA DE CONVENIO: sueldo acordado repartido en blanco y negro. El blanco puede calcular
+  // cargas (registrado) o entrar tal cual (acordado); el negro entra flat, como el temporal.
+  isFueraConvenio?: boolean;
+  agreedWhite?: number;
+  agreedBlack?: number;
+  computeWhiteCharges?: boolean;
 };
 
 export function computePayrollSummary({
@@ -52,6 +58,10 @@ export function computePayrollSummary({
   monthlyProvisionCost,
   isTemporal,
   agreedSalary,
+  isFueraConvenio,
+  agreedWhite,
+  agreedBlack,
+  computeWhiteCharges,
 }: PayrollSummaryInput) {
   const baseHourly = hourlyGrossManual || scale?.baseHourly || scale?.vht || 0;
   const nonRemHourly = Math.max(0, scale?.nonRemHourly || 0);
@@ -79,8 +89,13 @@ export function computePayrollSummary({
   // Premio BLANCO: remunerativo. Entra al bruto despues de antiguedad/presentismo (no los multiplica),
   // y por estar en grossRem paga descuentos de ley y genera cargas patronales y SAC.
   const whiteBonus = Number(payroll.whiteBonus || 0);
+  // Fuera de convenio: sueldo blanco acordado. Con cargas => entra al bruto remunerativo (paga
+  // descuentos de ley y genera cargas patronales); sin cargas => se suma "tal cual" al neto e impacto
+  // blanco, sin descuentos (más abajo, como flatAgreedWhite).
+  const chargedAgreedWhite = isFueraConvenio && computeWhiteCharges ? Number(agreedWhite || 0) : 0;
+  const flatAgreedWhite = isFueraConvenio && !computeWhiteCharges ? Number(agreedWhite || 0) : 0;
   const grossRem =
-    grossNormal + grossHoliday + extra50 + extra100 + night50 + night + seniorityBonus + presentismo + whiteBonus;
+    grossNormal + grossHoliday + extra50 + extra100 + night50 + night + seniorityBonus + presentismo + whiteBonus + chargedAgreedWhite;
   const totalGross = grossRem + nonRem;
   const jubilacion = grossRem * 0.11;
   const ley19032 = grossRem * 0.03;
@@ -90,11 +105,13 @@ export function computePayrollSummary({
   const descuentos = jubilacion + ley19032 + obraSocial + sindicato + seguro;
   const cashBonus = Number(payroll.cashBonus || 0);
   // Costo NEGRO mensual = premio/acuerdo en negro (cashBonus, mensual) + para el temporal su sueldo
-  // acordado (bruto negro puro, sin cargas ni descuentos). Es dinero de la empresa: entra al costo
-  // hora hombre para cotizar el valor real.
+  // acordado + para el fuera de convenio su parte en negro (bruto negro puro, sin cargas ni descuentos).
+  // Es dinero de la empresa: entra al costo hora hombre para cotizar el valor real.
   const agreedMonthly = isTemporal ? Number(agreedSalary || 0) : 0;
-  const blackMonthly = cashBonus + agreedMonthly;
-  const net = totalGross - descuentos - payroll.anticipos;
+  const fueraBlack = isFueraConvenio ? Number(agreedBlack || 0) : 0;
+  const blackMonthly = cashBonus + agreedMonthly + fueraBlack;
+  // El blanco "tal cual" (sin cargas) se recibe entero y cuesta entero, sin descuentos de ley.
+  const net = totalGross - descuentos - payroll.anticipos + flatAgreedWhite;
   const netWithCashBonus = net + cashBonus;
   const employerContrib = grossRem * ((payroll.employerExtraPct || 0) / 100);
   const employerInsurance = grossRem * ((config.employerInsurancePct || 0) / 100);
@@ -120,7 +137,8 @@ export function computePayrollSummary({
     employerContrib +
     employerInsurance +
     monthlyProvisionCost +
-    monthlySACProration;
+    monthlySACProration +
+    flatAgreedWhite;
   // Impacto NEGRO mensual (vista separada): premio/acuerdo + prorrateo del aguinaldo negro.
   const blackImpact = blackMonthly + blackSACProration;
   // Impacto TOTAL mensual (blanco + negro): lo real que le cuesta el empleado a la empresa.

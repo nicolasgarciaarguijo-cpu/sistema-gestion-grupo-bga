@@ -10,6 +10,7 @@ import {
   SemaforoResumen,
   TwoCol,
   AmountInput,
+  MONEY_OUT_COLOR,
 } from "../ui/primitives";
 import { money, pct, localMonthKey, formatDateDisplay } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
@@ -474,6 +475,7 @@ export function PersonalTab(props: PersonalTabProps) {
                         >
                           <option value="convenio">Convenio (por escala)</option>
                           <option value="temporal">Temporal (negro, por acuerdo)</option>
+                          <option value="fuera_convenio">Fuera de convenio (socio/gerente/admin.)</option>
                         </select>
                       </Field>
                       {newEmployeeDraft.employmentType === "temporal" ? (
@@ -518,6 +520,8 @@ export function PersonalTab(props: PersonalTabProps) {
                       Con estos datos se crea el empleado. El resto se completa luego desde Abrir ficha.
                       {newEmployeeDraft.employmentType === "temporal"
                         ? " Temporal: no usa convenio; siempre en negro hasta efectivizar. El pago se carga como gasto de caja chica (de ahi sale el recibo)."
+                        : newEmployeeDraft.employmentType === "fuera_convenio"
+                        ? " Fuera de convenio: no usa escala; sueldo acordado repartido en blanco y negro (se carga en la ficha)."
                         : ""}
                     </div>
                     {/* Configuracion base anterior retirada: el alta solo pide los cinco datos iniciales.
@@ -991,8 +995,18 @@ export function PersonalTab(props: PersonalTabProps) {
                     <div style={{ fontWeight: 800, color: meta.primary }}>{row.label}</div>
                     <div style={styles.muted}>Total neto</div>
                     <div style={{ fontWeight: 700 }}>{money(row.totalNet)}</div>
-                    <div style={{ ...styles.muted, marginTop: 6 }}>Impacto empresa</div>
-                    <div style={{ fontWeight: 700 }}>{money(row.totalImpact)}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, gap: 10 }}>
+                      <span style={styles.muted}>Impacto blanco</span>
+                      <span style={{ fontWeight: 700 }}>{money(row.totalWhite)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
+                      <span style={styles.muted}>Impacto negro</span>
+                      <span style={{ fontWeight: 700, color: MONEY_OUT_COLOR }}>{money(row.totalBlack)}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 4, borderTop: "1px solid rgba(0,0,0,0.12)", paddingTop: 4 }}>
+                      <span style={{ ...styles.muted, fontWeight: 700 }}>Impacto total</span>
+                      <span style={{ fontWeight: 800 }}>{money(row.totalImpact)}</span>
+                    </div>
                   </div>
                 );
               })}
@@ -1134,8 +1148,20 @@ export function PersonalTab(props: PersonalTabProps) {
                         );
                       })}
                       <td>{Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}</td>
-                      <td>{money(employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : salary.totalGross)}</td>
-                      <td>{money(employee.employmentType === "temporal" ? Number(employee.agreedSalary || 0) : salary.netWithCashBonus)}</td>
+                      <td>{money(
+                        employee.employmentType === "temporal"
+                          ? Number(employee.agreedSalary || 0)
+                          : employee.employmentType === "fuera_convenio"
+                          ? Number(employee.agreedWhite || 0) + Number(employee.agreedBlack || 0)
+                          : salary.totalGross
+                      )}</td>
+                      <td>{money(
+                        employee.employmentType === "temporal"
+                          ? Number(employee.agreedSalary || 0)
+                          : employee.employmentType === "fuera_convenio"
+                          ? Number(salary.net || 0) + Number(salary.blackMonthly || 0)
+                          : salary.netWithCashBonus
+                      )}</td>
                       <td>{money(employee.employmentType === "temporal" ? 0 : salary.employerImpact)}</td>
                       <td>{money(Number(salary.blackImpact || 0))}</td>
                       <td>{money(salary.hourlyCost)}</td>
@@ -1298,6 +1324,37 @@ export function PersonalTab(props: PersonalTabProps) {
                                 placeholder="Monto acordado"
                               />
                             </Field>
+                          ) : selectedEmployee.employmentType === "fuera_convenio" ? (
+                            <>
+                              <Field label="Sueldo blanco acordado ($)">
+                                <AmountInput
+                                  style={styles.input}
+                                  value={selectedEmployee.agreedWhite ?? 0}
+                                  onChange={(n) => updateEmployeeField(selectedEmployee.id, "agreedWhite", n)}
+                                  placeholder="Parte en blanco"
+                                />
+                              </Field>
+                              <Field label="Sueldo negro acordado ($)">
+                                <AmountInput
+                                  style={styles.input}
+                                  value={selectedEmployee.agreedBlack ?? 0}
+                                  onChange={(n) => updateEmployeeField(selectedEmployee.id, "agreedBlack", n)}
+                                  placeholder="Parte en negro"
+                                />
+                              </Field>
+                              <Field label="Blanco registrado (cargas de ley)">
+                                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!selectedEmployee.computeWhiteCharges}
+                                    onChange={(e) =>
+                                      updateEmployeeField(selectedEmployee.id, "computeWhiteCharges", e.target.checked)
+                                    }
+                                  />
+                                  Calcular descuentos + cargas sobre el blanco
+                                </label>
+                              </Field>
+                            </>
                           ) : (
                             <Field label="Categoria base">
                               <select

@@ -2732,7 +2732,7 @@ export default function App() {
     name: string;
     category: string;
     nominalHours: number;
-    employmentType: "convenio" | "temporal";
+    employmentType: "convenio" | "temporal" | "fuera_convenio";
   }>({
     company: DEFAULT_COMPANY_OPTIONS[0].value,
     legajo: "",
@@ -12066,6 +12066,8 @@ export default function App() {
       category:
         newEmployeeDraft.employmentType === "temporal"
           ? "Temporal"
+          : newEmployeeDraft.employmentType === "fuera_convenio"
+          ? newEmployeeDraft.category || "Fuera de convenio"
           : newEmployeeDraft.category || employeeBaseConfig.category,
       nominalHours,
       seniorityYears: 0,
@@ -12152,6 +12154,7 @@ export default function App() {
     value:
       | string
       | number
+      | boolean
       | AttendanceRecord[]
       | EmployeeDocument[]
       | EmployeePayroll[]
@@ -12671,6 +12674,10 @@ export default function App() {
     payroll,
     isTemporal,
     agreedSalary,
+    isFueraConvenio,
+    agreedWhite,
+    agreedBlack,
+    computeWhiteCharges,
   }: {
     company: CompanyName;
     category: string;
@@ -12680,6 +12687,10 @@ export default function App() {
     payroll: EmployeePayroll;
     isTemporal?: boolean;
     agreedSalary?: number;
+    isFueraConvenio?: boolean;
+    agreedWhite?: number;
+    agreedBlack?: number;
+    computeWhiteCharges?: boolean;
   }) =>
     computePayrollSummary({
       seniorityYears,
@@ -12691,6 +12702,10 @@ export default function App() {
       monthlyProvisionCost: getMonthlyProvisionMarkerCostForCompany(company),
       isTemporal,
       agreedSalary,
+      isFueraConvenio,
+      agreedWhite,
+      agreedBlack,
+      computeWhiteCharges,
     });
 
   const getEmployeePayrollSummary = (employee: Employee) => {
@@ -12704,6 +12719,10 @@ export default function App() {
       payroll,
       isTemporal: employee.employmentType === "temporal",
       agreedSalary: Number(employee.agreedSalary || 0),
+      isFueraConvenio: employee.employmentType === "fuera_convenio",
+      agreedWhite: Number(employee.agreedWhite || 0),
+      agreedBlack: Number(employee.agreedBlack || 0),
+      computeWhiteCharges: !!employee.computeWhiteCharges,
     });
   };
 
@@ -12738,6 +12757,10 @@ export default function App() {
           payroll: pr,
           isTemporal: emp.employmentType === "temporal",
           agreedSalary: Number(emp.agreedSalary || 0),
+          isFueraConvenio: emp.employmentType === "fuera_convenio",
+          agreedWhite: Number(emp.agreedWhite || 0),
+          agreedBlack: Number(emp.agreedBlack || 0),
+          computeWhiteCharges: !!emp.computeWhiteCharges,
         });
         const key = `${emp.company}|${pr.month}`;
         const acc = byKey.get(key) || { company: emp.company, month: pr.month, white: 0, black: 0 };
@@ -13461,6 +13484,10 @@ export default function App() {
           payroll: pr,
           isTemporal: emp.employmentType === "temporal",
           agreedSalary: Number(emp.agreedSalary || 0),
+          isFueraConvenio: emp.employmentType === "fuera_convenio",
+          agreedWhite: Number(emp.agreedWhite || 0),
+          agreedBlack: Number(emp.agreedBlack || 0),
+          computeWhiteCharges: !!emp.computeWhiteCharges,
         });
         laborWhite += Number(summary.employerImpact || 0);
         laborBlack += Number(summary.blackImpact || 0);
@@ -13870,16 +13897,21 @@ export default function App() {
 
   const totalCompanyPayroll = useMemo(
     () =>
-      COMPANY_OPTIONS.map((company) => ({
-        company: company.value,
-        label: company.short,
-        totalNet: employees
-          .filter((employee) => employee.company === company.value)
-          .reduce((acc, employee) => acc + getEmployeePayrollSummary(employee).net, 0),
-        totalImpact: employees
-          .filter((employee) => employee.company === company.value)
-          .reduce((acc, employee) => acc + getEmployeePayrollSummary(employee).employerImpact, 0),
-      })),
+      COMPANY_OPTIONS.map((company) => {
+        const emps = employees.filter((employee) => employee.company === company.value);
+        const totalNet = emps.reduce((acc, e) => acc + getEmployeePayrollSummary(e).net, 0);
+        const totalWhite = emps.reduce((acc, e) => acc + getEmployeePayrollSummary(e).employerImpact, 0);
+        const totalBlack = emps.reduce((acc, e) => acc + Number(getEmployeePayrollSummary(e).blackImpact || 0), 0);
+        return {
+          company: company.value,
+          label: company.short,
+          totalNet,
+          totalWhite,
+          totalBlack,
+          // Impacto total real de la empresa = blanco + negro (antes solo mostraba el blanco).
+          totalImpact: totalWhite + totalBlack,
+        };
+      }),
     [employees, payrollMonth, scaleRows, employeeBaseConfig, personalProvisionMarkers, stockItems]
   );
 

@@ -1060,11 +1060,19 @@ export type Employee = {
   legajo: string;
   name: string;
   category: string;
-  // Tipo de vinculo: "convenio" (por escala, default) o "temporal" (negro, por acuerdo, se paga por
-  // caja chica hasta efectivizar). Opcional para datos viejos.
-  employmentType?: "convenio" | "temporal";
+  // Tipo de vinculo: "convenio" (por escala, default), "temporal" (negro, por acuerdo, se paga por
+  // caja chica hasta efectivizar) o "fuera_convenio" (socio/gerente/administrativo con sueldo acordado
+  // repartido en blanco y negro). Opcional para datos viejos.
+  employmentType?: "convenio" | "temporal" | "fuera_convenio";
   // Sueldo acordado (mensual) del empleado temporal, por acuerdo entre partes.
   agreedSalary?: number;
+  // Fuera de convenio: sueldo bruto acordado repartido por administracion. Cada uno funciona en su
+  // circuito (blanco/negro). Fijo por defecto; el mes puede variar con los adicionales blanco/negro.
+  agreedWhite?: number;
+  agreedBlack?: number;
+  // Si es true, al sueldo blanco acordado se le calculan descuentos de ley + cargas patronales (sueldo
+  // registrado). Si es false/ausente, el blanco entra tal cual (acordado, sin cargas).
+  computeWhiteCharges?: boolean;
   nominalHours: number;
   seniorityYears: number;
   hourlyNetManual: number;

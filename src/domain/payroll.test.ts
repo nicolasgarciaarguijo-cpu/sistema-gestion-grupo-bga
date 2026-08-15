@@ -143,3 +143,29 @@ describe("computePayrollSummary", () => {
     expect(run({}, { agreedSalary: 300000 }).blackMonthly).toBe(0);
   });
 });
+
+describe("fuera de convenio", () => {
+  it("flat (sin cargas): el blanco entra tal cual y el negro flat", () => {
+    const r = run(
+      { normalHours: 0 },
+      { isFueraConvenio: true, agreedWhite: 800000, agreedBlack: 400000, computeWhiteCharges: false }
+    );
+    expect(r.totalGross).toBe(0);
+    expect(r.descuentos).toBe(0);
+    expect(r.net).toBe(800000); // recibe el blanco entero
+    expect(r.employerImpact).toBeCloseTo(800000); // cuesta el blanco entero, sin cargas
+    expect(r.blackMonthly).toBe(400000);
+    expect(r.blackImpact).toBeCloseTo(400000 + 400000 / 12); // + prorrateo aguinaldo negro
+  });
+
+  it("con cargas: el blanco paga descuentos de ley y prorratea SAC", () => {
+    const r = run(
+      { normalHours: 0 },
+      { isFueraConvenio: true, agreedWhite: 800000, computeWhiteCharges: true }
+    );
+    expect(r.totalGross).toBe(800000);
+    expect(r.descuentos).toBeCloseTo(160000); // 20%
+    expect(r.net).toBeCloseTo(640000);
+    expect(r.employerImpact).toBeCloseTo(800000 + 800000 / 12); // bruto + prorrateo SAC (cargas 0 en este config)
+  });
+});
