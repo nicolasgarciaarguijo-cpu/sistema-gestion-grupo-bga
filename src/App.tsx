@@ -10554,6 +10554,7 @@ export default function App() {
     jobCode: string;
     notes: string;
     incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
+    conceptKey?: string;
   }) => {
     const item: FinancialCalendarItem = {
       id: newId(),
@@ -10568,6 +10569,7 @@ export default function App() {
       notes: m.notes || "",
       administration: m.administration,
       incomeCategory: m.type === "cobranza" ? m.incomeCategory || "trabajo" : undefined,
+      conceptKey: m.conceptKey || undefined,
     };
     setFinancialItems((prev) => [item, ...prev]);
   };
@@ -11958,6 +11960,7 @@ export default function App() {
       amount: number;
       statusLabel: string;
       subcat?: string;
+      conceptKey?: string;
     }> = [];
 
     visibleFinancialItems.forEach((item) => {
@@ -11974,6 +11977,7 @@ export default function App() {
         amount: Number(item.amount || 0),
         statusLabel: item.status,
         subcat: isCobranza ? item.incomeCategory || "trabajo" : undefined,
+        conceptKey: item.conceptKey || undefined,
       });
     });
 

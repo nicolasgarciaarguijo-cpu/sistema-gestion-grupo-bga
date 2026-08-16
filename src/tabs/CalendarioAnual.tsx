@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel } from "../ui/primitives";
+import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "../domain/calendarStructure";
 
-// Calendario anual (solapa propia): la planilla de cash flow adentro del sistema.
-// Días en COLUMNAS (año fiscal completo, scroll horizontal) y conceptos en FILAS. Se puebla con los
-// movimientos que ya tiene el sistema. ZOOM: cada concepto se expande y discrimina sus ítems
-// (proveedor/descripción + monto diferenciado). Fase 2 (próxima): editar celdas → clasificar → crear.
+// Calendario anual = la planilla de cash flow adentro del sistema. Estructura FIJA (chart of accounts):
+// secciones → ítems, con total por sección. Días en columnas (año fiscal, scroll ←→). Cada movimiento
+// se clasifica a un renglón (conceptKey); la sección Cobranzas es dinámica (por ppto · cliente).
+// Lo que no está clasificado cae en "SIN CLASIFICAR" (ahí se enganchará el cruce con el banco).
 
 type Entry = {
   id: string;
@@ -16,46 +17,7 @@ type Entry = {
   amount: number;
   statusLabel?: string;
   subcat?: string;
-};
-
-// Subtítulos de la sección INGRESOS (debajo de "Cobranzas · Ingreso").
-const INCOME_SUBCATS: Array<{ key: string; label: string }> = [
-  { key: "trabajo", label: "Cobranza de trabajo (ppto · cliente)" },
-  { key: "prestamo", label: "Préstamos recibidos" },
-  { key: "financiero", label: "Ingresos financieros" },
-  { key: "varios", label: "Ingresos varios" },
-];
-
-const KIND_LABEL: Record<string, string> = {
-  facturacion: "Facturación",
-  cobranza: "Cobranzas (entra)",
-  pago: "Pagos (sale)",
-  compra: "Compras",
-  "caja-chica": "Caja chica",
-  desendeudamiento: "Desendeudamiento",
-  banco: "Banco",
-  trabajo: "Trabajos",
-};
-const ROW_ORDER: Array<{ kind: string; dir: "in" | "out" | "none" }> = [
-  { kind: "facturacion", dir: "none" },
-  { kind: "pago", dir: "out" },
-  { kind: "compra", dir: "out" },
-  { kind: "caja-chica", dir: "out" },
-  { kind: "desendeudamiento", dir: "out" },
-  { kind: "banco", dir: "none" },
-  { kind: "trabajo", dir: "none" },
-];
-
-// Tipo de movimiento por defecto según la fila donde se carga (el usuario lo puede cambiar).
-const KIND_TO_TYPE: Record<string, "facturacion" | "cobranza" | "pago"> = {
-  cobranza: "cobranza",
-  trabajo: "cobranza",
-  facturacion: "facturacion",
-  pago: "pago",
-  compra: "pago",
-  "caja-chica": "pago",
-  desendeudamiento: "pago",
-  banco: "pago",
+  conceptKey?: string;
 };
 
 const MES = [
@@ -74,6 +36,18 @@ function fiscalMonths(startMonth: number, startYear: number) {
   }
   return out;
 }
+
+type AddForm = {
+  date: string;
+  company: string;
+  sectionKey: string;
+  itemKey: string;
+  ppto: string;
+  cliente: string;
+  amount: number;
+  administration: "blanco" | "negro";
+  notes: string;
+};
 
 export function CalendarioAnualTab({
   entries,
@@ -105,64 +79,21 @@ export function CalendarioAnualTab({
     client: string;
     jobCode: string;
     notes: string;
+    conceptKey?: string;
     incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
   }) => void;
   money: (n: number, currency?: string) => string;
 }) {
-  const [onlyWithData, setOnlyWithData] = useState(true);
-  const [addForm, setAddForm] = useState<null | {
-    date: string;
-    company: string;
-    type: "facturacion" | "cobranza" | "pago";
-    amount: number;
-    administration: "blanco" | "negro";
-    party: string;
-    jobCode: string;
-    incomeCategory: "trabajo" | "prestamo" | "financiero" | "varios";
-    notes: string;
-  }>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const toggle = (kind: string) =>
+  const [addForm, setAddForm] = useState<null | AddForm>(null);
+  const toggle = (k: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(kind) ? next.delete(kind) : next.add(kind);
+      next.has(k) ? next.delete(k) : next.add(k);
       return next;
     });
-  const baseForm = (iso: string) => ({
-    date: iso,
-    company: companyScope !== "__ALL__" ? companyScope : companyOptions[0]?.value || "",
-    amount: 0,
-    administration: "blanco" as const,
-    party: "",
-    jobCode: "",
-    incomeCategory: "trabajo" as const,
-    notes: "",
-  });
-  const openAdd = (kind: string, iso: string) =>
-    setAddForm({ ...baseForm(iso), type: KIND_TO_TYPE[kind] || "pago" });
-  const openAddIncome = (subcat: string, iso: string) =>
-    setAddForm({ ...baseForm(iso), type: "cobranza", incomeCategory: subcat as any });
-  const confirmAdd = () => {
-    if (!addForm || !(Number(addForm.amount) > 0) || !addForm.company) return;
-    const party = addForm.party.trim();
-    const ppto = addForm.jobCode.trim();
-    onAddMovement({
-      company: addForm.company,
-      date: addForm.date,
-      type: addForm.type,
-      amount: Number(addForm.amount),
-      administration: addForm.administration,
-      title: party || (addForm.type === "cobranza" ? "Cobranza" : addForm.type === "pago" ? "Pago" : "Facturación"),
-      client: party,
-      jobCode: addForm.type === "cobranza" && addForm.incomeCategory === "trabajo" ? ppto : "",
-      notes: addForm.notes,
-      incomeCategory: addForm.type === "cobranza" ? addForm.incomeCategory : undefined,
-    });
-    setAddForm(null);
-  };
 
   const months = useMemo(() => fiscalMonths(fiscalStartMonth || 11, fiscalStartYear), [fiscalStartMonth, fiscalStartYear]);
-
   const dayCols = useMemo(() => {
     const cols: Array<{ iso: string; day: number; monthIdx: number }> = [];
     months.forEach((m, monthIdx) => {
@@ -171,59 +102,109 @@ export function CalendarioAnualTab({
     return cols;
   }, [months]);
 
-  // Agregación: total por (kind, día) + detalle por (kind, título, día) para el zoom. Además, los
-  // INGRESOS (kind cobranza) se agrupan por subcategoría (trabajo/préstamo/financiero/varios).
-  const {
-    byKindDate, detailByKind, dayNet, hasData,
-    incomeBySubcatDate, incomeDetailBySubcat, incomeTotalByDate, incomeHas,
-  } = useMemo(() => {
+  const agg = useMemo(() => {
     const firstIso = dayCols[0]?.iso || "";
     const lastIso = dayCols[dayCols.length - 1]?.iso || "";
-    const byKindDate = new Map<string, Map<string, number>>();
-    const detailByKind = new Map<string, Map<string, Map<string, number>>>();
-    const dayNet = new Map<string, number>();
-    const hasData = new Set<string>();
-    const incomeBySubcatDate = new Map<string, Map<string, number>>();
-    const incomeDetailBySubcat = new Map<string, Map<string, Map<string, number>>>();
-    const incomeTotalByDate = new Map<string, number>();
-    const incomeHas = new Set<string>();
+    const byConcept = new Map<string, Map<string, number>>(); // itemKey -> date -> monto
+    const cobranzaDetail = new Map<string, Map<string, number>>(); // título -> date -> monto
+    const cobranzaByDate = new Map<string, number>();
+    const unclDetail = new Map<string, Map<string, number>>();
+    const unclByDate = new Map<string, number>();
+    const incomeByDate = new Map<string, number>();
+    const egresoByDate = new Map<string, number>();
     const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
+    const addDeep = (m: Map<string, Map<string, number>>, a: string, d: string, v: number) => {
+      if (!m.has(a)) m.set(a, new Map());
+      add(m.get(a)!, d, v);
+    };
     entries.forEach((e) => {
       if (companyScope !== "__ALL__" && e.company !== companyScope) return;
       if (!e.date || e.date < firstIso || e.date > lastIso) return;
       const amt = Number(e.amount || 0);
       const title = (e.title || "—").trim();
-      if (e.kind === "cobranza") {
-        const sub = e.subcat || "trabajo";
-        if (!incomeBySubcatDate.has(sub)) incomeBySubcatDate.set(sub, new Map());
-        add(incomeBySubcatDate.get(sub)!, e.date, amt);
-        if (!incomeDetailBySubcat.has(sub)) incomeDetailBySubcat.set(sub, new Map());
-        const det = incomeDetailBySubcat.get(sub)!;
-        if (!det.has(title)) det.set(title, new Map());
-        add(det.get(title)!, e.date, amt);
-        add(incomeTotalByDate, e.date, amt);
-        incomeHas.add(sub);
-        add(dayNet, e.date, amt); // el ingreso entra al neto del día
+      const isCobranza = e.kind === "cobranza" || e.conceptKey === "cobranzas";
+      if (isCobranza) {
+        addDeep(cobranzaDetail, title, e.date, amt);
+        add(cobranzaByDate, e.date, amt);
+        add(incomeByDate, e.date, amt);
         return;
       }
-      if (!byKindDate.has(e.kind)) byKindDate.set(e.kind, new Map());
-      add(byKindDate.get(e.kind)!, e.date, amt);
-      if (!detailByKind.has(e.kind)) detailByKind.set(e.kind, new Map());
-      const det = detailByKind.get(e.kind)!;
-      if (!det.has(title)) det.set(title, new Map());
-      add(det.get(title)!, e.date, amt);
-      hasData.add(e.kind);
-      const dir = ROW_ORDER.find((r) => r.kind === e.kind)?.dir || "none";
-      if (dir !== "none") add(dayNet, e.date, dir === "in" ? amt : -amt);
+      const idx = e.conceptKey ? CALENDAR_ITEM_INDEX[e.conceptKey] : undefined;
+      if (idx) {
+        addDeep(byConcept, e.conceptKey!, e.date, amt);
+        add(idx.dir === "in" ? incomeByDate : egresoByDate, e.date, amt);
+        return;
+      }
+      // sin clasificar (acá caerá el banco hasta que se asigne a un renglón)
+      addDeep(unclDetail, title, e.date, amt);
+      add(unclByDate, e.date, amt);
     });
-    return {
-      byKindDate, detailByKind, dayNet, hasData,
-      incomeBySubcatDate, incomeDetailBySubcat, incomeTotalByDate, incomeHas,
-    };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, incomeByDate, egresoByDate };
   }, [entries, companyScope, dayCols]);
 
-  const rows = ROW_ORDER.filter((r) => !onlyWithData || hasData.has(r.kind));
-  const cell = (kind: string, iso: string): number => byKindDate.get(kind)?.get(iso) || 0;
+  const openAdd = (sectionKey: string, itemKey: string, iso: string) =>
+    setAddForm({
+      date: iso,
+      company: companyScope !== "__ALL__" ? companyScope : companyOptions[0]?.value || "",
+      sectionKey,
+      itemKey,
+      ppto: "",
+      cliente: "",
+      amount: 0,
+      administration: "blanco",
+      notes: "",
+    });
+
+  const confirmAdd = () => {
+    if (!addForm || !(Number(addForm.amount) > 0) || !addForm.company) return;
+    const section = CALENDAR_SECTIONS.find((s) => s.key === addForm.sectionKey);
+    if (!section) return;
+    const isCob = section.dynamic === "cobranzas";
+    const type: "cobranza" | "pago" = section.dir === "in" ? "cobranza" : "pago";
+    const cliente = addForm.cliente.trim();
+    const ppto = addForm.ppto.trim();
+    const itemLabel = isCob
+      ? `${ppto ? ppto + " · " : ""}${cliente || "Cliente"}`
+      : CALENDAR_ITEM_INDEX[addForm.itemKey]?.label || section.label;
+    onAddMovement({
+      company: addForm.company,
+      date: addForm.date,
+      type,
+      amount: Number(addForm.amount),
+      administration: addForm.administration,
+      title: itemLabel,
+      client: isCob ? cliente : "",
+      jobCode: isCob ? ppto : "",
+      notes: addForm.notes,
+      conceptKey: isCob ? "cobranzas" : addForm.itemKey,
+      incomeCategory: isCob ? "trabajo" : undefined,
+    });
+    setAddForm(null);
+  };
+
+  const cell = (m: Map<string, number> | undefined, iso: string) => (m ? m.get(iso) || 0 : 0);
+  const sumItemsByDate = (itemKeys: string[]) => {
+    const out = new Map<string, number>();
+    itemKeys.forEach((k) => {
+      const row = agg.byConcept.get(k);
+      if (row) row.forEach((v, d) => out.set(d, (out.get(d) || 0) + v));
+    });
+    return out;
+  };
+
+  const detailRow = (label: string, drow: Map<string, number>, key: string, isOut: boolean) => (
+    <tr key={key} style={{ background: "#f8fafc" }}>
+      <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>{label}</td>
+      {dayCols.map((c) => {
+        const v = drow.get(c.iso) || 0;
+        return (
+          <td key={`${key}-${c.iso}`} style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0" }}>
+            {v ? money(v) : "·"}
+          </td>
+        );
+      })}
+    </tr>
+  );
 
   return (
     <div style={styles.column}>
@@ -243,19 +224,15 @@ export function CalendarioAnualTab({
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
-              <input type="checkbox" checked={onlyWithData} onChange={(e) => setOnlyWithData(e.target.checked)} />
-              Solo filas con datos
-            </label>
           </div>
         }
       >
         <div style={{ ...styles.noticeBox, marginBottom: 10 }}>
-          Días en columnas, conceptos en filas — a lo largo del año fiscal (scroll ←→). Tocá una fila
-          para <strong>hacer zoom</strong> y ver cada ítem (proveedor/descripción) con su monto
-          diferenciado. Se puebla con lo cargado. (Edición de celdas: próxima fase.)
+          Tu planilla completa: secciones y renglones fijos, días en columnas (scroll ←→). Tocá cualquier
+          celda para <strong>cargar</strong> en ese día/renglón. Cada sección muestra su <strong>total</strong>.
+          Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong> (ahí se cruza el banco).
         </div>
-        <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 8 }}>
+        <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: "72vh" }}>
           <table style={{ borderCollapse: "collapse", fontSize: 12, whiteSpace: "nowrap" }}>
             <thead>
               <tr>
@@ -272,136 +249,112 @@ export function CalendarioAnualTab({
               </tr>
             </thead>
             <tbody>
-              {/* ===== SECCIÓN INGRESOS ===== */}
-              <tr>
-                <td style={{ ...tdStickyLabel, background: "#dcfce7", fontWeight: 800, color: "#065f46" }}>
-                  COBRANZAS · INGRESO
-                </td>
-                {dayCols.map((c) => <td key={`ih-${c.iso}`} style={{ ...tdCell, background: "#dcfce7" }}></td>)}
-              </tr>
-              {INCOME_SUBCATS.filter((s) => !onlyWithData || incomeHas.has(s.key)).map((s) => {
-                const openKey = `income:${s.key}`;
-                const isOpen = expanded.has(openKey);
-                const det = incomeDetailBySubcat.get(s.key);
-                const dateMap = incomeBySubcatDate.get(s.key);
+              {CALENDAR_SECTIONS.map((section) => {
+                const isOut = section.dir === "out";
+                const isCob = section.dynamic === "cobranzas";
+                const totalByDate = isCob ? agg.cobranzaByDate : sumItemsByDate(section.items.map((i) => i.key));
                 return (
-                  <React.Fragment key={s.key}>
+                  <React.Fragment key={section.key}>
                     <tr>
-                      <td
-                        style={{ ...tdStickyLabel, cursor: "pointer", userSelect: "none", paddingLeft: 20 }}
-                        onClick={() => toggle(openKey)}
-                        title="Zoom: ver el detalle"
-                      >
-                        {det && det.size > 0 ? (isOpen ? "▾ " : "▸ ") : ""}
-                        {s.label}
+                      <td style={{ ...tdStickyLabel, background: isOut ? "#fee2e2" : "#dcfce7", fontWeight: 800, color: isOut ? "#991b1b" : "#065f46" }}>
+                        {section.label}
                       </td>
+                      {dayCols.map((c) => <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, background: isOut ? "#fee2e2" : "#dcfce7" }}></td>)}
+                    </tr>
+                    {isCob
+                      ? Array.from(agg.cobranzaDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
+                          detailRow(title, drow, `cob-${title}`, false)
+                        )
+                      : section.items.map((it) => {
+                          const drow = agg.byConcept.get(it.key);
+                          return (
+                            <tr key={it.key}>
+                              <td style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}>{it.label}</td>
+                              {dayCols.map((c) => {
+                                const v = drow?.get(c.iso) || 0;
+                                return (
+                                  <td
+                                    key={`${it.key}-${c.iso}`}
+                                    onClick={() => openAdd(section.key, it.key, c.iso)}
+                                    title="Cargar en este día"
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#16a34a") : "#cbd5e1" }}
+                                  >
+                                    {v ? money(v) : "+"}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                    {isCob && (
+                      <tr>
+                        <td style={{ ...tdStickyLabel, paddingLeft: 20, color: "#065f46" }}>
+                          <button style={miniAdd} onClick={() => openAdd(section.key, "", dayCols[0]?.iso || "")}>+ cargar cobranza</button>
+                        </td>
+                        {dayCols.map((c) => <td key={`cobadd-${c.iso}`} style={tdCell}></td>)}
+                      </tr>
+                    )}
+                    <tr>
+                      <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#f1f5f9" }}>{section.totalLabel}</td>
                       {dayCols.map((c) => {
-                        const v = dateMap?.get(c.iso) || 0;
+                        const v = totalByDate.get(c.iso) || 0;
                         return (
-                          <td
-                            key={`${s.key}-${c.iso}`}
-                            onClick={() => openAddIncome(s.key, c.iso)}
-                            title="Cargar un ingreso en este día"
-                            style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? "#16a34a" : "#cbd5e1" }}
-                          >
-                            {v ? money(v) : "+"}
+                          <td key={`st-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#f1f5f9", color: v ? (isOut ? "#dc2626" : "#16a34a") : "#cbd5e1" }}>
+                            {v ? money(v) : "·"}
                           </td>
                         );
                       })}
                     </tr>
-                    {isOpen && det &&
-                      Array.from(det.entries())
-                        .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([title, drow]) => (
-                          <tr key={`${s.key}::${title}`} style={{ background: "#f8fafc" }}>
-                            <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>
-                              {title}
-                            </td>
-                            {dayCols.map((c) => {
-                              const v = drow.get(c.iso) || 0;
-                              return (
-                                <td key={`${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#334155" : "#e2e8f0" }}>
-                                  {v ? money(v) : "·"}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
                   </React.Fragment>
                 );
               })}
-              <tr>
-                <td style={{ ...tdStickyLabel, background: "#ecfdf5", fontWeight: 800, color: "#065f46" }}>
-                  Total ingresos percibidos
-                </td>
-                {dayCols.map((c) => {
-                  const v = incomeTotalByDate.get(c.iso) || 0;
-                  return (
-                    <td key={`itot-${c.iso}`} style={{ ...tdCell, background: "#ecfdf5", fontWeight: 800, color: v ? "#16a34a" : "#cbd5e1" }}>
-                      {v ? money(v) : "·"}
+
+              {/* SIN CLASIFICAR */}
+              {agg.unclDetail.size > 0 && (
+                <>
+                  <tr>
+                    <td
+                      style={{ ...tdStickyLabel, background: "#fef9c3", fontWeight: 800, color: "#854d0e", cursor: "pointer" }}
+                      onClick={() => toggle("uncl")}
+                    >
+                      {expanded.has("uncl") ? "▾ " : "▸ "}SIN CLASIFICAR · falta ubicar (D)
                     </td>
-                  );
+                    {dayCols.map((c) => {
+                      const v = agg.unclByDate.get(c.iso) || 0;
+                      return (
+                        <td key={`unclh-${c.iso}`} style={{ ...tdCell, background: "#fef9c3", fontWeight: 700, color: v ? "#854d0e" : "#e2e8f0" }}>
+                          {v ? money(v) : "·"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {expanded.has("uncl") &&
+                    Array.from(agg.unclDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
+                      detailRow(title, drow, `uncl-${title}`, false)
+                    )}
+                </>
+              )}
+
+              {/* TOTALES */}
+              <tr>
+                <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#ecfdf5", color: "#065f46" }}>TOTAL INGRESOS</td>
+                {dayCols.map((c) => {
+                  const v = agg.incomeByDate.get(c.iso) || 0;
+                  return <td key={`ti-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#ecfdf5", color: v ? "#16a34a" : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
                 })}
               </tr>
-              {/* ===== RESTO DE CONCEPTOS ===== */}
-              {rows.map((r) => {
-                const isOpen = expanded.has(r.kind);
-                const det = detailByKind.get(r.kind);
-                return (
-                  <React.Fragment key={r.kind}>
-                    <tr>
-                      <td
-                        style={{ ...tdStickyLabel, cursor: "pointer", userSelect: "none" }}
-                        onClick={() => toggle(r.kind)}
-                        title="Zoom: ver el detalle"
-                      >
-                        {det && det.size > 0 ? (isOpen ? "▾ " : "▸ ") : ""}
-                        {KIND_LABEL[r.kind] || r.kind}
-                      </td>
-                      {dayCols.map((c) => {
-                        const v = cell(r.kind, c.iso);
-                        return (
-                          <td
-                            key={`${r.kind}-${c.iso}`}
-                            onClick={() => openAdd(r.kind, c.iso)}
-                            title="Cargar un movimiento en este día"
-                            style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (r.dir === "out" ? "#dc2626" : "#0f172a") : "#cbd5e1" }}
-                          >
-                            {v ? money(v) : "+"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                    {isOpen && det &&
-                      Array.from(det.entries())
-                        .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([title, drow]) => (
-                          <tr key={`${r.kind}::${title}`} style={{ background: "#f8fafc" }}>
-                            <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 24, fontWeight: 400, color: "#475569" }}>
-                              {title}
-                            </td>
-                            {dayCols.map((c) => {
-                              const v = drow.get(c.iso) || 0;
-                              return (
-                                <td key={`${title}-${c.iso}`} style={{ ...tdCell, color: v ? (r.dir === "out" ? "#dc2626" : "#334155") : "#e2e8f0" }}>
-                                  {v ? money(v) : "·"}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                        ))}
-                  </React.Fragment>
-                );
-              })}
               <tr>
-                <td style={{ ...tdStickyLabel, fontWeight: 800 }}>Neto del día</td>
+                <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#fef2f2", color: "#991b1b" }}>TOTAL EGRESOS</td>
                 {dayCols.map((c) => {
-                  const v = dayNet.get(c.iso) || 0;
-                  return (
-                    <td key={`net-${c.iso}`} style={{ ...tdCell, fontWeight: 700, color: v > 0 ? "#16a34a" : v < 0 ? "#dc2626" : "#cbd5e1" }}>
-                      {v ? money(v) : "·"}
-                    </td>
-                  );
+                  const v = agg.egresoByDate.get(c.iso) || 0;
+                  return <td key={`te-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#fef2f2", color: v ? "#dc2626" : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
+                })}
+              </tr>
+              <tr>
+                <td style={{ ...tdStickyLabel, fontWeight: 900, background: "#e2e8f0" }}>NETO DEL DÍA</td>
+                {dayCols.map((c) => {
+                  const v = (agg.incomeByDate.get(c.iso) || 0) - (agg.egresoByDate.get(c.iso) || 0);
+                  return <td key={`nd-${c.iso}`} style={{ ...tdCell, fontWeight: 900, background: "#e2e8f0", color: v > 0 ? "#16a34a" : v < 0 ? "#dc2626" : "#94a3b8" }}>{v ? money(v) : "·"}</td>;
                 })}
               </tr>
             </tbody>
@@ -409,95 +362,75 @@ export function CalendarioAnualTab({
         </div>
       </Panel>
 
-      {addForm && (
-        <div style={overlayStyle} onClick={() => setAddForm(null)}>
-          <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-            <h3 style={{ marginTop: 0, marginBottom: 12 }}>Cargar movimiento — {addForm.date}</h3>
-            <div style={{ display: "grid", gap: 10 }}>
-              <label style={lblStyle}>
-                Empresa
-                <select style={styles.input} value={addForm.company} onChange={(e) => setAddForm({ ...addForm, company: e.target.value })}>
-                  {companyOptions.map((c) => (
-                    <option key={c.value} value={c.value}>{c.short || c.value}</option>
-                  ))}
-                </select>
-              </label>
-              <label style={lblStyle}>
-                ¿Qué es?
-                <select style={styles.input} value={addForm.type} onChange={(e) => setAddForm({ ...addForm, type: e.target.value as any })}>
-                  <option value="cobranza">Cobranza (entra plata)</option>
-                  <option value="pago">Pago (sale plata)</option>
-                  <option value="facturacion">Facturación (registro)</option>
-                </select>
-              </label>
-              {addForm.type === "cobranza" && (
+      {addForm && (() => {
+        const section = CALENDAR_SECTIONS.find((s) => s.key === addForm.sectionKey);
+        const isCob = section?.dynamic === "cobranzas";
+        return (
+          <div style={overlayStyle} onClick={() => setAddForm(null)}>
+            <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ marginTop: 0, marginBottom: 12 }}>Cargar movimiento — {addForm.date}</h3>
+              <div style={{ display: "grid", gap: 10 }}>
                 <label style={lblStyle}>
-                  Tipo de ingreso
-                  <select style={styles.input} value={addForm.incomeCategory} onChange={(e) => setAddForm({ ...addForm, incomeCategory: e.target.value as any })}>
-                    {INCOME_SUBCATS.map((s) => (
-                      <option key={s.key} value={s.key}>{s.label}</option>
-                    ))}
+                  Empresa
+                  <select style={styles.input} value={addForm.company} onChange={(e) => setAddForm({ ...addForm, company: e.target.value })}>
+                    {companyOptions.map((c) => <option key={c.value} value={c.value}>{c.short || c.value}</option>)}
                   </select>
                 </label>
-              )}
-              {addForm.type === "cobranza" && addForm.incomeCategory === "trabajo" && (
                 <label style={lblStyle}>
-                  N° presupuesto
-                  <input style={styles.input} value={addForm.jobCode} placeholder="Ej: 3199" onChange={(e) => setAddForm({ ...addForm, jobCode: e.target.value })} />
+                  Sección
+                  <select style={styles.input} value={addForm.sectionKey} onChange={(e) => {
+                    const s = CALENDAR_SECTIONS.find((x) => x.key === e.target.value);
+                    setAddForm({ ...addForm, sectionKey: e.target.value, itemKey: s?.items[0]?.key || "" });
+                  }}>
+                    {CALENDAR_SECTIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                  </select>
                 </label>
-              )}
-              <label style={lblStyle}>
-                Monto ($)
-                <input style={styles.input} type="number" value={addForm.amount || ""} onChange={(e) => setAddForm({ ...addForm, amount: Number(e.target.value) })} />
-              </label>
-              <label style={lblStyle}>
-                Circuito
-                <select style={styles.input} value={addForm.administration} onChange={(e) => setAddForm({ ...addForm, administration: e.target.value as "blanco" | "negro" })}>
-                  <option value="blanco">Blanco</option>
-                  <option value="negro">Negro</option>
-                </select>
-              </label>
-              <label style={lblStyle}>
-                {addForm.type === "pago" ? "Proveedor / a quién" : "Cliente / de quién"}
-                <input style={styles.input} value={addForm.party} placeholder="Nombre" onChange={(e) => setAddForm({ ...addForm, party: e.target.value })} />
-              </label>
-              <label style={lblStyle}>
-                Notas (opcional)
-                <input style={styles.input} value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} />
-              </label>
-            </div>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
-              <button style={btnSecondary} onClick={() => setAddForm(null)}>Cancelar</button>
-              <button style={btnPrimary} onClick={confirmAdd} disabled={!(Number(addForm.amount) > 0) || !addForm.company}>
-                Guardar en el sistema
-              </button>
+                {isCob ? (
+                  <>
+                    <label style={lblStyle}>N° presupuesto
+                      <input style={styles.input} value={addForm.ppto} placeholder="Ej: 3199" onChange={(e) => setAddForm({ ...addForm, ppto: e.target.value })} />
+                    </label>
+                    <label style={lblStyle}>Cliente
+                      <input style={styles.input} value={addForm.cliente} onChange={(e) => setAddForm({ ...addForm, cliente: e.target.value })} />
+                    </label>
+                  </>
+                ) : (
+                  <label style={lblStyle}>Renglón
+                    <select style={styles.input} value={addForm.itemKey} onChange={(e) => setAddForm({ ...addForm, itemKey: e.target.value })}>
+                      {(section?.items || []).map((it) => <option key={it.key} value={it.key}>{it.label}</option>)}
+                    </select>
+                  </label>
+                )}
+                <label style={lblStyle}>Monto ($)
+                  <input style={styles.input} type="number" value={addForm.amount || ""} onChange={(e) => setAddForm({ ...addForm, amount: Number(e.target.value) })} />
+                </label>
+                <label style={lblStyle}>Circuito
+                  <select style={styles.input} value={addForm.administration} onChange={(e) => setAddForm({ ...addForm, administration: e.target.value as "blanco" | "negro" })}>
+                    <option value="blanco">Blanco</option>
+                    <option value="negro">Negro</option>
+                  </select>
+                </label>
+                <label style={lblStyle}>Notas (opcional)
+                  <input style={styles.input} value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} />
+                </label>
+              </div>
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                <button style={btnSecondary} onClick={() => setAddForm(null)}>Cancelar</button>
+                <button style={btnPrimary} onClick={confirmAdd} disabled={!(Number(addForm.amount) > 0) || !addForm.company || (isCob ? false : !addForm.itemKey)}>
+                  Guardar en el sistema
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
 
-const overlayStyle: React.CSSProperties = {
-  position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50,
-  display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
-};
-const modalStyle: React.CSSProperties = {
-  background: "#fff", borderRadius: 12, padding: 18, width: "min(440px, 96vw)",
-  boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
-};
-const lblStyle: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13, fontWeight: 600 };
-const btnSecondary: React.CSSProperties = {
-  padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer", fontWeight: 600,
-};
-const btnPrimary: React.CSSProperties = {
-  padding: "8px 14px", borderRadius: 8, border: "none", background: "#14213d", color: "#fff", cursor: "pointer", fontWeight: 700,
-};
-
 const thStickyCorner: React.CSSProperties = {
   position: "sticky", left: 0, zIndex: 3, background: "#f1f5f9", textAlign: "left",
-  padding: "6px 10px", borderBottom: "1px solid #e2e8f0", minWidth: 180,
+  padding: "6px 10px", borderBottom: "1px solid #e2e8f0", minWidth: 230,
 };
 const thMonth: React.CSSProperties = {
   padding: "4px 8px", background: "#e2e8f0", borderLeft: "2px solid #cbd5e1", fontWeight: 800, textAlign: "center",
@@ -506,9 +439,27 @@ const thDay: React.CSSProperties = {
   padding: "4px 6px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#64748b", minWidth: 56, textAlign: "right",
 };
 const tdStickyLabel: React.CSSProperties = {
-  position: "sticky", left: 0, zIndex: 2, background: "#ffffff", padding: "6px 10px",
-  borderBottom: "1px solid #f1f5f9", fontWeight: 600, minWidth: 180,
+  position: "sticky", left: 0, zIndex: 2, background: "#ffffff", padding: "5px 10px",
+  borderBottom: "1px solid #f1f5f9", fontWeight: 600, minWidth: 230,
 };
 const tdCell: React.CSSProperties = {
   padding: "4px 6px", borderBottom: "1px solid #f1f5f9", textAlign: "right", minWidth: 56,
+};
+const overlayStyle: React.CSSProperties = {
+  position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50,
+  display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
+};
+const modalStyle: React.CSSProperties = {
+  background: "#fff", borderRadius: 12, padding: 18, width: "min(460px, 96vw)", maxHeight: "90vh",
+  overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
+};
+const lblStyle: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13, fontWeight: 600 };
+const miniAdd: React.CSSProperties = {
+  padding: "2px 8px", borderRadius: 6, border: "1px dashed #86efac", background: "#f0fdf4", cursor: "pointer", fontSize: 12,
+};
+const btnSecondary: React.CSSProperties = {
+  padding: "8px 14px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer", fontWeight: 600,
+};
+const btnPrimary: React.CSSProperties = {
+  padding: "8px 14px", borderRadius: 8, border: "none", background: "#14213d", color: "#fff", cursor: "pointer", fontWeight: 700,
 };

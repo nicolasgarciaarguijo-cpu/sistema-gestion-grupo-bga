@@ -524,6 +524,9 @@ export type FinancialCalendarItem = {
   // Subcategoría de ingreso (solo cobranzas), para el Calendario anual: cobranza de trabajo (ppto +
   // cliente), préstamo recibido, ingreso financiero o ingreso vario. Ausente = trabajo.
   incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
+  // Renglón del Calendario anual (chart of accounts, ver domain/calendarStructure.ts) al que se clasifica
+  // este movimiento. Permite ubicarlo en la sección/ítem exacto de la planilla.
+  conceptKey?: string;
   // Si el usuario editó a mano un item autogenerado (p.ej. partió el saldo en cuotas),
   // la regeneración NO lo recalcula: respeta lo cargado a mano ("sin pisarse").
   userEdited?: boolean;
