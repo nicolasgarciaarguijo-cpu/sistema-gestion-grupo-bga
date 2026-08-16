@@ -12042,6 +12042,7 @@ export default function App() {
         kind: "banco",
         amount: Number(item.amount || 0),
         statusLabel: item.movementType,
+        conceptKey: item.conceptKey || undefined,
       });
     });
 

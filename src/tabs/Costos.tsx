@@ -14,6 +14,7 @@ import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, PillD, moneyToneColor } from "../ui/primitives";
 import { bankEntryMissingInfo } from "../domain/bankAssignment";
+import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
 import { money } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel, composeCostEntriesByGroup, resolveGroupKind } from "../domain/costs";
 import { computeSupplierAccounts } from "../domain/supplierAccounts";
@@ -1545,6 +1546,22 @@ export function CostosTab({
                               </select>
                             </Field>
                           )}
+                          <Field label="Renglón del calendario anual">
+                            <select
+                              style={{ ...styles.input, minWidth: 220 }}
+                              value={entry.conceptKey || ""}
+                              onChange={(e) => updateBankStatementEntry(entry.id, "conceptKey", e.target.value)}
+                            >
+                              <option value="">— Sin clasificar —</option>
+                              {CALENDAR_SECTIONS.filter((s) => s.items.length > 0).map((s) => (
+                                <optgroup key={s.key} label={s.label}>
+                                  {s.items.map((it) => (
+                                    <option key={it.key} value={it.key}>{it.label}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </Field>
                           <Field label="Nota (opcional)">
                             <input
                               style={{ ...styles.input, minWidth: 180 }}

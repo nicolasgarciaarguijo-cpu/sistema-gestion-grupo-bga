@@ -658,6 +658,9 @@ export type BankStatementEntry = {
   assignedParty?: string;
   administration?: "blanco" | "negro";
   assignmentNote?: string;
+  // Renglón del Calendario anual (chart of accounts) al que se asigna este movimiento del extracto.
+  // Con esto el banco ALIMENTA el calendario; sin asignar, cae en "Sin clasificar".
+  conceptKey?: string;
   attachmentName?: string;
   extractedAutomatically: boolean;
 };
