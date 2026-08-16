@@ -88,6 +88,8 @@ export function CalendarioAnualTab({
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [addForm, setAddForm] = useState<null | AddForm>(null);
+  const [monthMode, setMonthMode] = useState(true); // un mes por vez (liviano); off = año completo
+  const [monthIdx, setMonthIdx] = useState(0);
   const toggle = (k: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -103,6 +105,15 @@ export function CalendarioAnualTab({
     });
     return cols;
   }, [months]);
+
+  // Columnas a MOSTRAR: un mes (liviano) o todo el año. La agregación se hace sobre el año completo
+  // (dayCols); acá solo cambia lo que se pinta.
+  const idx = Math.min(Math.max(0, monthIdx), months.length - 1);
+  const visibleMonths = monthMode ? [months[idx]] : months;
+  const visibleDayCols = useMemo(
+    () => (monthMode ? dayCols.filter((c) => c.monthIdx === idx) : dayCols),
+    [dayCols, monthMode, idx]
+  );
 
   const agg = useMemo(() => {
     const firstIso = dayCols[0]?.iso || "";
@@ -210,7 +221,7 @@ export function CalendarioAnualTab({
   const detailRow = (label: string, drow: Map<string, number>, key: string, isOut: boolean) => (
     <tr key={key} style={{ background: "#f8fafc" }}>
       <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>{label}</td>
-      {dayCols.map((c) => {
+      {visibleDayCols.map((c) => {
         const v = drow.get(c.iso) || 0;
         return (
           <td key={`${key}-${c.iso}`} style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0" }}>
@@ -239,6 +250,17 @@ export function CalendarioAnualTab({
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+            {monthMode && (
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button style={btnSecondary} onClick={() => setMonthIdx((v) => Math.max(0, v - 1))} disabled={idx <= 0}>‹</button>
+                <strong style={{ minWidth: 120, textAlign: "center", textTransform: "capitalize" }}>{months[idx]?.label}</strong>
+                <button style={btnSecondary} onClick={() => setMonthIdx((v) => Math.min(months.length - 1, v + 1))} disabled={idx >= months.length - 1}>›</button>
+              </div>
+            )}
+            <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+              <input type="checkbox" checked={!monthMode} onChange={(e) => setMonthMode(!e.target.checked)} />
+              Año completo
+            </label>
           </div>
         }
       >
@@ -252,15 +274,16 @@ export function CalendarioAnualTab({
             <thead>
               <tr>
                 <th style={thStickyCorner}>Concepto</th>
-                {months.map((m, i) => {
-                  const span = dayCols.filter((c) => c.monthIdx === i).length;
+                {visibleMonths.map((m) => {
+                  const mi = months.indexOf(m);
+                  const span = visibleDayCols.filter((c) => c.monthIdx === mi).length;
                   if (span === 0) return null;
-                  return <th key={`m-${i}`} colSpan={span} style={thMonth}>{m.label}</th>;
+                  return <th key={`m-${mi}`} colSpan={span} style={thMonth}>{m.label}</th>;
                 })}
               </tr>
               <tr>
                 <th style={thStickyCorner}></th>
-                {dayCols.map((c) => <th key={`d-${c.iso}`} style={thDay}>{c.day}</th>)}
+                {visibleDayCols.map((c) => <th key={`d-${c.iso}`} style={thDay}>{c.day}</th>)}
               </tr>
             </thead>
             <tbody>
@@ -274,7 +297,7 @@ export function CalendarioAnualTab({
                       <td style={{ ...tdStickyLabel, background: isOut ? "#fee2e2" : "#dcfce7", fontWeight: 800, color: isOut ? "#991b1b" : "#065f46" }}>
                         {section.label}
                       </td>
-                      {dayCols.map((c) => <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, background: isOut ? "#fee2e2" : "#dcfce7" }}></td>)}
+                      {visibleDayCols.map((c) => <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, background: isOut ? "#fee2e2" : "#dcfce7" }}></td>)}
                     </tr>
                     {isCob
                       ? Array.from(agg.cobranzaDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
@@ -285,7 +308,7 @@ export function CalendarioAnualTab({
                           return (
                             <tr key={it.key}>
                               <td style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}>{it.label}</td>
-                              {dayCols.map((c) => {
+                              {visibleDayCols.map((c) => {
                                 const v = drow?.get(c.iso) || 0;
                                 return (
                                   <td
@@ -304,14 +327,14 @@ export function CalendarioAnualTab({
                     {isCob && (
                       <tr>
                         <td style={{ ...tdStickyLabel, paddingLeft: 20, color: "#065f46" }}>
-                          <button style={miniAdd} onClick={() => openAdd(section.key, "", dayCols[0]?.iso || "")}>+ cargar cobranza</button>
+                          <button style={miniAdd} onClick={() => openAdd(section.key, "", visibleDayCols[0]?.iso || "")}>+ cargar cobranza</button>
                         </td>
-                        {dayCols.map((c) => <td key={`cobadd-${c.iso}`} style={tdCell}></td>)}
+                        {visibleDayCols.map((c) => <td key={`cobadd-${c.iso}`} style={tdCell}></td>)}
                       </tr>
                     )}
                     <tr>
                       <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#f1f5f9" }}>{section.totalLabel}</td>
-                      {dayCols.map((c) => {
+                      {visibleDayCols.map((c) => {
                         const v = totalByDate.get(c.iso) || 0;
                         return (
                           <td key={`st-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#f1f5f9", color: v ? (isOut ? "#dc2626" : "#16a34a") : "#cbd5e1" }}>
@@ -334,7 +357,7 @@ export function CalendarioAnualTab({
                     >
                       {expanded.has("uncl") ? "▾ " : "▸ "}SIN CLASIFICAR · falta ubicar (D)
                     </td>
-                    {dayCols.map((c) => {
+                    {visibleDayCols.map((c) => {
                       const v = agg.unclByDate.get(c.iso) || 0;
                       return (
                         <td key={`unclh-${c.iso}`} style={{ ...tdCell, background: "#fef9c3", fontWeight: 700, color: v ? "#854d0e" : "#e2e8f0" }}>
@@ -369,7 +392,7 @@ export function CalendarioAnualTab({
                               )}
                             </div>
                           </td>
-                          {dayCols.map((c) => {
+                          {visibleDayCols.map((c) => {
                             const v = drow.get(c.iso) || 0;
                             return (
                               <td key={`uncl-${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#854d0e" : "#e2e8f0" }}>
@@ -386,21 +409,21 @@ export function CalendarioAnualTab({
               {/* TOTALES */}
               <tr>
                 <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#ecfdf5", color: "#065f46" }}>TOTAL INGRESOS</td>
-                {dayCols.map((c) => {
+                {visibleDayCols.map((c) => {
                   const v = agg.incomeByDate.get(c.iso) || 0;
                   return <td key={`ti-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#ecfdf5", color: v ? "#16a34a" : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
                 })}
               </tr>
               <tr>
                 <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#fef2f2", color: "#991b1b" }}>TOTAL EGRESOS</td>
-                {dayCols.map((c) => {
+                {visibleDayCols.map((c) => {
                   const v = agg.egresoByDate.get(c.iso) || 0;
                   return <td key={`te-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#fef2f2", color: v ? "#dc2626" : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
                 })}
               </tr>
               <tr>
                 <td style={{ ...tdStickyLabel, fontWeight: 900, background: "#e2e8f0" }}>NETO DEL DÍA</td>
-                {dayCols.map((c) => {
+                {visibleDayCols.map((c) => {
                   const v = (agg.incomeByDate.get(c.iso) || 0) - (agg.egresoByDate.get(c.iso) || 0);
                   return <td key={`nd-${c.iso}`} style={{ ...tdCell, fontWeight: 900, background: "#e2e8f0", color: v > 0 ? "#16a34a" : v < 0 ? "#dc2626" : "#94a3b8" }}>{v ? money(v) : "·"}</td>;
                 })}
