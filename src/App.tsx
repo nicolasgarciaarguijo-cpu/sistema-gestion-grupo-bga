@@ -10541,6 +10541,15 @@ export default function App() {
     setter((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   };
 
+  // Asignar (o desasignar) el renglón del calendario a un conjunto de movimientos del banco. Desde el
+  // propio calendario: clasificar "Sin clasificar" en bloque por concepto.
+  const assignBankConcept = (bankIds: number[], conceptKey: string) => {
+    const set = new Set(bankIds);
+    setBankStatementEntries((prev) =>
+      prev.map((b) => (set.has(b.id) ? { ...b, conceptKey: conceptKey || undefined } : b))
+    );
+  };
+
   // Alta rápida desde el Calendario anual: crea un movimiento financiero ya clasificado (cobranza/pago/
   // facturación) con su circuito blanco/negro. Aparece directo en la grilla del calendario.
   const addCalendarMovement = (m: {
@@ -14733,6 +14742,7 @@ export default function App() {
           fiscalYearOptions={balanceFiscalYearOptions}
           companyOptions={COMPANY_OPTIONS}
           onAddMovement={addCalendarMovement}
+          onAssignConcept={assignBankConcept}
           money={money}
         />
       )}

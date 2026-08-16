@@ -59,6 +59,7 @@ export function CalendarioAnualTab({
   companyOptions,
   fiscalStartMonth = 11,
   onAddMovement,
+  onAssignConcept,
   money,
 }: {
   entries: Entry[];
@@ -82,6 +83,7 @@ export function CalendarioAnualTab({
     conceptKey?: string;
     incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
   }) => void;
+  onAssignConcept: (bankIds: number[], conceptKey: string) => void;
   money: (n: number, currency?: string) => string;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -110,6 +112,7 @@ export function CalendarioAnualTab({
     const cobranzaByDate = new Map<string, number>();
     const unclDetail = new Map<string, Map<string, number>>();
     const unclByDate = new Map<string, number>();
+    const unclBankIds = new Map<string, number[]>(); // título -> ids de bankStatementEntry (para asignar en bloque)
     const incomeByDate = new Map<string, number>();
     const egresoByDate = new Map<string, number>();
     const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
@@ -143,8 +146,15 @@ export function CalendarioAnualTab({
       // sin clasificar (acá caerá el banco hasta que se asigne a un renglón)
       addDeep(unclDetail, title, e.date, amt);
       add(unclByDate, e.date, amt);
+      if (e.kind === "banco" && e.id.startsWith("bank-")) {
+        const bankId = Number(e.id.slice(5));
+        if (bankId) {
+          if (!unclBankIds.has(title)) unclBankIds.set(title, []);
+          unclBankIds.get(title)!.push(bankId);
+        }
+      }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, incomeByDate, egresoByDate };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclBankIds, incomeByDate, egresoByDate };
   }, [entries, companyScope, dayCols]);
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string) =>
@@ -334,9 +344,42 @@ export function CalendarioAnualTab({
                     })}
                   </tr>
                   {expanded.has("uncl") &&
-                    Array.from(agg.unclDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
-                      detailRow(title, drow, `uncl-${title}`, false)
-                    )}
+                    Array.from(agg.unclDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => {
+                      const ids = agg.unclBankIds.get(title) || [];
+                      return (
+                        <tr key={`uncl-${title}`} style={{ background: "#fffbeb" }}>
+                          <td style={{ ...tdStickyLabel, background: "#fffbeb", paddingLeft: 24 }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                              <span style={{ fontWeight: 400, color: "#475569" }}>
+                                {title}{ids.length > 1 ? ` · ${ids.length} mov.` : ""}
+                              </span>
+                              {ids.length > 0 && (
+                                <select
+                                  style={{ ...styles.input, fontSize: 11, padding: "2px 4px", minWidth: 200 }}
+                                  value=""
+                                  onChange={(e) => { if (e.target.value) onAssignConcept(ids, e.target.value); }}
+                                >
+                                  <option value="">→ asignar a renglón…</option>
+                                  {CALENDAR_SECTIONS.filter((s) => s.items.length > 0).map((s) => (
+                                    <optgroup key={s.key} label={s.label}>
+                                      {s.items.map((it) => <option key={it.key} value={it.key}>{it.label}</option>)}
+                                    </optgroup>
+                                  ))}
+                                </select>
+                              )}
+                            </div>
+                          </td>
+                          {dayCols.map((c) => {
+                            const v = drow.get(c.iso) || 0;
+                            return (
+                              <td key={`uncl-${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#854d0e" : "#e2e8f0" }}>
+                                {v ? money(v) : "·"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
                 </>
               )}
 
