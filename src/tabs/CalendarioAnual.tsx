@@ -258,6 +258,10 @@ export function CalendarioAnualTab({
   };
 
   const cell = (m: Map<string, number> | undefined, iso: string) => (m ? m.get(iso) || 0 : 0);
+  // Una fila dinámica (cliente/trabajo) solo se muestra si tiene MOVIMIENTO en el período visible.
+  // Así un cliente que terminó su trabajo no ocupa espacio en los meses siguientes; si vuelve a comprar
+  // (nueva cobranza), reaparece solo en el mes en que se mueve.
+  const activeInView = (drow: Map<string, number>) => visibleDayCols.some((c) => (drow.get(c.iso) || 0) !== 0);
   const sumItemsByDate = (itemKeys: string[]) => {
     const out = new Map<string, number>();
     itemKeys.forEach((k) => {
@@ -367,7 +371,7 @@ export function CalendarioAnualTab({
                       {visibleDayCols.map((c) => <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, background: isOut ? "#fee2e2" : "#dcfce7" }}></td>)}
                     </tr>
                     {!isCol && (isCob
-                      ? Array.from(agg.cobranzaDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
+                      ? Array.from(agg.cobranzaDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
                           detailRow(title, drow, `cob-${title}`, false)
                         )
                       : section.items.map((it) => {
@@ -402,6 +406,7 @@ export function CalendarioAnualTab({
                     )}
                     {!isCol && isComerciales &&
                       Array.from(agg.comisionDetail.entries())
+                        .filter(([, drow]) => activeInView(drow))
                         .sort((a, b) => a[0].localeCompare(b[0]))
                         .map(([title, drow]) => detailRow(`Comisión · ${title}`, drow, `com-${title}`, true))}
                     <tr>
@@ -439,7 +444,7 @@ export function CalendarioAnualTab({
                     })}
                   </tr>
                   {expanded.has("uncl") &&
-                    Array.from(agg.unclDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => {
+                    Array.from(agg.unclDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => {
                       const ids = agg.unclBankIds.get(title) || [];
                       return (
                         <tr key={`uncl-${title}`} style={{ background: "#fffbeb" }}>
@@ -504,7 +509,7 @@ export function CalendarioAnualTab({
                       );
                     })}
                   </tr>
-                  {Array.from(agg.usdDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => {
+                  {Array.from(agg.usdDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => {
                     const tot = agg.usdTitleTotal.get(title) || 0;
                     const pesos = Math.abs(tot) * (bnaCompra || 0);
                     return (
