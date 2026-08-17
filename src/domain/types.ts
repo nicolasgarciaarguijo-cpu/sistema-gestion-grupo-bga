@@ -442,6 +442,8 @@ export type CommissionPayment = {
   paymentDate: string;
   amount: number;
   note: string;
+  // Circuito del pago de comisión (definición administrativa). Ausente = blanco.
+  administration?: "blanco" | "negro";
   attachmentName?: string;
 };
 

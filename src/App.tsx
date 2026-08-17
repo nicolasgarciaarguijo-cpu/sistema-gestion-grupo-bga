@@ -9723,6 +9723,7 @@ export default function App() {
                   paymentDate: todayIso(),
                   amount: 0,
                   note: "",
+                  administration: "blanco",
                 },
                 ...job.commissionPayments,
               ],
@@ -12035,7 +12036,8 @@ export default function App() {
         | "caja-chica"
         | "desendeudamiento"
         | "banco"
-        | "trabajo";
+        | "trabajo"
+        | "comision";
       amount: number;
       statusLabel: string;
       subcat?: string;
@@ -12060,6 +12062,23 @@ export default function App() {
         subcat: isCobranza ? item.incomeCategory || "trabajo" : undefined,
         conceptKey: item.conceptKey || undefined,
         administration: item.administration === "negro" ? "negro" : "blanco",
+      });
+    });
+
+    // Comisiones pagadas de los trabajos aprobados → egreso comercial, con el nombre del trabajo.
+    visibleApprovedJobs.forEach((job) => {
+      (job.commissionPayments || []).forEach((cp) => {
+        if (!cp.paymentDate || !cp.paymentDate.startsWith(String(analysisYear))) return;
+        entries.push({
+          id: `comm-${cp.id}`,
+          date: cp.paymentDate,
+          company: job.company,
+          title: `${job.budgetNumber ? job.budgetNumber + " · " : ""}${job.client || "Trabajo"}`,
+          kind: "comision",
+          amount: Number(cp.amount || 0),
+          statusLabel: "comisión",
+          administration: cp.administration === "negro" ? "negro" : "blanco",
+        });
       });
     });
 

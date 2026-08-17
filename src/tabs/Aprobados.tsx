@@ -1474,6 +1474,16 @@ export function AprobadosTab({
                             />
                           </Field>
                         </TwoCol>
+                        <Field label="Administración (blanco/negro)">
+                          <select
+                            style={styles.input}
+                            value={payment.administration || "blanco"}
+                            onChange={(e) => updateCommissionPayment(selectedApprovedJob.id, payment.id, "administration", e.target.value)}
+                          >
+                            <option value="blanco">Blanco</option>
+                            <option value="negro">Negro</option>
+                          </select>
+                        </Field>
                         <Field label="Nota">
                           <input
                             style={styles.input}

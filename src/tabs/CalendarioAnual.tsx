@@ -148,6 +148,9 @@ export function CalendarioAnualTab({
     const usdDetail = new Map<string, Map<string, number>>();
     const usdTitleTotal = new Map<string, number>();
     const usdByDate = new Map<string, number>();
+    // Comisiones (egreso comercial), por nombre de trabajo.
+    const comisionDetail = new Map<string, Map<string, number>>();
+    const comisionByDate = new Map<string, number>();
     const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
     const addDeep = (m: Map<string, Map<string, number>>, a: string, d: string, v: number) => {
       if (!m.has(a)) m.set(a, new Map());
@@ -159,7 +162,7 @@ export function CalendarioAnualTab({
       // El calendario se alimenta de la plata REAL: movimientos del banco + cobranzas + lo cargado a
       // mano (con renglón). NO metemos compras/caja chica/facturación/desendeudamiento: esa misma plata
       // ya viene por el débito del banco, así evitamos duplicar en "Sin clasificar" y en los totales.
-      const isCalendarSource = e.kind === "banco" || e.kind === "cobranza" || !!e.conceptKey;
+      const isCalendarSource = e.kind === "banco" || e.kind === "cobranza" || e.kind === "comision" || !!e.conceptKey;
       if (!isCalendarSource) return;
       const amt = Number(e.amount || 0);
       const title = (e.title || "—").trim();
@@ -173,6 +176,13 @@ export function CalendarioAnualTab({
       }
       const isCobranza = e.kind === "cobranza" || e.conceptKey === "cobranzas";
       const neg = e.administration === "negro";
+      if (e.kind === "comision") {
+        addDeep(comisionDetail, title, e.date, amt);
+        add(comisionByDate, e.date, amt);
+        add(egresoByDate, e.date, amt);
+        add(neg ? egrN : egrB, e.date, amt);
+        return;
+      }
       if (isCobranza) {
         addDeep(cobranzaDetail, title, e.date, amt);
         add(cobranzaByDate, e.date, amt);
@@ -202,7 +212,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate };
   }, [entries, companyScope, dayCols]);
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string) =>
@@ -335,8 +345,15 @@ export function CalendarioAnualTab({
               {CALENDAR_SECTIONS.map((section) => {
                 const isOut = section.dir === "out";
                 const isCob = section.dynamic === "cobranzas";
+                const isComerciales = section.key === "gastos_comerciales";
                 const isCol = collapsed.has(section.key);
-                const totalByDate = isCob ? agg.cobranzaByDate : sumItemsByDate(section.items.map((i) => i.key));
+                const totalByDate = isCob
+                  ? agg.cobranzaByDate
+                  : (() => {
+                      const m = sumItemsByDate(section.items.map((i) => i.key));
+                      if (isComerciales) agg.comisionByDate.forEach((v, d) => m.set(d, (m.get(d) || 0) + v));
+                      return m;
+                    })();
                 return (
                   <React.Fragment key={section.key}>
                     <tr>
@@ -383,6 +400,10 @@ export function CalendarioAnualTab({
                         {visibleDayCols.map((c) => <td key={`cobadd-${c.iso}`} style={tdCell}></td>)}
                       </tr>
                     )}
+                    {!isCol && isComerciales &&
+                      Array.from(agg.comisionDetail.entries())
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([title, drow]) => detailRow(`Comisión · ${title}`, drow, `com-${title}`, true))}
                     <tr>
                       <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#f1f5f9" }}>{section.totalLabel}</td>
                       {visibleDayCols.map((c) => {
