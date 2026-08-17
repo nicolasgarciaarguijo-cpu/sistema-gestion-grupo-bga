@@ -661,7 +661,11 @@ export function AprobadosTab({
                     value={money(selectedApprovedJob.anticipoToCharge)}
                   />
                   <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
-                  <SummaryRow label="Cobrado" value={money(selectedApprovedJob.collectedTotal)} tone="in" />
+                  <SummaryRow
+                    label="Cobrado (plata)"
+                    value={money(Number(selectedApprovedJob.collectedTotal || 0) - Number(selectedApprovedJob.retentionsTotal || 0))}
+                    tone="in"
+                  />
                   {(selectedApprovedJob.usdPesifiedArs || 0) > 0 && (
                     <SummaryRow
                       label="  (incluye U$S pesificados)"
@@ -669,6 +673,18 @@ export function AprobadosTab({
                       tone="in"
                     />
                   )}
+                  {(selectedApprovedJob.retentionsTotal || 0) > 0 && (
+                    <SummaryRow
+                      label="Retenciones (crédito fiscal)"
+                      value={money(selectedApprovedJob.retentionsTotal || 0)}
+                      tone="in"
+                    />
+                  )}
+                  <SummaryRow
+                    label="Cobrado + retenciones"
+                    value={money(selectedApprovedJob.collectedTotal)}
+                    tone="in"
+                  />
                   <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
                   {(Number(selectedApprovedJob.soldNetPriceUsd || 0) > 0 ||
                     Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0) && (
@@ -1017,9 +1033,9 @@ export function AprobadosTab({
                 </Panel>
 
                 <Panel
-                  title="Pagos"
+                  title="Cobranzas"
                   nested
-                  actions={<ButtonLike onClick={() => addPayment(selectedApprovedJob.id)}>Agregar pago</ButtonLike>}
+                  actions={<ButtonLike onClick={() => addPayment(selectedApprovedJob.id)}>Agregar cobranza</ButtonLike>}
                 >
                   {selectedApprovedJob.payments.length === 0 ? (
                     <div style={styles.empty}>No hay pagos cargados.</div>
@@ -1055,10 +1071,10 @@ export function AprobadosTab({
                             </span>
                           )}
                           <button style={styles.smallBtn} onClick={() => exportPaymentReceipt(selectedApprovedJob, payment)}>
-                            Recibo
+                            Recibo cobranza
                           </button>
                           <button style={styles.smallBtn} onClick={() => removePayment(selectedApprovedJob.id, payment.id)}>
-                            Quitar pago
+                            Quitar cobranza
                           </button>
                         </div>
                         <TwoCol>

@@ -15910,7 +15910,7 @@ export default function App() {
             style={{ display: "none", fontFamily: "Arial, sans-serif", color: "#0f172a" }}
           >
             <div style={{ maxWidth: 720, margin: "0 auto" }}>
-              <h1 style={{ margin: "0 0 4px 0" }}>Recibo de pago</h1>
+              <h1 style={{ margin: "0 0 4px 0" }}>Recibo de cobranza</h1>
               <div style={{ color: "#475569" }}>
                 {getCompanyMeta(receiptData.job.company).value} · CUIT{" "}
                 {getCompanyTaxId(receiptData.job.company) || "-"}
