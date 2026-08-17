@@ -12040,6 +12040,7 @@ export default function App() {
       statusLabel: string;
       subcat?: string;
       conceptKey?: string;
+      administration?: "blanco" | "negro";
     }> = [];
 
     visibleFinancialItems.forEach((item) => {
@@ -12057,6 +12058,7 @@ export default function App() {
         statusLabel: item.status,
         subcat: isCobranza ? item.incomeCategory || "trabajo" : undefined,
         conceptKey: item.conceptKey || undefined,
+        administration: item.administration === "negro" ? "negro" : "blanco",
       });
     });
 
@@ -12122,6 +12124,7 @@ export default function App() {
         amount: Number(item.amount || 0),
         statusLabel: item.movementType,
         conceptKey: item.conceptKey || undefined,
+        administration: item.administration === "negro" ? "negro" : "blanco",
       });
     });
 

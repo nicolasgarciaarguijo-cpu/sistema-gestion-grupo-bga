@@ -18,6 +18,7 @@ type Entry = {
   statusLabel?: string;
   subcat?: string;
   conceptKey?: string;
+  administration?: "blanco" | "negro";
 };
 
 const MES = [
@@ -137,6 +138,9 @@ export function CalendarioAnualTab({
     const unclBankIds = new Map<string, number[]>(); // título -> ids de bankStatementEntry (para asignar en bloque)
     const incomeByDate = new Map<string, number>();
     const egresoByDate = new Map<string, number>();
+    // Totales SIEMPRE separados blanco/negro (el "×4" se completa con el selector de empresa).
+    const incB = new Map<string, number>(); const incN = new Map<string, number>();
+    const egrB = new Map<string, number>(); const egrN = new Map<string, number>();
     const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
     const addDeep = (m: Map<string, Map<string, number>>, a: string, d: string, v: number) => {
       if (!m.has(a)) m.set(a, new Map());
@@ -153,16 +157,20 @@ export function CalendarioAnualTab({
       const amt = Number(e.amount || 0);
       const title = (e.title || "—").trim();
       const isCobranza = e.kind === "cobranza" || e.conceptKey === "cobranzas";
+      const neg = e.administration === "negro";
       if (isCobranza) {
         addDeep(cobranzaDetail, title, e.date, amt);
         add(cobranzaByDate, e.date, amt);
         add(incomeByDate, e.date, amt);
+        add(neg ? incN : incB, e.date, amt);
         return;
       }
       const idx = e.conceptKey ? CALENDAR_ITEM_INDEX[e.conceptKey] : undefined;
       if (idx) {
         addDeep(byConcept, e.conceptKey!, e.date, amt);
         add(idx.dir === "in" ? incomeByDate : egresoByDate, e.date, amt);
+        if (idx.dir === "in") add(neg ? incN : incB, e.date, amt);
+        else add(neg ? egrN : egrB, e.date, amt);
         return;
       }
       // sin clasificar (acá cae el banco hasta que se asigne a un renglón). Firmamos el monto por el
@@ -179,7 +187,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN };
   }, [entries, companyScope, dayCols]);
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string) =>
@@ -342,7 +350,7 @@ export function CalendarioAnualTab({
                                     key={`${it.key}-${c.iso}`}
                                     onClick={() => openAdd(section.key, it.key, c.iso)}
                                     title="Cargar en este día"
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#16a34a") : "#cbd5e1" }}
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1" }}
                                   >
                                     {v ? money(v) : "+"}
                                   </td>
@@ -365,7 +373,7 @@ export function CalendarioAnualTab({
                       {visibleDayCols.map((c) => {
                         const v = totalByDate.get(c.iso) || 0;
                         return (
-                          <td key={`st-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#f1f5f9", color: v ? (isOut ? "#dc2626" : "#16a34a") : "#cbd5e1" }}>
+                          <td key={`st-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#f1f5f9", color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1" }}>
                             {v ? money(v) : "·"}
                           </td>
                         );
@@ -443,28 +451,33 @@ export function CalendarioAnualTab({
                 </>
               )}
 
-              {/* TOTALES */}
-              <tr>
-                <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#ecfdf5", color: "#065f46" }}>TOTAL INGRESOS</td>
-                {visibleDayCols.map((c) => {
-                  const v = agg.incomeByDate.get(c.iso) || 0;
-                  return <td key={`ti-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#ecfdf5", color: v ? "#16a34a" : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
-                })}
-              </tr>
-              <tr>
-                <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#fef2f2", color: "#991b1b" }}>TOTAL EGRESOS</td>
-                {visibleDayCols.map((c) => {
-                  const v = agg.egresoByDate.get(c.iso) || 0;
-                  return <td key={`te-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#fef2f2", color: v ? "#dc2626" : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
-                })}
-              </tr>
-              <tr>
-                <td style={{ ...tdStickyLabel, fontWeight: 900, background: "#e2e8f0" }}>NETO DEL DÍA</td>
-                {visibleDayCols.map((c) => {
-                  const v = (agg.incomeByDate.get(c.iso) || 0) - (agg.egresoByDate.get(c.iso) || 0);
-                  return <td key={`nd-${c.iso}`} style={{ ...tdCell, fontWeight: 900, background: "#e2e8f0", color: v > 0 ? "#16a34a" : v < 0 ? "#dc2626" : "#94a3b8" }}>{v ? money(v) : "·"}</td>;
-                })}
-              </tr>
+              {/* ===== TOTALES SEPARADOS BLANCO / NEGRO ===== */}
+              {([
+                { lbl: "TOTAL INGRESOS · BLANCO", m: agg.incB, bg: "#f8fafc", color: "#0f172a", kp: "tib" },
+                { lbl: "TOTAL INGRESOS · NEGRO", m: agg.incN, bg: "#e5e7eb", color: "#0f172a", kp: "tin" },
+                { lbl: "TOTAL EGRESOS · BLANCO", m: agg.egrB, bg: "#f8fafc", color: "#dc2626", kp: "teb" },
+                { lbl: "TOTAL EGRESOS · NEGRO", m: agg.egrN, bg: "#e5e7eb", color: "#dc2626", kp: "ten" },
+              ] as const).map((row) => (
+                <tr key={row.kp}>
+                  <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.color }}>{row.lbl}</td>
+                  {visibleDayCols.map((c) => {
+                    const v = row.m.get(c.iso) || 0;
+                    return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
+                  })}
+                </tr>
+              ))}
+              {([
+                { lbl: "NETO DÍA · BLANCO", inc: agg.incB, egr: agg.egrB, bg: "#e2e8f0", kp: "ndb" },
+                { lbl: "NETO DÍA · NEGRO", inc: agg.incN, egr: agg.egrN, bg: "#cbd5e1", kp: "ndn" },
+              ] as const).map((row) => (
+                <tr key={row.kp}>
+                  <td style={{ ...tdStickyLabel, fontWeight: 900, background: row.bg }}>{row.lbl}</td>
+                  {visibleDayCols.map((c) => {
+                    const v = (row.inc.get(c.iso) || 0) - (row.egr.get(c.iso) || 0);
+                    return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 900, background: row.bg, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#94a3b8" }}>{v ? money(v) : "·"}</td>;
+                  })}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
