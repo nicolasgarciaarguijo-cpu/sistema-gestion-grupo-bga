@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel } from "../ui/primitives";
+import { todayIso } from "../lib/format";
 import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "../domain/calendarStructure";
 
 // Calendario anual = la planilla de cash flow adentro del sistema. Estructura FIJA (chart of accounts):
@@ -96,7 +97,13 @@ export function CalendarioAnualTab({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [addForm, setAddForm] = useState<null | AddForm>(null);
   const [monthMode, setMonthMode] = useState(true); // un mes por vez (liviano); off = año completo
-  const [monthIdx, setMonthIdx] = useState(0);
+  // Arranca en el mes de HOY si cae dentro del año fiscal (así se ve de una lo que pasa hoy).
+  const [monthIdx, setMonthIdx] = useState(() => {
+    const [ty, tm] = todayIso().split("-").map(Number);
+    const ms = fiscalMonths(fiscalStartMonth || 11, fiscalStartYear);
+    const i = ms.findIndex((m) => m.year === ty && m.month === tm);
+    return i >= 0 ? i : 0;
+  });
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set()); // secciones minimizadas (solo total)
   const toggleCollapse = (k: string) =>
     setCollapsed((prev) => {
@@ -298,6 +305,12 @@ export function CalendarioAnualTab({
     setAddForm(null);
   };
 
+  // Hoy: sombreamos su columna con dos líneas verticales ámbar (se ven aunque la fila tenga color de
+  // fondo) para ubicar rápido lo que ya pasó (izquierda) y lo que se viene (derecha).
+  const today = todayIso();
+  const hi = (iso: string): React.CSSProperties =>
+    iso === today ? { boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" } : {};
+
   const cell = (m: Map<string, number> | undefined, iso: string) => (m ? m.get(iso) || 0 : 0);
   // Una fila dinámica (cliente/trabajo) solo se muestra si tiene MOVIMIENTO en el período visible.
   // Así un cliente que terminó su trabajo no ocupa espacio en los meses siguientes; si vuelve a comprar
@@ -331,7 +344,7 @@ export function CalendarioAnualTab({
         {visibleDayCols.map((c) => {
           const v = drow.get(c.iso) || 0;
           return (
-            <td key={`${key}-${c.iso}`} style={{ ...tdCell, fontSize: 11, background: bg, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0" }}>
+            <td key={`${key}-${c.iso}`} style={{ ...tdCell, fontSize: 11, background: bg, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...hi(c.iso) }}>
               {v ? money(v) : "·"}
             </td>
           );
@@ -346,7 +359,7 @@ export function CalendarioAnualTab({
       {visibleDayCols.map((c) => {
         const v = drow.get(c.iso) || 0;
         return (
-          <td key={`${key}-${c.iso}`} style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0" }}>
+          <td key={`${key}-${c.iso}`} style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...hi(c.iso) }}>
             {v ? money(v) : "·"}
           </td>
         );
@@ -411,7 +424,15 @@ export function CalendarioAnualTab({
               </tr>
               <tr>
                 <th style={thStickyCorner}></th>
-                {visibleDayCols.map((c) => <th key={`d-${c.iso}`} style={thDay}>{c.day}</th>)}
+                {visibleDayCols.map((c) => (
+                  <th
+                    key={`d-${c.iso}`}
+                    title={c.iso === today ? "Hoy" : undefined}
+                    style={c.iso === today ? { ...thDay, background: "#f59e0b", color: "#fff", fontWeight: 800 } : thDay}
+                  >
+                    {c.day}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -437,7 +458,7 @@ export function CalendarioAnualTab({
                       >
                         {isCol ? "▸ " : "▾ "}{section.label}
                       </td>
-                      {visibleDayCols.map((c) => <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, background: isOut ? "#fee2e2" : "#dcfce7" }}></td>)}
+                      {visibleDayCols.map((c) => <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, background: isOut ? "#fee2e2" : "#dcfce7", ...hi(c.iso) }}></td>)}
                     </tr>
                     {!isCol && (isCob
                       ? Array.from(agg.cobranzaDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
@@ -460,7 +481,7 @@ export function CalendarioAnualTab({
                                     key={`${it.key}-${c.iso}`}
                                     onClick={() => openAdd(section.key, it.key, c.iso)}
                                     title="Cargar en este día"
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1" }}
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...hi(c.iso) }}
                                   >
                                     {v ? money(v) : "+"}
                                   </td>
@@ -475,7 +496,7 @@ export function CalendarioAnualTab({
                         <td style={{ ...tdStickyLabel, paddingLeft: 20, color: "#065f46" }}>
                           <button style={miniAdd} onClick={() => openAdd(section.key, "", visibleDayCols[0]?.iso || "")}>+ cargar cobranza</button>
                         </td>
-                        {visibleDayCols.map((c) => <td key={`cobadd-${c.iso}`} style={tdCell}></td>)}
+                        {visibleDayCols.map((c) => <td key={`cobadd-${c.iso}`} style={{ ...tdCell, ...hi(c.iso) }}></td>)}
                       </tr>
                     )}
                     {!isCol && isComerciales &&
@@ -488,7 +509,7 @@ export function CalendarioAnualTab({
                       {visibleDayCols.map((c) => {
                         const v = totalByDate.get(c.iso) || 0;
                         return (
-                          <td key={`st-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#f1f5f9", color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1" }}>
+                          <td key={`st-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#f1f5f9", color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...hi(c.iso) }}>
                             {v ? money(v) : "·"}
                           </td>
                         );
@@ -514,7 +535,7 @@ export function CalendarioAnualTab({
                     {visibleDayCols.map((c) => {
                       const v = agg.unclByDate.get(c.iso) || 0;
                       return (
-                        <td key={`unclh-${c.iso}`} style={{ ...tdCell, background: "#fef9c3", fontWeight: 700, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0" }}>
+                        <td key={`unclh-${c.iso}`} style={{ ...tdCell, background: "#fef9c3", fontWeight: 700, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}>
                           {v ? money(Math.abs(v)) : "·"}
                         </td>
                       );
@@ -558,7 +579,7 @@ export function CalendarioAnualTab({
                           {visibleDayCols.map((c) => {
                             const v = drow.get(c.iso) || 0;
                             return (
-                              <td key={`uncl-${title}-${c.iso}`} style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0" }}>
+                              <td key={`uncl-${title}-${c.iso}`} style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}>
                                 {v ? money(Math.abs(v)) : "·"}
                               </td>
                             );
@@ -580,7 +601,7 @@ export function CalendarioAnualTab({
                     {visibleDayCols.map((c) => {
                       const v = agg.usdByDate.get(c.iso) || 0;
                       return (
-                        <td key={`usdh-${c.iso}`} style={{ ...tdCell, background: "#e0f2fe", fontWeight: 700, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#cbd5e1" }}>
+                        <td key={`usdh-${c.iso}`} style={{ ...tdCell, background: "#e0f2fe", fontWeight: 700, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#cbd5e1", ...hi(c.iso) }}>
                           {v ? money(Math.abs(v), "USD") : "·"}
                         </td>
                       );
@@ -601,7 +622,7 @@ export function CalendarioAnualTab({
                         {visibleDayCols.map((c) => {
                           const v = drow.get(c.iso) || 0;
                           return (
-                            <td key={`usd-${title}-${c.iso}`} style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0" }}>
+                            <td key={`usd-${title}-${c.iso}`} style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}>
                               {v ? money(Math.abs(v), "USD") : "·"}
                             </td>
                           );
@@ -624,7 +645,7 @@ export function CalendarioAnualTab({
                     <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.color }}>{row.lbl}</td>
                     {visibleDayCols.map((c) => {
                       const v = row.m.get(c.iso) || 0;
-                      return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
+                      return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
                     })}
                   </tr>
                   {/* Desglose por empresa (con su color) cuando se ven todas — el "×4" a la vista */}
@@ -645,7 +666,7 @@ export function CalendarioAnualTab({
                   <td style={{ ...tdStickyLabel, fontWeight: 900, background: row.bg }}>{row.lbl}</td>
                   {visibleDayCols.map((c) => {
                     const v = (row.inc.get(c.iso) || 0) - (row.egr.get(c.iso) || 0);
-                    return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 900, background: row.bg, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#94a3b8" }}>{v ? money(v) : "·"}</td>;
+                    return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 900, background: row.bg, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#94a3b8", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
                   })}
                 </tr>
               ))}
@@ -659,7 +680,7 @@ export function CalendarioAnualTab({
                     <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.color }}>{row.lbl}</td>
                     {visibleDayCols.map((c) => {
                       const v = row.m.get(c.iso) || 0;
-                      return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
+                      return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
                     })}
                   </tr>
                 ))}
