@@ -72,7 +72,7 @@ export function CalendarioAnualTab({
   fiscalStartYear: number;
   setFiscalStartYear: (v: number) => void;
   fiscalYearOptions: Array<{ value: number; label: string }>;
-  companyOptions: Array<{ value: string; short?: string }>;
+  companyOptions: Array<{ value: string; short?: string; primary?: string }>;
   fiscalStartMonth?: number;
   onAddMovement: (m: {
     company: string;
@@ -151,10 +151,28 @@ export function CalendarioAnualTab({
     // Comisiones (egreso comercial), por nombre de trabajo.
     const comisionDetail = new Map<string, Map<string, number>>();
     const comisionByDate = new Map<string, number>();
+    // Totales por SECCIÓN separados blanco/negro (para mostrar debajo del total de cada sección).
+    const secB = new Map<string, Map<string, number>>();
+    const secN = new Map<string, Map<string, number>>();
+    // Cuando scope=Todas: desglose de los grandes totales POR EMPRESA (el "×4" a la vista, con color).
+    const compIncB = new Map<string, Map<string, number>>();
+    const compIncN = new Map<string, Map<string, number>>();
+    const compEgrB = new Map<string, Map<string, number>>();
+    const compEgrN = new Map<string, Map<string, number>>();
+    const companiesSeen = new Set<string>();
     const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
     const addDeep = (m: Map<string, Map<string, number>>, a: string, d: string, v: number) => {
       if (!m.has(a)) m.set(a, new Map());
       add(m.get(a)!, d, v);
+    };
+    // Registra el movimiento (ya firmado por dirección) en los mapas por sección y por empresa.
+    const track = (sectionKey: string, dir: "in" | "out", neg: boolean, company: string, date: string, amt: number) => {
+      addDeep(neg ? secN : secB, sectionKey, date, amt);
+      if (company) {
+        companiesSeen.add(company);
+        const cm = dir === "in" ? (neg ? compIncN : compIncB) : (neg ? compEgrN : compEgrB);
+        addDeep(cm, company, date, amt);
+      }
     };
     entries.forEach((e) => {
       if (companyScope !== "__ALL__" && e.company !== companyScope) return;
@@ -181,6 +199,7 @@ export function CalendarioAnualTab({
         add(comisionByDate, e.date, amt);
         add(egresoByDate, e.date, amt);
         add(neg ? egrN : egrB, e.date, amt);
+        track("gastos_comerciales", "out", neg, e.company, e.date, amt);
         return;
       }
       if (isCobranza) {
@@ -188,6 +207,7 @@ export function CalendarioAnualTab({
         add(cobranzaByDate, e.date, amt);
         add(incomeByDate, e.date, amt);
         add(neg ? incN : incB, e.date, amt);
+        track("cobranzas", "in", neg, e.company, e.date, amt);
         return;
       }
       const idx = e.conceptKey ? CALENDAR_ITEM_INDEX[e.conceptKey] : undefined;
@@ -196,6 +216,7 @@ export function CalendarioAnualTab({
         add(idx.dir === "in" ? incomeByDate : egresoByDate, e.date, amt);
         if (idx.dir === "in") add(neg ? incN : incB, e.date, amt);
         else add(neg ? egrN : egrB, e.date, amt);
+        track(idx.sectionKey, idx.dir, neg, e.company, e.date, amt);
         return;
       }
       // sin clasificar (acá cae el banco hasta que se asigne a un renglón). Firmamos el monto por el
@@ -212,8 +233,16 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen };
   }, [entries, companyScope, dayCols]);
+
+  // Color y sigla por empresa para el desglose cuando scope=Todas.
+  const companyMeta = useMemo(() => {
+    const m = new Map<string, { short: string; color: string }>();
+    companyOptions.forEach((c) => m.set(c.value, { short: c.short || c.value, color: c.primary || "#64748b" }));
+    return m;
+  }, [companyOptions]);
+  const showByCompany = companyScope === "__ALL__" && agg.companiesSeen.size > 1;
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string) =>
     setAddForm({
@@ -269,6 +298,34 @@ export function CalendarioAnualTab({
       if (row) row.forEach((v, d) => out.set(d, (out.get(d) || 0) + v));
     });
     return out;
+  };
+
+  // Sub-fila compacta de subtotal (blanco/negro o por empresa), con marca de color a la izquierda.
+  const subtotalRow = (
+    label: string,
+    drow: Map<string, number> | undefined,
+    key: string,
+    isOut: boolean,
+    dotColor: string,
+    bg: string
+  ) => {
+    if (!drow || !visibleDayCols.some((c) => (drow.get(c.iso) || 0) !== 0)) return null;
+    return (
+      <tr key={key} style={{ background: bg }}>
+        <td style={{ ...tdStickyLabel, background: bg, paddingLeft: 30, fontWeight: 600, fontSize: 11, color: "#475569" }}>
+          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: dotColor, marginRight: 6 }} />
+          {label}
+        </td>
+        {visibleDayCols.map((c) => {
+          const v = drow.get(c.iso) || 0;
+          return (
+            <td key={`${key}-${c.iso}`} style={{ ...tdCell, fontSize: 11, background: bg, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0" }}>
+              {v ? money(v) : "·"}
+            </td>
+          );
+        })}
+      </tr>
+    );
   };
 
   const detailRow = (label: string, drow: Map<string, number>, key: string, isOut: boolean) => (
@@ -420,6 +477,9 @@ export function CalendarioAnualTab({
                         );
                       })}
                     </tr>
+                    {/* Subtotal de la sección separado blanco / negro (solo si la sección está expandida) */}
+                    {!isCol && subtotalRow(`${section.totalLabel} · blanco`, agg.secB.get(section.key), `stb-${section.key}`, isOut, "#cbd5e1", "#f8fafc")}
+                    {!isCol && subtotalRow(`${section.totalLabel} · negro`, agg.secN.get(section.key), `stn-${section.key}`, isOut, "#334155", "#eef2f7")}
                   </React.Fragment>
                 );
               })}
@@ -537,18 +597,28 @@ export function CalendarioAnualTab({
 
               {/* ===== TOTALES SEPARADOS BLANCO / NEGRO ===== */}
               {([
-                { lbl: "TOTAL INGRESOS · BLANCO", m: agg.incB, bg: "#f8fafc", color: "#0f172a", kp: "tib" },
-                { lbl: "TOTAL INGRESOS · NEGRO", m: agg.incN, bg: "#e5e7eb", color: "#0f172a", kp: "tin" },
-                { lbl: "TOTAL EGRESOS · BLANCO", m: agg.egrB, bg: "#f8fafc", color: "#dc2626", kp: "teb" },
-                { lbl: "TOTAL EGRESOS · NEGRO", m: agg.egrN, bg: "#e5e7eb", color: "#dc2626", kp: "ten" },
+                { lbl: "TOTAL INGRESOS · BLANCO", m: agg.incB, comp: agg.compIncB, isOut: false, bg: "#f8fafc", color: "#0f172a", kp: "tib" },
+                { lbl: "TOTAL INGRESOS · NEGRO", m: agg.incN, comp: agg.compIncN, isOut: false, bg: "#e5e7eb", color: "#0f172a", kp: "tin" },
+                { lbl: "TOTAL EGRESOS · BLANCO", m: agg.egrB, comp: agg.compEgrB, isOut: true, bg: "#f8fafc", color: "#dc2626", kp: "teb" },
+                { lbl: "TOTAL EGRESOS · NEGRO", m: agg.egrN, comp: agg.compEgrN, isOut: true, bg: "#e5e7eb", color: "#dc2626", kp: "ten" },
               ] as const).map((row) => (
-                <tr key={row.kp}>
-                  <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.color }}>{row.lbl}</td>
-                  {visibleDayCols.map((c) => {
-                    const v = row.m.get(c.iso) || 0;
-                    return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
-                  })}
-                </tr>
+                <React.Fragment key={row.kp}>
+                  <tr>
+                    <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.color }}>{row.lbl}</td>
+                    {visibleDayCols.map((c) => {
+                      const v = row.m.get(c.iso) || 0;
+                      return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
+                    })}
+                  </tr>
+                  {/* Desglose por empresa (con su color) cuando se ven todas — el "×4" a la vista */}
+                  {showByCompany &&
+                    Array.from(row.comp.entries())
+                      .sort((a, b) => a[0].localeCompare(b[0]))
+                      .map(([company, drow]) => {
+                        const meta = companyMeta.get(company);
+                        return subtotalRow(meta?.short || company, drow, `${row.kp}-${company}`, row.isOut, meta?.color || "#64748b", row.bg);
+                      })}
+                </React.Fragment>
               ))}
               {([
                 { lbl: "NETO DÍA · BLANCO", inc: agg.incB, egr: agg.egrB, bg: "#e2e8f0", kp: "ndb" },
