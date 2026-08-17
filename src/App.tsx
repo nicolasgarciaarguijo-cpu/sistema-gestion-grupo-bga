@@ -12041,6 +12041,7 @@ export default function App() {
       subcat?: string;
       conceptKey?: string;
       administration?: "blanco" | "negro";
+      currency?: "ARS" | "USD";
     }> = [];
 
     visibleFinancialItems.forEach((item) => {
@@ -12125,6 +12126,7 @@ export default function App() {
         statusLabel: item.movementType,
         conceptKey: item.conceptKey || undefined,
         administration: item.administration === "negro" ? "negro" : "blanco",
+        currency: item.currency === "USD" ? "USD" : "ARS",
       });
     });
 
@@ -14820,6 +14822,7 @@ export default function App() {
           companyOptions={COMPANY_OPTIONS}
           onAddMovement={addCalendarMovement}
           onAssignConcept={assignBankConcept}
+          bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}
           money={money}
         />
       )}

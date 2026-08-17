@@ -19,6 +19,7 @@ type Entry = {
   subcat?: string;
   conceptKey?: string;
   administration?: "blanco" | "negro";
+  currency?: "ARS" | "USD";
 };
 
 const MES = [
@@ -62,6 +63,7 @@ export function CalendarioAnualTab({
   fiscalStartMonth = 11,
   onAddMovement,
   onAssignConcept,
+  bnaCompra,
   money,
 }: {
   entries: Entry[];
@@ -87,6 +89,7 @@ export function CalendarioAnualTab({
     costKind?: "fijo" | "variable";
   }) => void;
   onAssignConcept: (bankIds: number[], conceptKey: string) => void;
+  bnaCompra: number;
   money: (n: number, currency?: string) => string;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -141,6 +144,10 @@ export function CalendarioAnualTab({
     // Totales SIEMPRE separados blanco/negro (el "×4" se completa con el selector de empresa).
     const incB = new Map<string, number>(); const incN = new Map<string, number>();
     const egrB = new Map<string, number>(); const egrN = new Map<string, number>();
+    // USD aparte: $ y U$S NUNCA se suman. Se muestran con pill U$S + estimado en pesos (compra BNA).
+    const usdDetail = new Map<string, Map<string, number>>();
+    const usdTitleTotal = new Map<string, number>();
+    const usdByDate = new Map<string, number>();
     const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
     const addDeep = (m: Map<string, Map<string, number>>, a: string, d: string, v: number) => {
       if (!m.has(a)) m.set(a, new Map());
@@ -156,6 +163,14 @@ export function CalendarioAnualTab({
       if (!isCalendarSource) return;
       const amt = Number(e.amount || 0);
       const title = (e.title || "—").trim();
+      // USD: se acumula aparte (firmado por crédito/débito), nunca en los mapas de pesos.
+      if (e.currency === "USD") {
+        const signedUsd = e.statusLabel === "debito" ? -amt : amt;
+        addDeep(usdDetail, title, e.date, signedUsd);
+        add(usdTitleTotal, title, signedUsd);
+        add(usdByDate, e.date, signedUsd);
+        return;
+      }
       const isCobranza = e.kind === "cobranza" || e.conceptKey === "cobranzas";
       const neg = e.administration === "negro";
       if (isCobranza) {
@@ -187,7 +202,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate };
   }, [entries, companyScope, dayCols]);
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string) =>
@@ -451,6 +466,49 @@ export function CalendarioAnualTab({
                 </>
               )}
 
+              {/* ===== MOVIMIENTOS EN U$S (nunca se suman con pesos) ===== */}
+              {agg.usdDetail.size > 0 && (
+                <>
+                  <tr>
+                    <td style={{ ...tdStickyLabel, background: "#e0f2fe", fontWeight: 800, color: "#075985" }}>
+                      <span style={usdPill}>U$S</span> MOVIMIENTOS EN DÓLARES
+                      {bnaCompra ? ` · compra BNA $${bnaCompra.toLocaleString("es-AR")}` : ""}
+                    </td>
+                    {visibleDayCols.map((c) => {
+                      const v = agg.usdByDate.get(c.iso) || 0;
+                      return (
+                        <td key={`usdh-${c.iso}`} style={{ ...tdCell, background: "#e0f2fe", fontWeight: 700, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#cbd5e1" }}>
+                          {v ? money(Math.abs(v), "USD") : "·"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {Array.from(agg.usdDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => {
+                    const tot = agg.usdTitleTotal.get(title) || 0;
+                    const pesos = Math.abs(tot) * (bnaCompra || 0);
+                    return (
+                      <tr key={`usd-${title}`} style={{ background: "#f0f9ff" }}>
+                        <td style={{ ...tdStickyLabel, background: "#f0f9ff", paddingLeft: 24 }}>
+                          <span style={usdPill}>U$S</span> {title}{" "}
+                          <strong style={{ color: tot > 0 ? "#0f172a" : "#dc2626" }}>
+                            ({tot > 0 ? "ingreso" : "egreso"} {money(Math.abs(tot), "USD")})
+                          </strong>
+                          {bnaCompra ? <span style={{ color: "#64748b" }}> (≈ {money(pesos)})</span> : null}
+                        </td>
+                        {visibleDayCols.map((c) => {
+                          const v = drow.get(c.iso) || 0;
+                          return (
+                            <td key={`usd-${title}-${c.iso}`} style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0" }}>
+                              {v ? money(Math.abs(v), "USD") : "·"}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
+                </>
+              )}
+
               {/* ===== TOTALES SEPARADOS BLANCO / NEGRO ===== */}
               {([
                 { lbl: "TOTAL INGRESOS · BLANCO", m: agg.incB, bg: "#f8fafc", color: "#0f172a", kp: "tib" },
@@ -584,6 +642,10 @@ const modalStyle: React.CSSProperties = {
   overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
 };
 const lblStyle: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13, fontWeight: 600 };
+const usdPill: React.CSSProperties = {
+  display: "inline-block", background: "#0284c7", color: "#fff", fontWeight: 800, fontSize: 10,
+  borderRadius: 999, padding: "1px 6px", marginRight: 4, verticalAlign: "middle",
+};
 const miniAdd: React.CSSProperties = {
   padding: "2px 8px", borderRadius: 6, border: "1px dashed #86efac", background: "#f0fdf4", cursor: "pointer", fontSize: 12,
 };
