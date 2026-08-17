@@ -529,6 +529,8 @@ export type FinancialCalendarItem = {
   // Renglón del Calendario anual (chart of accounts, ver domain/calendarStructure.ts) al que se clasifica
   // este movimiento. Permite ubicarlo en la sección/ítem exacto de la planilla.
   conceptKey?: string;
+  // Categoría del gasto para identificar costos fijos/variables (después se llevan a marcadores).
+  costKind?: "fijo" | "variable";
   // Si el usuario editó a mano un item autogenerado (p.ej. partió el saldo en cuotas),
   // la regeneración NO lo recalcula: respeta lo cargado a mano ("sin pisarse").
   userEdited?: boolean;

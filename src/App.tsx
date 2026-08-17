@@ -10632,6 +10632,7 @@ export default function App() {
     notes: string;
     incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
     conceptKey?: string;
+    costKind?: "fijo" | "variable";
   }) => {
     const item: FinancialCalendarItem = {
       id: newId(),
@@ -10647,6 +10648,7 @@ export default function App() {
       administration: m.administration,
       incomeCategory: m.type === "cobranza" ? m.incomeCategory || "trabajo" : undefined,
       conceptKey: m.conceptKey || undefined,
+      costKind: m.type === "pago" ? m.costKind : undefined,
     };
     setFinancialItems((prev) => [item, ...prev]);
   };

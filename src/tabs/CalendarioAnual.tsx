@@ -46,6 +46,7 @@ type AddForm = {
   cliente: string;
   amount: number;
   administration: "blanco" | "negro";
+  costKind: "" | "fijo" | "variable";
   notes: string;
 };
 
@@ -82,6 +83,7 @@ export function CalendarioAnualTab({
     notes: string;
     conceptKey?: string;
     incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
+    costKind?: "fijo" | "variable";
   }) => void;
   onAssignConcept: (bankIds: number[], conceptKey: string) => void;
   money: (n: number, currency?: string) => string;
@@ -182,6 +184,7 @@ export function CalendarioAnualTab({
       cliente: "",
       amount: 0,
       administration: "blanco",
+      costKind: "",
       notes: "",
     });
 
@@ -208,6 +211,7 @@ export function CalendarioAnualTab({
       notes: addForm.notes,
       conceptKey: isCob ? "cobranzas" : addForm.itemKey,
       incomeCategory: isCob ? "trabajo" : undefined,
+      costKind: type === "pago" && addForm.costKind ? addForm.costKind : undefined,
     });
     setAddForm(null);
   };
@@ -494,6 +498,15 @@ export function CalendarioAnualTab({
                     <option value="negro">Negro</option>
                   </select>
                 </label>
+                {section?.dir === "out" && (
+                  <label style={lblStyle}>Categoría (para marcadores)
+                    <select style={styles.input} value={addForm.costKind} onChange={(e) => setAddForm({ ...addForm, costKind: e.target.value as "" | "fijo" | "variable" })}>
+                      <option value="">— Sin categoría —</option>
+                      <option value="fijo">Costo fijo</option>
+                      <option value="variable">Costo variable</option>
+                    </select>
+                  </label>
+                )}
                 <label style={lblStyle}>Notas (opcional)
                   <input style={styles.input} value={addForm.notes} onChange={(e) => setAddForm({ ...addForm, notes: e.target.value })} />
                 </label>
