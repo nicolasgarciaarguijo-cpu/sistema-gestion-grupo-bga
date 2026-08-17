@@ -197,8 +197,12 @@ export function AprobadosTab({
                       {rowc("Falta facturar", ff)}
                       {rowc("Falta cobrar", fc)}
                       {rowc("Falta pagar comisión", fco)}
-                      <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 6, paddingTop: 6, fontWeight: 700, color: isJobDone(ctxMenu.job) ? "#16a34a" : "#b45309" }}>
-                        {isJobDone(ctxMenu.job) ? "✓ Trabajo terminado" : "⏳ Pendiente"}
+                      <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 6, paddingTop: 6, fontWeight: 700, color: ctxMenu.job.executionStatus === "finalizado" ? "#16a34a" : isJobDone(ctxMenu.job) ? "#16a34a" : "#b45309" }}>
+                        {ctxMenu.job.executionStatus === "finalizado"
+                          ? "✓ Completado"
+                          : isJobDone(ctxMenu.job)
+                          ? "● Listo para completar (marcalo en la ficha)"
+                          : "⏳ Pendiente"}
                       </div>
                     </>
                   );
@@ -323,15 +327,16 @@ export function AprobadosTab({
                         </td>
                       </tr>
                       {group.items.map((job) => {
-                        const done = isJobDone(job);
+                        const completado = job.executionStatus === "finalizado";
+                        const listo = isJobDone(job) && !completado; // todo pago pero aún no marcado completado
                         return (
                         <tr
                           key={job.id}
                           onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
                           title="Click derecho: resumen del cliente"
-                          style={done ? { background: "#e2e8f0", color: "#64748b" } : job.executionStatus === "finalizado" ? styles.rowGreen : undefined}
+                          style={completado ? { background: "#e2e8f0", color: "#64748b" } : listo ? styles.rowGreen : undefined}
                         >
-                          <td>{done ? "✓ " : ""}{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
+                          <td>{completado ? "✓ " : listo ? "● " : ""}{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
                           <td>
                             <span
                               style={{

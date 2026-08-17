@@ -9442,12 +9442,21 @@ export default function App() {
       prev.map((job) => {
         if (job.id !== jobId) return job;
         if (field === "executionStatus" && value === "finalizado") {
-          const commissionPaid = job.commissionPayments.reduce(
-            (acc, item) => acc + Number(item.amount || 0),
-            0
-          );
-          if (Math.max(0, Number(job.commissionAmount || 0) - commissionPaid) > 0) {
-            window.alert("No puedes finalizar el trabajo si la comision sigue pendiente.");
+          // No se puede COMPLETAR un trabajo si falta cargar algo: facturar, cobrar o pagar la comisión.
+          // Así el sombreado/filtro de "terminado" garantiza que de verdad no quedó nada pendiente.
+          const summary = approvedJobsSummary.find((s) => s.id === jobId);
+          const commissionPaid = job.commissionPayments.reduce((acc, item) => acc + Number(item.amount || 0), 0);
+          const faltaComision = Math.max(0, Number(job.commissionAmount || 0) - commissionPaid);
+          const faltaCobrar = Number(summary?.remainingToPay || 0);
+          const target = Number(job.soldNetPrice || 0) * (Number(job.billedPct || 0) / 100);
+          const invoiced = (job.invoices || []).reduce((a, i) => a + Number(i?.subtotal || 0), 0);
+          const faltaFacturar = Math.max(0, target - invoiced);
+          const faltan: string[] = [];
+          if (faltaFacturar > 1) faltan.push(`facturar ${money(faltaFacturar)}`);
+          if (faltaCobrar > 1) faltan.push(`cobrar ${money(faltaCobrar)}`);
+          if (faltaComision > 1) faltan.push(`pagar comisión ${money(faltaComision)}`);
+          if (faltan.length) {
+            window.alert(`No podés completar el trabajo: falta ${faltan.join(", ")}.`);
             return job;
           }
         }
