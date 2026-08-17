@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel } from "../ui/primitives";
 import { todayIso } from "../lib/format";
@@ -310,6 +310,13 @@ export function CalendarioAnualTab({
   const today = todayIso();
   const hi = (iso: string): React.CSSProperties =>
     iso === today ? { boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" } : {};
+  // Al abrir (o cambiar de vista) posicionamos el scroll horizontal en la columna de hoy.
+  const todayCellRef = useRef<HTMLTableCellElement | null>(null);
+  useEffect(() => {
+    if (todayCellRef.current) {
+      todayCellRef.current.scrollIntoView({ inline: "center", block: "nearest" });
+    }
+  }, [monthMode, monthIdx, companyScope, fiscalStartYear, today]);
 
   const cell = (m: Map<string, number> | undefined, iso: string) => (m ? m.get(iso) || 0 : 0);
   // Una fila dinámica (cliente/trabajo) solo se muestra si tiene MOVIMIENTO en el período visible.
@@ -427,6 +434,7 @@ export function CalendarioAnualTab({
                 {visibleDayCols.map((c) => (
                   <th
                     key={`d-${c.iso}`}
+                    ref={c.iso === today ? todayCellRef : undefined}
                     title={c.iso === today ? "Hoy" : undefined}
                     style={c.iso === today ? { ...thDay, background: "#f59e0b", color: "#fff", fontWeight: 800 } : thDay}
                   >
