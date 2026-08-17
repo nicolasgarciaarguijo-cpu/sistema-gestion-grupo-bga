@@ -123,6 +123,7 @@ export function CalendarioAnualTab({
     const cobranzaByDate = new Map<string, number>();
     const unclDetail = new Map<string, Map<string, number>>();
     const unclByDate = new Map<string, number>();
+    const unclTitleTotal = new Map<string, number>(); // título -> total firmado (para ver el impacto)
     const unclBankIds = new Map<string, number[]>(); // título -> ids de bankStatementEntry (para asignar en bloque)
     const incomeByDate = new Map<string, number>();
     const egresoByDate = new Map<string, number>();
@@ -154,9 +155,12 @@ export function CalendarioAnualTab({
         add(idx.dir === "in" ? incomeByDate : egresoByDate, e.date, amt);
         return;
       }
-      // sin clasificar (acá caerá el banco hasta que se asigne a un renglón)
-      addDeep(unclDetail, title, e.date, amt);
-      add(unclByDate, e.date, amt);
+      // sin clasificar (acá cae el banco hasta que se asigne a un renglón). Firmamos el monto por el
+      // tipo de movimiento: crédito = ingreso (+, negro), débito = egreso (−, rojo), para ver el impacto.
+      const signed = e.statusLabel === "debito" ? -amt : amt;
+      addDeep(unclDetail, title, e.date, signed);
+      add(unclByDate, e.date, signed);
+      add(unclTitleTotal, title, signed);
       if (e.kind === "banco" && e.id.startsWith("bank-")) {
         const bankId = Number(e.id.slice(5));
         if (bankId) {
@@ -165,7 +169,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclBankIds, incomeByDate, egresoByDate };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate };
   }, [entries, companyScope, dayCols]);
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string) =>
@@ -360,8 +364,8 @@ export function CalendarioAnualTab({
                     {visibleDayCols.map((c) => {
                       const v = agg.unclByDate.get(c.iso) || 0;
                       return (
-                        <td key={`unclh-${c.iso}`} style={{ ...tdCell, background: "#fef9c3", fontWeight: 700, color: v ? "#854d0e" : "#e2e8f0" }}>
-                          {v ? money(v) : "·"}
+                        <td key={`unclh-${c.iso}`} style={{ ...tdCell, background: "#fef9c3", fontWeight: 700, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0" }}>
+                          {v ? money(Math.abs(v)) : "·"}
                         </td>
                       );
                     })}
@@ -373,9 +377,18 @@ export function CalendarioAnualTab({
                         <tr key={`uncl-${title}`} style={{ background: "#fffbeb" }}>
                           <td style={{ ...tdStickyLabel, background: "#fffbeb", paddingLeft: 24 }}>
                             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-                              <span style={{ fontWeight: 400, color: "#475569" }}>
-                                {title}{ids.length > 1 ? ` · ${ids.length} mov.` : ""}
-                              </span>
+                              {(() => {
+                                const tot = agg.unclTitleTotal.get(title) || 0;
+                                return (
+                                  <span style={{ fontWeight: 400, color: "#475569" }}>
+                                    {title}{ids.length > 1 ? ` · ${ids.length} mov.` : ""}
+                                    {" "}
+                                    <strong style={{ color: tot > 0 ? "#0f172a" : tot < 0 ? "#dc2626" : "#94a3b8" }}>
+                                      ({tot > 0 ? "ingreso" : "egreso"} {money(Math.abs(tot))})
+                                    </strong>
+                                  </span>
+                                );
+                              })()}
                               {ids.length > 0 && (
                                 <select
                                   style={{ ...styles.input, fontSize: 11, padding: "2px 4px", minWidth: 200 }}
@@ -395,8 +408,8 @@ export function CalendarioAnualTab({
                           {visibleDayCols.map((c) => {
                             const v = drow.get(c.iso) || 0;
                             return (
-                              <td key={`uncl-${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#854d0e" : "#e2e8f0" }}>
-                                {v ? money(v) : "·"}
+                              <td key={`uncl-${title}-${c.iso}`} style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0" }}>
+                                {v ? money(Math.abs(v)) : "·"}
                               </td>
                             );
                           })}
