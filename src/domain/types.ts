@@ -1071,6 +1071,8 @@ export type Employee = {
   name: string;
   // CUIL del trabajador (lo exige el recibo, LCT art. 140). Opcional para datos viejos.
   cuil?: string;
+  // Fecha de ingreso (alta laboral). Para el recibo y para calcular antigüedad. yyyy-mm-dd.
+  hireDate?: string;
   category: string;
   // Tipo de vinculo: "convenio" (por escala, default), "temporal" (negro, por acuerdo, se paga por
   // caja chica hasta efectivizar) o "fuera_convenio" (socio/gerente/administrativo con sueldo acordado

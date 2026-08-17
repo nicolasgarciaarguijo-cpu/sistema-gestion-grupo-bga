@@ -1096,6 +1096,7 @@ export function PersonalTab(props: PersonalTabProps) {
                   <th>Nombre y apellido</th>
                   <th>Categoria base</th>
                   <th>Antig.</th>
+                  <th>Ingreso</th>
                   <th>Asistencia</th>
                   <th>Documentacion</th>
                   {PERSONAL_PROVISION_KINDS.map((k) => (
@@ -1157,6 +1158,7 @@ export function PersonalTab(props: PersonalTabProps) {
                       </td>
                       <td>{employee.category}</td>
                       <td>{employee.seniorityYears}</td>
+                      <td>{employee.hireDate ? formatDateDisplay(employee.hireDate) : "-"}</td>
                       <td>
                         <span style={{ ...styles.statusPill, ...toneStyle }}>{att.label}</span>
                       </td>
@@ -1345,6 +1347,14 @@ export function PersonalTab(props: PersonalTabProps) {
                               value={selectedEmployee.cuil || ""}
                               placeholder="20-12345678-9"
                               onChange={(e) => updateEmployeeField(selectedEmployee.id, "cuil", e.target.value)}
+                            />
+                          </Field>
+                          <Field label="Fecha de ingreso">
+                            <input
+                              style={styles.input}
+                              type="date"
+                              value={selectedEmployee.hireDate || ""}
+                              onChange={(e) => updateEmployeeField(selectedEmployee.id, "hireDate", e.target.value)}
                             />
                           </Field>
                           {selectedEmployee.employmentType === "temporal" ? (

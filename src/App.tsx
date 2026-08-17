@@ -307,6 +307,7 @@ type CompanyOption = {
   bankAlias: string;
   bankCbu: string;
   bankAccount: string;
+  domicilio?: string; // domicilio de la empresa (para el recibo de sueldo, LCT art. 140)
   fiscalYearStartMonth?: number; // mes de inicio del ano fiscal (1-12); default noviembre (11)
 };
 
@@ -321,6 +322,7 @@ const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
     bankAlias: "GRUPOBGA",
     bankCbu: "0720082320000000448536",
     bankAccount: "CC$ 082-004485/3",
+    domicilio: "Alexander Fleming 2186 - Villa Granaderos de San Martín",
     fiscalYearStartMonth: 11,
   },
   {
@@ -333,6 +335,7 @@ const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
     bankAlias: "DERAIZSRL",
     bankCbu: "0340041800419997078004",
     bankAccount: "CC $ 041-419997078-000",
+    domicilio: "Alexander Fleming 2186 - Villa Granaderos de San Martín",
     fiscalYearStartMonth: 11,
   },
 ];
