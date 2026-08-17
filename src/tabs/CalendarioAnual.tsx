@@ -20,6 +20,7 @@ type Entry = {
   conceptKey?: string;
   administration?: "blanco" | "negro";
   currency?: "ARS" | "USD";
+  costKind?: "fijo" | "variable";
 };
 
 const MES = [
@@ -154,6 +155,10 @@ export function CalendarioAnualTab({
     // Totales por SECCIÓN separados blanco/negro (para mostrar debajo del total de cada sección).
     const secB = new Map<string, Map<string, number>>();
     const secN = new Map<string, Map<string, number>>();
+    // Costos fijos vs variables (egresos con clasificación), por día. Y por concepto, qué tipo(s) tiene.
+    const fijoByDate = new Map<string, number>();
+    const varByDate = new Map<string, number>();
+    const conceptCostKind = new Map<string, { fijo: boolean; variable: boolean }>(); // itemKey -> tipos vistos
     // Cuando scope=Todas: desglose de los grandes totales POR EMPRESA (el "×4" a la vista, con color).
     const compIncB = new Map<string, Map<string, number>>();
     const compIncN = new Map<string, Map<string, number>>();
@@ -217,6 +222,13 @@ export function CalendarioAnualTab({
         if (idx.dir === "in") add(neg ? incN : incB, e.date, amt);
         else add(neg ? egrN : egrB, e.date, amt);
         track(idx.sectionKey, idx.dir, neg, e.company, e.date, amt);
+        // Costos fijos/variables: solo egresos con clasificación explícita.
+        if (idx.dir === "out" && (e.costKind === "fijo" || e.costKind === "variable")) {
+          add(e.costKind === "fijo" ? fijoByDate : varByDate, e.date, amt);
+          const ck = conceptCostKind.get(e.conceptKey!) || { fijo: false, variable: false };
+          if (e.costKind === "fijo") ck.fijo = true; else ck.variable = true;
+          conceptCostKind.set(e.conceptKey!, ck);
+        }
         return;
       }
       // sin clasificar (acá cae el banco hasta que se asigne a un renglón). Firmamos el monto por el
@@ -233,7 +245,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind };
   }, [entries, companyScope, dayCols]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
@@ -433,9 +445,14 @@ export function CalendarioAnualTab({
                         )
                       : section.items.map((it) => {
                           const drow = agg.byConcept.get(it.key);
+                          const ck = agg.conceptCostKind.get(it.key);
                           return (
                             <tr key={it.key}>
-                              <td style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}>{it.label}</td>
+                              <td style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}>
+                                {it.label}
+                                {ck?.fijo && <span style={{ ...costChip, background: "#e0e7ff", color: "#3730a3" }} title="Costo fijo">F</span>}
+                                {ck?.variable && <span style={{ ...costChip, background: "#fef3c7", color: "#92400e" }} title="Costo variable">V</span>}
+                              </td>
                               {visibleDayCols.map((c) => {
                                 const v = drow?.get(c.iso) || 0;
                                 return (
@@ -632,6 +649,20 @@ export function CalendarioAnualTab({
                   })}
                 </tr>
               ))}
+              {/* ===== EGRESOS por tipo de costo (solo los clasificados fijo/variable) ===== */}
+              {(agg.fijoByDate.size > 0 || agg.varByDate.size > 0) &&
+                ([
+                  { lbl: "COSTOS FIJOS (F)", m: agg.fijoByDate, bg: "#eef2ff", color: "#3730a3", kp: "cfij" },
+                  { lbl: "COSTOS VARIABLES (V)", m: agg.varByDate, bg: "#fffbeb", color: "#92400e", kp: "cvar" },
+                ] as const).map((row) => (
+                  <tr key={row.kp}>
+                    <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.color }}>{row.lbl}</td>
+                    {visibleDayCols.map((c) => {
+                      const v = row.m.get(c.iso) || 0;
+                      return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1" }}>{v ? money(v) : "·"}</td>;
+                    })}
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -741,6 +772,9 @@ const lblStyle: React.CSSProperties = { display: "grid", gap: 4, fontSize: 13, f
 const usdPill: React.CSSProperties = {
   display: "inline-block", background: "#0284c7", color: "#fff", fontWeight: 800, fontSize: 10,
   borderRadius: 999, padding: "1px 6px", marginRight: 4, verticalAlign: "middle",
+};
+const costChip: React.CSSProperties = {
+  display: "inline-block", fontWeight: 800, fontSize: 9, borderRadius: 4, padding: "0px 4px", marginLeft: 5, verticalAlign: "middle",
 };
 const miniAdd: React.CSSProperties = {
   padding: "2px 8px", borderRadius: 6, border: "1px dashed #86efac", background: "#f0fdf4", cursor: "pointer", fontSize: 12,

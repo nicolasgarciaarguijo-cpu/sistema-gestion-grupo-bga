@@ -12074,6 +12074,7 @@ export default function App() {
       conceptKey?: string;
       administration?: "blanco" | "negro";
       currency?: "ARS" | "USD";
+      costKind?: "fijo" | "variable";
     }> = [];
 
     visibleFinancialItems.forEach((item) => {
@@ -12092,6 +12093,7 @@ export default function App() {
         subcat: isCobranza ? item.incomeCategory || "trabajo" : undefined,
         conceptKey: item.conceptKey || undefined,
         administration: item.administration === "negro" ? "negro" : "blanco",
+        costKind: item.costKind || undefined,
       });
     });
 
