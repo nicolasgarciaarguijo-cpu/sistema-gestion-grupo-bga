@@ -92,6 +92,14 @@ export function CalendarioAnualTab({
   const [addForm, setAddForm] = useState<null | AddForm>(null);
   const [monthMode, setMonthMode] = useState(true); // un mes por vez (liviano); off = año completo
   const [monthIdx, setMonthIdx] = useState(0);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set()); // secciones minimizadas (solo total)
+  const toggleCollapse = (k: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  const allCollapsed = collapsed.size >= 16;
   const toggle = (k: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -269,6 +277,12 @@ export function CalendarioAnualTab({
               <input type="checkbox" checked={!monthMode} onChange={(e) => setMonthMode(!e.target.checked)} />
               Año completo
             </label>
+            <button
+              style={btnSecondary}
+              onClick={() => setCollapsed(allCollapsed ? new Set() : new Set([...CALENDAR_SECTIONS.map((s) => s.key), "uncl"]))}
+            >
+              {allCollapsed ? "Expandir todo" : "Minimizar todo"}
+            </button>
           </div>
         }
       >
@@ -298,16 +312,21 @@ export function CalendarioAnualTab({
               {CALENDAR_SECTIONS.map((section) => {
                 const isOut = section.dir === "out";
                 const isCob = section.dynamic === "cobranzas";
+                const isCol = collapsed.has(section.key);
                 const totalByDate = isCob ? agg.cobranzaByDate : sumItemsByDate(section.items.map((i) => i.key));
                 return (
                   <React.Fragment key={section.key}>
                     <tr>
-                      <td style={{ ...tdStickyLabel, background: isOut ? "#fee2e2" : "#dcfce7", fontWeight: 800, color: isOut ? "#991b1b" : "#065f46" }}>
-                        {section.label}
+                      <td
+                        style={{ ...tdStickyLabel, background: isOut ? "#fee2e2" : "#dcfce7", fontWeight: 800, color: isOut ? "#991b1b" : "#065f46", cursor: "pointer", userSelect: "none" }}
+                        onClick={() => toggleCollapse(section.key)}
+                        title="Minimizar / expandir la sección"
+                      >
+                        {isCol ? "▸ " : "▾ "}{section.label}
                       </td>
                       {visibleDayCols.map((c) => <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, background: isOut ? "#fee2e2" : "#dcfce7" }}></td>)}
                     </tr>
-                    {isCob
+                    {!isCol && (isCob
                       ? Array.from(agg.cobranzaDetail.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
                           detailRow(title, drow, `cob-${title}`, false)
                         )
@@ -331,8 +350,9 @@ export function CalendarioAnualTab({
                               })}
                             </tr>
                           );
-                        })}
-                    {isCob && (
+                        })
+                    )}
+                    {!isCol && isCob && (
                       <tr>
                         <td style={{ ...tdStickyLabel, paddingLeft: 20, color: "#065f46" }}>
                           <button style={miniAdd} onClick={() => openAdd(section.key, "", visibleDayCols[0]?.iso || "")}>+ cargar cobranza</button>
