@@ -3950,6 +3950,27 @@ export default function App() {
     [visiblePettyCashFunds, visiblePettyCashExpenses]
   );
 
+  // Cajas chicas por empresa para la barra superior: saldo (blanco+negro) por empresa, con su color.
+  const pettyCashHeader = useMemo(
+    () =>
+      COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General")
+        .map((c) => {
+          const funds = visiblePettyCashFunds.filter((f) => f.company === c.value && !f.closed);
+          const expenses = visiblePettyCashExpenses.filter((e) => e.company === c.value);
+          const bal = computePettyCashBalance(funds, expenses);
+          return {
+            company: String(c.value),
+            short: c.short,
+            color: c.primary,
+            saldo: bal.whiteSaldo + bal.blackSaldo + bal.unclassifiedIn,
+            blanco: bal.whiteSaldo,
+            negro: bal.blackSaldo,
+          };
+        })
+        .filter((r) => Math.abs(r.saldo) > 0.5 || Math.abs(r.blanco) > 0.5 || Math.abs(r.negro) > 0.5),
+    [visiblePettyCashFunds, visiblePettyCashExpenses]
+  );
+
   const pettyCashTrackingRows = useMemo(
     () =>
       visiblePettyCashExpenses
@@ -14465,6 +14486,7 @@ export default function App() {
           ratesUpdatedAt={dollarRatesUpdatedAt}
           connectedUsers={otherActiveSessions}
           primary={workspaceTheme.primary}
+          pettyCash={pettyCashHeader}
         />
       )}
       {isSupabaseLoggedIn && activeTab !== "acceso" && effectiveIsAdmin && (

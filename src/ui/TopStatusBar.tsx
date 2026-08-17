@@ -35,16 +35,20 @@ const initials = (name?: string, email?: string) => {
   return base.slice(0, 2).toUpperCase();
 };
 
+export type PettyCashHeader = { company: string; short: string; color: string; saldo: number; blanco: number; negro: number };
+
 function TopStatusBar({
   rates,
   ratesUpdatedAt,
   connectedUsers,
   primary,
+  pettyCash = [],
 }: {
   rates: DollarRate[];
   ratesUpdatedAt: string;
   connectedUsers: ConnectedUser[];
   primary: string;
+  pettyCash?: PettyCashHeader[];
 }) {
   const iso = todayIso();
   const [y, m, d] = iso.split("-").map(Number);
@@ -97,6 +101,31 @@ function TopStatusBar({
                 <span style={{ color: "#38bdf8", fontWeight: 700 }}>{o.label}</span>{" "}
                 <span style={{ color: "#94a3b8" }}>C</span> {money(o.rate!.compra)}{" "}
                 <span style={{ color: "#94a3b8" }}>V</span> {money(o.rate!.venta)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={sep} />
+
+      {/* Cajas chicas */}
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        <span style={label}>Cajas chicas</span>
+        {pettyCash.length === 0 ? (
+          <span style={{ color: "#64748b" }}>sin asignar</span>
+        ) : (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {pettyCash.map((p) => (
+              <span
+                key={p.company}
+                title={`${p.short}: blanco ${money(p.blanco)} · negro ${money(p.negro)}`}
+                style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+              >
+                <span style={{ width: 9, height: 9, borderRadius: "50%", background: p.color, display: "inline-block" }} />
+                <span style={{ color: "#e2e8f0", fontWeight: 700 }}>{p.short}</span>
+                <span style={{ color: "#e2e8f0" }}>{money(p.saldo)}</span>
+                {p.negro ? <span style={{ color: "#94a3b8", fontSize: 11 }}>(N {money(p.negro)})</span> : null}
               </span>
             ))}
           </div>
