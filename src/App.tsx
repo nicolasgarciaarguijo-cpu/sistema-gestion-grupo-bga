@@ -2782,6 +2782,8 @@ export default function App() {
     summary: any;
     company: { name: string; taxId: string; domicilio?: string; bankName?: string };
     logo?: string;
+    sussDeposit?: { date: string; amount: number } | null;
+    ivaVep?: { date: string; amount: number } | null;
     negro?: { totalBlack: number; workingDays: number; daysWorked: number; negroAmount: number };
   }>(null);
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto");
@@ -8009,7 +8011,22 @@ export default function App() {
   const exportReciboBlanco = (employee: Employee) => {
     const summary = getEmployeePayrollSummary(employee);
     const { company, logo } = buildReciboContext(employee);
-    setReciboData({ employee, monthKey: payrollMonth, summary, company, logo });
+    // Constancia de últimos depósitos (SUSS + IVA VEP): del extracto bancario. Prioriza lo clasificado
+    // en el calendario (cargas sociales / IVA); si no, busca por palabra clave en el concepto.
+    const bankOf = visibleBankStatementEntries.filter(
+      (b) => b.company === employee.company && b.movementType === "debito"
+    );
+    const lastMatch = (pred: (b: (typeof bankOf)[number]) => boolean) =>
+      bankOf.filter(pred).sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))[0];
+    const sussE =
+      lastMatch((b) => ["cs_seg_soc", "cs_art_vida", "cs_obra_soc"].includes(b.conceptKey || "")) ||
+      lastMatch((b) => /suss|ccss|931|seguridad social|aporte/i.test(`${b.concept} ${b.notes}`));
+    const ivaE =
+      lastMatch((b) => b.conceptKey === "imp_iva_mensual") ||
+      lastMatch((b) => /\biva\b/i.test(`${b.concept} ${b.notes}`));
+    const sussDeposit = sussE ? { date: String(sussE.date), amount: Number(sussE.amount || 0) } : null;
+    const ivaVep = ivaE ? { date: String(ivaE.date), amount: Number(ivaE.amount || 0) } : null;
+    setReciboData({ employee, monthKey: payrollMonth, summary, company, logo, sussDeposit, ivaVep });
     window.setTimeout(() => exportPrint("recibo-blanco"), 0);
   };
 
@@ -15862,6 +15879,8 @@ export default function App() {
               config={employeeBaseConfig}
               monthKey={reciboData.monthKey}
               logo={reciboData.logo}
+              sussDeposit={reciboData.sussDeposit}
+              ivaVep={reciboData.ivaVep}
             />
           </div>,
           document.body

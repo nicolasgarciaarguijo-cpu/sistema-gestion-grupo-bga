@@ -26,6 +26,31 @@ export function workingDaysInMonth(
   return count;
 }
 
+// n-ésimo día hábil (Lunes a Viernes) de un mes. month 1-12. Devuelve ISO ("" si no hay).
+export function nthBusinessDay(year: number, month: number, n: number): string {
+  const days = new Date(year, month, 0).getDate();
+  let count = 0;
+  for (let d = 1; d <= days; d += 1) {
+    const dow = new Date(year, month - 1, d).getDay();
+    if (dow !== 0 && dow !== 6) {
+      count += 1;
+      if (count === n) return `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+  }
+  return "";
+}
+
+// Fecha de pago del sueldo: SIEMPRE el 4to día hábil del mes SIGUIENTE al período (LCT art. 128).
+export function paymentDateForPeriod(monthKey: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(monthKey || "");
+  if (!m) return "";
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const ny = mo === 12 ? y + 1 : y;
+  const nm = mo === 12 ? 1 : mo + 1;
+  return nthBusinessDay(ny, nm, 4);
+}
+
 // Prorrateo del negro por días trabajados. Sin descuentos salvo por días no trabajados.
 // negro = totalBlack / díasLaborables × díasTrabajados (clamp 0..total).
 export function reciboNegroAmount({

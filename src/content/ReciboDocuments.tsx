@@ -1,6 +1,8 @@
 import React from "react";
 import { money, formatDateDisplay } from "../lib/format";
-import { numeroALetras } from "../domain/recibo";
+import { numeroALetras, paymentDateForPeriod } from "../domain/recibo";
+
+type Deposito = { date: string; amount: number } | null | undefined;
 
 // Recibos de sueldo imprimibles. BLANCO = legal (LCT art. 140, réplica del recibo del usuario).
 // NEGRO = interno, el acuerdo en negro prorrateado por días trabajados (total ÷ días laborables × días).
@@ -32,7 +34,7 @@ type ReciboEmployee = {
 type ReciboCompany = { name: string; taxId: string; domicilio?: string; bankName?: string };
 
 export function ReciboBlancoDocument({
-  employee, company, summary, config, monthKey, logo,
+  employee, company, summary, config, monthKey, logo, sussDeposit, ivaVep,
 }: {
   employee: ReciboEmployee;
   company: ReciboCompany;
@@ -40,6 +42,8 @@ export function ReciboBlancoDocument({
   config: { unionPct: number; insurancePct: number };
   monthKey: string;
   logo?: string;
+  sussDeposit?: Deposito;
+  ivaVep?: Deposito;
 }) {
   const s = summary || {};
   const grossRem = Number(s.grossRem || 0);
@@ -95,8 +99,11 @@ export function ReciboBlancoDocument({
           </tr>
           <tr>
             <td style={lbl}>Valor hora</td><td style={cell}>{money(Number(s.baseHourly || 0))}</td>
+            <td style={lbl}>Fecha de pago (4º día hábil)</td><td style={cell}>{formatDateDisplay(paymentDateForPeriod(monthKey)) || "—"}</td>
             <td style={lbl}>Banco</td><td style={cell}>{company.bankName || "—"}</td>
-            <td style={lbl}>Costo total empleador</td><td style={right}>{money(costoTotal)}</td>
+          </tr>
+          <tr>
+            <td style={lbl}>Costo total empleador</td><td style={right} colSpan={5}>{money(costoTotal)}</td>
           </tr>
         </tbody>
       </table>
@@ -140,6 +147,22 @@ export function ReciboBlancoDocument({
           <tr><td style={cell}>ART</td><td style={cell}>—</td><td style={right}>{money(Number(s.employerArt || 0))}</td></tr>
           <tr><td style={cell}>Seguro de vida (fijo)</td><td style={cell}>fijo</td><td style={right}>{money(Number(s.employerLifeInsurance || 0))}</td></tr>
           <tr><td style={lbl} colSpan={2}>Subtotal contribuciones</td><td style={{ ...right, fontWeight: 800 }}>{money(contribSubtotal)}</td></tr>
+        </tbody>
+      </table>
+
+      <table style={{ ...box, marginTop: 8 }}>
+        <thead><tr><td style={lbl} colSpan={3}>ÚLTIMOS DEPÓSITOS (art. 140 inc. h) · del extracto bancario</td></tr></thead>
+        <tbody>
+          <tr>
+            <td style={cell}>Aportes Seguridad Social (SUSS/CCSS)</td>
+            <td style={cell}>{sussDeposit ? formatDateDisplay(sussDeposit.date) : "—"}</td>
+            <td style={right}>{sussDeposit ? money(sussDeposit.amount) : "—"}</td>
+          </tr>
+          <tr>
+            <td style={cell}>VEP IVA</td>
+            <td style={cell}>{ivaVep ? formatDateDisplay(ivaVep.date) : "—"}</td>
+            <td style={right}>{ivaVep ? money(ivaVep.amount) : "—"}</td>
+          </tr>
         </tbody>
       </table>
 
