@@ -41,6 +41,8 @@ export type PrintMode =
   | ""
   | "client-budget"
   | "payment-receipt"
+  | "recibo-blanco"
+  | "recibo-negro"
   | "report-cashflow"
   | "report-fabricacion"
   | "report-compras"

@@ -180,6 +180,7 @@ export function computePayrollSummary({
     grossReference,
     nonRemHourly,
     grossNormal,
+    grossHoliday,
     grossRem,
     totalGross,
     nonRem,

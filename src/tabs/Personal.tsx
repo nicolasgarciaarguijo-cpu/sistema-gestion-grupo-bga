@@ -66,6 +66,8 @@ type PersonalTabProps = {
   createEmployeeDocumentFromModal: any;
   createEmployeeProvisionFromModal: any;
   exportPersonalReport: any;
+  exportReciboBlanco: any;
+  exportReciboNegro: any;
   handleAttendanceAttachment: any;
   handleEmployeeDocumentUpload: any;
   handleEmployeeProvisionUpload: any;
@@ -97,7 +99,7 @@ export function PersonalTab(props: PersonalTabProps) {
     setEmployeeBaseConfig, setEmployeeDocumentModal, setEmployeeProvisionModal,
     setIsEmployeeSetupModalOpen, setNewEmployeeDraft, setPayrollMonth, setScaleRows,
     setSelectedEmployeeId, addEmployee, createEmployeeDocumentFromModal,
-    createEmployeeProvisionFromModal, exportPersonalReport, handleAttendanceAttachment,
+    createEmployeeProvisionFromModal, exportPersonalReport, exportReciboBlanco, exportReciboNegro, handleAttendanceAttachment,
     handleEmployeeDocumentUpload, handleEmployeeProvisionUpload, handleScalePdfUpload,
     removeEmployee, removeEmployeeDocument, removeEmployeeProvisionItem,
     saveEmployeePayrollMonth, syncLaborMarkersFromPersonal, updateAttendanceRecord,
@@ -1225,7 +1227,13 @@ export function PersonalTab(props: PersonalTabProps) {
             <Panel
               span="full"
               title={`Ficha del empleado: ${selectedEmployee.name || "Empleado"}`}
-              actions={<ButtonLike onClick={() => setSelectedEmployeeId(null)} secondary>Cerrar ficha</ButtonLike>}
+              actions={
+                <div style={styles.inlineActions}>
+                  <ButtonLike onClick={() => exportReciboBlanco(selectedEmployee)}>Recibo blanco</ButtonLike>
+                  <ButtonLike onClick={() => exportReciboNegro(selectedEmployee)} secondary>Recibo negro</ButtonLike>
+                  <ButtonLike onClick={() => setSelectedEmployeeId(null)} secondary>Cerrar ficha</ButtonLike>
+                </div>
+              }
             >
               {(() => {
                 const meta = getCompanyMeta(selectedEmployee.company);

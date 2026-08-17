@@ -109,6 +109,8 @@ import { PlataDisponible } from "./ui/PlataDisponible";
 import { ChangeReport } from "./ui/ChangeReport";
 import { CashflowTab } from "./tabs/Cashflow";
 import { CalendarioAnualTab } from "./tabs/CalendarioAnual";
+import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocuments";
+import { workingDaysInMonth, reciboNegroAmount } from "./domain/recibo";
 import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
 import { FabricacionTab } from "./tabs/Fabricacion";
@@ -2774,6 +2776,14 @@ export default function App() {
   const [, setPrintMode] = useState<PrintMode>("");
   // Recibo de pago a exportar (trabajo + pago seleccionado). Se setea al tocar "Recibo".
   const [receiptData, setReceiptData] = useState<{ job: any; payment: any } | null>(null);
+  const [reciboData, setReciboData] = useState<null | {
+    employee: Employee;
+    monthKey: string;
+    summary: any;
+    company: { name: string; taxId: string; domicilio?: string; bankName?: string };
+    logo?: string;
+    negro?: { totalBlack: number; workingDays: number; daysWorked: number; negroAmount: number };
+  }>(null);
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto");
   const [manualAllocationPct, setManualAllocationPct] = useState(18.75);
   const [deviationPct, setDeviationPct] = useState(5);
@@ -7981,6 +7991,44 @@ export default function App() {
   const exportPaymentReceipt = (job: ApprovedJob, payment: ApprovedJob["payments"][number]) => {
     setReceiptData({ job, payment });
     window.setTimeout(() => exportPrint("payment-receipt"), 0);
+  };
+
+  // Contexto común de los recibos: datos de la empresa (nombre/CUIT/domicilio/banco) + logo de presupuestos.
+  const buildReciboContext = (employee: Employee) => {
+    const co = COMPANY_OPTIONS.find((c) => c.value === employee.company);
+    const company = {
+      name: String(employee.company),
+      taxId: co?.taxId || "",
+      domicilio: co?.domicilio,
+      bankName: co?.bankName,
+    };
+    const logo = budget.logos?.[0]?.preview;
+    return { company, logo };
+  };
+
+  const exportReciboBlanco = (employee: Employee) => {
+    const summary = getEmployeePayrollSummary(employee);
+    const { company, logo } = buildReciboContext(employee);
+    setReciboData({ employee, monthKey: payrollMonth, summary, company, logo });
+    window.setTimeout(() => exportPrint("recibo-blanco"), 0);
+  };
+
+  const exportReciboNegro = (employee: Employee) => {
+    const { company, logo } = buildReciboContext(employee);
+    const monthKey = payrollMonth;
+    const workingDays = workingDaysInMonth(monthKey);
+    const daysWorked = (employee.attendance || []).filter(
+      (a) => a.date?.startsWith(monthKey) && (a.status === "presente" || !!a.checkIn)
+    ).length;
+    const totalBlack =
+      employee.employmentType === "fuera_convenio"
+        ? Number(employee.agreedBlack || 0)
+        : employee.employmentType === "temporal"
+        ? Number(employee.agreedSalary || 0)
+        : Number(getCurrentPayroll(employee)?.cashBonus || 0);
+    const negroAmount = reciboNegroAmount({ totalBlack, workingDays, daysWorked });
+    setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, workingDays, daysWorked, negroAmount } });
+    window.setTimeout(() => exportPrint("recibo-negro"), 0);
   };
 
   const loadBudgetFromSnapshot = (snapshot: BudgetSnapshot, budgetId?: number | null) => {
@@ -14309,11 +14357,15 @@ export default function App() {
         table th { text-align: left; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #cbd5e1; }
         @media print {
           @page { size: A4; margin: 0; }
-          body[data-print-mode]:not([data-print-mode="client-budget"]):not([data-print-mode="payment-receipt"]) * { visibility: hidden !important; }
+          body[data-print-mode]:not([data-print-mode="client-budget"]):not([data-print-mode="payment-receipt"]):not([data-print-mode="recibo-blanco"]):not([data-print-mode="recibo-negro"]) * { visibility: hidden !important; }
           body[data-print-mode="client-budget"] #root { display: none !important; }
           body[data-print-mode="client-budget"] #client-budget-pdf { display: block !important; padding: 14mm !important; }
           body[data-print-mode="payment-receipt"] #root { display: none !important; }
           body[data-print-mode="payment-receipt"] #payment-receipt { display: block !important; padding: 14mm !important; }
+          body[data-print-mode="recibo-blanco"] #root { display: none !important; }
+          body[data-print-mode="recibo-blanco"] #recibo-blanco { display: block !important; padding: 14mm !important; }
+          body[data-print-mode="recibo-negro"] #root { display: none !important; }
+          body[data-print-mode="recibo-negro"] #recibo-negro { display: block !important; padding: 14mm !important; }
           body[data-print-mode="report-marcadores"] #report-marcadores,
           body[data-print-mode="report-marcadores"] #report-marcadores * { visibility: visible !important; }
           body[data-print-mode="report-historial"] #report-historial,
@@ -15392,6 +15444,8 @@ export default function App() {
           createEmployeeDocumentFromModal={createEmployeeDocumentFromModal}
           createEmployeeProvisionFromModal={createEmployeeProvisionFromModal}
           exportPersonalReport={exportPersonalReport}
+          exportReciboBlanco={exportReciboBlanco}
+          exportReciboNegro={exportReciboNegro}
           handleAttendanceAttachment={handleAttendanceAttachment}
           handleEmployeeDocumentUpload={handleEmployeeDocumentUpload}
           handleEmployeeProvisionUpload={handleEmployeeProvisionUpload}
@@ -15797,6 +15851,38 @@ export default function App() {
         </div>,
         document.body
       )}
+
+      {reciboData &&
+        createPortal(
+          <div id="recibo-blanco" style={{ display: "none" }}>
+            <ReciboBlancoDocument
+              employee={reciboData.employee}
+              company={reciboData.company}
+              summary={reciboData.summary}
+              config={employeeBaseConfig}
+              monthKey={reciboData.monthKey}
+              logo={reciboData.logo}
+            />
+          </div>,
+          document.body
+        )}
+
+      {reciboData?.negro &&
+        createPortal(
+          <div id="recibo-negro" style={{ display: "none" }}>
+            <ReciboNegroDocument
+              employee={reciboData.employee}
+              company={reciboData.company}
+              monthKey={reciboData.monthKey}
+              totalBlack={reciboData.negro.totalBlack}
+              workingDays={reciboData.negro.workingDays}
+              daysWorked={reciboData.negro.daysWorked}
+              negroAmount={reciboData.negro.negroAmount}
+              logo={reciboData.logo}
+            />
+          </div>,
+          document.body
+        )}
 
       {receiptData &&
         createPortal(
