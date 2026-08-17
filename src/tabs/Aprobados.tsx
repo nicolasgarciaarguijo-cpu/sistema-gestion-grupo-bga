@@ -147,6 +147,18 @@ export function AprobadosTab({
   exportPaymentReceipt,
   onClientSummary,
 }: AprobadosTabProps) {
+  // Menú contextual (click derecho) del cliente: resumen económico (falta facturar/cobrar/comisión).
+  const [ctxMenu, setCtxMenu] = React.useState<null | { x: number; y: number; job: any }>(null);
+  // Un trabajo está TERMINADO cuando ya se cobró todo y la comisión está paga.
+  const isJobDone = (job: any) =>
+    Number(job.remainingToPay || 0) <= 1 && Number(job.commissionPending || 0) <= 1;
+  // Cuánto falta facturar (target por % facturado − lo ya facturado).
+  const faltaFacturar = (job: any) => {
+    const target = Number(job.soldNetPrice || 0) * (Number(job.billedPct || 0) / 100);
+    const invoiced = (job.invoices || []).reduce((a: number, i: any) => a + Number(i?.subtotal || 0), 0);
+    return Math.max(0, target - invoiced);
+  };
+
   // Trabajos con planos de fabricacion pendientes (sin planos o cargados sin confirmar), por urgencia.
   const planosPending = approvedJobsSummary
     .filter((job) => isPlanoPending(job))
@@ -154,6 +166,49 @@ export function AprobadosTab({
     .sort((a, b) => comparePlanoUrgency(a.sem, b.sem));
   return (
         <div style={styles.column}>
+          {ctxMenu && (
+            <>
+              <div
+                style={{ position: "fixed", inset: 0, zIndex: 60 }}
+                onClick={() => setCtxMenu(null)}
+                onContextMenu={(e) => { e.preventDefault(); setCtxMenu(null); }}
+              />
+              <div
+                style={{
+                  position: "fixed", left: Math.min(ctxMenu.x, window.innerWidth - 280), top: Math.min(ctxMenu.y, window.innerHeight - 220),
+                  zIndex: 61, background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10,
+                  boxShadow: "0 16px 40px rgba(0,0,0,0.22)", padding: 12, width: 270, fontSize: 13,
+                }}
+              >
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>{ctxMenu.job.client}</div>
+                <div style={{ ...styles.muted, marginBottom: 8 }}>Ppto {ctxMenu.job.budgetNumber} · resumen del cliente</div>
+                {(() => {
+                  const ff = faltaFacturar(ctxMenu.job);
+                  const fc = Number(ctxMenu.job.remainingToPay || 0);
+                  const fco = Number(ctxMenu.job.commissionPending || 0);
+                  const rowc = (lbl: string, v: number) => (
+                    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
+                      <span>{lbl}</span>
+                      <strong style={{ color: v > 1 ? "#dc2626" : "#16a34a" }}>{v > 1 ? money(v) : "✓ OK"}</strong>
+                    </div>
+                  );
+                  return (
+                    <>
+                      {rowc("Falta facturar", ff)}
+                      {rowc("Falta cobrar", fc)}
+                      {rowc("Falta pagar comisión", fco)}
+                      <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 6, paddingTop: 6, fontWeight: 700, color: isJobDone(ctxMenu.job) ? "#16a34a" : "#b45309" }}>
+                        {isJobDone(ctxMenu.job) ? "✓ Trabajo terminado" : "⏳ Pendiente"}
+                      </div>
+                    </>
+                  );
+                })()}
+                <ButtonLike onClick={() => { setSelectedApprovedJobId(ctxMenu.job.id); setCtxMenu(null); }} secondary>
+                  Abrir ficha
+                </ButtonLike>
+              </div>
+            </>
+          )}
           <Panel span="full" title="Semaforo de trabajos">
             <SemaforoResumen
               items={[
@@ -267,9 +322,16 @@ export function AprobadosTab({
                           </div>
                         </td>
                       </tr>
-                      {group.items.map((job) => (
-                        <tr key={job.id} style={job.executionStatus === "finalizado" ? styles.rowGreen : undefined}>
-                          <td>{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
+                      {group.items.map((job) => {
+                        const done = isJobDone(job);
+                        return (
+                        <tr
+                          key={job.id}
+                          onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
+                          title="Click derecho: resumen del cliente"
+                          style={done ? { background: "#e2e8f0", color: "#64748b" } : job.executionStatus === "finalizado" ? styles.rowGreen : undefined}
+                        >
+                          <td>{done ? "✓ " : ""}{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
                           <td>
                             <span
                               style={{
@@ -350,7 +412,8 @@ export function AprobadosTab({
                             )}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </React.Fragment>
                   ))}
                 </tbody>
