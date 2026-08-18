@@ -81,7 +81,7 @@ export function CalendarioAnualTab({
   fiscalYearOptions: Array<{ value: number; label: string }>;
   companyOptions: Array<{ value: string; short?: string; primary?: string }>;
   employees?: Array<{ name: string; company: string }>;
-  jobs?: Array<{ budgetNumber: string; client: string; company: string }>;
+  jobs?: Array<{ budgetNumber: string; client: string; company: string; active?: boolean; falta?: string }>;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
   fiscalStartMonth?: number;
   onAddMovement: (m: {
@@ -346,6 +346,30 @@ export function CalendarioAnualTab({
     [jobs, companyScope]
   );
 
+  // Filas de COBRANZAS: los trabajos ACTIVOS (algo falta para cerrar) SIEMPRE se muestran —aunque no
+  // tengan movimiento este mes— como alerta; más las cobranzas con movimiento en el mes visible.
+  const cobranzaRows = useMemo(() => {
+    const budgetOf = (key: string) => key.split("·")[0].trim();
+    const rows: Array<{ title: string; drow: Map<string, number>; falta?: string }> = [];
+    const usedKeys = new Set<string>();
+    jobs
+      .filter((j) => j.active && (companyScope === "__ALL__" || j.company === companyScope))
+      .forEach((job) => {
+        const merged = new Map<string, number>();
+        agg.cobranzaDetail.forEach((drow, key) => {
+          if (budgetOf(key) === String(job.budgetNumber)) {
+            drow.forEach((v, d) => merged.set(d, (merged.get(d) || 0) + v));
+            usedKeys.add(key);
+          }
+        });
+        rows.push({ title: `${job.budgetNumber} · ${job.client}`, drow: merged, falta: job.falta || "" });
+      });
+    Array.from(agg.cobranzaDetail.entries())
+      .filter(([key, drow]) => !usedKeys.has(key) && activeInView(drow))
+      .forEach(([key, drow]) => rows.push({ title: key, drow }));
+    return rows.sort((a, b) => a.title.localeCompare(b.title));
+  }, [jobs, companyScope, agg.cobranzaDetail, visibleDayCols]);
+
   const openAdd = (sectionKey: string, itemKey: string, iso: string, presetLabel = "", presetCompany = "") =>
     setAddForm({
       date: iso,
@@ -559,9 +583,22 @@ export function CalendarioAnualTab({
                       ))}
                     </tr>
                     {!isCol && (isCob
-                      ? Array.from(agg.cobranzaDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
-                          detailRow(title, drow, `cob-${title}`, false)
-                        )
+                      ? cobranzaRows.map(({ title, drow, falta }) => (
+                          <tr key={`cob-${title}`} style={{ background: falta ? "#fff7ed" : "#f8fafc" }}>
+                            <td style={{ ...tdStickyLabel, background: falta ? "#fff7ed" : "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>
+                              {title}
+                              {falta ? <span style={alertPill} title={`Falta para cerrar: ${falta}`}>⚠ falta {falta}</span> : null}
+                            </td>
+                            {visibleDayCols.map((c) => {
+                              const v = drow.get(c.iso) || 0;
+                              return (
+                                <td key={`cob-${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#334155" : "#e2e8f0", ...hi(c.iso) }}>
+                                  {v ? money(v) : "·"}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))
                       : section.items.map((it) => {
                           const drow = agg.byConcept.get(it.key);
                           const ck = agg.conceptCostKind.get(it.key);
@@ -1029,6 +1066,10 @@ const bnPill: React.CSSProperties = {
 const dPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 9, borderRadius: 999, padding: "0px 6px", marginLeft: 6,
   background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", verticalAlign: "middle",
+};
+const alertPill: React.CSSProperties = {
+  display: "inline-block", fontWeight: 700, fontSize: 10, borderRadius: 6, padding: "0px 6px", marginLeft: 8,
+  background: "#ffedd5", color: "#9a3412", border: "1px solid #fdba74", verticalAlign: "middle",
 };
 const miniAdd: React.CSSProperties = {
   padding: "2px 8px", borderRadius: 6, border: "1px dashed #86efac", background: "#f0fdf4", cursor: "pointer", fontSize: 12,

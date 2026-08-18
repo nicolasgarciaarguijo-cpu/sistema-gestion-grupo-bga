@@ -15002,7 +15002,26 @@ export default function App() {
           bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}
           money={money}
           employees={visibleEmployees.map((e) => ({ name: e.name, company: e.company }))}
-          jobs={visibleApprovedJobs.map((j) => ({ budgetNumber: j.budgetNumber, client: j.client, company: j.company }))}
+          jobs={approvedJobsSummary.map((j) => {
+            const target = Number(j.soldNetPrice || 0) * (Number(j.billedPct || 0) / 100);
+            const invoiced = (j.invoices || []).reduce((a: number, i: any) => a + Number(i?.subtotal || 0), 0);
+            const faltaFacturar = Math.max(0, target - invoiced);
+            const faltaCobrar = Number(j.remainingToPay || 0);
+            const faltaComision = Number(j.commissionPending || 0);
+            const noFinalizado = j.executionStatus !== "finalizado";
+            const partes: string[] = [];
+            if (noFinalizado) partes.push("sin finalizar");
+            if (faltaFacturar > 1) partes.push(`facturar ${money(faltaFacturar)}`);
+            if (faltaCobrar > 1) partes.push(`cobrar ${money(faltaCobrar)}`);
+            if (faltaComision > 1) partes.push(`comisión ${money(faltaComision)}`);
+            return {
+              budgetNumber: j.budgetNumber,
+              client: j.client,
+              company: j.company,
+              active: noFinalizado || faltaCobrar > 1 || faltaComision > 1 || faltaFacturar > 1,
+              falta: partes.join(" · "),
+            };
+          })}
           onAssignToJob={assignBankToJob}
         />
       )}
