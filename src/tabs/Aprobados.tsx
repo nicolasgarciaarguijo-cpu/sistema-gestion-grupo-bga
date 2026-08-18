@@ -288,6 +288,19 @@ export function AprobadosTab({
             {approvedJobsSummary.length === 0 ? (
               <div style={styles.empty}>Todavia no hay trabajos aprobados.</div>
             ) : (
+              <>
+              {(() => {
+                const pend = approvedJobsSummary.filter(
+                  (j: any) => j.executionStatus === "finalizado" && !isJobDone(j)
+                );
+                if (pend.length === 0) return null;
+                return (
+                  <div style={{ background: "#fef2f2", border: "1px solid #fecaca", color: "#991b1b", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 }}>
+                    <strong>⚠ {pend.length} trabajo(s) figuran “finalizado” pero NO están cerrados</strong> (falta cobrar o pagar comisión).
+                    Están marcados con ⚠ y fondo rojo en la lista: {pend.map((j: any) => j.budgetNumber).join(", ")}.
+                  </div>
+                );
+              })()}
               <table style={styles.table}>
                 <thead>
                   <tr>
@@ -327,16 +340,33 @@ export function AprobadosTab({
                         </td>
                       </tr>
                       {group.items.map((job) => {
-                        const completado = job.executionStatus === "finalizado";
-                        const listo = isJobDone(job) && !completado; // todo pago pero aún no marcado completado
+                        const finalizado = job.executionStatus === "finalizado";
+                        const done = isJobDone(job);
+                        // finalizado Y realmente cerrado (a cobrar 0 + comisión paga) → gris "cerrado".
+                        const completado = finalizado && done;
+                        // finalizado PERO con pendientes (a cobrar o comisión) → NO se esconde: alerta.
+                        const finalizadoPendiente = finalizado && !done;
+                        // en curso pero ya cobrado todo → listo para cerrar.
+                        const listo = done && !finalizado;
+                        const faltas: string[] = [];
+                        if (Number(job.remainingToPay || 0) > 1) faltas.push(`a cobrar ${money(job.remainingToPay)}`);
+                        if (Number(job.commissionPending || 0) > 1) faltas.push(`comisión ${money(job.commissionPending)}`);
                         return (
                         <tr
                           key={job.id}
                           onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
-                          title="Click derecho: resumen del cliente"
-                          style={completado ? { background: "#e2e8f0", color: "#64748b" } : listo ? styles.rowGreen : undefined}
+                          title={finalizadoPendiente ? `Figura finalizado pero falta: ${faltas.join(", ")}` : "Click derecho: resumen del cliente"}
+                          style={
+                            completado
+                              ? { background: "#e2e8f0", color: "#64748b" }
+                              : finalizadoPendiente
+                              ? { background: "#fef2f2", color: "#991b1b", boxShadow: "inset 3px 0 0 #dc2626" }
+                              : listo
+                              ? styles.rowGreen
+                              : undefined
+                          }
                         >
-                          <td>{completado ? "✓ " : listo ? "● " : ""}{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
+                          <td>{completado ? "✓ " : finalizadoPendiente ? "⚠ " : listo ? "● " : ""}{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
                           <td>
                             <span
                               style={{
@@ -423,6 +453,7 @@ export function AprobadosTab({
                   ))}
                 </tbody>
               </table>
+              </>
             )}
           </Panel>
 
