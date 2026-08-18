@@ -68,6 +68,7 @@ export function CalendarioAnualTab({
   onAssignConcept,
   bnaCompra,
   money,
+  employees = [],
 }: {
   entries: Entry[];
   companyScope: string;
@@ -76,6 +77,7 @@ export function CalendarioAnualTab({
   setFiscalStartYear: (v: number) => void;
   fiscalYearOptions: Array<{ value: number; label: string }>;
   companyOptions: Array<{ value: string; short?: string; primary?: string }>;
+  employees?: Array<{ name: string; company: string }>;
   fiscalStartMonth?: number;
   onAddMovement: (m: {
     company: string;
@@ -288,15 +290,29 @@ export function CalendarioAnualTab({
   }, [companyOptions]);
   const showByCompany = companyScope === "__ALL__" && agg.companiesSeen.size > 1;
 
-  const openAdd = (sectionKey: string, itemKey: string, iso: string) =>
+  // Empleados a mostrar como renglones de HABERES (uno por empleado). Filtra por empresa si hay scope.
+  const employeesInScope = useMemo(() => {
+    const seen = new Set<string>();
+    return employees
+      .filter((e) => companyScope === "__ALL__" || e.company === companyScope)
+      .filter((e) => {
+        const k = `${e.company}|${e.name}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [employees, companyScope]);
+
+  const openAdd = (sectionKey: string, itemKey: string, iso: string, presetLabel = "", presetCompany = "") =>
     setAddForm({
       date: iso,
-      company: companyScope !== "__ALL__" ? companyScope : companyOptions[0]?.value || "",
+      company: presetCompany || (companyScope !== "__ALL__" ? companyScope : companyOptions[0]?.value || ""),
       sectionKey,
       itemKey,
       ppto: "",
       cliente: "",
-      customLabel: "",
+      customLabel: presetLabel,
       amount: 0,
       administration: "blanco",
       costKind: "",
@@ -471,6 +487,7 @@ export function CalendarioAnualTab({
                 const isOut = section.dir === "out";
                 const isCob = section.dynamic === "cobranzas";
                 const isComerciales = section.key === "gastos_comerciales";
+                const isHaberes = section.key === "haberes";
                 const isCol = collapsed.has(section.key);
                 return (
                   <React.Fragment key={section.key}>
@@ -532,6 +549,37 @@ export function CalendarioAnualTab({
                         .filter(([, drow]) => activeInView(drow))
                         .sort((a, b) => a[0].localeCompare(b[0]))
                         .map(([title, drow]) => detailRow(`Comisión · ${title}`, drow, `com-${title}`, true))}
+                    {/* HABERES: una fila por empleado (del módulo Personal). Cargás el haber tocando el día. */}
+                    {!isCol && isHaberes && (employeesInScope.length === 0 ? (
+                      <tr>
+                        <td style={{ ...tdStickyLabel, paddingLeft: 20, color: "#94a3b8", fontWeight: 400 }}>Sin empleados cargados en Personal</td>
+                        {visibleDayCols.map((c) => <td key={`hab-empty-${c.iso}`} style={{ ...tdCell, ...hi(c.iso) }}></td>)}
+                      </tr>
+                    ) : employeesInScope.map((emp) => {
+                      const drow = agg.customRows.get("haberes")?.get(emp.name);
+                      const meta = companyMeta.get(emp.company);
+                      return (
+                        <tr key={`hab-${emp.company}-${emp.name}`}>
+                          <td style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}>
+                            {showByCompany && <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />}
+                            {emp.name}
+                          </td>
+                          {visibleDayCols.map((c) => {
+                            const v = drow?.get(c.iso) || 0;
+                            return (
+                              <td
+                                key={`hab-${emp.name}-${c.iso}`}
+                                onClick={() => openAdd("haberes", "__custom__", c.iso, emp.name, emp.company)}
+                                title={`Cargar haber de ${emp.name}`}
+                                style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? "#dc2626" : "#cbd5e1", ...hi(c.iso) }}
+                              >
+                                {v ? money(v) : "+"}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    }))}
                     {/* Renglones personalizados que cargó el usuario en esta sección */}
                     {!isCol &&
                       Array.from(agg.customRows.get(section.key)?.entries() || [])

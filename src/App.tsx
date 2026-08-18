@@ -14975,6 +14975,7 @@ export default function App() {
           onAssignConcept={assignBankConcept}
           bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}
           money={money}
+          employees={visibleEmployees.map((e) => ({ name: e.name, company: e.company }))}
         />
       )}
       {activeTab === "cashflow" && (
