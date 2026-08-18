@@ -323,40 +323,27 @@ export function CalendarioAnualTab({
   // Así un cliente que terminó su trabajo no ocupa espacio en los meses siguientes; si vuelve a comprar
   // (nueva cobranza), reaparece solo en el mes en que se mueve.
   const activeInView = (drow: Map<string, number>) => visibleDayCols.some((c) => (drow.get(c.iso) || 0) !== 0);
-  const sumItemsByDate = (itemKeys: string[]) => {
-    const out = new Map<string, number>();
-    itemKeys.forEach((k) => {
-      const row = agg.byConcept.get(k);
-      if (row) row.forEach((v, d) => out.set(d, (out.get(d) || 0) + v));
-    });
-    return out;
-  };
 
-  // Sub-fila compacta de subtotal (blanco/negro o por empresa), con marca de color a la izquierda.
-  const subtotalRow = (
-    label: string,
-    drow: Map<string, number> | undefined,
-    key: string,
-    isOut: boolean,
-    dotColor: string,
-    bg: string
-  ) => {
-    if (!drow || !visibleDayCols.some((c) => (drow.get(c.iso) || 0) !== 0)) return null;
+  // Contenido de una celda de TOTAL para un día: el blanco y el negro con su pill B/N.
+  // Si el día tiene los dos, se ven los dos números (uno debajo del otro), cada uno con su pill.
+  const bnCell = (bMap: Map<string, number> | undefined, nMap: Map<string, number> | undefined, iso: string, isOut: boolean) => {
+    const b = bMap?.get(iso) || 0;
+    const n = nMap?.get(iso) || 0;
+    if (!b && !n) return <span style={{ color: "#cbd5e1" }}>·</span>;
+    const col = isOut ? "#b91c1c" : "#065f46";
     return (
-      <tr key={key} style={{ background: bg }}>
-        <td style={{ ...tdStickyLabel, background: bg, paddingLeft: 30, fontWeight: 600, fontSize: 11, color: "#475569" }}>
-          <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: dotColor, marginRight: 6 }} />
-          {label}
-        </td>
-        {visibleDayCols.map((c) => {
-          const v = drow.get(c.iso) || 0;
-          return (
-            <td key={`${key}-${c.iso}`} style={{ ...tdCell, fontSize: 11, background: bg, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...hi(c.iso) }}>
-              {v ? money(v) : "·"}
-            </td>
-          );
-        })}
-      </tr>
+      <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-end", lineHeight: 1.15 }}>
+        {b !== 0 && (
+          <span style={{ color: col, whiteSpace: "nowrap" }}>
+            <span style={{ ...bnPill, background: "#e2e8f0", color: "#334155" }}>B</span>{money(b)}
+          </span>
+        )}
+        {n !== 0 && (
+          <span style={{ color: col, whiteSpace: "nowrap" }}>
+            <span style={{ ...bnPill, background: "#334155", color: "#fff" }}>N</span>{money(n)}
+          </span>
+        )}
+      </div>
     );
   };
 
@@ -449,13 +436,6 @@ export function CalendarioAnualTab({
                 const isCob = section.dynamic === "cobranzas";
                 const isComerciales = section.key === "gastos_comerciales";
                 const isCol = collapsed.has(section.key);
-                const totalByDate = isCob
-                  ? agg.cobranzaByDate
-                  : (() => {
-                      const m = sumItemsByDate(section.items.map((i) => i.key));
-                      if (isComerciales) agg.comisionByDate.forEach((v, d) => m.set(d, (m.get(d) || 0) + v));
-                      return m;
-                    })();
                 return (
                   <React.Fragment key={section.key}>
                     <tr>
@@ -466,7 +446,11 @@ export function CalendarioAnualTab({
                       >
                         {isCol ? "▸ " : "▾ "}{section.label}
                       </td>
-                      {visibleDayCols.map((c) => <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, background: isOut ? "#fee2e2" : "#dcfce7", ...hi(c.iso) }}></td>)}
+                      {visibleDayCols.map((c) => (
+                        <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: isOut ? "#fee2e2" : "#dcfce7", ...hi(c.iso) }}>
+                          {bnCell(agg.secB.get(section.key), agg.secN.get(section.key), c.iso, isOut)}
+                        </td>
+                      ))}
                     </tr>
                     {!isCol && (isCob
                       ? Array.from(agg.cobranzaDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) =>
@@ -512,20 +496,6 @@ export function CalendarioAnualTab({
                         .filter(([, drow]) => activeInView(drow))
                         .sort((a, b) => a[0].localeCompare(b[0]))
                         .map(([title, drow]) => detailRow(`Comisión · ${title}`, drow, `com-${title}`, true))}
-                    <tr>
-                      <td style={{ ...tdStickyLabel, fontWeight: 800, background: "#f1f5f9" }}>{section.totalLabel}</td>
-                      {visibleDayCols.map((c) => {
-                        const v = totalByDate.get(c.iso) || 0;
-                        return (
-                          <td key={`st-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 800, background: "#f1f5f9", color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...hi(c.iso) }}>
-                            {v ? money(v) : "·"}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                    {/* Subtotal de la sección separado blanco / negro (solo si la sección está expandida) */}
-                    {!isCol && subtotalRow(`${section.totalLabel} · blanco`, agg.secB.get(section.key), `stb-${section.key}`, isOut, "#cbd5e1", "#f8fafc")}
-                    {!isCol && subtotalRow(`${section.totalLabel} · negro`, agg.secN.get(section.key), `stn-${section.key}`, isOut, "#334155", "#eef2f7")}
                   </React.Fragment>
                 );
               })}
@@ -641,28 +611,43 @@ export function CalendarioAnualTab({
                 </>
               )}
 
-              {/* ===== TOTALES SEPARADOS BLANCO / NEGRO ===== */}
+              {/* ===== TOTALES (blanco/negro con pill en la misma fila) ===== */}
               {([
-                { lbl: "TOTAL INGRESOS · BLANCO", m: agg.incB, comp: agg.compIncB, isOut: false, bg: "#f8fafc", color: "#0f172a", kp: "tib" },
-                { lbl: "TOTAL INGRESOS · NEGRO", m: agg.incN, comp: agg.compIncN, isOut: false, bg: "#e5e7eb", color: "#0f172a", kp: "tin" },
-                { lbl: "TOTAL EGRESOS · BLANCO", m: agg.egrB, comp: agg.compEgrB, isOut: true, bg: "#f8fafc", color: "#dc2626", kp: "teb" },
-                { lbl: "TOTAL EGRESOS · NEGRO", m: agg.egrN, comp: agg.compEgrN, isOut: true, bg: "#e5e7eb", color: "#dc2626", kp: "ten" },
+                { lbl: "TOTAL INGRESOS", b: agg.incB, n: agg.incN, compB: agg.compIncB, compN: agg.compIncN, isOut: false, bg: "#ecfdf5", kp: "ti" },
+                { lbl: "TOTAL EGRESOS", b: agg.egrB, n: agg.egrN, compB: agg.compEgrB, compN: agg.compEgrN, isOut: true, bg: "#fef2f2", kp: "te" },
               ] as const).map((row) => (
                 <React.Fragment key={row.kp}>
                   <tr>
-                    <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.color }}>{row.lbl}</td>
-                    {visibleDayCols.map((c) => {
-                      const v = row.m.get(c.iso) || 0;
-                      return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
-                    })}
+                    <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.isOut ? "#991b1b" : "#065f46" }}>{row.lbl}</td>
+                    {visibleDayCols.map((c) => (
+                      <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, ...hi(c.iso) }}>
+                        {bnCell(row.b, row.n, c.iso, row.isOut)}
+                      </td>
+                    ))}
                   </tr>
                   {/* Desglose por empresa (con su color) cuando se ven todas — el "×4" a la vista */}
                   {showByCompany &&
-                    Array.from(row.comp.entries())
-                      .sort((a, b) => a[0].localeCompare(b[0]))
-                      .map(([company, drow]) => {
+                    Array.from(new Set(Array.from(row.compB.keys()).concat(Array.from(row.compN.keys()))))
+                      .sort((a, b) => a.localeCompare(b))
+                      .map((company) => {
                         const meta = companyMeta.get(company);
-                        return subtotalRow(meta?.short || company, drow, `${row.kp}-${company}`, row.isOut, meta?.color || "#64748b", row.bg);
+                        const bMap = row.compB.get(company);
+                        const nMap = row.compN.get(company);
+                        if (!bMap && !nMap) return null;
+                        if (![...visibleDayCols].some((c) => (bMap?.get(c.iso) || 0) !== 0 || (nMap?.get(c.iso) || 0) !== 0)) return null;
+                        return (
+                          <tr key={`${row.kp}-${company}`} style={{ background: row.bg }}>
+                            <td style={{ ...tdStickyLabel, background: row.bg, paddingLeft: 30, fontWeight: 700, fontSize: 11 }}>
+                              <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />
+                              {meta?.short || company}
+                            </td>
+                            {visibleDayCols.map((c) => (
+                              <td key={`${row.kp}-${company}-${c.iso}`} style={{ ...tdCell, fontSize: 11, background: row.bg, ...hi(c.iso) }}>
+                                {bnCell(bMap, nMap, c.iso, row.isOut)}
+                              </td>
+                            ))}
+                          </tr>
+                        );
                       })}
                 </React.Fragment>
               ))}
@@ -804,6 +789,9 @@ const usdPill: React.CSSProperties = {
 };
 const costChip: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 9, borderRadius: 4, padding: "0px 4px", marginLeft: 5, verticalAlign: "middle",
+};
+const bnPill: React.CSSProperties = {
+  display: "inline-block", fontWeight: 800, fontSize: 8, borderRadius: 3, padding: "0px 3px", marginRight: 3, verticalAlign: "middle",
 };
 const miniAdd: React.CSSProperties = {
   padding: "2px 8px", borderRadius: 6, border: "1px dashed #86efac", background: "#f0fdf4", cursor: "pointer", fontSize: 12,
