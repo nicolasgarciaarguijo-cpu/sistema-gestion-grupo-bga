@@ -150,6 +150,8 @@ export function CalendarioAnualTab({
     const lastIso = dayCols[dayCols.length - 1]?.iso || "";
     const byConcept = new Map<string, Map<string, number>>(); // itemKey -> date -> monto
     const cobranzaDetail = new Map<string, Map<string, number>>(); // título -> date -> monto
+    const cobranzaDetailB = new Map<string, Map<string, number>>(); // título -> date -> blanco
+    const cobranzaDetailN = new Map<string, Map<string, number>>(); // título -> date -> negro
     const cobranzaByDate = new Map<string, number>();
     const unclDetail = new Map<string, Map<string, number>>();
     const unclByDate = new Map<string, number>();
@@ -229,6 +231,7 @@ export function CalendarioAnualTab({
       }
       if (isCobranza) {
         addDeep(cobranzaDetail, title, e.date, amt);
+        addDeep(neg ? cobranzaDetailN : cobranzaDetailB, title, e.date, amt);
         add(cobranzaByDate, e.date, amt);
         add(incomeByDate, e.date, amt);
         add(neg ? incN : incB, e.date, amt);
@@ -294,7 +297,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
+    return { byConcept, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
   }, [entries, companyScope, dayCols]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
@@ -350,26 +353,38 @@ export function CalendarioAnualTab({
   // tengan movimiento este mes— como alerta; más las cobranzas con movimiento en el mes visible.
   const cobranzaRows = useMemo(() => {
     const budgetOf = (key: string) => key.split("·")[0].trim();
-    const rows: Array<{ title: string; drow: Map<string, number>; falta?: string }> = [];
+    const rows: Array<{ title: string; drowB: Map<string, number>; drowN: Map<string, number>; falta?: string }> = [];
     const usedKeys = new Set<string>();
+    const mergeByBudget = (src: Map<string, Map<string, number>>, budget: string) => {
+      const merged = new Map<string, number>();
+      src.forEach((drow, key) => {
+        if (budgetOf(key) === String(budget)) {
+          drow.forEach((v, d) => merged.set(d, (merged.get(d) || 0) + v));
+          usedKeys.add(key);
+        }
+      });
+      return merged;
+    };
     jobs
       .filter((j) => j.active && (companyScope === "__ALL__" || j.company === companyScope))
       .forEach((job) => {
-        const merged = new Map<string, number>();
-        agg.cobranzaDetail.forEach((drow, key) => {
-          if (budgetOf(key) === String(job.budgetNumber)) {
-            drow.forEach((v, d) => merged.set(d, (merged.get(d) || 0) + v));
-            usedKeys.add(key);
-          }
+        rows.push({
+          title: `${job.budgetNumber} · ${job.client}`,
+          drowB: mergeByBudget(agg.cobranzaDetailB, String(job.budgetNumber)),
+          drowN: mergeByBudget(agg.cobranzaDetailN, String(job.budgetNumber)),
+          falta: job.falta || "",
         });
-        rows.push({ title: `${job.budgetNumber} · ${job.client}`, drow: merged, falta: job.falta || "" });
       });
-    const hasMove = (drow: Map<string, number>) => visibleDayCols.some((c) => (drow.get(c.iso) || 0) !== 0);
-    Array.from(agg.cobranzaDetail.entries())
-      .filter(([key, drow]) => !usedKeys.has(key) && hasMove(drow))
-      .forEach(([key, drow]) => rows.push({ title: key, drow }));
+    const hasMove = (m?: Map<string, number>) => !!m && visibleDayCols.some((c) => (m.get(c.iso) || 0) !== 0);
+    Array.from(agg.cobranzaDetail.keys())
+      .filter((key) => !usedKeys.has(key) && (hasMove(agg.cobranzaDetailB.get(key)) || hasMove(agg.cobranzaDetailN.get(key))))
+      .forEach((key) => rows.push({
+        title: key,
+        drowB: agg.cobranzaDetailB.get(key) || new Map(),
+        drowN: agg.cobranzaDetailN.get(key) || new Map(),
+      }));
     return rows.sort((a, b) => a.title.localeCompare(b.title));
-  }, [jobs, companyScope, agg.cobranzaDetail, visibleDayCols]);
+  }, [jobs, companyScope, agg, visibleDayCols]);
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string, presetLabel = "", presetCompany = "") =>
     setAddForm({
@@ -584,20 +599,17 @@ export function CalendarioAnualTab({
                       ))}
                     </tr>
                     {!isCol && (isCob
-                      ? cobranzaRows.map(({ title, drow, falta }) => (
+                      ? cobranzaRows.map(({ title, drowB, drowN, falta }) => (
                           <tr key={`cob-${title}`} style={{ background: falta ? "#fff7ed" : "#f8fafc" }}>
                             <td style={{ ...tdStickyLabel, background: falta ? "#fff7ed" : "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>
                               {title}
                               {falta ? <span style={alertPill} title={`Falta para cerrar: ${falta}`}>⚠ falta {falta}</span> : null}
                             </td>
-                            {visibleDayCols.map((c) => {
-                              const v = drow.get(c.iso) || 0;
-                              return (
-                                <td key={`cob-${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#334155" : "#e2e8f0", ...hi(c.iso) }}>
-                                  {v ? money(v) : "·"}
-                                </td>
-                              );
-                            })}
+                            {visibleDayCols.map((c) => (
+                              <td key={`cob-${title}-${c.iso}`} style={{ ...tdCell, ...hi(c.iso) }}>
+                                {bnCell(drowB, drowN, c.iso, false)}
+                              </td>
+                            ))}
                           </tr>
                         ))
                       : section.items.map((it) => {
