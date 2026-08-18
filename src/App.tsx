@@ -11115,6 +11115,25 @@ export default function App() {
     setBankStatementEntries((prev) => prev.filter((item) => item.id !== entryId));
   };
 
+  // Limpia la asignación de un movimiento del banco: borra clasificación, trabajo, tercero y renglón.
+  // Para corregir algo mal clasificado; el movimiento vuelve a quedar sin asignar (la pill D lo marca).
+  const clearBankAssignment = (entryId: number) => {
+    setBankStatementEntries((prev) =>
+      prev.map((item) =>
+        item.id === entryId
+          ? {
+              ...item,
+              assignedKind: undefined,
+              assignedJobBudget: undefined,
+              assignedParty: undefined,
+              conceptKey: undefined,
+              assignmentNote: undefined,
+            }
+          : item
+      )
+    );
+  };
+
   const updateBankStatementEntry = (
     entryId: number,
     field: keyof BankStatementEntry,
@@ -15341,6 +15360,7 @@ export default function App() {
           addBankStatementEntry={addBankStatementEntry}
           removeBankStatementEntry={removeBankStatementEntry}
           updateBankStatementEntry={updateBankStatementEntry}
+          clearBankAssignment={clearBankAssignment}
           uploadBankStatementFile={uploadBankStatementFile}
           bankMirrorPreview={bankMirrorPreview}
           bankMirrorCompany={bankMirrorCompany}

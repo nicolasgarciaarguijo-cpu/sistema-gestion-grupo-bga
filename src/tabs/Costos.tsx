@@ -208,6 +208,7 @@ type CostosTabProps = {
   addBankStatementEntry: () => void;
   removeBankStatementEntry: (id: number) => void;
   updateBankStatementEntry: (id: number, field: any, value: string | number | boolean) => void;
+  clearBankAssignment: (id: number) => void;
   uploadBankStatementFile: (id: number, file: File | null) => void;
   // Importador MASIVO al espejo bancario.
   bankMirrorPreview: Array<{ date: string; concept: string; amount: number; movementType: "credito" | "debito"; balance: number; dup: boolean }>;
@@ -278,6 +279,7 @@ export function CostosTab({
   addBankStatementEntry,
   removeBankStatementEntry,
   updateBankStatementEntry,
+  clearBankAssignment,
   uploadBankStatementFile,
   bankMirrorPreview,
   bankMirrorCompany,
@@ -1702,6 +1704,13 @@ export function CostosTab({
                           ) : (
                             <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>✓ Completo</div>
                           )}
+                          <button
+                            style={{ ...styles.smallBtn, borderColor: "#fca5a5", color: "#b91c1c" }}
+                            title="Borra la clasificación, el trabajo, el tercero y el renglón de este movimiento. El importe y el saldo no se tocan: vuelve a quedar sin asignar."
+                            onClick={() => clearBankAssignment(entry.id)}
+                          >
+                            Limpiar asignación
+                          </button>
                         </div>
                       </td>
                     </tr>
