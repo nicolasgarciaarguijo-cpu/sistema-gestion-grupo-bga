@@ -48,6 +48,7 @@ type AddForm = {
   itemKey: string;
   ppto: string;
   cliente: string;
+  customLabel: string;
   amount: number;
   administration: "blanco" | "negro";
   costKind: "" | "fijo" | "variable";
@@ -166,6 +167,8 @@ export function CalendarioAnualTab({
     const fijoByDate = new Map<string, number>();
     const varByDate = new Map<string, number>();
     const conceptCostKind = new Map<string, { fijo: boolean; variable: boolean }>(); // itemKey -> tipos vistos
+    // Renglones personalizados por sección: sección -> label -> date -> monto.
+    const customRows = new Map<string, Map<string, Map<string, number>>>();
     // Cuando scope=Todas: desglose de los grandes totales POR EMPRESA (el "×4" a la vista, con color).
     const compIncB = new Map<string, Map<string, number>>();
     const compIncN = new Map<string, Map<string, number>>();
@@ -222,6 +225,28 @@ export function CalendarioAnualTab({
         track("cobranzas", "in", neg, e.company, e.date, amt);
         return;
       }
+      // Renglón PERSONALIZADO agregado por el usuario: conceptKey = "custom:<seccion>:<label>".
+      // Se suma a su sección (por dir) igual que un renglón fijo, y se muestra como fila propia.
+      if (e.conceptKey && e.conceptKey.startsWith("custom:")) {
+        const rest = e.conceptKey.slice(7);
+        const sep = rest.indexOf(":");
+        const sectionKey = sep >= 0 ? rest.slice(0, sep) : rest;
+        const label = (sep >= 0 ? rest.slice(sep + 1) : title) || "Otro";
+        const sec = CALENDAR_SECTIONS.find((s) => s.key === sectionKey);
+        const dir = sec?.dir === "in" ? "in" : "out";
+        if (!customRows.has(sectionKey)) customRows.set(sectionKey, new Map());
+        const secMap = customRows.get(sectionKey)!;
+        if (!secMap.has(label)) secMap.set(label, new Map());
+        add(secMap.get(label)!, e.date, amt);
+        add(dir === "in" ? incomeByDate : egresoByDate, e.date, amt);
+        if (dir === "in") add(neg ? incN : incB, e.date, amt);
+        else add(neg ? egrN : egrB, e.date, amt);
+        track(sectionKey, dir, neg, e.company, e.date, amt);
+        if (dir === "out" && (e.costKind === "fijo" || e.costKind === "variable")) {
+          add(e.costKind === "fijo" ? fijoByDate : varByDate, e.date, amt);
+        }
+        return;
+      }
       const idx = e.conceptKey ? CALENDAR_ITEM_INDEX[e.conceptKey] : undefined;
       if (idx) {
         addDeep(byConcept, e.conceptKey!, e.date, amt);
@@ -252,7 +277,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows };
   }, [entries, companyScope, dayCols]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
@@ -271,6 +296,7 @@ export function CalendarioAnualTab({
       itemKey,
       ppto: "",
       cliente: "",
+      customLabel: "",
       amount: 0,
       administration: "blanco",
       costKind: "",
@@ -282,12 +308,22 @@ export function CalendarioAnualTab({
     const section = CALENDAR_SECTIONS.find((s) => s.key === addForm.sectionKey);
     if (!section) return;
     const isCob = section.dynamic === "cobranzas";
+    const isCustom = addForm.itemKey === "__custom__";
     const type: "cobranza" | "pago" = section.dir === "in" ? "cobranza" : "pago";
     const cliente = addForm.cliente.trim();
     const ppto = addForm.ppto.trim();
+    const customLabel = (addForm.customLabel || "").trim();
+    if (isCustom && !customLabel) return; // el renglón propio necesita un nombre
     const itemLabel = isCob
       ? `${ppto ? ppto + " · " : ""}${cliente || "Cliente"}`
+      : isCustom
+      ? customLabel
       : CALENDAR_ITEM_INDEX[addForm.itemKey]?.label || section.label;
+    const conceptKey = isCob
+      ? "cobranzas"
+      : isCustom
+      ? `custom:${addForm.sectionKey}:${customLabel}`
+      : addForm.itemKey;
     onAddMovement({
       company: addForm.company,
       date: addForm.date,
@@ -298,7 +334,7 @@ export function CalendarioAnualTab({
       client: isCob ? cliente : "",
       jobCode: isCob ? ppto : "",
       notes: addForm.notes,
-      conceptKey: isCob ? "cobranzas" : addForm.itemKey,
+      conceptKey,
       incomeCategory: isCob ? "trabajo" : undefined,
       costKind: type === "pago" && addForm.costKind ? addForm.costKind : undefined,
     });
@@ -496,6 +532,21 @@ export function CalendarioAnualTab({
                         .filter(([, drow]) => activeInView(drow))
                         .sort((a, b) => a[0].localeCompare(b[0]))
                         .map(([title, drow]) => detailRow(`Comisión · ${title}`, drow, `com-${title}`, true))}
+                    {/* Renglones personalizados que cargó el usuario en esta sección */}
+                    {!isCol &&
+                      Array.from(agg.customRows.get(section.key)?.entries() || [])
+                        .filter(([, drow]) => activeInView(drow))
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([label, drow]) => detailRow(`✎ ${label}`, drow, `cst-${section.key}-${label}`, isOut))}
+                    {/* Agregar un renglón propio a esta sección (donde cargar info) */}
+                    {!isCol && !isCob && (
+                      <tr>
+                        <td style={{ ...tdStickyLabel, paddingLeft: 20 }}>
+                          <button style={miniAdd} onClick={() => openAdd(section.key, "__custom__", visibleDayCols[0]?.iso || "")}>+ renglón</button>
+                        </td>
+                        {visibleDayCols.map((c) => <td key={`cadd-${section.key}-${c.iso}`} style={{ ...tdCell, ...hi(c.iso) }}></td>)}
+                      </tr>
+                    )}
                   </React.Fragment>
                 );
               })}
@@ -715,11 +766,20 @@ export function CalendarioAnualTab({
                     </label>
                   </>
                 ) : (
-                  <label style={lblStyle}>Renglón
-                    <select style={styles.input} value={addForm.itemKey} onChange={(e) => setAddForm({ ...addForm, itemKey: e.target.value })}>
-                      {(section?.items || []).map((it) => <option key={it.key} value={it.key}>{it.label}</option>)}
-                    </select>
-                  </label>
+                  <>
+                    <label style={lblStyle}>Renglón
+                      <select style={styles.input} value={addForm.itemKey} onChange={(e) => setAddForm({ ...addForm, itemKey: e.target.value })}>
+                        {(section?.items || []).map((it) => <option key={it.key} value={it.key}>{it.label}</option>)}
+                        <option value="__custom__">➕ Otro renglón (escribir)…</option>
+                      </select>
+                    </label>
+                    {addForm.itemKey === "__custom__" && (
+                      <label style={lblStyle}>Nombre del renglón nuevo
+                        <input style={styles.input} value={addForm.customLabel} placeholder="Ej: Fletes especiales" autoFocus
+                          onChange={(e) => setAddForm({ ...addForm, customLabel: e.target.value })} />
+                      </label>
+                    )}
+                  </>
                 )}
                 <label style={lblStyle}>Monto ($)
                   <input style={styles.input} type="number" value={addForm.amount || ""} onChange={(e) => setAddForm({ ...addForm, amount: Number(e.target.value) })} />
@@ -745,7 +805,7 @@ export function CalendarioAnualTab({
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
                 <button style={btnSecondary} onClick={() => setAddForm(null)}>Cancelar</button>
-                <button style={btnPrimary} onClick={confirmAdd} disabled={!(Number(addForm.amount) > 0) || !addForm.company || (isCob ? false : !addForm.itemKey)}>
+                <button style={btnPrimary} onClick={confirmAdd} disabled={!(Number(addForm.amount) > 0) || !addForm.company || (isCob ? false : !addForm.itemKey) || (addForm.itemKey === "__custom__" && !addForm.customLabel.trim())}>
                   Guardar en el sistema
                 </button>
               </div>
