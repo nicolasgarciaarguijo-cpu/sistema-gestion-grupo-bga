@@ -70,6 +70,8 @@ export function CalendarioAnualTab({
   bnaCompra,
   money,
   employees = [],
+  jobs = [],
+  onAssignToJob,
 }: {
   entries: Entry[];
   companyScope: string;
@@ -79,6 +81,8 @@ export function CalendarioAnualTab({
   fiscalYearOptions: Array<{ value: number; label: string }>;
   companyOptions: Array<{ value: string; short?: string; primary?: string }>;
   employees?: Array<{ name: string; company: string }>;
+  jobs?: Array<{ budgetNumber: string; client: string; company: string }>;
+  onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
   fiscalStartMonth?: number;
   onAddMovement: (m: {
     company: string;
@@ -331,6 +335,16 @@ export function CalendarioAnualTab({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [employees, companyScope]);
+
+  // Trabajos para el selector "cobro → trabajo" en Sin clasificar (filtra por empresa si hay scope).
+  const jobsInScope = useMemo(
+    () =>
+      jobs
+        .filter((j) => companyScope === "__ALL__" || j.company === companyScope)
+        .slice()
+        .sort((a, b) => String(b.budgetNumber).localeCompare(String(a.budgetNumber))),
+    [jobs, companyScope]
+  );
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string, presetLabel = "", presetCompany = "") =>
     setAddForm({
@@ -701,6 +715,24 @@ export function CalendarioAnualTab({
                                     <optgroup key={s.key} label={s.label}>
                                       {s.items.map((it) => <option key={it.key} value={it.key}>{it.label}</option>)}
                                     </optgroup>
+                                  ))}
+                                </select>
+                              )}
+                              {ids.length > 0 && onAssignToJob && jobsInScope.length > 0 && (
+                                <select
+                                  style={{ ...styles.input, fontSize: 11, padding: "2px 4px", minWidth: 200, borderColor: "#86efac" }}
+                                  value=""
+                                  onChange={(e) => {
+                                    if (!e.target.value) return;
+                                    const j = jobsInScope.find((x) => x.budgetNumber === e.target.value);
+                                    if (j) onAssignToJob(ids, j.budgetNumber, j.client);
+                                  }}
+                                >
+                                  <option value="">→ cobro de trabajo…</option>
+                                  {jobsInScope.map((j) => (
+                                    <option key={`${j.company}-${j.budgetNumber}`} value={j.budgetNumber}>
+                                      {j.budgetNumber} · {j.client}
+                                    </option>
                                   ))}
                                 </select>
                               )}

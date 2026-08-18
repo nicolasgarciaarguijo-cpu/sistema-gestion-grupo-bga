@@ -10656,6 +10656,19 @@ export default function App() {
     );
   };
 
+  // Asigna un/unos movimiento(s) del banco a la COBRANZA de un trabajo: quedan como cobro linkeado al
+  // ppto·cliente y aparecen en Cobranzas del calendario (agrupados por ese trabajo).
+  const assignBankToJob = (bankIds: number[], budgetNumber: string, client: string) => {
+    const set = new Set(bankIds);
+    setBankStatementEntries((prev) =>
+      prev.map((b) =>
+        set.has(b.id)
+          ? { ...b, conceptKey: "cobranzas", assignedKind: "cobro", assignedJobBudget: budgetNumber, assignedParty: client }
+          : b
+      )
+    );
+  };
+
   // Alta rápida desde el Calendario anual: crea un movimiento financiero ya clasificado (cobranza/pago/
   // facturación) con su circuito blanco/negro. Aparece directo en la grilla del calendario.
   const addCalendarMovement = (m: {
@@ -12174,11 +12187,17 @@ export default function App() {
 
     visibleBankStatementEntries.forEach((item) => {
       if (!item.date || !item.date.startsWith(String(analysisYear))) return;
+      // Si el movimiento se asignó a la cobranza de un trabajo, el título es ppto·cliente (así se agrupa
+      // en Cobranzas junto al resto del trabajo); si no, el título crudo del banco.
+      const cobroTitle =
+        item.conceptKey === "cobranzas" && item.assignedJobBudget
+          ? `${item.assignedJobBudget}${item.assignedParty ? " · " + item.assignedParty : ""}`
+          : `${item.bank || "Banco"} · ${item.concept || "Movimiento"}`;
       entries.push({
         id: `bank-${item.id}`,
         date: item.date,
         company: item.company,
-        title: `${item.bank || "Banco"} · ${item.concept || "Movimiento"}`,
+        title: cobroTitle,
         kind: "banco",
         amount: Number(item.amount || 0),
         statusLabel: item.movementType,
@@ -14976,6 +14995,8 @@ export default function App() {
           bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}
           money={money}
           employees={visibleEmployees.map((e) => ({ name: e.name, company: e.company }))}
+          jobs={visibleApprovedJobs.map((j) => ({ budgetNumber: j.budgetNumber, client: j.client, company: j.company }))}
+          onAssignToJob={assignBankToJob}
         />
       )}
       {activeTab === "cashflow" && (
