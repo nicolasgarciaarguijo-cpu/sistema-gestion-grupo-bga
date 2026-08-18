@@ -12100,8 +12100,10 @@ export default function App() {
     visibleFinancialItems.forEach((item) => {
       if (!item.date || !item.date.startsWith(String(analysisYear))) return;
       const isCobranza = item.type === "cobranza";
-      const cobranzaTitle =
-        `${item.jobCode ? item.jobCode + " · " : ""}${item.client || item.title || "Cliente"}`.trim();
+      // Cobranza SIN presupuesto = incompleta → marcador (D) para que aparezca la pill en el calendario.
+      const cobranzaTitle = item.jobCode
+        ? `${item.jobCode} · ${item.client || item.title || "Cliente"}`
+        : `${item.client || item.title || "Cliente"} · (D) falta ppto`;
       entries.push({
         id: `financial-${item.id}`,
         date: item.date,
