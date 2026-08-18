@@ -364,8 +364,9 @@ export function CalendarioAnualTab({
         });
         rows.push({ title: `${job.budgetNumber} · ${job.client}`, drow: merged, falta: job.falta || "" });
       });
+    const hasMove = (drow: Map<string, number>) => visibleDayCols.some((c) => (drow.get(c.iso) || 0) !== 0);
     Array.from(agg.cobranzaDetail.entries())
-      .filter(([key, drow]) => !usedKeys.has(key) && activeInView(drow))
+      .filter(([key, drow]) => !usedKeys.has(key) && hasMove(drow))
       .forEach(([key, drow]) => rows.push({ title: key, drow }));
     return rows.sort((a, b) => a.title.localeCompare(b.title));
   }, [jobs, companyScope, agg.cobranzaDetail, visibleDayCols]);
