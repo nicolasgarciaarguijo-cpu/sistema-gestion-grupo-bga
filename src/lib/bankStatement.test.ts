@@ -116,6 +116,17 @@ describe("rowsToStatementEntries", () => {
     expect(entries[1]).toMatchObject({ amount: 3000, movementType: "credito" });
   });
 
+  it("toma parentesis como negativo = debito (formato Santander), con saldo firmado", () => {
+    const rows = [
+      ["Fecha", "Concepto", "Importe", "Saldo"],
+      ["14/08/2026", "PAGO CCI", "(100.000,00)", "(5.435.771,70)"],
+      ["13/08/2026", "CREDITO TRANSF", "4.150.000,00", "13.864.584,69"],
+    ];
+    const entries = rowsToStatementEntries(rows);
+    expect(entries[0]).toMatchObject({ amount: 100000, movementType: "debito", balance: -5435771.7 });
+    expect(entries[1]).toMatchObject({ amount: 4150000, movementType: "credito", balance: 13864584.69 });
+  });
+
   it("descarta filas sin fecha valida (saldos, totales, basura)", () => {
     const rows = [
       ["Fecha", "Concepto", "Importe"],

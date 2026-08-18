@@ -125,6 +125,14 @@ export function detectColumns(rows: string[][]): { headerIndex: number; columns:
 const cellAt = (row: string[], index: number): string =>
   index >= 0 && index < row.length ? row[index] || "" : "";
 
+// Saldo con signo: parseArNumber siempre da positivo, pero el saldo puede ser negativo
+// (signo menos o paréntesis, según el banco).
+const parseSignedBalance = (raw: string): number => {
+  const v = parseArNumber(raw);
+  const neg = /-/.test(raw) || /^\(.*\)$/.test(raw.trim());
+  return neg ? -v : v;
+};
+
 // Convierte la grilla en movimientos. Descarta filas sin fecha o sin importe.
 export function rowsToStatementEntries(rows: string[][]): BankStatementRow[] {
   const detected = detectColumns(rows);
@@ -158,7 +166,9 @@ export function rowsToStatementEntries(rows: string[][]): BankStatementRow[] {
       const parsed = parseArNumber(raw);
       if (!(parsed > 0)) continue;
       amount = parsed;
-      movementType = /-/.test(raw) ? "debito" : "credito";
+      // Negativo = salida = debito. Algunos bancos usan signo menos, otros paréntesis: (100.000,00).
+      const isNeg = /-/.test(raw) || /^\(.*\)$/.test(raw);
+      movementType = isNeg ? "debito" : "credito";
     }
 
     if (!(amount > 0)) continue;
@@ -168,7 +178,7 @@ export function rowsToStatementEntries(rows: string[][]): BankStatementRow[] {
       concept,
       amount,
       movementType,
-      balance: parseArNumber(cellAt(row, columns.balance)),
+      balance: parseSignedBalance(cellAt(row, columns.balance)),
     });
   }
   return entries;
@@ -250,8 +260,22 @@ export async function readBankStatement(file: File): Promise<BankStatementParseR
   const name = file.name.toLowerCase();
 
   if (/\.(xlsx|xls)$/.test(name)) {
-    const rows = await readSpreadsheetRows(file);
-    const entries = rowsToStatementEntries(rows);
+    // Algunos bancos exportan .xls que en realidad es texto/HTML tab-delimitado (ej. Santander).
+    // Intento leerlo como planilla; si no salen movimientos, caigo a parseo de texto delimitado.
+    let entries: BankStatementRow[] = [];
+    try {
+      entries = rowsToStatementEntries(await readSpreadsheetRows(file));
+    } catch {
+      entries = [];
+    }
+    if (entries.length === 0) {
+      try {
+        const text = await file.text();
+        entries = rowsToStatementEntries(parseDelimitedStatement(text));
+      } catch {
+        /* se maneja abajo */
+      }
+    }
     if (entries.length === 0) {
       throw new Error(
         "Lei el Excel pero no reconoci las columnas. Necesito al menos una columna 'Fecha' y una 'Concepto' (o 'Descripcion'/'Detalle')."
