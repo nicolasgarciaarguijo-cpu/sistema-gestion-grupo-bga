@@ -3,6 +3,7 @@ import { styles } from "../ui/styles";
 import { Panel } from "../ui/primitives";
 import { todayIso } from "../lib/format";
 import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "../domain/calendarStructure";
+import { suggestCalendarConcept } from "../domain/calendarBankRules";
 
 // Calendario anual = la planilla de cash flow adentro del sistema. Estructura FIJA (chart of accounts):
 // secciones → ítems, con total por sección. Días en columnas (año fiscal, scroll ←→). Cada movimiento
@@ -290,6 +291,22 @@ export function CalendarioAnualTab({
   }, [companyOptions]);
   const showByCompany = companyScope === "__ALL__" && agg.companiesSeen.size > 1;
   const selectedColor = companyScope !== "__ALL__" ? companyMeta.get(companyScope)?.color : undefined;
+
+  // Sugerencia de renglón para los movimientos del banco sin clasificar (mecánica bancaria).
+  const suggestedCount = useMemo(() => {
+    let n = 0;
+    agg.unclBankIds.forEach((ids, title) => { if (suggestCalendarConcept(title)) n += ids.length; });
+    return n;
+  }, [agg]);
+  const applyBankSuggestions = () => {
+    const byKey = new Map<string, number[]>();
+    agg.unclBankIds.forEach((ids, title) => {
+      const sug = suggestCalendarConcept(title);
+      if (!sug) return;
+      byKey.set(sug, (byKey.get(sug) || []).concat(ids));
+    });
+    byKey.forEach((ids, key) => onAssignConcept(ids, key));
+  };
 
   // Empleados a mostrar como renglones de HABERES (uno por empleado). Filtra por empresa si hay scope.
   const employeesInScope = useMemo(() => {
@@ -607,11 +624,19 @@ export function CalendarioAnualTab({
               {agg.unclDetail.size > 0 && (
                 <>
                   <tr>
-                    <td
-                      style={{ ...tdStickyLabel, background: "#fef9c3", fontWeight: 800, color: "#854d0e", cursor: "pointer" }}
-                      onClick={() => toggle("uncl")}
-                    >
-                      {expanded.has("uncl") ? "▾ " : "▸ "}SIN CLASIFICAR · falta ubicar (D)
+                    <td style={{ ...tdStickyLabel, background: "#fef9c3", fontWeight: 800, color: "#854d0e" }}>
+                      <span style={{ cursor: "pointer" }} onClick={() => toggle("uncl")}>
+                        {expanded.has("uncl") ? "▾ " : "▸ "}SIN CLASIFICAR · falta ubicar (D)
+                      </span>
+                      {suggestedCount > 0 && (
+                        <button
+                          style={{ ...miniAdd, marginLeft: 8, borderColor: "#a78bfa", background: "#f5f3ff", color: "#5b21b6" }}
+                          title="Clasifica automáticamente la mecánica bancaria conocida (impuestos, IVA, comisiones, sellos, intereses, tarjeta)"
+                          onClick={applyBankSuggestions}
+                        >
+                          🧠 Clasificar {suggestedCount} sugeridos
+                        </button>
+                      )}
                     </td>
                     {visibleDayCols.map((c) => {
                       const v = agg.unclByDate.get(c.iso) || 0;
@@ -640,6 +665,18 @@ export function CalendarioAnualTab({
                                     </strong>
                                   </span>
                                 );
+                              })()}
+                              {ids.length > 0 && (() => {
+                                const sug = suggestCalendarConcept(title);
+                                return sug && CALENDAR_ITEM_INDEX[sug] ? (
+                                  <button
+                                    style={{ ...miniAdd, borderColor: "#a78bfa", background: "#f5f3ff", color: "#5b21b6", textAlign: "left" }}
+                                    title="Aplicar la clasificación sugerida"
+                                    onClick={() => onAssignConcept(ids, sug)}
+                                  >
+                                    🧠 → {CALENDAR_ITEM_INDEX[sug].label}
+                                  </button>
+                                ) : null;
                               })()}
                               {ids.length > 0 && (
                                 <select
