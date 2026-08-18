@@ -12189,10 +12189,15 @@ export default function App() {
       if (!item.date || !item.date.startsWith(String(analysisYear))) return;
       // Si el movimiento se asignó a la cobranza de un trabajo, el título es ppto·cliente (así se agrupa
       // en Cobranzas junto al resto del trabajo); si no, el título crudo del banco.
+      const bankRawTitle = `${item.bank || "Banco"} · ${item.concept || "Movimiento"}`;
       const cobroTitle =
-        item.conceptKey === "cobranzas" && item.assignedJobBudget
-          ? `${item.assignedJobBudget}${item.assignedParty ? " · " + item.assignedParty : ""}`
-          : `${item.bank || "Banco"} · ${item.concept || "Movimiento"}`;
+        item.conceptKey === "cobranzas"
+          ? item.assignedJobBudget
+            ? `${item.assignedJobBudget}${item.assignedParty ? " · " + item.assignedParty : ""}`
+            : item.assignedParty
+              ? `${item.assignedParty} · (D) falta ppto`
+              : bankRawTitle
+          : bankRawTitle;
       entries.push({
         id: `bank-${item.id}`,
         date: item.date,
