@@ -69,7 +69,7 @@ import {
 } from "./domain/folderPaths";
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
-import { readBankStatement, readSpreadsheetRows, suggestGroupForConcept, SHEETJS_CDN } from "./lib/bankStatement";
+import { readBankStatement, readSpreadsheetRows, suggestGroupForConcept, SHEETJS_CDN, type BankStatementRow } from "./lib/bankStatement";
 import { rowsToArcaInvoices, arcaInvoiceKey } from "./lib/arcaInvoices";
 import {
   buildBudgetNumberFromParts,
@@ -2687,6 +2687,13 @@ export default function App() {
   const [costStatementDraft, setCostStatementDraft] = useState<CostStatementDraftRow[]>([]);
   const [costStatementMessage, setCostStatementMessage] = useState("");
   const [costStatementBusy, setCostStatementBusy] = useState(false);
+  // Importador MASIVO al espejo bancario (bankStatementEntries), aparte del import de gastos.
+  const [bankMirrorRaw, setBankMirrorRaw] = useState<BankStatementRow[]>([]);
+  const [bankMirrorCompany, setBankMirrorCompany] = useState<string>("");
+  const [bankMirrorBank, setBankMirrorBank] = useState<string>("");
+  const [bankMirrorCurrency, setBankMirrorCurrency] = useState<"ARS" | "USD">("ARS");
+  const [bankMirrorMessage, setBankMirrorMessage] = useState("");
+  const [bankMirrorBusy, setBankMirrorBusy] = useState(false);
   const [costAnalysisEntries, setCostAnalysisEntries] = useState<CostAnalysisEntry[]>(
     defaultCostAnalysisEntries
   );
@@ -13538,6 +13545,98 @@ export default function App() {
     }
   };
 
+  // ===== Importador MASIVO al espejo bancario =====
+  // Lee un extracto y guarda los movimientos crudos; la empresa/banco/moneda se eligen en el panel
+  // y el dedup se calcula contra lo ya cargado. NO va a gastos: llena bankStatementEntries.
+  const handleBankMirrorFile = async (file: File | null) => {
+    if (!file) return;
+    setBankMirrorBusy(true);
+    setBankMirrorMessage("");
+    try {
+      const result = await readBankStatement(file);
+      setBankMirrorRaw(result.entries);
+      // Autodetección de moneda por el nombre del archivo (USD / U$S / dolares).
+      if (/usd|u\$s|dolar/i.test(file.name)) setBankMirrorCurrency("USD");
+      setBankMirrorMessage(
+        `Leí ${result.entries.length} movimiento(s) del ${result.sourceType.toUpperCase()}. Elegí empresa, banco y moneda; reviso duplicados y confirmás.`
+      );
+    } catch (err) {
+      setBankMirrorRaw([]);
+      setBankMirrorMessage(err instanceof Error ? err.message : "No se pudo leer el extracto.");
+    } finally {
+      setBankMirrorBusy(false);
+    }
+  };
+
+  // Clave de deduplicación: misma empresa+banco+moneda+fecha+tipo+monto+concepto = mismo movimiento.
+  const bankDupKey = (
+    company: string, bank: string, currency: string,
+    date: string, movementType: string, amount: number, concept: string
+  ) => `${company}|${bank}|${currency}|${date}|${movementType}|${Math.round(amount * 100)}|${(concept || "").trim().toLowerCase()}`;
+
+  const bankMirrorPreview = useMemo(() => {
+    const existing = new Set(
+      bankStatementEntries.map((e) =>
+        bankDupKey(String(e.company), e.bank || "", e.currency || "ARS", e.date, e.movementType, Number(e.amount || 0), e.concept)
+      )
+    );
+    const seenInBatch = new Set<string>();
+    return bankMirrorRaw.map((r) => {
+      const key = bankDupKey(bankMirrorCompany, bankMirrorBank, bankMirrorCurrency, r.date, r.movementType, r.amount, r.concept);
+      const dup = existing.has(key) || seenInBatch.has(key);
+      seenInBatch.add(key);
+      return { ...r, dup };
+    });
+  }, [bankMirrorRaw, bankStatementEntries, bankMirrorCompany, bankMirrorBank, bankMirrorCurrency]);
+
+  const commitBankMirrorDraft = () => {
+    if (!bankMirrorBank.trim()) {
+      setBankMirrorMessage("Elegí el banco antes de cargar (ej: Patagonia, Santander).");
+      return;
+    }
+    const nuevos = bankMirrorPreview.filter((r) => !r.dup);
+    if (nuevos.length === 0) {
+      setBankMirrorMessage("No hay movimientos nuevos para cargar (todos ya estaban o el archivo está vacío).");
+      return;
+    }
+    const entries: BankStatementEntry[] = nuevos.map((r) => ({
+      id: newId(),
+      company: bankMirrorCompany as CompanyName,
+      date: r.date,
+      bank: bankMirrorBank.trim(),
+      movementType: r.movementType,
+      concept: r.concept,
+      amount: r.amount,
+      balance: r.balance,
+      currency: bankMirrorCurrency,
+      notes: "Importado del extracto (espejo)",
+      extractedAutomatically: true,
+    }));
+    setBankStatementEntries((prev) => [...entries, ...prev]);
+    const dups = bankMirrorPreview.length - nuevos.length;
+    setBankMirrorRaw([]);
+    setBankMirrorMessage(
+      `Cargué ${entries.length} movimiento(s) al espejo de ${bankMirrorBank.trim()}${dups > 0 ? ` (omití ${dups} duplicado(s))` : ""}.`
+    );
+  };
+
+  const discardBankMirrorDraft = () => {
+    setBankMirrorRaw([]);
+    setBankMirrorMessage("");
+  };
+
+  // Empresa por defecto del importador (COMPANY_OPTIONS se declara más arriba en el árbol de render).
+  useEffect(() => {
+    if (!bankMirrorCompany) setBankMirrorCompany(COMPANY_OPTIONS[0].value);
+  }, [bankMirrorCompany]);
+
+  // Bancos ya usados (para el datalist del importador) + los habituales.
+  const knownBanks = useMemo(() => {
+    const s = new Set<string>(["Patagonia", "Santander"]);
+    bankStatementEntries.forEach((e) => { if (e.bank && e.bank.trim()) s.add(e.bank.trim()); });
+    return Array.from(s).sort();
+  }, [bankStatementEntries]);
+
   const updateCostStatementDraftRow = (
     id: number,
     field: keyof CostStatementDraftRow,
@@ -15195,6 +15294,19 @@ export default function App() {
           removeBankStatementEntry={removeBankStatementEntry}
           updateBankStatementEntry={updateBankStatementEntry}
           uploadBankStatementFile={uploadBankStatementFile}
+          bankMirrorPreview={bankMirrorPreview}
+          bankMirrorCompany={bankMirrorCompany}
+          setBankMirrorCompany={setBankMirrorCompany}
+          bankMirrorBank={bankMirrorBank}
+          setBankMirrorBank={setBankMirrorBank}
+          bankMirrorCurrency={bankMirrorCurrency}
+          setBankMirrorCurrency={setBankMirrorCurrency}
+          bankMirrorMessage={bankMirrorMessage}
+          bankMirrorBusy={bankMirrorBusy}
+          onBankMirrorFile={handleBankMirrorFile}
+          commitBankMirrorDraft={commitBankMirrorDraft}
+          discardBankMirrorDraft={discardBankMirrorDraft}
+          knownBanks={knownBanks}
         />
       )}
 

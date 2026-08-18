@@ -209,6 +209,20 @@ type CostosTabProps = {
   removeBankStatementEntry: (id: number) => void;
   updateBankStatementEntry: (id: number, field: any, value: string | number | boolean) => void;
   uploadBankStatementFile: (id: number, file: File | null) => void;
+  // Importador MASIVO al espejo bancario.
+  bankMirrorPreview: Array<{ date: string; concept: string; amount: number; movementType: "credito" | "debito"; balance: number; dup: boolean }>;
+  bankMirrorCompany: string;
+  setBankMirrorCompany: (v: string) => void;
+  bankMirrorBank: string;
+  setBankMirrorBank: (v: string) => void;
+  bankMirrorCurrency: "ARS" | "USD";
+  setBankMirrorCurrency: (v: "ARS" | "USD") => void;
+  bankMirrorMessage: string;
+  bankMirrorBusy: boolean;
+  onBankMirrorFile: (file: File | null) => void;
+  commitBankMirrorDraft: () => void;
+  discardBankMirrorDraft: () => void;
+  knownBanks: string[];
 };
 
 export function CostosTab({
@@ -265,6 +279,19 @@ export function CostosTab({
   removeBankStatementEntry,
   updateBankStatementEntry,
   uploadBankStatementFile,
+  bankMirrorPreview,
+  bankMirrorCompany,
+  setBankMirrorCompany,
+  bankMirrorBank,
+  setBankMirrorBank,
+  bankMirrorCurrency,
+  setBankMirrorCurrency,
+  bankMirrorMessage,
+  bankMirrorBusy,
+  onBankMirrorFile,
+  commitBankMirrorDraft,
+  discardBankMirrorDraft,
+  knownBanks,
 }: CostosTabProps) {
   const fixedRows = aggregation.rows.filter((row) => row.kind === "fijo");
   const variableRows = aggregation.rows.filter((row) => row.kind === "variable");
@@ -1324,6 +1351,105 @@ export function CostosTab({
             </tbody>
           </table>
         </div>
+      </Panel>
+
+      <Panel
+        title="Importar extracto al espejo bancario (masivo)"
+        span="full"
+        actions={
+          bankMirrorPreview.length > 0 ? (
+            <>
+              <ButtonLike onClick={commitBankMirrorDraft}>
+                Cargar {bankMirrorPreview.filter((r) => !r.dup).length} nuevo(s)
+              </ButtonLike>
+              <ButtonLike onClick={discardBankMirrorDraft} secondary>
+                Descartar
+              </ButtonLike>
+            </>
+          ) : undefined
+        }
+      >
+        <div style={styles.sectionNote}>
+          Carga masiva del <strong>espejo bancario</strong> (lo que alimenta el calendario y el cruce):
+          entran <strong>créditos y débitos</strong>, con su saldo. Elegí empresa, banco y moneda; reviso
+          duplicados contra lo ya cargado y confirmás. (Distinto del import de arriba, que va a gastos.)
+        </div>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", margin: "10px 0" }}>
+          <label style={{ display: "flex", flexDirection: "column", fontSize: 12, gap: 3 }}>
+            Empresa
+            <select style={styles.input} value={bankMirrorCompany} onChange={(e) => setBankMirrorCompany(e.target.value)}>
+              {COMPANY_OPTIONS.filter((c: any) => c.value !== "General").map((c: any) => (
+                <option key={c.value} value={c.value}>{c.short || c.value}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", fontSize: 12, gap: 3 }}>
+            Banco / cuenta
+            <input
+              style={styles.input}
+              list="bank-mirror-banks"
+              placeholder="Ej: Patagonia, Santander"
+              value={bankMirrorBank}
+              onChange={(e) => setBankMirrorBank(e.target.value)}
+            />
+            <datalist id="bank-mirror-banks">
+              {knownBanks.map((b) => <option key={b} value={b} />)}
+            </datalist>
+          </label>
+          <label style={{ display: "flex", flexDirection: "column", fontSize: 12, gap: 3 }}>
+            Moneda
+            <select style={styles.input} value={bankMirrorCurrency} onChange={(e) => setBankMirrorCurrency(e.target.value as "ARS" | "USD")}>
+              <option value="ARS">$ (pesos)</option>
+              <option value="USD">U$S (dólares)</option>
+            </select>
+          </label>
+          <div style={{ alignSelf: "flex-end" }}>
+            <FileDropButton
+              label={bankMirrorBusy ? "Leyendo extracto..." : "Cargar extracto (Excel / CSV)"}
+              accept=".xlsx,.xls,.csv,.tsv,.txt,.pdf"
+              onFileSelected={onBankMirrorFile}
+            />
+          </div>
+        </div>
+        {bankMirrorMessage && <div style={styles.sectionNote}>{bankMirrorMessage}</div>}
+        {bankMirrorPreview.length > 0 && (
+          <>
+            <div style={styles.sectionNote}>
+              {bankMirrorPreview.filter((r) => !r.dup).length} nuevo(s) ·{" "}
+              {bankMirrorPreview.filter((r) => r.dup).length} ya cargado(s) (se omiten) — hacia{" "}
+              <strong>{bankMirrorBank || "(elegí banco)"}</strong> · {bankMirrorCurrency}.
+            </div>
+            <div style={{ overflowX: "auto", maxHeight: 320 }}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Estado</th>
+                    <th>Fecha</th>
+                    <th>Concepto</th>
+                    <th>Tipo</th>
+                    <th style={{ textAlign: "right" }}>Monto</th>
+                    <th style={{ textAlign: "right" }}>Saldo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bankMirrorPreview.slice(0, 60).map((r, i) => (
+                    <tr key={i} style={{ opacity: r.dup ? 0.5 : 1 }}>
+                      <td>{r.dup ? "· ya está" : "✓ nuevo"}</td>
+                      <td>{r.date}</td>
+                      <td>{r.concept}</td>
+                      <td style={{ color: r.movementType === "debito" ? "#dc2626" : "#16a34a" }}>{r.movementType}</td>
+                      <td style={{ textAlign: "right" }}>{money(r.amount)}</td>
+                      <td style={{ textAlign: "right" }}>{money(r.balance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {bankMirrorPreview.length > 60 && (
+                <div style={styles.sectionNote}>… y {bankMirrorPreview.length - 60} más (se cargan todos los nuevos al confirmar).</div>
+              )}
+            </div>
+          </>
+        )}
       </Panel>
 
       <Panel
