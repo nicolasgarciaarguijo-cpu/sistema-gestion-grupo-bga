@@ -28,6 +28,12 @@ describe("suggestCalendarConcept", () => {
     expect(suggestCalendarConcept("TARJETA CREDITO VISA")).toBe("b_tarjeta_credito");
   });
 
+  it("marca como interno lo claramente entre cuentas propias / pasaje de moneda", () => {
+    expect(suggestCalendarConcept("TRANSFERENCIA ENTRE CUENTAS")).toBe("__interno__");
+    expect(suggestCalendarConcept("TRANSF. PROP. O/BCO. EBANK")).toBe("__interno__");
+    expect(suggestCalendarConcept("PASAJE DE $ A U$S")).toBe("__interno__");
+  });
+
   it("devuelve null en lo ambiguo (lo decide el usuario)", () => {
     expect(suggestCalendarConcept("PAGO DE SERVICIOS")).toBeNull();
     expect(suggestCalendarConcept("TRANSF. TERCEROS O/BCO. EBANK")).toBeNull();

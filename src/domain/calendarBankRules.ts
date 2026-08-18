@@ -11,8 +11,16 @@ const norm = (s: string): string =>
     .replace(/\s+/g, " ")
     .trim();
 
+// Marcador especial (no es un renglón del plan): movimiento interno = entre cuentas propias o pasaje
+// de moneda. NO es ingreso ni egreso; el calendario lo deja aparte para no contar doble.
+export const INTERNAL_KEY = "__interno__";
+
 // El orden importa: las reglas más específicas van primero (ganan).
 const RULES: Array<{ key: string; test: (c: string) => boolean }> = [
+  // Movimientos internos (conservador: solo lo claramente entre cuentas propias / pasaje de moneda).
+  { key: INTERNAL_KEY, test: (c) => c.includes("transferencia entre cuentas") },
+  { key: INTERNAL_KEY, test: (c) => c.includes("transf. prop") || c.includes("transf prop") },
+  { key: INTERNAL_KEY, test: (c) => c.includes("pasaje") && (c.includes("u$s") || c.includes("usd") || c.includes("pesos") || c.includes("$")) },
   // Impuesto al débito/crédito (Ley 25.413) — el más frecuente.
   { key: "b_imp_ley_25413", test: (c) => c.includes("ley 25.413") || c.includes("ley 25413") },
   { key: "b_imp_debito", test: (c) => c.includes("imp.db/cr") && c.includes("debito") },

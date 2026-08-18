@@ -172,6 +172,9 @@ export function CalendarioAnualTab({
     const conceptCostKind = new Map<string, { fijo: boolean; variable: boolean }>(); // itemKey -> tipos vistos
     // Renglones personalizados por sección: sección -> label -> date -> monto.
     const customRows = new Map<string, Map<string, Map<string, number>>>();
+    // Movimientos internos (entre cuentas propias / pasaje de moneda): NO cuentan como ingreso/egreso.
+    const internoDetail = new Map<string, Map<string, number>>();
+    const internoByDate = new Map<string, number>();
     // Cuando scope=Todas: desglose de los grandes totales POR EMPRESA (el "×4" a la vista, con color).
     const compIncB = new Map<string, Map<string, number>>();
     const compIncN = new Map<string, Map<string, number>>();
@@ -228,6 +231,13 @@ export function CalendarioAnualTab({
         track("cobranzas", "in", neg, e.company, e.date, amt);
         return;
       }
+      // Movimiento interno: neutral, no suma a ingresos/egresos. Se muestra aparte (informativo).
+      if (e.conceptKey === "__interno__") {
+        const signed = e.statusLabel === "debito" ? -amt : amt;
+        addDeep(internoDetail, title, e.date, signed);
+        add(internoByDate, e.date, signed);
+        return;
+      }
       // Renglón PERSONALIZADO agregado por el usuario: conceptKey = "custom:<seccion>:<label>".
       // Se suma a su sección (por dir) igual que un renglón fijo, y se muestra como fila propia.
       if (e.conceptKey && e.conceptKey.startsWith("custom:")) {
@@ -280,7 +290,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows };
+    return { byConcept, cobranzaDetail, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
   }, [entries, companyScope, dayCols]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
@@ -668,13 +678,14 @@ export function CalendarioAnualTab({
                               })()}
                               {ids.length > 0 && (() => {
                                 const sug = suggestCalendarConcept(title);
-                                return sug && CALENDAR_ITEM_INDEX[sug] ? (
+                                const label = sug === "__interno__" ? "Movimiento interno (no cuenta)" : CALENDAR_ITEM_INDEX[sug || ""]?.label;
+                                return sug && label ? (
                                   <button
                                     style={{ ...miniAdd, borderColor: "#a78bfa", background: "#f5f3ff", color: "#5b21b6", textAlign: "left" }}
                                     title="Aplicar la clasificación sugerida"
                                     onClick={() => onAssignConcept(ids, sug)}
                                   >
-                                    🧠 → {CALENDAR_ITEM_INDEX[sug].label}
+                                    🧠 → {label}
                                   </button>
                                 ) : null;
                               })()}
@@ -685,6 +696,7 @@ export function CalendarioAnualTab({
                                   onChange={(e) => { if (e.target.value) onAssignConcept(ids, e.target.value); }}
                                 >
                                   <option value="">→ asignar a renglón…</option>
+                                  <option value="__interno__">↔ Movimiento interno (no cuenta)</option>
                                   {CALENDAR_SECTIONS.filter((s) => s.items.length > 0).map((s) => (
                                     <optgroup key={s.key} label={s.label}>
                                       {s.items.map((it) => <option key={it.key} value={it.key}>{it.label}</option>)}
@@ -705,6 +717,38 @@ export function CalendarioAnualTab({
                         </tr>
                       );
                     })}
+                </>
+              )}
+
+              {/* ===== MOVIMIENTOS INTERNOS (entre cuentas propias / pasaje; NO cuentan) ===== */}
+              {agg.internoDetail.size > 0 && (
+                <>
+                  <tr>
+                    <td style={{ ...tdStickyLabel, background: "#f1f5f9", fontWeight: 800, color: "#475569" }}>
+                      ↔ MOVIMIENTOS INTERNOS <span style={{ fontWeight: 400 }}>(no cuentan como ingreso/egreso)</span>
+                    </td>
+                    {visibleDayCols.map((c) => {
+                      const v = agg.internoByDate.get(c.iso) || 0;
+                      return (
+                        <td key={`inth-${c.iso}`} style={{ ...tdCell, background: "#f1f5f9", fontWeight: 700, color: v ? "#475569" : "#cbd5e1", ...hi(c.iso) }}>
+                          {v ? money(Math.abs(v)) : "·"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {Array.from(agg.internoDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => (
+                    <tr key={`int-${title}`} style={{ background: "#f8fafc" }}>
+                      <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 24, fontWeight: 400, color: "#64748b" }}>↔ {title}</td>
+                      {visibleDayCols.map((c) => {
+                        const v = drow.get(c.iso) || 0;
+                        return (
+                          <td key={`int-${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#64748b" : "#e2e8f0", ...hi(c.iso) }}>
+                            {v ? money(Math.abs(v)) : "·"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
                 </>
               )}
 
