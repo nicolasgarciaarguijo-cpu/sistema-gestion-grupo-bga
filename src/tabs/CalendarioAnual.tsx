@@ -441,9 +441,16 @@ export function CalendarioAnualTab({
     );
   };
 
-  const detailRow = (label: string, drow: Map<string, number>, key: string, isOut: boolean) => (
+  const detailRow = (label: string, drow: Map<string, number>, key: string, isOut: boolean) => {
+    // Si el título trae el marcador "(D) falta ...", lo mostramos como pill D (falta completar).
+    const dMatch = label.match(/·?\s*\(D\)\s*(.*)$/i);
+    const cleanLabel = dMatch ? label.slice(0, label.indexOf("(D)")).replace(/·\s*$/, "").trim() : label;
+    return (
     <tr key={key} style={{ background: "#f8fafc" }}>
-      <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>{label}</td>
+      <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>
+        {cleanLabel}
+        {dMatch && <span style={dPill} title={`Falta completar: ${dMatch[1] || "dato"}`}>D</span>}
+      </td>
       {visibleDayCols.map((c) => {
         const v = drow.get(c.iso) || 0;
         return (
@@ -453,7 +460,8 @@ export function CalendarioAnualTab({
         );
       })}
     </tr>
-  );
+    );
+  };
 
   return (
     <div style={styles.column}>
@@ -1017,6 +1025,10 @@ const costChip: React.CSSProperties = {
 };
 const bnPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 8, borderRadius: 3, padding: "0px 3px", marginRight: 3, verticalAlign: "middle",
+};
+const dPill: React.CSSProperties = {
+  display: "inline-block", fontWeight: 800, fontSize: 9, borderRadius: 999, padding: "0px 6px", marginLeft: 6,
+  background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", verticalAlign: "middle",
 };
 const miniAdd: React.CSSProperties = {
   padding: "2px 8px", borderRadius: 6, border: "1px dashed #86efac", background: "#f0fdf4", cursor: "pointer", fontSize: 12,
