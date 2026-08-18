@@ -289,6 +289,7 @@ export function CalendarioAnualTab({
     return m;
   }, [companyOptions]);
   const showByCompany = companyScope === "__ALL__" && agg.companiesSeen.size > 1;
+  const selectedColor = companyScope !== "__ALL__" ? companyMeta.get(companyScope)?.color : undefined;
 
   // Empleados a mostrar como renglones de HABERES (uno por empleado). Filtra por empresa si hay scope.
   const employeesInScope = useMemo(() => {
@@ -420,12 +421,15 @@ export function CalendarioAnualTab({
         span="full"
         actions={
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <select style={{ ...styles.input, width: "auto" }} value={companyScope} onChange={(e) => setCompanyScope(e.target.value)}>
-              <option value="__ALL__">Todas las empresas</option>
-              {companyOptions.map((c) => (
-                <option key={c.value} value={c.value}>{c.short || c.value}</option>
-              ))}
-            </select>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "2px 8px 2px 6px", borderRadius: 8, border: `2px solid ${selectedColor || "#cbd5e1"}`, background: selectedColor ? `${selectedColor}18` : "#f8fafc" }}>
+              <span style={{ width: 12, height: 12, borderRadius: 3, background: selectedColor || "linear-gradient(90deg,#2563eb 50%,#059669 50%)", display: "inline-block" }} />
+              <select style={{ ...styles.input, width: "auto", border: "none", background: "transparent", padding: 0, fontWeight: 700, color: selectedColor || "#334155" }} value={companyScope} onChange={(e) => setCompanyScope(e.target.value)}>
+                <option value="__ALL__">Todas las empresas</option>
+                {companyOptions.map((c) => (
+                  <option key={c.value} value={c.value}>{c.short || c.value}</option>
+                ))}
+              </select>
+            </div>
             <select style={{ ...styles.input, width: "auto" }} value={fiscalStartYear} onChange={(e) => setFiscalStartYear(Number(e.target.value))}>
               {fiscalYearOptions.map((o) => (
                 <option key={o.value} value={o.value}>{o.label}</option>
@@ -456,11 +460,11 @@ export function CalendarioAnualTab({
           celda para <strong>cargar</strong> en ese día/renglón. Cada sección muestra su <strong>total</strong>.
           Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong> (ahí se cruza el banco).
         </div>
-        <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 8, maxHeight: "72vh" }}>
+        <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 8, borderTop: `3px solid ${selectedColor || "#cbd5e1"}`, maxHeight: "72vh" }}>
           <table style={{ borderCollapse: "collapse", fontSize: 12, whiteSpace: "nowrap" }}>
             <thead>
               <tr>
-                <th style={thStickyCorner}>Concepto</th>
+                <th style={{ ...thStickyCorner, ...(selectedColor ? { boxShadow: `inset 4px 0 0 ${selectedColor}` } : {}) }}>Concepto</th>
                 {visibleMonths.map((m) => {
                   const mi = months.indexOf(m);
                   const span = visibleDayCols.filter((c) => c.monthIdx === mi).length;
