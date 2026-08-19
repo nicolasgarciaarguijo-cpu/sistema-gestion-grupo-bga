@@ -54,7 +54,8 @@ import {
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
-import { DEFAULT_CALENDAR_ROW_CONFIG, type CalendarRowConfig } from "./domain/calendarStructure";
+import { CALENDAR_SECTIONS, DEFAULT_CALENDAR_ROW_CONFIG, type CalendarRowConfig } from "./domain/calendarStructure";
+import { buildLoanLines, lenderFromLabel, type CalendarLoan } from "./domain/loanLines";
 import { aggregateCardCosts } from "./domain/cardCosts";
 import { TarjetasTab } from "./tabs/Tarjetas";
 import { detectIntercompanyTransfers, summarizeIntercompany } from "./domain/intercompany";
@@ -12182,6 +12183,66 @@ export default function App() {
     [visibleCapitalEntries, balanceCompanyScope]
   );
 
+  // PRESTAMOS que entraron por el Calendario anual: cada uno arma su LINEA en el bloque de deuda con
+  // el nombre del prestamista (regla del usuario, 2026-08-19). Quien presto sale del renglon donde se
+  // clasifico la plata: los fijos de la seccion PRESTAMOS (con el nombre que le haya puesto el
+  // usuario) y los renglones propios "custom:prestamos:<Nombre>". Es plata a devolver, no ganancia.
+  const calendarLoans = useMemo(() => {
+    const section = CALENDAR_SECTIONS.find((s2) => s2.key === "prestamos");
+    if (!section) return [] as CalendarLoan[];
+    const CUSTOM_PREFIX = "custom:prestamos:";
+    const labelOfConcept = (conceptKey: string): string | null => {
+      if (conceptKey.startsWith(CUSTOM_PREFIX)) return conceptKey.slice(CUSTOM_PREFIX.length) || null;
+      const item = section.items.find((it) => it.key === conceptKey);
+      if (!item) return null;
+      return calendarRowConfig.labels?.[item.key] || item.label;
+    };
+    const out: CalendarLoan[] = [];
+    visibleBankStatementEntries.forEach((b) => {
+      // Solo lo que ENTRO: un debito en un renglon de prestamo es una devolucion, no deuda nueva.
+      if (b.movementType !== "credito" || !b.conceptKey) return;
+      const label = labelOfConcept(b.conceptKey);
+      if (!label) return;
+      out.push({
+        id: `bank-${b.id}`,
+        company: b.company,
+        date: b.date,
+        amount: Number(b.amount || 0),
+        lender: lenderFromLabel(label),
+        color: b.administration === "negro" ? "negro" : "blanco",
+      });
+    });
+    visibleFinancialItems.forEach((f) => {
+      if (!f.conceptKey) return;
+      const label = labelOfConcept(f.conceptKey);
+      if (!label) return;
+      out.push({
+        id: `financial-${f.id}`,
+        company: f.company,
+        date: f.date,
+        amount: Number(f.amount || 0),
+        lender: lenderFromLabel(label),
+        color: f.administration === "negro" ? "negro" : "blanco",
+      });
+    });
+    return out.filter((l) => l.amount > 0 && !!l.date);
+  }, [visibleBankStatementEntries, visibleFinancialItems, calendarRowConfig]);
+
+  // Una linea por prestamista, marcando que parte ya estaba asentada a mano (para no contarla dos
+  // veces). Sigue el mismo selector de empresa que el resto del balance.
+  const loanLines = useMemo(
+    () =>
+      buildLoanLines(
+        calendarLoans.filter(
+          (l) => balanceCompanyScope === "__ALL__" || l.company === balanceCompanyScope
+        ),
+        visibleCapitalEntries.filter(
+          (item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope
+        )
+      ),
+    [calendarLoans, visibleCapitalEntries, balanceCompanyScope]
+  );
+
   const scopedCapitalEntries = useMemo(
     () =>
       visibleCapitalEntries
@@ -15240,6 +15301,7 @@ export default function App() {
           reservaBankAccounts={reservaBankAccounts}
           reservaUntil={reservaUntil}
           contributionsSummary={contributionsSummary}
+          loanLines={loanLines}
           capitalEntries={scopedCapitalEntries}
           setCapitalEntries={setCapitalEntries}
           addCapitalEntry={addCapitalEntry}

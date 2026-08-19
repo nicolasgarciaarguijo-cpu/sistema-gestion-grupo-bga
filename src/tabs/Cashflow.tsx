@@ -4,6 +4,7 @@ import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, ColorTagTo
 import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
+import { sameLender, type LoanLine } from "../domain/loanLines";
 
 // Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
 // queda en el title (hover). Evita que un numero largo rompa una columna de ~80px.
@@ -58,7 +59,7 @@ function StatRow({
   strong,
   last,
 }: {
-  label: string;
+  label: React.ReactNode;
   value: string;
   tone?: "in" | "out";
   color?: "blanco" | "negro";
@@ -145,6 +146,8 @@ type CashflowTabProps = {
   reservaUntil?: string;
   contributionsSummary: CapitalSummary;
   capitalEntries: CapitalEntry[];
+  // Préstamos que entraron por el Calendario anual, una línea por prestamista (ver domain/loanLines).
+  loanLines?: LoanLine[];
   setCapitalEntries: React.Dispatch<React.SetStateAction<CapitalEntry[]>>;
   addCapitalEntry: () => void;
   removeCapitalEntry: (entryId: number) => void;
@@ -196,6 +199,7 @@ export function CashflowTab({
   reservaUntil,
   contributionsSummary,
   capitalEntries,
+  loanLines = [],
   setCapitalEntries,
   addCapitalEntry,
   removeCapitalEntry,
@@ -828,7 +832,11 @@ export function CashflowTab({
               </>
             )}
             {(() => {
-              const pend = contributionsSummary.prestamosPendientes.total;
+              // Deuda viva por préstamos = lo asentado a mano + lo que entró por el calendario y
+              // todavía no estaba asentado (si estaba, no se cuenta dos veces).
+              const pend =
+                contributionsSummary.prestamosPendientes.total +
+                loanLines.reduce((acc, l) => acc + l.sinAsentar, 0);
               // Desendeudamiento pendiente en scope: cuota × cuotas restantes de los compromisos
               // activos de la(s) empresa(s) elegida(s). Es plata que todavía hay que pagar (echeqs de
               // equipos, planes de impuestos), así que también achica el excedente real.
@@ -887,16 +895,28 @@ export function CashflowTab({
               <strong>No toca resultados</strong> y no mueve la reserva (esa plata ya está en el banco);
               acá solo se asienta para verla. <strong>Aporte</strong> = capital, no vuelve;{" "}
               <strong>préstamo</strong> = se devuelve. Los dólares son un valor congelado de referencia,
-              no se suman con los pesos.
+              no se suman con los pesos. Lo que se clasifica como <strong>PRÉSTAMO en el Calendario
+              anual</strong> arma solo su línea acá, con el nombre del prestamista; si ya lo habías
+              asentado a mano, no se cuenta dos veces.
             </div>
             <div style={styles.metricGrid}>
               <MiniMetric label="Aportes (capital)" value={money(contributionsSummary.aportes.total)} tone="in" />
               <MiniMetric
                 label="Préstamos pendientes"
-                value={money(contributionsSummary.prestamosPendientes.total)}
+                value={money(
+                  contributionsSummary.prestamosPendientes.total +
+                    loanLines.reduce((acc, l) => acc + l.sinAsentar, 0)
+                )}
                 tone="out"
               />
-              <MiniMetric label="Total recibido" value={money(contributionsSummary.totalRecibido)} tone="in" />
+              <MiniMetric
+                label="Total recibido"
+                value={money(
+                  contributionsSummary.totalRecibido +
+                    loanLines.reduce((acc, l) => acc + l.sinAsentar, 0)
+                )}
+                tone="in"
+              />
               {contributionsSummary.usdReference !== 0 && (
                 <MiniMetric
                   label="USD congelado (ref.)"
@@ -907,23 +927,67 @@ export function CashflowTab({
                 />
               )}
             </div>
-            {contributionsSummary.byOrigin.length > 0 && (
-              <>
-                <div style={balanceSection}>Quién puso cuánto</div>
-                <div style={{ marginBottom: 12 }}>
-                  {contributionsSummary.byOrigin.map((o) => (
-                    <StatRow
-                      key={o.origin}
-                      label={o.origin}
-                      value={`${money(o.total)}${
-                        o.prestamoPendiente !== 0 ? ` (préstamo ${money(o.prestamoPendiente)})` : ""
-                      }`}
-                      tone={o.total < 0 ? "out" : "in"}
-                    />
-                  ))}
-                </div>
-              </>
-            )}
+            {(() => {
+              // Una línea por prestamista: lo asentado a mano + lo que entró por el Calendario anual
+              // (sección PRÉSTAMOS). El calendario arma la línea solo, con el nombre del prestamista;
+              // si ese mismo préstamo ya estaba cargado a mano, no se suma dos veces.
+              type Fila = { origin: string; total: number; prestamo: number; delBanco: number };
+              const filas: Fila[] = contributionsSummary.byOrigin.map((o) => ({
+                origin: o.origin,
+                total: o.total,
+                prestamo: o.prestamoPendiente,
+                delBanco: 0,
+              }));
+              loanLines.forEach((l) => {
+                if (l.sinAsentar === 0 && l.asentado === 0) return;
+                const fila = filas.find((f) => sameLender(f.origin, l.lender));
+                if (fila) {
+                  fila.total += l.sinAsentar;
+                  fila.prestamo += l.sinAsentar;
+                  fila.delBanco += l.recibido;
+                } else {
+                  filas.push({
+                    origin: l.lender,
+                    total: l.sinAsentar,
+                    prestamo: l.sinAsentar,
+                    delBanco: l.recibido,
+                  });
+                }
+              });
+              if (filas.length === 0) return null;
+              filas.sort((a, b) => b.total - a.total);
+              return (
+                <>
+                  <div style={balanceSection}>Quién puso cuánto</div>
+                  <div style={{ marginBottom: 12 }}>
+                    {filas.map((o) => (
+                      <StatRow
+                        key={o.origin}
+                        label={
+                          o.delBanco > 0 ? (
+                            <span>
+                              {o.origin}{" "}
+                              <span
+                                style={{ fontSize: 11, color: "#7c3aed" }}
+                                title={`Entró ${money(o.delBanco)} clasificado como préstamo en el Calendario anual`}
+                              >
+                                · del calendario
+                              </span>
+                            </span>
+                          ) : (
+                            o.origin
+                          )
+                        }
+                        value={`${money(o.total)}${
+                          o.prestamo !== 0 ? ` (préstamo ${money(o.prestamo)})` : ""
+                        }`}
+                        tone={o.total < 0 ? "out" : "in"}
+                      />
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
             {capitalEntries.length === 0 ? (
               <div style={styles.empty}>
                 No hay aportes ni préstamos cargados. Usá "Agregar movimiento" para asentar el primero.
