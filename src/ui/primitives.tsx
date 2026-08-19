@@ -214,6 +214,85 @@ export function PillD({
   );
 }
 
+// Menú de click derecho. La pill D solo MARCA que a un número le falta algo; las acciones sobre ese
+// número (editar, asignar, limpiar, borrar) salen de acá. Es el único menú contextual del sistema:
+// se cierra solo con click afuera, con otro click derecho o con Escape.
+export const quickMenuItem: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  width: "100%",
+  textAlign: "left",
+  padding: "5px 8px",
+  border: "none",
+  background: "transparent",
+  cursor: "pointer",
+  fontSize: 13,
+  borderRadius: 6,
+};
+
+// Título de un bloque de opciones dentro del menú (ej: "Clasificar en un grupo…").
+export function QuickMenuTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: 11, color: "#64748b", padding: "4px 8px", fontWeight: 700 }}>
+      {children}
+    </div>
+  );
+}
+
+export function QuickMenuSep() {
+  return <div style={{ borderTop: "1px solid #e2e8f0", margin: "4px 0" }} />;
+}
+
+export function QuickMenu({
+  x,
+  y,
+  onClose,
+  children,
+}: {
+  x: number;
+  y: number;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    const close = () => onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("contextmenu", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("contextmenu", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      style={{
+        position: "fixed",
+        left: Math.min(x, window.innerWidth - 240),
+        top: Math.min(y, window.innerHeight - 320),
+        zIndex: 1000,
+        background: "#fff",
+        border: "1px solid #cbd5e1",
+        borderRadius: 8,
+        boxShadow: "0 8px 28px rgba(0,0,0,0.20)",
+        padding: 6,
+        minWidth: 210,
+        maxHeight: 320,
+        overflowY: "auto",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 // Aclaración de PROCEDENCIA de un monto: círculo blanco con "B" (blanco) o negro con "N" (negro).
 // Se pone al lado del número. Reutilizable en todo el sistema.
 function ColorTag({

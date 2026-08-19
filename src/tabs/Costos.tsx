@@ -12,7 +12,7 @@
 // gasto no se cuenta dos veces.
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, PillD, moneyToneColor } from "../ui/primitives";
+import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, PillD, moneyToneColor, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { bankEntryMissingInfo } from "../domain/bankAssignment";
 import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
 import { money } from "../lib/format";
@@ -70,70 +70,6 @@ const KindPill = ({ kind }: { kind: CostKind }) => (
     {kind === "fijo" ? "F" : "V"}
   </span>
 );
-
-// Menú contextual (click derecho) reutilizable: aparece en la posición del cursor y se cierra al hacer
-// click afuera o Escape. Base para la edición rápida de pills en todo el sistema (Fase 7).
-const quickMenuItem: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  width: "100%",
-  textAlign: "left",
-  padding: "5px 8px",
-  border: "none",
-  background: "transparent",
-  cursor: "pointer",
-  fontSize: 13,
-  borderRadius: 6,
-};
-function QuickMenu({
-  x,
-  y,
-  onClose,
-  children,
-}: {
-  x: number;
-  y: number;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  React.useEffect(() => {
-    const close = () => onClose();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("click", close);
-    window.addEventListener("contextmenu", close);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("click", close);
-      window.removeEventListener("contextmenu", close);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-  return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      onContextMenu={(e) => e.preventDefault()}
-      style={{
-        position: "fixed",
-        left: Math.min(x, window.innerWidth - 240),
-        top: Math.min(y, window.innerHeight - 320),
-        zIndex: 1000,
-        background: "#fff",
-        border: "1px solid #cbd5e1",
-        borderRadius: 8,
-        boxShadow: "0 8px 28px rgba(0,0,0,0.20)",
-        padding: 6,
-        minWidth: 210,
-        maxHeight: 320,
-        overflowY: "auto",
-      }}
-    >
-      {children}
-    </div>
-  );
-}
 
 type CostosTabProps = {
   fiscalLabel: string;
@@ -320,10 +256,10 @@ export function CostosTab({
   const [ctxMenu, setCtxMenu] = React.useState<null | {
     x: number;
     y: number;
-    kind: "pago" | "caja";
+    kind: "pago" | "caja" | "banco";
     id: number;
   }>(null);
-  const openCtxMenu = (ev: React.MouseEvent, kind: "pago" | "caja", id: number) => {
+  const openCtxMenu = (ev: React.MouseEvent, kind: "pago" | "caja" | "banco", id: number) => {
     ev.preventDefault();
     setCtxMenu({ x: ev.clientX, y: ev.clientY, kind, id });
   };
@@ -1521,7 +1457,7 @@ export function CostosTab({
                   const isCobroPago = kind === "cobro" || kind === "pago";
                   return (
                   <React.Fragment key={entry.id}>
-                  <tr>
+                  <tr onContextMenu={(ev) => openCtxMenu(ev, "banco", entry.id)}>
                     <td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         {missing.length > 0 ? (
@@ -1704,13 +1640,6 @@ export function CostosTab({
                           ) : (
                             <div style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>✓ Completo</div>
                           )}
-                          <button
-                            style={{ ...styles.smallBtn, borderColor: "#fca5a5", color: "#b91c1c" }}
-                            title="Borra la clasificación, el trabajo, el tercero y el renglón de este movimiento. El importe y el saldo no se tocan: vuelve a quedar sin asignar."
-                            onClick={() => clearBankAssignment(entry.id)}
-                          >
-                            Limpiar asignación
-                          </button>
                         </div>
                       </td>
                     </tr>
@@ -2044,6 +1973,71 @@ export function CostosTab({
 
       {ctxMenu &&
         (() => {
+          // Movimiento del banco: la pill D solo marca que falta algo; las acciones salen de acá.
+          if (ctxMenu.kind === "banco") {
+            const entry: any = monthBankStatementEntries.find((e: any) => e.id === ctxMenu.id);
+            if (!entry) return null;
+            const assigned = Boolean(
+              entry.assignedKind || entry.assignedJobBudget || entry.assignedParty || entry.conceptKey
+            );
+            const close = () => setCtxMenu(null);
+            return (
+              <QuickMenu x={ctxMenu.x} y={ctxMenu.y} onClose={close}>
+                <QuickMenuTitle>
+                  {entry.movementType === "credito" ? "Entró" : "Salió"}{" "}
+                  {money(Math.abs(Number(entry.amount) || 0))}
+                </QuickMenuTitle>
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    setAssignOpenId(entry.id);
+                    close();
+                  }}
+                >
+                  {assigned ? "Editar asignación…" : "Asignar…"}
+                </button>
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    updateBankStatementEntry(
+                      entry.id,
+                      "administration",
+                      entry.administration === "negro" ? "blanco" : "negro"
+                    );
+                    close();
+                  }}
+                >
+                  <ColorTag color={entry.administration === "negro" ? "blanco" : "negro"} /> Cambiar a{" "}
+                  {entry.administration === "negro" ? "BLANCO (B)" : "NEGRO (N)"}
+                </button>
+                {assigned && (
+                  <>
+                    <QuickMenuSep />
+                    <button
+                      style={quickMenuItem}
+                      title="Borra clasificación, trabajo, tercero y renglón. El importe y el saldo no se tocan: vuelve a quedar sin asignar (D)."
+                      onClick={() => {
+                        clearBankAssignment(entry.id);
+                        close();
+                      }}
+                    >
+                      Limpiar asignación
+                    </button>
+                  </>
+                )}
+                <QuickMenuSep />
+                <button
+                  style={{ ...quickMenuItem, color: "#b91c1c" }}
+                  onClick={() => {
+                    if (window.confirm("¿Borrar este movimiento del banco?")) removeBankStatementEntry(entry.id);
+                    close();
+                  }}
+                >
+                  Borrar movimiento
+                </button>
+              </QuickMenu>
+            );
+          }
           const isPago = ctxMenu.kind === "pago";
           const entry: any = isPago
             ? costEntries.find((e) => e.id === ctxMenu.id)
@@ -2056,9 +2050,7 @@ export function CostosTab({
           };
           return (
             <QuickMenu x={ctxMenu.x} y={ctxMenu.y} onClose={() => setCtxMenu(null)}>
-              <div style={{ fontSize: 11, color: "#64748b", padding: "4px 8px", fontWeight: 700 }}>
-                Clasificar en un grupo…
-              </div>
+              <QuickMenuTitle>Clasificar en un grupo…</QuickMenuTitle>
               <button
                 style={quickMenuItem}
                 onClick={() => {
@@ -2082,7 +2074,7 @@ export function CostosTab({
               ))}
               {isPago && (
                 <>
-                  <div style={{ borderTop: "1px solid #e2e8f0", margin: "4px 0" }} />
+                  <QuickMenuSep />
                   <button
                     style={quickMenuItem}
                     onClick={() => {
