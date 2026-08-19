@@ -3937,6 +3937,20 @@ export default function App() {
     [purchaseInvoices, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
+  // Facturas de compra + el débito del banco que las paga (si se vinculó desde el Calendario anual).
+  // El vínculo se guarda en el movimiento del banco (fuente única); acá solo se lo trae puesto para
+  // que la cuenta corriente de proveedores no siga contando como deuda algo que ya se pagó.
+  const purchaseInvoicesWithBankLink = useMemo(() => {
+    const byInvoice = new Map<number, number>();
+    bankStatementEntries.forEach((b) => {
+      if (b.assignedPurchaseInvoiceId) byInvoice.set(Number(b.assignedPurchaseInvoiceId), b.id);
+    });
+    if (byInvoice.size === 0) return visiblePurchaseInvoices;
+    return visiblePurchaseInvoices.map((inv) =>
+      byInvoice.has(inv.id) ? { ...inv, paidByBankEntryId: byInvoice.get(inv.id) } : inv
+    );
+  }, [visiblePurchaseInvoices, bankStatementEntries]);
+
   const visiblePettyCashFunds = useMemo(
     () => pettyCashFunds.filter((item) => canAccessCompany(item.company)),
     [pettyCashFunds, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
@@ -10683,6 +10697,42 @@ export default function App() {
     );
   };
 
+  // Asigna un/unos movimiento(s) del banco a un PAGO a proveedor: el débito deja de estar "sin
+  // clasificar" y pasa al renglón elegido de la planilla, con el nombre del proveedor. Si además se
+  // eligió una factura de compra, ese débito la CANCELA: la factura sale de la deuda con el proveedor
+  // (cuenta corriente) sin cargar un pago aparte, porque el movimiento del banco ya ES la plata que
+  // salió. Una factura la paga UN movimiento: si se eligió factura, viene un solo id.
+  const assignBankToSupplier = (
+    bankIds: number[],
+    args: { supplier: string; conceptKey: string; invoiceId?: number | null }
+  ) => {
+    const set = new Set(bankIds);
+    const supplier = (args.supplier || "").trim();
+    const invoiceId = args.invoiceId ?? null;
+    setBankStatementEntries((prev) =>
+      prev.map((b) =>
+        set.has(b.id)
+          ? {
+              ...b,
+              conceptKey: args.conceptKey || b.conceptKey,
+              assignedKind: "pago" as const,
+              assignedParty: supplier || b.assignedParty,
+              // La factura la cancela un solo movimiento; los demás del grupo quedan solo con el proveedor.
+              assignedPurchaseInvoiceId: invoiceId && bankIds.length === 1 ? invoiceId : b.assignedPurchaseInvoiceId,
+            }
+          : b
+      )
+    );
+  };
+
+  // Suelta el vínculo de un movimiento del banco con su factura de compra (la factura vuelve a ser deuda).
+  const unlinkBankInvoice = (bankIds: number[]) => {
+    const set = new Set(bankIds);
+    setBankStatementEntries((prev) =>
+      prev.map((b) => (set.has(b.id) ? { ...b, assignedPurchaseInvoiceId: null } : b))
+    );
+  };
+
   // Alta rápida desde el Calendario anual: crea un movimiento financiero ya clasificado (cobranza/pago/
   // facturación) con su circuito blanco/negro. Aparece directo en la grilla del calendario.
   const addCalendarMovement = (m: {
@@ -15145,6 +15195,20 @@ export default function App() {
             };
           })}
           onAssignToJob={assignBankToJob}
+          suppliers={visibleSuppliers.map((s2) => ({ name: s2.name, taxId: s2.taxId, aliases: s2.aliases, active: s2.active }))}
+          purchaseInvoices={purchaseInvoicesWithBankLink.map((i) => ({
+            id: i.id,
+            company: i.company,
+            supplier: i.supplier,
+            taxId: i.taxId,
+            invoiceNumber: i.invoiceNumber,
+            invoiceDate: i.invoiceDate,
+            total: Number(i.total || 0),
+            paid: i.paidByCostEntryId != null || i.paidByBankEntryId != null,
+            paidByBankEntryId: i.paidByBankEntryId,
+          }))}
+          onAssignToSupplier={assignBankToSupplier}
+          onUnlinkInvoice={unlinkBankInvoice}
           onEditEntry={editCalendarEntry}
           onDeleteEntry={deleteCalendarEntry}
           rowConfig={calendarRowConfig}
@@ -15397,7 +15461,7 @@ export default function App() {
           updatePettyCashExpense={updatePettyCashExpense}
           getPettyCashAdministration={getPettyCashAdministration}
           autoClassifyUnassigned={autoClassifyUnassigned}
-          purchaseInvoices={visiblePurchaseInvoices}
+          purchaseInvoices={purchaseInvoicesWithBankLink}
           updatePurchaseInvoice={updatePurchaseInvoice}
           approvedJobsForLink={visibleApprovedJobs.map((j) => ({
             budgetNumber: j.budgetNumber,

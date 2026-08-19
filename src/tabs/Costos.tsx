@@ -313,6 +313,8 @@ export function CostosTab({
       invoiceDate: i.invoiceDate,
       total: Number(i.total || 0),
       paidByCostEntryId: i.paidByCostEntryId,
+      // Vinculo desde el Calendario anual: el debito del banco que paga la factura (deja de ser deuda).
+      paidByBankEntryId: i.paidByBankEntryId,
     })),
     companyScope
   ).accounts.filter((a) => {

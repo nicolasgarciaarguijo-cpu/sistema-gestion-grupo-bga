@@ -4,6 +4,8 @@ import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from ".
 import { todayIso } from "../lib/format";
 import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, type CalendarRowConfig } from "../domain/calendarStructure";
 import { suggestCalendarConcept } from "../domain/calendarBankRules";
+import { findSupplierInText } from "../domain/suppliers";
+import { invoiceCandidates, type LinkableInvoice } from "../domain/bankLinking";
 
 // Calendario anual = la planilla de cash flow adentro del sistema. Estructura FIJA (chart of accounts):
 // secciones → ítems, con total por sección. Días en columnas (año fiscal, scroll ←→). Cada movimiento
@@ -74,6 +76,10 @@ export function CalendarioAnualTab({
   employees = [],
   jobs = [],
   onAssignToJob,
+  suppliers = [],
+  purchaseInvoices = [],
+  onAssignToSupplier,
+  onUnlinkInvoice,
   onEditEntry,
   onDeleteEntry,
   rowConfig = DEFAULT_CALENDAR_ROW_CONFIG,
@@ -89,6 +95,16 @@ export function CalendarioAnualTab({
   employees?: Array<{ name: string; company: string }>;
   jobs?: Array<{ budgetNumber: string; client: string; company: string; active?: boolean; falta?: string }>;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
+  // Proveedores y facturas de COMPRA del sistema: con esto un débito sin clasificar se vincula a
+  // quién le pagamos y, si corresponde, a la factura que cancela.
+  suppliers?: Array<{ name: string; taxId: string; aliases?: string; active?: boolean }>;
+  purchaseInvoices?: LinkableInvoice[];
+  onAssignToSupplier?: (
+    bankIds: number[],
+    args: { supplier: string; conceptKey: string; invoiceId?: number | null }
+  ) => void;
+  // Soltar el vínculo con la factura de compra: esa factura vuelve a ser deuda con el proveedor.
+  onUnlinkInvoice?: (bankIds: number[]) => void;
   fiscalStartMonth?: number;
   onAddMovement: (m: {
     company: string;
@@ -378,6 +394,94 @@ export function CalendarioAnualTab({
         .sort((a, b) => String(b.budgetNumber).localeCompare(String(a.budgetNumber))),
     [jobs, companyScope]
   );
+
+  // ---- VINCULAR lo que quedó sin clasificar --------------------------------------------------
+  // La plata del banco que no tiene lugar: un CRÉDITO es el cobro de un trabajo; un DÉBITO es un pago
+  // a un proveedor (y, si se elige, la factura de compra que cancela). Lo abre el botón derecho, como
+  // todo lo demás: el número solo muestra, la acción sale del menú.
+  type LinkForm = {
+    bankIds: number[];
+    title: string;
+    total: number; // firmado: + ingreso / − egreso
+    company: string;
+    date: string;
+    mode: "trabajo" | "proveedor" | "renglon";
+    job: string;
+    supplier: string;
+    invoiceId: number | null;
+    sectionKey: string;
+    itemKey: string; // "__own__" = renglón propio con el nombre del proveedor
+    conceptKey: string;
+  };
+  const [linkForm, setLinkForm] = useState<LinkForm | null>(null);
+  const DEFAULT_PAY_SECTION = "compra_materiales";
+  const bankIdsOf = (list: Entry[]) =>
+    list.filter((e) => e.id.startsWith("bank-")).map((e) => Number(e.id.slice(5))).filter(Boolean);
+  const signedTotal = (list: Entry[]) =>
+    list.reduce((acc, e) => {
+      const amt = Math.abs(Number(e.amount) || 0);
+      return acc + (e.statusLabel === "debito" ? -amt : amt);
+    }, 0);
+  // Abre el vinculador para esos movimientos. El tipo arranca según el signo (entró = cobro, salió =
+  // pago) y el proveedor viene pre-cargado si el texto del banco lo nombra (nombre, alias o CUIT).
+  const openLink = (list: Entry[], title: string) => {
+    const bankIds = bankIdsOf(list);
+    if (bankIds.length === 0) return;
+    const total = signedTotal(list);
+    const prov = findSupplierInText(title, suppliers);
+    setLinkForm({
+      bankIds,
+      title,
+      total,
+      company: list[0]?.company || "",
+      date: list[0]?.date || "",
+      mode: total >= 0 ? "trabajo" : "proveedor",
+      job: "",
+      supplier: prov?.name || "",
+      invoiceId: null,
+      sectionKey: DEFAULT_PAY_SECTION,
+      itemKey: "__own__",
+      conceptKey: "",
+    });
+    setCellMenu(null);
+    setRowMenu(null);
+  };
+  // Facturas impagas que ese débito podría estar cancelando (mismo importe primero).
+  const linkInvoiceOptions = useMemo(() => {
+    if (!linkForm || linkForm.mode !== "proveedor") return [];
+    const prov = linkForm.supplier.trim()
+      ? { name: linkForm.supplier.trim(), taxId: findSupplierInText(linkForm.supplier, suppliers)?.taxId || "" }
+      : null;
+    return invoiceCandidates(
+      { company: linkForm.company, date: linkForm.date, amount: linkForm.total },
+      prov,
+      purchaseInvoices
+    ).slice(0, 30);
+  }, [linkForm, suppliers, purchaseInvoices]);
+  const confirmLink = () => {
+    if (!linkForm) return;
+    const { bankIds, mode } = linkForm;
+    if (mode === "trabajo") {
+      const ppto = linkForm.job.split("·")[0].trim();
+      const job = jobsInScope.find((j) => String(j.budgetNumber) === ppto) || jobs.find((j) => String(j.budgetNumber) === ppto);
+      if (!onAssignToJob) return;
+      if (!job) {
+        window.alert("Ese trabajo no existe. Elegí uno de la lista (empieza por el número de presupuesto).");
+        return;
+      }
+      onAssignToJob(bankIds, job.budgetNumber, job.client);
+    } else if (mode === "proveedor") {
+      const supplier = linkForm.supplier.trim();
+      if (!onAssignToSupplier || !supplier) return;
+      const conceptKey =
+        linkForm.itemKey === "__own__" ? `custom:${linkForm.sectionKey}:${supplier}` : linkForm.itemKey;
+      onAssignToSupplier(bankIds, { supplier, conceptKey, invoiceId: linkForm.invoiceId });
+    } else {
+      if (!linkForm.conceptKey) return;
+      onAssignConcept(bankIds, linkForm.conceptKey);
+    }
+    setLinkForm(null);
+  };
 
   // Filas de COBRANZAS: los trabajos ACTIVOS (algo falta para cerrar) SIEMPRE se muestran —aunque no
   // tengan movimiento este mes— como alerta; más las cobranzas con movimiento en el mes visible.
@@ -881,7 +985,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           celda para <strong>cargar</strong> en ese día/renglón, y <strong>botón derecho</strong> sobre un
           número (o sobre el nombre del renglón) para <strong>editar, corregir o borrar</strong>. El ancho de
           las columnas se cambia arrastrando el borde de “Concepto” o de los días (doble click vuelve al
-          original). Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong>.
+          original). Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong>: ahí, con
+          <strong> botón derecho → Vincular</strong>, la plata que entró se engancha a un <strong>trabajo</strong> y
+          la que salió a un <strong>proveedor</strong> (y a la factura de compra que cancela).
         </div>
         <div
           style={{
@@ -1178,39 +1284,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                 ) : null;
                               })()}
                               {ids.length > 0 && (
-                                <select
-                                  style={{ ...styles.input, fontSize: 11, padding: "2px 4px", minWidth: 200 }}
-                                  value=""
-                                  onChange={(e) => { if (e.target.value) onAssignConcept(ids, e.target.value); }}
-                                >
-                                  <option value="">→ asignar a renglón…</option>
-                                  <option value="__interno__">↔ Movimiento interno (no cuenta)</option>
-                                  {CALENDAR_SECTIONS.filter((s) => s.items.length > 0).map((s) => (
-                                    <optgroup key={s.key} label={s.label}>
-                                      {s.items.filter((it) => !hiddenRows.has(it.key)).map((it) => (
-                                        <option key={it.key} value={it.key}>{labelOf(it.key, it.label)}</option>
-                                      ))}
-                                    </optgroup>
-                                  ))}
-                                </select>
-                              )}
-                              {ids.length > 0 && onAssignToJob && jobsInScope.length > 0 && (
-                                <select
-                                  style={{ ...styles.input, fontSize: 11, padding: "2px 4px", minWidth: 200, borderColor: "#86efac" }}
-                                  value=""
-                                  onChange={(e) => {
-                                    if (!e.target.value) return;
-                                    const j = jobsInScope.find((x) => x.budgetNumber === e.target.value);
-                                    if (j) onAssignToJob(ids, j.budgetNumber, j.client);
-                                  }}
-                                >
-                                  <option value="">→ cobro de trabajo…</option>
-                                  {jobsInScope.map((j) => (
-                                    <option key={`${j.company}-${j.budgetNumber}`} value={j.budgetNumber}>
-                                      {j.budgetNumber} · {j.client}
-                                    </option>
-                                  ))}
-                                </select>
+                                <span style={{ fontSize: 10, color: "#a16207" }}>
+                                  botón derecho → Vincular
+                                </span>
                               )}
                             </div>
                           </td>
@@ -1444,6 +1520,14 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             <QuickMenuTitle>
               {rowMenu.label} · {list.length} mov.
             </QuickMenuTitle>
+            {rowMenu.kind === "uncl" && bankIdsOf(list).length > 0 && (
+              <>
+                <button style={{ ...quickMenuItem, fontWeight: 700 }} onClick={() => openLink(list, rowMenu.label)}>
+                  Vincular… <span style={{ color: "#94a3b8", fontSize: 11 }}>(trabajo / proveedor / renglon)</span>
+                </button>
+                <QuickMenuSep />
+              </>
+            )}
             {rowMenu.kind === "custom" && (
               <>
                 <button
@@ -1622,6 +1706,39 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     {money(Math.abs(Number(picked.amount) || 0))} · {picked.title}
                   </div>
                 )}
+                {(() => {
+                  // Si este débito cancela una factura de compra, se dice acá (y se puede soltar).
+                  const bankId = picked.id.startsWith("bank-") ? Number(picked.id.slice(5)) : 0;
+                  const inv = bankId ? purchaseInvoices.find((i) => i.paidByBankEntryId === bankId) : undefined;
+                  if (!inv) return null;
+                  return (
+                    <>
+                      <div style={{ fontSize: 11, color: "#166534", padding: "2px 8px" }}>
+                        Paga la factura {inv.invoiceNumber || "de compra"} de {inv.supplier} ({money(inv.total)})
+                      </div>
+                      {onUnlinkInvoice && (
+                        <button
+                          style={quickMenuItem}
+                          onClick={() => {
+                            onUnlinkInvoice([bankId]);
+                            close();
+                          }}
+                        >
+                          Soltar la factura <span style={{ color: "#94a3b8", fontSize: 11 }}>(vuelve a ser deuda)</span>
+                        </button>
+                      )}
+                      <QuickMenuSep />
+                    </>
+                  );
+                })()}
+                {picked.id.startsWith("bank-") && !picked.conceptKey && !isCobranzaEntry(picked) && (
+                  <>
+                    <button style={{ ...quickMenuItem, fontWeight: 700 }} onClick={() => openLink([picked], cellMenu.label)}>
+                      Vincular… <span style={{ color: "#94a3b8", fontSize: 11 }}>(trabajo / proveedor / renglon)</span>
+                    </button>
+                    <QuickMenuSep />
+                  </>
+                )}
                 {editable(picked) ? (
                   <>
                     <button style={quickMenuItem} onClick={() => openEdit(picked)}>
@@ -1657,6 +1774,191 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               </>
             )}
           </QuickMenu>
+        );
+      })()}
+
+      {linkForm && (() => {
+        const esEgreso = linkForm.total < 0;
+        const monto = Math.abs(linkForm.total);
+        const varios = linkForm.bankIds.length > 1;
+        const section = CALENDAR_SECTIONS.find((x) => x.key === linkForm.sectionKey);
+        const tab = (mode: LinkForm["mode"], label: string) => (
+          <button
+            key={mode}
+            style={{
+              ...btnSecondary,
+              fontWeight: linkForm.mode === mode ? 800 : 500,
+              borderColor: linkForm.mode === mode ? "#0f172a" : "#cbd5e1",
+              background: linkForm.mode === mode ? "#0f172a" : "#fff",
+              color: linkForm.mode === mode ? "#fff" : "#334155",
+            }}
+            onClick={() => setLinkForm({ ...linkForm, mode })}
+          >
+            {label}
+          </button>
+        );
+        const puedeGuardar =
+          linkForm.mode === "trabajo"
+            ? !!linkForm.job.trim()
+            : linkForm.mode === "proveedor"
+            ? !!linkForm.supplier.trim()
+            : !!linkForm.conceptKey;
+        return (
+          <div style={overlayStyle} onClick={() => setLinkForm(null)}>
+            <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ marginTop: 0, marginBottom: 4 }}>Vincular movimiento{varios ? "s" : ""} del banco</h3>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 12 }}>
+                {linkForm.title}
+                {varios ? ` · ${linkForm.bankIds.length} mov.` : linkForm.date ? ` · ${linkForm.date}` : ""}
+                {" · "}
+                <strong style={{ color: esEgreso ? "#dc2626" : "#0f172a" }}>
+                  {esEgreso ? "salió" : "entró"} {money(monto)}
+                </strong>
+              </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                {tab("trabajo", "Cobro de un trabajo")}
+                {tab("proveedor", "Pago a proveedor")}
+                {tab("renglon", "Renglón de la planilla")}
+              </div>
+
+              {linkForm.mode === "trabajo" && (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <label style={lblStyle}>
+                    Trabajo (presupuesto · cliente)
+                    <input
+                      style={styles.input}
+                      list="link-jobs"
+                      value={linkForm.job}
+                      autoFocus
+                      placeholder="Ej: 3199 · Pérez"
+                      onChange={(e) => setLinkForm({ ...linkForm, job: e.target.value })}
+                    />
+                    <datalist id="link-jobs">
+                      {jobsInScope.map((j) => (
+                        <option key={`${j.company}-${j.budgetNumber}`} value={`${j.budgetNumber} · ${j.client}`}>
+                          {j.falta ? `falta: ${j.falta}` : ""}
+                        </option>
+                      ))}
+                    </datalist>
+                  </label>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>
+                    Queda como cobranza de ese trabajo: sale de Sin clasificar y aparece en COBRANZAS, agrupado por
+                    presupuesto · cliente.
+                  </div>
+                </div>
+              )}
+
+              {linkForm.mode === "proveedor" && (
+                <div style={{ display: "grid", gap: 10 }}>
+                  <label style={lblStyle}>
+                    Proveedor
+                    <input
+                      style={styles.input}
+                      list="link-suppliers"
+                      value={linkForm.supplier}
+                      autoFocus
+                      placeholder="Nombre del proveedor (o escribí uno nuevo)"
+                      onChange={(e) => setLinkForm({ ...linkForm, supplier: e.target.value, invoiceId: null })}
+                    />
+                    <datalist id="link-suppliers">
+                      {suppliers.filter((x) => x.active !== false).map((x) => (
+                        <option key={x.name} value={x.name}>{x.taxId}</option>
+                      ))}
+                    </datalist>
+                  </label>
+                  {!varios && (
+                    <label style={lblStyle}>
+                      ¿Qué factura de compra cancela? <span style={{ color: "#94a3b8", fontSize: 11 }}>(opcional)</span>
+                      <select
+                        style={styles.input}
+                        value={linkForm.invoiceId ?? ""}
+                        onChange={(e) =>
+                          setLinkForm({ ...linkForm, invoiceId: e.target.value ? Number(e.target.value) : null })
+                        }
+                      >
+                        <option value="">— Ninguna (solo dejar el proveedor) —</option>
+                        {linkInvoiceOptions.map((c) => (
+                          <option key={c.invoice.id} value={c.invoice.id}>
+                            {c.invoice.invoiceDate} · {c.invoice.invoiceNumber || "factura"} · {money(c.invoice.total)}
+                            {c.sameAmount ? "  ✓ mismo importe" : ""}
+                            {linkForm.supplier.trim() ? "" : ` · ${c.invoice.supplier}`}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  {!varios && linkForm.supplier.trim() && linkInvoiceOptions.length === 0 && (
+                    <div style={{ fontSize: 11, color: "#b45309" }}>
+                      Ese proveedor no tiene facturas de compra impagas cargadas. Se vincula igual: queda el pago con su
+                      nombre.
+                    </div>
+                  )}
+                  {varios && (
+                    <div style={{ fontSize: 11, color: "#b45309" }}>
+                      Son {linkForm.bankIds.length} movimientos juntos. Para cancelar una factura puntual, entrá con el
+                      botón derecho sobre el número del día (un movimiento paga una factura).
+                    </div>
+                  )}
+                  <label style={lblStyle}>
+                    Sección de la planilla
+                    <select
+                      style={styles.input}
+                      value={linkForm.sectionKey}
+                      onChange={(e) => setLinkForm({ ...linkForm, sectionKey: e.target.value, itemKey: "__own__" })}
+                    >
+                      {CALENDAR_SECTIONS.filter((x) => x.dir === "out").map((x) => (
+                        <option key={x.key} value={x.key}>{x.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={lblStyle}>
+                    Renglón
+                    <select
+                      style={styles.input}
+                      value={linkForm.itemKey}
+                      onChange={(e) => setLinkForm({ ...linkForm, itemKey: e.target.value })}
+                    >
+                      <option value="__own__">
+                        ➕ Renglón propio: {linkForm.supplier.trim() || "(escribí el proveedor)"}
+                      </option>
+                      {(section?.items || []).filter((it) => !hiddenRows.has(it.key)).map((it) => (
+                        <option key={it.key} value={it.key}>{labelOf(it.key, it.label)}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              )}
+
+              {linkForm.mode === "renglon" && (
+                <label style={lblStyle}>
+                  Renglón de la planilla
+                  <select
+                    style={styles.input}
+                    value={linkForm.conceptKey}
+                    autoFocus
+                    onChange={(e) => setLinkForm({ ...linkForm, conceptKey: e.target.value })}
+                  >
+                    <option value="">— Elegí dónde va —</option>
+                    <option value="__interno__">↔ Movimiento interno (no cuenta)</option>
+                    {CALENDAR_SECTIONS.filter((x) => x.items.length > 0).map((x) => (
+                      <optgroup key={x.key} label={x.label}>
+                        {x.items.filter((it) => !hiddenRows.has(it.key)).map((it) => (
+                          <option key={it.key} value={it.key}>{labelOf(it.key, it.label)}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+              )}
+
+              <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
+                <button style={btnSecondary} onClick={() => setLinkForm(null)}>Cancelar</button>
+                <button style={btnPrimary} onClick={confirmLink} disabled={!puedeGuardar}>
+                  Vincular
+                </button>
+              </div>
+            </div>
+          </div>
         );
       })()}
 

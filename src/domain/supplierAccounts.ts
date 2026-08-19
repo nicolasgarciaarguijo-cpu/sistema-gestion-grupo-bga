@@ -15,6 +15,9 @@ export type SupplierInvoice = {
   total: number;
   // Pago (CostEntry) vinculado. Ausente/null = sin pago -> deuda pendiente.
   paidByCostEntryId?: number | null;
+  // Movimiento del banco (debito) vinculado a esta factura. Vale igual que un pago cargado: es la
+  // plata que efectivamente salio, asi que la factura deja de ser deuda.
+  paidByBankEntryId?: number | null;
 };
 
 export type SupplierAccount = {
@@ -28,7 +31,7 @@ export type SupplierAccount = {
   count: number; // cantidad de facturas
 };
 
-const isPaid = (inv: SupplierInvoice) => inv.paidByCostEntryId != null;
+const isPaid = (inv: SupplierInvoice) => inv.paidByCostEntryId != null || inv.paidByBankEntryId != null;
 
 export function computeSupplierAccounts(
   invoices: SupplierInvoice[],

@@ -562,6 +562,9 @@ export type PurchaseInvoice = {
   // Pago (CostEntry) vinculado a esta factura de compra. Ausente/null = sin pago -> deuda con el
   // proveedor (cuenta corriente). Ver domain/supplierAccounts.ts.
   paidByCostEntryId?: number | null;
+  // DERIVADO (no se guarda): id del movimiento del banco que paga esta factura. Sale de
+  // BankStatementEntry.assignedPurchaseInvoiceId, que es la unica fuente de verdad del vinculo.
+  paidByBankEntryId?: number | null;
 };
 
 export type PettyCashFund = {
@@ -662,6 +665,10 @@ export type BankStatementEntry = {
   assignedKind?: "cobro" | "pago" | "interno" | "aporte" | "impuesto" | "otro";
   assignedJobBudget?: string;
   assignedParty?: string;
+  // Factura de COMPRA que cancela este debito. Es el vinculo "de donde sale la plata": la factura
+  // deja de ser deuda con el proveedor (cuenta corriente) sin cargar un pago aparte, porque el
+  // movimiento del banco YA es la plata que salio. Ausente = el debito no paga ninguna factura.
+  assignedPurchaseInvoiceId?: number | null;
   administration?: "blanco" | "negro";
   assignmentNote?: string;
   // Renglón del Calendario anual (chart of accounts) al que se asigna este movimiento del extracto.

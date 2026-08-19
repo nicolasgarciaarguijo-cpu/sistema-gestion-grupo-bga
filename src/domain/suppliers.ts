@@ -8,7 +8,7 @@
 // Puro: solo texto y aritmetica, sin estado ni fechas del sistema.
 
 import { saleDelBanco } from "./types";
-import type { CostEntry, Supplier } from "./types";
+import type { CostEntry } from "./types";
 
 const DIGITS = /\D+/g;
 
@@ -28,7 +28,11 @@ export const onlyDigits = (s: string): string => (s || "").replace(DIGITS, "");
 // Los nombres cortos generan falsos positivos ("SA" matchearia en cualquier lado).
 const MIN_NAME_LEN = 4;
 
-export function supplierSearchTerms(supplier: Supplier): string[] {
+// Lo minimo que hace falta para reconocer un proveedor en el texto del banco. Asi lo puede usar
+// cualquier solapa que tenga los proveedores "recortados" (el Calendario anual, por ejemplo).
+export type SupplierLike = { name: string; taxId: string; aliases?: string; active?: boolean };
+
+export function supplierSearchTerms(supplier: SupplierLike): string[] {
   const terms = [supplier.name, ...String(supplier.aliases || "").split(",")]
     .map(normalizeText)
     .filter((t) => t.length >= MIN_NAME_LEN);
@@ -38,7 +42,7 @@ export function supplierSearchTerms(supplier: Supplier): string[] {
 // Busca a que proveedor corresponde el texto de un movimiento del banco.
 // Primero por CUIT (llave dura: el banco lo pone en el concepto/referencia), despues por nombre o
 // alias. Si hay varios candidatos por nombre, gana el termino MAS LARGO (el mas especifico).
-export function findSupplierInText(text: string, suppliers: Supplier[]): Supplier | null {
+export function findSupplierInText<T extends SupplierLike>(text: string, suppliers: T[]): T | null {
   const activos = (suppliers || []).filter((s) => s.active !== false);
   if (activos.length === 0) return null;
 
@@ -52,7 +56,7 @@ export function findSupplierInText(text: string, suppliers: Supplier[]): Supplie
   }
 
   const norm = normalizeText(text);
-  let mejor: { supplier: Supplier; len: number } | null = null;
+  let mejor: { supplier: T; len: number } | null = null;
   for (const s of activos) {
     for (const term of supplierSearchTerms(s)) {
       if (norm.includes(term) && (!mejor || term.length > mejor.len)) {
