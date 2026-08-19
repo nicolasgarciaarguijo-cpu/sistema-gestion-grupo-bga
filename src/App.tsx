@@ -10719,6 +10719,8 @@ export default function App() {
       title?: string;
       client?: string;
       jobCode?: string;
+      // Texto del renglón tal como se lee en la columna Concepto (en el banco es el concepto del extracto).
+      concept?: string;
       notes?: string;
       costKind?: "fijo" | "variable";
     }
@@ -10736,11 +10738,10 @@ export default function App() {
           if (patch.administration) next.administration = patch.administration;
           if (patch.conceptKey !== undefined) next.conceptKey = patch.conceptKey || undefined;
           // Si lo mandan al renglón de Cobranzas, el movimiento pasa a ser un COBRO del trabajo.
-          if (patch.conceptKey === "cobranzas") {
-            next.assignedKind = "cobro";
-            if (patch.jobCode !== undefined) next.assignedJobBudget = patch.jobCode || undefined;
-            if (patch.client) next.assignedParty = patch.client;
-          }
+          if (patch.conceptKey === "cobranzas") next.assignedKind = "cobro";
+          if (patch.jobCode !== undefined) next.assignedJobBudget = patch.jobCode || undefined;
+          if (patch.client !== undefined) next.assignedParty = patch.client || undefined;
+          if (patch.concept !== undefined) next.concept = patch.concept;
           if (patch.notes) next.assignmentNote = patch.notes;
           return next;
         })
@@ -10761,6 +10762,7 @@ export default function App() {
                 ...(patch.administration ? { administration: patch.administration } : {}),
                 ...(patch.conceptKey !== undefined ? { conceptKey: patch.conceptKey || undefined } : {}),
                 ...(patch.title !== undefined ? { title: patch.title } : {}),
+                ...(patch.concept !== undefined ? { title: patch.concept } : {}),
                 ...(patch.client !== undefined ? { client: patch.client } : {}),
                 ...(patch.jobCode !== undefined ? { jobCode: patch.jobCode } : {}),
                 ...(patch.notes !== undefined ? { notes: patch.notes } : {}),

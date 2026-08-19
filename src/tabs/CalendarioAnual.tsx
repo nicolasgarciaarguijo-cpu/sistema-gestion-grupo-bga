@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { todayIso } from "../lib/format";
@@ -116,6 +116,8 @@ export function CalendarioAnualTab({
       title?: string;
       client?: string;
       jobCode?: string;
+      // Texto del renglón como se lee en la columna Concepto (en el banco, el concepto del extracto).
+      concept?: string;
       notes?: string;
       costKind?: "fijo" | "variable";
     }
@@ -423,7 +425,59 @@ export function CalendarioAnualTab({
       notes: "",
     });
 
-  // ---- Click derecho sobre CUALQUIER número de la planilla -------------------------------------
+  // ---- Ancho de las columnas (como en una planilla) ---------------------------------------------
+  // Se arrastra el borde del encabezado: "Concepto" cambia la columna de la izquierda, cualquier día
+  // cambia el ancho de TODOS los días (son la misma columna repetida). Doble click vuelve al original.
+  // Es preferencia de VISTA, así que se guarda en el navegador (no en el estado del sistema).
+  const readW = (key: string, fallback: number) => {
+    const raw = typeof window !== "undefined" ? window.localStorage.getItem(key) : null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : fallback;
+  };
+  const [labelW, setLabelW] = useState(() => readW("calendarioAnual.labelW", LABEL_W_DEFAULT));
+  const [dayW, setDayW] = useState(() => readW("calendarioAnual.dayW", DAY_W_DEFAULT));
+  useEffect(() => {
+    window.localStorage.setItem("calendarioAnual.labelW", String(labelW));
+  }, [labelW]);
+  useEffect(() => {
+    window.localStorage.setItem("calendarioAnual.dayW", String(dayW));
+  }, [dayW]);
+  // Encabezado inmovilizado: la fila de MESES queda arriba de todo y la de DÍAS pegada abajo de ella,
+  // así al bajar por la planilla se sigue viendo en qué día estás. La altura de la fila de meses se mide
+  // (no se hardcodea) porque cambia con el zoom del navegador y el tamaño de fuente.
+  const monthRowRef = useRef<HTMLTableRowElement | null>(null);
+  const [monthRowH, setMonthRowH] = useState(24);
+  useLayoutEffect(() => {
+    const h = monthRowRef.current?.getBoundingClientRect().height;
+    if (h && Math.round(h) !== monthRowH) setMonthRowH(Math.round(h));
+  });
+
+  const startResize = (ev: React.MouseEvent, which: "label" | "day") => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const startX = ev.clientX;
+    const startW = which === "label" ? labelW : dayW;
+    const min = which === "label" ? 110 : 30;
+    const max = which === "label" ? 700 : 240;
+    const apply = (clientX: number) => {
+      const next = Math.min(max, Math.max(min, startW + (clientX - startX)));
+      if (which === "label") setLabelW(next);
+      else setDayW(next);
+    };
+    const onMove = (m: MouseEvent) => apply(m.clientX);
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+    // ---- Click derecho sobre CUALQUIER número de la planilla -------------------------------------
   // La pill D solo MARCA que a un número le falta algo. Las acciones (editar, blanco/negro, borrar,
   // cargar) salen de acá: se abre el menú en el cursor y muestra los movimientos que hay detrás de ese
   // número. Si hay más de uno, primero se elige cuál.
@@ -507,6 +561,55 @@ export function CalendarioAnualTab({
     setCellMenu(null);
   };
 
+  // ---- Click derecho sobre el NOMBRE del renglón (columna Concepto) -----------------------------
+  // Mismo criterio que con los números: acá se corrige el renglón entero (su nombre, el ppto/cliente
+  // de una cobranza, el texto que trajo el banco) o se lo borra con todos sus movimientos.
+  type RowMenu = {
+    x: number;
+    y: number;
+    label: string;
+    kind: "fijo" | "cobranza" | "custom" | "haberes" | "uncl" | "texto";
+    sectionKey: string;
+    itemKey: string;
+    match: (e: Entry) => boolean;
+  };
+  const [rowMenu, setRowMenu] = useState<RowMenu | null>(null);
+  const openRowMenu = (
+    ev: React.MouseEvent,
+    kind: RowMenu["kind"],
+    label: string,
+    sectionKey: string,
+    itemKey: string,
+    match: (e: Entry) => boolean
+  ) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setRowMenu({ x: ev.clientX, y: ev.clientY, kind, label, sectionKey, itemKey, match });
+  };
+  // Todos los movimientos de un renglón (de cualquier día, no solo el que se ve).
+  const entriesOfRow = (match: (e: Entry) => boolean) =>
+    entries.filter((e) => (companyScope === "__ALL__" || e.company === companyScope) && match(e));
+  // Aplica un cambio a TODO el renglón. Los que viven en otra solapa quedan como estaban y se avisa.
+  const patchRow = (match: (e: Entry) => boolean, build: (e: Entry) => Parameters<NonNullable<typeof onEditEntry>>[1]) => {
+    const list = entriesOfRow(match);
+    if (!onEditEntry || list.length === 0) return;
+    const fail = list.filter((e) => !onEditEntry(e.id, build(e))).length;
+    if (fail) {
+      window.alert(
+        `${fail} de ${list.length} movimientos de este renglón se editan en su solapa (compras, caja chica, comisiones o trabajos) y quedaron como estaban.`
+      );
+    }
+  };
+  const ask = (question: string, current: string) => {
+    const v = window.prompt(question, current);
+    if (v === null) return null;
+    const clean = v.trim();
+    return clean || null;
+  };
+  // Día donde cae "Cargar acá…" desde el nombre del renglón: hoy si está a la vista, si no el primero.
+  const defaultLoadDay = () =>
+    visibleDayCols.find((c) => c.iso === todayIso())?.iso || visibleDayCols[0]?.iso || "";
+
   const editable = (e: Entry) => e.id.startsWith("bank-") || e.id.startsWith("financial-");
   // De dónde sale un movimiento que NO se puede editar acá (para decirlo en el menú).
   const sourceLabel = (e: Entry) =>
@@ -566,8 +669,8 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             amount: Number(addForm.amount),
             administration: addForm.administration,
             title: itemLabel,
-            client: isCob ? cliente : "",
-            jobCode: isCob ? ppto : "",
+            client: isCob ? cliente : undefined,
+            jobCode: isCob ? ppto : undefined,
             notes: addForm.notes,
             conceptKey,
             costKind: type === "pago" && addForm.costKind ? addForm.costKind : undefined,
@@ -644,14 +747,27 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
     drow: Map<string, number>,
     key: string,
     isOut: boolean,
-    menu?: { label: string; sectionKey: string; itemKey: string; match: (e: Entry) => boolean }
+    menu?: {
+      label: string;
+      sectionKey: string;
+      itemKey: string;
+      match: (e: Entry) => boolean;
+      rowKind?: "custom" | "texto";
+    }
   ) => {
     // Si el título trae el marcador "(D) falta ...", lo mostramos como pill D (falta completar).
     const dMatch = label.match(/·?\s*\(D\)\s*(.*)$/i);
     const cleanLabel = dMatch ? label.slice(0, label.indexOf("(D)")).replace(/·\s*$/, "").trim() : label;
     return (
     <tr key={key} style={{ background: "#f8fafc" }}>
-      <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>
+      <td
+        onContextMenu={
+          menu
+            ? (ev) => openRowMenu(ev, menu.rowKind || "texto", menu.label, menu.sectionKey, menu.itemKey, menu.match)
+            : undefined
+        }
+        style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}
+      >
         {cleanLabel}
         {dMatch && <span style={dPill} title={`Falta completar: ${dMatch[1] || "dato"}`}>D</span>}
       </td>
@@ -714,31 +830,74 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
       >
         <div style={{ ...styles.noticeBox, marginBottom: 10 }}>
           Tu planilla completa: secciones y renglones fijos, días en columnas (scroll ←→). Tocá cualquier
-          celda para <strong>cargar</strong> en ese día/renglón. Cada sección muestra su <strong>total</strong>.
-          Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong> (ahí se cruza el banco).
+          celda para <strong>cargar</strong> en ese día/renglón, y <strong>botón derecho</strong> sobre un
+          número (o sobre el nombre del renglón) para <strong>editar, corregir o borrar</strong>. El ancho de
+          las columnas se cambia arrastrando el borde de “Concepto” o de los días (doble click vuelve al
+          original). Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong>.
         </div>
-        <div style={{ overflowX: "auto", border: "1px solid #e2e8f0", borderRadius: 8, borderTop: `3px solid ${selectedColor || "#cbd5e1"}`, maxHeight: "72vh" }}>
+        <div
+          style={{
+            overflowX: "auto",
+            border: "1px solid #e2e8f0",
+            borderRadius: 8,
+            borderTop: `3px solid ${selectedColor || "#cbd5e1"}`,
+            maxHeight: "72vh",
+            ["--cal-label-w" as any]: `${labelW}px`,
+            ["--cal-day-w" as any]: `${dayW}px`,
+          } as React.CSSProperties}
+        >
           <table style={{ borderCollapse: "collapse", fontSize: 12, whiteSpace: "nowrap" }}>
             <thead>
-              <tr>
-                <th style={{ ...thStickyCorner, ...(selectedColor ? { boxShadow: `inset 4px 0 0 ${selectedColor}` } : {}) }}>Concepto</th>
+              <tr ref={monthRowRef}>
+                <th
+                  style={{
+                    ...thStickyCorner,
+                    top: 0,
+                    zIndex: 6,
+                    boxShadow: selectedColor
+                      ? `inset 4px 0 0 ${selectedColor}, inset 0 -1px 0 #e2e8f0`
+                      : "inset 0 -1px 0 #e2e8f0",
+                  }}
+                >
+                  Concepto
+                  <span
+                    onMouseDown={(ev) => startResize(ev, "label")}
+                    onDoubleClick={() => setLabelW(LABEL_W_DEFAULT)}
+                    title="Arrastrá para achicar o agrandar la columna · doble click vuelve al ancho original"
+                    style={resizeHandle}
+                  />
+                </th>
                 {visibleMonths.map((m) => {
                   const mi = months.indexOf(m);
                   const span = visibleDayCols.filter((c) => c.monthIdx === mi).length;
                   if (span === 0) return null;
-                  return <th key={`m-${mi}`} colSpan={span} style={thMonth}>{m.label}</th>;
+                  return (
+                    <th key={`m-${mi}`} colSpan={span} style={{ ...thMonth, top: 0 }}>
+                      {m.label}
+                    </th>
+                  );
                 })}
               </tr>
               <tr>
-                <th style={thStickyCorner}></th>
+                <th style={{ ...thStickyCorner, top: monthRowH, zIndex: 6, boxShadow: "inset 0 -1px 0 #e2e8f0" }}></th>
                 {visibleDayCols.map((c) => (
                   <th
                     key={`d-${c.iso}`}
                     ref={c.iso === today ? todayCellRef : undefined}
                     title={c.iso === today ? "Hoy" : undefined}
-                    style={c.iso === today ? { ...thDay, background: "#f59e0b", color: "#fff", fontWeight: 800 } : thDay}
+                    style={
+                      c.iso === today
+                        ? { ...thDay, top: monthRowH, background: "#f59e0b", color: "#fff", fontWeight: 800 }
+                        : { ...thDay, top: monthRowH }
+                    }
                   >
                     {c.day}
+                    <span
+                      onMouseDown={(ev) => startResize(ev, "day")}
+                      onDoubleClick={() => setDayW(DAY_W_DEFAULT)}
+                      title="Arrastrá para achicar o agrandar los días · doble click vuelve al ancho original"
+                      style={resizeHandle}
+                    />
                   </th>
                 ))}
               </tr>
@@ -769,7 +928,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     {!isCol && (isCob
                       ? cobranzaRows.map(({ title, drowB, drowN, falta }) => (
                           <tr key={`cob-${title}`} style={{ background: falta ? "#fff7ed" : "#f8fafc" }}>
-                            <td style={{ ...tdStickyLabel, background: falta ? "#fff7ed" : "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}>
+                            <td
+                              onContextMenu={(ev) =>
+                                openRowMenu(ev, "cobranza", title, section.key, "", (e) => isCobranzaEntry(e) && sameTitle(e, title))
+                              }
+                              style={{ ...tdStickyLabel, background: falta ? "#fff7ed" : "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}
+                            >
                               {title}
                               {falta ? <span style={alertPill} title={`Falta para cerrar: ${falta}`}>⚠ falta {falta}</span> : null}
                             </td>
@@ -791,7 +955,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                           const ck = agg.conceptCostKind.get(it.key);
                           return (
                             <tr key={it.key}>
-                              <td style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}>
+                              <td
+                                onContextMenu={(ev) =>
+                                  openRowMenu(ev, "fijo", it.label, section.key, it.key, (e) => e.conceptKey === it.key)
+                                }
+                                style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}
+                              >
                                 {it.label}
                                 {ck?.fijo && <span style={{ ...costChip, background: "#e0e7ff", color: "#3730a3" }} title="Costo fijo">F</span>}
                                 {ck?.variable && <span style={{ ...costChip, background: "#fef3c7", color: "#92400e" }} title="Costo variable">V</span>}
@@ -840,7 +1009,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                       const meta = companyMeta.get(emp.company);
                       return (
                         <tr key={`hab-${emp.company}-${emp.name}`}>
-                          <td style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}>
+                          <td
+                            onContextMenu={(ev) =>
+                              openRowMenu(ev, "haberes", emp.name, "haberes", "__custom__", (e) => e.conceptKey === `custom:haberes:${emp.name}`)
+                            }
+                            style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}
+                          >
                             {showByCompany && <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />}
                             {emp.name}
                           </td>
@@ -874,6 +1048,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                             sectionKey: section.key,
                             itemKey: "__custom__",
                             match: (e) => e.conceptKey === `custom:${section.key}:${label}`,
+                            rowKind: "custom",
                           })
                         )}
                     {/* Agregar un renglón propio a esta sección (donde cargar info) */}
@@ -921,7 +1096,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                       const ids = agg.unclBankIds.get(title) || [];
                       return (
                         <tr key={`uncl-${title}`} style={{ background: "#fffbeb" }}>
-                          <td style={{ ...tdStickyLabel, background: "#fffbeb", paddingLeft: 24 }}>
+                          <td
+                            onContextMenu={(ev) =>
+                              openRowMenu(ev, "uncl", title, "", "", (e) => sameTitle(e, title) && !e.conceptKey && !isCobranzaEntry(e))
+                            }
+                            style={{ ...tdStickyLabel, background: "#fffbeb", paddingLeft: 24 }}
+                          >
                             <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
                               {(() => {
                                 const tot = agg.unclTitleTotal.get(title) || 0;
@@ -1021,7 +1201,14 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   </tr>
                   {Array.from(agg.internoDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => (
                     <tr key={`int-${title}`} style={{ background: "#f8fafc" }}>
-                      <td style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 24, fontWeight: 400, color: "#64748b" }}>↔ {title}</td>
+                      <td
+                        onContextMenu={(ev) =>
+                          openRowMenu(ev, "texto", title, "", "", (e) => e.conceptKey === "__interno__" && sameTitle(e, title))
+                        }
+                        style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 24, fontWeight: 400, color: "#64748b" }}
+                      >
+                        ↔ {title}
+                      </td>
                       {visibleDayCols.map((c) => {
                         const v = drow.get(c.iso) || 0;
                         return (
@@ -1063,7 +1250,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     const pesos = Math.abs(tot) * (bnaCompra || 0);
                     return (
                       <tr key={`usd-${title}`} style={{ background: "#f0f9ff" }}>
-                        <td style={{ ...tdStickyLabel, background: "#f0f9ff", paddingLeft: 24 }}>
+                        <td
+                          onContextMenu={(ev) =>
+                            openRowMenu(ev, "texto", title, "", "", (e) => e.currency === "USD" && sameTitle(e, title))
+                          }
+                          style={{ ...tdStickyLabel, background: "#f0f9ff", paddingLeft: 24 }}
+                        >
                           <span style={usdPill}>U$S</span> {title}{" "}
                           <strong style={{ color: tot > 0 ? "#0f172a" : "#dc2626" }}>
                             ({tot > 0 ? "ingreso" : "egreso"} {money(Math.abs(tot), "USD")})
@@ -1160,6 +1352,116 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           </table>
         </div>
       </Panel>
+
+      {rowMenu && (() => {
+        const close = () => setRowMenu(null);
+        const list = entriesOfRow(rowMenu.match);
+        return (
+          <QuickMenu x={rowMenu.x} y={rowMenu.y} onClose={close}>
+            <QuickMenuTitle>
+              {rowMenu.label} · {list.length} mov.
+            </QuickMenuTitle>
+            {rowMenu.kind === "custom" && (
+              <>
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    const nuevo = ask("Nombre del renglón:", rowMenu.label);
+                    if (nuevo) {
+                      patchRow(rowMenu.match, () => ({
+                        conceptKey: `custom:${rowMenu.sectionKey}:${nuevo}`,
+                        title: nuevo,
+                      }));
+                    }
+                    close();
+                  }}
+                >
+                  Renombrar renglón…
+                </button>
+                <QuickMenuSep />
+                <button
+                  style={{ ...quickMenuItem, color: "#b91c1c" }}
+                  onClick={() => {
+                    if (
+                      onDeleteEntry &&
+                      window.confirm(`¿Borrar el renglón "${rowMenu.label}" y sus ${list.length} movimientos?`)
+                    ) {
+                      const fail = list.filter((e) => !onDeleteEntry(e.id)).length;
+                      if (fail) window.alert(`${fail} movimientos se borran desde su solapa y quedaron como estaban.`);
+                    }
+                    close();
+                  }}
+                >
+                  Borrar renglón (y sus movimientos)
+                </button>
+              </>
+            )}
+            {rowMenu.kind === "cobranza" && (
+              <button
+                style={quickMenuItem}
+                onClick={() => {
+                  // "3199 · Cliente" o "Cliente · (D) falta ppto"
+                  const clean = rowMenu.label.replace(/·?\s*\(D\)[^·]*$/i, "").trim();
+                  const parts = clean.split("·").map((x) => x.trim()).filter(Boolean);
+                  const pptoActual = parts.length > 1 && /^\d/.test(parts[0]) ? parts[0] : "";
+                  const clienteActual = pptoActual ? parts.slice(1).join(" · ") : parts.join(" · ");
+                  const ppto = window.prompt("Presupuesto (ppto):", pptoActual);
+                  if (ppto === null) return close();
+                  const cliente = window.prompt("Cliente:", clienteActual);
+                  if (cliente === null) return close();
+                  const p = ppto.trim();
+                  const c = cliente.trim();
+                  patchRow(rowMenu.match, () => ({
+                    conceptKey: "cobranzas",
+                    jobCode: p,
+                    client: c,
+                    title: `${p ? p + " · " : ""}${c || "Cliente"}`,
+                  }));
+                  close();
+                }}
+              >
+                Corregir presupuesto / cliente…
+              </button>
+            )}
+            {rowMenu.kind === "texto" || rowMenu.kind === "uncl" ? (
+              <button
+                style={quickMenuItem}
+                onClick={() => {
+                  const nuevo = ask("Texto del renglón:", rowMenu.label);
+                  if (nuevo) patchRow(rowMenu.match, () => ({ concept: nuevo }));
+                  close();
+                }}
+              >
+                Corregir el texto…
+              </button>
+            ) : null}
+            {rowMenu.kind === "fijo" && (
+              <div style={{ fontSize: 12, color: "#64748b", padding: "4px 8px" }}>
+                Renglón fijo de la planilla: el nombre es parte de la estructura.
+              </div>
+            )}
+            {rowMenu.kind === "haberes" && (
+              <div style={{ fontSize: 12, color: "#64748b", padding: "4px 8px" }}>
+                El nombre del empleado sale de la solapa Personal.
+              </div>
+            )}
+            {rowMenu.sectionKey && (
+              <>
+                <QuickMenuSep />
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    openAdd(rowMenu.sectionKey, rowMenu.itemKey, defaultLoadDay());
+                    close();
+                  }}
+                >
+                  Cargar acá…
+                </button>
+              </>
+            )}
+          </QuickMenu>
+        );
+      })()}
 
       {cellMenu && (() => {
         const list = entriesOfCell(cellMenu);
@@ -1320,22 +1622,47 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
   );
 }
 
+// Ancho de las columnas: sale de dos variables CSS que pone el contenedor (--cal-label-w para la
+// columna Concepto y --cal-day-w para los días). Así se cambia el ancho de TODA la planilla de una,
+// arrastrando el borde del encabezado, sin tocar celda por celda.
+const LABEL_W_DEFAULT = 230;
+const DAY_W_DEFAULT = 56;
+const labelWidth = {
+  width: `var(--cal-label-w, ${LABEL_W_DEFAULT}px)`,
+  minWidth: `var(--cal-label-w, ${LABEL_W_DEFAULT}px)`,
+  maxWidth: `var(--cal-label-w, ${LABEL_W_DEFAULT}px)`,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+} as const;
+const dayWidth = {
+  width: `var(--cal-day-w, ${DAY_W_DEFAULT}px)`,
+  minWidth: `var(--cal-day-w, ${DAY_W_DEFAULT}px)`,
+  maxWidth: `var(--cal-day-w, ${DAY_W_DEFAULT}px)`,
+  overflow: "hidden",
+} as const;
 const thStickyCorner: React.CSSProperties = {
   position: "sticky", left: 0, zIndex: 3, background: "#f1f5f9", textAlign: "left",
-  padding: "6px 10px", borderBottom: "1px solid #e2e8f0", minWidth: 230,
+  padding: "6px 10px", borderBottom: "1px solid #e2e8f0", ...labelWidth,
 };
 const thMonth: React.CSSProperties = {
   padding: "4px 8px", background: "#e2e8f0", borderLeft: "2px solid #cbd5e1", fontWeight: 800, textAlign: "center",
+  position: "sticky", zIndex: 4,
 };
 const thDay: React.CSSProperties = {
-  padding: "4px 6px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#64748b", minWidth: 56, textAlign: "right",
+  padding: "4px 6px", background: "#f8fafc", borderBottom: "1px solid #e2e8f0", color: "#64748b",
+  textAlign: "right", position: "sticky", zIndex: 4, boxShadow: "inset 0 -1px 0 #e2e8f0", ...dayWidth,
 };
 const tdStickyLabel: React.CSSProperties = {
   position: "sticky", left: 0, zIndex: 2, background: "#ffffff", padding: "5px 10px",
-  borderBottom: "1px solid #f1f5f9", fontWeight: 600, minWidth: 230,
+  borderBottom: "1px solid #f1f5f9", fontWeight: 600, ...labelWidth,
 };
 const tdCell: React.CSSProperties = {
-  padding: "4px 6px", borderBottom: "1px solid #f1f5f9", textAlign: "right", minWidth: 56,
+  padding: "4px 6px", borderBottom: "1px solid #f1f5f9", textAlign: "right", ...dayWidth,
+};
+// Manija para arrastrar el borde de una columna (como en una planilla). Doble click vuelve al original.
+const resizeHandle: React.CSSProperties = {
+  position: "absolute", top: 0, right: 0, width: 7, height: "100%", cursor: "col-resize",
+  userSelect: "none", background: "transparent",
 };
 const overlayStyle: React.CSSProperties = {
   position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50,
