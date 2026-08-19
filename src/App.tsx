@@ -10704,6 +10704,93 @@ export default function App() {
     setFinancialItems((prev) => [item, ...prev]);
   };
 
+  // Edición desde el CALENDARIO (click derecho sobre el número). Cada número de la planilla sale de un
+  // movimiento del banco (id "bank-<id>") o de una carga manual (id "financial-<id>"): esos dos se
+  // pueden editar y borrar desde ahí. Los que vienen de otra solapa (compras, caja chica, comisiones,
+  // trabajos) devuelven false y se siguen editando en su lugar, para no romper su propio circuito.
+  const editCalendarEntry = (
+    entryId: string,
+    patch: {
+      amount?: number;
+      date?: string;
+      company?: string;
+      administration?: "blanco" | "negro";
+      conceptKey?: string;
+      title?: string;
+      client?: string;
+      jobCode?: string;
+      notes?: string;
+      costKind?: "fijo" | "variable";
+    }
+  ): boolean => {
+    if (entryId.startsWith("bank-")) {
+      const id = Number(entryId.slice(5));
+      if (!id) return false;
+      setBankStatementEntries((prev) =>
+        prev.map((item) => {
+          if (item.id !== id) return item;
+          const next: BankStatementEntry = { ...item };
+          if (patch.amount !== undefined) next.amount = Number(patch.amount) || 0;
+          if (patch.date) next.date = patch.date;
+          if (patch.company) next.company = patch.company as CompanyName;
+          if (patch.administration) next.administration = patch.administration;
+          if (patch.conceptKey !== undefined) next.conceptKey = patch.conceptKey || undefined;
+          // Si lo mandan al renglón de Cobranzas, el movimiento pasa a ser un COBRO del trabajo.
+          if (patch.conceptKey === "cobranzas") {
+            next.assignedKind = "cobro";
+            if (patch.jobCode !== undefined) next.assignedJobBudget = patch.jobCode || undefined;
+            if (patch.client) next.assignedParty = patch.client;
+          }
+          if (patch.notes) next.assignmentNote = patch.notes;
+          return next;
+        })
+      );
+      return true;
+    }
+    if (entryId.startsWith("financial-")) {
+      const id = Number(entryId.slice("financial-".length));
+      if (!id) return false;
+      setFinancialItems((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
+                ...(patch.date ? { date: patch.date } : {}),
+                ...(patch.company ? { company: patch.company as CompanyName } : {}),
+                ...(patch.administration ? { administration: patch.administration } : {}),
+                ...(patch.conceptKey !== undefined ? { conceptKey: patch.conceptKey || undefined } : {}),
+                ...(patch.title !== undefined ? { title: patch.title } : {}),
+                ...(patch.client !== undefined ? { client: patch.client } : {}),
+                ...(patch.jobCode !== undefined ? { jobCode: patch.jobCode } : {}),
+                ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+                ...(patch.costKind !== undefined ? { costKind: patch.costKind } : {}),
+                userEdited: true,
+              }
+            : item
+        )
+      );
+      return true;
+    }
+    return false;
+  };
+
+  const deleteCalendarEntry = (entryId: string): boolean => {
+    if (entryId.startsWith("bank-")) {
+      const id = Number(entryId.slice(5));
+      if (!id) return false;
+      setBankStatementEntries((prev) => prev.filter((item) => item.id !== id));
+      return true;
+    }
+    if (entryId.startsWith("financial-")) {
+      const id = Number(entryId.slice("financial-".length));
+      if (!id) return false;
+      setFinancialItems((prev) => prev.filter((item) => item.id !== id));
+      return true;
+    }
+    return false;
+  };
+
   const addFinancialItem = (date?: string, company?: CompanyName) => {
     const item: FinancialCalendarItem = {
       id: newId(),
@@ -15042,6 +15129,8 @@ export default function App() {
             };
           })}
           onAssignToJob={assignBankToJob}
+          onEditEntry={editCalendarEntry}
+          onDeleteEntry={deleteCalendarEntry}
         />
       )}
       {activeTab === "cashflow" && (

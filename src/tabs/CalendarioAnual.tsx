@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { styles } from "../ui/styles";
-import { Panel } from "../ui/primitives";
+import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { todayIso } from "../lib/format";
 import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "../domain/calendarStructure";
 import { suggestCalendarConcept } from "../domain/calendarBankRules";
@@ -43,6 +43,8 @@ function fiscalMonths(startMonth: number, startYear: number) {
 }
 
 type AddForm = {
+  // Si viene, el modal edita ese movimiento en vez de crear uno nuevo (id de la Entry: bank-… / financial-…).
+  editId?: string;
   date: string;
   company: string;
   sectionKey: string;
@@ -72,6 +74,8 @@ export function CalendarioAnualTab({
   employees = [],
   jobs = [],
   onAssignToJob,
+  onEditEntry,
+  onDeleteEntry,
 }: {
   entries: Entry[];
   companyScope: string;
@@ -99,6 +103,24 @@ export function CalendarioAnualTab({
     costKind?: "fijo" | "variable";
   }) => void;
   onAssignConcept: (bankIds: number[], conceptKey: string) => void;
+  // Editar / borrar el movimiento que está DETRÁS de un número (click derecho). Devuelven false si ese
+  // movimiento vive en otra solapa (compras, caja chica, comisiones) y hay que editarlo allá.
+  onEditEntry?: (
+    entryId: string,
+    patch: {
+      amount?: number;
+      date?: string;
+      company?: string;
+      administration?: "blanco" | "negro";
+      conceptKey?: string;
+      title?: string;
+      client?: string;
+      jobCode?: string;
+      notes?: string;
+      costKind?: "fijo" | "variable";
+    }
+  ) => boolean;
+  onDeleteEntry?: (entryId: string) => boolean;
   bnaCompra: number;
   money: (n: number, currency?: string) => string;
 }) {
@@ -401,6 +423,118 @@ export function CalendarioAnualTab({
       notes: "",
     });
 
+  // ---- Click derecho sobre CUALQUIER número de la planilla -------------------------------------
+  // La pill D solo MARCA que a un número le falta algo. Las acciones (editar, blanco/negro, borrar,
+  // cargar) salen de acá: se abre el menú en el cursor y muestra los movimientos que hay detrás de ese
+  // número. Si hay más de uno, primero se elige cuál.
+  type CellMenu = {
+    x: number;
+    y: number;
+    label: string;
+    iso: string;
+    sectionKey: string;
+    itemKey: string;
+    match: (e: Entry) => boolean;
+    pickedId?: string;
+  };
+  const [cellMenu, setCellMenu] = useState<CellMenu | null>(null);
+  const openCellMenu = (
+    ev: React.MouseEvent,
+    label: string,
+    iso: string,
+    sectionKey: string,
+    itemKey: string,
+    match: (e: Entry) => boolean
+  ) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setCellMenu({ x: ev.clientX, y: ev.clientY, label, iso, sectionKey, itemKey, match });
+  };
+  // Los movimientos que hay detrás de un número (los mismos que sumó la agregación de esa celda).
+  const entriesOfCell = (m: CellMenu) =>
+    entries.filter(
+      (e) => e.date === m.iso && (companyScope === "__ALL__" || e.company === companyScope) && m.match(e)
+    );
+  const sameTitle = (e: Entry, title: string) => (e.title || "—").trim() === title.trim();
+  const isCobranzaEntry = (e: Entry) => e.kind === "cobranza" || e.conceptKey === "cobranzas";
+
+  // Abre el modal con los datos del movimiento cargados (mismo formulario que para cargar).
+  const openEdit = (e: Entry) => {
+    const ck = e.conceptKey || "";
+    let sectionKey = "";
+    let itemKey = "";
+    let customLabel = "";
+    let ppto = "";
+    let cliente = "";
+    if (isCobranzaEntry(e)) {
+      sectionKey = CALENDAR_SECTIONS.find((s2) => s2.dynamic === "cobranzas")?.key || "";
+      // El título de una cobranza es "ppto · cliente" (o "cliente · (D) falta ppto").
+      const clean = (e.title || "").replace(/·?\s*\(D\)[^·]*$/i, "").trim();
+      const parts = clean.split("·").map((x) => x.trim()).filter(Boolean);
+      if (parts.length > 1 && /^\d/.test(parts[0])) {
+        ppto = parts[0];
+        cliente = parts.slice(1).join(" · ");
+      } else {
+        cliente = parts.join(" · ");
+      }
+    } else if (ck.startsWith("custom:")) {
+      const rest = ck.slice(7);
+      const sep = rest.indexOf(":");
+      sectionKey = sep >= 0 ? rest.slice(0, sep) : rest;
+      itemKey = "__custom__";
+      customLabel = (sep >= 0 ? rest.slice(sep + 1) : e.title) || "";
+    } else {
+      const idx = CALENDAR_ITEM_INDEX[ck];
+      sectionKey = idx?.sectionKey || CALENDAR_SECTIONS[0]?.key || "";
+      itemKey = idx
+        ? ck
+        : CALENDAR_SECTIONS.find((s2) => s2.key === sectionKey)?.items[0]?.key || "";
+    }
+    setAddForm({
+      editId: e.id,
+      date: e.date,
+      company: e.company,
+      sectionKey,
+      itemKey,
+      ppto,
+      cliente,
+      customLabel,
+      amount: Math.abs(Number(e.amount) || 0),
+      administration: e.administration === "negro" ? "negro" : "blanco",
+      costKind: e.costKind === "fijo" || e.costKind === "variable" ? e.costKind : "",
+      notes: "",
+    });
+    setCellMenu(null);
+  };
+
+  const editable = (e: Entry) => e.id.startsWith("bank-") || e.id.startsWith("financial-");
+  // De dónde sale un movimiento que NO se puede editar acá (para decirlo en el menú).
+  const sourceLabel = (e: Entry) =>
+    e.id.startsWith("purchase-invoice-") ? "Compras (factura)"
+      : e.id.startsWith("purchase-") ? "Compras"
+      : e.id.startsWith("petty-cash-") ? "Caja chica"
+      : e.id.startsWith("comm-") ? "Comisiones"
+      : e.id.startsWith("debt-") ? "Deudas"
+      : e.id.startsWith("job-") ? "Trabajos aprobados"
+      : "otra solapa";
+
+  const toggleAdmin = (e: Entry) => {
+    if (!onEditEntry) return;
+    onEditEntry(e.id, { administration: e.administration === "negro" ? "blanco" : "negro" });
+    setCellMenu(null);
+  };
+  const removeEntry = (e: Entry) => {
+    if (!onDeleteEntry) return;
+    const ok = window.confirm(
+      `¿Borrar este movimiento?
+${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
+    );
+    if (ok && !onDeleteEntry(e.id)) {
+      window.alert(`Este movimiento se borra desde ${sourceLabel(e)}.`);
+    }
+    setCellMenu(null);
+  };
+
   const confirmAdd = () => {
     if (!addForm || !(Number(addForm.amount) > 0) || !addForm.company) return;
     const section = CALENDAR_SECTIONS.find((s) => s.key === addForm.sectionKey);
@@ -422,6 +556,30 @@ export function CalendarioAnualTab({
       : isCustom
       ? `custom:${addForm.sectionKey}:${customLabel}`
       : addForm.itemKey;
+    // Editando: el mismo formulario patchea el movimiento de origen (banco o carga manual). Si el
+    // movimiento vive en otra solapa, avisamos y no tocamos nada.
+    if (addForm.editId) {
+      const ok = onEditEntry
+        ? onEditEntry(addForm.editId, {
+            company: addForm.company,
+            date: addForm.date,
+            amount: Number(addForm.amount),
+            administration: addForm.administration,
+            title: itemLabel,
+            client: isCob ? cliente : "",
+            jobCode: isCob ? ppto : "",
+            notes: addForm.notes,
+            conceptKey,
+            costKind: type === "pago" && addForm.costKind ? addForm.costKind : undefined,
+          })
+        : false;
+      if (!ok) {
+        window.alert("Este movimiento se edita en la solapa de donde salió (compras, caja chica, comisiones o trabajos).");
+        return;
+      }
+      setAddForm(null);
+      return;
+    }
     onAddMovement({
       company: addForm.company,
       date: addForm.date,
@@ -481,7 +639,13 @@ export function CalendarioAnualTab({
     );
   };
 
-  const detailRow = (label: string, drow: Map<string, number>, key: string, isOut: boolean) => {
+  const detailRow = (
+    label: string,
+    drow: Map<string, number>,
+    key: string,
+    isOut: boolean,
+    menu?: { label: string; sectionKey: string; itemKey: string; match: (e: Entry) => boolean }
+  ) => {
     // Si el título trae el marcador "(D) falta ...", lo mostramos como pill D (falta completar).
     const dMatch = label.match(/·?\s*\(D\)\s*(.*)$/i);
     const cleanLabel = dMatch ? label.slice(0, label.indexOf("(D)")).replace(/·\s*$/, "").trim() : label;
@@ -494,7 +658,11 @@ export function CalendarioAnualTab({
       {visibleDayCols.map((c) => {
         const v = drow.get(c.iso) || 0;
         return (
-          <td key={`${key}-${c.iso}`} style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...hi(c.iso) }}>
+          <td
+            key={`${key}-${c.iso}`}
+            onContextMenu={menu ? (ev) => openCellMenu(ev, menu.label, c.iso, menu.sectionKey, menu.itemKey, menu.match) : undefined}
+            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...hi(c.iso) }}
+          >
             {v ? money(v) : "·"}
           </td>
         );
@@ -606,7 +774,13 @@ export function CalendarioAnualTab({
                               {falta ? <span style={alertPill} title={`Falta para cerrar: ${falta}`}>⚠ falta {falta}</span> : null}
                             </td>
                             {visibleDayCols.map((c) => (
-                              <td key={`cob-${title}-${c.iso}`} style={{ ...tdCell, ...hi(c.iso) }}>
+                              <td
+                                key={`cob-${title}-${c.iso}`}
+                                onContextMenu={(ev) =>
+                                  openCellMenu(ev, title, c.iso, section.key, "", (e) => isCobranzaEntry(e) && sameTitle(e, title))
+                                }
+                                style={{ ...tdCell, ...hi(c.iso) }}
+                              >
                                 {bnCell(drowB, drowN, c.iso, false)}
                               </td>
                             ))}
@@ -628,7 +802,10 @@ export function CalendarioAnualTab({
                                   <td
                                     key={`${it.key}-${c.iso}`}
                                     onClick={() => openAdd(section.key, it.key, c.iso)}
-                                    title="Cargar en este día"
+                                    onContextMenu={(ev) =>
+                                      openCellMenu(ev, it.label, c.iso, section.key, it.key, (e) => e.conceptKey === it.key)
+                                    }
+                                    title="Click: cargar en este día · Click derecho: editar / borrar"
                                     style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...hi(c.iso) }}
                                   >
                                     {v ? money(v) : "+"}
@@ -673,7 +850,10 @@ export function CalendarioAnualTab({
                               <td
                                 key={`hab-${emp.name}-${c.iso}`}
                                 onClick={() => openAdd("haberes", "__custom__", c.iso, emp.name, emp.company)}
-                                title={`Cargar haber de ${emp.name}`}
+                                onContextMenu={(ev) =>
+                                  openCellMenu(ev, emp.name, c.iso, "haberes", "__custom__", (e) => e.conceptKey === `custom:haberes:${emp.name}`)
+                                }
+                                title={`Click: cargar haber de ${emp.name} · Click derecho: editar / borrar`}
                                 style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? "#dc2626" : "#cbd5e1", ...hi(c.iso) }}
                               >
                                 {v ? money(v) : "+"}
@@ -688,7 +868,14 @@ export function CalendarioAnualTab({
                       Array.from(agg.customRows.get(section.key)?.entries() || [])
                         .filter(([, drow]) => activeInView(drow))
                         .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([label, drow]) => detailRow(`✎ ${label}`, drow, `cst-${section.key}-${label}`, isOut))}
+                        .map(([label, drow]) =>
+                          detailRow(`✎ ${label}`, drow, `cst-${section.key}-${label}`, isOut, {
+                            label,
+                            sectionKey: section.key,
+                            itemKey: "__custom__",
+                            match: (e) => e.conceptKey === `custom:${section.key}:${label}`,
+                          })
+                        )}
                     {/* Agregar un renglón propio a esta sección (donde cargar info) */}
                     {!isCol && !isCob && (
                       <tr>
@@ -799,7 +986,13 @@ export function CalendarioAnualTab({
                           {visibleDayCols.map((c) => {
                             const v = drow.get(c.iso) || 0;
                             return (
-                              <td key={`uncl-${title}-${c.iso}`} style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}>
+                              <td
+                                key={`uncl-${title}-${c.iso}`}
+                                onContextMenu={(ev) =>
+                                  openCellMenu(ev, title, c.iso, "", "", (e) => sameTitle(e, title) && !e.conceptKey && !isCobranzaEntry(e))
+                                }
+                                style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}
+                              >
                                 {v ? money(Math.abs(v)) : "·"}
                               </td>
                             );
@@ -832,7 +1025,13 @@ export function CalendarioAnualTab({
                       {visibleDayCols.map((c) => {
                         const v = drow.get(c.iso) || 0;
                         return (
-                          <td key={`int-${title}-${c.iso}`} style={{ ...tdCell, color: v ? "#64748b" : "#e2e8f0", ...hi(c.iso) }}>
+                          <td
+                            key={`int-${title}-${c.iso}`}
+                            onContextMenu={(ev) =>
+                              openCellMenu(ev, title, c.iso, "", "", (e) => e.conceptKey === "__interno__" && sameTitle(e, title))
+                            }
+                            style={{ ...tdCell, color: v ? "#64748b" : "#e2e8f0", ...hi(c.iso) }}
+                          >
                             {v ? money(Math.abs(v)) : "·"}
                           </td>
                         );
@@ -874,7 +1073,13 @@ export function CalendarioAnualTab({
                         {visibleDayCols.map((c) => {
                           const v = drow.get(c.iso) || 0;
                           return (
-                            <td key={`usd-${title}-${c.iso}`} style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}>
+                            <td
+                              key={`usd-${title}-${c.iso}`}
+                              onContextMenu={(ev) =>
+                                openCellMenu(ev, title, c.iso, "", "", (e) => e.currency === "USD" && sameTitle(e, title))
+                              }
+                              style={{ ...tdCell, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}
+                            >
                               {v ? money(Math.abs(v), "USD") : "·"}
                             </td>
                           );
@@ -956,13 +1161,88 @@ export function CalendarioAnualTab({
         </div>
       </Panel>
 
+      {cellMenu && (() => {
+        const list = entriesOfCell(cellMenu);
+        const picked = cellMenu.pickedId ? list.find((e) => e.id === cellMenu.pickedId) : list.length === 1 ? list[0] : undefined;
+        const close = () => setCellMenu(null);
+        const [yy, mm, dd] = cellMenu.iso.split("-");
+        const dayLabel = `${dd}/${mm}/${yy}`;
+        return (
+          <QuickMenu x={cellMenu.x} y={cellMenu.y} onClose={close}>
+            <QuickMenuTitle>
+              {cellMenu.label} · {dayLabel}
+            </QuickMenuTitle>
+            {!picked && list.length === 0 && (
+              <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 8px" }}>Sin movimientos este día</div>
+            )}
+            {/* Más de un movimiento en el mismo número: primero se elige cuál. */}
+            {!picked &&
+              list.map((e) => (
+                <button
+                  key={e.id}
+                  style={quickMenuItem}
+                  onClick={() => setCellMenu({ ...cellMenu, pickedId: e.id })}
+                >
+                  <span style={{ fontWeight: 700 }}>{money(Math.abs(Number(e.amount) || 0))}</span>
+                  <span style={{ color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {e.title}
+                  </span>
+                </button>
+              ))}
+            {picked && (
+              <>
+                {list.length > 1 && (
+                  <div style={{ fontSize: 11, color: "#64748b", padding: "0 8px 4px" }}>
+                    {money(Math.abs(Number(picked.amount) || 0))} · {picked.title}
+                  </div>
+                )}
+                {editable(picked) ? (
+                  <>
+                    <button style={quickMenuItem} onClick={() => openEdit(picked)}>
+                      Editar… <span style={{ color: "#94a3b8", fontSize: 11 }}>(monto, día, renglón)</span>
+                    </button>
+                    <button style={quickMenuItem} onClick={() => toggleAdmin(picked)}>
+                      Cambiar a {picked.administration === "negro" ? "BLANCO (B)" : "NEGRO (N)"}
+                    </button>
+                    <QuickMenuSep />
+                    <button style={{ ...quickMenuItem, color: "#b91c1c" }} onClick={() => removeEntry(picked)}>
+                      Borrar movimiento
+                    </button>
+                  </>
+                ) : (
+                  <div style={{ fontSize: 12, color: "#b45309", padding: "4px 8px" }}>
+                    Se edita en {sourceLabel(picked)}.
+                  </div>
+                )}
+              </>
+            )}
+            {cellMenu.sectionKey && (
+              <>
+                <QuickMenuSep />
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    openAdd(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
+                    close();
+                  }}
+                >
+                  Cargar acá…
+                </button>
+              </>
+            )}
+          </QuickMenu>
+        );
+      })()}
+
       {addForm && (() => {
         const section = CALENDAR_SECTIONS.find((s) => s.key === addForm.sectionKey);
         const isCob = section?.dynamic === "cobranzas";
         return (
           <div style={overlayStyle} onClick={() => setAddForm(null)}>
             <div style={modalStyle} onClick={(e) => e.stopPropagation()}>
-              <h3 style={{ marginTop: 0, marginBottom: 12 }}>Cargar movimiento — {addForm.date}</h3>
+              <h3 style={{ marginTop: 0, marginBottom: 12 }}>
+                {addForm.editId ? "Editar movimiento" : "Cargar movimiento"} — {addForm.date}
+              </h3>
               <div style={{ display: "grid", gap: 10 }}>
                 <label style={lblStyle}>
                   Empresa

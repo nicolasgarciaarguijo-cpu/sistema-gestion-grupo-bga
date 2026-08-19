@@ -261,6 +261,9 @@ export function CostosTab({
   }>(null);
   const openCtxMenu = (ev: React.MouseEvent, kind: "pago" | "caja" | "banco", id: number) => {
     ev.preventDefault();
+    // Sin esto, el click derecho llega a window y el propio menú que se está abriendo se cierra solo
+    // (pasa al saltar de una fila a otra con el menú ya abierto).
+    ev.stopPropagation();
     setCtxMenu({ x: ev.clientX, y: ev.clientY, kind, id });
   };
 
