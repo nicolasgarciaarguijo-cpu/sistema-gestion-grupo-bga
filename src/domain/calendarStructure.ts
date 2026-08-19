@@ -14,6 +14,17 @@ export type CalSection = {
   dynamic?: "cobranzas"; // sección con renglones dinámicos (por trabajo)
 };
 
+// Retoques del usuario sobre la estructura fija: renombrar un renglón (alias) o sacarlo de la vista.
+// Es parte del ESTADO del sistema (se guarda y lo ven todos), no una preferencia del navegador: si
+// alguien renombra "Préstamo Nicolás", tiene que verse igual desde cualquier máquina.
+// Solo se puede ocultar un renglón SIN movimientos, así no se esconde plata.
+export type CalendarRowConfig = {
+  labels: Record<string, string>; // itemKey -> nombre propio
+  hidden: string[];               // itemKeys que no se muestran
+};
+
+export const DEFAULT_CALENDAR_ROW_CONFIG: CalendarRowConfig = { labels: {}, hidden: [] };
+
 export const CALENDAR_SECTIONS: CalSection[] = [
   // ===================== INGRESOS =====================
   {

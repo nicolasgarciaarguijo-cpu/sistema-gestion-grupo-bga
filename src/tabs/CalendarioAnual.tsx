@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { styles } from "../ui/styles";
 import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { todayIso } from "../lib/format";
-import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "../domain/calendarStructure";
+import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, type CalendarRowConfig } from "../domain/calendarStructure";
 import { suggestCalendarConcept } from "../domain/calendarBankRules";
 
 // Calendario anual = la planilla de cash flow adentro del sistema. Estructura FIJA (chart of accounts):
@@ -76,6 +76,8 @@ export function CalendarioAnualTab({
   onAssignToJob,
   onEditEntry,
   onDeleteEntry,
+  rowConfig = DEFAULT_CALENDAR_ROW_CONFIG,
+  onRowConfigChange,
 }: {
   entries: Entry[];
   companyScope: string;
@@ -123,6 +125,10 @@ export function CalendarioAnualTab({
     }
   ) => boolean;
   onDeleteEntry?: (entryId: string) => boolean;
+  // Renglones fijos renombrados u ocultos por el usuario. Es estado del SISTEMA (lo ven todos), a
+  // diferencia del ancho de las columnas, que es preferencia del navegador.
+  rowConfig?: CalendarRowConfig;
+  onRowConfigChange?: (next: CalendarRowConfig) => void;
   bnaCompra: number;
   money: (n: number, currency?: string) => string;
 }) {
@@ -561,7 +567,37 @@ export function CalendarioAnualTab({
     setCellMenu(null);
   };
 
-  // ---- Click derecho sobre el NOMBRE del renglón (columna Concepto) -----------------------------
+  // ---- Renglones fijos: renombrados u ocultos por el usuario -----------------------------------
+  const rowLabels = rowConfig.labels || {};
+  const hiddenRows = useMemo(() => new Set(rowConfig.hidden || []), [rowConfig.hidden]);
+  const labelOf = (itemKey: string, fallback: string) => rowLabels[itemKey] || fallback;
+  const setRowLabel = (itemKey: string, label: string | null) => {
+    if (!onRowConfigChange) return;
+    const labels = { ...rowLabels };
+    if (label) labels[itemKey] = label;
+    else delete labels[itemKey];
+    onRowConfigChange({ labels, hidden: [...(rowConfig.hidden || [])] });
+  };
+  const setRowHidden = (itemKey: string, hidden: boolean) => {
+    if (!onRowConfigChange) return;
+    const next = new Set(rowConfig.hidden || []);
+    if (hidden) next.add(itemKey);
+    else next.delete(itemKey);
+    onRowConfigChange({ labels: { ...rowLabels }, hidden: Array.from(next) });
+  };
+  // Todos los renglones fijos ocultos, con el nombre que corresponda (para poder devolverlos).
+  const hiddenRowList = useMemo(() => {
+    const out: Array<{ key: string; label: string; section: string }> = [];
+    CALENDAR_SECTIONS.forEach((sec) =>
+      sec.items.forEach((it) => {
+        if (hiddenRows.has(it.key)) out.push({ key: it.key, label: rowLabels[it.key] || it.label, section: sec.label });
+      })
+    );
+    return out;
+  }, [hiddenRows, rowLabels]);
+  const [hiddenMenu, setHiddenMenu] = useState<null | { x: number; y: number }>(null);
+
+    // ---- Click derecho sobre el NOMBRE del renglón (columna Concepto) -----------------------------
   // Mismo criterio que con los números: acá se corrige el renglón entero (su nombre, el ppto/cliente
   // de una cobranza, el texto que trajo el banco) o se lo borra con todos sus movimientos.
   type RowMenu = {
@@ -825,6 +861,18 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             >
               {allCollapsed ? "Expandir todo" : "Minimizar todo"}
             </button>
+            {hiddenRowList.length > 0 && (
+              <button
+                style={btnSecondary}
+                title="Renglones que sacaste de la planilla: desde acá los devolvés"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  setHiddenMenu({ x: ev.clientX, y: ev.clientY });
+                }}
+              >
+                Renglones ocultos ({hiddenRowList.length})
+              </button>
+            )}
           </div>
         }
       >
@@ -950,18 +998,19 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                             ))}
                           </tr>
                         ))
-                      : section.items.map((it) => {
+                      : section.items.filter((it) => !hiddenRows.has(it.key)).map((it) => {
+                          const itLabel = labelOf(it.key, it.label);
                           const drow = agg.byConcept.get(it.key);
                           const ck = agg.conceptCostKind.get(it.key);
                           return (
                             <tr key={it.key}>
                               <td
                                 onContextMenu={(ev) =>
-                                  openRowMenu(ev, "fijo", it.label, section.key, it.key, (e) => e.conceptKey === it.key)
+                                  openRowMenu(ev, "fijo", itLabel, section.key, it.key, (e) => e.conceptKey === it.key)
                                 }
                                 style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}
                               >
-                                {it.label}
+                                {itLabel}
                                 {ck?.fijo && <span style={{ ...costChip, background: "#e0e7ff", color: "#3730a3" }} title="Costo fijo">F</span>}
                                 {ck?.variable && <span style={{ ...costChip, background: "#fef3c7", color: "#92400e" }} title="Costo variable">V</span>}
                               </td>
@@ -972,7 +1021,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                     key={`${it.key}-${c.iso}`}
                                     onClick={() => openAdd(section.key, it.key, c.iso)}
                                     onContextMenu={(ev) =>
-                                      openCellMenu(ev, it.label, c.iso, section.key, it.key, (e) => e.conceptKey === it.key)
+                                      openCellMenu(ev, itLabel, c.iso, section.key, it.key, (e) => e.conceptKey === it.key)
                                     }
                                     title="Click: cargar en este día · Click derecho: editar / borrar"
                                     style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...hi(c.iso) }}
@@ -1138,7 +1187,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                   <option value="__interno__">↔ Movimiento interno (no cuenta)</option>
                                   {CALENDAR_SECTIONS.filter((s) => s.items.length > 0).map((s) => (
                                     <optgroup key={s.key} label={s.label}>
-                                      {s.items.map((it) => <option key={it.key} value={it.key}>{it.label}</option>)}
+                                      {s.items.filter((it) => !hiddenRows.has(it.key)).map((it) => (
+                                        <option key={it.key} value={it.key}>{labelOf(it.key, it.label)}</option>
+                                      ))}
                                     </optgroup>
                                   ))}
                                 </select>
@@ -1353,9 +1404,41 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
         </div>
       </Panel>
 
+      {hiddenMenu && (
+        <QuickMenu x={hiddenMenu.x} y={hiddenMenu.y} onClose={() => setHiddenMenu(null)}>
+          <QuickMenuTitle>Renglones ocultos — tocá uno para devolverlo</QuickMenuTitle>
+          {hiddenRowList.map((r) => (
+            <button
+              key={r.key}
+              style={quickMenuItem}
+              onClick={() => {
+                setRowHidden(r.key, false);
+                setHiddenMenu(null);
+              }}
+            >
+              <span style={{ fontWeight: 600 }}>{r.label}</span>
+              <span style={{ color: "#94a3b8", fontSize: 11 }}>{r.section}</span>
+            </button>
+          ))}
+          <QuickMenuSep />
+          <button
+            style={quickMenuItem}
+            onClick={() => {
+              if (onRowConfigChange) onRowConfigChange({ labels: { ...rowLabels }, hidden: [] });
+              setHiddenMenu(null);
+            }}
+          >
+            Devolver todos
+          </button>
+        </QuickMenu>
+      )}
+
       {rowMenu && (() => {
         const close = () => setRowMenu(null);
         const list = entriesOfRow(rowMenu.match);
+        // Para decidir si un renglón se puede quitar miramos TODAS las empresas, no solo la que se ve:
+        // si tiene plata cargada en la otra, esconderlo la haría desaparecer de la vista.
+        const listAll = entries.filter(rowMenu.match);
         return (
           <QuickMenu x={rowMenu.x} y={rowMenu.y} onClose={close}>
             <QuickMenuTitle>
@@ -1436,9 +1519,50 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               </button>
             ) : null}
             {rowMenu.kind === "fijo" && (
-              <div style={{ fontSize: 12, color: "#64748b", padding: "4px 8px" }}>
-                Renglón fijo de la planilla: el nombre es parte de la estructura.
-              </div>
+              <>
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    const nuevo = ask("Nombre del renglón:", rowMenu.label);
+                    if (nuevo) setRowLabel(rowMenu.itemKey, nuevo);
+                    close();
+                  }}
+                >
+                  Renombrar renglón…
+                </button>
+                {rowLabels[rowMenu.itemKey] && (
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      setRowLabel(rowMenu.itemKey, null);
+                      close();
+                    }}
+                  >
+                    Volver al nombre original
+                  </button>
+                )}
+                <QuickMenuSep />
+                <button
+                  style={{ ...quickMenuItem, color: listAll.length ? "#94a3b8" : "#b91c1c" }}
+                  title={
+                    listAll.length
+                      ? "Tiene movimientos cargados: si se pudiera esconder, esa plata dejaría de verse."
+                      : "Saca el renglón de la planilla (se puede devolver desde “Renglones ocultos”)."
+                  }
+                  onClick={() => {
+                    if (listAll.length) {
+                      window.alert(
+                        `Este renglón tiene ${listAll.length} movimientos cargados. Movelos o borralos antes de quitarlo, así no se esconde plata.`
+                      );
+                    } else {
+                      setRowHidden(rowMenu.itemKey, true);
+                    }
+                    close();
+                  }}
+                >
+                  Quitar renglón de la planilla
+                </button>
+              </>
             )}
             {rowMenu.kind === "haberes" && (
               <div style={{ fontSize: 12, color: "#64748b", padding: "4px 8px" }}>
@@ -1574,7 +1698,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   <>
                     <label style={lblStyle}>Renglón
                       <select style={styles.input} value={addForm.itemKey} onChange={(e) => setAddForm({ ...addForm, itemKey: e.target.value })}>
-                        {(section?.items || []).map((it) => <option key={it.key} value={it.key}>{it.label}</option>)}
+                        {(section?.items || []).filter((it) => !hiddenRows.has(it.key)).map((it) => (
+                          <option key={it.key} value={it.key}>{labelOf(it.key, it.label)}</option>
+                        ))}
                         <option value="__custom__">➕ Otro renglón (escribir)…</option>
                       </select>
                     </label>

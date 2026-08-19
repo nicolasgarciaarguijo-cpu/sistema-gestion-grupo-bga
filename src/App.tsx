@@ -54,6 +54,7 @@ import {
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
+import { DEFAULT_CALENDAR_ROW_CONFIG, type CalendarRowConfig } from "./domain/calendarStructure";
 import { aggregateCardCosts } from "./domain/cardCosts";
 import { TarjetasTab } from "./tabs/Tarjetas";
 import { detectIntercompanyTransfers, summarizeIntercompany } from "./domain/intercompany";
@@ -1597,6 +1598,8 @@ type PersistedAppStateData = {
   capitalEntries: CapitalEntry[];
   cashHoldings: CashHolding[];
   ivaVepPayments: IvaVepPayment[];
+  // Retoques del Calendario anual sobre la estructura fija (renglones renombrados / ocultos).
+  calendarRowConfig: CalendarRowConfig;
   stockItems: StockItem[];
   costAnalysisGroups: CostAnalysisGroup[];
   costAnalysisEntries: CostAnalysisEntry[];
@@ -1692,7 +1695,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "calendarRowConfig"] as const,
   },
   {
     key: "compras",
@@ -2674,6 +2677,8 @@ export default function App() {
   const [costGroups, setCostGroups] = useState<CostGroup[]>(defaultCostGroups);
   const [costEntries, setCostEntries] = useState<CostEntry[]>(defaultCostEntries);
   const [costRules, setCostRules] = useState<CostRule[]>([]);
+  // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
+  const [calendarRowConfig, setCalendarRowConfig] = useState<CalendarRowConfig>(DEFAULT_CALENDAR_ROW_CONFIG);
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
   const [creditCardStatements, setCreditCardStatements] = useState<CreditCardStatement[]>([]);
   const [creditCardConsumptions, setCreditCardConsumptions] = useState<CreditCardConsumption[]>([]);
@@ -8231,6 +8236,10 @@ export default function App() {
     capitalEntries: capitalEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
     cashHoldings: cashHoldings.map((item) => ({ ...item, date: stampDate(item.date) })),
     ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
+    calendarRowConfig: {
+      labels: { ...(calendarRowConfig.labels || {}) },
+      hidden: [...(calendarRowConfig.hidden || [])],
+    },
     stockItems: stockItems.map((item) => ({ ...item })),
     costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
@@ -8507,6 +8516,10 @@ export default function App() {
     setCostEntries(
       keepAccessibleByCompany(data.costEntries || defaultCostEntries).map((item) => ({ ...item }))
     );
+    setCalendarRowConfig({
+      labels: { ...(data.calendarRowConfig?.labels || {}) },
+      hidden: [...(data.calendarRowConfig?.hidden || [])],
+    });
     // Reglas de clasificación (memoria): no se filtran por acceso (son memoria de clasificación,
     // incluye reglas "General"); se normalizan flags para datos viejos.
     setCostRules(
@@ -10612,6 +10625,7 @@ export default function App() {
     capitalEntries,
     cashHoldings,
     ivaVepPayments,
+    calendarRowConfig,
     creditCards,
     creditCardStatements,
     creditCardConsumptions,
@@ -15133,6 +15147,8 @@ export default function App() {
           onAssignToJob={assignBankToJob}
           onEditEntry={editCalendarEntry}
           onDeleteEntry={deleteCalendarEntry}
+          rowConfig={calendarRowConfig}
+          onRowConfigChange={setCalendarRowConfig}
         />
       )}
       {activeTab === "cashflow" && (
