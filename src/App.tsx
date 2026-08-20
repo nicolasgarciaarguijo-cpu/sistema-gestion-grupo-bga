@@ -56,6 +56,7 @@ import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
 import { CALENDAR_SECTIONS, DEFAULT_CALENDAR_ROW_CONFIG, type CalendarRowConfig } from "./domain/calendarStructure";
 import { buildLoanLines, lenderFromLabel, type CalendarLoan } from "./domain/loanLines";
+import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
 import { aggregateCardCosts } from "./domain/cardCosts";
 import { TarjetasTab } from "./tabs/Tarjetas";
 import { detectIntercompanyTransfers, summarizeIntercompany } from "./domain/intercompany";
@@ -2394,7 +2395,10 @@ const writeSupabasePersistedAppStateModules = async (
   // por id (3-way con la base ya sincronizada), asi no perdemos lo que otro usuario agrego/edito en la
   // misma (modulo, empresa) mientras tanto. Best-effort: si la relectura falla o no hay base, se escribe
   // lo nuestro tal cual (comportamiento anterior; nunca peor). Solo toca los campos por-empresa.
-  if (baselineData && rowsToWrite.length > 0) {
+  // Version FRESCA de cada fila que vamos a tocar. La usan dos cosas: el candado anti-vaciado (#17)
+  // y el merge por item (#16). Best-effort: si la relectura falla, seguimos como antes.
+  const freshByKey = new Map<string, Record<string, unknown>>();
+  if (rowsToWrite.length > 0) {
     try {
       const moduleKeysToReread = Array.from(new Set(rowsToWrite.map((entry) => entry.row.module_key)));
       const { data: freshRows, error: freshError } = await supabase
@@ -2402,13 +2406,48 @@ const writeSupabasePersistedAppStateModules = async (
         .select("module_key,company,payload")
         .in("module_key", moduleKeysToReread);
       if (freshError) throw freshError;
-      const freshByKey = new Map<string, Record<string, unknown>>();
       for (const freshRow of freshRows || []) {
         const dataSlice = (freshRow as any)?.payload?.data;
         if (dataSlice && typeof dataSlice === "object") {
           freshByKey.set(`${(freshRow as any).module_key}|${(freshRow as any).company}`, dataSlice);
         }
       }
+    } catch (freshReadError) {
+      console.error("[persistencia] no pude releer las filas frescas:", freshReadError);
+    }
+  }
+
+  // #17 CANDADO ANTI-VACIADO. Una sesion que todavia NO escribio esta fila (= la hidratacion inicial
+  // despues del login) no puede dejar en cero un array que en la base tiene registros. Es exactamente
+  // lo que paso el 20/08/2026: se abrio la misma cuenta en otra maquina, esa sesion arranco sin datos
+  // y el autosave escribio arrays vacios encima de los buenos. Vaciar tiene que ser una accion
+  // explicita en una sesion que YA tenia los datos cargados. Ver domain/saveGuard.ts.
+  const vaciados: string[] = [];
+  for (const entry of rowsToWrite) {
+    // Ya escribimos esta (modulo, empresa) en esta sesion => teniamos los datos: si ahora esta vacio,
+    // es porque el usuario borro. Eso se respeta.
+    if (supabaseModuleCompanySignatures.has(entry.cacheKey)) continue;
+    const campos = fieldsThatWouldBeEmptied(
+      entry.row.payload.data as Record<string, unknown>,
+      freshByKey.get(`${entry.row.module_key}|${entry.row.company}`)
+    );
+    if (campos.length > 0) {
+      vaciados.push(`${entry.label} · ${entry.row.company} → ${describeEmptied(campos)}`);
+    }
+  }
+  if (vaciados.length > 0) {
+    throw new SupabasePersistError(
+      "Freno el guardado: esta sesion iba a dejar en CERO datos que en la base existen, y todavia no " +
+        "los habia cargado (arranque en falso, o la misma cuenta abierta en otra maquina). No se toco " +
+        "nada: recarga la pagina para traer los datos buenos antes de seguir. Detalle: " +
+        vaciados.join("; ") +
+        "."
+    );
+  }
+
+  if (baselineData && rowsToWrite.length > 0) {
+    try {
+      const moduleKeysToReread = Array.from(new Set(rowsToWrite.map((entry) => entry.row.module_key)));
       // Base por (modulo, empresa) = el ultimo estado que teniamos sincronizado con la DB.
       const baselineBucketsByModule = new Map<string, Record<string, Record<string, unknown>>>();
       for (const moduleKey of moduleKeysToReread) {
