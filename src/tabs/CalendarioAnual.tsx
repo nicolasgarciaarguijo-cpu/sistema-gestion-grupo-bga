@@ -552,6 +552,8 @@ export function CalendarioAnualTab({
   useEffect(() => {
     window.localStorage.setItem("calendarioAnual.dayW", String(dayW));
   }, [dayW]);
+  // Vista compacta: un solo botón para achicar todo de una (el arrastre sigue estando para el fino).
+  const esCompacto = labelW <= LABEL_W_COMPACT && dayW <= DAY_W_COMPACT;
   // Encabezado inmovilizado: la fila de MESES queda arriba de todo y la de DÍAS pegada abajo de ella,
   // así al bajar por la planilla se sigue viendo en qué día estás. La altura de la fila de meses se mide
   // (no se hardcodea) porque cambia con el zoom del navegador y el tamaño de fuente.
@@ -567,7 +569,7 @@ export function CalendarioAnualTab({
     ev.stopPropagation();
     const startX = ev.clientX;
     const startW = which === "label" ? labelW : dayW;
-    const min = which === "label" ? 110 : 30;
+    const min = which === "label" ? 60 : 22;
     const max = which === "label" ? 700 : 240;
     const apply = (clientX: number) => {
       const next = Math.min(max, Math.max(min, startW + (clientX - startX)));
@@ -906,6 +908,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             ? (ev) => openRowMenu(ev, menu.rowKind || "texto", menu.label, menu.sectionKey, menu.itemKey, menu.match)
             : undefined
         }
+        title={cleanLabel}
         style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}
       >
         {cleanLabel}
@@ -965,6 +968,20 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             >
               {allCollapsed ? "Expandir todo" : "Minimizar todo"}
             </button>
+            <button
+              style={btnSecondary}
+              title={
+                esCompacto
+                  ? "Vuelve al ancho normal de las columnas"
+                  : "Achica la columna Concepto y los días para que entre más planilla en la pantalla"
+              }
+              onClick={() => {
+                setLabelW(esCompacto ? LABEL_W_DEFAULT : LABEL_W_COMPACT);
+                setDayW(esCompacto ? DAY_W_DEFAULT : DAY_W_COMPACT);
+              }}
+            >
+              {esCompacto ? "Ancho normal" : "Compacto"}
+            </button>
             {hiddenRowList.length > 0 && (
               <button
                 style={btnSecondary}
@@ -985,7 +1002,8 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           celda para <strong>cargar</strong> en ese día/renglón, y <strong>botón derecho</strong> sobre un
           número (o sobre el nombre del renglón) para <strong>editar, corregir o borrar</strong>. El ancho de
           las columnas se cambia arrastrando el borde de “Concepto” o de los días (doble click vuelve al
-          original). Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong>: ahí, con
+          original), o de una con el botón <strong>“Compacto”</strong>. Si un nombre no entra se corta
+          con “…” y se lee completo pasando el mouse por encima. Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong>: ahí, con
           <strong> botón derecho → Vincular</strong>, la plata que entró se engancha a un <strong>trabajo</strong> y
           la que salió a un <strong>proveedor</strong> (y a la factura de compra que cancela).
         </div>
@@ -1000,7 +1018,16 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             ["--cal-day-w" as any]: `${dayW}px`,
           } as React.CSSProperties}
         >
-          <table style={{ borderCollapse: "collapse", fontSize: 12, whiteSpace: "nowrap" }}>
+          {/* tableLayout "fixed" + colgroup: sin esto el ancho de la columna lo decide el texto más
+              largo (con white-space: nowrap el navegador ignora width/max-width en una tabla auto) y
+              un concepto largo se comía media pantalla. Acá el ancho lo mandan las dos variables CSS. */}
+          <table style={{ borderCollapse: "collapse", fontSize: 12, whiteSpace: "nowrap", tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={labelColWidth} />
+              {visibleDayCols.map((c) => (
+                <col key={`col-${c.iso}`} style={dayColWidth} />
+              ))}
+            </colgroup>
             <thead>
               <tr ref={monthRowRef}>
                 <th
@@ -1086,6 +1113,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               onContextMenu={(ev) =>
                                 openRowMenu(ev, "cobranza", title, section.key, "", (e) => isCobranzaEntry(e) && sameTitle(e, title))
                               }
+                              title={falta ? `${title} — falta ${falta}` : title}
                               style={{ ...tdStickyLabel, background: falta ? "#fff7ed" : "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}
                             >
                               {title}
@@ -1114,6 +1142,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                 onContextMenu={(ev) =>
                                   openRowMenu(ev, "fijo", itLabel, section.key, it.key, (e) => e.conceptKey === it.key)
                                 }
+                                title={itLabel}
                                 style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}
                               >
                                 {itLabel}
@@ -1168,6 +1197,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                             onContextMenu={(ev) =>
                               openRowMenu(ev, "haberes", emp.name, "haberes", "__custom__", (e) => e.conceptKey === `custom:haberes:${emp.name}`)
                             }
+                            title={emp.name}
                             style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}
                           >
                             {showByCompany && <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />}
@@ -1255,9 +1285,10 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                             onContextMenu={(ev) =>
                               openRowMenu(ev, "uncl", title, "", "", (e) => sameTitle(e, title) && !e.conceptKey && !isCobranzaEntry(e))
                             }
+                            title={title}
                             style={{ ...tdStickyLabel, background: "#fffbeb", paddingLeft: 24 }}
                           >
-                            <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, overflow: "hidden" }}>
                               {(() => {
                                 const tot = agg.unclTitleTotal.get(title) || 0;
                                 return (
@@ -1332,6 +1363,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                         onContextMenu={(ev) =>
                           openRowMenu(ev, "texto", title, "", "", (e) => e.conceptKey === "__interno__" && sameTitle(e, title))
                         }
+                        title={title}
                         style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 24, fontWeight: 400, color: "#64748b" }}
                       >
                         ↔ {title}
@@ -1381,6 +1413,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                           onContextMenu={(ev) =>
                             openRowMenu(ev, "texto", title, "", "", (e) => e.currency === "USD" && sameTitle(e, title))
                           }
+                          title={title}
                           style={{ ...tdStickyLabel, background: "#f0f9ff", paddingLeft: 24 }}
                         >
                           <span style={usdPill}>U$S</span> {title}{" "}
@@ -2055,6 +2088,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
 // arrastrando el borde del encabezado, sin tocar celda por celda.
 const LABEL_W_DEFAULT = 230;
 const DAY_W_DEFAULT = 56;
+// Vista compacta (botón "Compacto"): entra mucha más planilla en la misma pantalla.
+const LABEL_W_COMPACT = 130;
+const DAY_W_COMPACT = 40;
+// Las columnas de la tabla (<col>): con tableLayout "fixed" son las que fijan el ancho real.
+const labelColWidth = { width: `var(--cal-label-w, ${LABEL_W_DEFAULT}px)` } as const;
+const dayColWidth = { width: `var(--cal-day-w, ${DAY_W_DEFAULT}px)` } as const;
 const labelWidth = {
   width: `var(--cal-label-w, ${LABEL_W_DEFAULT}px)`,
   minWidth: `var(--cal-label-w, ${LABEL_W_DEFAULT}px)`,
@@ -2088,9 +2127,10 @@ const tdCell: React.CSSProperties = {
   padding: "4px 6px", borderBottom: "1px solid #f1f5f9", textAlign: "right", ...dayWidth,
 };
 // Manija para arrastrar el borde de una columna (como en una planilla). Doble click vuelve al original.
+// Se VE (una rayita gris en el borde del encabezado): si es invisible, nadie se entera de que existe.
 const resizeHandle: React.CSSProperties = {
   position: "absolute", top: 0, right: 0, width: 7, height: "100%", cursor: "col-resize",
-  userSelect: "none", background: "transparent",
+  userSelect: "none", background: "transparent", borderRight: "2px solid #94a3b8",
 };
 const overlayStyle: React.CSSProperties = {
   position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 50,
