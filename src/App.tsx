@@ -2398,6 +2398,7 @@ const writeSupabasePersistedAppStateModules = async (
   // Version FRESCA de cada fila que vamos a tocar. La usan dos cosas: el candado anti-vaciado (#17)
   // y el merge por item (#16). Best-effort: si la relectura falla, seguimos como antes.
   const freshByKey = new Map<string, Record<string, unknown>>();
+  let freshReadOk = rowsToWrite.length === 0;
   if (rowsToWrite.length > 0) {
     try {
       const moduleKeysToReread = Array.from(new Set(rowsToWrite.map((entry) => entry.row.module_key)));
@@ -2412,6 +2413,7 @@ const writeSupabasePersistedAppStateModules = async (
           freshByKey.set(`${(freshRow as any).module_key}|${(freshRow as any).company}`, dataSlice);
         }
       }
+      freshReadOk = true;
     } catch (freshReadError) {
       console.error("[persistencia] no pude releer las filas frescas:", freshReadError);
     }
@@ -2423,10 +2425,18 @@ const writeSupabasePersistedAppStateModules = async (
   // y el autosave escribio arrays vacios encima de los buenos. Vaciar tiene que ser una accion
   // explicita en una sesion que YA tenia los datos cargados. Ver domain/saveGuard.ts.
   const vaciados: string[] = [];
+  const sinLeer: string[] = [];
   for (const entry of rowsToWrite) {
     // Ya escribimos esta (modulo, empresa) en esta sesion => teniamos los datos: si ahora esta vacio,
     // es porque el usuario borro. Eso se respeta.
     if (supabaseModuleCompanySignatures.has(entry.cacheKey)) continue;
+    // Primera escritura de esta fila en la sesion y NO sabemos que hay del otro lado: no escribimos a
+    // ciegas. Sin esto el candado se caia solo cuando fallaba la relectura, que es justo cuando la red
+    // anda mal y es mas facil que la sesion haya arrancado a medias.
+    if (!freshReadOk) {
+      sinLeer.push(`${entry.label} · ${entry.row.company}`);
+      continue;
+    }
     const campos = fieldsThatWouldBeEmptied(
       entry.row.payload.data as Record<string, unknown>,
       freshByKey.get(`${entry.row.module_key}|${entry.row.company}`)
@@ -2434,6 +2444,14 @@ const writeSupabasePersistedAppStateModules = async (
     if (campos.length > 0) {
       vaciados.push(`${entry.label} · ${entry.row.company} → ${describeEmptied(campos)}`);
     }
+  }
+  if (sinLeer.length > 0) {
+    throw new SupabasePersistError(
+      "Freno el guardado: no pude leer lo que hay hoy en la base para comparar, y esta sesion todavia " +
+        "no habia escrito esas filas. No se toco nada; el autosave reintenta solo. Filas: " +
+        sinLeer.join("; ") +
+        "."
+    );
   }
   if (vaciados.length > 0) {
     throw new SupabasePersistError(
@@ -3602,6 +3620,15 @@ export default function App() {
       .map((item) => item.tab_key)
       .filter((key): key is TabKey => TAB_OPTIONS.some((tab) => tab.key === key));
   }, [isSupabaseLoggedIn, supabaseTabPermissions]);
+
+  // Permiso para ver la BARRA DE PLATA DISPONIBLE del encabezado (saldos por empresa: banco, efectivo
+  // y NEGRO). No es una solapa del menu: es un permiso suelto que vive igual en user_tab_permissions
+  // con la clave "plataDisponible", asi se otorga por persona. Superadmin siempre la ve.
+  const canSeePlataDisponible =
+    effectiveIsAdmin ||
+    supabaseTabPermissions.some(
+      (item) => item.user_id === supabaseProfile?.id && item.tab_key === "plataDisponible"
+    );
 
   // Permiso para EMITIR facturas AFIP: superadmin, o usuario con acceso a la solapa "Emitir facturas".
   // Gatea la solapa (via permisos normales) y el boton de emision en Trabajos aprobados.
@@ -14890,7 +14917,7 @@ export default function App() {
           pettyCash={pettyCashHeader}
         />
       )}
-      {isSupabaseLoggedIn && activeTab !== "acceso" && effectiveIsAdmin && (
+      {isSupabaseLoggedIn && activeTab !== "acceso" && canSeePlataDisponible && (
         <PlataDisponible companies={plataDisponibleByCompany} />
       )}
       <div style={{ ...styles.headerBar, borderTop: `8px solid ${workspaceTheme.primary}` }}>
