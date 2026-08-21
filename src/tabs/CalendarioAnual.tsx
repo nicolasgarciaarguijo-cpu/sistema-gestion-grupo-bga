@@ -301,7 +301,8 @@ export function CalendarioAnualTab({
         track("cobranzas", "in", neg, e.company, e.date, amt);
         return;
       }
-      // Movimiento interno: neutral, no suma a ingresos/egresos. Se muestra aparte (informativo).
+      // CUENTA CORRIENTE (movimiento interno): neutral, no suma a ingresos/egresos. Es plata que pasa de
+      // un bolsillo propio a otro (entre cuentas, entre las dos empresas, pasaje $↔U$S). Se muestra aparte.
       if (e.conceptKey === "__interno__") {
         const signed = e.statusLabel === "debito" ? -amt : amt;
         addDeep(internoDetail, title, e.date, signed);
@@ -1471,7 +1472,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               })()}
                               {ids.length > 0 && (() => {
                                 const sug = suggestCalendarConcept(title);
-                                const label = sug === "__interno__" ? "Movimiento interno (no cuenta)" : CALENDAR_ITEM_INDEX[sug || ""]?.label;
+                                const label = sug === "__interno__" ? "Cuenta corriente (no cuenta como ingreso/egreso)" : CALENDAR_ITEM_INDEX[sug || ""]?.label;
                                 return sug && label ? (
                                   <button
                                     style={{ ...miniAdd, borderColor: "#a78bfa", background: "#f5f3ff", color: "#5b21b6", textAlign: "left" }}
@@ -1509,12 +1510,14 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 </>
               )}
 
-              {/* ===== MOVIMIENTOS INTERNOS (entre cuentas propias / pasaje; NO cuentan) ===== */}
+              {/* ===== CUENTA CORRIENTE: los movimientos internos (entre cuentas propias, entre las dos
+                   empresas, pasajes $↔U$S). NO son ingreso ni egreso: es plata que se mueve de un
+                   bolsillo propio a otro. Se muestran acá con su saldo del día. ===== */}
               {agg.internoDetail.size > 0 && (
                 <>
                   <tr>
                     <td style={{ ...tdStickyLabel, background: "#f1f5f9", fontWeight: 800, color: "#475569" }}>
-                      ↔ MOVIMIENTOS INTERNOS <span style={{ fontWeight: 400 }}>(no cuentan como ingreso/egreso)</span>
+                      ↔ CUENTA CORRIENTE <span style={{ fontWeight: 400 }}>· movimientos internos (no cuentan como ingreso/egreso)</span>
                     </td>
                     {visibleDayCols.map((c) => {
                       const v = agg.internoByDate.get(c.iso) || 0;
@@ -2192,7 +2195,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     onChange={(e) => setLinkForm({ ...linkForm, conceptKey: e.target.value })}
                   >
                     <option value="">— Elegí dónde va —</option>
-                    <option value="__interno__">↔ Movimiento interno (no cuenta)</option>
+                    <option value="__interno__">↔ CUENTA CORRIENTE · movimiento interno (no cuenta)</option>
                     {sections.filter((x) => x.items.length > 0 || extraRowsOf(rowConfig, x.key).length > 0).map((x) => (
                       <optgroup key={x.key} label={x.label}>
                         {x.items.filter((it) => !hiddenRows.has(it.key)).map((it) => (
