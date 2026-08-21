@@ -1,4 +1,4 @@
-import { esCobranzaReal, extraRowsOf, CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "./calendarStructure";
+import { esCobranzaReal, extraRowsOf, allSectionsWith, sectionKeyFromLabel, esSeccionPropia, CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "./calendarStructure";
 
 describe("esCobranzaReal", () => {
   it("una cobranza sin renglón es cobranza de trabajo", () => {
@@ -68,5 +68,51 @@ describe("extraRowsOf (renglones propios del usuario)", () => {
   it("tolera una configuración vieja sin el campo extra", () => {
     expect(extraRowsOf({ labels: {}, hidden: [] } as any, "prestamos")).toEqual([]);
     expect(extraRowsOf(undefined, "prestamos")).toEqual([]);
+  });
+});
+
+describe("secciones propias del usuario", () => {
+  const config = {
+    labels: {},
+    hidden: [],
+    extra: [],
+    sections: [
+      { key: "propia:aportes-socios", label: "Aportes de socios", dir: "in" as const },
+      { key: "propia:obra-galpon", label: "Obra galpón", dir: "out" as const },
+    ],
+  };
+
+  it("las propias de INGRESO van después de los ingresos fijos y antes de los egresos", () => {
+    const keys = allSectionsWith(config).map((s) => s.key);
+    const iPropiaIn = keys.indexOf("propia:aportes-socios");
+    expect(iPropiaIn).toBeGreaterThan(keys.indexOf("ingresos_varios"));
+    expect(iPropiaIn).toBeLessThan(keys.indexOf("bancos"));
+  });
+
+  it("las propias de EGRESO quedan al final de todo", () => {
+    const keys = allSectionsWith(config).map((s) => s.key);
+    expect(keys[keys.length - 1]).toBe("propia:obra-galpon");
+  });
+
+  it("la sección propia queda armada como una fija (dir, group y total)", () => {
+    const s = allSectionsWith(config).find((x) => x.key === "propia:obra-galpon")!;
+    expect(s).toMatchObject({ label: "Obra galpón", dir: "out", group: "egreso", totalLabel: "Total Obra galpón", items: [] });
+  });
+
+  it("sin secciones propias devuelve la estructura fija tal cual", () => {
+    expect(allSectionsWith({ labels: {}, hidden: [], extra: [] }).map((s) => s.key)).toEqual(
+      CALENDAR_SECTIONS.map((s) => s.key)
+    );
+  });
+
+  it("descarta las secciones sin nombre o sin clave", () => {
+    const roto = { labels: {}, hidden: [], extra: [], sections: [{ key: "", label: "x", dir: "in" as const }] };
+    expect(allSectionsWith(roto).length).toBe(CALENDAR_SECTIONS.length);
+  });
+
+  it("la clave sale del nombre, sin acentos ni símbolos", () => {
+    expect(sectionKeyFromLabel("Obra galpón 2026!")).toBe("propia:obra-galpon-2026");
+    expect(esSeccionPropia(sectionKeyFromLabel("Lo que sea"))).toBe(true);
+    expect(esSeccionPropia("prestamos")).toBe(false);
   });
 });

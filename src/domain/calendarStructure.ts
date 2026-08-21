@@ -18,6 +18,14 @@ export type CalSection = {
 // Es parte del ESTADO del sistema (se guarda y lo ven todos), no una preferencia del navegador: si
 // alguien renombra "Préstamo Nicolás", tiene que verse igual desde cualquier máquina.
 // Solo se puede ocultar un renglón SIN movimientos, así no se esconde plata.
+// Una SECCION propia del usuario (un titulo grande nuevo en la planilla). La direccion (in/out) es
+// obligatoria: define si la plata de esa seccion suma como ingreso o como egreso.
+export type CalendarExtraSection = {
+  key: string;   // "propia:<slug>"
+  label: string; // el titulo que se ve
+  dir: "in" | "out";
+};
+
 export type CalendarExtraRow = {
   sectionKey: string; // en que seccion vive
   label: string;      // como se llama (es tambien su identidad: el movimiento va con conceptKey
@@ -30,9 +38,48 @@ export type CalendarRowConfig = {
   // Renglones propios que agrego el usuario. Existen aunque esten VACIOS: antes un renglon propio
   // solo existia mientras tuviera plata cargada, asi que "+ renglon" en realidad no creaba nada.
   extra: CalendarExtraRow[];
+  // Secciones propias del usuario (titulos grandes que no estan en la estructura fija).
+  sections?: CalendarExtraSection[];
 };
 
-export const DEFAULT_CALENDAR_ROW_CONFIG: CalendarRowConfig = { labels: {}, hidden: [], extra: [] };
+export const DEFAULT_CALENDAR_ROW_CONFIG: CalendarRowConfig = { labels: {}, hidden: [], extra: [], sections: [] };
+
+// Nombre -> clave estable de una seccion propia.
+export const sectionKeyFromLabel = (label: string): string =>
+  "propia:" +
+  (label || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+// La planilla completa: las secciones FIJAS mas las propias del usuario. Las propias se intercalan al
+// final de su grupo (las de ingreso despues de los ingresos fijos; las de egreso al final de todo),
+// asi los ingresos siguen arriba y los egresos abajo.
+export function allSectionsWith(config: CalendarRowConfig | undefined): CalSection[] {
+  const propias = (config?.sections || [])
+    .filter((s) => s && s.key && s.label)
+    .map((s): CalSection => ({
+      key: s.key,
+      label: s.label,
+      group: s.dir === "in" ? "ingreso" : "egreso",
+      dir: s.dir === "in" ? "in" : "out",
+      totalLabel: `Total ${s.label}`,
+      items: [],
+    }));
+  const fijasIn = CALENDAR_SECTIONS.filter((s) => s.dir === "in");
+  const fijasOut = CALENDAR_SECTIONS.filter((s) => s.dir === "out");
+  return [
+    ...fijasIn,
+    ...propias.filter((s) => s.dir === "in"),
+    ...fijasOut,
+    ...propias.filter((s) => s.dir === "out"),
+  ];
+}
+
+// Una seccion es propia del usuario (se puede renombrar y borrar) si no esta en la estructura fija.
+export const esSeccionPropia = (sectionKey: string): boolean => sectionKey.startsWith("propia:");
 
 // Los renglones propios de una seccion, sin repetidos y ordenados por nombre.
 export const extraRowsOf = (config: CalendarRowConfig | undefined, sectionKey: string): string[] => {

@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { styles } from "../ui/styles";
 import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { todayIso } from "../lib/format";
-import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, extraRowsOf, type CalendarRowConfig } from "../domain/calendarStructure";
+import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, allSectionsWith, esCobranzaReal, esSeccionPropia, extraRowsOf, sectionKeyFromLabel, type CalendarRowConfig } from "../domain/calendarStructure";
 import { suggestCalendarConcept } from "../domain/calendarBankRules";
 import { findSupplierInText } from "../domain/suppliers";
 import { invoiceCandidates, type LinkableInvoice } from "../domain/bankLinking";
@@ -174,7 +174,8 @@ export function CalendarioAnualTab({
       next.has(k) ? next.delete(k) : next.add(k);
       return next;
     });
-  const allCollapsed = collapsed.size >= 16;
+  // Con secciones propias la cuenta ya no es fija: "todo minimizado" es cuando estan todas.
+  const allCollapsed = collapsed.size > 0 && collapsed.size >= CALENDAR_SECTIONS.length;
   const toggle = (k: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
@@ -199,6 +200,10 @@ export function CalendarioAnualTab({
     () => (monthMode ? dayCols.filter((c) => c.monthIdx === idx) : dayCols),
     [dayCols, monthMode, idx]
   );
+
+  // La planilla que se dibuja: la estructura fija MAS las secciones propias del usuario.
+  const sections = useMemo(() => allSectionsWith(rowConfig), [rowConfig]);
+  const sectionByKey = useMemo(() => new Map(sections.map((x) => [x.key, x])), [sections]);
 
   const agg = useMemo(() => {
     const firstIso = dayCols[0]?.iso || "";
@@ -310,7 +315,7 @@ export function CalendarioAnualTab({
         const sep = rest.indexOf(":");
         const sectionKey = sep >= 0 ? rest.slice(0, sep) : rest;
         const label = (sep >= 0 ? rest.slice(sep + 1) : title) || "Otro";
-        const sec = CALENDAR_SECTIONS.find((s) => s.key === sectionKey);
+        const sec = sectionByKey.get(sectionKey);
         const dir = sec?.dir === "in" ? "in" : "out";
         if (!customRows.has(sectionKey)) customRows.set(sectionKey, new Map());
         const secMap = customRows.get(sectionKey)!;
@@ -356,7 +361,7 @@ export function CalendarioAnualTab({
       }
     });
     return { byConcept, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
-  }, [entries, companyScope, dayCols]);
+  }, [entries, companyScope, dayCols, sectionByKey]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
   const companyMeta = useMemo(() => {
@@ -764,6 +769,56 @@ export function CalendarioAnualTab({
       ),
     });
   };
+  // ---- SECCIONES propias: los títulos grandes que no están en la estructura fija ----------------
+  const guardarConfig = (cambio: Partial<CalendarRowConfig>) => {
+    if (!onRowConfigChange) return;
+    onRowConfigChange({
+      labels: { ...rowLabels },
+      hidden: [...(rowConfig.hidden || [])],
+      extra: [...(rowConfig.extra || [])],
+      sections: [...(rowConfig.sections || [])],
+      ...cambio,
+    });
+  };
+  const addSection = () => {
+    if (!onRowConfigChange) return;
+    const nombre = ask("Nombre de la sección nueva:", "");
+    if (!nombre) return;
+    const key = sectionKeyFromLabel(nombre);
+    if (key === "propia:") {
+      window.alert("Ponele un nombre con letras o números.");
+      return;
+    }
+    if (sectionByKey.has(key)) {
+      window.alert(`Ya hay una sección "${nombre}".`);
+      return;
+    }
+    // La dirección define si la plata suma como ingreso o como egreso: hay que preguntarla.
+    const esIngreso = window.confirm(
+      `"${nombre}"\n\n¿La plata de esta sección ENTRA?\n\nAceptar = INGRESO   ·   Cancelar = EGRESO`
+    );
+    guardarConfig({
+      sections: [...(rowConfig.sections || []), { key, label: nombre, dir: esIngreso ? "in" : "out" }],
+    });
+  };
+  const renameSection = (sectionKey: string, nuevo: string) => {
+    guardarConfig({
+      sections: (rowConfig.sections || []).map((x) =>
+        x.key === sectionKey ? { ...x, label: nuevo } : x
+      ),
+    });
+  };
+  const removeSection = (sectionKey: string) => {
+    guardarConfig({
+      sections: (rowConfig.sections || []).filter((x) => x.key !== sectionKey),
+      extra: (rowConfig.extra || []).filter((x) => x.sectionKey !== sectionKey),
+    });
+  };
+  // Cuanta plata hay cargada adentro de una sección propia (mirando TODAS las empresas, no solo la
+  // que se ve): si tiene movimientos no se puede borrar, así no se esconde plata.
+  const movimientosDeSeccion = (sectionKey: string) =>
+    entries.filter((e) => (e.conceptKey || "").startsWith(`custom:${sectionKey}:`)).length;
+
   // Los renglones propios de una sección: los declarados + los que tienen plata cargada (de antes de
   // que existieran los declarados, o cargados desde "Otro renglón" en el modal). Sin repetidos.
   const customRowsOfSection = (sectionKey: string): Array<{ label: string; declarado: boolean }> => {
@@ -796,7 +851,7 @@ export function CalendarioAnualTab({
     x: number;
     y: number;
     label: string;
-    kind: "fijo" | "cobranza" | "custom" | "haberes" | "uncl" | "texto";
+    kind: "fijo" | "cobranza" | "custom" | "haberes" | "uncl" | "texto" | "seccion";
     sectionKey: string;
     itemKey: string;
     match: (e: Entry) => boolean;
@@ -868,10 +923,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
 
   const confirmAdd = () => {
     if (!addForm || !(Number(addForm.amount) > 0) || !addForm.company) return;
-    const section = CALENDAR_SECTIONS.find((s) => s.key === addForm.sectionKey);
+    const section = sectionByKey.get(addForm.sectionKey);
     if (!section) return;
     const isCob = section.dynamic === "cobranzas";
     const isCustom = addForm.itemKey === "__custom__";
+    // Renglón propio ya existente, elegido en el select ("__extra__<nombre>").
+    const extraLabel = addForm.itemKey.startsWith("__extra__") ? addForm.itemKey.slice(9) : "";
     const type: "cobranza" | "pago" = section.dir === "in" ? "cobranza" : "pago";
     const cliente = addForm.cliente.trim();
     const ppto = addForm.ppto.trim();
@@ -881,11 +938,13 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
       ? `${ppto ? ppto + " · " : ""}${cliente || "Cliente"}`
       : isCustom
       ? customLabel
-      : CALENDAR_ITEM_INDEX[addForm.itemKey]?.label || section.label;
+      : extraLabel || CALENDAR_ITEM_INDEX[addForm.itemKey]?.label || section.label;
     const conceptKey = isCob
       ? "cobranzas"
       : isCustom
       ? `custom:${addForm.sectionKey}:${customLabel}`
+      : extraLabel
+      ? `custom:${addForm.sectionKey}:${extraLabel}`
       : addForm.itemKey;
     // Editando: el mismo formulario patchea el movimiento de origen (banco o carga manual). Si el
     // movimiento vive en otra solapa, avisamos y no tocamos nada.
@@ -1050,10 +1109,19 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             </label>
             <button
               style={btnSecondary}
-              onClick={() => setCollapsed(allCollapsed ? new Set() : new Set([...CALENDAR_SECTIONS.map((s) => s.key), "uncl"]))}
+              onClick={() => setCollapsed(allCollapsed ? new Set() : new Set([...sections.map((s) => s.key), "uncl"]))}
             >
               {allCollapsed ? "Expandir todo" : "Minimizar todo"}
             </button>
+            {onRowConfigChange && (
+              <button
+                style={btnSecondary}
+                title="Agrega un título grande nuevo a la planilla (ingreso o egreso). Después le ponés renglones con “+ renglón”."
+                onClick={addSection}
+              >
+                + sección
+              </button>
+            )}
             <button
               style={btnSecondary}
               title={
@@ -1170,7 +1238,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               </tr>
             </thead>
             <tbody>
-              {CALENDAR_SECTIONS.map((section) => {
+              {sections.map((section) => {
                 const isOut = section.dir === "out";
                 const isCob = section.dynamic === "cobranzas";
                 const isComerciales = section.key === "gastos_comerciales";
@@ -1180,9 +1248,18 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   <React.Fragment key={section.key}>
                     <tr>
                       <td
+                        onContextMenu={(ev) =>
+                          openRowMenu(ev, "seccion", section.label, section.key, "__custom__", (e) =>
+                            (e.conceptKey || "").startsWith(`custom:${section.key}:`)
+                          )
+                        }
+                        title={
+                          esSeccionPropia(section.key)
+                            ? `${section.label} — click para minimizar; botón derecho para renombrar o borrar la sección`
+                            : `${section.label} — click para minimizar / expandir`
+                        }
                         style={{ ...tdStickyLabel, background: isOut ? "#fee2e2" : "#dcfce7", fontWeight: 800, color: isOut ? "#991b1b" : "#065f46", cursor: "pointer", userSelect: "none" }}
                         onClick={() => toggleCollapse(section.key)}
-                        title="Minimizar / expandir la sección"
                       >
                         {isCol ? "▸ " : "▾ "}{section.label}
                       </td>
@@ -1652,6 +1729,46 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 <QuickMenuSep />
               </>
             )}
+            {rowMenu.kind === "seccion" && (
+              esSeccionPropia(rowMenu.sectionKey) ? (
+                <>
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      const nuevo = ask("Nombre de la sección:", rowMenu.label);
+                      if (nuevo) renameSection(rowMenu.sectionKey, nuevo);
+                      close();
+                    }}
+                  >
+                    Renombrar sección…
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      const conPlata = movimientosDeSeccion(rowMenu.sectionKey);
+                      if (conPlata > 0) {
+                        window.alert(
+                          `Esta sección tiene ${conPlata} movimiento(s) cargados. Movelos o borralos antes de sacarla, así no se esconde plata.`
+                        );
+                      } else if (
+                        window.confirm(`¿Borrar la sección "${rowMenu.label}" y sus renglones? Está vacía.`)
+                      ) {
+                        removeSection(rowMenu.sectionKey);
+                      }
+                      close();
+                    }}
+                  >
+                    Borrar sección
+                  </button>
+                </>
+              ) : (
+                <div style={{ fontSize: 12, color: "#64748b", padding: "4px 8px" }}>
+                  Sección de la planilla fija. Podés renombrar o quitar sus renglones, y agregar los tuyos
+                  con “+ renglón”.
+                </div>
+              )
+            )}
             {rowMenu.kind === "custom" && (
               <>
                 <button
@@ -1916,7 +2033,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
         const esEgreso = linkForm.total < 0;
         const monto = Math.abs(linkForm.total);
         const varios = linkForm.bankIds.length > 1;
-        const section = CALENDAR_SECTIONS.find((x) => x.key === linkForm.sectionKey);
+        const section = sectionByKey.get(linkForm.sectionKey);
         const tab = (mode: LinkForm["mode"], label: string) => (
           <button
             key={mode}
@@ -2041,7 +2158,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                       value={linkForm.sectionKey}
                       onChange={(e) => setLinkForm({ ...linkForm, sectionKey: e.target.value, itemKey: "__own__" })}
                     >
-                      {CALENDAR_SECTIONS.filter((x) => x.dir === "out").map((x) => (
+                      {sections.filter((x) => x.dir === "out").map((x) => (
                         <option key={x.key} value={x.key}>{x.label}</option>
                       ))}
                     </select>
@@ -2076,7 +2193,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   >
                     <option value="">— Elegí dónde va —</option>
                     <option value="__interno__">↔ Movimiento interno (no cuenta)</option>
-                    {CALENDAR_SECTIONS.filter((x) => x.items.length > 0).map((x) => (
+                    {sections.filter((x) => x.items.length > 0 || extraRowsOf(rowConfig, x.key).length > 0).map((x) => (
                       <optgroup key={x.key} label={x.label}>
                         {x.items.filter((it) => !hiddenRows.has(it.key)).map((it) => (
                           <option key={it.key} value={it.key}>{labelOf(it.key, it.label)}</option>
@@ -2112,7 +2229,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
       })()}
 
       {addForm && (() => {
-        const section = CALENDAR_SECTIONS.find((s) => s.key === addForm.sectionKey);
+        const section = sectionByKey.get(addForm.sectionKey);
         const isCob = section?.dynamic === "cobranzas";
         return (
           <div style={overlayStyle} onClick={() => setAddForm(null)}>
@@ -2139,10 +2256,10 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 <label style={lblStyle}>
                   Sección
                   <select style={styles.input} value={addForm.sectionKey} onChange={(e) => {
-                    const s = CALENDAR_SECTIONS.find((x) => x.key === e.target.value);
+                    const s = sectionByKey.get(e.target.value);
                     setAddForm({ ...addForm, sectionKey: e.target.value, itemKey: s?.items[0]?.key || "" });
                   }}>
-                    {CALENDAR_SECTIONS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+                    {sections.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
                   </select>
                 </label>
                 {isCob ? (
@@ -2160,6 +2277,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                       <select style={styles.input} value={addForm.itemKey} onChange={(e) => setAddForm({ ...addForm, itemKey: e.target.value })}>
                         {(section?.items || []).filter((it) => !hiddenRows.has(it.key)).map((it) => (
                           <option key={it.key} value={it.key}>{labelOf(it.key, it.label)}</option>
+                        ))}
+                        {extraRowsOf(rowConfig, addForm.sectionKey).map((label) => (
+                          <option key={`x-${label}`} value={`__extra__${label}`}>✎ {label}</option>
                         ))}
                         <option value="__custom__">➕ Otro renglón (escribir)…</option>
                       </select>

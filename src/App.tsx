@@ -8321,6 +8321,7 @@ export default function App() {
       labels: { ...(calendarRowConfig.labels || {}) },
       hidden: [...(calendarRowConfig.hidden || [])],
       extra: [...(calendarRowConfig.extra || [])].map((item) => ({ ...item })),
+      sections: [...(calendarRowConfig.sections || [])].map((item) => ({ ...item })),
     },
     stockItems: stockItems.map((item) => ({ ...item })),
     costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
@@ -8605,6 +8606,11 @@ export default function App() {
         sectionKey: String(item?.sectionKey || ""),
         label: String(item?.label || ""),
       })).filter((item: any) => item.sectionKey && item.label),
+      sections: [...(data.calendarRowConfig?.sections || [])].map((item: any) => ({
+        key: String(item?.key || ""),
+        label: String(item?.label || ""),
+        dir: item?.dir === "in" ? ("in" as const) : ("out" as const),
+      })).filter((item: any) => item.key && item.label),
     });
     // Reglas de clasificación (memoria): no se filtran por acceso (son memoria de clasificación,
     // incluye reglas "General"); se normalizan flags para datos viejos.
