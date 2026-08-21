@@ -12735,6 +12735,31 @@ export default function App() {
     updateEmployeePayroll(employeeId, month, "savedAt", new Date().toISOString());
   };
 
+  // Precarga MASIVA de horas del convenio para los dias que vinieron del reloj. El sync escribe
+  // entrada y salida pero deja las horas en CERO, asi que la liquidacion no los ve y parece que la
+  // asistencia "no engancha" (visto 2026-08-21: 56 dias con entrada y salida, solo 10 con horas).
+  // Solo toca los que estan en cero -nunca pisa lo que se cargo a mano- y va por el mismo camino que
+  // editar la salida, para que se recalcule tambien la liquidacion del mes.
+  const precargarHorasDesdeFichadas = (month: string, company: "all" | CompanyName) => {
+    const objetivos: Array<{ id: number; date: string; checkOut: string }> = [];
+    visibleEmployees.forEach((employee) => {
+      if (company !== "all" && employee.company !== company) return;
+      (employee.attendance || []).forEach((item) => {
+        if (!item.date || !item.date.startsWith(`${month}-`)) return;
+        if (!item.checkIn || !item.checkOut) return;
+        const horas =
+          Number(item.normalHours || 0) +
+          Number(item.extra50Hours || 0) +
+          Number(item.extra100Hours || 0) +
+          Number((item as any).night50Hours || 0);
+        if (horas > 0) return; // ya tiene horas: es edicion del usuario, no se toca
+        objetivos.push({ id: employee.id, date: item.date, checkOut: item.checkOut });
+      });
+    });
+    objetivos.forEach((o) => updateAttendanceRecord(o.id, o.date, "checkOut", o.checkOut));
+    return objetivos.length;
+  };
+
   const updateAttendanceRecord = (
     employeeId: number,
     date: string,
@@ -16039,6 +16064,7 @@ export default function App() {
           initialMonth={operationalMonth}
           companyOptions={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
+          onPrecargarHoras={precargarHorasDesdeFichadas}
         />
       )}
 

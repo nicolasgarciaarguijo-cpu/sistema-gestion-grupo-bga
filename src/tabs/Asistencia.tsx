@@ -153,11 +153,14 @@ export function AsistenciaTab({
   initialMonth,
   companyOptions,
   getCompanyMeta,
+  onPrecargarHoras,
 }: {
   employees: Employee[];
   initialMonth: string;
   companyOptions: Array<{ value: CompanyName; short?: string }>;
   getCompanyMeta: (company: CompanyName) => { short: string; primary: string };
+  // Llena las horas del convenio de los dias que vinieron del reloj con las horas en cero.
+  onPrecargarHoras?: (month: string, company: "all" | CompanyName) => number;
 }) {
   const [month, setMonth] = useState(initialMonth || "");
   const [companyFilter, setCompanyFilter] = useState<"all" | CompanyName>("all");
@@ -166,6 +169,22 @@ export function AsistenciaTab({
     () => employees.filter((e) => companyFilter === "all" || e.company === companyFilter),
     [employees, companyFilter]
   );
+
+  // Dias que vinieron del reloj con entrada y salida pero SIN horas: la liquidacion no los ve.
+  const sinHoras = useMemo(() => {
+    let n = 0;
+    shownEmployees.forEach((e) => {
+      (e.attendance || []).forEach((a: any) => {
+        if (!a?.date || !String(a.date).startsWith(`${month}-`)) return;
+        if (!a.checkIn || !a.checkOut) return;
+        const horas =
+          Number(a.normalHours || 0) + Number(a.extra50Hours || 0) +
+          Number(a.extra100Hours || 0) + Number(a.night50Hours || 0);
+        if (horas === 0) n += 1;
+      });
+    });
+    return n;
+  }, [shownEmployees, month]);
 
   // Semaforo del mes por empleado, calculado una vez.
   const perEmployeeMonth = useMemo(
@@ -223,6 +242,27 @@ export function AsistenciaTab({
   return (
     <div style={styles.column}>
       <SyncReloj />
+      {sinHoras > 0 && onPrecargarHoras && (
+        <div style={{ ...styles.noticeBox, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderLeft: "4px solid #f59e0b" }}>
+          <span style={{ flex: 1, minWidth: 260 }}>
+            Hay <strong>{sinHoras} día(s)</strong> de {monthLabel(month)} que vinieron del reloj con
+            entrada y salida pero <strong>sin horas</strong>: así la liquidación no los ve. Se calculan
+            con las reglas del convenio y después los podés corregir a mano.
+          </span>
+          <ButtonLike
+            onClick={() => {
+              const n = onPrecargarHoras(month, companyFilter);
+              window.alert(
+                n > 0
+                  ? `Listo: se calcularon las horas de ${n} día(s). Revisalos en la ficha de cada empleado.`
+                  : "No quedaba ningún día para calcular."
+              );
+            }}
+          >
+            Calcular horas de {sinHoras} día(s)
+          </ButtonLike>
+        </div>
+      )}
       <Panel
         title="Asistencia — calendario del taller"
         span="full"
