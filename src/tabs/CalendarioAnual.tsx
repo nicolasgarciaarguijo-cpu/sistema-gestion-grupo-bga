@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { styles } from "../ui/styles";
 import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { todayIso } from "../lib/format";
-import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, type CalendarRowConfig } from "../domain/calendarStructure";
+import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, type CalendarRowConfig } from "../domain/calendarStructure";
 import { suggestCalendarConcept } from "../domain/calendarBankRules";
 import { findSupplierInText } from "../domain/suppliers";
 import { invoiceCandidates, type LinkableInvoice } from "../domain/bankLinking";
@@ -25,6 +25,15 @@ type Entry = {
   administration?: "blanco" | "negro";
   currency?: "ARS" | "USD";
   costKind?: "fijo" | "variable";
+};
+
+// De que tipo es la plata que entra, segun la seccion de la planilla donde se carga. Sirve para que
+// un prestamo no se cuente como cobranza de un trabajo.
+const incomeCategoryOfSection = (sectionKey: string): "trabajo" | "prestamo" | "financiero" | "varios" => {
+  if (sectionKey === "prestamos") return "prestamo";
+  if (sectionKey === "inversiones") return "financiero";
+  if (sectionKey === "ingresos_varios") return "varios";
+  return "trabajo";
 };
 
 const MES = [
@@ -265,7 +274,10 @@ export function CalendarioAnualTab({
         add(usdByDate, e.date, signedUsd);
         return;
       }
-      const isCobranza = e.kind === "cobranza" || e.conceptKey === "cobranzas";
+      // COBRANZA de verdad = plata de un trabajo. Un ingreso clasificado en OTRO renglón (préstamo,
+      // rescate de inversión, ingreso vario) NO es una cobranza aunque se haya cargado como tal: tiene
+      // que sumar en SU sección. Si no, todo termina impactando en Cobranzas y el número no es real.
+      const isCobranza = esCobranzaReal(e.kind, e.conceptKey);
       const neg = e.administration === "negro";
       if (e.kind === "comision") {
         addDeep(comisionDetail, title, e.date, amt);
@@ -401,6 +413,8 @@ export function CalendarioAnualTab({
   // todo lo demás: el número solo muestra, la acción sale del menú.
   type LinkForm = {
     bankIds: number[];
+    entryIds: string[]; // los movimientos de atrás (para moverlos de día / renglón)
+    moveDate: string; // vacío = no cambiar el día
     title: string;
     total: number; // firmado: + ingreso / − egreso
     company: string;
@@ -431,6 +445,8 @@ export function CalendarioAnualTab({
     const prov = findSupplierInText(title, suppliers);
     setLinkForm({
       bankIds,
+      entryIds: list.map((e) => e.id),
+      moveDate: "",
       title,
       total,
       company: list[0]?.company || "",
@@ -478,7 +494,23 @@ export function CalendarioAnualTab({
       onAssignToSupplier(bankIds, { supplier, conceptKey, invoiceId: linkForm.invoiceId });
     } else {
       if (!linkForm.conceptKey) return;
-      onAssignConcept(bankIds, linkForm.conceptKey);
+      const dia = linkForm.moveDate.trim();
+      // Mover = cambiar el renglón y, si se eligió un día, también la columna. Va por onEditEntry para
+      // que sirva igual con lo cargado a mano (financial-) que con el banco (bank-).
+      if (dia && onEditEntry) {
+        const fallaron = linkForm.entryIds.filter(
+          (id) => !onEditEntry(id, { conceptKey: linkForm.conceptKey, date: dia })
+        ).length;
+        if (fallaron) {
+          window.alert(
+            `${fallaron} de ${linkForm.entryIds.length} movimientos se editan en su solapa (compras, caja chica, comisiones o trabajos) y quedaron como estaban.`
+          );
+        }
+      } else if (bankIds.length > 0) {
+        onAssignConcept(bankIds, linkForm.conceptKey);
+      } else if (onEditEntry) {
+        linkForm.entryIds.forEach((id) => onEditEntry(id, { conceptKey: linkForm.conceptKey }));
+      }
     }
     setLinkForm(null);
   };
@@ -836,7 +868,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
       jobCode: isCob ? ppto : "",
       notes: addForm.notes,
       conceptKey,
-      incomeCategory: isCob ? "trabajo" : undefined,
+      incomeCategory: type === "cobranza" ? incomeCategoryOfSection(addForm.sectionKey) : undefined,
       costKind: type === "pago" && addForm.costKind ? addForm.costKind : undefined,
     });
     setAddForm(null);
@@ -1851,7 +1883,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
                 {tab("trabajo", "Cobro de un trabajo")}
                 {tab("proveedor", "Pago a proveedor")}
-                {tab("renglon", "Renglón de la planilla")}
+                {tab("renglon", "Mover a un renglón")}
               </div>
 
               {linkForm.mode === "trabajo" && (
@@ -1963,6 +1995,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               )}
 
               {linkForm.mode === "renglon" && (
+                <div style={{ display: "grid", gap: 10 }}>
                 <label style={lblStyle}>
                   Renglón de la planilla
                   <select
@@ -1982,6 +2015,19 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     ))}
                   </select>
                 </label>
+                <label style={lblStyle}>
+                  Día <span style={{ color: "#94a3b8", fontSize: 11, fontWeight: 400 }}>(opcional: mover el importe a otra columna)</span>
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={linkForm.moveDate}
+                    onChange={(e) => setLinkForm({ ...linkForm, moveDate: e.target.value })}
+                  />
+                  <span style={{ fontSize: 11, color: "#64748b", fontWeight: 400 }}>
+                    Vacío = cada movimiento se queda en su día. Si ponés una fecha, {linkForm.entryIds.length === 1 ? "el movimiento se mueve" : `los ${linkForm.entryIds.length} movimientos se mueven`} a esa columna.
+                  </span>
+                </label>
+                </div>
               )}
 
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
@@ -2005,6 +2051,15 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 {addForm.editId ? "Editar movimiento" : "Cargar movimiento"} — {addForm.date}
               </h3>
               <div style={{ display: "grid", gap: 10 }}>
+                <label style={lblStyle}>
+                  Día <span style={{ color: "#94a3b8", fontSize: 11, fontWeight: 400 }}>(cambialo para mover el importe a otra columna)</span>
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={addForm.date}
+                    onChange={(e) => setAddForm({ ...addForm, date: e.target.value })}
+                  />
+                </label>
                 <label style={lblStyle}>
                   Empresa
                   <select style={styles.input} value={addForm.company} onChange={(e) => setAddForm({ ...addForm, company: e.target.value })}>

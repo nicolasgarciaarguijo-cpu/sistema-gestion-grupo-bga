@@ -54,7 +54,7 @@ import {
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
-import { CALENDAR_SECTIONS, DEFAULT_CALENDAR_ROW_CONFIG, type CalendarRowConfig } from "./domain/calendarStructure";
+import { CALENDAR_SECTIONS, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, type CalendarRowConfig } from "./domain/calendarStructure";
 import { buildLoanLines, lenderFromLabel, type CalendarLoan } from "./domain/loanLines";
 import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
 import { aggregateCardCosts } from "./domain/cardCosts";
@@ -12371,7 +12371,9 @@ export default function App() {
 
     visibleFinancialItems.forEach((item) => {
       if (!item.date || !item.date.startsWith(String(analysisYear))) return;
-      const isCobranza = item.type === "cobranza";
+      // Solo es cobranza si NO se clasificó en otro renglón de la planilla: un préstamo o un rescate se
+      // cargan como "cobranza" (es plata que entra) pero pertenecen a SU sección, no a Cobranzas.
+      const isCobranza = esCobranzaReal(item.type, item.conceptKey);
       // Cobranza SIN presupuesto = incompleta → marcador (D) para que aparezca la pill en el calendario.
       const cobranzaTitle = item.jobCode
         ? `${item.jobCode} · ${item.client || item.title || "Cliente"}`

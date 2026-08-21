@@ -215,3 +215,12 @@ export const CALENDAR_ITEM_INDEX: Record<string, { sectionKey: string; label: st
   }));
   return idx;
 })();
+
+// COBRANZA de verdad = plata de un TRABAJO. Un ingreso clasificado en otro renglon de la planilla
+// (prestamo, rescate de una inversion, ingreso vario) se carga igual como "cobranza" -es plata que
+// entra- pero pertenece a SU seccion: si se lo cuenta como cobranza, todo impacta en Cobranzas y el
+// numero deja de ser real (pedido del usuario 2026-08-20).
+export const esCobranzaReal = (tipo: string | undefined, conceptKey?: string | null): boolean => {
+  if (conceptKey === "cobranzas") return true;
+  return tipo === "cobranza" && !conceptKey;
+};
