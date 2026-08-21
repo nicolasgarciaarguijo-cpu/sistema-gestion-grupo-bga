@@ -8,6 +8,11 @@ import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, AmountInput } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
+import { QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato,
+  thEsquina, thColumna, tdNombre, tdDato, PlanillaManija,
+} from "../ui/planilla";
 import type {
   CompanyName,
   CostKind,
@@ -66,6 +71,54 @@ export function TarjetasTab({
   const scopedCards = cards.filter((c) => inScope(c.company));
   const scopedStatements = statements.filter((s) => inScope(s.company));
   const scopedConsumptions = consumptions.filter((c) => inScope(c.company));
+
+  // ---- PLANILLA de consumos (estetica del Calendario anual, regla del usuario 2026-08-21) --------
+  // Agrupada por CIERRE: cada resumen es una seccion plegable con sus consumos, un sub-bloque con los
+  // cargos del propio resumen (sellos, comision, IVA) y una fila de TOTAL que se coteja contra el
+  // saldo del resumen. Si coinciden, el cierre esta bien cargado.
+  const anchos = usePlanillaWidths("tarjetas.consumos", { label: 250, col: 110 });
+  const [cerrados, setCerrados] = React.useState<Set<number>>(new Set());
+  const plegar = (sid: number) =>
+    setCerrados((prev) => {
+      const next = new Set(prev);
+      next.has(sid) ? next.delete(sid) : next.add(sid);
+      return next;
+    });
+  const [menu, setMenu] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const abrirMenu = (ev: React.MouseEvent, id: number) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    setMenu({ x: ev.clientX, y: ev.clientY, id });
+  };
+  // Los cargos que pone el banco en el cierre, no una compra: van aparte al pie de cada resumen.
+  const esCargoDelResumen = (c: CreditCardConsumption) =>
+    /^(IMPUESTO DE SELLOS|COMISION|DB IVA|PERCEP|INTERES|SEGURO DE VIDA)/i.test(c.description || "");
+  // Un cierre = un resumen, del mas nuevo al mas viejo. Los que no tienen resumen quedan al final.
+  const bloques = React.useMemo(() => {
+    const porCierre = new Map<number, CreditCardConsumption[]>();
+    const sueltos: CreditCardConsumption[] = [];
+    scopedConsumptions.forEach((c) => {
+      const sid = Number((c as any).statementId || 0);
+      if (!sid) return sueltos.push(c);
+      if (!porCierre.has(sid)) porCierre.set(sid, []);
+      porCierre.get(sid)!.push(c);
+    });
+    const orden = [...scopedStatements].sort((a, b) =>
+      (b.closingDate || "").localeCompare(a.closingDate || "")
+    );
+    return {
+      cierres: orden
+        .filter((st) => (porCierre.get(st.id) || []).length > 0)
+        .map((st) => {
+          const items = porCierre.get(st.id) || [];
+          const compras = items.filter((c) => !esCargoDelResumen(c));
+          const cargos = items.filter(esCargoDelResumen);
+          const total = items.reduce((a, c) => a + Number(c.amount || 0), 0);
+          return { st, compras, cargos, total, difiere: Math.abs(total - Number(st.totalArs || 0)) > 1 };
+        }),
+      sueltos,
+    };
+  }, [scopedConsumptions, scopedStatements]);
 
   const cardName = (id: number) => cards.find((c) => c.id === id)?.name || "(sin tarjeta)";
   const companyShort = (c: string) =>
@@ -358,131 +411,265 @@ export function TarjetasTab({
         )}
       </Panel>
 
-      {/* --- Consumos --- */}
+      {/* --- Consumos: PLANILLA por cierre (misma estetica que el Calendario anual) --- */}
       <Panel
-        title="Consumos · clasificados por rubro (para cotizar)"
+        title="Consumos · planilla por cierre"
         span="full"
-        actions={<ButtonLike onClick={addCreditCardConsumption}>Agregar consumo</ButtonLike>}
+        actions={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <ButtonLike onClick={anchos.toggleCompacto} secondary>
+              {anchos.esCompacto ? "Ancho normal" : "Compacto"}
+            </ButtonLike>
+            <ButtonLike onClick={addCreditCardConsumption}>Agregar consumo</ButtonLike>
+          </div>
+        }
       >
         {scopedConsumptions.length === 0 ? (
           <div style={styles.muted}>
             No hay consumos. Al clasificar cada consumo a un grupo, el sistema aprende la regla y el
-            próximo consumo del mismo concepto se sugiere solo.
+            proximo consumo del mismo concepto se sugiere solo.
           </div>
         ) : (
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th>Tarjeta</th>
-                <th>Fecha</th>
-                <th>Descripción</th>
-                <th>Moneda</th>
-                <th style={{ textAlign: "right" }}>Monto</th>
-                <th>Grupo (fijo/var)</th>
-                <th>Cuotas</th>
-                <th>Recurrente</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {scopedConsumptions.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={c.cardId}
-                      onChange={(e) =>
-                        updateCreditCardConsumption(c.id, "cardId", Number(e.target.value))
-                      }
-                    >
-                      {cardOptions}
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      style={styles.input}
-                      type="date"
-                      value={c.date}
-                      onChange={(e) => updateCreditCardConsumption(c.id, "date", e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      style={styles.input}
-                      value={c.description}
-                      placeholder="Ej: Google Ads, Netflix, YPF..."
-                      onChange={(e) =>
-                        updateCreditCardConsumption(c.id, "description", e.target.value)
-                      }
-                    />
-                  </td>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={c.currency}
-                      onChange={(e) => updateCreditCardConsumption(c.id, "currency", e.target.value)}
-                    >
-                      <option value="ARS">$ Pesos</option>
-                      <option value="USD">U$S Dólares</option>
-                    </select>
-                  </td>
-                  <td>
-                    <AmountInput
-                      style={styles.input}
-                      value={c.amount}
-                      onChange={(n) => updateCreditCardConsumption(c.id, "amount", n)}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={c.group}
-                      onChange={(e) =>
-                        pickGroupOrCreate(e.target.value, (name) =>
-                          updateCreditCardConsumption(c.id, "group", name)
-                        )
-                      }
-                    >
-                      <option value="">Sin clasificar</option>
-                      {manualGroupOptions.map((g) => (
-                        <option key={g} value={g}>
-                          {g}
-                        </option>
+          <>
+            <div style={{ ...styles.sectionNote, marginBottom: 8 }}>
+              Cada cierre es una seccion: tocá el titulo para plegarla. El <strong>total del cierre</strong>{" "}
+              se compara con el saldo del resumen del banco; si coinciden, esta bien cargado.{" "}
+              <strong>Boton derecho</strong> sobre cualquier fila para clasificarla, marcarla recurrente,
+              editarla o borrarla.
+            </div>
+            <div style={{ ...planillaWrap, ...anchos.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={{ ...thEsquina, position: "sticky" }}>
+                      <span style={{ position: "relative", display: "block" }}>
+                        Descripcion
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchos.startResize(ev, "label")}
+                          onDoubleClick={anchos.resetLabel}
+                        />
+                      </span>
+                    </th>
+                    <th style={thColumna}>Fecha</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      <span style={{ position: "relative", display: "block" }}>
+                        Monto
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchos.startResize(ev, "col")}
+                          onDoubleClick={anchos.resetCol}
+                        />
+                      </span>
+                    </th>
+                    <th style={thColumna}>Grupo (fijo/var)</th>
+                    <th style={thColumna}>Cuota</th>
+                    <th style={thColumna}>Tarjeta</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bloques.cierres.map(({ st, compras, cargos, total, difiere }) => {
+                    const plegado = cerrados.has(st.id);
+                    const fila = (c: CreditCardConsumption, sangria: number) => (
+                      <tr key={c.id} onContextMenu={(ev) => abrirMenu(ev, c.id)}>
+                        <td style={{ ...tdNombre, paddingLeft: sangria, fontWeight: 400 }} title={c.description}>
+                          {c.description || "(sin descripcion)"}
+                        </td>
+                        <td style={{ ...tdDato, color: "#64748b" }}>{formatDateDisplay(c.date)}</td>
+                        <td style={{ ...tdDato, textAlign: "right", color: "#dc2626" }}>
+                          {money(c.amount, c.currency)}
+                        </td>
+                        <td style={tdDato}>
+                          {c.group ? (
+                            <span style={chipGrupo}>{c.group}</span>
+                          ) : (
+                            <span style={pillFalta} title="Falta clasificar a un grupo">D</span>
+                          )}
+                        </td>
+                        <td style={{ ...tdDato, color: "#64748b" }}>{c.installments || "\u2014"}</td>
+                        <td style={{ ...tdDato, color: "#64748b" }} title={c.notes}>
+                          {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "\u2014"}
+                        </td>
+                      </tr>
+                    );
+                    return (
+                      <React.Fragment key={st.id}>
+                        <tr>
+                          <td
+                            onClick={() => plegar(st.id)}
+                            title="Tocá para plegar o desplegar este cierre"
+                            style={{ ...tdNombre, background: "#e0f2fe", fontWeight: 800, color: "#075985", cursor: "pointer", userSelect: "none" }}
+                          >
+                            {plegado ? "\u25b8 " : "\u25be "}Cierre {formatDateDisplay(st.closingDate)}
+                          </td>
+                          <td style={{ ...tdDato, background: "#e0f2fe", color: "#075985" }}>
+                            vence {formatDateDisplay(st.dueDate)}
+                          </td>
+                          <td style={{ ...tdDato, background: "#e0f2fe", textAlign: "right", fontWeight: 800, color: "#075985" }}>
+                            {money(total)}
+                          </td>
+                          <td colSpan={3} style={{ ...tdDato, background: "#e0f2fe", color: difiere ? "#b45309" : "#166534" }}>
+                            {difiere
+                              ? `\u26a0 el resumen dice ${money(st.totalArs)} \u00b7 difiere ${money(Math.abs(total - Number(st.totalArs || 0)))}`
+                              : `\u2713 coincide con el resumen (${money(st.totalArs)})`}
+                          </td>
+                        </tr>
+                        {!plegado && compras.map((c) => fila(c, 24))}
+                        {!plegado && cargos.length > 0 && (
+                          <tr>
+                            <td style={{ ...tdNombre, paddingLeft: 24, background: "#f8fafc", fontWeight: 500, color: "#64748b" }}>
+                              Cargos del resumen
+                            </td>
+                            <td colSpan={5} style={{ ...tdDato, background: "#f8fafc", color: "#94a3b8" }}>
+                              sellos, comisiones e IVA del cierre
+                            </td>
+                          </tr>
+                        )}
+                        {!plegado && cargos.map((c) => fila(c, 38))}
+                      </React.Fragment>
+                    );
+                  })}
+                  {bloques.sueltos.length > 0 && (
+                    <>
+                      <tr>
+                        <td colSpan={6} style={{ ...tdNombre, background: "#fef9c3", fontWeight: 800, color: "#854d0e", width: "auto", maxWidth: "none" }}>
+                          Sin resumen asignado
+                        </td>
+                      </tr>
+                      {bloques.sueltos.map((c) => (
+                        <tr key={c.id} onContextMenu={(ev) => abrirMenu(ev, c.id)}>
+                          <td style={{ ...tdNombre, paddingLeft: 24, fontWeight: 400 }} title={c.description}>
+                            {c.description || "(sin descripcion)"}
+                          </td>
+                          <td style={{ ...tdDato, color: "#64748b" }}>{formatDateDisplay(c.date)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", color: "#dc2626" }}>
+                            {money(c.amount, c.currency)}
+                          </td>
+                          <td style={tdDato}>
+                            {c.group ? <span style={chipGrupo}>{c.group}</span> : <span style={pillFalta}>D</span>}
+                          </td>
+                          <td style={{ ...tdDato, color: "#64748b" }}>{c.installments || "\u2014"}</td>
+                          <td style={{ ...tdDato, color: "#64748b" }} title={c.notes}>
+                            {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "\u2014"}
+                          </td>
+                        </tr>
                       ))}
-                      <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
-                    </select>
-                  </td>
-                  <td>
-                    <input
-                      style={{ ...styles.input, maxWidth: 70 }}
-                      value={c.installments}
-                      placeholder="3/12"
-                      onChange={(e) =>
-                        updateCreditCardConsumption(c.id, "installments", e.target.value)
-                      }
-                    />
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={c.recurring}
-                      title="Se repite todos los meses (insumo del marcador)"
-                      onChange={(e) =>
-                        updateCreditCardConsumption(c.id, "recurring", e.target.checked)
-                      }
-                    />
-                  </td>
-                  <td>
-                    <button style={styles.smallBtn} onClick={() => removeCreditCardConsumption(c.id)}>
-                      Quitar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
         )}
       </Panel>
+
+      {menu && (() => {
+        const c = scopedConsumptions.find((x) => x.id === menu.id);
+        const cerrar = () => setMenu(null);
+        if (!c) return null;
+        return (
+          <QuickMenu x={menu.x} y={menu.y} onClose={cerrar}>
+            <QuickMenuTitle>
+              {c.description || "consumo"} \u00b7 {money(c.amount, c.currency)}
+            </QuickMenuTitle>
+            <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px" }}>Clasificar a un grupo</div>
+            {manualGroupOptions.map((g) => (
+              <button
+                key={g}
+                style={{ ...quickMenuItem, fontWeight: c.group === g ? 800 : 500 }}
+                onClick={() => {
+                  updateCreditCardConsumption(c.id, "group", g);
+                  cerrar();
+                }}
+              >
+                {g}
+              </button>
+            ))}
+            <button
+              style={quickMenuItem}
+              onClick={() => {
+                pickGroupOrCreate(NEW_GROUP_OPTION, (name) =>
+                  updateCreditCardConsumption(c.id, "group", name)
+                );
+                cerrar();
+              }}
+            >
+              Crear grupo nuevo\u2026
+            </button>
+            {c.group && (
+              <button
+                style={quickMenuItem}
+                onClick={() => {
+                  updateCreditCardConsumption(c.id, "group", "");
+                  cerrar();
+                }}
+              >
+                Sacar del grupo
+              </button>
+            )}
+            <QuickMenuSep />
+            <button
+              style={quickMenuItem}
+              onClick={() => {
+                updateCreditCardConsumption(c.id, "recurring", !c.recurring);
+                cerrar();
+              }}
+            >
+              {c.recurring ? "Ya no es recurrente" : "Marcar como recurrente (todos los meses)"}
+            </button>
+            <button
+              style={quickMenuItem}
+              onClick={() => {
+                const v = window.prompt("Descripcion:", c.description || "");
+                if (v !== null) updateCreditCardConsumption(c.id, "description", v.trim());
+                cerrar();
+              }}
+            >
+              Editar descripcion\u2026
+            </button>
+            <button
+              style={quickMenuItem}
+              onClick={() => {
+                const v = window.prompt("Monto:", String(c.amount ?? ""));
+                const n = Number((v || "").replace(",", "."));
+                if (v !== null && Number.isFinite(n)) updateCreditCardConsumption(c.id, "amount", n);
+                cerrar();
+              }}
+            >
+              Editar monto\u2026
+            </button>
+            <QuickMenuSep />
+            <button
+              style={{ ...quickMenuItem, color: "#b91c1c" }}
+              onClick={() => {
+                if (window.confirm(`\u00bfBorrar "${c.description}" por ${money(c.amount, c.currency)}?`)) {
+                  removeCreditCardConsumption(c.id);
+                }
+                cerrar();
+              }}
+            >
+              Borrar consumo
+            </button>
+          </QuickMenu>
+        );
+      })()}
     </>
   );
 }
+
+// Chip del grupo de costo y pill "D" de falta clasificar (misma convencion que el resto del sistema).
+const chipGrupo: React.CSSProperties = {
+  display: "inline-block", background: "#e0e7ff", color: "#3730a3", fontWeight: 700,
+  fontSize: 10, borderRadius: 4, padding: "1px 6px", maxWidth: "100%", overflow: "hidden",
+  textOverflow: "ellipsis", verticalAlign: "middle",
+};
+const pillFalta: React.CSSProperties = {
+  display: "inline-block", background: "#fef3c7", color: "#92400e", fontWeight: 800,
+  fontSize: 10, borderRadius: 999, padding: "1px 7px", verticalAlign: "middle",
+};

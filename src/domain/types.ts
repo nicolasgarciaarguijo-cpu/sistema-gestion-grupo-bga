@@ -843,6 +843,10 @@ export type CreditCardConsumption = {
   id: number;
   company: CompanyName;
   cardId: number;
+  // Resumen (cierre) al que pertenece el consumo. Es el agrupador de la planilla: los consumos de un
+  // mismo cierre van juntos y su total se coteja contra el saldo del resumen. No se puede deducir por
+  // fecha: una cuota aparece en 3 cierres distintos con la fecha de la compra original.
+  statementId?: number;
   date: string;
   description: string;
   amount: number;
