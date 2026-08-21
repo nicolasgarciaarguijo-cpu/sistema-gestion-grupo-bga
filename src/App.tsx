@@ -8320,6 +8320,7 @@ export default function App() {
     calendarRowConfig: {
       labels: { ...(calendarRowConfig.labels || {}) },
       hidden: [...(calendarRowConfig.hidden || [])],
+      extra: [...(calendarRowConfig.extra || [])].map((item) => ({ ...item })),
     },
     stockItems: stockItems.map((item) => ({ ...item })),
     costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
@@ -8600,6 +8601,10 @@ export default function App() {
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
       hidden: [...(data.calendarRowConfig?.hidden || [])],
+      extra: [...(data.calendarRowConfig?.extra || [])].map((item: any) => ({
+        sectionKey: String(item?.sectionKey || ""),
+        label: String(item?.label || ""),
+      })).filter((item: any) => item.sectionKey && item.label),
     });
     // Reglas de clasificación (memoria): no se filtran por acceso (son memoria de clasificación,
     // incluye reglas "General"); se normalizan flags para datos viejos.

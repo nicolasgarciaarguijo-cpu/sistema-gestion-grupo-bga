@@ -18,12 +18,35 @@ export type CalSection = {
 // Es parte del ESTADO del sistema (se guarda y lo ven todos), no una preferencia del navegador: si
 // alguien renombra "Préstamo Nicolás", tiene que verse igual desde cualquier máquina.
 // Solo se puede ocultar un renglón SIN movimientos, así no se esconde plata.
+export type CalendarExtraRow = {
+  sectionKey: string; // en que seccion vive
+  label: string;      // como se llama (es tambien su identidad: el movimiento va con conceptKey
+                      // "custom:<sectionKey>:<label>")
+};
+
 export type CalendarRowConfig = {
   labels: Record<string, string>; // itemKey -> nombre propio
   hidden: string[];               // itemKeys que no se muestran
+  // Renglones propios que agrego el usuario. Existen aunque esten VACIOS: antes un renglon propio
+  // solo existia mientras tuviera plata cargada, asi que "+ renglon" en realidad no creaba nada.
+  extra: CalendarExtraRow[];
 };
 
-export const DEFAULT_CALENDAR_ROW_CONFIG: CalendarRowConfig = { labels: {}, hidden: [] };
+export const DEFAULT_CALENDAR_ROW_CONFIG: CalendarRowConfig = { labels: {}, hidden: [], extra: [] };
+
+// Los renglones propios de una seccion, sin repetidos y ordenados por nombre.
+export const extraRowsOf = (config: CalendarRowConfig | undefined, sectionKey: string): string[] => {
+  const vistos = new Set<string>();
+  return (config?.extra || [])
+    .filter((r) => r.sectionKey === sectionKey)
+    .map((r) => (r.label || "").trim())
+    .filter((label) => {
+      if (!label || vistos.has(label)) return false;
+      vistos.add(label);
+      return true;
+    })
+    .sort((a, b) => a.localeCompare(b));
+};
 
 export const CALENDAR_SECTIONS: CalSection[] = [
   // ===================== INGRESOS =====================

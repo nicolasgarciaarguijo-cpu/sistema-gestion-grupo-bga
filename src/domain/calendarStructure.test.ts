@@ -1,4 +1,4 @@
-import { esCobranzaReal, CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "./calendarStructure";
+import { esCobranzaReal, extraRowsOf, CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "./calendarStructure";
 
 describe("esCobranzaReal", () => {
   it("una cobranza sin renglón es cobranza de trabajo", () => {
@@ -37,5 +37,36 @@ describe("estructura de la planilla", () => {
       label: "Préstamo Nicolás",
       dir: "in",
     });
+  });
+});
+
+describe("extraRowsOf (renglones propios del usuario)", () => {
+  const config = {
+    labels: {},
+    hidden: [],
+    extra: [
+      { sectionKey: "prestamos", label: "Sanchez" },
+      { sectionKey: "prestamos", label: "Alvarez" },
+      { sectionKey: "seguros", label: "Seguro galpón" },
+      { sectionKey: "prestamos", label: "Sanchez" }, // repetido
+      { sectionKey: "prestamos", label: "   " }, // vacío
+    ],
+  };
+
+  it("devuelve los renglones de esa sección, ordenados y sin repetidos", () => {
+    expect(extraRowsOf(config, "prestamos")).toEqual(["Alvarez", "Sanchez"]);
+  });
+
+  it("no mezcla secciones", () => {
+    expect(extraRowsOf(config, "seguros")).toEqual(["Seguro galpón"]);
+  });
+
+  it("una sección sin renglones propios devuelve vacío", () => {
+    expect(extraRowsOf(config, "impuestos")).toEqual([]);
+  });
+
+  it("tolera una configuración vieja sin el campo extra", () => {
+    expect(extraRowsOf({ labels: {}, hidden: [] } as any, "prestamos")).toEqual([]);
+    expect(extraRowsOf(undefined, "prestamos")).toEqual([]);
   });
 });

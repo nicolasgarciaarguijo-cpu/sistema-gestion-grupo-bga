@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { styles } from "../ui/styles";
 import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { todayIso } from "../lib/format";
-import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, type CalendarRowConfig } from "../domain/calendarStructure";
+import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, extraRowsOf, type CalendarRowConfig } from "../domain/calendarStructure";
 import { suggestCalendarConcept } from "../domain/calendarBankRules";
 import { findSupplierInText } from "../domain/suppliers";
 import { invoiceCandidates, type LinkableInvoice } from "../domain/bankLinking";
@@ -714,15 +714,69 @@ export function CalendarioAnualTab({
     const labels = { ...rowLabels };
     if (label) labels[itemKey] = label;
     else delete labels[itemKey];
-    onRowConfigChange({ labels, hidden: [...(rowConfig.hidden || [])] });
+    onRowConfigChange({ labels, hidden: [...(rowConfig.hidden || [])], extra: [...(rowConfig.extra || [])] });
   };
   const setRowHidden = (itemKey: string, hidden: boolean) => {
     if (!onRowConfigChange) return;
     const next = new Set(rowConfig.hidden || []);
     if (hidden) next.add(itemKey);
     else next.delete(itemKey);
-    onRowConfigChange({ labels: { ...rowLabels }, hidden: Array.from(next) });
+    onRowConfigChange({ labels: { ...rowLabels }, hidden: Array.from(next), extra: [...(rowConfig.extra || [])] });
   };
+  // ---- Renglones PROPIOS: existen aunque esten vacios ------------------------------------------
+  // Antes un renglón propio solo existía mientras tuviera plata cargada, así que "+ renglón" en
+  // realidad no creaba nada: te pedía un movimiento. Ahora el renglón se declara en rowConfig.extra
+  // (estado del sistema, lo ve todo el mundo) y se muestra vacío, listo para cargarle.
+  const addExtraRow = (sectionKey: string) => {
+    if (!onRowConfigChange) return;
+    const nombre = ask("Nombre del renglón nuevo:", "");
+    if (!nombre) return;
+    const yaEsta = (rowConfig.extra || []).some(
+      (r) => r.sectionKey === sectionKey && r.label.trim().toLowerCase() === nombre.toLowerCase()
+    );
+    if (yaEsta) {
+      window.alert(`Ya hay un renglón "${nombre}" en esta sección.`);
+      return;
+    }
+    onRowConfigChange({
+      labels: { ...rowLabels },
+      hidden: [...(rowConfig.hidden || [])],
+      extra: [...(rowConfig.extra || []), { sectionKey, label: nombre }],
+    });
+  };
+  const renameExtraRow = (sectionKey: string, anterior: string, nuevo: string) => {
+    if (!onRowConfigChange) return;
+    onRowConfigChange({
+      labels: { ...rowLabels },
+      hidden: [...(rowConfig.hidden || [])],
+      extra: (rowConfig.extra || []).map((r) =>
+        r.sectionKey === sectionKey && r.label === anterior ? { ...r, label: nuevo } : r
+      ),
+    });
+  };
+  const removeExtraRow = (sectionKey: string, label: string) => {
+    if (!onRowConfigChange) return;
+    onRowConfigChange({
+      labels: { ...rowLabels },
+      hidden: [...(rowConfig.hidden || [])],
+      extra: (rowConfig.extra || []).filter(
+        (r) => !(r.sectionKey === sectionKey && r.label === label)
+      ),
+    });
+  };
+  // Los renglones propios de una sección: los declarados + los que tienen plata cargada (de antes de
+  // que existieran los declarados, o cargados desde "Otro renglón" en el modal). Sin repetidos.
+  const customRowsOfSection = (sectionKey: string): Array<{ label: string; declarado: boolean }> => {
+    const declarados = extraRowsOf(rowConfig, sectionKey);
+    const conPlata = Array.from(agg.customRows.get(sectionKey)?.keys() || []);
+    const vistos = new Set(declarados);
+    const sueltos = conPlata.filter((label) => !vistos.has(label));
+    return [
+      ...declarados.map((label) => ({ label, declarado: true })),
+      ...sueltos.sort((a, b) => a.localeCompare(b)).map((label) => ({ label, declarado: false })),
+    ];
+  };
+
   // Todos los renglones fijos ocultos, con el nombre que corresponda (para poder devolverlos).
   const hiddenRowList = useMemo(() => {
     const out: Array<{ key: string; label: string; section: string }> = [];
@@ -1254,25 +1308,30 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                         </tr>
                       );
                     }))}
-                    {/* Renglones personalizados que cargó el usuario en esta sección */}
+                    {/* Renglones PROPIOS de esta sección: los declarados (existen aunque estén vacíos,
+                        para poder cargarles) más los que ya tienen plata. Botón derecho: renombrar / borrar. */}
                     {!isCol &&
-                      Array.from(agg.customRows.get(section.key)?.entries() || [])
-                        .filter(([, drow]) => activeInView(drow))
-                        .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([label, drow]) =>
-                          detailRow(`✎ ${label}`, drow, `cst-${section.key}-${label}`, isOut, {
-                            label,
+                      customRowsOfSection(section.key)
+                        .map((fila) => {
+                          const drow = agg.customRows.get(section.key)?.get(fila.label) || new Map<string, number>();
+                          // Un renglón declarado se muestra SIEMPRE (aunque no tenga movimientos este
+                          // mes): es el lugar donde el usuario quiere cargar. Uno suelto, solo si tiene.
+                          if (!fila.declarado && !activeInView(drow)) return null;
+                          return detailRow(`✎ ${fila.label}`, drow, `cst-${section.key}-${fila.label}`, isOut, {
+                            label: fila.label,
                             sectionKey: section.key,
                             itemKey: "__custom__",
-                            match: (e) => e.conceptKey === `custom:${section.key}:${label}`,
+                            match: (e) => e.conceptKey === `custom:${section.key}:${fila.label}`,
                             rowKind: "custom",
-                          })
-                        )}
-                    {/* Agregar un renglón propio a esta sección (donde cargar info) */}
-                    {!isCol && !isCob && (
+                          });
+                        })
+                        .filter(Boolean)}
+                    {/* Agregar un renglón propio a esta sección. Solo pide el NOMBRE: el renglón queda
+                        creado y vacío, y la plata se carga tocando el día que corresponda. */}
+                    {!isCol && !isCob && onRowConfigChange && (
                       <tr>
                         <td style={{ ...tdStickyLabel, paddingLeft: 20 }}>
-                          <button style={miniAdd} onClick={() => openAdd(section.key, "__custom__", visibleDayCols[0]?.iso || "")}>+ renglón</button>
+                          <button style={miniAdd} title="Crea un renglón nuevo en esta sección (vacío). Después tocás el día para cargarle plata." onClick={() => addExtraRow(section.key)}>+ renglón</button>
                         </td>
                         {visibleDayCols.map((c) => <td key={`cadd-${section.key}-${c.iso}`} style={{ ...tdCell, ...hi(c.iso) }}></td>)}
                       </tr>
@@ -1565,7 +1624,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           <button
             style={quickMenuItem}
             onClick={() => {
-              if (onRowConfigChange) onRowConfigChange({ labels: { ...rowLabels }, hidden: [] });
+              if (onRowConfigChange) onRowConfigChange({ labels: { ...rowLabels }, hidden: [], extra: [...(rowConfig.extra || [])] });
               setHiddenMenu(null);
             }}
           >
@@ -1599,11 +1658,16 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   style={quickMenuItem}
                   onClick={() => {
                     const nuevo = ask("Nombre del renglón:", rowMenu.label);
-                    if (nuevo) {
-                      patchRow(rowMenu.match, () => ({
-                        conceptKey: `custom:${rowMenu.sectionKey}:${nuevo}`,
-                        title: nuevo,
-                      }));
+                    if (nuevo && nuevo !== rowMenu.label) {
+                      // El nombre ES la identidad del renglón: hay que renombrarlo en la configuración
+                      // Y mover los movimientos que ya tenía al conceptKey nuevo.
+                      renameExtraRow(rowMenu.sectionKey, rowMenu.label, nuevo);
+                      if (list.length > 0) {
+                        patchRow(rowMenu.match, () => ({
+                          conceptKey: `custom:${rowMenu.sectionKey}:${nuevo}`,
+                          title: nuevo,
+                        }));
+                      }
                     }
                     close();
                   }}
@@ -1614,17 +1678,23 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 <button
                   style={{ ...quickMenuItem, color: "#b91c1c" }}
                   onClick={() => {
-                    if (
-                      onDeleteEntry &&
-                      window.confirm(`¿Borrar el renglón "${rowMenu.label}" y sus ${list.length} movimientos?`)
-                    ) {
-                      const fail = list.filter((e) => !onDeleteEntry(e.id)).length;
-                      if (fail) window.alert(`${fail} movimientos se borran desde su solapa y quedaron como estaban.`);
+                    const pregunta =
+                      list.length > 0
+                        ? `¿Borrar el renglón "${rowMenu.label}" y sus ${list.length} movimientos?`
+                        : `¿Borrar el renglón "${rowMenu.label}"? Está vacío.`;
+                    if (window.confirm(pregunta)) {
+                      const fail = onDeleteEntry
+                        ? list.filter((e) => !onDeleteEntry(e.id)).length
+                        : list.length;
+                      if (fail) {
+                        window.alert(`${fail} movimientos se borran desde su solapa y quedaron como estaban.`);
+                      }
+                      removeExtraRow(rowMenu.sectionKey, rowMenu.label);
                     }
                     close();
                   }}
                 >
-                  Borrar renglón (y sus movimientos)
+                  {list.length > 0 ? "Borrar renglón (y sus movimientos)" : "Borrar renglón"}
                 </button>
               </>
             )}
