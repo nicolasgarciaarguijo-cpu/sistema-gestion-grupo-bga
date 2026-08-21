@@ -15815,6 +15815,7 @@ export default function App() {
 
       {activeTab === "aprobados" && (
         <AprobadosTab
+          companyOptions={COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General")}
           jobSemaphoreSummary={jobSemaphoreSummary}
           canEmitFacturas={canEmitFacturas}
           issuedInvoices={visibleIssuedInvoices}

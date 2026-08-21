@@ -57,6 +57,8 @@ type AprobadosTabProps = {
   selectedApprovedJobId: number | null;
   selectedApprovedJob: any;
   getCompanyMeta: (company: CompanyName) => any;
+  // Empresas a las que se puede mover un trabajo (para corregir una importación mal asignada).
+  companyOptions?: Array<{ value: string; short?: string }>;
   getApprovedJobSourceLabel: (job: any) => string;
   getJobSemaphore: (job: any) => { level: SemaphoreLevel; label: string };
   setSelectedApprovedJobId: React.Dispatch<React.SetStateAction<number | null>>;
@@ -109,6 +111,7 @@ export function AprobadosTab({
   selectedApprovedJobId,
   selectedApprovedJob,
   getCompanyMeta,
+  companyOptions = [],
   getApprovedJobSourceLabel,
   getJobSemaphore,
   setSelectedApprovedJobId,
@@ -553,7 +556,32 @@ export function AprobadosTab({
               }
             >
               <div style={styles.metricGrid}>
-                <MiniMetric label="Empresa" value={getCompanyMeta(selectedApprovedJob.company).short} />
+                {companyOptions.length > 1 ? (
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 12, padding: "3px 0" }}>
+                    <span style={{ fontSize: 12.5, color: "#64748b", minWidth: 120, flexShrink: 0 }}>Empresa</span>
+                    <select
+                      style={{ ...styles.input, width: "auto", fontWeight: 800, padding: "2px 6px" }}
+                      value={selectedApprovedJob.company}
+                      title="Si el trabajo quedó en la empresa equivocada (por ejemplo, por una importación), corregilo acá."
+                      onChange={(e) => {
+                        const destino = e.target.value;
+                        if (destino === selectedApprovedJob.company) return;
+                        const ok = window.confirm(
+                          `¿Pasar el presupuesto ${selectedApprovedJob.budgetNumber} (${selectedApprovedJob.client}) ` +
+                            `de ${getCompanyMeta(selectedApprovedJob.company).short} a ${destino}?\n\n` +
+                            `El trabajo, sus pagos y su comisión pasan a contar en la empresa nueva.`
+                        );
+                        if (ok) updateApprovedJob(selectedApprovedJob.id, "company", destino);
+                      }}
+                    >
+                      {companyOptions.map((c) => (
+                        <option key={c.value} value={c.value}>{c.short || c.value}</option>
+                      ))}
+                    </select>
+                  </div>
+                ) : (
+                  <MiniMetric label="Empresa" value={getCompanyMeta(selectedApprovedJob.company).short} />
+                )}
                 <MiniMetric label="Origen" value={getApprovedJobSourceLabel(selectedApprovedJob)} />
                 <MiniMetric label="Cliente" value={selectedApprovedJob.client} />
                 <MiniMetric label="Aprobacion" value={formatDateDisplay(selectedApprovedJob.approvalDate)} />
