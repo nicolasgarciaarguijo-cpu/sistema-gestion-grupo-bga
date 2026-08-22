@@ -518,8 +518,7 @@ export function CostosTab({
       </Panel>
 
       <Panel
-        title="Importar extracto bancario"
-        span="wide"
+        title="Importar extracto bancario" span="full"
         actions={
           statementDraft.length > 0 ? (
             <>
@@ -631,8 +630,7 @@ export function CostosTab({
       </Panel>
 
       <Panel
-        title="Grupos de costos"
-        span="wide"
+        title="Grupos de costos" span="full"
         actions={<ButtonLike onClick={addCostGroup}>Agregar grupo</ButtonLike>}
       >
         <div style={styles.sectionNote}>

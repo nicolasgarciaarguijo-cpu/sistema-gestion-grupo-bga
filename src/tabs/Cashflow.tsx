@@ -594,8 +594,7 @@ export function CashflowTab({
           </Panel>
 
           <Panel
-            title="Desendeudamiento"
-            span="wide"
+            title="Desendeudamiento" span="full"
             actions={<ButtonLike onClick={addDebtPlan}>Agregar compromiso</ButtonLike>}
           >
             <div style={styles.metricGrid}>

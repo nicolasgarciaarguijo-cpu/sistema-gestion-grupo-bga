@@ -282,7 +282,7 @@ export function CajaChicaTab({
             </div>
           </Panel>
 
-          <Panel title="Rendicion por responsable" span="wide">
+          <Panel title="Rendicion por responsable" span="full">
             {responsibleRendicion.length === 0 ? (
               <div style={styles.empty}>Todavia no hay responsables con cajas asignadas.</div>
             ) : (
@@ -344,8 +344,7 @@ export function CajaChicaTab({
           </Panel>
 
           <Panel
-            title="Responsabilidad y fondos"
-            span="wide"
+            title="Responsabilidad y fondos" span="full"
             actions={<ButtonLike onClick={addPettyCashFund}>Agregar caja chica</ButtonLike>}
           >
             <datalist id="petty-cash-responsibles">
@@ -681,7 +680,7 @@ export function CajaChicaTab({
             )}
           </Panel>
 
-          <Panel title="Seguimiento de gastos aplicados" span="wide">
+          <Panel title="Seguimiento de gastos aplicados" span="full">
             {pettyCashTrackingRows.length === 0 ? (
               <div style={styles.empty}>
                 Todavia no hay gastos aplicados para seguir.

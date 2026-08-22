@@ -199,7 +199,7 @@ export function MarcadoresTab({
             </div>
           </Panel>
 
-          <Panel title="Costos fijos por grupo" span="wide" actions={<ButtonLike onClick={addFixedMarker}>Agregar marcador</ButtonLike>}>
+          <Panel title="Costos fijos por grupo" span="full" actions={<ButtonLike onClick={addFixedMarker}>Agregar marcador</ButtonLike>}>
             <div style={styles.metricGrid}>
               {fixedMarkersByGroup.map((row) => (
                 <MiniMetric key={row.group} label={row.group} value={money(row.total)} />
@@ -328,7 +328,7 @@ export function MarcadoresTab({
             </table>
           </Panel>
 
-          <Panel title="Insumos y fletes base" span="wide" actions={<ButtonLike onClick={addSupplyMarker}>Agregar marcador</ButtonLike>}>
+          <Panel title="Insumos y fletes base" span="full" actions={<ButtonLike onClick={addSupplyMarker}>Agregar marcador</ButtonLike>}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -458,8 +458,7 @@ export function MarcadoresTab({
             </div>
           </Panel>
 
-          <Panel
-            span="wide"
+          <Panel span="full"
             title="Mano de obra base"
             actions={
               <div style={styles.inlineActions}>
@@ -590,8 +589,7 @@ export function MarcadoresTab({
             </div>
           </Panel>
 
-          <Panel
-            span="wide"
+          <Panel span="full"
             title="Informacion de personal: EPP e insumos"
             actions={
               <div style={styles.inlineActions}>

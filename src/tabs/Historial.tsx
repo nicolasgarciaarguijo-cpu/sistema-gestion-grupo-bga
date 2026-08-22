@@ -79,8 +79,7 @@ export function HistorialTab({
             </div>
           </Panel>
 
-          <Panel
-            span="wide"
+          <Panel span="full"
             title="Clientes (fuente de verdad)"
             actions={
               <div style={styles.inlineActions}>
@@ -196,7 +195,7 @@ export function HistorialTab({
               ]}
             />
           </Panel>
-          <Panel title="CRM de clientes" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-crm")} secondary>Reporte</ButtonLike>}>
+          <Panel title="CRM de clientes" span="full" actions={<ButtonLike onClick={() => exportPrint("report-crm")} secondary>Reporte</ButtonLike>}>
             {crmClientRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay clientes en CRM porque no hay presupuestos guardados.</div>
             ) : (

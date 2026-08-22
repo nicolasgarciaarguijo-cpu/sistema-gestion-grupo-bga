@@ -839,7 +839,7 @@ export function AprobadosTab({
                 </Panel>
               </div>
 
-              <Panel title="Planos y archivos de referencia" nested>
+              <Panel span="full" title="Planos y archivos de referencia" nested>
                 {(() => {
                   const ps = getPlanoSemaphore(selectedApprovedJob, today);
                   const confirmed = ps.level === "listo";

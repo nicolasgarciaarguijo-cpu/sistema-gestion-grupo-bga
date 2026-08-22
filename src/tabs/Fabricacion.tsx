@@ -95,7 +95,7 @@ export function FabricacionTab({
             </div>
           </Panel>
 
-          <Panel title="Compras pendientes para fabricacion" span="wide">
+          <Panel title="Compras pendientes para fabricacion" span="full">
             {fabricationPendingPurchases.length === 0 ? (
               <div style={styles.empty}>No hay faltantes pendientes para trabajos activos.</div>
             ) : (
@@ -137,7 +137,7 @@ export function FabricacionTab({
             )}
           </Panel>
 
-          <Panel title="Compras realizadas" span="wide">
+          <Panel title="Compras realizadas" span="full">
             {fabricationCompletedPurchases.length === 0 ? (
               <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
             ) : (
@@ -168,7 +168,7 @@ export function FabricacionTab({
             )}
           </Panel>
 
-          <Panel title="Estado de stock para fabricacion" span="wide">
+          <Panel title="Estado de stock para fabricacion" span="full">
             <div style={styles.metricGrid}>
               <MiniMetric label="Items visibles" value={String(visibleStockItems.filter((item) => item.kind === "general").length)} />
               <MiniMetric label="Items sin stock" value={String(visibleStockItems.filter((item) => item.kind === "general" && Number(item.quantity || 0) <= 0).length)} />

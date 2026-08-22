@@ -91,7 +91,7 @@ export function ComprasTab({
               </div>
             </div>
           </Panel>
-          <Panel title="Resumen de compras pendientes" span="wide">
+          <Panel title="Resumen de compras pendientes" span="full">
             <div style={styles.metricGrid}>
               <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
               <MiniMetric label="Costo estimado" value={money(totalPurchaseNeed)} />
@@ -151,7 +151,7 @@ export function ComprasTab({
             </div>
           </Panel>
 
-          <Panel title={`Facturas blancas vinculadas desde caja chica - ${monthLabel(purchaseMonth)}`} span="half">
+          <Panel title={`Facturas blancas vinculadas desde caja chica - ${monthLabel(purchaseMonth)}`} span="full">
             {monthPettyCashExpenses.filter((item) => item.administration === "blanco").length === 0 ? (
               <div style={styles.empty}>No hay gastos de caja chica en blanco en {monthLabel(purchaseMonth)} para levantar dentro de compras.</div>
             ) : (

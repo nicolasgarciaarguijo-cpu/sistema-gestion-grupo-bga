@@ -259,7 +259,7 @@ export function AccesoTab({
             </Panel>
 
             {effectiveIsAdmin && (
-              <Panel title="Usuarios creados en Supabase" span="wide">
+              <Panel title="Usuarios creados en Supabase" span="full">
                 {supabaseUserDirectory.length === 0 ? (
                   <div style={styles.empty}>
                     No pude leer perfiles todavia. Si esto sigue vacio, corre el SQL de

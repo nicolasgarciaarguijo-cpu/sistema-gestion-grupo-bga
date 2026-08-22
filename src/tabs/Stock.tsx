@@ -169,7 +169,7 @@ export function StockTab({
               ]}
             />
           </Panel>
-          <Panel title="Agenda de fabricacion" span="wide" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
+          <Panel title="Agenda de fabricacion" span="full" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
             <table style={styles.table}>
               <thead>
                 <tr>
@@ -253,8 +253,7 @@ export function StockTab({
           </datalist>
 
           <Panel
-            title="Inventario y alertas"
-            span="wide"
+            title="Inventario y alertas" span="full"
             actions={
               <div style={styles.inlineActions}>
                 <span style={styles.muted}>Aumento %</span>
@@ -442,8 +441,7 @@ export function StockTab({
           </Panel>
 
           <Panel
-            title="Analisis de costos"
-            span="wide"
+            title="Analisis de costos" span="full"
             actions={
               <div style={styles.inlineActions}>
                 <ButtonLike onClick={addCostAnalysisGroup} secondary>
@@ -664,8 +662,7 @@ export function StockTab({
           </Panel>
 
           <Panel
-            title="Remitos a cargar"
-            span="wide"
+            title="Remitos a cargar" span="full"
             actions={
               <label style={styles.buttonLikeLabel}>
                 Subir PDF / Excel / CSV
@@ -880,7 +877,7 @@ export function StockTab({
             )}
           </Panel>
 
-          <Panel title="Movimientos de stock" span="wide">
+          <Panel title="Movimientos de stock" span="full">
             <div style={styles.inlineForm}>
               <Field label="Item">
                 <select
@@ -967,7 +964,7 @@ export function StockTab({
             )}
           </Panel>
 
-          <Panel
+          <Panel span="full"
             title="EPP, insumos, examenes y capacitaciones"
             actions={
               <div style={styles.inlineActions}>
@@ -1079,7 +1076,7 @@ export function StockTab({
             </div>
           </Panel>
 
-          <Panel title="Alertas de vigencia de EPP e insumos">
+          <Panel span="full" title="Alertas de vigencia de EPP e insumos">
             {personalProvisionAlerts.length === 0 ? (
               <div style={styles.empty}>No hay vencimientos proximos cargados.</div>
             ) : (
@@ -1114,7 +1111,7 @@ export function StockTab({
             )}
           </Panel>
 
-          <Panel
+          <Panel span="full"
             title="Activos y amortizacion"
             actions={<ButtonLike onClick={addCompanyAsset}>Agregar activo</ButtonLike>}
           >
@@ -1187,7 +1184,7 @@ export function StockTab({
             </table>
           </Panel>
 
-          <Panel title="Detalle de faltantes sugeridos">
+          <Panel span="full" title="Detalle de faltantes sugeridos">
             {stockNeedRows.length === 0 ? (
               <div style={styles.empty}>No hay faltantes pendientes para trabajos abiertos.</div>
             ) : (

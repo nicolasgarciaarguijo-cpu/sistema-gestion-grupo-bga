@@ -612,7 +612,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
             </Panel>
             )}
 
-            <Panel title="CRM del cliente">
+            <Panel span="full" title="CRM del cliente">
               {budget.client.trim() === "" ? (
                 <div style={styles.empty}>Carga el nombre del cliente para ver si ya cotizo antes con ustedes.</div>
               ) : currentClientHistory.length === 0 ? (
@@ -744,7 +744,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               </div>
             </Panel>
 
-            <Panel
+            <Panel span="full"
               title="Comisiones y descuentos"
               actions={
                 <div style={styles.inlineActions}>
@@ -914,7 +914,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
           </div>
 
           <div style={styles.budgetMainBottom}>
-            <Panel title="Materiales" actions={<ButtonLike onClick={addMaterial}>Agregar</ButtonLike>}>
+            <Panel span="full" title="Materiales" actions={<ButtonLike onClick={addMaterial}>Agregar</ButtonLike>}>
               <datalist id="materials-stock-options">
                 {stockSearchOptions.flatMap((stockItem) => [
                   <option
@@ -1027,7 +1027,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               <div style={styles.rightStrong}>Total materiales: {money(totalMaterials)}</div>
             </Panel>
 
-            <Panel
+            <Panel span="full"
               title="Insumos y fletes"
               actions={
                 <div style={styles.inlineActions}>
@@ -1109,7 +1109,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               <div style={styles.rightStrong}>Total insumos y fletes: {money(totalBasicSupplies)}</div>
             </Panel>
 
-            <Panel
+            <Panel span="full"
               title="Mano de obra"
               actions={
                 <div style={styles.inlineActions}>
@@ -1204,7 +1204,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               </div>
             </Panel>
 
-            <Panel title="Personal de referencia para presupuestar">
+            <Panel span="full" title="Personal de referencia para presupuestar">
               {employeesSortedByPay.length === 0 ? (
                 <div style={styles.empty}>Todavia no hay empleados cargados.</div>
               ) : (
@@ -1249,7 +1249,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               )}
             </Panel>
 
-            <Panel
+            <Panel span="full"
               title="Costos fijos"
               actions={
                 <div style={styles.inlineActions}>
@@ -1575,7 +1575,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               </div>
             </Panel>
 
-            <Panel
+            <Panel span="full"
               title="Comisiones y descuentos"
               actions={
                 <div style={styles.inlineActions}>
