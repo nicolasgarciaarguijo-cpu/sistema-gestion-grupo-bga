@@ -14,8 +14,8 @@ import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, PillD, moneyToneColor, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import {
-  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato,
-  thEsquina, thColumna, tdNombre, tdDato, PlanillaManija, useCeldaMarcada,
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija, useCeldaMarcada,
 } from "../ui/planilla";
 import { bankEntryMissingInfo } from "../domain/bankAssignment";
 import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
@@ -1489,7 +1489,7 @@ export function CostosTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={{ width: "var(--pl-col-w, 104px)", minWidth: 150 }} />
-                <col style={colDato} />
+                <col style={colFlexible} />
               </colgroup>
               <thead>
                 <tr>
@@ -1514,7 +1514,7 @@ export function CostosTab({
                   </th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
                   <th style={thColumna}>Dónde va</th>
-                  <th style={thColumna}>Empresa · banco</th>
+                  <th style={thFlexible}>Empresa · banco</th>
                 </tr>
               </thead>
               <tbody>
@@ -1968,7 +1968,7 @@ export function CostosTab({
               {months.map((m) => (
                 <col key={`c-${m}`} style={colDato} />
               ))}
-              <col style={colDato} />
+              <col style={colFlexible} />
             </colgroup>
             <thead>
               <tr>
@@ -1996,7 +1996,7 @@ export function CostosTab({
                     )}
                   </th>
                 ))}
-                <th style={{ ...thColumna, textAlign: "right", fontWeight: 800 }}>Total</th>
+                <th style={{ ...thFlexible, textAlign: "right", fontWeight: 800 }}>Total</th>
               </tr>
             </thead>
             <tbody>

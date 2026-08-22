@@ -92,11 +92,18 @@ export const planillaWrap: React.CSSProperties = {
 };
 // tableLayout fixed + colgroup: sin esto el ancho lo decide el texto mas largo y una descripcion
 // larga se come media pantalla.
+// width 100% para que la planilla llegue hasta el borde de la pantalla (pedido del usuario
+// 2026-08-21: "que ocupe toda la pantalla bien"). Con tableLayout fixed, el sobrante se lo lleva la
+// columna que NO tiene ancho declarado -por eso la ultima usa `colFlexible`-, asi las demas conservan
+// el ancho que puso el usuario y el boton Compacto sigue teniendo efecto. Si las columnas ya suman
+// mas que la pantalla, la tabla desborda y scrollea como antes.
 export const planillaTable: React.CSSProperties = {
-  borderCollapse: "collapse", fontSize: 12, whiteSpace: "nowrap", tableLayout: "fixed",
+  borderCollapse: "collapse", fontSize: 12, whiteSpace: "nowrap", tableLayout: "fixed", width: "100%",
 };
 export const colLabel: React.CSSProperties = { width: "var(--pl-label-w, 230px)" };
 export const colDato: React.CSSProperties = { width: "var(--pl-col-w, 110px)" };
+// La ultima columna: se queda con el espacio que sobra hasta el borde.
+export const colFlexible: React.CSSProperties = { width: "auto", minWidth: "var(--pl-col-w, 110px)" };
 
 const anchoLabel = {
   width: "var(--pl-label-w, 230px)", minWidth: "var(--pl-label-w, 230px)",
@@ -122,6 +129,15 @@ export const tdNombre: React.CSSProperties = {
 };
 export const tdDato: React.CSSProperties = {
   padding: "4px 6px", borderBottom: "1px solid #f1f5f9", ...anchoDato,
+};
+// Para las celdas de la ultima columna (la que absorbe el sobrante): sin ancho fijo.
+export const tdFlexible: React.CSSProperties = {
+  padding: "4px 6px", borderBottom: "1px solid #f1f5f9", overflow: "hidden", textOverflow: "ellipsis",
+};
+export const thFlexible: React.CSSProperties = {
+  position: "sticky", top: 0, zIndex: 4, background: "#f8fafc", color: "#64748b",
+  padding: "4px 6px", borderBottom: "1px solid #e2e8f0", textAlign: "left",
+  boxShadow: "inset 0 -1px 0 #e2e8f0",
 };
 // La manija SE VE: si es invisible, nadie se entera de que se puede arrastrar.
 export const manija: React.CSSProperties = {

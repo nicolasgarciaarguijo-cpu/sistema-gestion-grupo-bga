@@ -10,8 +10,8 @@ import { Panel, MiniMetric, ButtonLike, AmountInput } from "../ui/primitives";
 import { money, formatDateDisplay } from "../lib/format";
 import { QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import {
-  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato,
-  thEsquina, thColumna, tdNombre, tdDato, PlanillaManija,
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
 } from "../ui/planilla";
 import type {
   CompanyName,
@@ -445,7 +445,7 @@ export function TarjetasTab({
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colDato} />
-                  <col style={colDato} />
+                  <col style={colFlexible} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -470,7 +470,7 @@ export function TarjetasTab({
                     </th>
                     <th style={thColumna}>Grupo (fijo/var)</th>
                     <th style={thColumna}>Cuota</th>
-                    <th style={thColumna}>Tarjeta</th>
+                    <th style={thFlexible}>Tarjeta</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -493,7 +493,7 @@ export function TarjetasTab({
                           )}
                         </td>
                         <td style={{ ...tdDato, color: "#64748b" }}>{c.installments || "\u2014"}</td>
-                        <td style={{ ...tdDato, color: "#64748b" }} title={c.notes}>
+                        <td style={{ ...tdFlexible, color: "#64748b" }} title={c.notes}>
                           {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "\u2014"}
                         </td>
                       </tr>
@@ -555,7 +555,7 @@ export function TarjetasTab({
                             {c.group ? <span style={chipGrupo}>{c.group}</span> : <span style={pillFalta}>D</span>}
                           </td>
                           <td style={{ ...tdDato, color: "#64748b" }}>{c.installments || "\u2014"}</td>
-                          <td style={{ ...tdDato, color: "#64748b" }} title={c.notes}>
+                          <td style={{ ...tdFlexible, color: "#64748b" }} title={c.notes}>
                             {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "\u2014"}
                           </td>
                         </tr>
