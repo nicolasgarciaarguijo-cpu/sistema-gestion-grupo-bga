@@ -13,6 +13,10 @@
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, PillD, moneyToneColor, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato,
+  thEsquina, thColumna, tdNombre, tdDato, PlanillaManija,
+} from "../ui/planilla";
 import { bankEntryMissingInfo } from "../domain/bankAssignment";
 import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
 import { money } from "../lib/format";
@@ -231,6 +235,27 @@ export function CostosTab({
   discardBankMirrorDraft,
   knownBanks,
 }: CostosTabProps) {
+  // ---- PLANILLA "Costos por grupo y mes" (estetica del Calendario anual) ----------------------
+  const anchosCostos = usePlanillaWidths("costos.porGrupoMes", { label: 210, col: 96, colCompact: 72 });
+  const [seccionesCerradas, setSeccionesCerradas] = React.useState<Set<string>>(new Set());
+  const plegarSeccion = (k: string) =>
+    setSeccionesCerradas((prev) => {
+      const next = new Set(prev);
+      next.has(k) ? next.delete(k) : next.add(k);
+      return next;
+    });
+  // Boton derecho sobre un numero: ver los gastos que hay detras de ese grupo y mes.
+  const [menuCelda, setMenuCelda] = React.useState<null | {
+    x: number; y: number; group: string; month: string; total: number; pickedId?: number;
+  }>(null);
+  const gastosDetras = (group: string, month: string) =>
+    costEntries.filter(
+      (e) =>
+        (companyScope === "__ALL__" || e.company === companyScope) &&
+        (e.group || "") === group &&
+        String(e.date || "").startsWith(`${month}-`)
+    );
+
   const fixedRows = aggregation.rows.filter((row) => row.kind === "fijo");
   const variableRows = aggregation.rows.filter((row) => row.kind === "variable");
 
@@ -1915,66 +1940,229 @@ export function CostosTab({
         )}
       </Panel>
 
-      <Panel title="Costos por grupo y mes (fijos / variables)" span="full">
-        <div style={{ overflowX: "auto" }}>
-          <table style={styles.table}>
+      <Panel
+        title="Costos por grupo y mes (fijos / variables)"
+        span="full"
+        actions={
+          <ButtonLike onClick={anchosCostos.toggleCompacto} secondary>
+            {anchosCostos.esCompacto ? "Ancho normal" : "Compacto"}
+          </ButtonLike>
+        }
+      >
+        <div style={{ ...styles.sectionNote, marginBottom: 8 }}>
+          Fijos y variables son secciones: toc\u00e1 el t\u00edtulo para plegarlas.{" "}
+          <strong>Bot\u00f3n derecho</strong> sobre cualquier n\u00famero para ver los gastos que hay detr\u00e1s y
+          reclasificarlos.
+        </div>
+        <div style={{ ...planillaWrap, ...anchosCostos.vars }}>
+          <table style={planillaTable}>
+            <colgroup>
+              <col style={colLabel} />
+              {months.map((m) => (
+                <col key={`c-${m}`} style={colDato} />
+              ))}
+              <col style={colDato} />
+            </colgroup>
             <thead>
               <tr>
-                <th>Grupo</th>
-                {months.map((month) => (
-                  <th key={month} style={{ textAlign: "right" }}>
-                    {monthKeyLabel(month)}
+                <th style={thEsquina}>
+                  <span style={{ position: "relative", display: "block" }}>
+                    Grupo
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosCostos.startResize(ev, "label")}
+                      onDoubleClick={anchosCostos.resetLabel}
+                    />
+                  </span>
+                </th>
+                {months.map((month, i) => (
+                  <th key={month} style={{ ...thColumna, textAlign: "right" }}>
+                    {i === 0 ? (
+                      <span style={{ position: "relative", display: "block" }}>
+                        {monthKeyLabel(month)}
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCostos.startResize(ev, "col")}
+                          onDoubleClick={anchosCostos.resetCol}
+                        />
+                      </span>
+                    ) : (
+                      monthKeyLabel(month)
+                    )}
                   </th>
                 ))}
-                <th style={{ textAlign: "right" }}>Total</th>
+                <th style={{ ...thColumna, textAlign: "right", fontWeight: 800 }}>Total</th>
               </tr>
             </thead>
             <tbody>
-              {renderGroupRows(fixedRows, "Costos fijos")}
-              <tr>
-                <td style={{ fontWeight: 800 }}>Subtotal fijos</td>
-                {months.map((month) => (
-                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
-                    {(aggregation.fixedByMonth[month] || 0) > 0
-                      ? money(aggregation.fixedByMonth[month])
-                      : "-"}
-                  </td>
-                ))}
-                <td style={{ textAlign: "right", fontWeight: 800 }}>
-                  {money(aggregation.fixedTotal)}
-                </td>
-              </tr>
+              {[
+                { key: "fijo", titulo: "COSTOS FIJOS", filas: fixedRows, porMes: aggregation.fixedByMonth, total: aggregation.fixedTotal, fondo: "#e0e7ff", tinta: "#3730a3" },
+                { key: "variable", titulo: "COSTOS VARIABLES", filas: variableRows, porMes: aggregation.variableByMonth, total: aggregation.variableTotal, fondo: "#fef3c7", tinta: "#92400e" },
+              ].map((sec) => {
+                const plegada = seccionesCerradas.has(sec.key);
+                return (
+                  <React.Fragment key={sec.key}>
+                    <tr>
+                      <td
+                        onClick={() => plegarSeccion(sec.key)}
+                        title="Toc\u00e1 para plegar o desplegar"
+                        style={{ ...tdNombre, background: sec.fondo, color: sec.tinta, fontWeight: 800, cursor: "pointer", userSelect: "none" }}
+                      >
+                        {plegada ? "\u25b8 " : "\u25be "}{sec.titulo}
+                      </td>
+                      {months.map((month) => (
+                        <td key={`${sec.key}-${month}`} style={{ ...tdDato, background: sec.fondo, color: sec.tinta, textAlign: "right", fontWeight: 800 }}>
+                          {(sec.porMes[month] || 0) > 0 ? money(sec.porMes[month]) : "\u00b7"}
+                        </td>
+                      ))}
+                      <td style={{ ...tdDato, background: sec.fondo, color: sec.tinta, textAlign: "right", fontWeight: 800 }}>
+                        {money(sec.total)}
+                      </td>
+                    </tr>
+                    {!plegada && sec.filas.length === 0 && (
+                      <tr>
+                        <td style={{ ...tdNombre, paddingLeft: 24, color: "#94a3b8", fontWeight: 400 }}>
+                          Sin grupos de este tipo
+                        </td>
+                        {months.map((m) => (
+                          <td key={`v-${sec.key}-${m}`} style={tdDato}></td>
+                        ))}
+                        <td style={tdDato}></td>
+                      </tr>
+                    )}
+                    {!plegada &&
+                      sec.filas.map((row) => (
+                        <tr key={`${sec.key}-${row.group}`}>
+                          <td style={{ ...tdNombre, paddingLeft: 24, fontWeight: 400 }} title={row.group}>
+                            {row.group}
+                            {row.auto && <span style={{ ...styles.chatStatus, marginLeft: 6 }}>auto</span>}
+                          </td>
+                          {months.map((month) => {
+                            const v = row.byMonth[month] || 0;
+                            return (
+                              <td
+                                key={`${row.group}-${month}`}
+                                onContextMenu={(ev) => {
+                                  if (v <= 0) return;
+                                  ev.preventDefault();
+                                  ev.stopPropagation();
+                                  setMenuCelda({ x: ev.clientX, y: ev.clientY, group: row.group, month, total: v });
+                                }}
+                                style={{ ...tdDato, textAlign: "right", color: v > 0 ? "#0f172a" : "#e2e8f0", cursor: v > 0 ? "context-menu" : "default" }}
+                              >
+                                {v > 0 ? money(v) : "\u00b7"}
+                              </td>
+                            );
+                          })}
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: "#475569" }}>
+                            {money(row.total)}
+                          </td>
+                        </tr>
+                      ))}
+                  </React.Fragment>
+                );
+              })}
 
-              {renderGroupRows(variableRows, "Costos variables")}
-              <tr>
-                <td style={{ fontWeight: 800 }}>Subtotal variables</td>
-                {months.map((month) => (
-                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
-                    {(aggregation.variableByMonth[month] || 0) > 0
-                      ? money(aggregation.variableByMonth[month])
-                      : "-"}
+              {composition.sinClasificar.entries.length > 0 && (
+                <tr>
+                  <td style={{ ...tdNombre, background: "#fef9c3", color: "#854d0e", fontWeight: 800 }}>
+                    \u26a0 Sin clasificar ({composition.sinClasificar.entries.length})
                   </td>
-                ))}
-                <td style={{ textAlign: "right", fontWeight: 800 }}>
-                  {money(aggregation.variableTotal)}
-                </td>
-              </tr>
+                  {months.map((month) => {
+                    const v = composition.sinClasificar.entries
+                      .filter((e: any) => String(e.date || "").startsWith(`${month}-`))
+                      .reduce((a: number, e: any) => a + Number(e.amount || 0), 0);
+                    return (
+                      <td key={`sc-${month}`} style={{ ...tdDato, background: "#fef9c3", color: "#854d0e", textAlign: "right", fontWeight: 700 }}>
+                        {v > 0 ? money(v) : "\u00b7"}
+                      </td>
+                    );
+                  })}
+                  <td style={{ ...tdDato, background: "#fef9c3", color: "#854d0e", textAlign: "right", fontWeight: 800 }}>
+                    {money(composition.sinClasificar.total)}
+                  </td>
+                </tr>
+              )}
 
               <tr>
-                <td style={{ fontWeight: 800 }}>TOTAL</td>
+                <td style={{ ...tdNombre, background: "#f1f5f9", fontWeight: 900 }}>TOTAL</td>
                 {months.map((month) => (
-                  <td key={month} style={{ textAlign: "right", fontWeight: 800 }}>
-                    {(aggregation.totalByMonth[month] || 0) > 0
-                      ? money(aggregation.totalByMonth[month])
-                      : "-"}
+                  <td key={`t-${month}`} style={{ ...tdDato, background: "#f1f5f9", textAlign: "right", fontWeight: 900 }}>
+                    {(aggregation.totalByMonth[month] || 0) > 0 ? money(aggregation.totalByMonth[month]) : "\u00b7"}
                   </td>
                 ))}
-                <td style={{ textAlign: "right", fontWeight: 800 }}>{money(aggregation.total)}</td>
+                <td style={{ ...tdDato, background: "#f1f5f9", textAlign: "right", fontWeight: 900 }}>
+                  {money(aggregation.total)}
+                </td>
               </tr>
             </tbody>
           </table>
         </div>
       </Panel>
+
+      {menuCelda && (() => {
+        const lista = gastosDetras(menuCelda.group, menuCelda.month);
+        const sumaLista = lista.reduce((a, e) => a + Number(e.amount || 0), 0);
+        const faltante = menuCelda.total - sumaLista;
+        const cerrar = () => setMenuCelda(null);
+        const elegido = menuCelda.pickedId ? lista.find((e) => e.id === menuCelda.pickedId) : undefined;
+        return (
+          <QuickMenu x={menuCelda.x} y={menuCelda.y} onClose={cerrar}>
+            <QuickMenuTitle>
+              {menuCelda.group} \u00b7 {monthKeyLabel(menuCelda.month)} \u00b7 {money(menuCelda.total)}
+            </QuickMenuTitle>
+            {!elegido && lista.length === 0 && (
+              <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 8px" }}>
+                Este n\u00famero no viene de gastos cargados (puede ser caja chica o tarjeta).
+              </div>
+            )}
+            {!elegido &&
+              lista.map((e) => (
+                <button key={e.id} style={quickMenuItem} onClick={() => setMenuCelda({ ...menuCelda, pickedId: e.id })}>
+                  <span style={{ fontWeight: 700 }}>{money(e.amount)}</span>
+                  <span style={{ color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {e.date} \u00b7 {e.description || e.supplier || "gasto"}
+                  </span>
+                </button>
+              ))}
+            {!elegido && Math.abs(faltante) > 1 && lista.length > 0 && (
+              <div style={{ fontSize: 11, color: "#b45309", padding: "2px 8px" }}>
+                {money(Math.abs(faltante))} de este n\u00famero vienen de caja chica o tarjeta.
+              </div>
+            )}
+            {elegido && (
+              <>
+                <div style={{ fontSize: 11, color: "#64748b", padding: "0 8px 4px" }}>
+                  {elegido.date} \u00b7 {elegido.description || elegido.supplier} \u00b7 {money(elegido.amount)}
+                </div>
+                <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px" }}>Mover a otro grupo</div>
+                {manualGroupOptions
+                  .filter((g) => g !== menuCelda.group)
+                  .map((g) => (
+                    <button
+                      key={g}
+                      style={quickMenuItem}
+                      onClick={() => {
+                        updateCostEntry(elegido.id, "group", g);
+                        cerrar();
+                      }}
+                    >
+                      {g}
+                    </button>
+                  ))}
+                <QuickMenuSep />
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    updateCostEntry(elegido.id, "group", "");
+                    cerrar();
+                  }}
+                >
+                  Sacar del grupo (queda sin clasificar)
+                </button>
+              </>
+            )}
+          </QuickMenu>
+        );
+      })()}
 
       {ctxMenu &&
         (() => {
