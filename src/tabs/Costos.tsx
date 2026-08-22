@@ -256,6 +256,11 @@ export function CostosTab({
         String(e.date || "").startsWith(`${month}-`)
     );
 
+  // ---- PLANILLA de gastos cargados -------------------------------------------------------------
+  const anchosGastos = usePlanillaWidths("costos.gastos", { label: 260, col: 108, colCompact: 82 });
+  const marcaGastos = useCeldaMarcada();
+  const [soloSinGrupo, setSoloSinGrupo] = React.useState(false);
+
   // ---- PLANILLA del espejo bancario ----------------------------------------------------------
   const anchosBanco = usePlanillaWidths("costos.banco", { label: 260, col: 104, colCompact: 78 });
   const marcaBanco = useCeldaMarcada();
@@ -1105,6 +1110,12 @@ export function CostosTab({
             >
               🧠 Auto-clasificar
             </ButtonLike>
+            <ButtonLike secondary={!soloSinGrupo} onClick={() => setSoloSinGrupo((v) => !v)}>
+              {soloSinGrupo ? "Ver todos" : "Solo sin grupo"}
+            </ButtonLike>
+            <ButtonLike onClick={anchosGastos.toggleCompacto} secondary>
+              {anchosGastos.esCompacto ? "Ancho normal" : "Compacto"}
+            </ButtonLike>
             <ButtonLike onClick={addCostEntry}>Agregar gasto</ButtonLike>
           </span>
         }
@@ -1145,179 +1156,114 @@ export function CostosTab({
             </span>
           )}
         </div>
-        <div style={{ overflowX: "auto" }}>
-          <table style={styles.table}>
+        <div style={{ ...planillaWrap, ...anchosGastos.vars }}>
+          <table style={planillaTable}>
+            <colgroup>
+              <col style={colLabel} />
+              <col style={colDato} />
+              <col style={colDato} />
+              <col style={{ width: "var(--pl-col-w, 108px)", minWidth: 130 }} />
+              <col style={colDato} />
+              <col style={colFlexible} />
+            </colgroup>
             <thead>
               <tr>
-                <th>Empresa</th>
-                <th>Fecha</th>
-                <th>Grupo</th>
-                <th>Concepto</th>
-                <th>Proveedor</th>
-                <th style={{ textAlign: "right" }}>Monto</th>
-                <th>Admin.</th>
-                <th>Como se pago</th>
-                <th>Factura</th>
-                <th>Banco</th>
-                <th>Carga</th>
-                <th />
+                <th style={thEsquina}>
+                  <span style={{ position: "relative", display: "block" }}>
+                    Concepto
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosGastos.startResize(ev, "label")}
+                      onDoubleClick={anchosGastos.resetLabel}
+                    />
+                  </span>
+                </th>
+                <th style={thColumna}>Fecha</th>
+                <th style={{ ...thColumna, textAlign: "right" }}>
+                  <span style={{ position: "relative", display: "block" }}>
+                    Monto
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosGastos.startResize(ev, "col")}
+                      onDoubleClick={anchosGastos.resetCol}
+                    />
+                  </span>
+                </th>
+                <th style={thColumna}>Grupo (fijo/var)</th>
+                <th style={thColumna}>Proveedor</th>
+                <th style={thFlexible}>Empresa · pago · factura</th>
               </tr>
             </thead>
             <tbody>
               {filteredEntries.length === 0 && (
                 <tr>
-                  <td colSpan={12} style={{ color: "#64748b" }}>
+                  <td colSpan={6} style={{ color: "#64748b" }}>
                     {searchLc
                       ? `Ningun gasto coincide con "${search}".`
                       : "Todavia no cargaste gastos. Agrega uno a mano o importa el extracto bancario."}
                   </td>
                 </tr>
               )}
-              {filteredEntries.map((entry) => (
-                <tr key={entry.id}>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={entry.company}
-                      onChange={(e) => updateCostEntry(entry.id, "company", e.target.value)}
-                    >
-                      {COMPANY_OPTIONS.map((company) => (
-                        <option key={company.value} value={company.value}>
-                          {company.short}
-                        </option>
-                      ))}
-                    </select>
+              {filteredEntries
+                .filter((entry) => !soloSinGrupo || !entry.group)
+                .map((entry) => (
+                <tr
+                  key={entry.id}
+                  onContextMenu={(ev) => {
+                    marcaGastos.marcar(String(entry.id));
+                    openCtxMenu(ev, "pago", entry.id);
+                  }}
+                >
+                  <td
+                    title={entry.description || entry.supplier}
+                    style={{ ...tdNombre, ...marcaGastos.estilo(String(entry.id)), fontWeight: 400 }}
+                  >
+                    {entry.description || entry.supplier || "(sin concepto)"}
                   </td>
-                  <td>
-                    <input
-                      type="date"
-                      style={styles.input}
-                      value={entry.date}
-                      onChange={(e) => updateCostEntry(entry.id, "date", e.target.value)}
-                    />
+                  <td style={{ ...tdDato, color: "#64748b" }}>{entry.date}</td>
+                  <td style={{ ...tdDato, textAlign: "right", fontWeight: 600, color: "#dc2626" }}>
+                    {money(entry.amount)}
                   </td>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={entry.group}
-                      onChange={(e) =>
-                        pickGroupOrCreate(e.target.value, (name) =>
-                          updateCostEntry(entry.id, "group", name)
-                        )
-                      }
-                    >
-                      <option value="">Sin clasificar</option>
-                      {manualGroupOptions.map((group) => (
-                        <option key={group} value={group}>
-                          {group}
-                        </option>
-                      ))}
-                      <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
-                    </select>
-                    <div
-                      title="Click derecho: clasificar rápido"
-                      onContextMenu={(ev) => openCtxMenu(ev, "pago", entry.id)}
-                      style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center", cursor: "context-menu" }}
-                    >
-                      {entry.group ? (
+                  <td style={tdDato}>
+                    {entry.group ? (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, maxWidth: "100%" }}>
                         <KindPill kind={kindOfGroup(entry.group)} />
-                      ) : (
-                        <span
-                          title="Sin clasificar: ubicá este gasto en un grupo"
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            minWidth: 16,
-                            height: 16,
-                            padding: "0 3px",
-                            borderRadius: 4,
-                            fontSize: 10,
-                            fontWeight: 800,
-                            background: "#fef08a",
-                            color: "#854d0e",
-                          }}
-                        >
-                          D
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis" }} title={entry.group}>
+                          {entry.group}
                         </span>
-                      )}
+                      </span>
+                    ) : (
+                      <span
+                        title="Sin clasificar: bot\u00f3n derecho para ubicarlo en un grupo"
+                        style={{ display: "inline-block", background: "#fef3c7", color: "#92400e", fontWeight: 800, fontSize: 10, borderRadius: 999, padding: "1px 7px" }}
+                      >
+                        D
+                      </span>
+                    )}
+                  </td>
+                  <td style={{ ...tdDato, color: "#334155" }} title={entry.supplier}>
+                    {entry.supplier || "\u2014"}
+                  </td>
+                  <td style={{ ...tdFlexible, color: "#64748b" }}>
+                    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
+                      <span title={entry.company}>{getCompanyMeta(entry.company as any)?.short || entry.company}</span>
                       <ColorTag color={entry.administration} />
-                    </div>
-                  </td>
-                  <td>
-                    <input
-                      style={styles.input}
-                      value={entry.description}
-                      onChange={(e) => updateCostEntry(entry.id, "description", e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    {/* Texto libre con sugerencias del listado: al elegir uno del listado queda
-                        VINCULADO (supplierId), que es lo que permite cotejar contra el extracto. */}
-                    <input
-                      style={styles.input}
-                      list="lista-proveedores"
-                      value={entry.supplier}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        updateCostEntry(entry.id, "supplier", value);
-                        const match = suppliers.find(
-                          (s) => s.name.trim().toLowerCase() === value.trim().toLowerCase()
-                        );
-                        updateCostEntry(entry.id, "supplierId", match ? match.id : undefined);
-                      }}
-                    />
-                  </td>
-                  <td>
-                    <AmountInput
-                      style={{ ...styles.input, textAlign: "right" }}
-                      value={entry.amount}
-                      onChange={(n) => updateCostEntry(entry.id, "amount", n)}
-                    />
-                  </td>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={entry.administration}
-                      onChange={(e) => updateCostEntry(entry.id, "administration", e.target.value)}
-                    >
-                      <option value="blanco">Blanco</option>
-                      <option value="negro">Negro</option>
-                    </select>
-                  </td>
-                  <td>
-                    {/* COMO se pago. De aca sale si tiene que figurar en el extracto: es lo que
-                        impide contar la misma plata dos veces. Ojo: blanco != sale del banco. */}
-                    <select
-                      style={styles.input}
-                      value={
-                        entry.paymentMethod ||
-                        (entry.source === "extracto" ? "transferencia" : "efectivo")
-                      }
-                      onChange={(e) => updateCostEntry(entry.id, "paymentMethod", e.target.value)}
-                    >
-                      {PAYMENT_METHOD_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
-                    {/* La factura NO suma: respalda que el pago es blanco. */}
-                    <input
-                      style={styles.input}
-                      value={entry.invoiceRef || ""}
-                      placeholder={entry.administration === "blanco" ? "N. factura" : "-"}
-                      onChange={(e) => updateCostEntry(entry.id, "invoiceRef", e.target.value)}
-                    />
-                  </td>
-                  <td>{renderCotejo(entry.id)}</td>
-                  <td>{entry.source === "extracto" ? "Extracto" : "Manual"}</td>
-                  <td>
-                    <ButtonLike onClick={() => removeCostEntry(entry.id)} secondary>
-                      Quitar
-                    </ButtonLike>
+                      <span title="C\u00f3mo se pag\u00f3">
+                        {(PAYMENT_METHOD_OPTIONS.find(
+                          (o) =>
+                            o.value ===
+                            (entry.paymentMethod || (entry.source === "extracto" ? "transferencia" : "efectivo"))
+                        )?.label) || ""}
+                      </span>
+                      {entry.invoiceRef && <span title="Factura que respalda el pago">{entry.invoiceRef}</span>}
+                      {renderCotejo(entry.id)}
+                      <span style={{ color: "#94a3b8" }}>{entry.source === "extracto" ? "extracto" : "manual"}</span>
+                      <button
+                        style={styles.smallBtn}
+                        title="Quitar este gasto"
+                        onClick={() => removeCostEntry(entry.id)}
+                      >
+                        \u2715
+                      </button>
+                    </span>
                   </td>
                 </tr>
               ))}
