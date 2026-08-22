@@ -15,7 +15,7 @@ import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, ColorTag, PillD, moneyToneColor, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato,
-  thEsquina, thColumna, tdNombre, tdDato, PlanillaManija,
+  thEsquina, thColumna, tdNombre, tdDato, PlanillaManija, useCeldaMarcada,
 } from "../ui/planilla";
 import { bankEntryMissingInfo } from "../domain/bankAssignment";
 import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
@@ -255,6 +255,11 @@ export function CostosTab({
         (e.group || "") === group &&
         String(e.date || "").startsWith(`${month}-`)
     );
+
+  // ---- PLANILLA del espejo bancario ----------------------------------------------------------
+  const anchosBanco = usePlanillaWidths("costos.banco", { label: 260, col: 104, colCompact: 78 });
+  const marcaBanco = useCeldaMarcada();
+  const [soloSinAsignar, setSoloSinAsignar] = React.useState(false);
 
   const fixedRows = aggregation.rows.filter((row) => row.kind === "fijo");
   const variableRows = aggregation.rows.filter((row) => row.kind === "variable");
@@ -1423,7 +1428,20 @@ export function CostosTab({
       <Panel
         title="Movimientos bancarios · el banco real"
         span="full"
-        actions={<ButtonLike onClick={addBankStatementEntry}>Agregar movimiento</ButtonLike>}
+        actions={
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <ButtonLike
+              secondary={!soloSinAsignar}
+              onClick={() => setSoloSinAsignar((v) => !v)}
+            >
+              {soloSinAsignar ? "Ver todos" : "Solo sin asignar"}
+            </ButtonLike>
+            <ButtonLike onClick={anchosBanco.toggleCompacto} secondary>
+              {anchosBanco.esCompacto ? "Ancho normal" : "Compacto"}
+            </ButtonLike>
+            <ButtonLike onClick={addBankStatementEntry}>Agregar movimiento</ButtonLike>
+          </div>
+        }
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <ButtonLike secondary onClick={() => shiftOperationalMonth(-1)}>
@@ -1451,7 +1469,7 @@ export function CostosTab({
         {monthBankStatementEntries.length === 0 ? (
           <div style={styles.empty}>No hay movimientos bancarios en {monthLabel(operationalMonth)}.</div>
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div style={{ ...planillaWrap, ...anchosBanco.vars }}>
             <datalist id="bank-assign-jobs">
               {approvedJobsForLink.map((j) => (
                 <option key={j.budgetNumber} value={j.budgetNumber}>
@@ -1464,114 +1482,108 @@ export function CostosTab({
                 <option key={p} value={p} />
               ))}
             </datalist>
-            <table style={styles.table}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={{ width: "var(--pl-col-w, 104px)", minWidth: 150 }} />
+                <col style={colDato} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Asignación</th>
-                  <th>Fecha</th>
-                  <th>Empresa</th>
-                  <th>Banco</th>
-                  <th>Tipo</th>
-                  <th>Concepto</th>
-                  <th style={{ textAlign: "right" }}>Monto</th>
-                  <th style={{ textAlign: "right" }}>Saldo</th>
-                  <th>Arch.</th>
-                  <th></th>
+                  <th style={thEsquina}>
+                    <span style={{ position: "relative", display: "block" }}>
+                      Concepto del banco
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosBanco.startResize(ev, "label")}
+                        onDoubleClick={anchosBanco.resetLabel}
+                      />
+                    </span>
+                  </th>
+                  <th style={thColumna}>Fecha</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    <span style={{ position: "relative", display: "block" }}>
+                      Monto
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosBanco.startResize(ev, "col")}
+                        onDoubleClick={anchosBanco.resetCol}
+                      />
+                    </span>
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
+                  <th style={thColumna}>Dónde va</th>
+                  <th style={thColumna}>Empresa · banco</th>
                 </tr>
               </thead>
               <tbody>
-                {monthBankStatementEntries.map((entry) => {
+                {monthBankStatementEntries
+                  .filter((entry: any) => !soloSinAsignar || bankEntryMissingInfo(entry).length > 0)
+                  .map((entry) => {
                   const missing = bankEntryMissingInfo(entry);
                   const kind = entry.assignedKind as string | undefined;
                   const open = assignOpenId === entry.id;
                   const isCobroPago = kind === "cobro" || kind === "pago";
                   return (
                   <React.Fragment key={entry.id}>
-                  <tr onContextMenu={(ev) => openCtxMenu(ev, "banco", entry.id)}>
-                    <td style={{ whiteSpace: "nowrap", verticalAlign: "top" }}>
+                  <tr
+                    onContextMenu={(ev) => {
+                      marcaBanco.marcar(String(entry.id));
+                      openCtxMenu(ev, "banco", entry.id);
+                    }}
+                  >
+                    <td
+                      title={entry.concept}
+                      style={{ ...tdNombre, ...marcaBanco.estilo(String(entry.id)), fontWeight: 400 }}
+                    >
+                      {entry.concept || "(sin concepto)"}
+                    </td>
+                    <td style={{ ...tdDato, color: "#64748b" }}>{entry.date}</td>
+                    <td
+                      style={{
+                        ...tdDato,
+                        textAlign: "right",
+                        fontWeight: 600,
+                        color: entry.movementType === "debito" ? "#dc2626" : "#0f172a",
+                      }}
+                    >
+                      {entry.movementType === "debito" ? "\u2212 " : ""}
+                      {money(entry.amount, entry.currency === "USD" ? "USD" : "ARS")}
+                    </td>
+                    <td style={{ ...tdDato, textAlign: "right", color: "#94a3b8" }}>
+                      {money(entry.balance, entry.currency === "USD" ? "USD" : "ARS")}
+                    </td>
+                    <td style={{ ...tdDato, whiteSpace: "nowrap" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         {missing.length > 0 ? (
                           <PillD missing={missing} />
                         ) : (
-                          <span title="Asignado" style={{ color: "#16a34a", fontWeight: 800 }}>✓</span>
+                          <span title="Asignado" style={{ color: "#16a34a", fontWeight: 800 }}>\u2713</span>
                         )}
+                        <span
+                          style={{ color: kind ? "#334155" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis" }}
+                          title={
+                            kind
+                              ? `${kind}${entry.assignedJobBudget ? " \u00b7 " + entry.assignedJobBudget : ""}${entry.assignedParty ? " \u00b7 " + entry.assignedParty : ""}`
+                              : "Sin asignar"
+                          }
+                        >
+                          {kind
+                            ? `${kind}${entry.assignedJobBudget ? " \u00b7 " + entry.assignedJobBudget : entry.assignedParty ? " \u00b7 " + entry.assignedParty : ""}`
+                            : "sin asignar"}
+                        </span>
                         <button style={styles.smallBtn} onClick={() => setAssignOpenId(open ? null : entry.id)}>
-                          {open ? "Cerrar ▲" : kind ? "Editar ▾" : "Asignar ▾"}
+                          {open ? "Cerrar \u25b2" : kind ? "Editar \u25be" : "Asignar \u25be"}
                         </button>
                       </div>
-                      {kind && !open && (
-                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
-                          {kind}
-                          {entry.assignedJobBudget ? ` · ${entry.assignedJobBudget}` : ""}
-                          {entry.assignedParty ? ` · ${entry.assignedParty}` : ""}
-                          {entry.administration ? ` · ${entry.administration}` : ""}
-                        </div>
-                      )}
                     </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        type="date"
-                        value={entry.date}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "date", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={entry.company}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={entry.bank}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "bank", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={entry.movementType}
-                        onChange={(e) =>
-                          updateBankStatementEntry(entry.id, "movementType", e.target.value)
-                        }
-                      >
-                        <option value="credito">Crédito</option>
-                        <option value="debito">Débito</option>
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        style={{ ...styles.input, minWidth: 220 }}
-                        value={entry.concept}
-                        onChange={(e) => updateBankStatementEntry(entry.id, "concept", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <AmountInput
-                        style={{ ...styles.input, textAlign: "right" }}
-                        value={entry.amount}
-                        onChange={(n) => updateBankStatementEntry(entry.id, "amount", n)}
-                      />
-                    </td>
-                    <td>
-                      <AmountInput
-                        style={{ ...styles.input, textAlign: "right" }}
-                        value={entry.balance}
-                        onChange={(n) => updateBankStatementEntry(entry.id, "balance", n)}
-                      />
-                    </td>
-                    <td style={{ whiteSpace: "nowrap" }}>
-                      <label style={styles.buttonLikeLabel} title={entry.attachmentName || "Cargar resumen / comprobante"}>
-                        {entry.attachmentName ? "📎✓" : "📎"}
+                    <td style={{ ...tdDato, color: "#64748b", whiteSpace: "nowrap" }}>
+                      <span title={`${entry.company} \u00b7 ${entry.bank}`}>
+                        {getCompanyMeta(entry.company as any)?.short || entry.company} \u00b7 {entry.bank}
+                      </span>
+                      <label style={{ ...styles.buttonLikeLabel, marginLeft: 6 }} title={entry.attachmentName || "Cargar resumen / comprobante"}>
+                        {entry.attachmentName ? "\ud83d\udcce\u2713" : "\ud83d\udcce"}
                         <input
                           type="file"
                           accept="image/*,.pdf,application/pdf"
@@ -1580,15 +1592,10 @@ export function CostosTab({
                         />
                       </label>
                     </td>
-                    <td>
-                      <button style={styles.smallBtn} onClick={() => removeBankStatementEntry(entry.id)}>
-                        Quitar
-                      </button>
-                    </td>
                   </tr>
                   {open && (
                     <tr>
-                      <td colSpan={10} style={{ background: "rgba(2,6,23,0.04)" }}>
+                      <td colSpan={6} style={{ background: "rgba(2,6,23,0.04)" }}>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, padding: "10px 4px", alignItems: "flex-end" }}>
                           <Field label="¿Qué es? (de dónde viene / a dónde va)">
                             <select

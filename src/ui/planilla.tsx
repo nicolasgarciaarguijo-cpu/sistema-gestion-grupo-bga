@@ -146,3 +146,27 @@ export function PlanillaManija({
     />
   );
 }
+
+// MARCA de la celda sobre la que se abrio el menu. Pedido del usuario (2026-08-21): "me gustaria
+// sumarle animacion, para dar a entender que se esta presionando sobre el numero o texto deseado".
+// Sin keyframes: el borde y el fondo entran con transition, asi que se ve como un pulso suave y no
+// hay que tocar hojas de estilo globales.
+export const celdaMarcable: React.CSSProperties = {
+  transition: "background-color 140ms ease, box-shadow 140ms ease",
+};
+export const celdaMarcada: React.CSSProperties = {
+  ...celdaMarcable,
+  background: "#eff6ff",
+  boxShadow: "inset 0 0 0 2px #2563eb",
+};
+
+// Guarda cual fue la ultima celda tocada con el boton derecho. `marcar(clave)` al abrir el menu y
+// `marcar(null)` al cerrarlo; `esta(clave)` dice si hay que pintarla.
+export function useCeldaMarcada() {
+  const [clave, setClave] = React.useState<string | null>(null);
+  return {
+    marcar: setClave,
+    esta: (k: string) => clave === k,
+    estilo: (k: string): React.CSSProperties => (clave === k ? celdaMarcada : celdaMarcable),
+  };
+}
