@@ -1,6 +1,10 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, SemaforoResumen, ButtonLike, MiniMetric, Field, AmountInput } from "../ui/primitives";
+import { Panel, SemaforoResumen, ButtonLike, MiniMetric, Field, AmountInput, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija, useCeldaMarcada,
+} from "../ui/planilla";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import { matchStockForMaterial } from "../domain/stockMatch";
@@ -145,6 +149,11 @@ export function StockTab({
     // cada palabra tipeada tiene que aparecer (búsqueda "por lo que sea", en cualquier orden)
     return stockSearchNorm.split(/\s+/).every((token) => haystack.includes(token));
   };
+  // ---- PLANILLA del inventario (estetica del Calendario anual) --------------------------------
+  const anchosStock = usePlanillaWidths("stock.inventario", { label: 300, col: 96, colCompact: 74 });
+  const marcaStock = useCeldaMarcada();
+  const [menuStock, setMenuStock] = React.useState<null | { x: number; y: number; id: number }>(null);
+
   const filteredGeneralStock = generalStock
     .filter(matchesStockFilter)
     .sort((a, b) => {
@@ -256,6 +265,9 @@ export function StockTab({
             title="Inventario y alertas" span="full"
             actions={
               <div style={styles.inlineActions}>
+                <ButtonLike onClick={anchosStock.toggleCompacto} secondary>
+                  {anchosStock.esCompacto ? "Ancho normal" : "Compacto"}
+                </ButtonLike>
                 <span style={styles.muted}>Aumento %</span>
                 <input
                   style={{ ...styles.input, width: 120 }}
@@ -312,21 +324,40 @@ export function StockTab({
                 {filteredGeneralStock.length} de {generalStock.length}
               </span>
             </div>
-            <table style={styles.table}>
+            <div style={{ ...planillaWrap, ...anchosStock.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Alerta</th>
-                  <th>Empresa</th>
-                  <th>Grupo</th>
-                  <th>Orden</th>
-                  <th>Codigo</th>
-                  <th>Descripcion</th>
-                  <th>Ubicacion</th>
-                  <th>Unidad</th>
-                  <th>Cantidad</th>
-                  <th>$ Unit.</th>
-                  <th>Valor stock</th>
-                  <th></th>
+                  <th style={thEsquina}>
+                    <span style={{ position: "relative", display: "block" }}>
+                      Descripcion
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosStock.startResize(ev, "label")}
+                        onDoubleClick={anchosStock.resetLabel}
+                      />
+                    </span>
+                  </th>
+                  <th style={thColumna}>Codigo</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    <span style={{ position: "relative", display: "block" }}>
+                      Cantidad
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosStock.startResize(ev, "col")}
+                        onDoubleClick={anchosStock.resetCol}
+                      />
+                    </span>
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Valor stock</th>
+                  <th style={thFlexible}>Grupo \u00b7 ubicacion \u00b7 empresa</th>
                 </tr>
               </thead>
               <tbody>
@@ -338,102 +369,108 @@ export function StockTab({
                   </tr>
                 )}
                 {filteredGeneralStock.map((item) => (
-                  <tr key={item.id}>
-                    <td>
+                  <tr
+                    key={item.id}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      marcaStock.marcar(String(item.id));
+                      setMenuStock({ x: ev.clientX, y: ev.clientY, id: item.id });
+                    }}
+                  >
+                    <td
+                      title={item.description}
+                      style={{ ...tdNombre, ...marcaStock.estilo(String(item.id)), fontWeight: 400 }}
+                    >
                       <span
+                        title={Number(item.quantity || 0) > 0 ? "Con stock" : "Sin stock"}
                         style={{
-                          ...styles.statusPill,
-                          ...(Number(item.quantity || 0) > 0 ? styles.statusGreen : styles.statusRed),
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                          background: Number(item.quantity || 0) > 0 ? "#16a34a" : "#dc2626",
                         }}
-                      >
-                        {Number(item.quantity || 0) > 0 ? "Con stock" : "Sin stock"}
+                      />
+                      {item.description || "(sin descripcion)"}
+                    </td>
+                    <td style={{ ...tdDato, color: "#64748b" }} title={item.code}>{item.code || "\u2014"}</td>
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 600, color: Number(item.quantity || 0) > 0 ? "#0f172a" : "#dc2626" }}>
+                      {Number(item.quantity || 0)} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{item.unit}</span>
+                    </td>
+                    <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{money(item.unitPrice)}</td>
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                      {money(Number(item.quantity || 0) * Number(item.unitPrice || 0))}
+                    </td>
+                    <td style={{ ...tdFlexible, color: "#64748b" }}>
+                      <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
+                        <span title="Grupo">{item.group || "\u2014"}</span>
+                        <span title="Ubicacion">{item.location || "\u2014"}</span>
+                        <span title="Empresa">{item.company}</span>
                       </span>
-                    </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={item.company}
-                        onChange={(e) => updateStockItem(item.id, "company", e.target.value)}
-                      >
-                        <option value="General">General</option>
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        list="stock-general-group-options-stock-tab"
-                        value={item.group}
-                        onChange={(e) => updateStockItem(item.id, "group", e.target.value)}
-                        placeholder="Grupo"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={item.sortOrder}
-                        onChange={(e) => updateStockItem(item.id, "sortOrder", Number(e.target.value))}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={item.code}
-                        onChange={(e) => updateStockItem(item.id, "code", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={item.description}
-                        onChange={(e) => updateStockItem(item.id, "description", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={item.location}
-                        onChange={(e) => updateStockItem(item.id, "location", e.target.value)}
-                        placeholder="Sector / estante / deposito"
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={item.unit}
-                        onChange={(e) => updateStockItem(item.id, "unit", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateStockItem(item.id, "quantity", Number(e.target.value))}
-                      />
-                    </td>
-                    <td>
-                      <AmountInput
-                        style={styles.input}
-                        value={item.unitPrice}
-                        onChange={(n) => updateStockItem(item.id, "unitPrice", n)}
-                      />
-                    </td>
-                    <td>{money(item.quantity * item.unitPrice)}</td>
-                    <td>
-                      <button style={styles.smallBtn} onClick={() => removeStockItem(item.id)}>
-                        Quitar
-                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
+            {menuStock && (() => {
+              const it = generalStock.find((x: any) => x.id === menuStock.id);
+              const cerrar = () => {
+                setMenuStock(null);
+                marcaStock.marcar(null);
+              };
+              if (!it) return null;
+              const pedir = (titulo: string, campo: string, actual: any, numero = false) => () => {
+                const v = window.prompt(titulo, String(actual ?? ""));
+                if (v === null) return cerrar();
+                if (numero) {
+                  const n = Number(v.replace(",", "."));
+                  if (Number.isFinite(n)) updateStockItem(it.id, campo as any, n);
+                } else {
+                  updateStockItem(it.id, campo as any, v.trim());
+                }
+                cerrar();
+              };
+              return (
+                <QuickMenu x={menuStock.x} y={menuStock.y} onClose={cerrar}>
+                  <QuickMenuTitle>
+                    {it.description || "item"} \u00b7 {Number(it.quantity || 0)} {it.unit}
+                  </QuickMenuTitle>
+                  <button style={quickMenuItem} onClick={pedir("Cantidad:", "quantity", it.quantity, true)}>
+                    Editar cantidad\u2026
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Precio unitario:", "unitPrice", it.unitPrice, true)}>
+                    Editar precio unitario\u2026
+                  </button>
+                  <QuickMenuSep />
+                  <button style={quickMenuItem} onClick={pedir("Descripcion:", "description", it.description)}>
+                    Editar descripcion\u2026
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Codigo:", "code", it.code)}>
+                    Editar codigo\u2026
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Unidad:", "unit", it.unit)}>
+                    Editar unidad\u2026
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Grupo:", "group", it.group)}>
+                    Editar grupo\u2026
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Ubicacion:", "location", it.location)}>
+                    Editar ubicacion\u2026
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      if (window.confirm(`\u00bfQuitar "${it.description}" del inventario?`)) {
+                        removeStockItem(it.id);
+                      }
+                      cerrar();
+                    }}
+                  >
+                    Quitar del inventario
+                  </button>
+                </QuickMenu>
+              );
+            })()}
             <div style={styles.metricGrid}>
               <MiniMetric label="Valor stock general" value={money(visibleStockItems.filter((item) => item.kind === "general" && item.active).reduce((acc, item) => acc + Number(item.quantity || 0) * Number(item.unitPrice || 0), 0))} />
               <MiniMetric label="Valor total stock" value={money(totalStockValue)} />
