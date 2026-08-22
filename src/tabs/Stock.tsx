@@ -153,6 +153,8 @@ export function StockTab({
   const anchosStock = usePlanillaWidths("stock.inventario", { label: 300, col: 96, colCompact: 74 });
   const marcaStock = useCeldaMarcada();
   const anchosMovs = usePlanillaWidths("stock.movimientos", { label: 300, col: 110, colCompact: 84 });
+  const anchosFaltantes = usePlanillaWidths("stock.faltantes", { label: 280, col: 104, colCompact: 80 });
+  const anchosVigencia = usePlanillaWidths("stock.vigencia", { label: 240, col: 110, colCompact: 84 });
   const [menuStock, setMenuStock] = React.useState<null | { x: number; y: number; id: number }>(null);
 
   const filteredGeneralStock = generalStock
@@ -1138,30 +1140,55 @@ export function StockTab({
             {personalProvisionAlerts.length === 0 ? (
               <div style={styles.empty}>No hay vencimientos proximos cargados.</div>
             ) : (
-              <table style={styles.table}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Alerta</th>
-                    <th>Empresa</th>
-                    <th>Empleado</th>
-                    <th>Tipo</th>
-                    <th>Vence</th>
-                    <th>Dias</th>
+                    <th style={thEsquina}>
+                      Empleado
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosVigencia.startResize(ev, "label")}
+                        onDoubleClick={anchosVigencia.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Vence
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosVigencia.startResize(ev, "col")}
+                        onDoubleClick={anchosVigencia.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Días</th>
+                    <th style={thFlexible}>Tipo · empresa</th>
                   </tr>
                 </thead>
                 <tbody>
                   {personalProvisionAlerts.map((item) => (
                     <tr key={`${item.employeeName}-${item.kind}-${item.dueDate}`}>
-                      <td>
-                        <span style={{ ...styles.statusPill, ...(item.state === "vencido" ? styles.statusRed : styles.statusYellow) }}>
-                          {item.state === "vencido" ? "Vencido" : "Vence pronto"}
-                        </span>
+                      <td style={{ ...tdNombre, fontWeight: 400 }} title={item.employeeName}>
+                        <span
+                          title={item.state === "vencido" ? "Vencido" : "Vence pronto"}
+                          style={{
+                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                            background: item.state === "vencido" ? "#dc2626" : "#ca8a04",
+                          }}
+                        />
+                        {item.employeeName}
                       </td>
-                      <td>{getCompanyMeta(item.company).short}</td>
-                      <td>{item.employeeName}</td>
-                      <td>{item.kind}</td>
-                      <td>{formatDateDisplay(item.dueDate)}</td>
-                      <td>{item.daysLeft}</td>
+                      <td style={{ ...tdDato, color: item.state === "vencido" ? "#dc2626" : "#475569", fontWeight: 600 }}>
+                        {formatDateDisplay(item.dueDate)}
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: item.state === "vencido" ? "#dc2626" : "#ca8a04" }}>
+                        {item.daysLeft}
+                      </td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        {item.kind} <span style={{ color: "#94a3b8" }}>· {getCompanyMeta(item.company).short}</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1246,45 +1273,66 @@ export function StockTab({
             {stockNeedRows.length === 0 ? (
               <div style={styles.empty}>No hay faltantes pendientes para trabajos abiertos.</div>
             ) : (
-              <table style={styles.table}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Alerta</th>
-                    <th>Material</th>
-                    <th>Empresas</th>
-                    <th>Trabajos</th>
-                    <th>Requerido</th>
-                    <th>Stock</th>
-                    <th>Faltante</th>
-                    <th>Costo estimado</th>
+                    <th style={thEsquina}>
+                      Material
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosFaltantes.startResize(ev, "label")}
+                        onDoubleClick={anchosFaltantes.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Requerido
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosFaltantes.startResize(ev, "col")}
+                        onDoubleClick={anchosFaltantes.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Stock</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Faltante</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Costo estimado</th>
+                    <th style={thFlexible}>Trabajos · empresas</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stockNeedRows.map((row) => (
+                  {stockNeedRows.map((row) => {
+                    const estado =
+                      row.missing === 0 ? "#16a34a" : row.available > 0 ? "#ca8a04" : "#dc2626";
+                    return (
                     <tr key={row.description}>
-                      <td>
+                      <td style={{ ...tdNombre, fontWeight: 400 }} title={row.description}>
                         <span
-                          style={{
-                            ...styles.statusPill,
-                            ...(row.missing === 0
-                              ? styles.statusGreen
-                              : row.available > 0
-                              ? styles.statusYellow
-                              : styles.statusRed),
-                          }}
-                        >
-                          {row.missing === 0 ? "Completo" : row.available > 0 ? "Parcial" : "Comprar"}
-                        </span>
+                          title={row.missing === 0 ? "Completo" : row.available > 0 ? "Parcial" : "Hay que comprar"}
+                          style={{ display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7, background: estado }}
+                        />
+                        {row.description}
                       </td>
-                      <td>{row.description}</td>
-                      <td>{row.companyLabels.join(", ")}</td>
-                      <td>{row.jobs.join(", ")}</td>
-                      <td>{row.required} {row.unit}</td>
-                      <td>{row.available} {row.unit}</td>
-                      <td>{row.missing} {row.unit}</td>
-                      <td>{money(row.estimatedCost)}</td>
+                      <td style={{ ...tdDato, textAlign: "right" }}>
+                        {row.required} <span style={{ color: "#94a3b8" }}>{row.unit}</span>
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>
+                        {row.available} <span style={{ color: "#94a3b8" }}>{row.unit}</span>
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: estado }}>
+                        {row.missing} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{row.unit}</span>
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(row.estimatedCost)}</td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }} title={`${row.jobs.join(", ")} · ${row.companyLabels.join(", ")}`}>
+                        {row.jobs.join(", ")} <span style={{ color: "#94a3b8" }}>· {row.companyLabels.join(", ")}</span>
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             )}
