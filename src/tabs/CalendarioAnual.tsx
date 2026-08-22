@@ -85,6 +85,7 @@ export function CalendarioAnualTab({
   employees = [],
   jobs = [],
   onAssignToJob,
+  onOpenJob,
   suppliers = [],
   purchaseInvoices = [],
   onAssignToSupplier,
@@ -102,7 +103,14 @@ export function CalendarioAnualTab({
   fiscalYearOptions: Array<{ value: number; label: string }>;
   companyOptions: Array<{ value: string; short?: string; primary?: string }>;
   employees?: Array<{ name: string; company: string }>;
-  jobs?: Array<{ budgetNumber: string; client: string; company: string; active?: boolean; falta?: string }>;
+  jobs?: Array<{
+    budgetNumber: string; client: string; company: string; active?: boolean; falta?: string;
+    // Resumen del trabajo, para el boton derecho sobre su renglón de cobranzas.
+    id?: number; estado?: string; vendido?: number;
+    faltaFacturar?: number; faltaCobrar?: number; faltaComision?: number;
+  }>;
+  // Abrir la ficha del trabajo en la solapa Trabajos aprobados.
+  onOpenJob?: (jobId: number) => void;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
   // Proveedores y facturas de COMPRA del sistema: con esto un débito sin clasificar se vincula a
   // quién le pagamos y, si corresponde, a la factura que cancela.
@@ -1818,6 +1826,51 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 </button>
               </>
             )}
+            {rowMenu.kind === "cobranza" && (() => {
+              // RESUMEN DEL CLIENTE: que falta para cerrar este trabajo, sin salir del calendario.
+              const ppto = rowMenu.label.split("·")[0].trim();
+              const job = jobs.find((j) => String(j.budgetNumber) === ppto);
+              if (!job) return null;
+              const linea = (t: string, v: number, tono?: string) =>
+                v > 1 ? (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 14, fontSize: 12, padding: "1px 8px" }}>
+                    <span style={{ color: "#64748b" }}>{t}</span>
+                    <strong style={{ color: tono || "#0f172a" }}>{money(v)}</strong>
+                  </div>
+                ) : null;
+              const cerrado =
+                Number(job.faltaFacturar || 0) <= 1 &&
+                Number(job.faltaCobrar || 0) <= 1 &&
+                Number(job.faltaComision || 0) <= 1;
+              return (
+                <>
+                  <div style={{ padding: "2px 8px 4px", fontSize: 11, color: "#64748b" }}>
+                    {job.client} · {job.estado || "sin estado"}
+                  </div>
+                  {linea("Vendido (neto)", Number(job.vendido || 0))}
+                  {linea("Falta facturar", Number(job.faltaFacturar || 0), "#b45309")}
+                  {linea("Falta cobrar", Number(job.faltaCobrar || 0), "#b45309")}
+                  {linea("Comisión pendiente", Number(job.faltaComision || 0), "#b45309")}
+                  {cerrado && (
+                    <div style={{ fontSize: 12, color: "#166534", padding: "2px 8px" }}>
+                      ✓ No queda nada pendiente
+                    </div>
+                  )}
+                  {onOpenJob && job.id != null && (
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        onOpenJob(job.id!);
+                        close();
+                      }}
+                    >
+                      Abrir la ficha del trabajo
+                    </button>
+                  )}
+                  <QuickMenuSep />
+                </>
+              );
+            })()}
             {rowMenu.kind === "cobranza" && (
               <button
                 style={quickMenuItem}

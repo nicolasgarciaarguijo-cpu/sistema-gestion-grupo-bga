@@ -15357,9 +15357,20 @@ export default function App() {
               company: j.company,
               active: noFinalizado || faltaCobrar > 1 || faltaComision > 1 || faltaFacturar > 1,
               falta: partes.join(" · "),
+              // Para el resumen del cliente en el boton derecho del calendario.
+              id: j.id,
+              estado: j.executionStatus,
+              vendido: Number(j.soldNetPrice || 0),
+              faltaFacturar,
+              faltaCobrar,
+              faltaComision,
             };
           })}
           onAssignToJob={assignBankToJob}
+          onOpenJob={(jobId) => {
+            setSelectedApprovedJobId(jobId);
+            setActiveTab("aprobados");
+          }}
           suppliers={visibleSuppliers.map((s2) => ({ name: s2.name, taxId: s2.taxId, aliases: s2.aliases, active: s2.active }))}
           purchaseInvoices={purchaseInvoicesWithBankLink.map((i) => ({
             id: i.id,
