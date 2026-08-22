@@ -610,6 +610,30 @@ export function CalendarioAnualTab({
     if (h && Math.round(h) !== monthRowH) setMonthRowH(Math.round(h));
   });
 
+  // Los DIAS se ensanchan parejo hasta llenar la pantalla (pedido del usuario 2026-08-21: "que ocupe
+  // toda la pantalla bien"). Aca no sirve estirar la ultima columna como en las otras planillas: un
+  // dia mas ancho que los demas queda raro. Se mide el contenedor y se reparte el sobrante entre los
+  // dias visibles. NUNCA achica por debajo del ancho que puso el usuario: si los dias ya no entran
+  // (ano completo), manda el ancho elegido y la planilla scrollea.
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [wrapW, setWrapW] = useState(0);
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const medir = () => setWrapW(el.clientWidth);
+    medir();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const dayWEfectivo = useMemo(() => {
+    const n = visibleDayCols.length;
+    if (!wrapW || n === 0) return dayW;
+    const sobra = wrapW - labelW - 2; // 2 = los bordes del contenedor
+    return Math.max(dayW, Math.floor(sobra / n));
+  }, [wrapW, labelW, dayW, visibleDayCols.length]);
+
   const startResize = (ev: React.MouseEvent, which: "label" | "day") => {
     ev.preventDefault();
     ev.stopPropagation();
@@ -1171,6 +1195,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           la que salió a un <strong>proveedor</strong> (y a la factura de compra que cancela).
         </div>
         <div
+          ref={wrapRef}
           style={{
             overflowX: "auto",
             border: "1px solid #e2e8f0",
@@ -1178,7 +1203,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             borderTop: `3px solid ${selectedColor || "#cbd5e1"}`,
             maxHeight: "72vh",
             ["--cal-label-w" as any]: `${labelW}px`,
-            ["--cal-day-w" as any]: `${dayW}px`,
+            ["--cal-day-w" as any]: `${dayWEfectivo}px`,
           } as React.CSSProperties}
         >
           {/* tableLayout "fixed" + colgroup: sin esto el ancho de la columna lo decide el texto más
