@@ -450,23 +450,19 @@ export function TarjetasTab({
                 <thead>
                   <tr>
                     <th style={{ ...thEsquina, position: "sticky" }}>
-                      <span style={{ position: "relative", display: "block" }}>
-                        Descripcion
+                      Descripcion
                         <PlanillaManija
                           onMouseDown={(ev) => anchos.startResize(ev, "label")}
                           onDoubleClick={anchos.resetLabel}
                         />
-                      </span>
                     </th>
                     <th style={thColumna}>Fecha</th>
                     <th style={{ ...thColumna, textAlign: "right" }}>
-                      <span style={{ position: "relative", display: "block" }}>
-                        Monto
+                      Monto
                         <PlanillaManija
                           onMouseDown={(ev) => anchos.startResize(ev, "col")}
                           onDoubleClick={anchos.resetCol}
                         />
-                      </span>
                     </th>
                     <th style={thColumna}>Grupo (fijo/var)</th>
                     <th style={thColumna}>Cuota</th>
@@ -492,9 +488,9 @@ export function TarjetasTab({
                             <span style={pillFalta} title="Falta clasificar a un grupo">D</span>
                           )}
                         </td>
-                        <td style={{ ...tdDato, color: "#64748b" }}>{c.installments || "\u2014"}</td>
+                        <td style={{ ...tdDato, color: "#64748b" }}>{c.installments || "—"}</td>
                         <td style={{ ...tdFlexible, color: "#64748b" }} title={c.notes}>
-                          {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "\u2014"}
+                          {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "—"}
                         </td>
                       </tr>
                     );
@@ -506,7 +502,7 @@ export function TarjetasTab({
                             title="Tocá para plegar o desplegar este cierre"
                             style={{ ...tdNombre, background: "#e0f2fe", fontWeight: 800, color: "#075985", cursor: "pointer", userSelect: "none" }}
                           >
-                            {plegado ? "\u25b8 " : "\u25be "}Cierre {formatDateDisplay(st.closingDate)}
+                            {plegado ? "▸ " : "▾ "}Cierre {formatDateDisplay(st.closingDate)}
                           </td>
                           <td style={{ ...tdDato, background: "#e0f2fe", color: "#075985" }}>
                             vence {formatDateDisplay(st.dueDate)}
@@ -516,8 +512,8 @@ export function TarjetasTab({
                           </td>
                           <td colSpan={3} style={{ ...tdDato, background: "#e0f2fe", color: difiere ? "#b45309" : "#166534" }}>
                             {difiere
-                              ? `\u26a0 el resumen dice ${money(st.totalArs)} \u00b7 difiere ${money(Math.abs(total - Number(st.totalArs || 0)))}`
-                              : `\u2713 coincide con el resumen (${money(st.totalArs)})`}
+                              ? `⚠ el resumen dice ${money(st.totalArs)} · difiere ${money(Math.abs(total - Number(st.totalArs || 0)))}`
+                              : `✓ coincide con el resumen (${money(st.totalArs)})`}
                           </td>
                         </tr>
                         {!plegado && compras.map((c) => fila(c, 24))}
@@ -554,9 +550,9 @@ export function TarjetasTab({
                           <td style={tdDato}>
                             {c.group ? <span style={chipGrupo}>{c.group}</span> : <span style={pillFalta}>D</span>}
                           </td>
-                          <td style={{ ...tdDato, color: "#64748b" }}>{c.installments || "\u2014"}</td>
+                          <td style={{ ...tdDato, color: "#64748b" }}>{c.installments || "—"}</td>
                           <td style={{ ...tdFlexible, color: "#64748b" }} title={c.notes}>
-                            {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "\u2014"}
+                            {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "—"}
                           </td>
                         </tr>
                       ))}
@@ -576,7 +572,7 @@ export function TarjetasTab({
         return (
           <QuickMenu x={menu.x} y={menu.y} onClose={cerrar}>
             <QuickMenuTitle>
-              {c.description || "consumo"} \u00b7 {money(c.amount, c.currency)}
+              {c.description || "consumo"} · {money(c.amount, c.currency)}
             </QuickMenuTitle>
             <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px" }}>Clasificar a un grupo</div>
             {manualGroupOptions.map((g) => (
@@ -600,7 +596,7 @@ export function TarjetasTab({
                 cerrar();
               }}
             >
-              Crear grupo nuevo\u2026
+              Crear grupo nuevo…
             </button>
             {c.group && (
               <button
@@ -631,7 +627,7 @@ export function TarjetasTab({
                 cerrar();
               }}
             >
-              Editar descripcion\u2026
+              Editar descripcion…
             </button>
             <button
               style={quickMenuItem}
@@ -642,13 +638,13 @@ export function TarjetasTab({
                 cerrar();
               }}
             >
-              Editar monto\u2026
+              Editar monto…
             </button>
             <QuickMenuSep />
             <button
               style={{ ...quickMenuItem, color: "#b91c1c" }}
               onClick={() => {
-                if (window.confirm(`\u00bfBorrar "${c.description}" por ${money(c.amount, c.currency)}?`)) {
+                if (window.confirm(`¿Borrar "${c.description}" por ${money(c.amount, c.currency)}?`)) {
                   removeCreditCardConsumption(c.id);
                 }
                 cerrar();

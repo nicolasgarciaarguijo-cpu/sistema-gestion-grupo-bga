@@ -1167,23 +1167,19 @@ export function CostosTab({
             <thead>
               <tr>
                 <th style={thEsquina}>
-                  <span style={{ position: "relative", display: "block" }}>
-                    Concepto
+                  Concepto
                     <PlanillaManija
                       onMouseDown={(ev) => anchosGastos.startResize(ev, "label")}
                       onDoubleClick={anchosGastos.resetLabel}
                     />
-                  </span>
                 </th>
                 <th style={thColumna}>Fecha</th>
                 <th style={{ ...thColumna, textAlign: "right" }}>
-                  <span style={{ position: "relative", display: "block" }}>
-                    Monto
+                  Monto
                     <PlanillaManija
                       onMouseDown={(ev) => anchosGastos.startResize(ev, "col")}
                       onDoubleClick={anchosGastos.resetCol}
                     />
-                  </span>
                 </th>
                 <th style={thColumna}>Grupo (fijo/var)</th>
                 <th style={thColumna}>Proveedor</th>
@@ -1230,7 +1226,7 @@ export function CostosTab({
                       </span>
                     ) : (
                       <span
-                        title="Sin clasificar: bot\u00f3n derecho para ubicarlo en un grupo"
+                        title="Sin clasificar: botón derecho para ubicarlo en un grupo"
                         style={{ display: "inline-block", background: "#fef3c7", color: "#92400e", fontWeight: 800, fontSize: 10, borderRadius: 999, padding: "1px 7px" }}
                       >
                         D
@@ -1238,13 +1234,13 @@ export function CostosTab({
                     )}
                   </td>
                   <td style={{ ...tdDato, color: "#334155" }} title={entry.supplier}>
-                    {entry.supplier || "\u2014"}
+                    {entry.supplier || "—"}
                   </td>
                   <td style={{ ...tdFlexible, color: "#64748b" }}>
                     <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "nowrap" }}>
                       <span title={entry.company}>{getCompanyMeta(entry.company as any)?.short || entry.company}</span>
                       <ColorTag color={entry.administration} />
-                      <span title="C\u00f3mo se pag\u00f3">
+                      <span title="Cómo se pagó">
                         {(PAYMENT_METHOD_OPTIONS.find(
                           (o) =>
                             o.value ===
@@ -1259,7 +1255,7 @@ export function CostosTab({
                         title="Quitar este gasto"
                         onClick={() => removeCostEntry(entry.id)}
                       >
-                        \u2715
+                        ✕
                       </button>
                     </span>
                   </td>
@@ -1438,23 +1434,19 @@ export function CostosTab({
               <thead>
                 <tr>
                   <th style={thEsquina}>
-                    <span style={{ position: "relative", display: "block" }}>
-                      Concepto del banco
+                    Concepto del banco
                       <PlanillaManija
                         onMouseDown={(ev) => anchosBanco.startResize(ev, "label")}
                         onDoubleClick={anchosBanco.resetLabel}
                       />
-                    </span>
                   </th>
                   <th style={thColumna}>Fecha</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>
-                    <span style={{ position: "relative", display: "block" }}>
-                      Monto
+                    Monto
                       <PlanillaManija
                         onMouseDown={(ev) => anchosBanco.startResize(ev, "col")}
                         onDoubleClick={anchosBanco.resetCol}
                       />
-                    </span>
                   </th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
                   <th style={thColumna}>Dónde va</th>
@@ -1492,7 +1484,7 @@ export function CostosTab({
                         color: entry.movementType === "debito" ? "#dc2626" : "#0f172a",
                       }}
                     >
-                      {entry.movementType === "debito" ? "\u2212 " : ""}
+                      {entry.movementType === "debito" ? "− " : ""}
                       {money(entry.amount, entry.currency === "USD" ? "USD" : "ARS")}
                     </td>
                     <td style={{ ...tdDato, textAlign: "right", color: "#94a3b8" }}>
@@ -1503,31 +1495,31 @@ export function CostosTab({
                         {missing.length > 0 ? (
                           <PillD missing={missing} />
                         ) : (
-                          <span title="Asignado" style={{ color: "#16a34a", fontWeight: 800 }}>\u2713</span>
+                          <span title="Asignado" style={{ color: "#16a34a", fontWeight: 800 }}>✓</span>
                         )}
                         <span
                           style={{ color: kind ? "#334155" : "#94a3b8", overflow: "hidden", textOverflow: "ellipsis" }}
                           title={
                             kind
-                              ? `${kind}${entry.assignedJobBudget ? " \u00b7 " + entry.assignedJobBudget : ""}${entry.assignedParty ? " \u00b7 " + entry.assignedParty : ""}`
+                              ? `${kind}${entry.assignedJobBudget ? " · " + entry.assignedJobBudget : ""}${entry.assignedParty ? " · " + entry.assignedParty : ""}`
                               : "Sin asignar"
                           }
                         >
                           {kind
-                            ? `${kind}${entry.assignedJobBudget ? " \u00b7 " + entry.assignedJobBudget : entry.assignedParty ? " \u00b7 " + entry.assignedParty : ""}`
+                            ? `${kind}${entry.assignedJobBudget ? " · " + entry.assignedJobBudget : entry.assignedParty ? " · " + entry.assignedParty : ""}`
                             : "sin asignar"}
                         </span>
                         <button style={styles.smallBtn} onClick={() => setAssignOpenId(open ? null : entry.id)}>
-                          {open ? "Cerrar \u25b2" : kind ? "Editar \u25be" : "Asignar \u25be"}
+                          {open ? "Cerrar ▲" : kind ? "Editar ▾" : "Asignar ▾"}
                         </button>
                       </div>
                     </td>
                     <td style={{ ...tdDato, color: "#64748b", whiteSpace: "nowrap" }}>
-                      <span title={`${entry.company} \u00b7 ${entry.bank}`}>
-                        {getCompanyMeta(entry.company as any)?.short || entry.company} \u00b7 {entry.bank}
+                      <span title={`${entry.company} · ${entry.bank}`}>
+                        {getCompanyMeta(entry.company as any)?.short || entry.company} · {entry.bank}
                       </span>
                       <label style={{ ...styles.buttonLikeLabel, marginLeft: 6 }} title={entry.attachmentName || "Cargar resumen / comprobante"}>
-                        {entry.attachmentName ? "\ud83d\udcce\u2713" : "\ud83d\udcce"}
+                        {entry.attachmentName ? "📎✓" : "📎"}
                         <input
                           type="file"
                           accept="image/*,.pdf,application/pdf"
@@ -1901,8 +1893,8 @@ export function CostosTab({
         }
       >
         <div style={{ ...styles.sectionNote, marginBottom: 8 }}>
-          Fijos y variables son secciones: toc\u00e1 el t\u00edtulo para plegarlas.{" "}
-          <strong>Bot\u00f3n derecho</strong> sobre cualquier n\u00famero para ver los gastos que hay detr\u00e1s y
+          Fijos y variables son secciones: tocá el título para plegarlas.{" "}
+          <strong>Botón derecho</strong> sobre cualquier número para ver los gastos que hay detrás y
           reclasificarlos.
         </div>
         <div style={{ ...planillaWrap, ...anchosCostos.vars }}>
@@ -1917,24 +1909,22 @@ export function CostosTab({
             <thead>
               <tr>
                 <th style={thEsquina}>
-                  <span style={{ position: "relative", display: "block" }}>
-                    Grupo
+                  Grupo
                     <PlanillaManija
                       onMouseDown={(ev) => anchosCostos.startResize(ev, "label")}
                       onDoubleClick={anchosCostos.resetLabel}
                     />
-                  </span>
                 </th>
                 {months.map((month, i) => (
                   <th key={month} style={{ ...thColumna, textAlign: "right" }}>
                     {i === 0 ? (
-                      <span style={{ position: "relative", display: "block" }}>
+                      <>
                         {monthKeyLabel(month)}
                         <PlanillaManija
                           onMouseDown={(ev) => anchosCostos.startResize(ev, "col")}
                           onDoubleClick={anchosCostos.resetCol}
                         />
-                      </span>
+                      </>
                     ) : (
                       monthKeyLabel(month)
                     )}
@@ -1954,14 +1944,14 @@ export function CostosTab({
                     <tr>
                       <td
                         onClick={() => plegarSeccion(sec.key)}
-                        title="Toc\u00e1 para plegar o desplegar"
+                        title="Tocá para plegar o desplegar"
                         style={{ ...tdNombre, background: sec.fondo, color: sec.tinta, fontWeight: 800, cursor: "pointer", userSelect: "none" }}
                       >
-                        {plegada ? "\u25b8 " : "\u25be "}{sec.titulo}
+                        {plegada ? "▸ " : "▾ "}{sec.titulo}
                       </td>
                       {months.map((month) => (
                         <td key={`${sec.key}-${month}`} style={{ ...tdDato, background: sec.fondo, color: sec.tinta, textAlign: "right", fontWeight: 800 }}>
-                          {(sec.porMes[month] || 0) > 0 ? money(sec.porMes[month]) : "\u00b7"}
+                          {(sec.porMes[month] || 0) > 0 ? money(sec.porMes[month]) : "·"}
                         </td>
                       ))}
                       <td style={{ ...tdDato, background: sec.fondo, color: sec.tinta, textAlign: "right", fontWeight: 800 }}>
@@ -1999,7 +1989,7 @@ export function CostosTab({
                                 }}
                                 style={{ ...tdDato, textAlign: "right", color: v > 0 ? "#0f172a" : "#e2e8f0", cursor: v > 0 ? "context-menu" : "default" }}
                               >
-                                {v > 0 ? money(v) : "\u00b7"}
+                                {v > 0 ? money(v) : "·"}
                               </td>
                             );
                           })}
@@ -2015,7 +2005,7 @@ export function CostosTab({
               {composition.sinClasificar.entries.length > 0 && (
                 <tr>
                   <td style={{ ...tdNombre, background: "#fef9c3", color: "#854d0e", fontWeight: 800 }}>
-                    \u26a0 Sin clasificar ({composition.sinClasificar.entries.length})
+                    ⚠ Sin clasificar ({composition.sinClasificar.entries.length})
                   </td>
                   {months.map((month) => {
                     const v = composition.sinClasificar.entries
@@ -2023,7 +2013,7 @@ export function CostosTab({
                       .reduce((a: number, e: any) => a + Number(e.amount || 0), 0);
                     return (
                       <td key={`sc-${month}`} style={{ ...tdDato, background: "#fef9c3", color: "#854d0e", textAlign: "right", fontWeight: 700 }}>
-                        {v > 0 ? money(v) : "\u00b7"}
+                        {v > 0 ? money(v) : "·"}
                       </td>
                     );
                   })}
@@ -2037,7 +2027,7 @@ export function CostosTab({
                 <td style={{ ...tdNombre, background: "#f1f5f9", fontWeight: 900 }}>TOTAL</td>
                 {months.map((month) => (
                   <td key={`t-${month}`} style={{ ...tdDato, background: "#f1f5f9", textAlign: "right", fontWeight: 900 }}>
-                    {(aggregation.totalByMonth[month] || 0) > 0 ? money(aggregation.totalByMonth[month]) : "\u00b7"}
+                    {(aggregation.totalByMonth[month] || 0) > 0 ? money(aggregation.totalByMonth[month]) : "·"}
                   </td>
                 ))}
                 <td style={{ ...tdDato, background: "#f1f5f9", textAlign: "right", fontWeight: 900 }}>
@@ -2058,11 +2048,11 @@ export function CostosTab({
         return (
           <QuickMenu x={menuCelda.x} y={menuCelda.y} onClose={cerrar}>
             <QuickMenuTitle>
-              {menuCelda.group} \u00b7 {monthKeyLabel(menuCelda.month)} \u00b7 {money(menuCelda.total)}
+              {menuCelda.group} · {monthKeyLabel(menuCelda.month)} · {money(menuCelda.total)}
             </QuickMenuTitle>
             {!elegido && lista.length === 0 && (
               <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 8px" }}>
-                Este n\u00famero no viene de gastos cargados (puede ser caja chica o tarjeta).
+                Este número no viene de gastos cargados (puede ser caja chica o tarjeta).
               </div>
             )}
             {!elegido &&
@@ -2070,19 +2060,19 @@ export function CostosTab({
                 <button key={e.id} style={quickMenuItem} onClick={() => setMenuCelda({ ...menuCelda, pickedId: e.id })}>
                   <span style={{ fontWeight: 700 }}>{money(e.amount)}</span>
                   <span style={{ color: "#64748b", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {e.date} \u00b7 {e.description || e.supplier || "gasto"}
+                    {e.date} · {e.description || e.supplier || "gasto"}
                   </span>
                 </button>
               ))}
             {!elegido && Math.abs(faltante) > 1 && lista.length > 0 && (
               <div style={{ fontSize: 11, color: "#b45309", padding: "2px 8px" }}>
-                {money(Math.abs(faltante))} de este n\u00famero vienen de caja chica o tarjeta.
+                {money(Math.abs(faltante))} de este número vienen de caja chica o tarjeta.
               </div>
             )}
             {elegido && (
               <>
                 <div style={{ fontSize: 11, color: "#64748b", padding: "0 8px 4px" }}>
-                  {elegido.date} \u00b7 {elegido.description || elegido.supplier} \u00b7 {money(elegido.amount)}
+                  {elegido.date} · {elegido.description || elegido.supplier} · {money(elegido.amount)}
                 </div>
                 <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px" }}>Mover a otro grupo</div>
                 {manualGroupOptions

@@ -152,6 +152,7 @@ export function StockTab({
   // ---- PLANILLA del inventario (estetica del Calendario anual) --------------------------------
   const anchosStock = usePlanillaWidths("stock.inventario", { label: 300, col: 96, colCompact: 74 });
   const marcaStock = useCeldaMarcada();
+  const anchosMovs = usePlanillaWidths("stock.movimientos", { label: 300, col: 110, colCompact: 84 });
   const [menuStock, setMenuStock] = React.useState<null | { x: number; y: number; id: number }>(null);
 
   const filteredGeneralStock = generalStock
@@ -337,33 +338,29 @@ export function StockTab({
               <thead>
                 <tr>
                   <th style={thEsquina}>
-                    <span style={{ position: "relative", display: "block" }}>
-                      Descripcion
+                    Descripcion
                       <PlanillaManija
                         onMouseDown={(ev) => anchosStock.startResize(ev, "label")}
                         onDoubleClick={anchosStock.resetLabel}
                       />
-                    </span>
                   </th>
                   <th style={thColumna}>Codigo</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>
-                    <span style={{ position: "relative", display: "block" }}>
-                      Cantidad
+                    Cantidad
                       <PlanillaManija
                         onMouseDown={(ev) => anchosStock.startResize(ev, "col")}
                         onDoubleClick={anchosStock.resetCol}
                       />
-                    </span>
                   </th>
                   <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Valor stock</th>
-                  <th style={thFlexible}>Grupo \u00b7 ubicacion \u00b7 empresa</th>
+                  <th style={thFlexible}>Grupo · ubicacion · empresa</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredGeneralStock.length === 0 && (
                   <tr>
-                    <td colSpan={12} style={{ ...styles.muted, textAlign: "center", padding: 12 }}>
+                    <td colSpan={6} style={{ ...styles.muted, textAlign: "center", padding: 12 }}>
                       No hay materiales que coincidan con el filtro.
                     </td>
                   </tr>
@@ -391,7 +388,7 @@ export function StockTab({
                       />
                       {item.description || "(sin descripcion)"}
                     </td>
-                    <td style={{ ...tdDato, color: "#64748b" }} title={item.code}>{item.code || "\u2014"}</td>
+                    <td style={{ ...tdDato, color: "#64748b" }} title={item.code}>{item.code || "—"}</td>
                     <td style={{ ...tdDato, textAlign: "right", fontWeight: 600, color: Number(item.quantity || 0) > 0 ? "#0f172a" : "#dc2626" }}>
                       {Number(item.quantity || 0)} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{item.unit}</span>
                     </td>
@@ -401,8 +398,8 @@ export function StockTab({
                     </td>
                     <td style={{ ...tdFlexible, color: "#64748b" }}>
                       <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
-                        <span title="Grupo">{item.group || "\u2014"}</span>
-                        <span title="Ubicacion">{item.location || "\u2014"}</span>
+                        <span title="Grupo">{item.group || "—"}</span>
+                        <span title="Ubicacion">{item.location || "—"}</span>
                         <span title="Empresa">{item.company}</span>
                       </span>
                     </td>
@@ -432,35 +429,35 @@ export function StockTab({
               return (
                 <QuickMenu x={menuStock.x} y={menuStock.y} onClose={cerrar}>
                   <QuickMenuTitle>
-                    {it.description || "item"} \u00b7 {Number(it.quantity || 0)} {it.unit}
+                    {it.description || "item"} · {Number(it.quantity || 0)} {it.unit}
                   </QuickMenuTitle>
                   <button style={quickMenuItem} onClick={pedir("Cantidad:", "quantity", it.quantity, true)}>
-                    Editar cantidad\u2026
+                    Editar cantidad…
                   </button>
                   <button style={quickMenuItem} onClick={pedir("Precio unitario:", "unitPrice", it.unitPrice, true)}>
-                    Editar precio unitario\u2026
+                    Editar precio unitario…
                   </button>
                   <QuickMenuSep />
                   <button style={quickMenuItem} onClick={pedir("Descripcion:", "description", it.description)}>
-                    Editar descripcion\u2026
+                    Editar descripcion…
                   </button>
                   <button style={quickMenuItem} onClick={pedir("Codigo:", "code", it.code)}>
-                    Editar codigo\u2026
+                    Editar codigo…
                   </button>
                   <button style={quickMenuItem} onClick={pedir("Unidad:", "unit", it.unit)}>
-                    Editar unidad\u2026
+                    Editar unidad…
                   </button>
                   <button style={quickMenuItem} onClick={pedir("Grupo:", "group", it.group)}>
-                    Editar grupo\u2026
+                    Editar grupo…
                   </button>
                   <button style={quickMenuItem} onClick={pedir("Ubicacion:", "location", it.location)}>
-                    Editar ubicacion\u2026
+                    Editar ubicacion…
                   </button>
                   <QuickMenuSep />
                   <button
                     style={{ ...quickMenuItem, color: "#b91c1c" }}
                     onClick={() => {
-                      if (window.confirm(`\u00bfQuitar "${it.description}" del inventario?`)) {
+                      if (window.confirm(`¿Quitar "${it.description}" del inventario?`)) {
                         removeStockItem(it.id);
                       }
                       cerrar();
@@ -914,7 +911,15 @@ export function StockTab({
             )}
           </Panel>
 
-          <Panel title="Movimientos de stock" span="full">
+          <Panel
+            title="Movimientos de stock"
+            span="full"
+            actions={
+              <ButtonLike onClick={anchosMovs.toggleCompacto} secondary>
+                {anchosMovs.esCompacto ? "Ancho normal" : "Compacto"}
+              </ButtonLike>
+            }
+          >
             <div style={styles.inlineForm}>
               <Field label="Item">
                 <select
@@ -967,33 +972,49 @@ export function StockTab({
             {recentMovements.length === 0 ? (
               <div style={styles.empty}>Todavia no hay movimientos registrados.</div>
             ) : (
-              <table style={styles.table}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Fecha</th>
-                    <th>Item</th>
-                    <th>Tipo</th>
-                    <th>Cantidad</th>
-                    <th>Nota</th>
+                    <th style={thEsquina}>
+                      Item
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosMovs.startResize(ev, "label")}
+                          onDoubleClick={anchosMovs.resetLabel}
+                        />
+                    </th>
+                    <th style={thColumna}>Fecha</th>
+                    <th style={thColumna}>Tipo</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Cantidad
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosMovs.startResize(ev, "col")}
+                          onDoubleClick={anchosMovs.resetCol}
+                        />
+                    </th>
+                    <th style={thFlexible}>Nota</th>
                   </tr>
                 </thead>
                 <tbody>
                   {recentMovements.map((m) => (
                     <tr key={m.id}>
-                      <td>{formatDateDisplay(m.date)}</td>
-                      <td>{m.itemDescription}</td>
-                      <td>
-                        <span
-                          style={{
-                            ...styles.statusPill,
-                            ...(m.type === "entrada" ? styles.statusGreen : styles.statusYellow),
-                          }}
-                        >
-                          {m.type === "entrada" ? "Entrada" : "Salida"}
+                      <td style={{ ...tdNombre, fontWeight: 400 }} title={m.itemDescription}>
+                        {m.itemDescription}
+                      </td>
+                      <td style={{ ...tdDato, color: "#64748b" }}>{formatDateDisplay(m.date)}</td>
+                      <td style={tdDato}>
+                        <span style={{ color: m.type === "entrada" ? "#166534" : "#b45309", fontWeight: 700 }}>
+                          {m.type === "entrada" ? "↑ entrada" : "↓ salida"}
                         </span>
                       </td>
-                      <td>{m.quantity}</td>
-                      <td>{m.note || "-"}</td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{m.quantity}</td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }} title={m.note}>{m.note || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
