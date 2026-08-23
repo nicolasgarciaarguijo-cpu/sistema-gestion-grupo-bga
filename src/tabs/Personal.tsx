@@ -11,7 +11,16 @@ import {
   TwoCol,
   AmountInput,
   MONEY_OUT_COLOR,
+  QuickMenu,
+  QuickMenuTitle,
+  QuickMenuSep,
+  quickMenuItem,
 } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+  inputCelda, inputCeldaDerecha, focoCelda,
+} from "../ui/planilla";
 import { money, pct, localMonthKey, formatDateDisplay } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import type { CompanyName } from "../domain/types";
@@ -132,6 +141,12 @@ export function PersonalTab(props: PersonalTabProps) {
   const workforceProductivityPct =
     workforceHours.nominal > 0 ? (workforceHours.productive / workforceHours.nominal) * 100 : 0;
   const nfHours = (n: number) => Math.round(n).toLocaleString("es-AR");
+  const anchosNomina = usePlanillaWidths("personal.nomina", { label: 280, col: 116, colCompact: 88 });
+  const [menuNomina, setMenuNomina] = useState<null | { x: number; y: number; id: number }>(null);
+  const anchosRecordatorios = usePlanillaWidths("personal.recordatorios", { label: 260, col: 130, colCompact: 100 });
+  const anchosCategorias = usePlanillaWidths("personal.categorias", { label: 260, col: 116, colCompact: 88 });
+  const anchosEscalas = usePlanillaWidths("personal.escalas", { label: 220, col: 116, colCompact: 88 });
+
   return (
         <div style={styles.personalStack}>
           <div style={{ order: -1, gridColumn: "1 / -1" }}>
@@ -154,15 +169,32 @@ export function PersonalTab(props: PersonalTabProps) {
                   No hay vencimientos ni documentacion pendiente en los proximos 30 dias.
                 </div>
               ) : (
-                <table style={styles.table}>
+                <div style={{ ...planillaWrap, ...anchosRecordatorios.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Estado</th>
-                      <th>Empleado</th>
-                      <th>Tipo</th>
-                      <th>Detalle</th>
-                      <th>Vence</th>
-                      <th>Dias</th>
+                      <th style={thEsquina}>
+                        Empleado
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosRecordatorios.startResize(ev, "label")}
+                          onDoubleClick={anchosRecordatorios.resetLabel}
+                        />
+                      </th>
+                      <th style={thColumna}>
+                        Vence
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosRecordatorios.startResize(ev, "col")}
+                          onDoubleClick={anchosRecordatorios.resetCol}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Días</th>
+                      <th style={thFlexible}>Qué falta</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -176,28 +208,40 @@ export function PersonalTab(props: PersonalTabProps) {
                           : "Vence pronto";
                       return (
                         <tr key={`${rem.type}-${rem.employeeName}-${rem.label}-${i}`}>
-                          <td>
+                          <td style={{ ...tdNombre, fontWeight: 400 }} title={rem.employeeName}>
                             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <Semaforo level={level} size={10} title={estadoLabel} />
-                              <span>{estadoLabel}</span>
+                              {rem.employeeName}
                             </span>
                           </td>
-                          <td>{rem.employeeName}</td>
-                          <td>{rem.type === "provision" ? "Provision" : "Documento"}</td>
-                          <td>{rem.label}</td>
-                          <td>{rem.dueDate ? formatDateDisplay(rem.dueDate) : "-"}</td>
-                          <td>
+                          <td style={{ ...tdDato, color: "#475569" }}>
+                            {rem.dueDate ? formatDateDisplay(rem.dueDate) : "—"}
+                          </td>
+                          <td
+                            style={{
+                              ...tdDato, textAlign: "right", fontWeight: 700,
+                              color: rem.state === "faltante" ? "#94a3b8" : rem.daysLeft < 0 ? "#dc2626" : "#ca8a04",
+                            }}
+                          >
                             {rem.state === "faltante"
-                              ? "-"
+                              ? "—"
                               : rem.daysLeft < 0
                               ? `${Math.abs(rem.daysLeft)} d vencido`
                               : `${rem.daysLeft} d`}
+                          </td>
+                          <td style={{ ...tdFlexible, color: "#64748b" }}>
+                            <strong style={{ color: "#0f172a" }}>{estadoLabel}</strong>
+                            <span style={{ color: "#94a3b8" }}>
+                              {" · "}{rem.type === "provision" ? "Provisión" : "Documento"}
+                              {" · "}{rem.label}
+                            </span>
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </Panel>
           </div>
@@ -231,55 +275,70 @@ export function PersonalTab(props: PersonalTabProps) {
                   empresa.
                 </div>
               ) : (
-                <table style={{ ...styles.table, marginTop: 12 }}>
+                <div style={{ ...planillaWrap, ...anchosCategorias.vars, marginTop: 12 }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Empresa</th>
-                      <th>Categoria</th>
-                      <th>Empleados</th>
-                      <th>Antig. prom.</th>
-                      <th>Presentismo prom.</th>
-                      <th>Descuentos prom.</th>
-                      <th>Cargas + SAC prom.</th>
-                      <th>Provision prom.</th>
-                      <th>Bruto prom.</th>
-                      <th>Neto prom.</th>
-                      <th>Impacto prom.</th>
-                      <th>Costo hora prom.</th>
+                      <th style={thEsquina}>
+                        Categoría
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCategorias.startResize(ev, "label")}
+                          onDoubleClick={anchosCategorias.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        Empleados
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCategorias.startResize(ev, "col")}
+                          onDoubleClick={anchosCategorias.resetCol}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Bruto prom.</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Neto prom.</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Costo hora prom.</th>
+                      <th style={thFlexible}>Impacto · cargas · provisión · presentismo · antigüedad</th>
                     </tr>
                   </thead>
                   <tbody>
                     {companyCategoryCostRows.map((row) => {
                       const meta = getCompanyMeta(row.company);
                       return (
-                        <tr key={`${row.company}-${row.category}`} style={{ background: `${meta.soft}55` }}>
-                          <td>
-                            <span
-                              style={{
-                                ...styles.statusPill,
-                                background: meta.soft,
-                                color: meta.primary,
-                              }}
-                            >
-                              {meta.short}
+                        <tr key={`${row.company}-${row.category}`}>
+                          <td
+                            style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
+                            title={`${row.category} · ${meta.short}`}
+                          >
+                            {row.category}
+                            <span style={{ color: "#94a3b8" }}> · {meta.short}</span>
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right" }}>{row.employeeCount}</td>
+                          <td style={{ ...tdDato, textAlign: "right" }}>{money(row.avgGross)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(row.avgNet)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(row.avgHourlyCost)}</td>
+                          <td style={{ ...tdFlexible, color: "#64748b" }}>
+                            <strong style={{ color: "#0f172a" }}>{money(row.avgEmployerImpact)}</strong>
+                            <span style={{ color: "#94a3b8" }}>
+                              {" · cargas "}{money(row.avgEmployerImpact - row.avgGross - row.avgMonthlyProvisionCost)}
+                              {" · provisión "}{money(row.avgMonthlyProvisionCost)}
+                              {" · descuentos "}{money(row.avgGross - row.avgNet)}
+                              {" · presentismo "}{pct(row.avgPresentismoPct)}
+                              {" · antig. "}{row.avgSeniorityYears.toFixed(1)} años
                             </span>
                           </td>
-                          <td>{row.category}</td>
-                          <td>{row.employeeCount}</td>
-                          <td>{row.avgSeniorityYears.toFixed(1)}</td>
-                          <td>{pct(row.avgPresentismoPct)}</td>
-                          <td>{money(row.avgGross - row.avgNet)}</td>
-                          <td>{money(row.avgEmployerImpact - row.avgGross - row.avgMonthlyProvisionCost)}</td>
-                          <td>{money(row.avgMonthlyProvisionCost)}</td>
-                          <td>{money(row.avgGross)}</td>
-                          <td>{money(row.avgNet)}</td>
-                          <td>{money(row.avgEmployerImpact)}</td>
-                          <td>{money(row.avgHourlyCost)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </Panel>
           </div>
@@ -913,15 +972,34 @@ export function PersonalTab(props: PersonalTabProps) {
                     {showOldScales ? "Ocultar escalas anteriores" : "Ver escalas anteriores"}
                   </ButtonLike>
                 </div>
-                <table style={styles.table}>
+                <div style={{ ...planillaWrap, ...anchosEscalas.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Mes</th>
-                      <th>Categoria</th>
-                      <th>Base hora</th>
-                      <th>No remun./hora</th>
-                      <th>VHT</th>
-                      <th>Fuente</th>
+                      <th style={thEsquina}>
+                        Mes · categoría
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosEscalas.startResize(ev, "label")}
+                          onDoubleClick={anchosEscalas.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        Base hora
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosEscalas.startResize(ev, "col")}
+                          onDoubleClick={anchosEscalas.resetCol}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>No remun./hora</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>VHT</th>
+                      <th style={thFlexible}>Fuente</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -931,70 +1009,72 @@ export function PersonalTab(props: PersonalTabProps) {
                       .sort((a, b) => `${a.month}-${a.category}`.localeCompare(`${b.month}-${b.category}`))
                       .map((row) => (
                         <tr key={row.id}>
-                          <td>{monthLabel(row.month)}</td>
-                          <td>
-                            <select
-                              style={styles.input}
-                              value={row.category}
-                              onChange={(e) =>
-                                setScaleRows((prev) =>
-                                  prev.map((item) =>
-                                    item.id === row.id ? { ...item, category: e.target.value } : item
+                          <td style={{ ...tdNombre, fontWeight: 400, padding: 0 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 8px" }}>
+                              <span style={{ whiteSpace: "nowrap" }}>{monthLabel(row.month)}</span>
+                              <select
+                                style={{ ...inputCelda, width: "auto" }}
+                                value={row.category}
+                                onChange={(e) =>
+                                  setScaleRows((prev) =>
+                                    prev.map((item) =>
+                                      item.id === row.id ? { ...item, category: e.target.value } : item
+                                    )
                                   )
-                                )
-                              }
-                            >
-                              {CATEGORY_OPTIONS.map((option) => (
-                                <option key={option} value={option}>
-                                  {option}
-                                </option>
-                              ))}
-                            </select>
+                                }
+                              >
+                                {CATEGORY_OPTIONS.map((option) => (
+                                  <option key={option} value={option}>
+                                    {option}
+                                  </option>
+                                ))}
+                              </select>
+                            </span>
                           </td>
-                          <td>
+                          <td style={{ ...tdDato, padding: 0 }}>
                             <AmountInput
-                              style={styles.input}
+                              style={inputCeldaDerecha}
+                              {...focoCelda}
                               value={row.baseHourly}
                               onChange={(n) =>
                                 setScaleRows((prev) =>
-                                  prev.map((item) =>
-                                    item.id === row.id ? { ...item, baseHourly: n } : item
-                                  )
+                                  prev.map((item) => (item.id === row.id ? { ...item, baseHourly: n } : item))
                                 )
                               }
                             />
                           </td>
-                          <td>
+                          <td style={{ ...tdDato, padding: 0 }}>
                             <AmountInput
-                              style={styles.input}
+                              style={inputCeldaDerecha}
+                              {...focoCelda}
                               value={row.nonRemHourly}
                               onChange={(n) =>
                                 setScaleRows((prev) =>
-                                  prev.map((item) =>
-                                    item.id === row.id ? { ...item, nonRemHourly: n } : item
-                                  )
+                                  prev.map((item) => (item.id === row.id ? { ...item, nonRemHourly: n } : item))
                                 )
                               }
                             />
                           </td>
-                          <td>
+                          <td style={{ ...tdDato, padding: 0 }}>
                             <AmountInput
-                              style={styles.input}
+                              style={inputCeldaDerecha}
+                              {...focoCelda}
                               value={row.vht}
                               onChange={(n) =>
                                 setScaleRows((prev) =>
-                                  prev.map((item) =>
-                                    item.id === row.id ? { ...item, vht: n } : item
-                                  )
+                                  prev.map((item) => (item.id === row.id ? { ...item, vht: n } : item))
                                 )
                               }
                             />
                           </td>
-                          <td>{row.sourceFileName}</td>
+                          <td style={{ ...tdFlexible, color: "#94a3b8" }} title={row.sourceFileName}>
+                            {row.sourceFileName}
+                          </td>
                         </tr>
                       ))}
                   </tbody>
                 </table>
+                </div>
               </Panel>
           </div>
 
@@ -1016,6 +1096,9 @@ export function PersonalTab(props: PersonalTabProps) {
                     Reporte {company.short}
                   </ButtonLike>
                 ))}
+                <ButtonLike onClick={anchosNomina.toggleCompacto} secondary>
+                  {anchosNomina.esCompacto ? "Ancho normal" : "Compacto"}
+                </ButtonLike>
               </div>
             }
           >
@@ -1090,27 +1173,36 @@ export function PersonalTab(props: PersonalTabProps) {
             );
           })()}
           <Panel title="Empleados" span="full">
-            <table style={styles.table}>
+            <div style={{ ...planillaWrap, ...anchosNomina.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Empresa</th>
-                  <th>Legajo</th>
-                  <th>Nombre y apellido</th>
-                  <th>Categoria base</th>
-                  <th>Antig.</th>
-                  <th>Ingreso</th>
-                  <th>Asistencia</th>
-                  <th>Documentacion</th>
-                  {PERSONAL_PROVISION_KINDS.map((k) => (
-                    <th key={k}>{k}</th>
-                  ))}
-                  <th>Hs mes</th>
-                  <th>Bruto</th>
-                  <th>Neto</th>
-                  <th>Imp. blanco</th>
-                  <th>Imp. negro</th>
-                  <th>Costo hora real</th>
-                  <th>Accion</th>
+                  <th style={thEsquina}>
+                    Empleado
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosNomina.startResize(ev, "label")}
+                      onDoubleClick={anchosNomina.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Hs mes
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosNomina.startResize(ev, "col")}
+                      onDoubleClick={anchosNomina.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Bruto</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Neto</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Costo hora real</th>
+                  <th style={thFlexible}>Asistencia · documentación · EPP · impacto</th>
                 </tr>
               </thead>
               <tbody>
@@ -1137,87 +1229,121 @@ export function PersonalTab(props: PersonalTabProps) {
                       : styles.statusRed;
                   const payroll = getCurrentPayroll(employee);
                   return (
-                    <tr key={employee.id} style={{ background: `${meta.soft}55` }}>
-                      <td>
-                        <span style={{ ...styles.statusPill, background: meta.soft, color: meta.primary }}>
-                          {meta.short}
-                        </span>
-                      </td>
-                      <td>{employee.legajo}</td>
-                      <td>
+                    <tr
+                      key={employee.id}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        setMenuNomina({ x: ev.clientX, y: ev.clientY, id: employee.id });
+                      }}
+                      title="Click derecho: abrir la ficha del empleado"
+                    >
+                      <td
+                        style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
+                        title={`${employee.name} · legajo ${employee.legajo}`}
+                      >
                         {(() => {
                           const se = getEmployeeSemaphore(employee);
                           return (
                             <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <Semaforo level={se.level} size={10} title={se.label} />
-                              <span style={{ display: "inline-flex", flexDirection: "column" }}>
-                                <span>{employee.name}</span>
-                                <span style={{ ...styles.muted, fontSize: 11 }}>{se.label}</span>
+                              <span style={{ display: "inline-flex", flexDirection: "column", minWidth: 0 }}>
+                                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {employee.name}
+                                </span>
+                                <span style={{ ...styles.muted, fontSize: 11 }}>
+                                  {employee.legajo} · {se.label}
+                                </span>
                               </span>
                             </span>
                           );
                         })()}
                       </td>
-                      <td>{employee.category}</td>
-                      <td>{employee.seniorityYears}</td>
-                      <td>{employee.hireDate ? formatDateDisplay(employee.hireDate) : "-"}</td>
-                      <td>
-                        <span style={{ ...styles.statusPill, ...toneStyle }}>{att.label}</span>
+                      <td style={{ ...tdDato, textAlign: "right" }}>
+                        {Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}
                       </td>
-                      <td>
-                        <span style={{ ...styles.statusPill, ...docsStyle }}>{docs.label}</span>
-                      </td>
-                      {PERSONAL_PROVISION_KINDS.map((k) => {
-                        const prov = getEmployeeProvisionSummary(employee, k);
-                        const provStyle =
-                          prov.tone === "green"
-                            ? styles.statusGreen
-                            : prov.tone === "yellow"
-                            ? styles.statusYellow
-                            : styles.statusRed;
-                        return (
-                          <td key={k}>
-                            <span style={{ ...styles.statusPill, ...provStyle }}>{prov.label}</span>
-                          </td>
-                        );
-                      })}
-                      <td>{Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}</td>
-                      <td>{money(
-                        employee.employmentType === "temporal"
-                          ? Number(employee.agreedSalary || 0)
-                          : employee.employmentType === "fuera_convenio"
-                          ? Number(employee.agreedWhite || 0) + Number(employee.agreedBlack || 0)
-                          : salary.totalGross
-                      )}</td>
-                      <td>{money(
-                        employee.employmentType === "temporal"
-                          ? Number(employee.agreedSalary || 0)
-                          : employee.employmentType === "fuera_convenio"
-                          ? Number(salary.net || 0) + Number(salary.blackMonthly || 0)
-                          : salary.netWithCashBonus
-                      )}</td>
-                      <td>{money(employee.employmentType === "temporal" ? 0 : salary.employerImpact)}</td>
-                      <td>{money(Number(salary.blackImpact || 0))}</td>
-                      <td>{money(salary.hourlyCost)}</td>
-                      <td style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {selectedEmployeeId === employee.id ? (
-                          <button style={styles.smallBtn} onClick={() => setSelectedEmployeeId(null)}>
-                            Cerrar
-                          </button>
-                        ) : (
-                          <button style={styles.smallBtn} onClick={() => setSelectedEmployeeId(employee.id)}>
-                            Abrir
-                          </button>
+                      <td style={{ ...tdDato, textAlign: "right" }}>
+                        {money(
+                          employee.employmentType === "temporal"
+                            ? Number(employee.agreedSalary || 0)
+                            : employee.employmentType === "fuera_convenio"
+                            ? Number(employee.agreedWhite || 0) + Number(employee.agreedBlack || 0)
+                            : salary.totalGross
                         )}
-                        <button style={styles.smallBtn} onClick={() => removeEmployee(employee.id)}>
-                          Quitar
-                        </button>
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>
+                        {money(
+                          employee.employmentType === "temporal"
+                            ? Number(employee.agreedSalary || 0)
+                            : employee.employmentType === "fuera_convenio"
+                            ? Number(employee.agreedWhite || 0) + Number(employee.agreedBlack || 0)
+                            : salary.netSalary
+                        )}
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(salary.hourlyCost)}</td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                          <span style={{ ...styles.statusPill, ...toneStyle }}>{att.label}</span>
+                          <span style={{ ...styles.statusPill, ...docsStyle }}>{docs.label}</span>
+                          {PERSONAL_PROVISION_KINDS.map((k) => {
+                            const prov = getEmployeeProvisionSummary(employee, k);
+                            const provStyle =
+                              prov.tone === "green"
+                                ? styles.statusGreen
+                                : prov.tone === "yellow"
+                                ? styles.statusYellow
+                                : styles.statusRed;
+                            return (
+                              <span key={k} style={{ ...styles.statusPill, ...provStyle }} title={`${k}: ${prov.label}`}>
+                                {prov.label}
+                              </span>
+                            );
+                          })}
+                          <span style={{ color: "#94a3b8" }}>
+                            {employee.category} · {employee.seniorityYears} años
+                            {employee.hireDate ? ` · desde ${formatDateDisplay(employee.hireDate)}` : ""}
+                            {" · impacto "}
+                            {money(employee.employmentType === "temporal" ? 0 : salary.employerImpact)}
+                            {Number(salary.blackImpact || 0) > 0 ? ` + ${money(Number(salary.blackImpact || 0))} negro` : ""}
+                            {" · "}{meta.short}
+                          </span>
+                        </span>
                       </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
+            </div>
+            {menuNomina && (() => {
+              const emp = employeesSortedByPay.find((x: any) => x.id === menuNomina.id);
+              const cerrar = () => setMenuNomina(null);
+              if (!emp) return null;
+              return (
+                <QuickMenu x={menuNomina.x} y={menuNomina.y} onClose={cerrar}>
+                  <QuickMenuTitle>{emp.name || "empleado"} · legajo {emp.legajo}</QuickMenuTitle>
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      setSelectedEmployeeId(selectedEmployeeId === emp.id ? null : emp.id);
+                      cerrar();
+                    }}
+                  >
+                    {selectedEmployeeId === emp.id ? "Cerrar ficha" : "Abrir ficha"}
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      if (window.confirm(`¿Quitar a ${emp.name} de la nomina?`)) removeEmployee(emp.id);
+                      cerrar();
+                    }}
+                  >
+                    Quitar de la nómina
+                  </button>
+                </QuickMenu>
+              );
+            })()}
           </Panel>
           </div>
           )}
