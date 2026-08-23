@@ -13,6 +13,10 @@ import {
   PillD,
   MONEY_OUT_COLOR,
 } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+} from "../ui/planilla";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
 import { purchaseInvoiceMissing } from "../domain/completeness";
 
@@ -73,6 +77,10 @@ export function ComprasTab({
   updatePurchaseInvoice,
   uploadPurchaseInvoiceFile,
 }: ComprasTabProps) {
+  const anchosFaltantes = usePlanillaWidths("compras.faltantes", { label: 300, col: 106, colCompact: 82 });
+  const anchosCajaBlanca = usePlanillaWidths("compras.cajablanca", { label: 300, col: 118, colCompact: 90 });
+  const anchosLimite = usePlanillaWidths("compras.limite", { label: 300, col: 118, colCompact: 90 });
+
   return (
         <div style={styles.column}>
           <Panel span="wide" title="Semaforo de compras">
@@ -100,32 +108,72 @@ export function ComprasTab({
             {stockNeedRows.length === 0 ? (
               <div style={styles.empty}>No hay compras pendientes detectadas desde stock y trabajos aprobados.</div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosFaltantes.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresas</th>
-                    <th>Material</th>
-                    <th>Requerido</th>
-                    <th>Stock</th>
-                    <th>Faltante</th>
-                    <th>Costo estimado</th>
-                    <th>Trabajos</th>
+                    <th style={thEsquina}>
+                      Material
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosFaltantes.startResize(ev, "label")}
+                        onDoubleClick={anchosFaltantes.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Requerido
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosFaltantes.startResize(ev, "col")}
+                        onDoubleClick={anchosFaltantes.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Faltante</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Costo estimado</th>
+                    <th style={thFlexible}>Trabajos · empresas</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {stockNeedRows.map((row) => (
+                  {stockNeedRows.map((row) => {
+                    const estado = row.missing === 0 ? "#16a34a" : row.available > 0 ? "#ca8a04" : "#dc2626";
+                    return (
                     <tr key={row.description}>
-                      <td>{row.companyLabels.join(", ")}</td>
-                      <td>{row.description}</td>
-                      <td>{row.required} {row.unit}</td>
-                      <td>{row.available} {row.unit}</td>
-                      <td>{row.missing} {row.unit}</td>
-                      <td>{money(row.estimatedCost)}</td>
-                      <td>{row.jobs.join(", ")}</td>
+                      <td style={{ ...tdNombre, fontWeight: 400 }} title={row.description}>
+                        <span
+                          title={row.missing === 0 ? "Completo" : row.available > 0 ? "Parcial" : "Hay que comprar todo"}
+                          style={{
+                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                            background: estado,
+                          }}
+                        />
+                        {row.description}
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right" }}>
+                        {row.required} <span style={{ color: "#94a3b8" }}>{row.unit}</span>
+                        <span style={{ color: "#94a3b8" }}> · hay {row.available}</span>
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: estado }}>
+                        {row.missing} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{row.unit}</span>
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(row.estimatedCost)}</td>
+                      <td
+                        style={{ ...tdFlexible, color: "#64748b" }}
+                        title={`${row.jobs.join(", ")} · ${row.companyLabels.join(", ")}`}
+                      >
+                        {row.jobs.join(", ")}
+                        <span style={{ color: "#94a3b8" }}> · {row.companyLabels.join(", ")}</span>
+                      </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
@@ -155,15 +203,32 @@ export function ComprasTab({
             {monthPettyCashExpenses.filter((item) => item.administration === "blanco").length === 0 ? (
               <div style={styles.empty}>No hay gastos de caja chica en blanco en {monthLabel(purchaseMonth)} para levantar dentro de compras.</div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosCajaBlanca.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Fecha</th>
-                    <th>Proveedor</th>
-                    <th>Descripcion</th>
-                    <th>Factura</th>
-                    <th>Total</th>
+                    <th style={thEsquina}>
+                      Descripción
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCajaBlanca.startResize(ev, "label")}
+                        onDoubleClick={anchosCajaBlanca.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Total
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCajaBlanca.startResize(ev, "col")}
+                        onDoubleClick={anchosCajaBlanca.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Fecha</th>
+                    <th style={thFlexible}>Proveedor · factura · empresa</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -171,16 +236,31 @@ export function ComprasTab({
                     .filter((item) => item.administration === "blanco")
                     .map((item) => (
                       <tr key={`pc-white-${item.id}`}>
-                        <td>{getCompanyMeta(item.company).short}</td>
-                        <td>{formatDateDisplay(item.date)}</td>
-                        <td>{item.supplier || "-"}</td>
-                        <td>{item.description}</td>
-                        <td>{item.invoiceNumber || "-"}</td>
-                        <td style={styles.amountOut}>{money(item.amount)}</td>
+                        <td
+                          style={{
+                            ...tdNombre, fontWeight: 400,
+                            boxShadow: `inset 4px 0 0 ${getCompanyMeta(item.company).primary}`,
+                          }}
+                          title={item.description}
+                        >
+                          {item.description}
+                        </td>
+                        <td style={{ ...tdDato, ...styles.amountOut, textAlign: "right", fontWeight: 700 }}>
+                          {money(item.amount)}
+                        </td>
+                        <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.date)}</td>
+                        <td style={{ ...tdFlexible, color: "#64748b" }}>
+                          {item.supplier || "sin proveedor"}
+                          <span style={{ color: "#94a3b8" }}>
+                            {" · "}{item.invoiceNumber || "sin factura"}
+                            {" · "}{getCompanyMeta(item.company).short}
+                          </span>
+                        </td>
                       </tr>
                     ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
@@ -246,15 +326,30 @@ export function ComprasTab({
             {purchaseCalendarRows.length === 0 ? (
               <div style={styles.empty}>Carga fechas de inicio de fabricacion para ver el avance de compras.</div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosLimite.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Presupuesto</th>
-                    <th>Cliente</th>
-                    <th>Desde</th>
-                    <th>Hasta</th>
-                    <th>Barra</th>
+                    <th style={thEsquina}>
+                      Presupuesto · cliente
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosLimite.startResize(ev, "label")}
+                        onDoubleClick={anchosLimite.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Fecha límite
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosLimite.startResize(ev, "col")}
+                        onDoubleClick={anchosLimite.resetCol}
+                      />
+                    </th>
+                    <th style={thFlexible}>Avance desde la aprobación</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -268,14 +363,27 @@ export function ComprasTab({
                     const meta = getCompanyMeta(row.company);
                     return (
                       <tr key={`gantt-purchase-${row.id}`}>
-                        <td>{meta.short}</td>
-                        <td>{row.budgetNumber}</td>
-                        <td>{row.client}</td>
-                        <td>{formatDateDisplay(start)}</td>
-                        <td>{formatDateDisplay(end)}</td>
-                        <td>
+                        <td
+                          style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
+                          title={`${row.budgetNumber} · ${row.client}`}
+                        >
+                          <strong style={{ color: "#0f172a" }}>{row.budgetNumber}</strong>{" "}
+                          <span style={{ color: "#475569" }}>{row.client}</span>
+                        </td>
+                        <td
+                          style={{
+                            ...tdDato, fontWeight: 600,
+                            color: progressPct >= 100 ? "#dc2626" : progressPct >= 80 ? "#ca8a04" : "#475569",
+                          }}
+                        >
+                          {formatDateDisplay(end)}
+                        </td>
+                        <td style={{ ...tdFlexible, padding: "2px 8px" }}>
                           <div style={styles.ganttTrack}>
                             <div style={{ ...styles.ganttFill, width: `${progressPct}%`, background: meta.primary }} />
+                          </div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                            desde {formatDateDisplay(start)} · {elapsedDays} de {totalDays} días · {meta.short}
                           </div>
                         </td>
                       </tr>
@@ -283,6 +391,7 @@ export function ComprasTab({
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 

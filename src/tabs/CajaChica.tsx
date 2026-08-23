@@ -10,7 +10,16 @@ import {
   FileDropButton,
   AmountInput,
   ColorTag,
+  QuickMenu,
+  QuickMenuTitle,
+  QuickMenuSep,
+  quickMenuItem,
 } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+  useCeldaMarcada, inputCelda, inputCeldaDerecha, focoCelda,
+} from "../ui/planilla";
 import { money, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PettyCashFund, PettyCashExpense } from "../domain/types";
@@ -112,6 +121,11 @@ export function CajaChicaTab({
 }: CajaChicaTabProps) {
   const [ocrFundId, setOcrFundId] = React.useState<number | null>(null);
   const effectiveFundId = ocrFundId ?? visiblePettyCashFunds[0]?.id ?? null;
+  const anchosCajas = usePlanillaWidths("cajachica.fondos", { label: 300, col: 118, colCompact: 90 });
+  const marcaCajas = useCeldaMarcada();
+  const [menuCajas, setMenuCajas] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosSeguimiento = usePlanillaWidths("cajachica.seguimiento", { label: 300, col: 118, colCompact: 90 });
+
   return (
         <div style={styles.column}>
           <Panel span="wide" title="Cargar ticket con OCR (leer y confirmar)">
@@ -308,13 +322,19 @@ export function CajaChicaTab({
                         <MiniMetric label="Total asignado" value={money(r.totalAssigned)} />
                         <MiniMetric label="Total rendido" value={money(r.totalRendered)} />
                       </div>
-                      <table style={{ ...styles.table, marginTop: 10 }}>
+                      <table style={{ ...planillaTable, marginTop: 10 }}>
+                        <colgroup>
+                          <col style={colLabel} />
+                          <col style={colDato} />
+                          <col style={colDato} />
+                          <col style={colFlexible} />
+                        </colgroup>
                         <thead>
                           <tr>
-                            <th>Caja</th>
-                            <th>Asignado</th>
-                            <th>Rendido</th>
-                            <th>Saldo</th>
+                            <th style={thEsquina}>Caja</th>
+                            <th style={{ ...thColumna, textAlign: "right" }}>Asignado</th>
+                            <th style={{ ...thColumna, textAlign: "right" }}>Rendido</th>
+                            <th style={{ ...thFlexible, textAlign: "right" }}>Saldo</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -323,13 +343,28 @@ export function CajaChicaTab({
                             .sort((a, b) => a.fund.id - b.fund.id)
                             .map((f) => (
                               <tr key={f.fund.id}>
-                                <td>
-                                  {f.fund.description || "Caja sin descripcion"} ·{" "}
-                                  {getCompanyMeta(f.fund.company).short}
+                                <td
+                                  style={{
+                                    ...tdNombre, fontWeight: 400,
+                                    boxShadow: `inset 4px 0 0 ${getCompanyMeta(f.fund.company).primary}`,
+                                  }}
+                                  title={f.fund.description}
+                                >
+                                  {f.fund.description || "Caja sin descripcion"}
+                                  <span style={{ color: "#94a3b8" }}> · {getCompanyMeta(f.fund.company).short}</span>
                                 </td>
-                                <td>{money(Number(f.fund.assignedAmount || 0))}</td>
-                                <td>{money(f.renderedTotal)}</td>
-                                <td style={f.remainingBalance < 0 ? { color: "#dc2626" } : undefined}>
+                                <td style={{ ...tdDato, textAlign: "right" }}>
+                                  {money(Number(f.fund.assignedAmount || 0))}
+                                </td>
+                                <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>
+                                  {money(f.renderedTotal)}
+                                </td>
+                                <td
+                                  style={{
+                                    ...tdFlexible, textAlign: "right", fontWeight: 700,
+                                    color: f.remainingBalance < 0 ? "#dc2626" : "#0f172a",
+                                  }}
+                                >
                                   {money(f.remainingBalance)}
                                 </td>
                               </tr>
@@ -357,23 +392,34 @@ export function CajaChicaTab({
             {visiblePettyCashFunds.length === 0 ? (
               <div style={styles.empty}>Todavia no hay fondos de caja chica cargados.</div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosCajas.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Activo</th>
-                    <th>Empresa</th>
-                    <th>Descripcion caja chica</th>
-                    <th>Responsable</th>
-                    <th>Monto asignado</th>
-                    <th>Blanca</th>
-                    <th>Negra</th>
-                    <th>Sin clasificar</th>
-                    <th>Entrega</th>
-                    <th>Rendido</th>
-                    <th>Saldo</th>
-                    <th>Estado</th>
-                    <th>Notas</th>
-                    <th></th>
+                    <th style={thEsquina}>
+                      Caja chica · responsable
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCajas.startResize(ev, "label")}
+                        onDoubleClick={anchosCajas.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Asignado
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCajas.startResize(ev, "col")}
+                        onDoubleClick={anchosCajas.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Rendido</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
+                    <th style={thFlexible}>Blanca · negra · sin clasificar · estado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -382,118 +428,164 @@ export function CajaChicaTab({
                       .filter((item) => item.fundId === fund.id)
                       .reduce((acc, item) => acc + Number(item.amount || 0), 0);
                     return (
-                      <tr key={fund.id}>
-                        <td>
-                          <input
-                            type="checkbox"
-                            checked={fund.active}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "active", e.target.checked)}
-                          />
+                      <tr
+                        key={fund.id}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          marcaCajas.marcar(String(fund.id));
+                          setMenuCajas({ x: ev.clientX, y: ev.clientY, id: fund.id });
+                        }}
+                      >
+                        <td
+                          style={{
+                            ...tdNombre, ...marcaCajas.estilo(String(fund.id)), fontWeight: 400, padding: 0,
+                            opacity: fund.active ? 1 : 0.45,
+                            boxShadow: `inset 4px 0 0 ${getCompanyMeta(fund.company).primary}`,
+                          }}
+                        >
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                            <span
+                              title={fund.active ? "Activa" : "Inactiva"}
+                              style={{
+                                display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                                background: fund.active ? "#16a34a" : "#cbd5f5",
+                              }}
+                            />
+                            <input
+                              style={inputCelda}
+                              {...focoCelda}
+                              value={fund.description}
+                              onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "description", e.target.value)}
+                            />
+                            <input
+                              style={{ ...inputCelda, width: 110, color: "#64748b" }}
+                              {...focoCelda}
+                              value={fund.responsible}
+                              onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "responsible", e.target.value)}
+                            />
+                          </span>
                         </td>
-                        <td>
-                          <select
-                            style={styles.input}
-                            value={fund.company}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "company", e.target.value as CompanyName)}
-                          >
-                            {COMPANY_OPTIONS.map((company) => (
-                              <option key={company.value} value={company.value}>
-                                {company.short}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>
-                          <input
-                            style={styles.input}
-                            value={fund.description}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "description", e.target.value)}
-                            placeholder="Ej: Caja montaje, Caja compras chicas"
-                          />
-                        </td>
-                        <td>
-                          <input
-                            style={styles.input}
-                            list="petty-cash-responsibles"
-                            value={fund.responsible}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "responsible", e.target.value)}
-                            placeholder="Responsable"
-                          />
-                        </td>
-                        <td>
+                        <td style={{ ...tdDato, padding: 0 }}>
                           <AmountInput
-                            style={styles.input}
+                            style={inputCeldaDerecha}
+                            {...focoCelda}
                             value={fund.assignedAmount}
                             onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedAmount", n)}
                           />
                         </td>
-                        <td>
-                          <AmountInput
-                            style={styles.input}
-                            value={fund.assignedWhite ?? 0}
-                            onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedWhite", n)}
-                          />
+                        <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{money(rendered)}</td>
+                        <td
+                          style={{
+                            ...tdDato, textAlign: "right", fontWeight: 700,
+                            color: Number(fund.assignedAmount || 0) - rendered <= 0 ? "#166534" : "#0f172a",
+                          }}
+                        >
+                          {money(Number(fund.assignedAmount || 0) - rendered)}
                         </td>
-                        <td>
-                          <AmountInput
-                            style={styles.input}
-                            value={fund.assignedBlack ?? 0}
-                            onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedBlack", n)}
-                          />
-                        </td>
-                        <td>
-                          {(() => {
-                            const sinClasificar =
-                              Number(fund.assignedAmount || 0) -
-                              Number(fund.assignedWhite || 0) -
-                              Number(fund.assignedBlack || 0);
-                            return (
-                              <span
-                                style={sinClasificar !== 0 ? { color: "#b45309", fontWeight: 600 } : undefined}
-                                title={
-                                  sinClasificar !== 0
-                                    ? "Cargá el origen blanco/negro: esta plata NO entra a la reserva hasta clasificarla."
-                                    : "Todo el fondo tiene origen cargado."
-                                }
-                              >
-                                {money(sinClasificar)}
-                              </span>
-                            );
-                          })()}
-                        </td>
-                        <td>
-                          <input
-                            style={styles.input}
-                            type="date"
-                            value={fund.deliveredDate}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "deliveredDate", e.target.value)}
-                          />
-                        </td>
-                        <td>{money(rendered)}</td>
-                        <td>{money(Number(fund.assignedAmount || 0) - rendered)}</td>
-                        <td>
-                          {fund.closed || Number(fund.assignedAmount || 0) - rendered <= 0
-                            ? `Cerrada${fund.closedDate ? ` · ${formatDateDisplay(fund.closedDate)}` : ""}`
-                            : "Activa"}
-                        </td>
-                        <td>
-                          <input
-                            style={styles.input}
-                            value={fund.notes}
-                            onChange={(e) => updateArrayItem(setPettyCashFunds, fund.id, "notes", e.target.value)}
-                          />
-                        </td>
-                        <td>
-                          <button style={styles.smallBtn} onClick={() => removePettyCashFund(fund.id)}>
-                            Quitar
-                          </button>
+                        <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 4, padding: "0 8px", flexWrap: "wrap" }}>
+                            <span style={{ color: "#94a3b8" }}>blanca</span>
+                            <AmountInput
+                              style={{ ...inputCelda, width: 96, textAlign: "right" }}
+                              {...focoCelda}
+                              value={fund.assignedWhite ?? 0}
+                              onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedWhite", n)}
+                            />
+                            <span style={{ color: "#94a3b8" }}>negra</span>
+                            <AmountInput
+                              style={{ ...inputCelda, width: 96, textAlign: "right" }}
+                              {...focoCelda}
+                              value={fund.assignedBlack ?? 0}
+                              onChange={(n) => updateArrayItem(setPettyCashFunds, fund.id, "assignedBlack", n)}
+                            />
+                            {(() => {
+                              const sinClasificar =
+                                Number(fund.assignedAmount || 0) -
+                                Number(fund.assignedWhite || 0) -
+                                Number(fund.assignedBlack || 0);
+                              if (sinClasificar === 0) return null;
+                              return (
+                                <span
+                                  style={{ color: "#b45309", fontWeight: 700 }}
+                                  title="Cargá el origen blanco/negro: esta plata NO entra a la reserva hasta clasificarla."
+                                >
+                                  · {money(sinClasificar)} sin clasificar
+                                </span>
+                              );
+                            })()}
+                            <span style={{ color: "#94a3b8" }}>
+                              {" · "}
+                              {fund.closed || Number(fund.assignedAmount || 0) - rendered <= 0
+                                ? `cerrada${fund.closedDate ? ` ${formatDateDisplay(fund.closedDate)}` : ""}`
+                                : `entregada ${formatDateDisplay(fund.deliveredDate)}`}
+                              {" · "}{getCompanyMeta(fund.company).short}
+                            </span>
+                            {fund.notes ? <span style={{ color: "#94a3b8" }}> · {fund.notes}</span> : null}
+                          </span>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+              </div>
             )}
+              {menuCajas && (() => {
+                const it = visiblePettyCashFunds.find((x: any) => x.id === menuCajas.id);
+                const cerrar = () => {
+                  setMenuCajas(null);
+                  marcaCajas.marcar(null);
+                };
+                if (!it) return null;
+                return (
+                  <QuickMenu x={menuCajas.x} y={menuCajas.y} onClose={cerrar}>
+                    <QuickMenuTitle>{it.description || "caja chica"}</QuickMenuTitle>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        const v = window.prompt("Fecha de entrega (AAAA-MM-DD):", String(it.deliveredDate || ""));
+                        if (v !== null) updateArrayItem(setPettyCashFunds, it.id, "deliveredDate", v.trim());
+                        cerrar();
+                      }}
+                    >
+                      Editar fecha de entrega…
+                    </button>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        const v = window.prompt("Notas:", String(it.notes || ""));
+                        if (v !== null) updateArrayItem(setPettyCashFunds, it.id, "notes", v.trim());
+                        cerrar();
+                      }}
+                    >
+                      Editar notas…
+                    </button>
+                    <QuickMenuSep />
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        updateArrayItem(setPettyCashFunds, it.id, "active", !it.active);
+                        cerrar();
+                      }}
+                    >
+                      {it.active ? "Desactivar" : "Activar"}
+                    </button>
+                    <QuickMenuSep />
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        if (window.confirm(`¿Quitar la caja chica "${it.description}"?`)) {
+                          removePettyCashFund(it.id);
+                        }
+                        cerrar();
+                      }}
+                    >
+                      Quitar caja chica
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
           </Panel>
 
           <Panel title="Fondos operativos y rendicion" span="full">
@@ -686,74 +778,103 @@ export function CajaChicaTab({
                 Todavia no hay gastos aplicados para seguir.
               </div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosSeguimiento.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Caja chica</th>
-                    <th>Responsable asignado</th>
-                    <th>Monto</th>
-                    <th>Fecha de pago</th>
-                    <th>Administracion</th>
-                    <th>Descripcion</th>
-                    <th></th>
+                    <th style={thEsquina}>
+                      Descripción
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosSeguimiento.startResize(ev, "label")}
+                        onDoubleClick={anchosSeguimiento.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Monto
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosSeguimiento.startResize(ev, "col")}
+                        onDoubleClick={anchosSeguimiento.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Fecha de pago</th>
+                    <th style={thFlexible}>Caja chica · responsable · empresa</th>
                   </tr>
                 </thead>
                 <tbody>
                   {pettyCashTrackingRows.map((row) => (
-                    <tr key={`pc-track-${row.id}`}>
-                      <td>{getCompanyMeta(row.company).short}</td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={row.fundId ?? ""}
-                          onChange={(e) =>
-                            updatePettyCashExpense(row.id, "fundId", Number(e.target.value))
-                          }
-                        >
-                          {visiblePettyCashFunds.map((fund) => (
-                            <option key={fund.id} value={fund.id}>
-                              {fund.description || "Caja sin descripcion"} · {getCompanyMeta(fund.company).short}
-                            </option>
-                          ))}
-                        </select>
+                    <tr
+                      key={`pc-track-${row.id}`}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (window.confirm(`¿Quitar el gasto "${row.description || "sin descripción"}"?`)) {
+                          removePettyCashExpense(row.id);
+                        }
+                      }}
+                      title="Click derecho: quitar el gasto"
+                    >
+                      <td
+                        style={{
+                          ...tdNombre, fontWeight: 400, padding: 0,
+                          boxShadow: `inset 4px 0 0 ${row.administration === "blanco" ? "#2563eb" : "#94a3b8"}`,
+                        }}
+                      >
+                        <input
+                          style={{ ...inputCelda, padding: "1px 8px" }}
+                          {...focoCelda}
+                          value={row.description}
+                          onChange={(e) => updatePettyCashExpense(row.id, "description", e.target.value)}
+                          placeholder="Descripcion"
+                        />
                       </td>
-                      <td>{row.responsible}</td>
-                      <td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <AmountInput
-                          style={styles.input}
+                          style={inputCeldaDerecha}
+                          {...focoCelda}
                           value={row.amount}
                           onChange={(n) => updatePettyCashExpense(row.id, "amount", n)}
                         />
                       </td>
-                      <td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <input
-                          style={styles.input}
+                          style={{ ...inputCelda, padding: "1px 6px" }}
+                          {...focoCelda}
                           type="date"
                           value={row.date}
                           onChange={(e) => updatePettyCashExpense(row.id, "date", e.target.value)}
                         />
                       </td>
-                      <td>{row.administration === "blanco" ? "Blanco" : "Negro"}</td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          value={row.description}
-                          onChange={(e) =>
-                            updatePettyCashExpense(row.id, "description", e.target.value)
-                          }
-                          placeholder="Descripcion"
-                        />
-                      </td>
-                      <td>
-                        <button style={styles.smallBtn} onClick={() => removePettyCashExpense(row.id)}>
-                          Quitar
-                        </button>
+                      <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                          <select
+                            style={{ ...inputCelda, width: "auto", maxWidth: 240 }}
+                            value={row.fundId ?? ""}
+                            onChange={(e) => updatePettyCashExpense(row.id, "fundId", Number(e.target.value))}
+                          >
+                            {visiblePettyCashFunds.map((fund) => (
+                              <option key={fund.id} value={fund.id}>
+                                {fund.description || "Caja sin descripcion"} · {getCompanyMeta(fund.company).short}
+                              </option>
+                            ))}
+                          </select>
+                          <span style={{ color: "#94a3b8" }}>
+                            {row.responsible}
+                            {" · "}{row.administration === "blanco" ? "blanco" : "negro"}
+                            {" · "}{getCompanyMeta(row.company).short}
+                          </span>
+                        </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
         </div>
