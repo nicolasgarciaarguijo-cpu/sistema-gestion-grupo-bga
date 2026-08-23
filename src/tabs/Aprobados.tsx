@@ -14,6 +14,10 @@ import {
   ColorTagToggle,
   PillD,
 } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+} from "../ui/planilla";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { moneyToneColor } from "../ui/primitives";
 import { jobPaymentMissing } from "../domain/completeness";
@@ -152,6 +156,9 @@ export function AprobadosTab({
 }: AprobadosTabProps) {
   // Menú contextual (click derecho) del cliente: resumen económico (falta facturar/cobrar/comisión).
   const [ctxMenu, setCtxMenu] = React.useState<null | { x: number; y: number; job: any }>(null);
+  const anchosAprobados = usePlanillaWidths("aprobados.principal", { label: 300, col: 118, colCompact: 90 });
+  const anchosPlanos = usePlanillaWidths("aprobados.planos", { label: 280, col: 120, colCompact: 92 });
+  const anchosLinea = usePlanillaWidths("aprobados.linea", { label: 300, col: 150, colCompact: 110 });
   // Un trabajo está TERMINADO cuando ya se cobró todo y la comisión está paga.
   const isJobDone = (job: any) =>
     Number(job.remainingToPay || 0) <= 1 && Number(job.commissionPending || 0) <= 1;
@@ -232,44 +239,70 @@ export function AprobadosTab({
                 Todos los trabajos activos tienen los planos confirmados.
               </div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosPlanos.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th></th>
-                    <th>Empresa</th>
-                    <th>Cliente</th>
-                    <th>Proyecto</th>
-                    <th>Inicio fabricacion</th>
-                    <th>Cuenta regresiva</th>
-                    <th>Planos</th>
-                    <th>Accion</th>
+                    <th style={thEsquina}>
+                      Cliente · proyecto
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosPlanos.startResize(ev, "label")}
+                        onDoubleClick={anchosPlanos.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Inicio fabricación
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosPlanos.startResize(ev, "col")}
+                        onDoubleClick={anchosPlanos.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Cuenta regresiva</th>
+                    <th style={thFlexible}>Planos · empresa</th>
                   </tr>
                 </thead>
                 <tbody>
                   {planosPending.map(({ job, sem }) => (
-                    <tr key={job.id} style={sem.overdue ? { background: "#fef2f2" } : undefined}>
-                      <td>
-                        <Semaforo level={PLANO_TONE_LEVEL[sem.tone]} size={10} title={sem.label} />
+                    <tr
+                      key={job.id}
+                      style={sem.overdue ? { background: "#fef2f2" } : undefined}
+                      title="Click derecho: abrir la ficha del trabajo"
+                      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
+                    >
+                      <td
+                        style={{
+                          ...tdNombre, fontWeight: 400, background: "inherit",
+                          boxShadow: `inset 4px 0 0 ${getCompanyMeta(job.company).primary}`,
+                        }}
+                        title={`${job.client} · ${job.project}`}
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                          <Semaforo level={PLANO_TONE_LEVEL[sem.tone]} size={10} title={sem.label} />
+                          <span>
+                            <strong style={{ color: "inherit" }}>{job.client}</strong>{" "}
+                            <span style={{ color: "#64748b" }}>{job.project}</span>
+                          </span>
+                        </span>
                       </td>
-                      <td>{getCompanyMeta(job.company).short}</td>
-                      <td>{job.client}</td>
-                      <td>{job.project}</td>
-                      <td>{formatDateDisplay(job.startDate)}</td>
-                      <td>{planoDaysText(sem.daysToStart)}</td>
-                      <td>
-                        {sem.level === "sin"
-                          ? "Sin planos"
-                          : `${sem.fileCount} archivo(s), sin confirmar`}
+                      <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(job.startDate)}</td>
+                      <td style={{ ...tdDato, fontWeight: 600, color: sem.overdue ? "#dc2626" : "#475569" }}>
+                        {planoDaysText(sem.daysToStart)}
                       </td>
-                      <td>
-                        <button style={styles.smallBtn} onClick={() => setSelectedApprovedJobId(job.id)}>
-                          Abrir
-                        </button>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        {sem.level === "sin" ? "Sin planos" : `${sem.fileCount} archivo(s), sin confirmar`}
+                        <span style={{ color: "#94a3b8" }}> · {getCompanyMeta(job.company).short}</span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
@@ -284,6 +317,9 @@ export function AprobadosTab({
                 </ButtonLike>
                 <ButtonLike onClick={() => exportPrint("report-aprobados")} secondary>
                   Reporte
+                </ButtonLike>
+                <ButtonLike onClick={anchosAprobados.toggleCompacto} secondary>
+                  {anchosAprobados.esCompacto ? "Ancho normal" : "Compacto"}
                 </ButtonLike>
               </div>
             }
@@ -304,32 +340,43 @@ export function AprobadosTab({
                   </div>
                 );
               })()}
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosAprobados.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Presupuesto</th>
-                    <th>Origen</th>
-                    <th>Cliente</th>
-                    <th>Aprobacion</th>
-                    <th>Inicio</th>
-                    <th>Entrega</th>
-                    <th>Neto presupuesto</th>
-                    <th>% facturado</th>
-                    <th>Comision</th>
-                    <th>Comision pend.</th>
-                    <th>Valor a cobrar</th>
-                    <th>Cobrado</th>
-                    <th>Saldo</th>
-                    <th>Estado</th>
-                    <th>Planos</th>
-                    <th>Accion</th>
+                    <th style={thEsquina}>
+                      Presupuesto · cliente
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosAprobados.startResize(ev, "label")}
+                        onDoubleClick={anchosAprobados.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Neto
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosAprobados.startResize(ev, "col")}
+                        onDoubleClick={anchosAprobados.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Cobrado</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Comisión pend.</th>
+                    <th style={thFlexible}>Estado · facturado · planos · fechas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {companyApprovedSections.map((group) => (
                     <React.Fragment key={group.value}>
                       <tr>
-                        <td colSpan={16} style={styles.sectionCell}>
+                        <td colSpan={6} style={styles.sectionCell}>
                           <div
                             style={{
                               ...styles.sectionHeader,
@@ -357,97 +404,79 @@ export function AprobadosTab({
                         return (
                         <tr
                           key={job.id}
-                          onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
-                          title={finalizadoPendiente ? `Figura finalizado pero falta: ${faltas.join(", ")}` : "Click derecho: resumen del cliente"}
+                          onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
+                          title={finalizadoPendiente ? `Figura finalizado pero falta: ${faltas.join(", ")}` : "Click derecho: resumen del cliente y abrir ficha"}
                           style={
                             completado
                               ? { background: "#e2e8f0", color: "#64748b" }
                               : finalizadoPendiente
-                              ? { background: "#fef2f2", color: "#991b1b", boxShadow: "inset 3px 0 0 #dc2626" }
+                              ? { background: "#fef2f2", color: "#991b1b" }
                               : listo
                               ? styles.rowGreen
                               : undefined
                           }
                         >
-                          <td>{completado ? "✓ " : finalizadoPendiente ? "⚠ " : listo ? "● " : ""}{job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}</td>
-                          <td>
-                            <span
-                              style={{
-                                ...styles.statusPill,
-                                ...(job.sourceType === "from_budget"
-                                  ? styles.statusBlue
-                                  : job.sourceType === "direct"
-                                  ? styles.statusYellow
-                                  : styles.statusGray),
-                              }}
-                            >
-                              {getApprovedJobSourceLabel(job)}
-                            </span>
+                          <td
+                            style={{
+                              ...tdNombre, fontWeight: 400, background: "inherit",
+                              boxShadow: finalizadoPendiente ? "inset 3px 0 0 #dc2626" : undefined,
+                            }}
+                            title={`${job.budgetNumber} · ${job.client}`}
+                          >
+                            <strong style={{ color: "inherit" }}>
+                              {completado ? "✓ " : finalizadoPendiente ? "⚠ " : listo ? "● " : ""}
+                              {job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}
+                            </strong>{" "}
+                            {job.client}
                           </td>
-                          <td>{job.client}</td>
-                          <td>{formatDateDisplay(job.approvalDate)}</td>
-                          <td>{formatDateDisplay(job.startDate)}</td>
-                          <td>{formatDateDisplay(job.estimatedDeliveryDate)}</td>
-                          <td>{money(job.soldNetPrice)}</td>
-                          <td>
-                            {(() => {
-                              const sem = jobInvoicingSem(job);
-                              return (
-                                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                                  <Semaforo level={sem.level} size={11} title={sem.label} />
-                                  {pct(job.billedPct)}
-                                </span>
-                              );
-                            })()}
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(job.soldNetPrice)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", color: moneyToneColor("in") }}>{money(job.collectedTotal)}</td>
+                          <td
+                            style={{
+                              ...tdDato, textAlign: "right", fontWeight: 700,
+                              color: Number(job.remainingToPay || 0) > 1 ? "#b45309" : "#166534",
+                            }}
+                          >
+                            {money(job.remainingToPay)}
                           </td>
-                          <td style={{ color: moneyToneColor("out") }}>{money(job.commissionAmount)}</td>
-                          <td style={{ color: moneyToneColor("out") }}>{money(job.commissionPending)}</td>
-                          <td>{money(job.valueToCollect)}</td>
-                          <td style={{ color: moneyToneColor("in") }}>{money(job.collectedTotal)}</td>
-                          <td>{money(job.remainingToPay)}</td>
-                          <td>
-                            {(() => {
-                              const sj = getJobSemaphore(job);
-                              return (
-                                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <Semaforo level={sj.level} size={10} title={sj.label} />
-                                  <span>{job.executionStatus}</span>
-                                </span>
-                              );
-                            })()}
+                          <td style={{ ...tdDato, textAlign: "right", color: moneyToneColor("out") }}>
+                            {money(job.commissionPending)}
                           </td>
-                          <td>
-                            {(() => {
-                              const ps = getPlanoSemaphore(job, today);
-                              return (
-                                <span
-                                  style={{ display: "flex", alignItems: "center", gap: 6 }}
-                                  title={`${ps.label}${
-                                    ps.daysToStart !== null ? " · " + planoDaysText(ps.daysToStart) : ""
-                                  }`}
-                                >
-                                  <Semaforo level={PLANO_TONE_LEVEL[ps.tone]} size={10} title={ps.label} />
-                                  <span>
-                                    {ps.level === "listo"
-                                      ? "Listos"
-                                      : ps.level === "proceso"
-                                      ? "Sin confirmar"
-                                      : "Sin planos"}
+                          <td style={{ ...tdFlexible, color: "#64748b" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                              {(() => {
+                                const sj = getJobSemaphore(job);
+                                return <Semaforo level={sj.level} size={10} title={sj.label} />;
+                              })()}
+                              <span>{job.executionStatus}</span>
+                              <span style={{ color: "#cbd5e1" }}>·</span>
+                              {(() => {
+                                const sem = jobInvoicingSem(job);
+                                return <Semaforo level={sem.level} size={10} title={sem.label} />;
+                              })()}
+                              <span>{pct(job.billedPct)} facturado</span>
+                              <span style={{ color: "#cbd5e1" }}>·</span>
+                              {(() => {
+                                const ps = getPlanoSemaphore(job, today);
+                                return (
+                                  <span
+                                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
+                                    title={`${ps.label}${ps.daysToStart !== null ? " · " + planoDaysText(ps.daysToStart) : ""}`}
+                                  >
+                                    <Semaforo level={PLANO_TONE_LEVEL[ps.tone]} size={10} title={ps.label} />
+                                    <span>
+                                      {ps.level === "listo" ? "planos listos" : ps.level === "proceso" ? "planos sin confirmar" : "sin planos"}
+                                    </span>
                                   </span>
-                                </span>
-                              );
-                            })()}
-                          </td>
-                          <td>
-                            {selectedApprovedJobId === job.id ? (
-                              <button style={styles.smallBtn} onClick={() => setSelectedApprovedJobId(null)}>
-                                Cerrar
-                              </button>
-                            ) : (
-                              <button style={styles.smallBtn} onClick={() => setSelectedApprovedJobId(job.id)}>
-                                Abrir
-                              </button>
-                            )}
+                                );
+                              })()}
+                              <span style={{ color: "#cbd5e1" }}>·</span>
+                              <span style={{ color: "#94a3b8" }} title="Aprobación · inicio · entrega">
+                                {formatDateDisplay(job.approvalDate)} → {formatDateDisplay(job.startDate)} → {formatDateDisplay(job.estimatedDeliveryDate)}
+                              </span>
+                              <span style={{ color: "#cbd5e1" }}>·</span>
+                              <span style={{ color: "#94a3b8" }}>{getApprovedJobSourceLabel(job)}</span>
+                            </span>
                           </td>
                         </tr>
                         );
@@ -456,6 +485,7 @@ export function AprobadosTab({
                   ))}
                 </tbody>
               </table>
+              </div>
               </>
             )}
           </Panel>
@@ -464,44 +494,59 @@ export function AprobadosTab({
             {approvedJobsTimelineRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay trabajos aprobados para mostrar en la linea de tiempo.</div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosLinea.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Presupuesto</th>
-                    <th>Cliente</th>
-                    <th>Inicio</th>
-                    <th>Entrega</th>
-                    <th>Tiempo</th>
-                    <th>Estado</th>
-                    <th>Compras</th>
+                    <th style={thEsquina}>
+                      Presupuesto · cliente
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosLinea.startResize(ev, "label")}
+                        onDoubleClick={anchosLinea.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Tiempo
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosLinea.startResize(ev, "col")}
+                        onDoubleClick={anchosLinea.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Avance</th>
+                    <th style={thFlexible}>Fechas · compras</th>
                   </tr>
                 </thead>
                 <tbody>
                   {approvedJobsTimelineRows.map((row) => {
                     const companyMetaRow = getCompanyMeta(row.company);
                     return (
-                      <tr key={`timeline-${row.id}`} style={{ background: `${companyMetaRow.soft}33` }}>
-                        <td>{companyMetaRow.short}</td>
-                        <td>{row.isUpdate ? `${row.budgetNumber} · Act. ${row.revisionNumber - 1}` : row.budgetNumber}</td>
-                        <td>{row.client}</td>
-                        <td>{formatDateDisplay(row.start)}</td>
-                        <td>{formatDateDisplay(row.end)}</td>
-                        <td>
+                      <tr key={`timeline-${row.id}`}>
+                        <td
+                          style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${companyMetaRow.primary}` }}
+                          title={`${row.budgetNumber} · ${row.client}`}
+                        >
+                          <strong style={{ color: "#0f172a" }}>
+                            {row.isUpdate ? `${row.budgetNumber} · Act. ${row.revisionNumber - 1}` : row.budgetNumber}
+                          </strong>{" "}
+                          <span style={{ color: "#475569" }}>{row.client}</span>
+                        </td>
+                        <td style={{ ...tdDato, padding: "2px 6px" }}>
                           <div style={styles.timelineBlock}>
                             <div style={styles.timelineLabel}>{row.elapsedDays} / {row.totalDays} dias</div>
                             <div style={styles.ganttTrack}>
                               <div
-                                style={{
-                                  ...styles.ganttFill,
-                                  width: `${row.timeProgressPct}%`,
-                                  background: companyMetaRow.primary,
-                                }}
+                                style={{ ...styles.ganttFill, width: `${row.timeProgressPct}%`, background: companyMetaRow.primary }}
                               />
                             </div>
                           </div>
                         </td>
-                        <td>
+                        <td style={{ ...tdDato, padding: "2px 6px" }}>
                           <div style={styles.timelineBlock}>
                             <div style={styles.timelineLabel}>{row.executionStatus}</div>
                             <div style={styles.ganttTrack}>
@@ -520,23 +565,22 @@ export function AprobadosTab({
                             </div>
                           </div>
                         </td>
-                        <td>
+                        <td style={{ ...tdFlexible, color: "#64748b" }}>
+                          {formatDateDisplay(row.start)} → {formatDateDisplay(row.end)}
+                          <span style={{ color: "#cbd5e1" }}> · </span>
                           <span
-                            style={{
-                              ...styles.statusPill,
-                              ...(row.materialMissingCount > 0 ? styles.statusYellow : styles.statusGreen),
-                            }}
+                            style={{ fontWeight: 700, color: row.materialMissingCount > 0 ? "#ca8a04" : "#166534" }}
                           >
-                            {row.materialMissingCount > 0
-                              ? `${row.materialMissingCount} faltantes`
-                              : "Completo"}
+                            {row.materialMissingCount > 0 ? `${row.materialMissingCount} faltantes` : "compras completas"}
                           </span>
+                          <span style={{ color: "#94a3b8" }}> · {companyMetaRow.short}</span>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
@@ -906,26 +950,41 @@ export function AprobadosTab({
                 {selectedApprovedJob.workFiles.length === 0 ? (
                   <div style={styles.empty}>No hay archivos vinculados a este trabajo.</div>
                 ) : (
-                  <table style={styles.table}>
+                  <table style={planillaTable}>
+                    <colgroup>
+                      <col style={colLabel} />
+                      <col style={colFlexible} />
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th>Tipo</th>
-                        <th>Archivo</th>
-                        <th></th>
+                        <th style={thEsquina}>Archivo</th>
+                        <th style={thFlexible}>Tipo</th>
                       </tr>
                     </thead>
                     <tbody>
                       {selectedApprovedJob.workFiles.map((file) => (
-                        <tr key={file.id}>
-                          <td>{file.kind === "plano" ? "Plano" : "Referencia"}</td>
-                          <td>{file.name}</td>
-                          <td>
-                            <button
-                              style={styles.smallBtn}
-                              onClick={() => removeApprovedJobWorkFile(selectedApprovedJob.id, file.id)}
-                            >
-                              Quitar
-                            </button>
+                        <tr
+                          key={file.id}
+                          title="Click derecho: quitar el archivo"
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (window.confirm(`¿Quitar "${file.name}" de este trabajo?`)) {
+                              removeApprovedJobWorkFile(selectedApprovedJob.id, file.id);
+                            }
+                          }}
+                        >
+                          <td style={{ ...tdNombre, fontWeight: 400 }} title={file.name}>
+                            <span
+                              style={{
+                                display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                                background: file.kind === "plano" ? "#2563eb" : "#94a3b8",
+                              }}
+                            />
+                            {file.name}
+                          </td>
+                          <td style={{ ...tdFlexible, color: "#64748b" }}>
+                            {file.kind === "plano" ? "Plano" : "Referencia"}
                           </td>
                         </tr>
                       ))}
@@ -956,23 +1015,39 @@ export function AprobadosTab({
                       )}
                     </div>
                     {linked.length > 0 && (
-                      <table style={styles.table}>
+                      <table style={planillaTable}>
+                        <colgroup>
+                          <col style={colLabel} />
+                          <col style={colDato} />
+                          <col style={colFlexible} />
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th style={thEsquina}>Factura</th>
+                            <th style={{ ...thColumna, textAlign: "right" }}>Total</th>
+                            <th style={thFlexible}>Fecha · razón social</th>
+                          </tr>
+                        </thead>
                         <tbody>
                           {linked.map((i: any) => (
-                            <tr key={i.id}>
-                              <td style={{ width: 96 }}>{i.date}</td>
-                              <td style={{ fontSize: 12 }}>
+                            <tr
+                              key={i.id}
+                              title="Click derecho: desvincular la factura de este trabajo"
+                              onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (window.confirm(`¿Desvincular la factura ${i.pointOfSale}-${i.number} de este trabajo?`)) {
+                                  updateIssuedInvoice(i.id, "jobBudgetNumber", "");
+                                }
+                              }}
+                            >
+                              <td style={{ ...tdNombre, fontWeight: 400 }}>
                                 {i.pointOfSale}-{i.number}
                               </td>
-                              <td style={{ fontSize: 12 }}>{(i.counterpartyName || "").slice(0, 40)}</td>
-                              <td style={{ textAlign: "right", width: 120 }}>{money(i.total)}</td>
-                              <td style={{ width: 96 }}>
-                                <button
-                                  style={styles.smallBtn}
-                                  onClick={() => updateIssuedInvoice(i.id, "jobBudgetNumber", "")}
-                                >
-                                  Desvincular
-                                </button>
+                              <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(i.total)}</td>
+                              <td style={{ ...tdFlexible, color: "#64748b" }} title={i.counterpartyName}>
+                                {i.date}
+                                <span style={{ color: "#94a3b8" }}> · {(i.counterpartyName || "").slice(0, 40)}</span>
                               </td>
                             </tr>
                           ))}
