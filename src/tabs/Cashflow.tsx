@@ -1,6 +1,11 @@
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, ColorTagToggle, moneyToneColor } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+  inputCelda, inputCeldaDerecha, focoCelda,
+} from "../ui/planilla";
 import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
@@ -234,6 +239,10 @@ export function CashflowTab({
   balanceFiscalYearOptions,
   updateCompanyFiscalStartMonth,
 }: CashflowTabProps) {
+  const anchosDeudas = usePlanillaWidths("cashflow.deudas", { label: 280, col: 116, colCompact: 88 });
+  const anchosCapital = usePlanillaWidths("cashflow.capital", { label: 260, col: 120, colCompact: 92 });
+  const anchosEfectivo = usePlanillaWidths("cashflow.efectivo", { label: 260, col: 120, colCompact: 92 });
+
   return (
         <div style={styles.column}>
           <Panel title="Balance · facturacion y cobranza" span="wide">
@@ -645,79 +654,144 @@ export function CashflowTab({
                 ) : null;
               })()}
             </div>
-            <table style={styles.table}>
+            <div style={{ ...planillaWrap, ...anchosDeudas.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Activo</th>
-                  <th>Empresa</th>
-                  <th>Concepto</th>
-                  <th>Dia</th>
-                  <th>Proxima cuota</th>
-                  <th>USD/cuota (ref.)</th>
-                  <th>Cuotas restantes</th>
-                  <th>Prox. vencimiento</th>
-                  <th>Notas</th>
-                  <th></th>
+                  <th style={thEsquina}>
+                    Concepto
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosDeudas.startResize(ev, "label")}
+                      onDoubleClick={anchosDeudas.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Próxima cuota
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosDeudas.startResize(ev, "col")}
+                      onDoubleClick={anchosDeudas.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Cuotas restantes</th>
+                  <th style={thColumna}>Próx. vencimiento</th>
+                  <th style={thFlexible}>Día · USD por cuota · empresa · notas</th>
                 </tr>
               </thead>
               <tbody>
                 {debtPlans.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <input type="checkbox" checked={item.active} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "active", e.target.checked)} />
+                  <tr
+                    key={item.id}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      if (window.confirm(`¿Quitar "${item.concept}" de deudas y aportes?`)) removeDebtPlan(item.id);
+                    }}
+                    title="Click derecho: quitar. El punto verde activa o desactiva."
+                  >
+                    <td style={{ ...tdNombre, fontWeight: 400, padding: 0, opacity: item.active ? 1 : 0.45 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                        <span
+                          title={item.active ? "Activo" : "Inactivo"}
+                          onClick={() => updateArrayItem(setDebtPlans, item.id, "active", !item.active)}
+                          style={{
+                            display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                            cursor: "pointer", background: item.active ? "#16a34a" : "#cbd5f5",
+                          }}
+                        />
+                        <input
+                          style={inputCelda}
+                          {...focoCelda}
+                          value={item.concept}
+                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "concept", e.target.value)}
+                        />
+                      </span>
                     </td>
-                    <td>
-                      <select style={styles.input} value={item.company} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "company", e.target.value)}>
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
+                    <td style={{ ...tdDato, padding: 0 }}>
+                      <AmountInput
+                        style={inputCeldaDerecha}
+                        {...focoCelda}
+                        value={item.nextInstallmentAmount}
+                        onChange={(n) => updateArrayItem(setDebtPlans, item.id, "nextInstallmentAmount", n)}
+                      />
                     </td>
-                    <td>
-                      <input style={styles.input} value={item.concept} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "concept", e.target.value)} />
-                    </td>
-                    <td>
-                      <input style={styles.input} type="number" value={item.dueDay} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "dueDay", Number(e.target.value))} />
-                    </td>
-                    <td>
-                      <AmountInput style={styles.input}value={item.nextInstallmentAmount} onChange={(n) => updateArrayItem(setDebtPlans, item.id, "nextInstallmentAmount", n)} />
-                    </td>
-                    <td>
+                    <td style={{ ...tdDato, padding: 0 }}>
                       <input
-                        style={styles.input}
+                        style={inputCeldaDerecha}
+                        {...focoCelda}
                         type="number"
-                        placeholder="opcional"
-                        value={item.usdValuePerInstallment ?? ""}
+                        value={item.remainingInstallments}
                         onChange={(e) =>
-                          updateArrayItem(
-                            setDebtPlans,
-                            item.id,
-                            "usdValuePerInstallment",
-                            e.target.value === "" ? (undefined as any) : Number(e.target.value)
-                          )
+                          updateArrayItem(setDebtPlans, item.id, "remainingInstallments", Number(e.target.value))
                         }
                       />
                     </td>
-                    <td>
-                      <input style={styles.input} type="number" value={item.remainingInstallments} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "remainingInstallments", Number(e.target.value))} />
+                    <td style={{ ...tdDato, padding: 0 }}>
+                      <input
+                        style={{ ...inputCelda, padding: "1px 6px" }}
+                        {...focoCelda}
+                        type="date"
+                        value={item.nextDueDate}
+                        onChange={(e) => updateArrayItem(setDebtPlans, item.id, "nextDueDate", e.target.value)}
+                      />
                     </td>
-                    <td>
-                      <input style={styles.input} type="date" value={item.nextDueDate} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "nextDueDate", e.target.value)} />
-                    </td>
-                    <td>
-                      <input style={styles.input} value={item.notes} onChange={(e) => updateArrayItem(setDebtPlans, item.id, "notes", e.target.value)} />
-                    </td>
-                    <td>
-                      <button style={styles.smallBtn} onClick={() => removeDebtPlan(item.id)}>
-                        Quitar
-                      </button>
+                    <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
+                        <span style={{ color: "#94a3b8" }}>día</span>
+                        <input
+                          style={{ ...inputCelda, width: 44, textAlign: "right" }}
+                          {...focoCelda}
+                          type="number"
+                          value={item.dueDay}
+                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "dueDay", Number(e.target.value))}
+                        />
+                        <span style={{ color: "#94a3b8" }}>U$S/cuota</span>
+                        <input
+                          style={{ ...inputCelda, width: 72, textAlign: "right" }}
+                          {...focoCelda}
+                          type="number"
+                          placeholder="opcional"
+                          value={item.usdValuePerInstallment ?? ""}
+                          onChange={(e) =>
+                            updateArrayItem(
+                              setDebtPlans,
+                              item.id,
+                              "usdValuePerInstallment",
+                              e.target.value === "" ? (undefined as any) : Number(e.target.value)
+                            )
+                          }
+                        />
+                        <select
+                          style={{ ...inputCelda, width: "auto" }}
+                          value={item.company}
+                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "company", e.target.value)}
+                        >
+                          {COMPANY_OPTIONS.map((company) => (
+                            <option key={company.value} value={company.value}>
+                              {company.short}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
+                          {...focoCelda}
+                          value={item.notes}
+                          placeholder="notas"
+                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "notes", e.target.value)}
+                        />
+                      </span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           </Panel>
 
           <Panel title={`Calendario anual de desendeudamiento ${analysisYear}`} span="wide">
@@ -992,127 +1066,143 @@ export function CashflowTab({
                 No hay aportes ni préstamos cargados. Usá "Agregar movimiento" para asentar el primero.
               </div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosCapital.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Fecha</th>
-                    <th>Empresa</th>
-                    <th>Origen</th>
-                    <th>Tipo</th>
-                    <th>Movimiento</th>
-                    <th>Color</th>
-                    <th>Monto $</th>
-                    <th>USD (ref.)</th>
-                    <th>Notas</th>
-                    <th></th>
+                    <th style={thEsquina}>
+                      Origen
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCapital.startResize(ev, "label")}
+                        onDoubleClick={anchosCapital.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Monto $
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCapital.startResize(ev, "col")}
+                        onDoubleClick={anchosCapital.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Fecha</th>
+                    <th style={thFlexible}>Tipo · movimiento · color · empresa · U$S · notas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {capitalEntries.map((item) => (
-                    <tr key={item.id}>
-                      <td>
+                    <tr
+                      key={item.id}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (window.confirm(`¿Quitar "${item.origin}" de aportes y préstamos?`)) removeCapitalEntry(item.id);
+                      }}
+                      title="Click derecho: quitar el movimiento"
+                    >
+                      <td
+                        style={{
+                          ...tdNombre, fontWeight: 400, padding: 0,
+                          boxShadow: `inset 4px 0 0 ${item.direction === "recibido" ? "#16a34a" : "#dc2626"}`,
+                        }}
+                      >
                         <input
-                          style={styles.input}
+                          style={{ ...inputCelda, padding: "1px 8px" }}
+                          {...focoCelda}
+                          value={item.origin}
+                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "origin", e.target.value)}
+                        />
+                      </td>
+                      <td style={{ ...tdDato, padding: 0 }}>
+                        <AmountInput
+                          style={{
+                            ...inputCeldaDerecha,
+                            color: item.direction === "recibido" ? "#166534" : "#b91c1c",
+                            fontWeight: 700,
+                          }}
+                          {...focoCelda}
+                          value={item.amount}
+                          onChange={(n) => updateArrayItem(setCapitalEntries, item.id, "amount", n)}
+                        />
+                      </td>
+                      <td style={{ ...tdDato, padding: 0 }}>
+                        <input
+                          style={{ ...inputCelda, padding: "1px 6px" }}
+                          {...focoCelda}
                           type="date"
                           value={item.date}
                           onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "date", e.target.value)}
                         />
                       </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={item.company}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "company", e.target.value)}
-                        >
-                          {COMPANY_OPTIONS.map((company) => (
-                            <option key={company.value} value={company.value}>
-                              {company.short}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          placeholder="Gustavo, Nicolás, banco..."
-                          value={item.origin}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "origin", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={item.kind}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "kind", e.target.value)}
-                        >
-                          <option value="aporte">Aporte</option>
-                          <option value="prestamo">Préstamo</option>
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={item.direction}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "direction", e.target.value)}
-                        >
-                          <option value="recibido">Recibido</option>
-                          <option value="devuelto">Devuelto</option>
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={item.color}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "color", e.target.value)}
-                        >
-                          <option value="blanco">Blanco</option>
-                          <option value="negro">Negro</option>
-                        </select>
-                        <ColorTagToggle
-                          value={item.color}
-                          onSet={(v) => updateArrayItem(setCapitalEntries, item.id, "color", v)}
-                          size={16}
-                        />
-                      </td>
-                      <td>
-                        <AmountInput
-                          style={styles.input}
-                          value={item.amount}
-                          onChange={(n) => updateArrayItem(setCapitalEntries, item.id, "amount", n)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          type="number"
-                          placeholder="opcional"
-                          value={item.usdValue ?? ""}
-                          onChange={(e) =>
-                            updateArrayItem(
-                              setCapitalEntries,
-                              item.id,
-                              "usdValue",
-                              e.target.value === "" ? (undefined as any) : Number(e.target.value)
-                            )
-                          }
-                        />
-                      </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          value={item.notes}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "notes", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <button style={styles.smallBtn} onClick={() => removeCapitalEntry(item.id)}>
-                          Quitar
-                        </button>
+                      <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
+                          <select
+                            style={{ ...inputCelda, width: "auto" }}
+                            value={item.kind}
+                            onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "kind", e.target.value)}
+                          >
+                            <option value="aporte">Aporte</option>
+                            <option value="prestamo">Préstamo</option>
+                          </select>
+                          <select
+                            style={{ ...inputCelda, width: "auto" }}
+                            value={item.direction}
+                            onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "direction", e.target.value)}
+                          >
+                            <option value="recibido">Recibido</option>
+                            <option value="devuelto">Devuelto</option>
+                          </select>
+                          <ColorTagToggle
+                            value={item.color}
+                            onSet={(v) => updateArrayItem(setCapitalEntries, item.id, "color", v)}
+                            size={16}
+                          />
+                          <select
+                            style={{ ...inputCelda, width: "auto" }}
+                            value={item.company}
+                            onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "company", e.target.value)}
+                          >
+                            {COMPANY_OPTIONS.map((company) => (
+                              <option key={company.value} value={company.value}>
+                                {company.short}
+                              </option>
+                            ))}
+                          </select>
+                          <span style={{ color: "#94a3b8" }}>U$S</span>
+                          <input
+                            style={{ ...inputCelda, width: 72, textAlign: "right" }}
+                            {...focoCelda}
+                            type="number"
+                            placeholder="opcional"
+                            value={item.usdValue ?? ""}
+                            onChange={(e) =>
+                              updateArrayItem(
+                                setCapitalEntries,
+                                item.id,
+                                "usdValue",
+                                e.target.value === "" ? (undefined as any) : Number(e.target.value)
+                              )
+                            }
+                          />
+                          <input
+                            style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
+                            {...focoCelda}
+                            value={item.notes}
+                            placeholder="notas"
+                            onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "notes", e.target.value)}
+                          />
+                        </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
@@ -1155,110 +1245,129 @@ export function CashflowTab({
                 No hay efectivo fuera del banco cargado. Usá "Agregar movimiento" para asentar el primero.
               </div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosEfectivo.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Fecha</th>
-                    <th>Empresa</th>
-                    <th>Descripción</th>
-                    <th>Moneda</th>
-                    <th>Color</th>
-                    <th>Movimiento</th>
-                    <th>Monto</th>
-                    <th>Notas</th>
-                    <th></th>
+                    <th style={thEsquina}>
+                      Descripción
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosEfectivo.startResize(ev, "label")}
+                        onDoubleClick={anchosEfectivo.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Monto
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosEfectivo.startResize(ev, "col")}
+                        onDoubleClick={anchosEfectivo.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Fecha</th>
+                    <th style={thFlexible}>Moneda · movimiento · color · empresa · notas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {cashHoldings.map((item) => (
-                    <tr key={item.id}>
-                      <td>
+                    <tr
+                      key={item.id}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        if (window.confirm(`¿Quitar "${item.description}" del efectivo fuera del banco?`)) {
+                          removeCashHolding(item.id);
+                        }
+                      }}
+                      title="Click derecho: quitar el movimiento"
+                    >
+                      <td
+                        style={{
+                          ...tdNombre, fontWeight: 400, padding: 0,
+                          boxShadow: `inset 4px 0 0 ${item.kind === "ingreso" ? "#16a34a" : "#dc2626"}`,
+                        }}
+                      >
                         <input
-                          style={styles.input}
+                          style={{ ...inputCelda, padding: "1px 8px" }}
+                          {...focoCelda}
+                          value={item.description}
+                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "description", e.target.value)}
+                        />
+                      </td>
+                      <td style={{ ...tdDato, padding: 0 }}>
+                        <AmountInput
+                          style={{
+                            ...inputCeldaDerecha,
+                            color: item.kind === "ingreso" ? "#166534" : "#b91c1c",
+                            fontWeight: 700,
+                          }}
+                          {...focoCelda}
+                          value={item.amount}
+                          onChange={(n) => updateArrayItem(setCashHoldings, item.id, "amount", n)}
+                        />
+                      </td>
+                      <td style={{ ...tdDato, padding: 0 }}>
+                        <input
+                          style={{ ...inputCelda, padding: "1px 6px" }}
+                          {...focoCelda}
                           type="date"
                           value={item.date}
                           onChange={(e) => updateArrayItem(setCashHoldings, item.id, "date", e.target.value)}
                         />
                       </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={item.company}
-                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "company", e.target.value)}
-                        >
-                          {COMPANY_OPTIONS.map((company) => (
-                            <option key={company.value} value={company.value}>
-                              {company.short}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          placeholder="Ej: caja de seguridad, plata en mano"
-                          value={item.description}
-                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "description", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={item.currency}
-                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "currency", e.target.value)}
-                        >
-                          <option value="ARS">$ Pesos</option>
-                          <option value="USD">U$S Dólares</option>
-                        </select>
-                      </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={item.color}
-                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "color", e.target.value)}
-                        >
-                          <option value="blanco">Blanco</option>
-                          <option value="negro">Negro</option>
-                        </select>
-                        <ColorTagToggle
-                          value={item.color}
-                          onSet={(v) => updateArrayItem(setCashHoldings, item.id, "color", v)}
-                          size={16}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={item.kind}
-                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "kind", e.target.value)}
-                        >
-                          <option value="ingreso">Ingreso</option>
-                          <option value="egreso">Egreso</option>
-                        </select>
-                      </td>
-                      <td>
-                        <AmountInput
-                          style={styles.input}
-                          value={item.amount}
-                          onChange={(n) => updateArrayItem(setCashHoldings, item.id, "amount", n)}
-                        />
-                      </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          value={item.notes}
-                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "notes", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <button style={styles.smallBtn} onClick={() => removeCashHolding(item.id)}>
-                          Quitar
-                        </button>
+                      <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
+                          <select
+                            style={{ ...inputCelda, width: "auto" }}
+                            value={item.currency}
+                            onChange={(e) => updateArrayItem(setCashHoldings, item.id, "currency", e.target.value)}
+                          >
+                            <option value="ARS">$ Pesos</option>
+                            <option value="USD">U$S Dólares</option>
+                          </select>
+                          <select
+                            style={{ ...inputCelda, width: "auto" }}
+                            value={item.kind}
+                            onChange={(e) => updateArrayItem(setCashHoldings, item.id, "kind", e.target.value)}
+                          >
+                            <option value="ingreso">Ingreso</option>
+                            <option value="egreso">Egreso</option>
+                          </select>
+                          <ColorTagToggle
+                            value={item.color}
+                            onSet={(v) => updateArrayItem(setCashHoldings, item.id, "color", v)}
+                            size={16}
+                          />
+                          <select
+                            style={{ ...inputCelda, width: "auto" }}
+                            value={item.company}
+                            onChange={(e) => updateArrayItem(setCashHoldings, item.id, "company", e.target.value)}
+                          >
+                            {COMPANY_OPTIONS.map((company) => (
+                              <option key={company.value} value={company.value}>
+                                {company.short}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
+                            {...focoCelda}
+                            value={item.notes}
+                            placeholder="notas"
+                            onChange={(e) => updateArrayItem(setCashHoldings, item.id, "notes", e.target.value)}
+                          />
+                        </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
         </div>

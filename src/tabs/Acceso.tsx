@@ -1,6 +1,10 @@
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, ButtonLike } from "../ui/primitives";
+import {
+  planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible,
+} from "../ui/planilla";
 import type { CompanyName } from "../domain/types";
 
 type AccesoTabProps = {
@@ -266,14 +270,17 @@ export function AccesoTab({
                     colaboracion actualizado para habilitar el directorio interno.
                   </div>
                 ) : (
-                  <table style={styles.table}>
+                  <table style={planillaTable}>
+                    <colgroup>
+                      <col style={colLabel} />
+                      <col style={colDato} />
+                      <col style={colFlexible} />
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th>Nombre</th>
-                        <th>Rol</th>
-                        <th>Estado</th>
-                        <th>En linea</th>
-                        <th>ID</th>
+                        <th style={thEsquina}>Nombre</th>
+                        <th style={thColumna}>Rol</th>
+                        <th style={thFlexible}>Estado · sesión · ID</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -281,13 +288,29 @@ export function AccesoTab({
                         const activeSession = supabaseActiveSessions.find(
                           (session) => session.user_id === user.id
                         );
+                        const activo = user.active !== false;
                         return (
                           <tr key={`directory-user-${user.id}`}>
-                            <td>{user.full_name || "Usuario sin nombre"}</td>
-                            <td>{user.is_superadmin ? "Administrador" : "Operativo"}</td>
-                            <td>{user.active === false ? "Inactivo" : "Activo"}</td>
-                            <td>{activeSession ? "Conectado" : "Sin sesion"}</td>
-                            <td>{user.id.slice(0, 8)}</td>
+                            <td style={{ ...tdNombre, fontWeight: 400, opacity: activo ? 1 : 0.45 }}>
+                              <span
+                                title={activeSession ? "Conectado ahora" : activo ? "Activo, sin sesión" : "Inactivo"}
+                                style={{
+                                  display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                                  background: activeSession ? "#16a34a" : activo ? "#cbd5f5" : "#dc2626",
+                                }}
+                              />
+                              {user.full_name || "Usuario sin nombre"}
+                            </td>
+                            <td style={{ ...tdDato, color: "#475569" }}>
+                              {user.is_superadmin ? "Administrador" : "Operativo"}
+                            </td>
+                            <td style={{ ...tdFlexible, color: "#64748b" }}>
+                              {activo ? "Activo" : "Inactivo"}
+                              <span style={{ color: "#94a3b8" }}>
+                                {" · "}{activeSession ? "conectado" : "sin sesión"}
+                                {" · "}{user.id.slice(0, 8)}
+                              </span>
+                            </td>
                           </tr>
                         );
                       })}
