@@ -264,6 +264,10 @@ export function CostosTab({
   const anchosProveedores = usePlanillaWidths("costos.proveedores", { label: 280, col: 150, colCompact: 112 });
   const anchosGrupos = usePlanillaWidths("costos.grupos", { label: 280, col: 120, colCompact: 92 });
   const anchosReglas = usePlanillaWidths("costos.reglas", { label: 320, col: 180, colCompact: 130 });
+  const anchosExtracto = usePlanillaWidths("costos.extracto", { label: 340, col: 124, colCompact: 94 });
+  const anchosEspejo = usePlanillaWidths("costos.espejo", { label: 340, col: 124, colCompact: 94 });
+  const anchosCajaChica = usePlanillaWidths("costos.cajachica", { label: 320, col: 124, colCompact: 94 });
+  const anchosCcProv = usePlanillaWidths("costos.ccproveedores", { label: 300, col: 130, colCompact: 100 });
   const anchosGastos = usePlanillaWidths("costos.gastos", { label: 260, col: 108, colCompact: 82 });
   const marcaGastos = useCeldaMarcada();
   const [soloSinGrupo, setSoloSinGrupo] = React.useState(false);
@@ -553,84 +557,103 @@ export function CostosTab({
               solo se cargan los debitos tildados. Los creditos (plata que entra) no son costos.
             </div>
             <div style={{ overflowX: "auto" }}>
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosExtracto.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Cargar</th>
-                    <th>Fecha</th>
-                    <th>Concepto</th>
-                    <th>Tipo</th>
-                    <th style={{ textAlign: "right" }}>Importe</th>
-                    <th>Grupo</th>
-                    <th>Admin.</th>
+                    <th style={thEsquina}>
+                      Concepto del banco
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosExtracto.startResize(ev, "label")}
+                        onDoubleClick={anchosExtracto.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Importe
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosExtracto.startResize(ev, "col")}
+                        onDoubleClick={anchosExtracto.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Fecha</th>
+                    <th style={thFlexible}>Grupo · administración</th>
                   </tr>
                 </thead>
                 <tbody>
                   {statementDraft.map((row) => (
-                    <tr key={row.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={row.include}
-                          onChange={(e) =>
-                            updateStatementDraftRow(row.id, "include", e.target.checked)
-                          }
-                        />
+                    <tr key={row.id} style={row.include ? undefined : { opacity: 0.45 }}>
+                      <td style={{ ...tdNombre, fontWeight: 400, padding: 0 }} title={row.concept}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                          <input
+                            type="checkbox"
+                            checked={row.include}
+                            title="Cargar este movimiento"
+                            style={{ flex: "0 0 auto" }}
+                            onChange={(e) => updateStatementDraftRow(row.id, "include", e.target.checked)}
+                          />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {row.concept}
+                          </span>
+                        </span>
                       </td>
-                      <td>{row.date}</td>
-                      <td>{row.concept}</td>
-                      <td>{row.movementType === "debito" ? "Debito" : "Credito"}</td>
                       <td
                         style={{
-                          textAlign: "right",
+                          ...tdDato, textAlign: "right", fontWeight: 700,
                           color: moneyToneColor(row.movementType === "debito" ? "out" : "in"),
                         }}
+                        title={row.movementType === "debito" ? "Débito" : "Crédito"}
                       >
                         {money(row.amount)}
                       </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={row.group}
-                          onChange={(e) =>
-                            pickGroupOrCreate(e.target.value, (name) =>
-                              updateStatementDraftRow(row.id, "group", name)
-                            )
-                          }
-                        >
-                          <option value="">Sin clasificar</option>
-                          {manualGroupOptions.map((group) => (
-                            <option key={group} value={group}>
-                              {group}
-                            </option>
-                          ))}
-                          <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
-                        </select>
-                        {row.suggestedVia && row.group && (
-                          <div
-                            style={{ fontSize: 10, color: "#7c3aed", marginTop: 2 }}
-                            title="Grupo sugerido por una regla aprendida. Confirmalo o cambialo."
+                      <td style={{ ...tdDato, color: "#475569" }}>{row.date}</td>
+                      <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                          <select
+                            style={{ ...inputCelda, width: "auto", minWidth: 150 }}
+                            value={row.group}
+                            onChange={(e) =>
+                              pickGroupOrCreate(e.target.value, (name) =>
+                                updateStatementDraftRow(row.id, "group", name)
+                              )
+                            }
                           >
-                            🧠 sugerido{row.supplierName ? ` · ${row.supplierName}` : ""}
-                          </div>
-                        )}
-                      </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={row.administration}
-                          onChange={(e) =>
-                            updateStatementDraftRow(row.id, "administration", e.target.value)
-                          }
-                        >
-                          <option value="blanco">Blanco</option>
-                          <option value="negro">Negro</option>
-                        </select>
+                            <option value="">Sin clasificar</option>
+                            {manualGroupOptions.map((group) => (
+                              <option key={group} value={group}>
+                                {group}
+                              </option>
+                            ))}
+                            <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
+                          </select>
+                          <select
+                            style={{ ...inputCelda, width: "auto" }}
+                            value={row.administration}
+                            onChange={(e) => updateStatementDraftRow(row.id, "administration", e.target.value)}
+                          >
+                            <option value="blanco">Blanco</option>
+                            <option value="negro">Negro</option>
+                          </select>
+                          {row.suggestedVia && row.group && (
+                            <span
+                              style={{ fontSize: 11, color: "#7c3aed", whiteSpace: "nowrap" }}
+                              title="Grupo sugerido por una regla aprendida. Confirmalo o cambialo."
+                            >
+                              🧠 sugerido{row.supplierName ? ` · ${row.supplierName}` : ""}
+                            </span>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           </>
         )}
@@ -1510,30 +1533,65 @@ export function CostosTab({
               <strong>{bankMirrorBank || "(elegí banco)"}</strong> · {bankMirrorCurrency}.
             </div>
             <div style={{ overflowX: "auto", maxHeight: 320 }}>
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosEspejo.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Estado</th>
-                    <th>Fecha</th>
-                    <th>Concepto</th>
-                    <th>Tipo</th>
-                    <th style={{ textAlign: "right" }}>Monto</th>
-                    <th style={{ textAlign: "right" }}>Saldo</th>
+                    <th style={thEsquina}>
+                      Concepto
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosEspejo.startResize(ev, "label")}
+                        onDoubleClick={anchosEspejo.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Monto
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosEspejo.startResize(ev, "col")}
+                        onDoubleClick={anchosEspejo.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Fecha</th>
+                    <th style={{ ...thFlexible, textAlign: "right" }}>Saldo</th>
                   </tr>
                 </thead>
                 <tbody>
                   {bankMirrorPreview.slice(0, 60).map((r, i) => (
                     <tr key={i} style={{ opacity: r.dup ? 0.5 : 1 }}>
-                      <td>{r.dup ? "· ya está" : "✓ nuevo"}</td>
-                      <td>{r.date}</td>
-                      <td>{r.concept}</td>
-                      <td style={{ color: r.movementType === "debito" ? "#dc2626" : "#16a34a" }}>{r.movementType}</td>
-                      <td style={{ textAlign: "right" }}>{money(r.amount)}</td>
-                      <td style={{ textAlign: "right" }}>{money(r.balance)}</td>
+                      <td style={{ ...tdNombre, fontWeight: 400 }} title={r.concept}>
+                        <span
+                          title={r.dup ? "Ya está cargado" : "Movimiento nuevo"}
+                          style={{
+                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                            background: r.dup ? "#cbd5f5" : "#16a34a",
+                          }}
+                        />
+                        {r.concept}
+                      </td>
+                      <td
+                        style={{
+                          ...tdDato, textAlign: "right", fontWeight: 700,
+                          color: r.movementType === "debito" ? "#dc2626" : "#16a34a",
+                        }}
+                        title={r.movementType}
+                      >
+                        {money(r.amount)}
+                      </td>
+                      <td style={{ ...tdDato, color: "#475569" }}>{r.date}</td>
+                      <td style={{ ...tdFlexible, textAlign: "right", color: "#64748b" }}>
+                        {money(r.balance)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
               {bankMirrorPreview.length > 60 && (
                 <div style={styles.sectionNote}>… y {bankMirrorPreview.length - 60} más (se cargan todos los nuevos al confirmar).</div>
               )}
@@ -1813,53 +1871,72 @@ export function CostosTab({
           al grupo "Caja chica"). {cajaChicaList.length} gasto(s).
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={styles.table}>
+          <div style={{ ...planillaWrap, ...anchosCajaChica.vars }}>
+          <table style={planillaTable}>
+            <colgroup>
+              <col style={colLabel} />
+              <col style={colDato} />
+              <col style={colDato} />
+              <col style={colFlexible} />
+            </colgroup>
             <thead>
               <tr>
-                <th>Fecha</th>
-                <th>Concepto</th>
-                <th>Proveedor</th>
-                <th style={{ textAlign: "right" }}>Monto</th>
-                <th>Grupo de costo</th>
+                <th style={thEsquina}>
+                  Concepto
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosCajaChica.startResize(ev, "label")}
+                    onDoubleClick={anchosCajaChica.resetLabel}
+                  />
+                </th>
+                <th style={{ ...thColumna, textAlign: "right" }}>
+                  Monto
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosCajaChica.startResize(ev, "col")}
+                    onDoubleClick={anchosCajaChica.resetCol}
+                  />
+                </th>
+                <th style={thColumna}>Fecha</th>
+                <th style={thFlexible}>Grupo de costo · proveedor</th>
               </tr>
             </thead>
             <tbody>
               {cajaChicaList.length === 0 && (
                 <tr>
-                  <td colSpan={5} style={{ color: "#64748b" }}>
+                  <td colSpan={4} style={{ color: "#64748b" }}>
                     {searchLc ? "Ningun gasto de caja chica coincide con la busqueda." : "Sin gastos de caja chica en el alcance."}
                   </td>
                 </tr>
               )}
               {cajaChicaList.map((e) => (
                 <tr key={e.id}>
-                  <td style={{ width: 110 }}>{e.date}</td>
-                  <td>{e.description || e.category || "-"}</td>
-                  <td>{e.supplier || "-"}</td>
-                  <td style={{ textAlign: "right", width: 120 }}>{money(e.amount)}</td>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={e.costGroup || ""}
-                      onChange={(ev) =>
-                        pickGroupOrCreate(ev.target.value, (name) =>
-                          updatePettyCashExpense(e.id, "costGroup", name)
-                        )
-                      }
-                    >
-                      <option value="">Caja chica (sin clasificar)</option>
-                      {manualGroupOptions.map((g) => (
-                        <option key={g} value={g}>
-                          {g}
-                        </option>
-                      ))}
-                      <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
-                    </select>
-                    <div
-                      title="Click derecho: clasificar rápido"
-                      onContextMenu={(ev) => openCtxMenu(ev, "caja", e.id)}
-                      style={{ display: "flex", gap: 4, marginTop: 4, alignItems: "center", cursor: "context-menu" }}
-                    >
+                  <td style={{ ...tdNombre, fontWeight: 400 }} title={e.description || e.category}>
+                    {e.description || e.category || "-"}
+                  </td>
+                  <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(e.amount)}</td>
+                  <td style={{ ...tdDato, color: "#475569" }}>{e.date}</td>
+                  <td
+                    style={{ ...tdFlexible, color: "#64748b", padding: 0, cursor: "context-menu" }}
+                    title="Click derecho: clasificar rápido"
+                    onContextMenu={(ev) => openCtxMenu(ev, "caja", e.id)}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                      <select
+                        style={{ ...inputCelda, width: "auto", minWidth: 170 }}
+                        value={e.costGroup || ""}
+                        onChange={(ev) =>
+                          pickGroupOrCreate(ev.target.value, (name) =>
+                            updatePettyCashExpense(e.id, "costGroup", name)
+                          )
+                        }
+                      >
+                        <option value="">Caja chica (sin clasificar)</option>
+                        {manualGroupOptions.map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                        <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
+                      </select>
                       {e.costGroup ? (
                         <KindPill kind={kindOfGroup(e.costGroup)} />
                       ) : (
@@ -1883,12 +1960,14 @@ export function CostosTab({
                         </span>
                       )}
                       <ColorTag color={getPettyCashAdministration(e)} />
-                    </div>
+                      <span style={{ color: "#94a3b8" }}>{e.supplier || "sin proveedor"}</span>
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </Panel>
 
@@ -1933,16 +2012,39 @@ export function CostosTab({
                 </span>
               </div>
               {a.pendientes.length > 0 && (
-                <table style={styles.table}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thEsquina}>Factura</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Total</th>
+                      <th style={thColumna}>Fecha</th>
+                      <th style={thFlexible}>Pago vinculado</th>
+                    </tr>
+                  </thead>
                   <tbody>
                     {a.pendientes.map((inv) => (
                       <tr key={inv.id}>
-                        <td style={{ width: 100 }}>{inv.invoiceDate}</td>
-                        <td>{inv.invoiceNumber || "factura"}</td>
-                        <td style={{ textAlign: "right", width: 130 }}>{money(inv.total)}</td>
-                        <td style={{ width: 300 }}>
+                        <td style={{ ...tdNombre, fontWeight: 400 }}>
+                          <span
+                            title="Sin pago vinculado: queda como deuda"
+                            style={{
+                              display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                              background: "#ca8a04",
+                            }}
+                          />
+                          {inv.invoiceNumber || "factura"}
+                        </td>
+                        <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(inv.total)}</td>
+                        <td style={{ ...tdDato, color: "#475569" }}>{inv.invoiceDate}</td>
+                        <td style={{ ...tdFlexible, padding: 0 }}>
                           <select
-                            style={styles.input}
+                            style={{ ...inputCelda, width: "100%" }}
                             value=""
                             onChange={(e) =>
                               updatePurchaseInvoice(
@@ -2007,17 +2109,26 @@ export function CostosTab({
                     <span style={{ fontWeight: 800 }}>{money(c.total)}</span>
                   </div>
                   {c.entries.length > 0 && (
-                    <table style={styles.table}>
+                    <table style={planillaTable}>
+                      <colgroup>
+                        <col style={colLabel} />
+                        <col style={colDato} />
+                        <col style={colFlexible} />
+                      </colgroup>
                       <tbody>
                         {c.entries.map((e) => (
                           <tr key={e.id}>
-                            <td style={{ width: 92 }}>{e.date}</td>
-                            <td>{e.description || "-"}</td>
-                            <td>{e.supplier || "-"}</td>
-                            <td style={{ width: 26 }}>
-                              <ColorTag color={e.administration} />
+                            <td style={{ ...tdNombre, fontWeight: 400 }} title={e.description}>
+                              <ColorTag color={e.administration} />{" "}
+                              {e.description || "-"}
                             </td>
-                            <td style={{ textAlign: "right", width: 120 }}>{money(e.amount)}</td>
+                            <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                              {money(e.amount)}
+                            </td>
+                            <td style={{ ...tdFlexible, color: "#64748b" }}>
+                              {e.date}
+                              <span style={{ color: "#94a3b8" }}> · {e.supplier || "sin proveedor"}</span>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -2041,17 +2152,24 @@ export function CostosTab({
               <span>⚠ Sin clasificar ({composition.sinClasificar.entries.length}) — ubicalos en un grupo</span>
               <span style={{ fontWeight: 800 }}>{money(composition.sinClasificar.total)}</span>
             </div>
-            <table style={styles.table}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <tbody>
                 {composition.sinClasificar.entries.map((e) => (
                   <tr key={e.id}>
-                    <td style={{ width: 92 }}>{e.date}</td>
-                    <td>{e.description || "-"}</td>
-                    <td>{e.supplier || "-"}</td>
-                    <td style={{ width: 26 }}>
-                      <ColorTag color={e.administration} />
+                    <td style={{ ...tdNombre, fontWeight: 400 }} title={e.description}>
+                      <ColorTag color={e.administration} />{" "}
+                      {e.description || "-"}
                     </td>
-                    <td style={{ textAlign: "right", width: 120 }}>{money(e.amount)}</td>
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(e.amount)}</td>
+                    <td style={{ ...tdFlexible, color: "#64748b" }}>
+                      {e.date}
+                      <span style={{ color: "#94a3b8" }}> · {e.supplier || "sin proveedor"}</span>
+                    </td>
                   </tr>
                 ))}
               </tbody>

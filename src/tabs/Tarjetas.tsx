@@ -12,6 +12,7 @@ import { QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/pr
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+  inputCelda, inputCeldaDerecha, focoCelda,
 } from "../ui/planilla";
 import type {
   CompanyName,
@@ -155,6 +156,9 @@ export function TarjetasTab({
     </>
   );
 
+  const anchosTarjetas = usePlanillaWidths("tarjetas.listado", { label: 260, col: 130, colCompact: 100 });
+  const anchosResumenes = usePlanillaWidths("tarjetas.resumenes", { label: 240, col: 124, colCompact: 94 });
+
   return (
     <>
       <div style={{ ...styles.sectionNote, marginBottom: 12 }}>
@@ -198,25 +202,37 @@ export function TarjetasTab({
             Cargá consumos y clasificalos a un grupo para ver el desglose fijo/variable.
           </div>
         ) : (
-          <table style={{ ...styles.table, marginTop: 10 }}>
+          <table style={{ ...planillaTable, marginTop: 10 }}>
+            <colgroup>
+              <col style={colLabel} />
+              <col style={colDato} />
+              <col style={colFlexible} />
+            </colgroup>
             <thead>
               <tr>
-                <th>Grupo</th>
-                <th>Tipo</th>
-                <th style={{ textAlign: "right" }}>Total</th>
-                <th style={{ textAlign: "right" }}>Recurrente / mes</th>
+                <th style={thEsquina}>Grupo</th>
+                <th style={{ ...thColumna, textAlign: "right" }}>Total</th>
+                <th style={{ ...thFlexible, textAlign: "right" }}>Recurrente / mes</th>
               </tr>
             </thead>
             <tbody>
               {cardCostSummary.byGroup.map((r) => (
                 <tr key={`${r.group}-${r.currency}`}>
-                  <td>
+                  <td style={{ ...tdNombre, fontWeight: 400 }}>
+                    <span
+                      title={r.kind === "fijo" ? "Costo fijo" : "Costo variable"}
+                      style={{
+                        display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                        background: r.kind === "fijo" ? "#2563eb" : "#ca8a04",
+                      }}
+                    />
                     {r.group}
                     {r.currency === "USD" ? " (U$S)" : ""}
                   </td>
-                  <td>{r.kind === "fijo" ? "Fijo" : "Variable"}</td>
-                  <td style={{ textAlign: "right" }}>{money(r.total, r.currency)}</td>
-                  <td style={{ textAlign: "right", color: "#7c3aed" }}>
+                  <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                    {money(r.total, r.currency)}
+                  </td>
+                  <td style={{ ...tdFlexible, textAlign: "right", color: "#7c3aed" }}>
                     {r.recurringMonthly > 0 ? money(r.recurringMonthly, r.currency) : "—"}
                   </td>
                 </tr>
@@ -239,79 +255,103 @@ export function TarjetasTab({
         {scopedCards.length === 0 ? (
           <div style={styles.muted}>No hay tarjetas. Agregá la primera para empezar a cargar consumos.</div>
         ) : (
-          <table style={styles.table}>
+          <div style={{ ...planillaWrap, ...anchosTarjetas.vars }}>
+          <table style={planillaTable}>
+            <colgroup>
+              <col style={colLabel} />
+              <col style={colDato} />
+              <col style={colFlexible} />
+            </colgroup>
             <thead>
               <tr>
-                <th>Activa</th>
-                <th>Empresa</th>
-                <th>Nombre</th>
-                <th>Banco</th>
-                <th>Últimos dígitos</th>
-                <th>Notas</th>
-                <th></th>
+                <th style={thEsquina}>
+                  Tarjeta
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosTarjetas.startResize(ev, "label")}
+                    onDoubleClick={anchosTarjetas.resetLabel}
+                  />
+                </th>
+                <th style={thColumna}>
+                  Últimos dígitos
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosTarjetas.startResize(ev, "col")}
+                    onDoubleClick={anchosTarjetas.resetCol}
+                  />
+                </th>
+                <th style={thFlexible}>Banco · empresa · notas</th>
               </tr>
             </thead>
             <tbody>
               {scopedCards.map((c) => (
-                <tr key={c.id}>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={c.active}
-                      onChange={(e) => updateCreditCard(c.id, "active", e.target.checked)}
-                    />
+                <tr
+                  key={c.id}
+                  onContextMenu={(ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    if (window.confirm(`¿Quitar la tarjeta "${c.name}"?`)) removeCreditCard(c.id);
+                  }}
+                  title="Click derecho: quitar. El punto verde activa o desactiva."
+                >
+                  <td style={{ ...tdNombre, fontWeight: 400, padding: 0, opacity: c.active ? 1 : 0.45 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                      <span
+                        title={c.active ? "Activa" : "Inactiva"}
+                        onClick={() => updateCreditCard(c.id, "active", !c.active)}
+                        style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                          cursor: "pointer", background: c.active ? "#16a34a" : "#cbd5f5",
+                        }}
+                      />
+                      <input
+                        style={inputCelda}
+                        {...focoCelda}
+                        value={c.name}
+                        onChange={(e) => updateCreditCard(c.id, "name", e.target.value)}
+                      />
+                    </span>
                   </td>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={c.company}
-                      onChange={(e) => updateCreditCard(c.id, "company", e.target.value)}
-                    >
-                      {COMPANY_OPTIONS.map((o: any) => (
-                        <option key={o.value} value={o.value}>
-                          {o.short}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td>
+                  <td style={{ ...tdDato, padding: 0 }}>
                     <input
-                      style={styles.input}
-                      value={c.name}
-                      onChange={(e) => updateCreditCard(c.id, "name", e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      style={styles.input}
-                      value={c.bank}
-                      placeholder="Santander / Patagonia"
-                      onChange={(e) => updateCreditCard(c.id, "bank", e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      style={{ ...styles.input, maxWidth: 90 }}
+                      style={{ ...inputCelda, padding: "1px 6px" }}
+                      {...focoCelda}
                       value={c.lastDigits}
                       onChange={(e) => updateCreditCard(c.id, "lastDigits", e.target.value)}
                     />
                   </td>
-                  <td>
-                    <input
-                      style={styles.input}
-                      value={c.notes}
-                      onChange={(e) => updateCreditCard(c.id, "notes", e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <button style={styles.smallBtn} onClick={() => removeCreditCard(c.id)}>
-                      Quitar
-                    </button>
+                  <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                      <input
+                        style={{ ...inputCelda, width: 150 }}
+                        {...focoCelda}
+                        value={c.bank}
+                        placeholder="Santander / Patagonia"
+                        onChange={(e) => updateCreditCard(c.id, "bank", e.target.value)}
+                      />
+                      <select
+                        style={{ ...inputCelda, width: "auto" }}
+                        value={c.company}
+                        onChange={(e) => updateCreditCard(c.id, "company", e.target.value)}
+                      >
+                        {COMPANY_OPTIONS.map((o: any) => (
+                          <option key={o.value} value={o.value}>
+                            {o.short}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
+                        {...focoCelda}
+                        value={c.notes}
+                        placeholder="notas"
+                        onChange={(e) => updateCreditCard(c.id, "notes", e.target.value)}
+                      />
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Panel>
 
@@ -330,84 +370,112 @@ export function TarjetasTab({
             Cargá los cierres para ver vencimientos y cuánto se viene a pagar.
           </div>
         ) : (
-          <table style={{ ...styles.table, marginTop: 10 }}>
+          <div style={{ ...planillaWrap, ...anchosResumenes.vars, marginTop: 10 }}>
+          <table style={planillaTable}>
+            <colgroup>
+              <col style={colLabel} />
+              <col style={colDato} />
+              <col style={colDato} />
+              <col style={colFlexible} />
+            </colgroup>
             <thead>
               <tr>
-                <th>Tarjeta</th>
-                <th>Cierre</th>
-                <th>Vencimiento</th>
-                <th style={{ textAlign: "right" }}>Total $</th>
-                <th style={{ textAlign: "right" }}>Total U$S</th>
-                <th style={{ textAlign: "right" }}>Pago mín. $</th>
-                <th>Pagado</th>
-                <th></th>
+                <th style={thEsquina}>
+                  Tarjeta · cierre
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosResumenes.startResize(ev, "label")}
+                    onDoubleClick={anchosResumenes.resetLabel}
+                  />
+                </th>
+                <th style={{ ...thColumna, textAlign: "right" }}>
+                  Total $
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosResumenes.startResize(ev, "col")}
+                    onDoubleClick={anchosResumenes.resetCol}
+                  />
+                </th>
+                <th style={thColumna}>Vencimiento</th>
+                <th style={thFlexible}>Total U$S · pago mínimo</th>
               </tr>
             </thead>
             <tbody>
               {scopedStatements.map((s) => (
-                <tr key={s.id} style={s.paid ? { opacity: 0.55 } : undefined}>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={s.cardId}
-                      onChange={(e) => updateCreditCardStatement(s.id, "cardId", Number(e.target.value))}
-                    >
-                      {cardOptions}
-                    </select>
+                <tr
+                  key={s.id}
+                  style={s.paid ? { opacity: 0.55 } : undefined}
+                  onContextMenu={(ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    if (window.confirm("¿Quitar este resumen?")) removeCreditCardStatement(s.id);
+                  }}
+                  title="Click derecho: quitar. El punto verde marca el resumen como pagado."
+                >
+                  <td style={{ ...tdNombre, fontWeight: 400, padding: 0 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                      <span
+                        title={s.paid ? "Pagado" : "Sin pagar"}
+                        onClick={() => updateCreditCardStatement(s.id, "paid", !s.paid)}
+                        style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                          cursor: "pointer", background: s.paid ? "#16a34a" : "#ca8a04",
+                        }}
+                      />
+                      <select
+                        style={{ ...inputCelda, width: "auto" }}
+                        value={s.cardId}
+                        onChange={(e) => updateCreditCardStatement(s.id, "cardId", Number(e.target.value))}
+                      >
+                        {cardOptions}
+                      </select>
+                      <input
+                        style={{ ...inputCelda, width: 120 }}
+                        {...focoCelda}
+                        type="date"
+                        value={s.closingDate}
+                        onChange={(e) => updateCreditCardStatement(s.id, "closingDate", e.target.value)}
+                      />
+                    </span>
                   </td>
-                  <td>
-                    <input
-                      style={styles.input}
-                      type="date"
-                      value={s.closingDate}
-                      onChange={(e) => updateCreditCardStatement(s.id, "closingDate", e.target.value)}
+                  <td style={{ ...tdDato, padding: 0 }}>
+                    <AmountInput
+                      style={inputCeldaDerecha}
+                      {...focoCelda}
+                      value={s.totalArs}
+                      onChange={(n) => updateCreditCardStatement(s.id, "totalArs", n)}
                     />
                   </td>
-                  <td>
+                  <td style={{ ...tdDato, padding: 0 }}>
                     <input
-                      style={styles.input}
+                      style={{ ...inputCelda, padding: "1px 6px" }}
+                      {...focoCelda}
                       type="date"
                       value={s.dueDate}
                       onChange={(e) => updateCreditCardStatement(s.id, "dueDate", e.target.value)}
                     />
                   </td>
-                  <td>
-                    <AmountInput
-                      style={styles.input}
-                      value={s.totalArs}
-                      onChange={(n) => updateCreditCardStatement(s.id, "totalArs", n)}
-                    />
-                  </td>
-                  <td>
-                    <AmountInput
-                      style={styles.input}
-                      value={s.totalUsd}
-                      onChange={(n) => updateCreditCardStatement(s.id, "totalUsd", n)}
-                    />
-                  </td>
-                  <td>
-                    <AmountInput
-                      style={styles.input}
-                      value={s.minPaymentArs}
-                      onChange={(n) => updateCreditCardStatement(s.id, "minPaymentArs", n)}
-                    />
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    <input
-                      type="checkbox"
-                      checked={s.paid}
-                      onChange={(e) => updateCreditCardStatement(s.id, "paid", e.target.checked)}
-                    />
-                  </td>
-                  <td>
-                    <button style={styles.smallBtn} onClick={() => removeCreditCardStatement(s.id)}>
-                      Quitar
-                    </button>
+                  <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                      <span style={{ color: "#94a3b8" }}>U$S</span>
+                      <AmountInput
+                        style={{ ...inputCelda, width: 110, textAlign: "right" }}
+                        {...focoCelda}
+                        value={s.totalUsd}
+                        onChange={(n) => updateCreditCardStatement(s.id, "totalUsd", n)}
+                      />
+                      <span style={{ color: "#94a3b8" }}>pago mín.</span>
+                      <AmountInput
+                        style={{ ...inputCelda, width: 110, textAlign: "right" }}
+                        {...focoCelda}
+                        value={s.minPaymentArs}
+                        onChange={(n) => updateCreditCardStatement(s.id, "minPaymentArs", n)}
+                      />
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </Panel>
 
