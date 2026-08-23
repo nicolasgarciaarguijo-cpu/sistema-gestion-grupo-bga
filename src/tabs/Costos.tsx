@@ -16,6 +16,7 @@ import { Panel, Field, MiniMetric, ButtonLike, FileDropButton, AmountInput, Colo
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija, useCeldaMarcada,
+  inputCelda, inputCeldaDerecha, focoCelda,
 } from "../ui/planilla";
 import { bankEntryMissingInfo } from "../domain/bankAssignment";
 import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
@@ -257,6 +258,12 @@ export function CostosTab({
     );
 
   // ---- PLANILLA de gastos cargados -------------------------------------------------------------
+  const anchosArca = usePlanillaWidths("costos.arca", { label: 300, col: 124, colCompact: 94 });
+  const anchosCcPares = usePlanillaWidths("costos.cc.pares", { label: 240, col: 124, colCompact: 94 });
+  const anchosCcGiros = usePlanillaWidths("costos.cc.giros", { label: 240, col: 124, colCompact: 94 });
+  const anchosProveedores = usePlanillaWidths("costos.proveedores", { label: 280, col: 150, colCompact: 112 });
+  const anchosGrupos = usePlanillaWidths("costos.grupos", { label: 280, col: 120, colCompact: 92 });
+  const anchosReglas = usePlanillaWidths("costos.reglas", { label: 320, col: 180, colCompact: 130 });
   const anchosGastos = usePlanillaWidths("costos.gastos", { label: 260, col: 108, colCompact: 82 });
   const marcaGastos = useCeldaMarcada();
   const [soloSinGrupo, setSoloSinGrupo] = React.useState(false);
@@ -637,66 +644,96 @@ export function CostosTab({
           El grupo define si el gasto es fijo o variable. Los grupos "auto" se alimentan de otras
           solapas y no se pueden editar ni borrar.
         </div>
-        <table style={styles.table}>
+        <div style={{ ...planillaWrap, ...anchosGrupos.vars }}>
+        <table style={planillaTable}>
+          <colgroup>
+            <col style={colLabel} />
+            <col style={colDato} />
+            <col style={colFlexible} />
+          </colgroup>
           <thead>
             <tr>
-              <th>Activo</th>
-              <th>Grupo</th>
-              <th>Tipo</th>
-              <th>Origen</th>
-              <th>Observacion</th>
-              <th />
+              <th style={thEsquina}>
+                Grupo
+                <PlanillaManija
+                  onMouseDown={(ev) => anchosGrupos.startResize(ev, "label")}
+                  onDoubleClick={anchosGrupos.resetLabel}
+                />
+              </th>
+              <th style={thColumna}>
+                Tipo
+                <PlanillaManija
+                  onMouseDown={(ev) => anchosGrupos.startResize(ev, "col")}
+                  onDoubleClick={anchosGrupos.resetCol}
+                />
+              </th>
+              <th style={thFlexible}>Origen · observación</th>
             </tr>
           </thead>
           <tbody>
             {costGroups.map((group) => (
-              <tr key={group.id}>
-                <td>
-                  <input
-                    type="checkbox"
-                    checked={group.active}
-                    onChange={(e) => updateCostGroup(group.id, "active", e.target.checked)}
-                  />
+              <tr
+                key={group.id}
+                onContextMenu={(ev) => {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  if (group.auto) return;
+                  if (window.confirm(`¿Quitar el grupo "${group.name}"?`)) removeCostGroup(group.id);
+                }}
+                title={
+                  group.auto
+                    ? "Grupo automático: no se puede renombrar ni quitar."
+                    : "Click derecho: quitar. El punto verde activa o desactiva."
+                }
+              >
+                <td style={{ ...tdNombre, fontWeight: 400, padding: 0, opacity: group.active ? 1 : 0.45 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                    <span
+                      title={group.active ? "Activo" : "Inactivo"}
+                      onClick={() => updateCostGroup(group.id, "active", !group.active)}
+                      style={{
+                        display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                        cursor: "pointer", background: group.active ? "#16a34a" : "#cbd5f5",
+                      }}
+                    />
+                    <input
+                      style={{ ...inputCelda, color: group.auto ? "#94a3b8" : "inherit" }}
+                      {...focoCelda}
+                      value={group.name}
+                      disabled={group.auto}
+                      onChange={(e) => updateCostGroup(group.id, "name", e.target.value)}
+                    />
+                  </span>
                 </td>
-                <td>
-                  <input
-                    style={styles.input}
-                    value={group.name}
-                    disabled={group.auto}
-                    onChange={(e) => updateCostGroup(group.id, "name", e.target.value)}
-                  />
-                </td>
-                <td>
+                <td style={{ ...tdDato, padding: 0 }}>
                   <select
-                    style={styles.input}
+                    style={{ ...inputCelda, width: "auto" }}
                     value={group.kind}
-                    onChange={(e) =>
-                      updateCostGroup(group.id, "kind", e.target.value as CostKind)
-                    }
+                    onChange={(e) => updateCostGroup(group.id, "kind", e.target.value as CostKind)}
                   >
                     <option value="fijo">Fijo</option>
                     <option value="variable">Variable</option>
                   </select>
                 </td>
-                <td>{group.auto ? "Automatico" : "Manual"}</td>
-                <td>
-                  <input
-                    style={styles.input}
-                    value={group.notes}
-                    onChange={(e) => updateCostGroup(group.id, "notes", e.target.value)}
-                  />
-                </td>
-                <td>
-                  {!group.auto && (
-                    <ButtonLike onClick={() => removeCostGroup(group.id)} secondary>
-                      Quitar
-                    </ButtonLike>
-                  )}
+                <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                    <span style={{ color: "#94a3b8", whiteSpace: "nowrap" }}>
+                      {group.auto ? "automático" : "manual"}
+                    </span>
+                    <input
+                      style={{ ...inputCelda, flex: 1, minWidth: 120 }}
+                      {...focoCelda}
+                      value={group.notes}
+                      placeholder="observación"
+                      onChange={(e) => updateCostGroup(group.id, "notes", e.target.value)}
+                    />
+                  </span>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </Panel>
 
       <Panel title="Reglas de clasificación · memoria" span="full">
@@ -713,15 +750,30 @@ export function CostosTab({
             o a mano en "Gastos cargados").
           </div>
         ) : (
-          <table style={styles.table}>
+          <div style={{ ...planillaWrap, ...anchosReglas.vars }}>
+          <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
             <thead>
               <tr>
-                <th>Empresa</th>
-                <th>Criterio</th>
-                <th>Grupo sugerido</th>
-                <th style={{ textAlign: "center" }}>Veces</th>
-                <th>Estado</th>
-                <th></th>
+                <th style={thEsquina}>
+                  Criterio
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosReglas.startResize(ev, "label")}
+                    onDoubleClick={anchosReglas.resetLabel}
+                  />
+                </th>
+                <th style={thColumna}>
+                  Grupo sugerido
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosReglas.startResize(ev, "col")}
+                    onDoubleClick={anchosReglas.resetCol}
+                  />
+                </th>
+                <th style={thFlexible}>Estado · veces usada · empresa</th>
               </tr>
             </thead>
             <tbody>
@@ -734,6 +786,12 @@ export function CostosTab({
                 .map((rule) => (
                   <tr
                     key={rule.id}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      if (window.confirm(`¿Borrar la regla "${ruleCriterioLabel(rule)}"?`)) removeCostRule(rule.id);
+                    }}
+                    title="Click derecho: borrar la regla"
                     style={
                       rule.ambiguous
                         ? { background: "#fffbeb" }
@@ -742,19 +800,23 @@ export function CostosTab({
                         : { opacity: 0.5 }
                     }
                   >
-                    <td>{companyShortLabel(rule.company)}</td>
-                    <td>
+                    <td style={{ ...tdNombre, fontWeight: 400, background: "inherit" }}>
+                      <span
+                        title={rule.ambiguous ? "Ambigua: fijá el grupo" : rule.active ? "Activa" : "Inactiva"}
+                        style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                          background: rule.ambiguous ? "#ca8a04" : rule.active ? "#16a34a" : "#cbd5f5",
+                        }}
+                      />
                       <span style={{ color: "#64748b", fontSize: 12 }}>{ruleViaLabel(rule)}:</span>{" "}
                       <strong>{ruleCriterioLabel(rule)}</strong>
                     </td>
-                    <td>
+                    <td style={{ ...tdDato, padding: 0, background: "inherit" }}>
                       <select
-                        style={styles.input}
+                        style={{ ...inputCelda, width: "100%" }}
                         value={rule.group}
                         onChange={(e) =>
-                          pickGroupOrCreate(e.target.value, (name) =>
-                            updateCostRule(rule.id, "group", name)
-                          )
+                          pickGroupOrCreate(e.target.value, (name) => updateCostRule(rule.id, "group", name))
                         }
                       >
                         <option value="">(elegí grupo)</option>
@@ -766,14 +828,11 @@ export function CostosTab({
                         <option value={NEW_GROUP_OPTION}>➕ Crear grupo nuevo…</option>
                       </select>
                     </td>
-                    <td style={{ textAlign: "center" }}>{rule.hits}</td>
-                    <td>
+                    <td style={{ ...tdFlexible, color: "#64748b", background: "inherit" }}>
                       {rule.ambiguous ? (
-                        <span style={{ color: "#b45309", fontWeight: 600, fontSize: 12 }}>
-                          ⚠ Ambigua — fijá el grupo
-                        </span>
+                        <span style={{ color: "#b45309", fontWeight: 600 }}>⚠ Ambigua — fijá el grupo</span>
                       ) : (
-                        <label style={{ fontSize: 12 }}>
+                        <label style={{ cursor: "pointer" }}>
                           <input
                             type="checkbox"
                             checked={rule.active}
@@ -782,14 +841,16 @@ export function CostosTab({
                           Activa
                         </label>
                       )}
-                    </td>
-                    <td>
-                      <ButtonLike onClick={() => removeCostRule(rule.id)}>Borrar</ButtonLike>
+                      <span style={{ color: "#94a3b8" }}>
+                        {" · "}usada {rule.hits} {Number(rule.hits) === 1 ? "vez" : "veces"}
+                        {" · "}{companyShortLabel(rule.company)}
+                      </span>
                     </td>
                   </tr>
                 ))}
             </tbody>
           </table>
+          </div>
         )}
       </Panel>
 
@@ -834,16 +895,31 @@ export function CostosTab({
                 Ver los {issuedInvoices.length} comprobantes
               </summary>
               <div style={{ overflowX: "auto", marginTop: 8, maxHeight: 420, overflowY: "auto" }}>
-                <table style={styles.table}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Fecha</th>
-                      <th>Emisor</th>
-                      <th>Tipo</th>
-                      <th>Numero</th>
-                      <th>Receptor</th>
-                      <th style={{ textAlign: "right" }}>Total</th>
-                      <th>Trabajo vinculado</th>
+                      <th style={thEsquina}>
+                        Factura
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosArca.startResize(ev, "label")}
+                          onDoubleClick={anchosArca.resetLabel}
+                        />
+                      </th>
+                      <th style={thColumna}>
+                        Fecha
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosArca.startResize(ev, "col")}
+                          onDoubleClick={anchosArca.resetCol}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Total</th>
+                      <th style={thFlexible}>Trabajo vinculado · receptor · tipo</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -851,29 +927,45 @@ export function CostosTab({
                       .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
                       .map((inv) => (
                         <tr key={inv.id}>
-                          <td>{inv.date}</td>
-                          <td>{getCompanyMeta(inv.company)?.short || inv.company}</td>
-                          <td style={{ fontSize: 12 }}>{inv.kind}</td>
-                          <td style={{ fontSize: 12 }}>
+                          <td
+                            style={{
+                              ...tdNombre, fontWeight: 400,
+                              boxShadow: `inset 4px 0 0 ${getCompanyMeta(inv.company)?.primary || "#94a3b8"}`,
+                            }}
+                          >
+                            <span
+                              title={inv.jobBudgetNumber ? "Vinculada a un trabajo" : "Sin vincular"}
+                              style={{
+                                display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                                background: inv.jobBudgetNumber ? "#16a34a" : "#cbd5f5",
+                              }}
+                            />
                             {inv.pointOfSale}-{inv.number}
                           </td>
-                          <td style={{ fontSize: 12 }}>{(inv.counterpartyName || "").slice(0, 46)}</td>
-                          <td style={{ textAlign: "right" }}>{money(inv.total)}</td>
-                          <td>
-                            <select
-                              style={{ ...styles.input, fontSize: 12, minWidth: 180 }}
-                              value={inv.jobBudgetNumber || ""}
-                              onChange={(e) => updateIssuedInvoice(inv.id, "jobBudgetNumber", e.target.value)}
-                            >
-                              <option value="">— sin vincular —</option>
-                              {approvedJobsForLink
-                                .filter((j) => j.company === inv.company)
-                                .map((j) => (
-                                  <option key={j.budgetNumber} value={j.budgetNumber}>
-                                    {j.budgetNumber} · {j.client}
-                                  </option>
-                                ))}
-                            </select>
+                          <td style={{ ...tdDato, color: "#475569" }}>{inv.date}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(inv.total)}</td>
+                          <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                              <select
+                                style={{ ...inputCelda, width: "auto", minWidth: 170 }}
+                                value={inv.jobBudgetNumber || ""}
+                                onChange={(e) => updateIssuedInvoice(inv.id, "jobBudgetNumber", e.target.value)}
+                              >
+                                <option value="">— sin vincular —</option>
+                                {approvedJobsForLink
+                                  .filter((j) => j.company === inv.company)
+                                  .map((j) => (
+                                    <option key={j.budgetNumber} value={j.budgetNumber}>
+                                      {j.budgetNumber} · {j.client}
+                                    </option>
+                                  ))}
+                              </select>
+                              <span style={{ color: "#94a3b8" }}>
+                                {(inv.counterpartyName || "").slice(0, 46)}
+                                {" · "}{inv.kind}
+                                {" · "}{getCompanyMeta(inv.company)?.short || inv.company}
+                              </span>
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -918,34 +1010,67 @@ export function CostosTab({
         ) : (
           <>
             <div style={{ overflowX: "auto", marginTop: 10 }}>
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosCcPares.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Puso la plata</th>
-                    <th>La recibio</th>
-                    <th style={{ textAlign: "right" }}>Girado</th>
-                    <th style={{ textAlign: "right" }}>Dice factura</th>
-                    <th style={{ textAlign: "right" }}>Sin declarar</th>
-                    <th style={{ textAlign: "right" }}>Facturado</th>
-                    <th style={{ textAlign: "right" }}>A definir</th>
+                    <th style={thEsquina}>
+                      Quién le giró a quién
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCcPares.startResize(ev, "label")}
+                        onDoubleClick={anchosCcPares.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Girado
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCcPares.startResize(ev, "col")}
+                        onDoubleClick={anchosCcPares.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>A definir</th>
+                    <th style={thFlexible}>Dice factura · sin declarar · facturado</th>
                   </tr>
                 </thead>
                 <tbody>
                   {intercompanyAccount.summary.pairs.map((p) => (
                     <tr key={`${p.from}>${p.to}`}>
-                      <td>{getCompanyMeta(p.from as CompanyName)?.short || p.from}</td>
-                      <td>{getCompanyMeta(p.to as CompanyName)?.short || p.to}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>{money(p.transferred)}</td>
-                      <td style={{ textAlign: "right" }}>{money(p.declaredWithInvoice)}</td>
-                      <td style={{ textAlign: "right", color: "#b45309" }}>
-                        {money(p.withoutBacking)}
+                      <td style={{ ...tdNombre, fontWeight: 400 }}>
+                        <strong style={{ color: "#0f172a" }}>
+                          {getCompanyMeta(p.from as CompanyName)?.short || p.from}
+                        </strong>
+                        <span style={{ color: "#94a3b8" }}> → </span>
+                        <strong style={{ color: "#0f172a" }}>
+                          {getCompanyMeta(p.to as CompanyName)?.short || p.to}
+                        </strong>
                       </td>
-                      <td style={{ textAlign: "right" }}>{money(p.invoiced)}</td>
-                      <td style={{ textAlign: "right", fontWeight: 700 }}>{money(p.pending)}</td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                        {money(p.transferred)}
+                      </td>
+                      <td
+                        style={{
+                          ...tdDato, textAlign: "right", fontWeight: 700,
+                          color: Number(p.pending || 0) > 1 ? "#b45309" : "#166534",
+                        }}
+                      >
+                        {money(p.pending)}
+                      </td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        dice factura {money(p.declaredWithInvoice)}
+                        <span style={{ color: "#b45309" }}> · sin declarar {money(p.withoutBacking)}</span>
+                        <span style={{ color: "#94a3b8" }}> · facturado {money(p.invoiced)}</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
             <div style={{ ...styles.noticeBox, marginTop: 10 }}>
               <strong>"Dice factura" no es prueba de que exista.</strong> Es lo que tipeo quien hizo la
@@ -958,15 +1083,32 @@ export function CostosTab({
                 Ver los {intercompanyAccount.transfers.length} giros
               </summary>
               <div style={{ overflowX: "auto", marginTop: 8 }}>
-                <table style={styles.table}>
+                <div style={{ ...planillaWrap, ...anchosCcGiros.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Fecha</th>
-                      <th>De</th>
-                      <th>A</th>
-                      <th style={{ textAlign: "right" }}>Monto</th>
-                      <th>Respaldo</th>
-                      <th>Concepto del banco</th>
+                      <th style={thEsquina}>
+                        Giro
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCcGiros.startResize(ev, "label")}
+                          onDoubleClick={anchosCcGiros.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        Monto
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCcGiros.startResize(ev, "col")}
+                          onDoubleClick={anchosCcGiros.resetCol}
+                        />
+                      </th>
+                      <th style={thColumna}>Fecha</th>
+                      <th style={thFlexible}>Respaldo · concepto del banco</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -974,27 +1116,31 @@ export function CostosTab({
                       .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
                       .map((t) => (
                         <tr key={t.id}>
-                          <td>{t.date}</td>
-                          <td>{getCompanyMeta(t.from as CompanyName)?.short || t.from}</td>
-                          <td>{getCompanyMeta(t.to as CompanyName)?.short || t.to}</td>
-                          <td style={{ textAlign: "right" }}>{money(t.amount)}</td>
-                          <td
-                            style={{
-                              fontSize: 12,
-                              fontWeight: 700,
-                              color: t.declaresInvoice ? "#15803d" : "#b45309",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {t.declaresInvoice ? "dice factura" : "sin declarar"}
+                          <td style={{ ...tdNombre, fontWeight: 400 }}>
+                            <span
+                              title={t.declaresInvoice ? "Dice factura" : "Sin declarar"}
+                              style={{
+                                display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                                background: t.declaresInvoice ? "#16a34a" : "#ca8a04",
+                              }}
+                            />
+                            {getCompanyMeta(t.from as CompanyName)?.short || t.from}
+                            <span style={{ color: "#94a3b8" }}> → </span>
+                            {getCompanyMeta(t.to as CompanyName)?.short || t.to}
                           </td>
-                          <td style={{ fontSize: 12, color: "#64748b" }}>
-                            {(t.text || "").slice(0, 70)}
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(t.amount)}</td>
+                          <td style={{ ...tdDato, color: "#475569" }}>{t.date}</td>
+                          <td style={{ ...tdFlexible, color: "#64748b" }} title={t.text}>
+                            <strong style={{ color: t.declaresInvoice ? "#15803d" : "#b45309" }}>
+                              {t.declaresInvoice ? "dice factura" : "sin declarar"}
+                            </strong>
+                            <span style={{ color: "#94a3b8" }}> · {(t.text || "").slice(0, 70)}</span>
                           </td>
                         </tr>
                       ))}
                   </tbody>
                 </table>
+                </div>
               </div>
             </details>
           </>
@@ -1013,81 +1159,112 @@ export function CostosTab({
           nombre real.
         </div>
         <div style={{ overflowX: "auto" }}>
-          <table style={styles.table}>
+          <div style={{ ...planillaWrap, ...anchosProveedores.vars }}>
+          <table style={planillaTable}>
+            <colgroup>
+              <col style={colLabel} />
+              <col style={colDato} />
+              <col style={colFlexible} />
+            </colgroup>
             <thead>
               <tr>
-                <th>Empresa</th>
-                <th>Proveedor</th>
-                <th>CUIT</th>
-                <th>Como figura en el banco</th>
-                <th>Activo</th>
-                <th />
+                <th style={thEsquina}>
+                  Proveedor
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosProveedores.startResize(ev, "label")}
+                    onDoubleClick={anchosProveedores.resetLabel}
+                  />
+                </th>
+                <th style={thColumna}>
+                  CUIT
+                  <PlanillaManija
+                    onMouseDown={(ev) => anchosProveedores.startResize(ev, "col")}
+                    onDoubleClick={anchosProveedores.resetCol}
+                  />
+                </th>
+                <th style={thFlexible}>Como figura en el banco · empresa</th>
               </tr>
             </thead>
             <tbody>
               {suppliers.length === 0 && (
                 <tr>
-                  <td colSpan={6} style={{ color: "#64748b" }}>
+                  <td colSpan={3} style={{ color: "#64748b" }}>
                     Todavia no cargaste proveedores. Sin listado el pago igual se carga, pero no se
                     puede cotejar automaticamente contra el banco.
                   </td>
                 </tr>
               )}
               {suppliers.map((supplier) => (
-                <tr key={supplier.id}>
-                  <td>
-                    <select
-                      style={styles.input}
-                      value={supplier.company}
-                      onChange={(e) => updateSupplier(supplier.id, "company", e.target.value)}
-                    >
-                      <option value="General">Las dos</option>
-                      {COMPANY_OPTIONS.map((company) => (
-                        <option key={company.value} value={company.value}>
-                          {company.short}
-                        </option>
-                      ))}
-                    </select>
+                <tr
+                  key={supplier.id}
+                  onContextMenu={(ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    if (window.confirm(`¿Quitar el proveedor "${supplier.name}"?`)) removeSupplier(supplier.id);
+                  }}
+                  title="Click derecho: quitar. El punto verde activa o desactiva."
+                >
+                  <td
+                    style={{
+                      ...tdNombre, fontWeight: 400, padding: 0,
+                      opacity: supplier.active !== false ? 1 : 0.45,
+                    }}
+                  >
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                      <span
+                        title={supplier.active !== false ? "Activo" : "Inactivo"}
+                        onClick={() => updateSupplier(supplier.id, "active", !(supplier.active !== false))}
+                        style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                          cursor: "pointer",
+                          background: supplier.active !== false ? "#16a34a" : "#cbd5f5",
+                        }}
+                      />
+                      <input
+                        style={inputCelda}
+                        {...focoCelda}
+                        value={supplier.name}
+                        onChange={(e) => updateSupplier(supplier.id, "name", e.target.value)}
+                      />
+                    </span>
                   </td>
-                  <td>
+                  <td style={{ ...tdDato, padding: 0 }}>
                     <input
-                      style={styles.input}
-                      value={supplier.name}
-                      onChange={(e) => updateSupplier(supplier.id, "name", e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      style={styles.input}
+                      style={{ ...inputCelda, padding: "1px 6px" }}
+                      {...focoCelda}
                       value={supplier.taxId}
                       placeholder="30-71234567-9"
                       onChange={(e) => updateSupplier(supplier.id, "taxId", e.target.value)}
                     />
                   </td>
-                  <td>
-                    <input
-                      style={styles.input}
-                      value={supplier.aliases}
-                      placeholder="DAC MADERAS, DACMAD"
-                      onChange={(e) => updateSupplier(supplier.id, "aliases", e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="checkbox"
-                      checked={supplier.active !== false}
-                      onChange={(e) => updateSupplier(supplier.id, "active", e.target.checked)}
-                    />
-                  </td>
-                  <td>
-                    <ButtonLike onClick={() => removeSupplier(supplier.id)} secondary>
-                      Quitar
-                    </ButtonLike>
+                  <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                      <input
+                        style={{ ...inputCelda, flex: 1, minWidth: 140 }}
+                        {...focoCelda}
+                        value={supplier.aliases}
+                        placeholder="DAC MADERAS, DACMAD"
+                        onChange={(e) => updateSupplier(supplier.id, "aliases", e.target.value)}
+                      />
+                      <select
+                        style={{ ...inputCelda, width: "auto" }}
+                        value={supplier.company}
+                        onChange={(e) => updateSupplier(supplier.id, "company", e.target.value)}
+                      >
+                        <option value="General">Las dos</option>
+                        {COMPANY_OPTIONS.map((company) => (
+                          <option key={company.value} value={company.value}>
+                            {company.short}
+                          </option>
+                        ))}
+                      </select>
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       </Panel>
 
