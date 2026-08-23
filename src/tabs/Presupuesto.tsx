@@ -1,10 +1,15 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol, AmountInput } from "../ui/primitives";
+import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol, AmountInput, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { resolveAdvancePct } from "../domain/budgetTerms";
 import { findClientByName } from "../domain/clients";
 import { matchStockForMaterial } from "../domain/stockMatch";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+  useCeldaMarcada, inputCelda, inputCeldaDerecha, focoCelda,
+} from "../ui/planilla";
 import { WORK_TYPE_OPTIONS } from "../domain/types";
 import type { CompanyName, WorkTypeName } from "../domain/types";
 
@@ -234,6 +239,10 @@ type PresupuestoTabProps = {
   uploadBudgetImage: any;
 };
 
+function modoOpuesto(modo: string) {
+  return modo === "porcentaje" ? "monto" : "porcentaje";
+}
+
 export function PresupuestoTab(props: PresupuestoTabProps) {
   const {
     budget, crmClients, materials, labor, fixedCosts, basicSupplies, budgetDiscounts,
@@ -267,6 +276,26 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
     displayedMaterials, stockByCode, stockByDescription, laborRows,
     nominalLaborHoursPerEmployee, totalFixedCosts,
   } = props;
+  // ---- PLANILLAS del presupuesto (estetica del Calendario anual) ------------------------------
+  const anchosMateriales = usePlanillaWidths("ppto.materiales", { label: 320, col: 104, colCompact: 80 });
+  const marcaMateriales = useCeldaMarcada();
+  const [menuMateriales, setMenuMateriales] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosInsumos = usePlanillaWidths("ppto.insumos", { label: 320, col: 104, colCompact: 80 });
+  const marcaInsumos = useCeldaMarcada();
+  const [menuInsumos, setMenuInsumos] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosFijos = usePlanillaWidths("ppto.fijos", { label: 340, col: 120, colCompact: 92 });
+  const marcaFijos = useCeldaMarcada();
+  const [menuFijos, setMenuFijos] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosMO = usePlanillaWidths("ppto.manodeobra", { label: 260, col: 104, colCompact: 80 });
+  const marcaMO = useCeldaMarcada();
+  const [menuMO, setMenuMO] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosCrm = usePlanillaWidths("ppto.crm", { label: 220, col: 110, colCompact: 84 });
+  const [menuCrm, setMenuCrm] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosRefPersonal = usePlanillaWidths("ppto.personalref", { label: 240, col: 116, colCompact: 88 });
+  const anchosAumentos = usePlanillaWidths("ppto.aumentos", { label: 240, col: 110, colCompact: 84 });
+  const [menuAumentos, setMenuAumentos] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosDescuentos = usePlanillaWidths("ppto.descuentos", { label: 240, col: 130, colCompact: 100 });
+  const [menuDescuentos, setMenuDescuentos] = React.useState<null | { x: number; y: number; id: number }>(null);
   return (
         <div style={styles.budgetLayout}>
           <div style={styles.budgetMainTop}>
@@ -634,15 +663,32 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       value={formatDateDisplay(currentClientHistory[0].date)}
                     />
                   </div>
-                  <table style={styles.table}>
+                  <div style={{ ...planillaWrap, ...anchosCrm.vars }}>
+                  <table style={planillaTable}>
+                    <colgroup>
+                      <col style={colLabel} />
+                      <col style={colDato} />
+                      <col style={colDato} />
+                      <col style={colFlexible} />
+                    </colgroup>
                     <thead>
                       <tr>
-                        <th>Presupuesto</th>
-                        <th>Fecha</th>
-                        <th>Proyecto</th>
-                        <th>Estado</th>
-                        <th>Compra</th>
-                        <th>Acciones</th>
+                        <th style={thEsquina}>
+                          Presupuesto
+                          <PlanillaManija
+                            onMouseDown={(ev) => anchosCrm.startResize(ev, "label")}
+                            onDoubleClick={anchosCrm.resetLabel}
+                          />
+                        </th>
+                        <th style={thColumna}>
+                          Fecha
+                          <PlanillaManija
+                            onMouseDown={(ev) => anchosCrm.startResize(ev, "col")}
+                            onDoubleClick={anchosCrm.resetCol}
+                          />
+                        </th>
+                        <th style={thColumna}>Estado</th>
+                        <th style={thFlexible}>Proyecto</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -651,25 +697,52 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                           (job) => job.rootBudgetId === item.rootBudgetId || job.budgetId === item.id
                         );
                         return (
-                          <tr key={item.id}>
-                            <td>{getSavedBudgetDisplayLabel(item)}</td>
-                            <td>{formatDateDisplay(item.date)}</td>
-                            <td>{item.project}</td>
-                            <td>{item.status}</td>
-                            <td>{wasBought ? "Compro" : "No compro"}</td>
-                            <td>
-                              <button
-                                style={styles.smallBtn}
-                                onClick={() => loadBudgetFromSnapshot(item.snapshot, item.id)}
-                              >
-                                Cargar para editar
-                              </button>
+                          <tr
+                            key={item.id}
+                            onContextMenu={(ev) => {
+                              ev.preventDefault();
+                              ev.stopPropagation();
+                              setMenuCrm({ x: ev.clientX, y: ev.clientY, id: item.id });
+                            }}
+                          >
+                            <td style={{ ...tdNombre, fontWeight: 400 }} title={getSavedBudgetDisplayLabel(item)}>
+                              <span
+                                title={wasBought ? "Compro" : "No compro"}
+                                style={{
+                                  display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                                  background: wasBought ? "#16a34a" : "#cbd5f5",
+                                }}
+                              />
+                              {getSavedBudgetDisplayLabel(item)}
                             </td>
+                            <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.date)}</td>
+                            <td style={{ ...tdDato, color: "#475569" }}>{item.status}</td>
+                            <td style={{ ...tdFlexible, color: "#64748b" }} title={item.project}>{item.project}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
+                  </div>
+                  {menuCrm && (() => {
+                    const it = currentClientHistory.find((x: any) => x.id === menuCrm.id);
+                    const cerrar = () => setMenuCrm(null);
+                    if (!it) return null;
+                    return (
+                      <QuickMenu x={menuCrm.x} y={menuCrm.y} onClose={cerrar}>
+                        <QuickMenuTitle>{getSavedBudgetDisplayLabel(it)}</QuickMenuTitle>
+                        <button
+                          style={quickMenuItem}
+                          onClick={() => {
+                            loadBudgetFromSnapshot(it.snapshot, it.id);
+                            cerrar();
+                          }}
+                        >
+                          Cargar para editar
+                        </button>
+                      </QuickMenu>
+                    );
+                  })()}
                 </>
               )}
             </Panel>
@@ -774,131 +847,195 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               {budgetIncreases.length === 0 ? (
                 <div style={styles.empty}>No hay aumentos cargados para esta actualizacion.</div>
               ) : (
-                <table style={{ ...styles.table, marginBottom: 12 }}>
+                <div style={{ ...planillaWrap, ...anchosAumentos.vars, marginBottom: 12 }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Descripcion interna</th>
-                      <th>% aumento</th>
-                      <th>Resultado</th>
-                      <th></th>
+                      <th style={thEsquina}>
+                        Descripción interna
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosAumentos.startResize(ev, "label")}
+                          onDoubleClick={anchosAumentos.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        % aumento
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosAumentos.startResize(ev, "col")}
+                          onDoubleClick={anchosAumentos.resetCol}
+                        />
+                      </th>
+                      <th style={{ ...thFlexible, textAlign: "right" }}>Resultado</th>
                     </tr>
                   </thead>
                   <tbody>
                     {budgetIncreases.map((item) => (
-                      <tr key={item.id}>
-                        <td>
+                      <tr
+                        key={item.id}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          setMenuAumentos({ x: ev.clientX, y: ev.clientY, id: item.id });
+                        }}
+                      >
+                        <td style={{ ...tdNombre, fontWeight: 400, padding: 0 }}>
                           <input
-                            style={styles.input}
+                            style={{ ...inputCelda, padding: "1px 8px" }}
+                            {...focoCelda}
                             value={item.description}
-                            onChange={(e) =>
-                              updateArrayItem(setBudgetIncreases, item.id, "description", e.target.value)
-                            }
+                            onChange={(e) => updateArrayItem(setBudgetIncreases, item.id, "description", e.target.value)}
                           />
                         </td>
-                        <td>
+                        <td style={{ ...tdDato, padding: 0 }}>
                           <input
-                            style={styles.input}
+                            style={inputCeldaDerecha}
+                            {...focoCelda}
                             type="number"
                             value={item.pct}
-                            onChange={(e) =>
-                              updateArrayItem(setBudgetIncreases, item.id, "pct", Number(e.target.value))
-                            }
+                            onChange={(e) => updateArrayItem(setBudgetIncreases, item.id, "pct", Number(e.target.value))}
                           />
                         </td>
-                        <td>{money(preDiscountNetPrice * (Number(item.pct || 0) / 100))}</td>
-                        <td>
-                          <button style={styles.smallBtn} onClick={() => removeBudgetIncrease(item.id)}>
-                            Quitar
-                          </button>
+                        <td style={{ ...tdFlexible, textAlign: "right", fontWeight: 700 }}>
+                          {money(preDiscountNetPrice * (Number(item.pct || 0) / 100))}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
+              {menuAumentos && (() => {
+                const it = budgetIncreases.find((x: any) => x.id === menuAumentos.id);
+                const cerrar = () => setMenuAumentos(null);
+                if (!it) return null;
+                return (
+                  <QuickMenu x={menuAumentos.x} y={menuAumentos.y} onClose={cerrar}>
+                    <QuickMenuTitle>{it.description || "aumento"}</QuickMenuTitle>
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        removeBudgetIncrease(it.id);
+                        cerrar();
+                      }}
+                    >
+                      Quitar aumento
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
               {budgetDiscounts.length === 0 ? (
                 <div style={styles.empty}>No hay descuentos cargados.</div>
               ) : (
-                <table style={styles.table}>
+                <div style={{ ...planillaWrap, ...anchosDescuentos.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Descripcion visible</th>
-                      <th>Monto</th>
-                      <th></th>
+                      <th style={thEsquina}>
+                        Descripción visible
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosDescuentos.startResize(ev, "label")}
+                          onDoubleClick={anchosDescuentos.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        Valor
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosDescuentos.startResize(ev, "col")}
+                          onDoubleClick={anchosDescuentos.resetCol}
+                        />
+                      </th>
+                      <th style={thFlexible}>Tipo</th>
                     </tr>
                   </thead>
                   <tbody>
                     {budgetDiscounts.map((item) => (
-                      <tr key={item.id}>
-                        <td>
+                      <tr
+                        key={item.id}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          setMenuDescuentos({ x: ev.clientX, y: ev.clientY, id: item.id });
+                        }}
+                      >
+                        <td style={{ ...tdNombre, fontWeight: 400, padding: 0 }}>
                           <input
-                            style={styles.input}
+                            style={{ ...inputCelda, padding: "1px 8px" }}
+                            {...focoCelda}
                             value={item.description}
-                            onChange={(e) =>
-                              updateArrayItem(
-                                setBudgetDiscounts,
-                                item.id,
-                                "description",
-                                e.target.value
-                              )
-                            }
+                            onChange={(e) => updateArrayItem(setBudgetDiscounts, item.id, "description", e.target.value)}
                           />
                         </td>
-                        <td>
-                          <div style={{ display: "flex", gap: 6 }}>
-                            <select
-                              style={{ ...styles.input, maxWidth: 80 }}
-                              value={item.mode || "monto"}
-                              onChange={(e) =>
-                                updateArrayItem(setBudgetDiscounts, item.id, "mode", e.target.value)
-                              }
-                            >
-                              <option value="monto">$</option>
-                              <option value="porcentaje">%</option>
-                            </select>
-                            {item.mode === "porcentaje" ? (
-                              <input
-                                style={styles.input}
-                                type="number"
-                                value={item.pct ?? 0}
-                                onChange={(e) =>
-                                  updateArrayItem(
-                                    setBudgetDiscounts,
-                                    item.id,
-                                    "pct",
-                                    Number(e.target.value)
-                                  )
-                                }
-                              />
-                            ) : (
-                              <AmountInput
-                                style={styles.input}
-                                value={item.amount}
-                                onChange={(n) =>
-                                  updateArrayItem(
-                                    setBudgetDiscounts,
-                                    item.id,
-                                    "amount",
-                                    n
-                                  )
-                                }
-                              />
-                            )}
-                          </div>
+                        <td style={{ ...tdDato, padding: 0 }}>
+                          {item.mode === "porcentaje" ? (
+                            <input
+                              style={inputCeldaDerecha}
+                              {...focoCelda}
+                              type="number"
+                              value={item.pct ?? 0}
+                              onChange={(e) => updateArrayItem(setBudgetDiscounts, item.id, "pct", Number(e.target.value))}
+                            />
+                          ) : (
+                            <AmountInput
+                              style={inputCeldaDerecha}
+                              {...focoCelda}
+                              value={item.amount}
+                              onChange={(n) => updateArrayItem(setBudgetDiscounts, item.id, "amount", n)}
+                            />
+                          )}
                         </td>
-                        <td>
-                          <button
-                            style={styles.smallBtn}
-                            onClick={() => removeBudgetDiscount(item.id)}
-                          >
-                            Quitar
-                          </button>
+                        <td style={{ ...tdFlexible, color: "#64748b" }}>
+                          {item.mode === "porcentaje" ? "porcentaje (%)" : "monto fijo ($)"}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                </div>
               )}
+              {menuDescuentos && (() => {
+                const it = budgetDiscounts.find((x: any) => x.id === menuDescuentos.id);
+                const cerrar = () => setMenuDescuentos(null);
+                if (!it) return null;
+                return (
+                  <QuickMenu x={menuDescuentos.x} y={menuDescuentos.y} onClose={cerrar}>
+                    <QuickMenuTitle>{it.description || "descuento"}</QuickMenuTitle>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        updateArrayItem(
+                          setBudgetDiscounts,
+                          it.id,
+                          "mode",
+                          modoOpuesto(it.mode)
+                        );
+                        cerrar();
+                      }}
+                    >
+                      {it.mode === "porcentaje" ? "Pasar a monto fijo ($)" : "Pasar a porcentaje (%)"}
+                    </button>
+                    <QuickMenuSep />
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        removeBudgetDiscount(it.id);
+                        cerrar();
+                      }}
+                    >
+                      Quitar descuento
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
               <div style={styles.metricGrid}>
                 <MiniMetric label="Neto base bloque" value={money(preDiscountNetPrice)} />
                 <MiniMetric label="Aumentos internos" value={money(totalIncreaseAmount)} />
@@ -914,7 +1051,18 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
           </div>
 
           <div style={styles.budgetMainBottom}>
-            <Panel span="full" title="Materiales" actions={<ButtonLike onClick={addMaterial}>Agregar</ButtonLike>}>
+            <Panel
+              span="full"
+              title="Materiales"
+              actions={
+                <div style={styles.inlineActions}>
+                  <ButtonLike onClick={addMaterial}>Agregar</ButtonLike>
+                  <ButtonLike onClick={anchosMateriales.toggleCompacto} secondary>
+                    {anchosMateriales.esCompacto ? "Ancho normal" : "Compacto"}
+                  </ButtonLike>
+                </div>
+              }
+            >
               <datalist id="materials-stock-options">
                 {stockSearchOptions.flatMap((stockItem) => [
                   <option
@@ -930,100 +1078,182 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   <option key={group} value={group} />
                 ))}
               </datalist>
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosMateriales.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Orden</th>
-                    <th>Descripcion</th>
-                    <th>Grupo</th>
-                    <th>Stock</th>
-                    <th>Ubicacion</th>
-                    <th>Cant.</th>
-                    <th>Unidad</th>
-                    <th>$ Unit.</th>
-                    <th>Subtotal</th>
-                    <th></th>
+                    <th style={thEsquina}>
+                      Descripción
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosMateriales.startResize(ev, "label")}
+                        onDoubleClick={anchosMateriales.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Cant.
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosMateriales.startResize(ev, "col")}
+                        onDoubleClick={anchosMateriales.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
+                    <th style={thFlexible}>Stock · grupo · ubicación</th>
                   </tr>
                 </thead>
                 <tbody>
                   {displayedMaterials.map((item) => {
                     const stockMatch = matchStockForMaterial(item, stockByCode, stockByDescription);
+                    const alcanza = stockMatch ? Number(stockMatch.quantity || 0) >= Number(item.qty || 0) : false;
                     return (
-                      <tr key={item.id}>
-                        <td>
-                          <div style={styles.inlineActions}>
-                            <button style={styles.smallBtn} onClick={() => moveMaterial(item.id, -1)}>
-                              ↑
-                            </button>
-                            <button style={styles.smallBtn} onClick={() => moveMaterial(item.id, 1)}>
-                              ↓
-                            </button>
-                          </div>
+                      <tr
+                        key={item.id}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          marcaMateriales.marcar(String(item.id));
+                          setMenuMateriales({ x: ev.clientX, y: ev.clientY, id: item.id });
+                        }}
+                      >
+                        <td style={{ ...tdNombre, ...marcaMateriales.estilo(String(item.id)), fontWeight: 400, padding: 0 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                            <span
+                              title={stockMatch ? (alcanza ? "Hay stock suficiente" : "Stock insuficiente") : "No esta en stock"}
+                              style={{
+                                display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                                background: !stockMatch ? "#cbd5f5" : alcanza ? "#16a34a" : "#ca8a04",
+                              }}
+                            />
+                            <input
+                              style={inputCelda}
+                              {...focoCelda}
+                              list="materials-stock-options"
+                              value={item.description}
+                              onChange={(e) => applyStockSuggestionToMaterial(item.id, e.target.value)}
+                            />
+                          </span>
                         </td>
-                        <td>
-                          <input
-                            style={styles.input}
-                            list="materials-stock-options"
-                            value={item.description}
-                            onChange={(e) => applyStockSuggestionToMaterial(item.id, e.target.value)}
-                          />
+                        <td style={{ ...tdDato, padding: 0 }}>
+                          <span style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
+                            <input
+                              style={inputCeldaDerecha}
+                              {...focoCelda}
+                              type="number"
+                              value={item.qty}
+                              onChange={(e) => updateArrayItem(setMaterials, item.id, "qty", Number(e.target.value))}
+                            />
+                            <input
+                              style={{ ...inputCelda, width: 44, color: "#94a3b8" }}
+                              {...focoCelda}
+                              value={item.unit}
+                              onChange={(e) => updateArrayItem(setMaterials, item.id, "unit", e.target.value)}
+                            />
+                          </span>
                         </td>
-                        <td>
-                          <input
-                            style={styles.input}
-                            list="stock-general-group-options"
-                            value={item.stockGroup || stockMatch?.group || ""}
-                            onChange={(e) =>
-                              updateArrayItem(setMaterials, item.id, "stockGroup", e.target.value)
-                            }
-                            placeholder="Grupo"
-                          />
-                        </td>
-                        <td>{stockMatch ? `${stockMatch.quantity} ${stockMatch.unit}` : "-"}</td>
-                        <td>{stockMatch?.location || item.stockLocation || "-"}</td>
-                        <td>
-                          <input
-                            style={styles.input}
-                            type="number"
-                            value={item.qty}
-                            onChange={(e) => updateArrayItem(setMaterials, item.id, "qty", Number(e.target.value))}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            style={styles.input}
-                            value={item.unit}
-                            onChange={(e) => updateArrayItem(setMaterials, item.id, "unit", e.target.value)}
-                          />
-                        </td>
-                        <td>
+                        <td style={{ ...tdDato, padding: 0 }}>
                           <AmountInput
-                            style={styles.input}
+                            style={inputCeldaDerecha}
+                            {...focoCelda}
                             value={item.unitPrice}
                             onChange={(n) => updateArrayItem(setMaterials, item.id, "unitPrice", n)}
                           />
                         </td>
-                        <td>{money(item.qty * item.unitPrice)}</td>
-                        <td>
-                          <div style={styles.inlineActions}>
-                            {!stockMatch && item.description.trim() && (
-                              <button
-                                style={styles.smallBtn}
-                                onClick={() => addMaterialToStock(item.id)}
-                              >
-                                Agregar a stock
-                              </button>
-                            )}
-                            <button style={styles.smallBtn} onClick={() => removeMaterial(item.id)}>
-                              Quitar
-                            </button>
-                          </div>
+                        <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                          {money(item.qty * item.unitPrice)}
+                        </td>
+                        <td style={{ ...tdFlexible, color: "#64748b" }}>
+                          {stockMatch ? (
+                            <span style={{ color: alcanza ? "#166534" : "#ca8a04", fontWeight: 600 }}>
+                              {stockMatch.quantity} {stockMatch.unit}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#94a3b8" }}>sin stock</span>
+                          )}
+                          <span style={{ color: "#94a3b8" }}>
+                            {" · "}{item.stockGroup || stockMatch?.group || "sin grupo"}
+                            {" · "}{stockMatch?.location || item.stockLocation || "sin ubicación"}
+                          </span>
                         </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
+              </div>
+              {menuMateriales && (() => {
+                const it = displayedMaterials.find((x: any) => x.id === menuMateriales.id);
+                const cerrar = () => {
+                  setMenuMateriales(null);
+                  marcaMateriales.marcar(null);
+                };
+                if (!it) return null;
+                const stockMatch = matchStockForMaterial(it, stockByCode, stockByDescription);
+                return (
+                  <QuickMenu x={menuMateriales.x} y={menuMateriales.y} onClose={cerrar}>
+                    <QuickMenuTitle>{it.description || "material"}</QuickMenuTitle>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        const v = window.prompt("Grupo de stock:", String(it.stockGroup || stockMatch?.group || ""));
+                        if (v !== null) updateArrayItem(setMaterials, it.id, "stockGroup", v.trim());
+                        cerrar();
+                      }}
+                    >
+                      Editar grupo de stock…
+                    </button>
+                    <QuickMenuSep />
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        moveMaterial(it.id, -1);
+                        cerrar();
+                      }}
+                    >
+                      Subir un lugar
+                    </button>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        moveMaterial(it.id, 1);
+                        cerrar();
+                      }}
+                    >
+                      Bajar un lugar
+                    </button>
+                    {!stockMatch && it.description.trim() ? (
+                      <>
+                        <QuickMenuSep />
+                        <button
+                          style={quickMenuItem}
+                          onClick={() => {
+                            addMaterialToStock(it.id);
+                            cerrar();
+                          }}
+                        >
+                          Agregar a stock
+                        </button>
+                      </>
+                    ) : null}
+                    <QuickMenuSep />
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        removeMaterial(it.id);
+                        cerrar();
+                      }}
+                    >
+                      Quitar del presupuesto
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
               <div style={styles.rightStrong}>Total materiales: {money(totalMaterials)}</div>
             </Panel>
 
@@ -1032,80 +1262,122 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               actions={
                 <div style={styles.inlineActions}>
                   <ButtonLike onClick={restoreBasicSuppliesFromMarkers} secondary>Restaurar</ButtonLike>
+                  <ButtonLike onClick={anchosInsumos.toggleCompacto} secondary>
+                    {anchosInsumos.esCompacto ? "Ancho normal" : "Compacto"}
+                  </ButtonLike>
                 </div>
               }
             >
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosInsumos.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Descripcion</th>
-                    <th>Cant.</th>
-                    <th>Unidad</th>
-                    <th>$ Unit.</th>
-                    <th>Subtotal</th>
-                    <th></th>
+                    <th style={thEsquina}>
+                      Descripción
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosInsumos.startResize(ev, "label")}
+                        onDoubleClick={anchosInsumos.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Cant.
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosInsumos.startResize(ev, "col")}
+                        onDoubleClick={anchosInsumos.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
+                    <th style={thFlexible}>Subtotal · origen</th>
                   </tr>
                 </thead>
                 <tbody>
                   {basicSupplies.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        {item.sourceCompany ? (
-                          <span style={{ ...styles.companyRibbonMini, background: getCompanyMeta(item.sourceCompany).soft, color: getCompanyMeta(item.sourceCompany).primary }}>
-                            {getCompanyMeta(item.sourceCompany).short}
-                          </span>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td>
+                    <tr
+                      key={item.id}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        marcaInsumos.marcar(String(item.id));
+                        setMenuInsumos({ x: ev.clientX, y: ev.clientY, id: item.id });
+                      }}
+                    >
+                      <td
+                        style={{
+                          ...tdNombre, ...marcaInsumos.estilo(String(item.id)), fontWeight: 400, padding: 0,
+                          boxShadow: item.sourceCompany ? `inset 4px 0 0 ${getCompanyMeta(item.sourceCompany).primary}` : undefined,
+                        }}
+                      >
                         <input
-                          style={styles.input}
+                          style={{ ...inputCelda, padding: "1px 8px" }}
+                          {...focoCelda}
                           value={item.description}
-                          onChange={(e) =>
-                            updateArrayItem(setBasicSupplies, item.id, "description", e.target.value)
-                          }
+                          onChange={(e) => updateArrayItem(setBasicSupplies, item.id, "description", e.target.value)}
                         />
                       </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          type="number"
-                          value={item.qty}
-                          onChange={(e) =>
-                            updateArrayItem(setBasicSupplies, item.id, "qty", Number(e.target.value))
-                          }
-                        />
+                      <td style={{ ...tdDato, padding: 0 }}>
+                        <span style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
+                          <input
+                            style={inputCeldaDerecha}
+                            {...focoCelda}
+                            type="number"
+                            value={item.qty}
+                            onChange={(e) => updateArrayItem(setBasicSupplies, item.id, "qty", Number(e.target.value))}
+                          />
+                          <input
+                            style={{ ...inputCelda, width: 44, color: "#94a3b8" }}
+                            {...focoCelda}
+                            value={item.unit}
+                            onChange={(e) => updateArrayItem(setBasicSupplies, item.id, "unit", e.target.value)}
+                          />
+                        </span>
                       </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          value={item.unit}
-                          onChange={(e) =>
-                            updateArrayItem(setBasicSupplies, item.id, "unit", e.target.value)
-                          }
-                        />
-                      </td>
-                      <td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <AmountInput
-                          style={styles.input}
+                          style={inputCeldaDerecha}
+                          {...focoCelda}
                           value={item.unitPrice}
-                          onChange={(n) =>
-                            updateArrayItem(setBasicSupplies, item.id, "unitPrice", n)
-                          }
+                          onChange={(n) => updateArrayItem(setBasicSupplies, item.id, "unitPrice", n)}
                         />
                       </td>
-                      <td>{money(item.qty * item.unitPrice)}</td>
-                      <td>
-                        <button style={styles.smallBtn} onClick={() => removeBasicSupply(item.id)}>
-                          Quitar
-                        </button>
+                      <td style={tdFlexible}>
+                        <strong>{money(item.qty * item.unitPrice)}</strong>
+                        {item.sourceCompany ? (
+                          <span style={{ color: "#94a3b8" }}> · {getCompanyMeta(item.sourceCompany).short}</span>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
+              {menuInsumos && (() => {
+                const it = basicSupplies.find((x: any) => x.id === menuInsumos.id);
+                const cerrar = () => {
+                  setMenuInsumos(null);
+                  marcaInsumos.marcar(null);
+                };
+                if (!it) return null;
+                return (
+                  <QuickMenu x={menuInsumos.x} y={menuInsumos.y} onClose={cerrar}>
+                    <QuickMenuTitle>{it.description || "insumo"}</QuickMenuTitle>
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        removeBasicSupply(it.id);
+                        cerrar();
+                      }}
+                    >
+                      Quitar del presupuesto
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
               <div style={styles.rightStrong}>Total insumos y fletes: {money(totalBasicSupplies)}</div>
             </Panel>
 
@@ -1114,88 +1386,133 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               actions={
                 <div style={styles.inlineActions}>
                   <ButtonLike onClick={restoreLaborFromMarkers} secondary>Restaurar</ButtonLike>
+                  <ButtonLike onClick={anchosMO.toggleCompacto} secondary>
+                    {anchosMO.esCompacto ? "Ancho normal" : "Compacto"}
+                  </ButtonLike>
                 </div>
               }
             >
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosMO.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Categoria</th>
-                    <th>Empleados</th>
-                    <th>Hs base c/u</th>
-                    <th>Hs capacidad</th>
-                    <th>$ Hora base</th>
-                    <th>Desvio %</th>
-                    <th>$ Hora final</th>
-                    <th>Hs trabajo</th>
-                    <th>Subtotal</th>
-                    <th></th>
+                    <th style={thEsquina}>
+                      Categoría
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosMO.startResize(ev, "label")}
+                        onDoubleClick={anchosMO.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Empleados
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosMO.startResize(ev, "col")}
+                        onDoubleClick={anchosMO.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>$ Hora base</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Hs trabajo</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
+                    <th style={thFlexible}>$ Hora final · capacidad · origen</th>
                   </tr>
                 </thead>
                 <tbody>
                   {laborRows.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        {item.sourceCompany ? (
-                          <span style={{ ...styles.companyRibbonMini, background: getCompanyMeta(item.sourceCompany).soft, color: getCompanyMeta(item.sourceCompany).primary }}>
-                            {getCompanyMeta(item.sourceCompany).short}
-                          </span>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td>
+                    <tr
+                      key={item.id}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        marcaMO.marcar(String(item.id));
+                        setMenuMO({ x: ev.clientX, y: ev.clientY, id: item.id });
+                      }}
+                    >
+                      <td
+                        style={{
+                          ...tdNombre, ...marcaMO.estilo(String(item.id)), fontWeight: 400, padding: 0,
+                          boxShadow: item.sourceCompany ? `inset 4px 0 0 ${getCompanyMeta(item.sourceCompany).primary}` : undefined,
+                        }}
+                      >
                         <input
-                          style={styles.input}
+                          style={{ ...inputCelda, padding: "1px 8px" }}
+                          {...focoCelda}
                           value={item.category}
                           onChange={(e) => updateArrayItem(setLabor, item.id, "category", e.target.value)}
                         />
                       </td>
-                      <td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <input
-                          style={styles.input}
+                          style={inputCeldaDerecha}
+                          {...focoCelda}
                           type="number"
                           value={item.employees}
                           onChange={(e) => updateArrayItem(setLabor, item.id, "employees", Number(e.target.value))}
                         />
                       </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          type="number"
-                          value={nominalLaborHoursPerEmployee}
-                          readOnly
-                        />
-                      </td>
-                      <td>{Number(item.totalMonthlyHours.toFixed(2))}</td>
-                      <td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <AmountInput
-                          style={styles.input}
+                          style={inputCeldaDerecha}
+                          {...focoCelda}
                           value={item.hourlyRate}
                           onChange={(n) => updateArrayItem(setLabor, item.id, "hourlyRate", n)}
                         />
                       </td>
-                      <td>{pct(laborDeviationPct)}</td>
-                      <td>{money(item.adjustedHourlyRate)}</td>
-                      <td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <input
-                          style={styles.input}
+                          style={inputCeldaDerecha}
+                          {...focoCelda}
                           type="number"
                           value={item.jobHours}
                           onChange={(e) => updateArrayItem(setLabor, item.id, "jobHours", Number(e.target.value))}
                         />
                       </td>
-                      <td>{money(item.subtotal)}</td>
-                      <td>
-                        <button style={styles.smallBtn} onClick={() => removeLabor(item.id)}>
-                          Quitar
-                        </button>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(item.subtotal)}</td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        <strong style={{ color: "#0f172a" }}>{money(item.adjustedHourlyRate)}</strong>
+                        <span style={{ color: "#94a3b8" }}> ({pct(laborDeviationPct)})</span>
+                        <span style={{ color: "#94a3b8" }}>
+                          {" · "}{Number(item.totalMonthlyHours.toFixed(2))} hs de capacidad
+                          {" · "}{nominalLaborHoursPerEmployee} hs base c/u
+                        </span>
+                        {item.sourceCompany ? (
+                          <span style={{ color: "#94a3b8" }}> · {getCompanyMeta(item.sourceCompany).short}</span>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
+              {menuMO && (() => {
+                const it = laborRows.find((x: any) => x.id === menuMO.id);
+                const cerrar = () => {
+                  setMenuMO(null);
+                  marcaMO.marcar(null);
+                };
+                if (!it) return null;
+                return (
+                  <QuickMenu x={menuMO.x} y={menuMO.y} onClose={cerrar}>
+                    <QuickMenuTitle>{it.category || "mano de obra"}</QuickMenuTitle>
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        removeLabor(it.id);
+                        cerrar();
+                      }}
+                    >
+                      Quitar del presupuesto
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
               <div style={styles.metricGrid}>
                 <MiniMetric label="Horas disponibles" value={String(Number(totalAvailableHours.toFixed(2)))} />
                 <MiniMetric label="Horas trabajo" value={String(Number(totalJobHours.toFixed(2)))} />
@@ -1208,15 +1525,32 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               {employeesSortedByPay.length === 0 ? (
                 <div style={styles.empty}>Todavia no hay empleados cargados.</div>
               ) : (
-                <table style={styles.table}>
+                <div style={{ ...planillaWrap, ...anchosRefPersonal.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Empresa</th>
-                      <th>Nombre</th>
-                      <th>Categoria</th>
-                      <th>Antig.</th>
-                      <th>Costo hora</th>
-                      <th>Impacto empresa</th>
+                      <th style={thEsquina}>
+                        Nombre
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosRefPersonal.startResize(ev, "label")}
+                          onDoubleClick={anchosRefPersonal.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        Costo hora
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosRefPersonal.startResize(ev, "col")}
+                          onDoubleClick={anchosRefPersonal.resetCol}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Impacto empresa</th>
+                      <th style={thFlexible}>Categoría · antigüedad · empresa</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1224,28 +1558,27 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       const meta = getCompanyMeta(employee.company);
                       const summary = getEmployeePayrollSummary(employee);
                       return (
-                        <tr key={`budget-employee-${employee.id}`} style={{ background: `${meta.soft}44` }}>
-                          <td>
-                            <span
-                              style={{
-                                ...styles.statusPill,
-                                background: meta.soft,
-                                color: meta.primary,
-                              }}
-                            >
-                              {meta.short}
+                        <tr key={`budget-employee-${employee.id}`}>
+                          <td
+                            style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
+                            title={employee.name}
+                          >
+                            {employee.name}
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(summary.hourlyCost)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{money(summary.employerImpact)}</td>
+                          <td style={{ ...tdFlexible, color: "#64748b" }}>
+                            {employee.category}
+                            <span style={{ color: "#94a3b8" }}>
+                              {" · "}{employee.seniorityYears} años{" · "}{meta.short}
                             </span>
                           </td>
-                          <td>{employee.name}</td>
-                          <td>{employee.category}</td>
-                          <td>{employee.seniorityYears}</td>
-                          <td>{money(summary.hourlyCost)}</td>
-                          <td>{money(summary.employerImpact)}</td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+                </div>
               )}
             </Panel>
 
@@ -1254,53 +1587,100 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               actions={
                 <div style={styles.inlineActions}>
                   <ButtonLike onClick={restoreFixedCostsFromMarkers} secondary>Restaurar</ButtonLike>
+                  <ButtonLike onClick={anchosFijos.toggleCompacto} secondary>
+                    {anchosFijos.esCompacto ? "Ancho normal" : "Compacto"}
+                  </ButtonLike>
                 </div>
               }
             >
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosFijos.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Descripcion</th>
-                    <th>Monto</th>
-                    <th></th>
+                    <th style={thEsquina}>
+                      Descripción
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosFijos.startResize(ev, "label")}
+                        onDoubleClick={anchosFijos.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Monto
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosFijos.startResize(ev, "col")}
+                        onDoubleClick={anchosFijos.resetCol}
+                      />
+                    </th>
+                    <th style={thFlexible}>Origen</th>
                   </tr>
                 </thead>
                 <tbody>
                   {fixedCosts.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        {item.sourceCompany ? (
-                          <span style={{ ...styles.companyRibbonMini, background: getCompanyMeta(item.sourceCompany).soft, color: getCompanyMeta(item.sourceCompany).primary }}>
-                            {getCompanyMeta(item.sourceCompany).short}
-                          </span>
-                        ) : (
-                          "-"
-                        )}
-                      </td>
-                      <td>
+                    <tr
+                      key={item.id}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        marcaFijos.marcar(String(item.id));
+                        setMenuFijos({ x: ev.clientX, y: ev.clientY, id: item.id });
+                      }}
+                    >
+                      <td
+                        style={{
+                          ...tdNombre, ...marcaFijos.estilo(String(item.id)), fontWeight: 400, padding: 0,
+                          boxShadow: item.sourceCompany ? `inset 4px 0 0 ${getCompanyMeta(item.sourceCompany).primary}` : undefined,
+                        }}
+                      >
                         <input
-                          style={styles.input}
+                          style={{ ...inputCelda, padding: "1px 8px" }}
+                          {...focoCelda}
                           value={item.description}
                           onChange={(e) => updateArrayItem(setFixedCosts, item.id, "description", e.target.value)}
                         />
                       </td>
-                      <td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <AmountInput
-                          style={styles.input}
+                          style={inputCeldaDerecha}
+                          {...focoCelda}
                           value={item.amount}
                           onChange={(n) => updateArrayItem(setFixedCosts, item.id, "amount", n)}
                         />
                       </td>
-                      <td>
-                        <button style={styles.smallBtn} onClick={() => removeFixedCost(item.id)}>
-                          Quitar
-                        </button>
+                      <td style={{ ...tdFlexible, color: "#94a3b8" }}>
+                        {item.sourceCompany ? getCompanyMeta(item.sourceCompany).short : "manual"}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
+              {menuFijos && (() => {
+                const it = fixedCosts.find((x: any) => x.id === menuFijos.id);
+                const cerrar = () => {
+                  setMenuFijos(null);
+                  marcaFijos.marcar(null);
+                };
+                if (!it) return null;
+                return (
+                  <QuickMenu x={menuFijos.x} y={menuFijos.y} onClose={cerrar}>
+                    <QuickMenuTitle>{it.description || "costo fijo"}</QuickMenuTitle>
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        removeFixedCost(it.id);
+                        cerrar();
+                      }}
+                    >
+                      Quitar del presupuesto
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
               <div style={styles.rightStrong}>Total costos fijos: {money(totalFixedCosts)}</div>
             </Panel>
           </div>

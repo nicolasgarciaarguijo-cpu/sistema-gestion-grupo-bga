@@ -186,3 +186,32 @@ export function useCeldaMarcada() {
     estilo: (k: string): React.CSSProperties => (clave === k ? celdaMarcada : celdaMarcable),
   };
 }
+
+// Input que vive DENTRO de una celda de planilla: sin bordes ni fondo propio, ocupa
+// toda la celda y solo se marca cuando esta enfocado. Sirve para las planillas donde
+// se escribe directo (materiales, insumos), sin perder la estetica de planilla.
+export const inputCelda: React.CSSProperties = {
+  width: "100%",
+  border: "1px solid transparent",
+  borderRadius: 4,
+  background: "transparent",
+  padding: "1px 4px",
+  font: "inherit",
+  color: "inherit",
+  outline: "none",
+  transition: "background-color 140ms ease, border-color 140ms ease",
+};
+
+export const inputCeldaDerecha: React.CSSProperties = { ...inputCelda, textAlign: "right" };
+
+// Handlers para que el input se ilumine al enfocarlo, igual que la celda marcada.
+export const focoCelda = {
+  onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.style.background = "#ffffff";
+    e.currentTarget.style.borderColor = "#2563eb";
+  },
+  onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+    e.currentTarget.style.background = "transparent";
+    e.currentTarget.style.borderColor = "transparent";
+  },
+};
