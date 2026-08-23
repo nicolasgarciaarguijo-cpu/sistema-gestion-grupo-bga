@@ -160,6 +160,12 @@ export function StockTab({
   const marcaCostos = useCeldaMarcada();
   const [menuCostos, setMenuCostos] = React.useState<null | { x: number; y: number; id: number }>(null);
   const anchosEpp = usePlanillaWidths("stock.epp", { label: 280, col: 108, colCompact: 82 });
+  const anchosGrupos = usePlanillaWidths("stock.costos.grupos", { label: 280, col: 120, colCompact: 90 });
+  const marcaGrupos = useCeldaMarcada();
+  const [menuGrupos, setMenuGrupos] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosActivos = usePlanillaWidths("stock.activos", { label: 280, col: 116, colCompact: 88 });
+  const marcaActivos = useCeldaMarcada();
+  const [menuActivos, setMenuActivos] = React.useState<null | { x: number; y: number; id: number }>(null);
   const marcaEpp = useCeldaMarcada();
   const [menuEpp, setMenuEpp] = React.useState<null | { x: number; y: number; id: number }>(null);
   const [menuStock, setMenuStock] = React.useState<null | { x: number; y: number; id: number }>(null);
@@ -527,74 +533,128 @@ export function StockTab({
             </div>
 
             <div style={styles.sectionHeader}>Grupos y categorias</div>
-            <table style={styles.table}>
+            <div style={{ ...planillaWrap, ...anchosGrupos.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Activo</th>
-                  <th>Empresa</th>
-                  <th>Grupo / categoria</th>
-                  <th>Notas</th>
-                  <th></th>
+                  <th style={thEsquina}>
+                    Grupo / categoría
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosGrupos.startResize(ev, "label")}
+                      onDoubleClick={anchosGrupos.resetLabel}
+                    />
+                  </th>
+                  <th style={thColumna}>
+                    Empresa
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosGrupos.startResize(ev, "col")}
+                      onDoubleClick={anchosGrupos.resetCol}
+                    />
+                  </th>
+                  <th style={thFlexible}>Notas</th>
                 </tr>
               </thead>
               <tbody>
                 {costAnalysisGroups.map((group) => (
-                  <tr key={group.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={group.active}
-                        onChange={(e) =>
-                          updateCostAnalysisGroup(group.id, "active", e.target.checked)
-                        }
+                  <tr
+                    key={group.id}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      marcaGrupos.marcar(String(group.id));
+                      setMenuGrupos({ x: ev.clientX, y: ev.clientY, id: group.id });
+                    }}
+                  >
+                    <td
+                      title={group.name}
+                      style={{
+                        ...tdNombre, ...marcaGrupos.estilo(String(group.id)), fontWeight: 400,
+                        opacity: group.active ? 1 : 0.45,
+                      }}
+                    >
+                      <span
+                        title={group.active ? "Activo" : "Inactivo"}
+                        style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                          background: group.active ? "#16a34a" : "#cbd5f5",
+                        }}
                       />
+                      {group.name || "(sin nombre)"}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={group.company}
-                        onChange={(e) =>
-                          updateCostAnalysisGroup(group.id, "company", e.target.value)
-                        }
-                      >
-                        <option value="General">General</option>
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={group.name}
-                        onChange={(e) =>
-                          updateCostAnalysisGroup(group.id, "name", e.target.value)
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={group.notes}
-                        onChange={(e) =>
-                          updateCostAnalysisGroup(group.id, "notes", e.target.value)
-                        }
-                      />
-                    </td>
-                    <td>
-                      <button
-                        style={styles.smallBtn}
-                        onClick={() => removeCostAnalysisGroup(group.id)}
-                      >
-                        Quitar
-                      </button>
-                    </td>
+                    <td style={{ ...tdDato, color: "#475569" }}>{getCompanyScopeLabel(group.company)}</td>
+                    <td style={{ ...tdFlexible, color: "#64748b" }} title={group.notes}>{group.notes}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
+            {menuGrupos && (() => {
+              const it = costAnalysisGroups.find((x: any) => x.id === menuGrupos.id);
+              const cerrar = () => {
+                setMenuGrupos(null);
+                marcaGrupos.marcar(null);
+              };
+              if (!it) return null;
+              const pedir = (titulo: string, campo: string, actual: any) => () => {
+                const v = window.prompt(titulo, String(actual ?? ""));
+                if (v === null) return cerrar();
+                updateCostAnalysisGroup(it.id, campo as any, v.trim());
+                cerrar();
+              };
+              return (
+                <QuickMenu x={menuGrupos.x} y={menuGrupos.y} onClose={cerrar}>
+                  <QuickMenuTitle>{it.name || "grupo"}</QuickMenuTitle>
+                  <button style={quickMenuItem} onClick={pedir("Grupo / categoría:", "name", it.name)}>
+                    Editar nombre…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Notas:", "notes", it.notes)}>
+                    Editar notas…
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      const opciones = ["General", ...COMPANY_OPTIONS.map((c) => c.short)]
+                        .map((n, i) => `${i + 1}. ${n}`)
+                        .join("\n");
+                      const v = window.prompt(`Empresa:\n${opciones}`, "");
+                      const idx = Number(v) - 1;
+                      const valores = ["General", ...COMPANY_OPTIONS.map((c) => c.value)];
+                      if (valores[idx]) updateCostAnalysisGroup(it.id, "company", valores[idx]);
+                      cerrar();
+                    }}
+                  >
+                    Cambiar empresa…
+                  </button>
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      updateCostAnalysisGroup(it.id, "active", !it.active);
+                      cerrar();
+                    }}
+                  >
+                    {it.active ? "Desactivar" : "Activar"}
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      if (window.confirm(`¿Quitar el grupo "${it.name}"?`)) {
+                        removeCostAnalysisGroup(it.id);
+                      }
+                      cerrar();
+                    }}
+                  >
+                    Quitar grupo
+                  </button>
+                </QuickMenu>
+              );
+            })()}
 
             <div style={styles.sectionHeader}>Items del analisis</div>
             <div style={{ ...planillaWrap, ...anchosCostos.vars }}>
@@ -1329,75 +1389,168 @@ export function StockTab({
 
           <Panel span="full"
             title="Activos y amortizacion"
-            actions={<ButtonLike onClick={addCompanyAsset}>Agregar activo</ButtonLike>}
+            actions={
+              <div style={styles.inlineActions}>
+                <ButtonLike onClick={addCompanyAsset}>Agregar activo</ButtonLike>
+                <ButtonLike onClick={anchosActivos.toggleCompacto} secondary>
+                  {anchosActivos.esCompacto ? "Ancho normal" : "Compacto"}
+                </ButtonLike>
+              </div>
+            }
           >
             <div style={styles.metricGrid}>
               <MiniMetric label="Activos activos" value={String(visibleCompanyAssets.filter((item) => item.active).length)} />
               <MiniMetric label="Valor de activos" value={money(visibleCompanyAssets.filter((item) => item.active).reduce((acc, item) => acc + Number(item.value || 0), 0))} />
               <MiniMetric label="Amortizacion mensual" value={money(activeAssetsMonthlyDepreciation)} />
             </div>
-            <table style={styles.table}>
+            <div style={{ ...planillaWrap, ...anchosActivos.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Activo</th>
-                  <th>Empresa</th>
-                  <th>Categoria</th>
-                  <th>Descripcion</th>
-                  <th>Valor</th>
-                  <th>Vida util (meses)</th>
-                  <th>Amortizacion</th>
-                  <th>Notas</th>
-                  <th></th>
+                  <th style={thEsquina}>
+                    Descripción
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosActivos.startResize(ev, "label")}
+                      onDoubleClick={anchosActivos.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Valor
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosActivos.startResize(ev, "col")}
+                      onDoubleClick={anchosActivos.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Vida útil</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Amortización</th>
+                  <th style={thFlexible}>Categoría · empresa · notas</th>
                 </tr>
               </thead>
               <tbody>
                 {visibleCompanyAssets.map((asset) => (
-                  <tr key={asset.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={asset.active}
-                        onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "active", e.target.checked)}
+                  <tr
+                    key={asset.id}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      marcaActivos.marcar(String(asset.id));
+                      setMenuActivos({ x: ev.clientX, y: ev.clientY, id: asset.id });
+                    }}
+                  >
+                    <td
+                      title={asset.description}
+                      style={{
+                        ...tdNombre, ...marcaActivos.estilo(String(asset.id)), fontWeight: 400,
+                        opacity: asset.active ? 1 : 0.45,
+                      }}
+                    >
+                      <span
+                        title={asset.active ? "Activo" : "Inactivo"}
+                        style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                          background: asset.active ? "#16a34a" : "#cbd5f5",
+                        }}
                       />
+                      {asset.description || "(sin descripción)"}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={asset.company}
-                        onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(asset.value)}</td>
+                    <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>
+                      {Number(asset.usefulLifeMonths || 0)} <span style={{ color: "#94a3b8" }}>meses</span>
                     </td>
-                    <td>
-                      <input style={styles.input} value={asset.category} onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "category", e.target.value)} />
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                      {money(Number(asset.value || 0) / Math.max(Number(asset.usefulLifeMonths || 1), 1))}
                     </td>
-                    <td>
-                      <input style={styles.input} value={asset.description} onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "description", e.target.value)} />
-                    </td>
-                    <td>
-                      <AmountInput style={styles.input}value={asset.value} onChange={(n) => updateArrayItem(setCompanyAssets, asset.id, "value", n)} />
-                    </td>
-                    <td>
-                      <input style={styles.input} type="number" value={asset.usefulLifeMonths} onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "usefulLifeMonths", Number(e.target.value))} />
-                    </td>
-                    <td>{money(Number(asset.value || 0) / Math.max(Number(asset.usefulLifeMonths || 1), 1))}</td>
-                    <td>
-                      <input style={styles.input} value={asset.notes} onChange={(e) => updateArrayItem(setCompanyAssets, asset.id, "notes", e.target.value)} />
-                    </td>
-                    <td>
-                      <button style={styles.smallBtn} onClick={() => removeCompanyAsset(asset.id)}>
-                        Quitar
-                      </button>
+                    <td style={{ ...tdFlexible, color: "#64748b" }} title={asset.notes}>
+                      {asset.category || "(sin categoría)"}
+                      <span style={{ color: "#94a3b8" }}> · {getCompanyScopeLabel(asset.company)}</span>
+                      {asset.notes ? <span style={{ color: "#94a3b8" }}> · {asset.notes}</span> : null}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
+            {menuActivos && (() => {
+              const it = visibleCompanyAssets.find((x: any) => x.id === menuActivos.id);
+              const cerrar = () => {
+                setMenuActivos(null);
+                marcaActivos.marcar(null);
+              };
+              if (!it) return null;
+              const pedir = (titulo: string, campo: string, actual: any, numero: boolean) => () => {
+                const v = window.prompt(titulo, String(actual ?? ""));
+                if (v === null) return cerrar();
+                if (numero) {
+                  const n = Number(v.replace(",", "."));
+                  if (Number.isFinite(n)) updateArrayItem(setCompanyAssets, it.id, campo, n);
+                } else {
+                  updateArrayItem(setCompanyAssets, it.id, campo, v.trim());
+                }
+                cerrar();
+              };
+              return (
+                <QuickMenu x={menuActivos.x} y={menuActivos.y} onClose={cerrar}>
+                  <QuickMenuTitle>{it.description || "activo"}</QuickMenuTitle>
+                  <button style={quickMenuItem} onClick={pedir("Valor:", "value", it.value, true)}>
+                    Editar valor…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Vida util (meses):", "usefulLifeMonths", it.usefulLifeMonths, true)}>
+                    Editar vida util…
+                  </button>
+                  <QuickMenuSep />
+                  <button style={quickMenuItem} onClick={pedir("Descripcion:", "description", it.description, false)}>
+                    Editar descripcion…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Categoria:", "category", it.category, false)}>
+                    Editar categoria…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Notas:", "notes", it.notes, false)}>
+                    Editar notas…
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      const opciones = COMPANY_OPTIONS.map((c, i) => `${i + 1}. ${c.short}`).join("\n");
+                      const v = window.prompt(`Empresa:\n${opciones}`, "");
+                      const idx = Number(v) - 1;
+                      if (COMPANY_OPTIONS[idx]) updateArrayItem(setCompanyAssets, it.id, "company", COMPANY_OPTIONS[idx].value);
+                      cerrar();
+                    }}
+                  >
+                    Cambiar empresa…
+                  </button>
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      updateArrayItem(setCompanyAssets, it.id, "active", !it.active);
+                      cerrar();
+                    }}
+                  >
+                    {it.active ? "Desactivar" : "Activar"}
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      if (window.confirm(`¿Quitar "${it.description}" de activos?`)) {
+                        removeCompanyAsset(it.id);
+                      }
+                      cerrar();
+                    }}
+                  >
+                    Quitar activo
+                  </button>
+                </QuickMenu>
+              );
+            })()}
           </Panel>
 
           <Panel span="full" title="Detalle de faltantes sugeridos">
