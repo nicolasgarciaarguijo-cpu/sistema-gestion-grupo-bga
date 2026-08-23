@@ -155,6 +155,13 @@ export function StockTab({
   const anchosMovs = usePlanillaWidths("stock.movimientos", { label: 300, col: 110, colCompact: 84 });
   const anchosFaltantes = usePlanillaWidths("stock.faltantes", { label: 280, col: 104, colCompact: 80 });
   const anchosVigencia = usePlanillaWidths("stock.vigencia", { label: 240, col: 110, colCompact: 84 });
+  const anchosAgenda = usePlanillaWidths("stock.agenda", { label: 260, col: 122, colCompact: 92 });
+  const anchosCostos = usePlanillaWidths("stock.costos", { label: 280, col: 108, colCompact: 82 });
+  const marcaCostos = useCeldaMarcada();
+  const [menuCostos, setMenuCostos] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const anchosEpp = usePlanillaWidths("stock.epp", { label: 280, col: 108, colCompact: 82 });
+  const marcaEpp = useCeldaMarcada();
+  const [menuEpp, setMenuEpp] = React.useState<null | { x: number; y: number; id: number }>(null);
   const [menuStock, setMenuStock] = React.useState<null | { x: number; y: number; id: number }>(null);
 
   const filteredGeneralStock = generalStock
@@ -182,16 +189,33 @@ export function StockTab({
             />
           </Panel>
           <Panel title="Agenda de fabricacion" span="full" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
-            <table style={styles.table}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Empresa</th>
-                  <th>Presupuesto</th>
-                  <th>Cliente</th>
-                  <th>Inicio fabricacion</th>
-                  <th>Dias para comprar</th>
-                  <th>Estado</th>
-                  <th>Faltantes</th>
+                  <th style={thEsquina}>
+                    Trabajo
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosAgenda.startResize(ev, "label")}
+                      onDoubleClick={anchosAgenda.resetLabel}
+                    />
+                  </th>
+                  <th style={thColumna}>
+                    Inicio fabricación
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosAgenda.startResize(ev, "col")}
+                      onDoubleClick={anchosAgenda.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Días para comprar</th>
+                  <th style={thColumna}>Faltantes</th>
+                  <th style={thFlexible}>Estado · empresa</th>
                 </tr>
               </thead>
               <tbody>
@@ -208,39 +232,35 @@ export function StockTab({
                     return Number(stockMatch?.quantity || 0) < Number(material.qty || 0);
                   }).length;
                   return (
-                    <tr key={job.id} style={{ background: `${companyMetaItem.soft}66` }}>
-                      <td>
-                        <span style={{ ...styles.statusPill, background: companyMetaItem.soft, color: companyMetaItem.primary }}>
-                          {companyMetaItem.short}
-                        </span>
+                    <tr key={job.id}>
+                      <td
+                        style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${companyMetaItem.primary}` }}
+                        title={`${job.budgetNumber} · ${job.client}`}
+                      >
+                        <strong style={{ color: "#0f172a" }}>{job.budgetNumber}</strong>{" "}
+                        <span style={{ color: "#475569" }}>{job.client}</span>
                       </td>
-                      <td>{job.budgetNumber}</td>
-                      <td>{job.client}</td>
-                      <td>
+                      <td style={tdDato}>
                         <input
-                          style={{ ...styles.input, minWidth: 140 }}
+                          style={{ ...styles.input, padding: "2px 4px", fontSize: 12 }}
                           type="date"
                           value={job.startDate}
                           onChange={(e) => updateApprovedJob(job.id, "startDate", e.target.value)}
                         />
                       </td>
-                      <td>
-                        {daysUntilStart === null ? "-" : `${daysUntilStart} dias`}
+                      <td
+                        style={{
+                          ...tdDato, textAlign: "right", fontWeight: 700,
+                          color: daysUntilStart === null ? "#94a3b8" : daysUntilStart <= 3 ? "#dc2626" : daysUntilStart <= 10 ? "#ca8a04" : "#166534",
+                        }}
+                      >
+                        {daysUntilStart === null ? "—" : `${daysUntilStart} días`}
                       </td>
-                      <td>{job.executionStatus}</td>
-                      <td>
-                        <span
-                          style={{
-                            ...styles.statusPill,
-                            ...(missingCount === 0
-                              ? styles.statusGreen
-                              : missingCount <= 2
-                              ? styles.statusYellow
-                              : styles.statusRed),
-                          }}
-                        >
-                          {missingCount === 0 ? "Completo" : `${missingCount} faltantes`}
-                        </span>
+                      <td style={{ ...tdDato, fontWeight: 700, color: missingCount === 0 ? "#166534" : missingCount <= 2 ? "#ca8a04" : "#dc2626" }}>
+                        {missingCount === 0 ? "✓ completo" : `${missingCount} faltantes`}
+                      </td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        {job.executionStatus} <span style={{ color: "#94a3b8" }}>· {companyMetaItem.short}</span>
                       </td>
                     </tr>
                   );
@@ -484,6 +504,9 @@ export function StockTab({
                   Agregar grupo
                 </ButtonLike>
                 <ButtonLike onClick={addCostAnalysisEntry}>Agregar item de costo</ButtonLike>
+                <ButtonLike onClick={anchosCostos.toggleCompacto} secondary>
+                  {anchosCostos.esCompacto ? "Ancho normal" : "Compacto"}
+                </ButtonLike>
               </div>
             }
           >
@@ -574,123 +597,159 @@ export function StockTab({
             </table>
 
             <div style={styles.sectionHeader}>Items del analisis</div>
-            <table style={styles.table}>
+            <div style={{ ...planillaWrap, ...anchosCostos.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Activo</th>
-                  <th>Empresa</th>
-                  <th>Grupo</th>
-                  <th>Descripcion</th>
-                  <th>Unidad</th>
-                  <th>Cantidad</th>
-                  <th>$ Unit.</th>
-                  <th>Subtotal</th>
-                  <th>Notas</th>
-                  <th></th>
+                  <th style={thEsquina}>
+                    Descripción
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosCostos.startResize(ev, "label")}
+                      onDoubleClick={anchosCostos.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Cantidad
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosCostos.startResize(ev, "col")}
+                      onDoubleClick={anchosCostos.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
+                  <th style={thFlexible}>Grupo · empresa · notas</th>
                 </tr>
               </thead>
               <tbody>
-                {costAnalysisEntries.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={entry.active}
-                        onChange={(e) =>
-                          updateCostAnalysisEntry(entry.id, "active", e.target.checked)
-                        }
+                {costAnalysisEntries.map((entry) => {
+                  const grupo = costAnalysisGroups.find((g) => g.id === entry.groupId);
+                  return (
+                  <tr
+                    key={entry.id}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      marcaCostos.marcar(String(entry.id));
+                      setMenuCostos({ x: ev.clientX, y: ev.clientY, id: entry.id });
+                    }}
+                  >
+                    <td
+                      title={entry.description}
+                      style={{
+                        ...tdNombre, ...marcaCostos.estilo(String(entry.id)), fontWeight: 400,
+                        opacity: entry.active ? 1 : 0.45,
+                      }}
+                    >
+                      <span
+                        title={entry.active ? "Activo" : "Inactivo"}
+                        style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                          background: entry.active ? "#16a34a" : "#cbd5f5",
+                        }}
                       />
+                      {entry.description || "(sin descripción)"}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={entry.company}
-                        onChange={(e) =>
-                          updateCostAnalysisEntry(entry.id, "company", e.target.value)
-                        }
-                      >
-                        <option value="General">General</option>
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
+                    <td style={{ ...tdDato, textAlign: "right" }}>
+                      {Number(entry.quantity || 0)} <span style={{ color: "#94a3b8" }}>{entry.unit}</span>
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={entry.groupId}
-                        onChange={(e) =>
-                          updateCostAnalysisEntry(entry.id, "groupId", Number(e.target.value))
-                        }
-                      >
-                        {costAnalysisGroups.map((group) => (
-                          <option key={group.id} value={group.id}>
-                            {group.name} - {getCompanyScopeLabel(group.company)}
-                          </option>
-                        ))}
-                      </select>
+                    <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{money(entry.unitCost)}</td>
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                      {money(Number(entry.quantity || 0) * Number(entry.unitCost || 0))}
                     </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={entry.description}
-                        onChange={(e) =>
-                          updateCostAnalysisEntry(entry.id, "description", e.target.value)
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={entry.unit}
-                        onChange={(e) =>
-                          updateCostAnalysisEntry(entry.id, "unit", e.target.value)
-                        }
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        type="number"
-                        value={entry.quantity}
-                        onChange={(e) =>
-                          updateCostAnalysisEntry(entry.id, "quantity", Number(e.target.value))
-                        }
-                      />
-                    </td>
-                    <td>
-                      <AmountInput
-                        style={styles.input}
-                        value={entry.unitCost}
-                        onChange={(n) =>
-                          updateCostAnalysisEntry(entry.id, "unitCost", n)
-                        }
-                      />
-                    </td>
-                    <td>{money(Number(entry.quantity || 0) * Number(entry.unitCost || 0))}</td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={entry.notes}
-                        onChange={(e) =>
-                          updateCostAnalysisEntry(entry.id, "notes", e.target.value)
-                        }
-                      />
-                    </td>
-                    <td>
-                      <button
-                        style={styles.smallBtn}
-                        onClick={() => removeCostAnalysisEntry(entry.id)}
-                      >
-                        Quitar
-                      </button>
+                    <td style={{ ...tdFlexible, color: "#64748b" }} title={entry.notes}>
+                      {grupo ? grupo.name : "(sin grupo)"}{" "}
+                      <span style={{ color: "#94a3b8" }}>· {getCompanyScopeLabel(entry.company)}</span>
+                      {entry.notes ? <span style={{ color: "#94a3b8" }}> · {entry.notes}</span> : null}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
+            </div>
+            {menuCostos && (() => {
+              const it = costAnalysisEntries.find((x: any) => x.id === menuCostos.id);
+              const cerrar = () => {
+                setMenuCostos(null);
+                marcaCostos.marcar(null);
+              };
+              if (!it) return null;
+              const pedir = (titulo: string, campo: string, actual: any, numero = false) => () => {
+                const v = window.prompt(titulo, String(actual ?? ""));
+                if (v === null) return cerrar();
+                if (numero) {
+                  const n = Number(v.replace(",", "."));
+                  if (Number.isFinite(n)) updateCostAnalysisEntry(it.id, campo as any, n);
+                } else {
+                  updateCostAnalysisEntry(it.id, campo as any, v.trim());
+                }
+                cerrar();
+              };
+              return (
+                <QuickMenu x={menuCostos.x} y={menuCostos.y} onClose={cerrar}>
+                  <QuickMenuTitle>{it.description || "concepto"}</QuickMenuTitle>
+                  <button style={quickMenuItem} onClick={pedir("Cantidad:", "quantity", it.quantity, true)}>
+                    Editar cantidad…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Costo unitario:", "unitCost", it.unitCost, true)}>
+                    Editar costo unitario…
+                  </button>
+                  <QuickMenuSep />
+                  <button style={quickMenuItem} onClick={pedir("Descripción:", "description", it.description)}>
+                    Editar descripción…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Unidad:", "unit", it.unit)}>
+                    Editar unidad…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Notas:", "notes", it.notes)}>
+                    Editar notas…
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      const opciones = costAnalysisGroups
+                        .map((g, i) => `${i + 1}. ${g.name} - ${getCompanyScopeLabel(g.company)}`)
+                        .join("\n");
+                      const v = window.prompt(`Grupo:\n${opciones}`, "");
+                      const idx = Number(v) - 1;
+                      if (costAnalysisGroups[idx]) updateCostAnalysisEntry(it.id, "groupId", costAnalysisGroups[idx].id);
+                      cerrar();
+                    }}
+                  >
+                    Cambiar de grupo…
+                  </button>
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      updateCostAnalysisEntry(it.id, "active", !it.active);
+                      cerrar();
+                    }}
+                  >
+                    {it.active ? "Desactivar" : "Activar"}
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      if (window.confirm(`¿Quitar "${it.description}" del análisis?`)) {
+                        removeCostAnalysisEntry(it.id);
+                      }
+                      cerrar();
+                    }}
+                  >
+                    Quitar del análisis
+                  </button>
+                </QuickMenu>
+              );
+            })()}
             <div style={styles.noticeBox}>
               Los grupos activos de este bloque alimentan automaticamente la solapa de
               marcadores y luego pueden restaurarse dentro del presupuesto.
@@ -1028,6 +1087,9 @@ export function StockTab({
             title="EPP, insumos, examenes y capacitaciones"
             actions={
               <div style={styles.inlineActions}>
+                <ButtonLike onClick={anchosEpp.toggleCompacto} secondary>
+                  {anchosEpp.esCompacto ? "Ancho normal" : "Compacto"}
+                </ButtonLike>
                 {PERSONAL_PROVISION_KINDS.map((k) => (
                   <ButtonLike key={k} onClick={() => addPersonalStockItem(k)} secondary>
                     Agregar {k}
@@ -1036,96 +1098,165 @@ export function StockTab({
               </div>
             }
           >
-            <table style={styles.table}>
+            <div style={{ ...planillaWrap, ...anchosEpp.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Activo</th>
-                  <th>Tipo</th>
-                  <th>Empresa</th>
-                  <th>Compartido</th>
-                  <th>Codigo</th>
-                  <th>Descripcion</th>
-                  <th>Ubicacion</th>
-                  <th>Cantidad</th>
-                  <th>$ por entrega</th>
-                  <th>Valor stock</th>
-                  <th></th>
+                  <th style={thEsquina}>
+                    Descripción
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosEpp.startResize(ev, "label")}
+                      onDoubleClick={anchosEpp.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Cantidad
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosEpp.startResize(ev, "col")}
+                      onDoubleClick={anchosEpp.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>$ por entrega</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Valor stock</th>
+                  <th style={thFlexible}>Tipo · empresa · ubicación</th>
                 </tr>
               </thead>
               <tbody>
                 {stockPersonalItems.map((item) => (
-                  <tr key={item.id}>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={item.active}
-                        onChange={(e) => updateStockItem(item.id, "active", e.target.checked)}
+                  <tr
+                    key={item.id}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      marcaEpp.marcar(String(item.id));
+                      setMenuEpp({ x: ev.clientX, y: ev.clientY, id: item.id });
+                    }}
+                  >
+                    <td
+                      title={item.description}
+                      style={{
+                        ...tdNombre, ...marcaEpp.estilo(String(item.id)), fontWeight: 400,
+                        opacity: item.active ? 1 : 0.45,
+                      }}
+                    >
+                      <span
+                        title={item.active ? "Activo" : "Inactivo"}
+                        style={{
+                          display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                          background: item.active ? "#16a34a" : "#cbd5f5",
+                        }}
                       />
+                      {item.description || "(sin descripción)"}
+                      {item.code ? <span style={{ color: "#94a3b8" }}> · {item.code}</span> : null}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={item.kind}
-                        onChange={(e) => updateStockItem(item.id, "kind", e.target.value)}
-                      >
-                        {PERSONAL_PROVISION_KINDS.map((k) => (
-                          <option key={k} value={k}>
-                            {k}
-                          </option>
-                        ))}
-                      </select>
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 600, color: Number(item.quantity || 0) > 0 ? "#0f172a" : "#dc2626" }}>
+                      {Number(item.quantity || 0)}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={item.company}
-                        onChange={(e) => updateStockItem(item.id, "company", e.target.value)}
-                      >
-                        <option value="General">General</option>
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
+                    <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{money(item.unitPrice)}</td>
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                      {money(Number(item.quantity || 0) * Number(item.unitPrice || 0))}
                     </td>
-                    <td>
-                      <input
-                        type="checkbox"
-                        checked={item.shared}
-                        onChange={(e) => updateStockItem(item.id, "shared", e.target.checked)}
-                      />
-                    </td>
-                    <td>
-                      <input style={styles.input} value={item.code} onChange={(e) => updateStockItem(item.id, "code", e.target.value)} />
-                    </td>
-                    <td>
-                      <input style={styles.input} value={item.description} onChange={(e) => updateStockItem(item.id, "description", e.target.value)} />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={item.location}
-                        onChange={(e) => updateStockItem(item.id, "location", e.target.value)}
-                        placeholder="Sector / estante / deposito"
-                      />
-                    </td>
-                    <td>
-                      <input style={styles.input} type="number" value={item.quantity} onChange={(e) => updateStockItem(item.id, "quantity", Number(e.target.value))} />
-                    </td>
-                    <td>
-                      <AmountInput style={styles.input}value={item.unitPrice} onChange={(n) => updateStockItem(item.id, "unitPrice", n)} />
-                    </td>
-                    <td>{money(Number(item.quantity || 0) * Number(item.unitPrice || 0))}</td>
-                    <td>
-                      <button style={styles.smallBtn} onClick={() => removeStockItem(item.id)}>
-                        Quitar
-                      </button>
+                    <td style={{ ...tdFlexible, color: "#64748b" }}>
+                      {item.kind}
+                      <span style={{ color: "#94a3b8" }}> · {getCompanyScopeLabel(item.company)}</span>
+                      {item.shared ? <span style={{ color: "#94a3b8" }}> · compartido</span> : null}
+                      {item.location ? <span style={{ color: "#94a3b8" }}> · {item.location}</span> : null}
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
+            {menuEpp && (() => {
+              const it = stockPersonalItems.find((x: any) => x.id === menuEpp.id);
+              const cerrar = () => {
+                setMenuEpp(null);
+                marcaEpp.marcar(null);
+              };
+              if (!it) return null;
+              const pedir = (titulo: string, campo: string, actual: any, numero = false) => () => {
+                const v = window.prompt(titulo, String(actual ?? ""));
+                if (v === null) return cerrar();
+                if (numero) {
+                  const n = Number(v.replace(",", "."));
+                  if (Number.isFinite(n)) updateStockItem(it.id, campo as any, n);
+                } else {
+                  updateStockItem(it.id, campo as any, v.trim());
+                }
+                cerrar();
+              };
+              return (
+                <QuickMenu x={menuEpp.x} y={menuEpp.y} onClose={cerrar}>
+                  <QuickMenuTitle>{it.description || "item"} · {it.kind}</QuickMenuTitle>
+                  <button style={quickMenuItem} onClick={pedir("Cantidad:", "quantity", it.quantity, true)}>
+                    Editar cantidad…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("$ por entrega:", "unitPrice", it.unitPrice, true)}>
+                    Editar $ por entrega…
+                  </button>
+                  <QuickMenuSep />
+                  <button style={quickMenuItem} onClick={pedir("Descripción:", "description", it.description)}>
+                    Editar descripción…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Código:", "code", it.code)}>
+                    Editar código…
+                  </button>
+                  <button style={quickMenuItem} onClick={pedir("Ubicación:", "location", it.location)}>
+                    Editar ubicación…
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      const opciones = PERSONAL_PROVISION_KINDS.map((k, i) => `${i + 1}. ${k}`).join("\n");
+                      const v = window.prompt(`Tipo:\n${opciones}`, "");
+                      const idx = Number(v) - 1;
+                      if (PERSONAL_PROVISION_KINDS[idx]) updateStockItem(it.id, "kind" as any, PERSONAL_PROVISION_KINDS[idx]);
+                      cerrar();
+                    }}
+                  >
+                    Cambiar tipo…
+                  </button>
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      updateStockItem(it.id, "shared" as any, !it.shared);
+                      cerrar();
+                    }}
+                  >
+                    {it.shared ? "Dejar de compartir" : "Marcar como compartido"}
+                  </button>
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      updateStockItem(it.id, "active" as any, !it.active);
+                      cerrar();
+                    }}
+                  >
+                    {it.active ? "Desactivar" : "Activar"}
+                  </button>
+                  <QuickMenuSep />
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      if (window.confirm(`¿Quitar "${it.description}" del listado?`)) {
+                        removeStockItem(it.id);
+                      }
+                      cerrar();
+                    }}
+                  >
+                    Quitar del listado
+                  </button>
+                </QuickMenu>
+              );
+            })()}
             <div style={styles.inlineActions}>
               <ButtonLike onClick={restorePersonalProvisionMarkersFromStock} secondary>
                 Llevar a marcadores
