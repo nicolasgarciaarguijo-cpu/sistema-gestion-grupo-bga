@@ -1,6 +1,11 @@
 import { Fragment, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel, SemaforoResumen, Semaforo, MiniMetric, ButtonLike } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+  inputCelda, focoCelda,
+} from "../ui/planilla";
 import { formatDateDisplay, money } from "../lib/format";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
@@ -49,6 +54,11 @@ export function FabricacionTab({
     setExpandedJobIds((current) =>
       current.includes(jobId) ? current.filter((id) => id !== jobId) : [...current, jobId]
     );
+
+  const anchosPendientes = usePlanillaWidths("fabricacion.pendientes", { label: 300, col: 110, colCompact: 84 });
+  const anchosCompras = usePlanillaWidths("fabricacion.compras", { label: 280, col: 120, colCompact: 92 });
+  const anchosStock = usePlanillaWidths("fabricacion.stock", { label: 300, col: 110, colCompact: 84 });
+  const anchosCalendario = usePlanillaWidths("fabricacion.calendario", { label: 280, col: 132, colCompact: 100 });
 
   return (
         <div style={styles.column}>
@@ -99,41 +109,71 @@ export function FabricacionTab({
             {fabricationPendingPurchases.length === 0 ? (
               <div style={styles.empty}>No hay faltantes pendientes para trabajos activos.</div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosPendientes.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Alerta</th>
-                    <th>Material</th>
-                    <th>Empresas</th>
-                    <th>Trabajos</th>
-                    <th>Requerido</th>
-                    <th>Stock</th>
-                    <th>Faltante</th>
+                    <th style={thEsquina}>
+                      Material
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosPendientes.startResize(ev, "label")}
+                        onDoubleClick={anchosPendientes.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Requerido
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosPendientes.startResize(ev, "col")}
+                        onDoubleClick={anchosPendientes.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Faltante</th>
+                    <th style={thFlexible}>Trabajos · empresas</th>
                   </tr>
                 </thead>
                 <tbody>
                   {fabricationPendingPurchases.map((row) => (
                     <tr key={row.description}>
-                      <td>
+                      <td style={{ ...tdNombre, fontWeight: 400 }} title={row.description}>
                         <span
+                          title={row.available > 0 ? "Hay parte en stock" : "Hay que comprar todo"}
                           style={{
-                            ...styles.statusPill,
-                            ...(row.available > 0 ? styles.statusYellow : styles.statusRed),
+                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                            background: row.available > 0 ? "#ca8a04" : "#dc2626",
                           }}
-                        >
-                          {row.available > 0 ? "Parcial" : "Comprar"}
-                        </span>
+                        />
+                        {row.description}
                       </td>
-                      <td>{row.description}</td>
-                      <td>{row.companyLabels.join(", ")}</td>
-                      <td>{row.jobs.join(", ")}</td>
-                      <td>{row.required} {row.unit}</td>
-                      <td>{row.available} {row.unit}</td>
-                      <td>{row.missing} {row.unit}</td>
+                      <td style={{ ...tdDato, textAlign: "right" }}>
+                        {row.required} <span style={{ color: "#94a3b8" }}>{row.unit}</span>
+                        <span style={{ color: "#94a3b8" }}> · hay {row.available}</span>
+                      </td>
+                      <td
+                        style={{
+                          ...tdDato, textAlign: "right", fontWeight: 700,
+                          color: row.available > 0 ? "#ca8a04" : "#dc2626",
+                        }}
+                      >
+                        {row.missing} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{row.unit}</span>
+                      </td>
+                      <td
+                        style={{ ...tdFlexible, color: "#64748b" }}
+                        title={`${row.jobs.join(", ")} · ${row.companyLabels.join(", ")}`}
+                      >
+                        {row.jobs.join(", ")}
+                        <span style={{ color: "#94a3b8" }}> · {row.companyLabels.join(", ")}</span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
@@ -141,30 +181,58 @@ export function FabricacionTab({
             {fabricationCompletedPurchases.length === 0 ? (
               <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosCompras.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Fecha</th>
-                    <th>Proveedor</th>
-                    <th>Comprobante</th>
-                    <th>Numero</th>
-                    <th>Origen</th>
+                    <th style={thEsquina}>
+                      Proveedor
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCompras.startResize(ev, "label")}
+                        onDoubleClick={anchosCompras.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Fecha
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCompras.startResize(ev, "col")}
+                        onDoubleClick={anchosCompras.resetCol}
+                      />
+                    </th>
+                    <th style={thFlexible}>Comprobante · origen · empresa</th>
                   </tr>
                 </thead>
                 <tbody>
                   {fabricationCompletedPurchases.map((item) => (
                     <tr key={item.id}>
-                      <td>{getCompanyMeta(item.company).short}</td>
-                      <td>{formatDateDisplay(item.invoiceDate)}</td>
-                      <td>{item.supplier}</td>
-                      <td>{[item.receiptKind, item.receiptLetter].filter(Boolean).join(" ") || "-"}</td>
-                      <td>{item.invoiceNumber || "-"}</td>
-                      <td>{item.source === "caja_chica" ? "Caja chica" : "Compras"}</td>
+                      <td
+                        style={{
+                          ...tdNombre, fontWeight: 400,
+                          boxShadow: `inset 4px 0 0 ${getCompanyMeta(item.company).primary}`,
+                        }}
+                        title={item.supplier}
+                      >
+                        {item.supplier}
+                      </td>
+                      <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.invoiceDate)}</td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        {[item.receiptKind, item.receiptLetter].filter(Boolean).join(" ") || "sin comprobante"}
+                        <span style={{ color: "#94a3b8" }}>
+                          {" "}{item.invoiceNumber || ""}
+                          {" · "}{item.source === "caja_chica" ? "caja chica" : "compras"}
+                          {" · "}{getCompanyMeta(item.company).short}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
@@ -175,16 +243,30 @@ export function FabricacionTab({
               <MiniMetric label="Items activos" value={String(visibleStockItems.filter((item) => item.kind === "general" && item.active).length)} />
               <MiniMetric label="Materiales con faltante" value={String(fabricationPendingPurchases.length)} />
             </div>
-            <table style={styles.table}>
+            <div style={{ ...planillaWrap, ...anchosStock.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Empresa</th>
-                  <th>Grupo</th>
-                  <th>Codigo</th>
-                  <th>Descripcion</th>
-                  <th>Ubicacion</th>
-                  <th>Cantidad</th>
-                  <th>Unidad</th>
+                  <th style={thEsquina}>
+                    Descripción
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosStock.startResize(ev, "label")}
+                      onDoubleClick={anchosStock.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Cantidad
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosStock.startResize(ev, "col")}
+                      onDoubleClick={anchosStock.resetCol}
+                    />
+                  </th>
+                  <th style={thFlexible}>Código · grupo · ubicación · empresa</th>
                 </tr>
               </thead>
               <tbody>
@@ -198,145 +280,176 @@ export function FabricacionTab({
                   .slice(0, 20)
                   .map((item) => (
                     <tr key={item.id}>
-                      <td>{getCompanyScopeLabel(item.company)}</td>
-                      <td>{item.group || "-"}</td>
-                      <td>{item.code || "-"}</td>
-                      <td>{item.description}</td>
-                      <td>{item.location || "Sin ubicar"}</td>
-                      <td>{item.quantity}</td>
-                      <td>{item.unit}</td>
+                      <td style={{ ...tdNombre, fontWeight: 400 }} title={item.description}>
+                        <span
+                          title={Number(item.quantity || 0) > 0 ? "Con stock" : "Sin stock"}
+                          style={{
+                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                            background: Number(item.quantity || 0) > 0 ? "#16a34a" : "#dc2626",
+                          }}
+                        />
+                        {item.description}
+                      </td>
+                      <td
+                        style={{
+                          ...tdDato, textAlign: "right", fontWeight: 600,
+                          color: Number(item.quantity || 0) > 0 ? "#0f172a" : "#dc2626",
+                        }}
+                      >
+                        {item.quantity} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{item.unit}</span>
+                      </td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        {item.code || "sin código"}
+                        <span style={{ color: "#94a3b8" }}>
+                          {" · "}{item.group || "sin grupo"}
+                          {" · "}{item.location || "sin ubicar"}
+                          {" · "}{getCompanyScopeLabel(item.company)}
+                        </span>
+                      </td>
                     </tr>
                   ))}
               </tbody>
             </table>
+            </div>
           </Panel>
 
-          <Panel title="Calendario de fabricacion y entregas" span="full">
+          <Panel
+            title="Calendario de fabricacion y entregas"
+            span="full"
+            actions={
+              <ButtonLike onClick={anchosCalendario.toggleCompacto} secondary>
+                {anchosCalendario.esCompacto ? "Ancho normal" : "Compacto"}
+              </ButtonLike>
+            }
+          >
             {fabricationCalendarRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay trabajos aprobados para fabricar.</div>
             ) : (
-              <table style={styles.table}>
+              <div style={{ ...planillaWrap, ...anchosCalendario.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
                 <thead>
                   <tr>
-                    <th>Empresa</th>
-                    <th>Presupuesto</th>
-                    <th>Cliente</th>
-                    <th>Inicio</th>
-                    <th>Entrega</th>
-                    <th>Encargado</th>
-                    <th>Estado</th>
-                    <th>Tiempo</th>
-                    <th>Ocupacion</th>
-                    <th>Faltantes</th>
+                    <th style={thEsquina}>
+                      Presupuesto · cliente
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCalendario.startResize(ev, "label")}
+                        onDoubleClick={anchosCalendario.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Inicio
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCalendario.startResize(ev, "col")}
+                        onDoubleClick={anchosCalendario.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Entrega</th>
+                    <th style={thColumna}>Faltantes</th>
+                    <th style={thFlexible}>Estado · encargado · avance</th>
                   </tr>
                 </thead>
                 <tbody>
                   {fabricationCalendarRows.map((job) => (
                     <Fragment key={job.id}>
                     <tr>
-                      <td>{getCompanyMeta(job.company).short}</td>
-                      <td>{job.budgetNumber}</td>
-                      <td>{job.client}</td>
-                      <td>
+                      <td
+                        style={{
+                          ...tdNombre, fontWeight: 400,
+                          boxShadow: `inset 4px 0 0 ${getCompanyMeta(job.company).primary}`,
+                        }}
+                        title={`${job.budgetNumber} · ${job.client}`}
+                      >
+                        <strong style={{ color: "#0f172a" }}>{job.budgetNumber}</strong>{" "}
+                        <span style={{ color: "#475569" }}>{job.client}</span>
+                      </td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <input
-                          style={{ ...styles.input, minWidth: 140 }}
+                          style={{ ...inputCelda, padding: "1px 6px" }}
+                          {...focoCelda}
                           type="date"
                           value={job.startDate}
                           onChange={(e) => updateApprovedJob(job.id, "startDate", e.target.value)}
                         />
                       </td>
-                      <td>
+                      <td style={{ ...tdDato, padding: 0 }}>
                         <input
-                          style={{ ...styles.input, minWidth: 140 }}
+                          style={{ ...inputCelda, padding: "1px 6px" }}
+                          {...focoCelda}
                           type="date"
                           value={job.deliveryDate}
                           onChange={(e) => updateApprovedJob(job.id, "deliveryDate", e.target.value)}
                         />
                       </td>
-                      <td>
-                        <input
-                          style={styles.input}
-                          value={job.projectManager}
-                          onChange={(e) => updateApprovedJob(job.id, "projectManager", e.target.value)}
-                        />
-                      </td>
-                      <td>
-                        <select
-                          style={styles.input}
-                          value={job.executionStatus}
-                          onChange={(e) => updateApprovedJob(job.id, "executionStatus", e.target.value)}
-                        >
-                          <option value="pendiente">Pendiente</option>
-                          <option value="en_curso">En curso</option>
-                          <option value="finalizado">Finalizado</option>
-                        </select>
-                      </td>
-                      <td>
-                        <div style={styles.timelineBlock}>
-                          <div style={styles.timelineLabel}>
-                            {job.elapsedDays}/{job.totalDays} dias
-                          </div>
-                          <div style={styles.progressTrack}>
-                            <div
-                              style={{
-                                ...styles.progressFill,
-                                width: `${job.timeProgressPct}%`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div style={styles.timelineBlock}>
-                          <div style={styles.timelineLabel}>
-                            {job.statusProgressPct.toFixed(0)}%
-                          </div>
-                          <div style={styles.progressTrack}>
-                            <div
-                              style={{
-                                ...styles.progressFill,
-                                width: `${job.statusProgressPct}%`,
-                                background: "#0f766e",
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-                      <td>
+                      <td style={tdDato}>
                         <span
-                          onClick={
-                            job.materialMissingCount === 0
-                              ? undefined
-                              : () => toggleJobDetail(job.id)
-                          }
-                          title={
-                            job.materialMissingCount === 0
-                              ? undefined
-                              : "Ver que materiales faltan"
-                          }
+                          onClick={job.materialMissingCount === 0 ? undefined : () => toggleJobDetail(job.id)}
+                          title={job.materialMissingCount === 0 ? undefined : "Ver que materiales faltan"}
                           style={{
-                            ...styles.statusPill,
-                            ...(job.materialMissingCount === 0
-                              ? styles.statusGreen
-                              : job.materialMissingCount <= 2
-                              ? styles.statusYellow
-                              : styles.statusRed),
+                            fontWeight: 700,
+                            color:
+                              job.materialMissingCount === 0
+                                ? "#166534"
+                                : job.materialMissingCount <= 2
+                                ? "#ca8a04"
+                                : "#dc2626",
                             ...(job.materialMissingCount === 0
                               ? {}
                               : { cursor: "pointer", userSelect: "none" as const }),
                           }}
                         >
                           {job.materialMissingCount === 0
-                            ? "Completo"
-                            : `${expandedJobIds.includes(job.id) ? "▾" : "▸"} ${
-                                job.materialMissingCount
-                              } faltantes`}
+                            ? "✓ completo"
+                            : `${expandedJobIds.includes(job.id) ? "▾" : "▸"} ${job.materialMissingCount} faltantes`}
+                        </span>
+                      </td>
+                      <td style={{ ...tdFlexible, padding: 0 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 8px" }}>
+                          <select
+                            style={{ ...inputCelda, width: "auto" }}
+                            value={job.executionStatus}
+                            onChange={(e) => updateApprovedJob(job.id, "executionStatus", e.target.value)}
+                          >
+                            <option value="pendiente">Pendiente</option>
+                            <option value="en_curso">En curso</option>
+                            <option value="finalizado">Finalizado</option>
+                          </select>
+                          <input
+                            style={{ ...inputCelda, width: 130, color: "#64748b" }}
+                            {...focoCelda}
+                            value={job.projectManager}
+                            placeholder="encargado"
+                            onChange={(e) => updateApprovedJob(job.id, "projectManager", e.target.value)}
+                          />
+                          <span style={{ flex: 1, minWidth: 120 }}>
+                            <div style={styles.timelineLabel}>
+                              {job.elapsedDays}/{job.totalDays} días · {job.statusProgressPct.toFixed(0)}% de avance
+                            </div>
+                            <div style={styles.progressTrack}>
+                              <div style={{ ...styles.progressFill, width: `${job.timeProgressPct}%` }} />
+                            </div>
+                            <div style={{ ...styles.progressTrack, marginTop: 2 }}>
+                              <div
+                                style={{
+                                  ...styles.progressFill,
+                                  width: `${job.statusProgressPct}%`,
+                                  background: "#0f766e",
+                                }}
+                              />
+                            </div>
+                          </span>
                         </span>
                       </td>
                     </tr>
                     {expandedJobIds.includes(job.id) && job.materialMissingCount > 0 && (
                       <tr>
-                        <td colSpan={10} style={{ padding: 0 }}>
+                        <td colSpan={5} style={{ padding: 0 }}>
                           <div style={{ padding: "10px 14px", background: "#f8fafc" }}>
                             <div style={{ ...styles.sectionNote, marginTop: 0 }}>
                               Falta para fabricar {job.budgetNumber} ({job.client}). Estimado{" "}
@@ -344,30 +457,37 @@ export function FabricacionTab({
                               stock ya esta repartido entre los trabajos abiertos por fecha de
                               inicio, y al finalizar el trabajo estos faltantes desaparecen.
                             </div>
-                            <table style={styles.table}>
+                            <table style={planillaTable}>
+                              <colgroup>
+                                <col style={colLabel} />
+                                <col style={colDato} />
+                                <col style={colDato} />
+                                <col style={colFlexible} />
+                              </colgroup>
                               <thead>
                                 <tr>
-                                  <th>Material</th>
-                                  <th>Necesita</th>
-                                  <th>De stock</th>
-                                  <th>Falta</th>
-                                  <th>Estimado</th>
+                                  <th style={thEsquina}>Material</th>
+                                  <th style={{ ...thColumna, textAlign: "right" }}>Necesita</th>
+                                  <th style={{ ...thColumna, textAlign: "right" }}>Falta</th>
+                                  <th style={{ ...thFlexible, textAlign: "right" }}>Estimado</th>
                                 </tr>
                               </thead>
                               <tbody>
                                 {job.materialMissingRows.map((row: any, index: number) => (
                                   <tr key={`${job.id}-${row.description}-${index}`}>
-                                    <td>{row.description}</td>
-                                    <td>
-                                      {row.required} {row.unit}
+                                    <td style={{ ...tdNombre, fontWeight: 400 }} title={row.description}>
+                                      {row.description}
                                     </td>
-                                    <td>
-                                      {row.allocated} {row.unit}
+                                    <td style={{ ...tdDato, textAlign: "right" }}>
+                                      {row.required} <span style={{ color: "#94a3b8" }}>{row.unit}</span>
+                                      <span style={{ color: "#94a3b8" }}> · de stock {row.allocated}</span>
                                     </td>
-                                    <td style={{ fontWeight: 700 }}>
-                                      {row.missing} {row.unit}
+                                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: "#dc2626" }}>
+                                      {row.missing} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{row.unit}</span>
                                     </td>
-                                    <td>{money(row.estimatedCost)}</td>
+                                    <td style={{ ...tdFlexible, textAlign: "right", fontWeight: 600 }}>
+                                      {money(row.estimatedCost)}
+                                    </td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -380,6 +500,7 @@ export function FabricacionTab({
                   ))}
                 </tbody>
               </table>
+              </div>
             )}
           </Panel>
 
