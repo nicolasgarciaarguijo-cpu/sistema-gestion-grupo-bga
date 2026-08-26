@@ -142,6 +142,10 @@ export const PERSONAL_PROVISION_KINDS: PersonalProvisionKind[] = [
   "Capacitaciones",
 ];
 
+// Costo mensual de provisiones POR EMPLEADO abierto por tipo. `total` es la suma de los cuatro tipos:
+// se guarda calculado para que el impacto de la empresa no dependa de volver a sumar en cada vista.
+export type ProvisionBreakdown = Record<PersonalProvisionKind, number> & { total: number };
+
 export type PersonalProvisionMarker = {
   id: number;
   company: CompanyName;

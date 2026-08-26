@@ -1,4 +1,4 @@
-import { buildMarcadoresHtml, buildClientBudgetHtml } from "./exportHtml";
+import { buildMarcadoresHtml, buildClientBudgetHtml, buildJobClientSummaryHtml } from "./exportHtml";
 
 // El resumen de marcadores existe para comparar meses: si las cuentas cambian, la evolucion miente.
 describe("buildMarcadoresHtml", () => {
@@ -110,5 +110,89 @@ describe("buildClientBudgetHtml · moneda por bloque", () => {
     );
     expect(html).toContain("2.595,45");
     expect(html).not.toContain("U$S");
+  });
+});
+
+// El resumen que se le manda al cliente tiene que CERRAR: si las retenciones no figuran, el cliente
+// suma los pagos, no le da el saldo que ve arriba y llama preguntando por plata que ya pago.
+describe("buildJobClientSummaryHtml · retenciones", () => {
+  const job = {
+    budgetNumber: "3265",
+    client: "ERI JOSEVICH",
+    project: "VANITORY",
+    company: "De raiz s.r.l",
+    executionStatus: "finalizado",
+    valueToCollect: 1600000,
+    collectedTotal: 1522612,
+    remainingToPay: 77388,
+    invoices: [{ invoiceDate: "2026-02-05", invoiceType: "A", invoiceNumber: "112", total: 1092706.23 }],
+    payments: [
+      { paymentDate: "2026-02-05", transactionType: "Transferencia", amount: 1070094.34 },
+      { paymentDate: "2026-04-13", transactionType: "Transferencia", amount: 429905.77 },
+    ],
+    retentions: [
+      { retentionDate: "2026-02-05", retentionType: "RET. GG", retentionNumber: "A-1", amount: 13581.26 },
+      { retentionDate: "2026-02-05", retentionType: "RET. SUSS", retentionNumber: "A-2", amount: 9030.63 },
+    ],
+  };
+
+  it("lista cada retencion con su tipo, numero y monto", () => {
+    const html = buildJobClientSummaryHtml(job);
+    expect(html).toContain("RET. GG");
+    expect(html).toContain("RET. SUSS");
+    expect(html).toContain("13.581,26");
+    expect(html).toContain("Total retenciones");
+    expect(html).toContain("22.611,89"); // 13.581,26 + 9.030,63
+  });
+
+  it("el cierre muestra la resta completa y llega al saldo", () => {
+    const html = buildJobClientSummaryHtml(job);
+    expect(html).toContain("C&oacute;mo cierra el saldo");
+    expect(html).toContain("1.500.000,11"); // total de pagos
+    expect(html).toContain("Saldo pendiente");
+    // 1.600.000 - 1.500.000,11 - 22.611,89 = 77.388, el mismo saldo de la tarjeta de arriba
+    expect(html).toContain("77.388,00");
+    // pagos + retenciones ya explican todo lo cobrado: no hay renglon suelto
+    expect(html).not.toContain("Otras cobranzas registradas");
+  });
+
+  it("una cobranza cargada a mano en el calendario aparece como renglon aparte", () => {
+    // collectedTotal trae 100.000 mas de lo que explican pagos + retenciones: sin este renglon el
+    // cliente no puede atar el saldo con la resta.
+    const html = buildJobClientSummaryHtml({ ...job, collectedTotal: 1622612, remainingToPay: 0 });
+    expect(html).toContain("Otras cobranzas registradas");
+    expect(html).toContain("100.000,00");
+  });
+
+  it("si se cobro de mas, el sobrante se muestra a favor del cliente", () => {
+    const html = buildJobClientSummaryHtml({ ...job, collectedTotal: 1650000, remainingToPay: 0 });
+    expect(html).toContain("Saldo a favor del cliente");
+    expect(html).toContain("50.000,00");
+  });
+
+  it("sin retenciones, la tabla queda vacia pero el bloque sigue estando", () => {
+    const html = buildJobClientSummaryHtml({ ...job, retentions: [] });
+    expect(html).toContain("Sin retenciones aplicadas.");
+  });
+
+  it("un pago en U$S pesificado entra a los pesos por su equivalente, no por el nominal", () => {
+    const html = buildJobClientSummaryHtml({
+      ...job,
+      payments: [
+        { paymentDate: "2026-04-14", transactionType: "Efectivo", amount: 10000, currency: "USD", arsApplied: true, exchangeRate: 1380 },
+      ],
+    });
+    expect(html).toContain("13.800.000,00");
+    expect(html).not.toContain("Pagos recibidos en d&oacute;lares");
+  });
+
+  it("un pago en dolares puros va en su propia tabla y NO se suma a los pesos", () => {
+    const html = buildJobClientSummaryHtml({
+      ...job,
+      payments: [{ paymentDate: "2026-04-14", transactionType: "Efectivo", amount: 10000, currency: "USD" }],
+    });
+    expect(html).toContain("Pagos recibidos en d&oacute;lares");
+    expect(html).toContain("Total cobrado U$S");
+    expect(html).toContain("Sin pagos registrados.");
   });
 });

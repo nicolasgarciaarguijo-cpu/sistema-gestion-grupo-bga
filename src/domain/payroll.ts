@@ -153,14 +153,18 @@ export function computePayrollSummary({
   const annualBaseHours = (config.normalHoursDefault || 198) * 12;
   const monthlySACProration = (annualSACBase + annualSACCharges) / 12;
   const blackSACProration = annualBlackSAC / 12;
+  // Desglose del impacto BLANCO en sus tres patas, para el resumen por empresa:
+  //   salarios (lo que cobra la persona, incluido el prorrateo del aguinaldo)
+  // + cargas sociales (contribuciones patronales + seguro + las cargas del aguinaldo)
+  // + provisiones (EPP, insumos, examenes, capacitaciones).
+  // La identidad salaryImpactWhite + employerChargesMonthly + monthlyProvisionCost === employerImpact
+  // se mantiene exacta: el prorrateo del SAC se parte en su base (salario) y sus cargas.
+  const monthlySACBaseProration = annualSACBase / 12;
+  const monthlySACChargesProration = monthlySACProration - monthlySACBaseProration;
+  const salaryImpactWhite = totalGross + flatAgreedWhite + monthlySACBaseProration;
+  const employerChargesMonthly = employerContrib + employerInsurance + monthlySACChargesProration;
   // Impacto BLANCO mensual (vista separada por administracion): bruto + cargas + provisiones + SAC.
-  const employerImpact =
-    totalGross +
-    employerContrib +
-    employerInsurance +
-    monthlyProvisionCost +
-    monthlySACProration +
-    flatAgreedWhite;
+  const employerImpact = salaryImpactWhite + employerChargesMonthly + monthlyProvisionCost;
   // Impacto NEGRO mensual (vista separada): premio/acuerdo + prorrateo del aguinaldo negro.
   const blackImpact = blackMonthly + blackSACProration;
   // Impacto TOTAL mensual (blanco + negro): lo real que le cuesta el empleado a la empresa.
@@ -195,7 +199,12 @@ export function computePayrollSummary({
     employerLifeInsurance,
     monthlyProvisionCost,
     annualSACBase,
+    annualSACCharges,
     monthlySACProration,
+    monthlySACBaseProration,
+    monthlySACChargesProration,
+    salaryImpactWhite,
+    employerChargesMonthly,
     descuentos,
     net,
     cashBonus,

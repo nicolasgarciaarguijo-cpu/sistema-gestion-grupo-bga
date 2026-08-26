@@ -369,15 +369,24 @@ export function buildJobHtml(job: any): string {
   return page(`Trabajo ${job.budgetNumber} - ${job.client}`, body);
 }
 
-// Resumen de la ficha PARA PRESENTAR AL CLIENTE: cómo viene el trabajo, las facturas emitidas y el
-// detalle de pagos recibidos con el saldo. NO muestra blanco/negro ni datos internos.
+// Resumen de la ficha PARA PRESENTAR AL CLIENTE: cómo viene el trabajo, las facturas emitidas, el
+// detalle de pagos recibidos, el de RETENCIONES y el saldo. NO muestra blanco/negro ni datos internos.
+// Las retenciones son plata que el cliente ya pagó (se la quedó el fisco a cuenta nuestra): si no
+// figuran, el cliente ve un saldo que no coincide con lo que transfirió. Por eso van con su propia
+// tabla y con un cierre que muestra la resta completa.
 export function buildJobClientSummaryHtml(job: any): string {
   const invoices = job.invoices || [];
   const payments = job.payments || [];
+  const retentions = job.retentions || [];
+  const byDate = (a: any, b: any, field: string) =>
+    String(a[field] || "").localeCompare(String(b[field] || ""));
+  const empty = (cols: number, text: string) =>
+    `<tr><td colspan="${cols}" style="color:#94a3b8">${esc(text)}</td></tr>`;
+
   const invRows = invoices.length
     ? invoices
         .slice()
-        .sort((a: any, b: any) => String(a.invoiceDate || "").localeCompare(String(b.invoiceDate || "")))
+        .sort((a: any, b: any) => byDate(a, b, "invoiceDate"))
         .map(
           (inv: any) => `<tr>
         <td>${esc(inv.invoiceDate || "-")}</td>
@@ -385,20 +394,90 @@ export function buildJobClientSummaryHtml(job: any): string {
         <td class="num">${money(inv.total)}</td></tr>`
         )
         .join("")
-    : `<tr><td colspan="3" style="color:#94a3b8">Sin facturas emitidas.</td></tr>`;
-  const paymentsTotal = payments.reduce((a: number, p: any) => a + Number(p.amount || 0), 0);
-  const payRows = payments.length
-    ? payments
+    : empty(3, "Sin facturas emitidas.");
+
+  // Un pago en U$S PESIFICADO se cobró en dólares pero se aplicó al saldo en pesos: va en la tabla de
+  // pesos por su equivalente (monto x cotización). El dólar puro va aparte y NUNCA se suma a los pesos.
+  const isUsd = (p: any) => p.currency === "USD";
+  const isPesified = (p: any) => isUsd(p) && p.arsApplied === true && Number(p.exchangeRate || 0) > 0;
+  const arsAmount = (p: any) =>
+    isPesified(p) ? Number(p.amount || 0) * Number(p.exchangeRate || 0) : Number(p.amount || 0);
+  const arsPayments = payments.filter((p: any) => !isUsd(p) || isPesified(p));
+  const usdPayments = payments.filter((p: any) => isUsd(p) && !isPesified(p));
+  const paymentsTotal = arsPayments.reduce((a: number, p: any) => a + arsAmount(p), 0);
+  const usdTotal = usdPayments.reduce((a: number, p: any) => a + Number(p.amount || 0), 0);
+
+  const payRows = arsPayments.length
+    ? arsPayments
         .slice()
-        .sort((a: any, b: any) => String(a.paymentDate || "").localeCompare(String(b.paymentDate || "")))
-        .map(
-          (p: any) => `<tr>
+        .sort((a: any, b: any) => byDate(a, b, "paymentDate"))
+        .map((p: any) => {
+          const detalle = isPesified(p)
+            ? `${p.transactionType || "Cobranza"} (U$S ${Number(p.amount || 0).toLocaleString("es-AR")} a ${money(
+                Number(p.exchangeRate || 0)
+              )})`
+            : p.transactionType || "Cobranza";
+          return `<tr>
+        <td>${esc(p.paymentDate || "-")}</td>
+        <td>${esc(detalle)}</td>
+        <td class="num">${money(arsAmount(p))}</td></tr>`;
+        })
+        .join("")
+    : empty(3, "Sin pagos registrados.");
+
+  const usdRows = usdPayments
+    .slice()
+    .sort((a: any, b: any) => byDate(a, b, "paymentDate"))
+    .map(
+      (p: any) => `<tr>
         <td>${esc(p.paymentDate || "-")}</td>
         <td>${esc(p.transactionType || "Cobranza")}</td>
-        <td class="num">${money(p.amount)}</td></tr>`
+        <td class="num">${money(p.amount, "USD")}</td></tr>`
+    )
+    .join("");
+  const usdBlock = usdPayments.length
+    ? `<h2>Pagos recibidos en d&oacute;lares</h2>
+    <table><thead><tr><th>Fecha</th><th>Detalle</th><th class="num">Monto</th></tr></thead>
+      <tbody>${usdRows}
+        <tr class="tot"><td colspan="2">Total cobrado U$S</td><td class="num">${money(
+          usdTotal,
+          "USD"
+        )}</td></tr>
+      </tbody></table>`
+    : "";
+
+  const retentionsTotal = retentions.reduce((a: number, r: any) => a + Number(r.amount || 0), 0);
+  const retRows = retentions.length
+    ? retentions
+        .slice()
+        .sort((a: any, b: any) => byDate(a, b, "retentionDate"))
+        .map(
+          (r: any) => `<tr>
+        <td>${esc(r.retentionDate || "-")}</td>
+        <td>${esc(r.retentionType || "Retencion")}</td>
+        <td>${esc(r.retentionNumber || "-")}</td>
+        <td class="num">${money(r.amount)}</td></tr>`
         )
         .join("")
-    : `<tr><td colspan="3" style="color:#94a3b8">Sin pagos registrados.</td></tr>`;
+    : empty(4, "Sin retenciones aplicadas.");
+
+  // Lo cobrado que el sistema tiene registrado y que no sale ni de los pagos ni de las retenciones
+  // (una cobranza cargada a mano en el calendario). Se muestra para que la resta cierre igual.
+  const collectedTotal = Number(job.collectedTotal || 0);
+  const otras = collectedTotal - paymentsTotal - retentionsTotal;
+  const otrasRow =
+    Math.abs(otras) > 0.5
+      ? `<tr><td>Otras cobranzas registradas</td><td class="num">- ${money(otras)}</td></tr>`
+      : "";
+  const valueToCollect = Number(job.valueToCollect || 0);
+  const saldo = valueToCollect - collectedTotal;
+  const saldoRow =
+    saldo < -0.5
+      ? `<tr class="tot"><td>Saldo a favor del cliente</td><td class="num">${money(
+          Math.abs(saldo)
+        )}</td></tr>`
+      : `<tr class="tot"><td>Saldo pendiente</td><td class="num">${money(Math.max(0, saldo))}</td></tr>`;
+
   const body = `
     <h1>Resumen del trabajo N&deg; ${esc(job.budgetNumber)}</h1>
     <p class="sub">${esc(job.client)} &middot; ${esc(job.project || "-")} &middot; ${esc(job.company)}${
@@ -406,9 +485,9 @@ export function buildJobClientSummaryHtml(job: any): string {
   }</p>
     <div class="grid">
       <div class="card"><div class="k">Valor del trabajo</div><div class="v">${money(
-        job.valueToCollect
+        valueToCollect
       )}</div></div>
-      <div class="card"><div class="k">Cobrado</div><div class="v">${money(job.collectedTotal)}</div></div>
+      <div class="card"><div class="k">Cobrado</div><div class="v">${money(collectedTotal)}</div></div>
       <div class="card"><div class="k">Saldo pendiente</div><div class="v">${money(
         job.remainingToPay
       )}</div></div>
@@ -419,8 +498,24 @@ export function buildJobClientSummaryHtml(job: any): string {
     <h2>Pagos recibidos</h2>
     <table><thead><tr><th>Fecha</th><th>Detalle</th><th class="num">Monto</th></tr></thead>
       <tbody>${payRows}
-        <tr class="tot"><td colspan="2">Total cobrado</td><td class="num">${money(paymentsTotal)}</td></tr>
-      </tbody></table>`;
+        <tr class="tot"><td colspan="2">Total pagos</td><td class="num">${money(paymentsTotal)}</td></tr>
+      </tbody></table>
+    ${usdBlock}
+    <h2>Retenciones</h2>
+    <table><thead><tr><th>Fecha</th><th>Tipo</th><th>N&deg;</th><th class="num">Monto</th></tr></thead>
+      <tbody>${retRows}
+        <tr class="tot"><td colspan="3">Total retenciones</td><td class="num">${money(
+          retentionsTotal
+        )}</td></tr>
+      </tbody></table>
+    <h2>C&oacute;mo cierra el saldo</h2>
+    <table><tbody>
+      <tr><td>Valor del trabajo</td><td class="num">${money(valueToCollect)}</td></tr>
+      <tr><td>Pagos recibidos</td><td class="num">- ${money(paymentsTotal)}</td></tr>
+      <tr><td>Retenciones</td><td class="num">- ${money(retentionsTotal)}</td></tr>
+      ${otrasRow}
+      ${saldoRow}
+    </tbody></table>`;
   return page(`Resumen trabajo ${job.budgetNumber} - ${job.client}`, body);
 }
 

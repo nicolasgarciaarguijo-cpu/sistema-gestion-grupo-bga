@@ -93,6 +93,48 @@ type PersonalTabProps = {
   updateEmployeeProvisionItem: any;
 };
 
+// Los tipos de provision se guardan sin acento (son el valor del dato); en pantalla van acentuados.
+const ETIQUETA_PROVISION: Record<string, string> = {
+  EPP: "EPP",
+  Insumos: "Insumos",
+  Examenes: "Exámenes",
+  Capacitaciones: "Capacitaciones",
+};
+
+// Renglon de desglose dentro de una tarjeta del resumen por empresa: rotulo a la izquierda, monto a
+// la derecha. `sangria` es para los que cuelgan del renglon de arriba (blanco/negro, tipos de
+// provision) y `separador` abre una linea de aire antes de cada pata del impacto.
+function LineaResumen({
+  label,
+  value,
+  sangria,
+  fuerte,
+  separador,
+  color,
+}: {
+  label: string;
+  value: string;
+  sangria?: boolean;
+  fuerte?: boolean;
+  separador?: boolean;
+  color?: string;
+}) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        gap: 10,
+        marginTop: separador ? 6 : 0,
+        paddingLeft: sangria ? 10 : 0,
+      }}
+    >
+      <span style={{ ...styles.muted, fontWeight: fuerte ? 700 : 400 }}>{label}</span>
+      <span style={{ fontWeight: fuerte ? 700 : 400, color }}>{value}</span>
+    </div>
+  );
+}
+
 export function PersonalTab(props: PersonalTabProps) {
   const {
     employees, visibleEmployees, selectedEmployee, selectedEmployeeId,
@@ -1103,24 +1145,59 @@ export function PersonalTab(props: PersonalTabProps) {
             }
           >
             <div style={styles.metricGrid}>
-              {totalCompanyPayroll.map((row) => {
+              {totalCompanyPayroll.map((row: any) => {
                 const meta = getCompanyMeta(row.company);
+                const porTipo = row.provisionesPorTipo || {};
+                const tiposConCosto = PERSONAL_PROVISION_KINDS.filter(
+                  (kind) => Number(porTipo[kind] || 0) > 0
+                );
                 return (
                   <div key={row.company} style={{ ...styles.metric, borderColor: meta.primary, background: meta.soft }}>
-                    <div style={{ fontWeight: 800, color: meta.primary }}>{row.label}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                      <span style={{ fontWeight: 800, color: meta.primary }}>{row.label}</span>
+                      <span style={styles.muted}>
+                        {row.headcount} {row.headcount === 1 ? "empleado" : "empleados"}
+                      </span>
+                    </div>
                     <div style={styles.muted}>Total neto</div>
                     <div style={{ fontWeight: 700 }}>{money(row.totalNet)}</div>
-                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, gap: 10 }}>
-                      <span style={styles.muted}>Impacto blanco</span>
-                      <span style={{ fontWeight: 700 }}>{money(row.totalWhite)}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                      <span style={styles.muted}>Impacto negro</span>
-                      <span style={{ fontWeight: 700, color: MONEY_OUT_COLOR }}>{money(row.totalBlack)}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 4, borderTop: "1px solid rgba(0,0,0,0.12)", paddingTop: 4 }}>
+
+                    <LineaResumen label="Salarios" value={money(row.salarios)} fuerte separador />
+                    <LineaResumen label="Blanco" value={money(row.salariosWhite)} sangria />
+                    <LineaResumen
+                      label="Negro"
+                      value={money(row.salariosBlack)}
+                      sangria
+                      color={MONEY_OUT_COLOR}
+                    />
+
+                    <LineaResumen label="Cargas sociales" value={money(row.cargasSociales)} fuerte separador />
+
+                    <LineaResumen
+                      label="Exámenes, EPP y capacitaciones"
+                      value={money(row.provisiones)}
+                      fuerte
+                      separador
+                    />
+                    {tiposConCosto.length === 0 ? (
+                      <div style={{ ...styles.muted, paddingLeft: 10 }}>Sin provisiones cargadas.</div>
+                    ) : (
+                      tiposConCosto.map((kind) => (
+                        <LineaResumen
+                          key={`${row.company}-prov-${kind}`}
+                          label={ETIQUETA_PROVISION[kind]}
+                          value={money(Number(porTipo[kind] || 0))}
+                          sangria
+                        />
+                      ))
+                    )}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 6, borderTop: "1px solid rgba(0,0,0,0.12)", paddingTop: 4 }}>
                       <span style={{ ...styles.muted, fontWeight: 700 }}>Impacto total</span>
                       <span style={{ fontWeight: 800 }}>{money(row.totalImpact)}</span>
+                    </div>
+                    <div style={{ ...styles.muted, fontSize: 11 }}>
+                      Blanco {money(row.totalWhite)} · Negro {money(row.totalBlack)}
                     </div>
                   </div>
                 );

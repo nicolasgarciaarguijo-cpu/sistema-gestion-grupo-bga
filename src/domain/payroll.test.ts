@@ -193,3 +193,35 @@ describe("fuera de convenio", () => {
     expect(r.employerImpact).toBeCloseTo(800000 + 800000 / 12); // bruto + prorrateo SAC (cargas 0 en este config)
   });
 });
+
+// El resumen por empresa de la solapa Personal abre el impacto blanco en salarios + cargas sociales +
+// provisiones (EPP/examenes/capacitaciones). El desglose tiene que sumar EXACTO el impacto: si no,
+// los tres numeros que ve el usuario no cierran contra el total.
+describe("desglose del impacto blanco", () => {
+  it("salarios + cargas sociales + provisiones === impacto blanco", () => {
+    const r = run(
+      { employerExtraPct: 25 },
+      {
+        monthlyProvisionCost: 15000,
+        config: { ...config, employerInsurancePct: 2 },
+      } as any
+    );
+    expect(r.salaryImpactWhite + r.employerChargesMonthly + r.monthlyProvisionCost).toBeCloseTo(
+      r.employerImpact
+    );
+  });
+
+  it("los salarios llevan la base del aguinaldo y las cargas su parte de cargas", () => {
+    const r = run({ employerExtraPct: 25 });
+    expect(r.salaryImpactWhite).toBeCloseTo(r.totalGross + r.annualSACBase / 12);
+    expect(r.employerChargesMonthly).toBeCloseTo(
+      r.employerContrib + r.employerInsurance + r.annualSACCharges / 12
+    );
+  });
+
+  it("sin cargas ni provisiones, el impacto es todo salario", () => {
+    const r = run();
+    expect(r.employerChargesMonthly).toBeCloseTo(0);
+    expect(r.salaryImpactWhite).toBeCloseTo(r.employerImpact);
+  });
+});

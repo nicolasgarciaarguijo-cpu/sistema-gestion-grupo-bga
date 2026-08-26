@@ -145,6 +145,7 @@ import type {
   SupplyMarker,
   LaborMarker,
   PersonalProvisionKind,
+  ProvisionBreakdown,
   PersonalProvisionMarker,
   BudgetImage,
   BudgetDiscount,
@@ -13181,17 +13182,41 @@ export default function App() {
     return { label: "Al dia", tone: "green" as const };
   };
 
-  const getMonthlyProvisionMarkerCostForCompany = (company: CompanyName) => {
-    const templateCost = employeeBaseConfig.provisionTemplates.reduce((acc, template) => {
+  // Costo mensual de provisiones por empleado ABIERTO POR TIPO (EPP / Insumos / Examenes /
+  // Capacitaciones). Mismas cuatro fuentes y el mismo orden de prioridad de siempre: plantillas de la
+  // ficha base > marcadores de provision > items de stock de personal > los semestrales sueltos de la
+  // config. Lo unico nuevo es que cada peso queda imputado a su tipo en vez de caer en una bolsa.
+  const getMonthlyProvisionBreakdownForCompany = (company: CompanyName): ProvisionBreakdown => {
+    const empty = (): ProvisionBreakdown => ({
+      EPP: 0,
+      Insumos: 0,
+      Examenes: 0,
+      Capacitaciones: 0,
+      total: 0,
+    });
+    const add = (acc: ProvisionBreakdown, kind: PersonalProvisionKind | undefined, amount: number) => {
+      const value = Number(amount || 0);
+      if (!Number.isFinite(value) || value === 0) return acc;
+      const bucket: PersonalProvisionKind =
+        kind === "EPP" || kind === "Insumos" || kind === "Examenes" || kind === "Capacitaciones"
+          ? kind
+          : "Insumos";
+      acc[bucket] += value;
+      acc.total += value;
+      return acc;
+    };
+
+    const byTemplate = employeeBaseConfig.provisionTemplates.reduce((acc, template) => {
       const stockItem = getStockPersonalItemForCompany(template.stockCode, company);
-      return (
-        acc +
+      return add(
+        acc,
+        template.kind,
         (Number(template.quantity || 0) * Number(stockItem?.unitPrice || 0)) /
           Math.max(Number(template.validityMonths || 1), 1)
       );
-    }, 0);
-    if (templateCost > 0) {
-      return templateCost;
+    }, empty());
+    if (byTemplate.total > 0) {
+      return byTemplate;
     }
 
     const matching = personalProvisionMarkers.filter(
@@ -13206,19 +13231,32 @@ export default function App() {
       if (stockFallback.length > 0) {
         return stockFallback.reduce(
           (acc, item) =>
-            acc +
-            Number(item.unitPrice || 0) /
-              Math.max(Number(item.periodicityMonths || 1), 1),
-          0
+            add(
+              acc,
+              item.kind === "general" ? undefined : item.kind,
+              Number(item.unitPrice || 0) / Math.max(Number(item.periodicityMonths || 1), 1)
+            ),
+          empty()
         );
       }
-      return ((employeeBaseConfig.eppSemiannualCost || 0) * 2 + (employeeBaseConfig.suppliesSemiannualCost || 0) * 2) / 12;
+      const flat = empty();
+      add(flat, "EPP", ((employeeBaseConfig.eppSemiannualCost || 0) * 2) / 12);
+      add(flat, "Insumos", ((employeeBaseConfig.suppliesSemiannualCost || 0) * 2) / 12);
+      return flat;
     }
     return matching.reduce(
-      (acc, item) => acc + Number(item.amountPerDelivery || 0) / Math.max(Number(item.periodicityMonths || 1), 1),
-      0
+      (acc, item) =>
+        add(
+          acc,
+          item.kind,
+          Number(item.amountPerDelivery || 0) / Math.max(Number(item.periodicityMonths || 1), 1)
+        ),
+      empty()
     );
   };
+
+  const getMonthlyProvisionMarkerCostForCompany = (company: CompanyName) =>
+    getMonthlyProvisionBreakdownForCompany(company).total;
 
   const getPayrollSummaryForScenario = ({
     company,
@@ -14542,19 +14580,49 @@ export default function App() {
     updateEmployeeProvisionItem(employeeId, itemId, "attachmentName", file.name);
   };
 
+  // Impacto de la nomina por empresa, abierto en las tres patas que lo componen:
+  //   SALARIOS       lo que cobra la gente (bruto + aguinaldo prorrateado) en blanco y en negro
+  //   CARGAS SOCIALES contribuciones patronales + seguro + las cargas del aguinaldo (solo blanco)
+  //   PROVISIONES    EPP, insumos, examenes y capacitaciones, con el detalle por tipo
+  // Se cumple salarios + cargas + provisiones === impacto total: el desglose sale de la propia
+  // liquidacion (payroll.ts), no de una cuenta paralela que pueda irse de la del calendario.
   const totalCompanyPayroll = useMemo(
     () =>
       COMPANY_OPTIONS.map((company) => {
         const emps = employees.filter((employee) => employee.company === company.value);
-        const totalNet = emps.reduce((acc, e) => acc + getEmployeePayrollSummary(e).net, 0);
-        const totalWhite = emps.reduce((acc, e) => acc + getEmployeePayrollSummary(e).employerImpact, 0);
-        const totalBlack = emps.reduce((acc, e) => acc + Number(getEmployeePayrollSummary(e).blackImpact || 0), 0);
+        const summaries = emps.map((employee) => getEmployeePayrollSummary(employee));
+        const sum = (pick: (s: (typeof summaries)[number]) => number) =>
+          summaries.reduce((acc, s) => acc + Number(pick(s) || 0), 0);
+        const totalNet = sum((s) => s.net);
+        const totalWhite = sum((s) => s.employerImpact);
+        const totalBlack = sum((s) => s.blackImpact);
+        const salariosWhite = sum((s) => s.salaryImpactWhite);
+        const cargasSociales = sum((s) => s.employerChargesMonthly);
+        const provisiones = sum((s) => s.monthlyProvisionCost);
+        // El detalle por tipo sale del costo por empleado de la empresa; se reparte el total real
+        // segun esa proporcion para que la suma de los tipos cierre con `provisiones` al centavo.
+        const perEmployee = getMonthlyProvisionBreakdownForCompany(company.value);
+        const share = (kind: PersonalProvisionKind) =>
+          perEmployee.total > 0 ? (provisiones * perEmployee[kind]) / perEmployee.total : 0;
+        const provisionesPorTipo = {
+          EPP: share("EPP"),
+          Insumos: share("Insumos"),
+          Examenes: share("Examenes"),
+          Capacitaciones: share("Capacitaciones"),
+        };
         return {
           company: company.value,
           label: company.short,
+          headcount: emps.length,
           totalNet,
           totalWhite,
           totalBlack,
+          salariosWhite,
+          salariosBlack: totalBlack,
+          salarios: salariosWhite + totalBlack,
+          cargasSociales,
+          provisiones,
+          provisionesPorTipo,
           // Impacto total real de la empresa = blanco + negro (antes solo mostraba el blanco).
           totalImpact: totalWhite + totalBlack,
         };
