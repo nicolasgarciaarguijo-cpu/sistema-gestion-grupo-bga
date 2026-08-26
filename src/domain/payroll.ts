@@ -6,6 +6,26 @@ import type { EmployeePayroll } from "./types";
 // patronales, costo hora cargado y neto. Sin estado: la escala, la config y el costo de
 // provisiones se resuelven afuera y se pasan como input.
 
+// SOCIO / SOCIO GERENTE. Un socio fuera de convenio no se liquida por horas: cobra su sueldo
+// acordado completo, venga o no a fichar. Se reconoce por la categoria, que en fuera de convenio es
+// texto libre, asi que el match es tolerante (sin acentos, sin mayusculas, singular o plural).
+const normalizeCategory = (value: string): string =>
+  String(value || "")
+    .toLowerCase()
+    .replace(/[áàä]/g, "a")
+    .replace(/[éèë]/g, "e")
+    .replace(/[íìï]/g, "i")
+    .replace(/[óòö]/g, "o")
+    .replace(/[úùü]/g, "u")
+    .replace(/[^a-z]+/g, " ")
+    .trim();
+
+export function isPartnerCategory(category: string): boolean {
+  const c = normalizeCategory(category);
+  if (!c) return false;
+  return /^socios?( gerentes?)?$/.test(c) || /^gerente socios?$/.test(c);
+}
+
 export type PayrollScale = {
   baseHourly?: number;
   vht?: number;
@@ -51,6 +71,9 @@ export type PayrollSummaryInput = {
   agreedWhite?: number;
   agreedBlack?: number;
   computeWhiteCharges?: boolean;
+  // Socio / socio gerente (solo aplica junto con isFueraConvenio): cobra el acordado COMPLETO, sin
+  // liquidar horas. Ver isPartnerCategory.
+  isPartner?: boolean;
 };
 
 export function computePayrollSummary({
@@ -67,6 +90,7 @@ export function computePayrollSummary({
   agreedWhite,
   agreedBlack,
   computeWhiteCharges,
+  isPartner,
 }: PayrollSummaryInput) {
   const baseHourly = hourlyGrossManual || scale?.baseHourly || scale?.vht || 0;
   const nonRemHourly = Math.max(0, scale?.nonRemHourly || 0);
@@ -77,12 +101,18 @@ export function computePayrollSummary({
     payroll.justifiedAbsenceHours -
     payroll.unjustifiedAbsenceHours;
 
-  const grossNormal = baseHourly * payroll.normalHours;
-  const grossHoliday = baseHourly * payroll.holidayHours;
-  const extra50 = baseHourly * 1.5 * payroll.extra50Hours;
-  const extra100 = baseHourly * 2 * payroll.extra100Hours;
-  const night50 = baseHourly * 1.5 * 1.133333333 * payroll.night50Hours;
-  const night = baseHourly * 1.133333333 * payroll.nightHours;
+  // Socio/socio gerente fuera de convenio: NO se liquida por horas. Se apagan todos los conceptos
+  // que salen de la escala y del reloj (bruto por hora, extras, nocturnidad, antiguedad, presentismo,
+  // no remunerativo). Lo unico que cobra es el sueldo acordado, entero. Si su categoria llegara a
+  // coincidir con una fila de escala, esa escala tampoco se le aplica.
+  const partnerFlat = !!isFueraConvenio && !!isPartner;
+  const hourWeight = partnerFlat ? 0 : 1;
+  const grossNormal = baseHourly * payroll.normalHours * hourWeight;
+  const grossHoliday = baseHourly * payroll.holidayHours * hourWeight;
+  const extra50 = baseHourly * 1.5 * payroll.extra50Hours * hourWeight;
+  const extra100 = baseHourly * 2 * payroll.extra100Hours * hourWeight;
+  const night50 = baseHourly * 1.5 * 1.133333333 * payroll.night50Hours * hourWeight;
+  const night = baseHourly * 1.133333333 * payroll.nightHours * hourWeight;
   const seniorityBonus =
     (grossNormal + grossHoliday + extra50 + extra100 + night50 + night) *
     ((config.seniorityPctPerYear * seniorityYears) / 100);
@@ -90,7 +120,7 @@ export function computePayrollSummary({
     payroll.presentismoPctOverride === null ? 0 : payroll.presentismoPctOverride;
   const presentismo =
     payroll.unjustifiedAbsenceHours > 0 ? 0 : grossNormal * (presentismoPct / 100);
-  const nonRem = nonRemHourly * Math.max(payableHours, 0);
+  const nonRem = nonRemHourly * Math.max(payableHours, 0) * hourWeight;
   // Premio BLANCO: remunerativo. Entra al bruto despues de antiguedad/presentismo (no los multiplica),
   // y por estar en grossRem paga descuentos de ley y genera cargas patronales y SAC.
   const whiteBonus = Number(payroll.whiteBonus || 0);
@@ -220,5 +250,6 @@ export function computePayrollSummary({
     annualBaseHours,
     hourlyCost,
     netHourly,
+    partnerFlat,
   };
 }

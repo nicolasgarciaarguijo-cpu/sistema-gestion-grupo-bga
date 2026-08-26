@@ -51,3 +51,15 @@ describe("numeroALetras", () => {
     expect(numeroALetras(1000000)).toBe("UN MILLON CON 00/100");
   });
 });
+
+// El recibo del socio no se prorratea: cobra lo acordado aunque no haya fichado ningun dia.
+describe("reciboNegroAmount · socio", () => {
+  it("sin prorrateo, devuelve el total acordado sin mirar los dias", () => {
+    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: 0, sinProrrateo: true })).toBe(600000);
+    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 0, daysWorked: 0, sinProrrateo: true })).toBe(600000);
+  });
+
+  it("sin el flag sigue prorrateando igual que siempre", () => {
+    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: 0 })).toBe(0);
+  });
+});

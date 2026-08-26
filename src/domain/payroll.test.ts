@@ -1,4 +1,4 @@
-import { computePayrollSummary, PayrollConfig } from "./payroll";
+import { computePayrollSummary, isPartnerCategory, PayrollConfig } from "./payroll";
 import type { EmployeePayroll } from "./types";
 
 const config: PayrollConfig = {
@@ -223,5 +223,59 @@ describe("desglose del impacto blanco", () => {
     const r = run();
     expect(r.employerChargesMonthly).toBeCloseTo(0);
     expect(r.salaryImpactWhite).toBeCloseTo(r.employerImpact);
+  });
+});
+
+// Un socio no ficha: cobra su acuerdo completo. Si se liquidara por horas, un mes con pocas horas
+// cargadas (o sin cargar) le bajaria el sueldo solo, que es justo lo que no tiene que pasar.
+describe("socio / socio gerente", () => {
+  it("reconoce la categoria escrita de cualquier forma", () => {
+    ["Socio", "socio", "SOCIO GERENTE", "Socio gerente", "socios", "Socio Gerentes"].forEach((c) =>
+      expect(isPartnerCategory(c)).toBe(true)
+    );
+    ["", "Oficial general", "Administracion", "Gerente", "Asociado", "Socio fundador"].forEach((c) =>
+      expect(isPartnerCategory(c)).toBe(false)
+    );
+  });
+
+  it("cobra el acordado completo aunque no tenga horas cargadas", () => {
+    const r = run(
+      { normalHours: 0 },
+      { isFueraConvenio: true, isPartner: true, agreedWhite: 900000, agreedBlack: 600000, computeWhiteCharges: false }
+    );
+    expect(r.net).toBe(900000);
+    expect(r.blackMonthly).toBe(600000);
+  });
+
+  it("las horas no le cambian el sueldo: 0 hs y 200 hs liquidan igual", () => {
+    const opts = { isFueraConvenio: true, isPartner: true, agreedWhite: 900000, agreedBlack: 600000, computeWhiteCharges: false };
+    const sinHoras = run({ normalHours: 0 }, opts);
+    const conHoras = run({ normalHours: 200, extra50Hours: 20 }, opts);
+    expect(conHoras.net).toBeCloseTo(sinHoras.net);
+    expect(conHoras.employerImpact).toBeCloseTo(sinHoras.employerImpact);
+    expect(conHoras.blackImpact).toBeCloseTo(sinHoras.blackImpact);
+  });
+
+  it("una ausencia injustificada no le descuenta nada", () => {
+    const opts = { isFueraConvenio: true, isPartner: true, agreedWhite: 900000, computeWhiteCharges: false };
+    const presente = run({ normalHours: 200 }, opts);
+    const ausente = run({ normalHours: 200, unjustifiedAbsenceHours: 40 }, opts);
+    expect(ausente.net).toBeCloseTo(presente.net);
+  });
+
+  it("aunque su categoria matchee una fila de escala, la escala no se le aplica", () => {
+    const r = run(
+      { normalHours: 200 },
+      { isFueraConvenio: true, isPartner: true, agreedWhite: 900000, computeWhiteCharges: false }
+    );
+    expect(r.grossNormal).toBe(0); // la escala del run() es 1000/hora: sin la regla seria 200.000
+    expect(r.partnerFlat).toBe(true);
+  });
+
+  it("isPartner sin fuera de convenio no cambia nada (solo aplica a fuera de convenio)", () => {
+    const conFlag = run({ normalHours: 200 }, { isPartner: true });
+    const sinFlag = run({ normalHours: 200 });
+    expect(conFlag.totalGross).toBeCloseTo(sinFlag.totalGross);
+    expect(conFlag.partnerFlat).toBe(false);
   });
 });

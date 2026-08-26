@@ -22,7 +22,7 @@ import { mergeModuleSlice } from "./domain/mergeItems";
 import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
-import { computePayrollSummary } from "./domain/payroll";
+import { computePayrollSummary, isPartnerCategory } from "./domain/payroll";
 import { deriveConvenioHours } from "./domain/attendance";
 import { computeVatPosition } from "./domain/vatBalance";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
@@ -8158,7 +8158,14 @@ export default function App() {
         : employee.employmentType === "temporal"
         ? Number(employee.agreedSalary || 0)
         : Number(getCurrentPayroll(employee)?.cashBonus || 0);
-    const negroAmount = reciboNegroAmount({ totalBlack, workingDays, daysWorked });
+    // Socio / socio gerente: el acordado va entero, sin prorratear por dias trabajados.
+    const negroAmount = reciboNegroAmount({
+      totalBlack,
+      workingDays,
+      daysWorked,
+      sinProrrateo:
+        employee.employmentType === "fuera_convenio" && isPartnerCategory(employee.category),
+    });
     setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, workingDays, daysWorked, negroAmount } });
     window.setTimeout(() => exportPrint("recibo-negro"), 0);
   };
@@ -13299,6 +13306,10 @@ export default function App() {
       agreedWhite,
       agreedBlack,
       computeWhiteCharges,
+      // Socio / socio gerente fuera de convenio: cobra su acordado COMPLETO, no se liquida por horas.
+      // Se resuelve aca (y no en cada llamador) para que valga igual en el recibo, en el costo hora,
+      // en el estado de resultados y en el resumen por empresa.
+      isPartner: !!isFueraConvenio && isPartnerCategory(category),
     });
 
   const getEmployeePayrollSummary = (employee: Employee) => {

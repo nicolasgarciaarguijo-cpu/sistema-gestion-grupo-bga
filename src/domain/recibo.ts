@@ -51,21 +51,27 @@ export function paymentDateForPeriod(monthKey: string): string {
   return nthBusinessDay(ny, nm, 4);
 }
 
-// Prorrateo del negro por días trabajados. Sin descuentos salvo por días no trabajados.
-// negro = totalBlack / díasLaborables × díasTrabajados (clamp 0..total).
+// Prorrateo del negro por dias trabajados. Sin descuentos salvo por dias no trabajados.
+// negro = totalBlack / diasLaborables x diasTrabajados (clamp 0..total).
+// EXCEPCION `sinProrrateo`: el socio / socio gerente cobra su acordado entero, no ficha horas.
 export function reciboNegroAmount({
   totalBlack,
   workingDays,
   daysWorked,
+  sinProrrateo,
 }: {
   totalBlack: number;
   workingDays: number;
   daysWorked: number;
+  // Socio / socio gerente: cobra el acordado COMPLETO, no se prorratea por dias trabajados.
+  sinProrrateo?: boolean;
 }): number {
   const t = Number(totalBlack || 0);
+  if (!(t > 0)) return 0;
+  if (sinProrrateo) return Math.round(t * 100) / 100;
   const wd = Number(workingDays || 0);
   const dw = Math.max(0, Number(daysWorked || 0));
-  if (!(t > 0) || !(wd > 0)) return 0;
+  if (!(wd > 0)) return 0;
   const raw = (t / wd) * dw;
   return Math.max(0, Math.min(t, Math.round(raw * 100) / 100));
 }

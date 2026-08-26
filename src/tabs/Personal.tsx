@@ -23,6 +23,7 @@ import {
 } from "../ui/planilla";
 import { money, pct, localMonthKey, formatDateDisplay } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
+import { isPartnerCategory } from "../domain/payroll";
 import type { CompanyName } from "../domain/types";
 import { computeMonthAttendance, deriveConvenioHours } from "../domain/attendance";
 import type { DayAttendance } from "../domain/attendance";
@@ -92,6 +93,17 @@ type PersonalTabProps = {
   updateEmployeePayrollManual: any;
   updateEmployeeProvisionItem: any;
 };
+
+// Sugerencias de categoria para el personal FUERA DE CONVENIO. No es una lista cerrada: el campo es
+// texto libre (no sale de la escala del convenio), esto solo evita tipear lo de siempre.
+const CATEGORIAS_FUERA_CONVENIO = [
+  "Socio",
+  "Socio gerente",
+  "Administracion",
+  "Encargado",
+  "Jefe de obra",
+  "Ventas",
+];
 
 // Los tipos de provision se guardan sin acento (son el valor del dato); en pantalla van acentuados.
 const ETIQUETA_PROVISION: Record<string, string> = {
@@ -584,6 +596,28 @@ export function PersonalTab(props: PersonalTabProps) {
                       {newEmployeeDraft.employmentType === "temporal" ? (
                         <Field label="Categoria">
                           <input style={styles.input} value="Temporal" readOnly />
+                        </Field>
+                      ) : newEmployeeDraft.employmentType === "fuera_convenio" ? (
+                        <Field label="Categoria (texto libre)">
+                          <input
+                            style={styles.input}
+                            value={newEmployeeDraft.category || ""}
+                            list="categorias-fuera-convenio-alta"
+                            placeholder="Socio gerente, Administracion, Encargado..."
+                            onChange={(e) =>
+                              setNewEmployeeDraft({ ...newEmployeeDraft, category: e.target.value })
+                            }
+                          />
+                          <datalist id="categorias-fuera-convenio-alta">
+                            {CATEGORIAS_FUERA_CONVENIO.map((option) => (
+                              <option key={option} value={option} />
+                            ))}
+                          </datalist>
+                          {isPartnerCategory(newEmployeeDraft.category || "") && (
+                            <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                              Socio: cobra el acordado completo, no se liquida por horas.
+                            </div>
+                          )}
                         </Field>
                       ) : (
                         <Field label="Categoria base">
@@ -1585,6 +1619,27 @@ export function PersonalTab(props: PersonalTabProps) {
                             </Field>
                           ) : selectedEmployee.employmentType === "fuera_convenio" ? (
                             <>
+                              <Field label="Categoria (texto libre)">
+                                <input
+                                  style={styles.input}
+                                  value={selectedEmployee.category || ""}
+                                  list="categorias-fuera-convenio"
+                                  placeholder="Socio gerente, Administracion, Encargado..."
+                                  onChange={(e) =>
+                                    updateEmployeeField(selectedEmployee.id, "category", e.target.value)
+                                  }
+                                />
+                                <datalist id="categorias-fuera-convenio">
+                                  {CATEGORIAS_FUERA_CONVENIO.map((option) => (
+                                    <option key={option} value={option} />
+                                  ))}
+                                </datalist>
+                                <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                                  {isPartnerCategory(selectedEmployee.category || "")
+                                    ? "Socio: cobra el acordado completo, no se liquida por horas ni se prorratea por dias."
+                                    : "Fuera de convenio: la categoria no sale de la escala, se escribe libre."}
+                                </div>
+                              </Field>
                               <Field label="Sueldo blanco acordado ($)">
                                 <AmountInput
                                   style={styles.input}
