@@ -33,6 +33,9 @@ export type PlataDisponibleCompany = {
   // tercero y todavia no se le reintegraron. Se quiere saldar rapido, por eso sube aca arriba.
   deudaConLaGente: number;
   deudaConLaGenteCount: number;
+  // Saldo de las cuentas corrientes con proveedores: lo que le debemos a la gente que nos vende. Va
+  // aca arriba para no olvidarse (regla del usuario 2026-08-26). Ver domain/purchaseLedger.ts.
+  deudaProveedores: number;
 };
 
 const wrap: React.CSSProperties = {
@@ -207,6 +210,14 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                     <span style={pagarTag}>
                       A pagar este mes (desendeud.):{" "}
                       <b style={{ color: "#fca5a5" }}>{money(c.desendeudamientoMes)}</b>
+                    </span>
+                  )}
+                  {c.deudaProveedores > 1 && (
+                    <span
+                      style={pagarTag}
+                      title="Saldo de las cuentas corrientes: lo comprado menos lo pagado, por proveedor. Se ve en detalle en Compras."
+                    >
+                      Proveedores: <b style={{ color: "#fca5a5" }}>{money(c.deudaProveedores)}</b>
                     </span>
                   )}
                   {c.deudaConLaGente > 1 && (

@@ -9,7 +9,7 @@ import {
   todayIso,
   normalizeCompanyText,
 } from "./lib/format";
-import { WORK_TYPE_OPTIONS, saleDelBanco } from "./domain/types";
+import { WORK_TYPE_OPTIONS, saleDelBanco, PAYMENT_METHOD_OPTIONS } from "./domain/types";
 import { getScaleForCategory as getScaleForCategoryPure } from "./domain/scale";
 import {
   splitModuleDataByCompany,
@@ -22,7 +22,12 @@ import { mergeModuleSlice } from "./domain/mergeItems";
 import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
-import { computePayrollSummary, isPartnerCategory } from "./domain/payroll";
+import { computePayrollSummary, isPartnerCategory, monthlyBlackPay } from "./domain/payroll";
+import {
+  pagoAlimentaCalendario,
+  devolucionDeCajaChica,
+  repartoDelFondo,
+} from "./domain/calendarFeeds";
 import {
   computeSupplierLedgers,
   computePersonDebts,
@@ -119,7 +124,7 @@ import { ChangeReport } from "./ui/ChangeReport";
 import { CashflowTab } from "./tabs/Cashflow";
 import { CalendarioAnualTab } from "./tabs/CalendarioAnual";
 import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocuments";
-import { workingDaysInMonth, reciboNegroAmount } from "./domain/recibo";
+import { workingDaysInMonth, reciboNegroAmount, paymentDateForPeriod } from "./domain/recibo";
 import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
 import { FabricacionTab } from "./tabs/Fabricacion";
@@ -12163,6 +12168,84 @@ export default function App() {
   // balance), para ver de un vistazo cuánta plata hay en cada banco de cada empresa y cuánto en negro,
   // y decidir de dónde gastar. Solo empresas accesibles (canAccessCompany). Es sensible (muestra
   // negro): App lo renderiza solo para admins. Es una foto de HOY (sin corte por período).
+  const purchaseLedgerPayments = useMemo(() => {
+    const taxIdBySupplierId = new Map(suppliers.map((sup) => [sup.id, sup.taxId || ""]));
+    // Los PAGOS son los gastos cargados (CostEntry): manuales y los que bajaron del extracto.
+    const gastos = costEntries
+      .filter((entry) => canAccessCompany(entry.company))
+      .map((entry) => ({
+        id: entry.id,
+        kind: "gasto" as const,
+        company: String(entry.company),
+        supplier: entry.supplier || "",
+        taxId: entry.supplierId ? taxIdBySupplierId.get(entry.supplierId) || "" : "",
+        date: entry.date || "",
+        amount: Number(entry.amount || 0),
+        administration: entry.administration,
+        description: entry.description || "",
+        bankEntryId: entry.bankEntryId ?? null,
+      }));
+    // Ademas, un debito del extracto que se vinculo a una factura de compra SIN cargar el gasto: esa
+    // plata ya salio. El proveedor lo da la factura que paga. Si ese debito ya figura como gasto,
+    // purchaseLedger lo descarta (no se cuenta dos veces).
+    const invoiceById = new Map(purchaseLedgerInvoices.map((inv) => [inv.id, inv]));
+    const bancos = visibleBankStatementEntries
+      .filter((entry) => entry.movementType === "debito" && entry.assignedPurchaseInvoiceId)
+      .map((entry) => {
+        const inv = invoiceById.get(Number(entry.assignedPurchaseInvoiceId));
+        if (!inv) return null;
+        return {
+          id: entry.id,
+          kind: "banco" as const,
+          company: String(entry.company),
+          supplier: inv.supplier,
+          taxId: inv.taxId,
+          date: entry.date || "",
+          amount: Number(entry.amount || 0),
+          administration: (entry.administration || "blanco") as "blanco" | "negro",
+          description: entry.concept || "Debito del banco",
+          bankEntryId: null,
+        };
+      })
+      .filter(Boolean) as LedgerPayment[];
+    return [...gastos, ...bancos];
+  }, [
+    costEntries,
+    suppliers,
+    visibleBankStatementEntries,
+    purchaseLedgerInvoices,
+    allowedCompaniesForSession,
+    effectiveIsAdmin,
+  ]);
+
+  const purchaseLedger = useMemo(
+    () =>
+      computeSupplierLedgers({
+        invoices: purchaseLedgerInvoices,
+        payments: purchaseLedgerPayments,
+        currentAccountKeys: suppliers
+          .filter((sup) => sup.currentAccount)
+          .map((sup) => supplierKey(sup.name, sup.taxId)),
+      }),
+    [purchaseLedgerInvoices, purchaseLedgerPayments, suppliers]
+  );
+
+
+  // Saldo de cuentas corrientes por empresa, para la barra fijada del encabezado: lo que le debemos a
+  // los proveedores. Regla del usuario (2026-08-26): tiene que estar a la vista para no olvidarse.
+  const deudaProveedoresPorEmpresa = useMemo(() => {
+    const porEmpresa = new Map<string, number>();
+    COMPANY_OPTIONS.forEach((c) => {
+      const { saldoTotal } = computeSupplierLedgers({
+        invoices: purchaseLedgerInvoices,
+        payments: purchaseLedgerPayments,
+        companyScope: String(c.value),
+      });
+      porEmpresa.set(String(c.value), saldoTotal);
+    });
+    return porEmpresa;
+  }, [COMPANY_OPTIONS, purchaseLedgerInvoices, purchaseLedgerPayments]);
+
   const plataDisponibleByCompany = useMemo(() => {
     const realCompanies = COMPANY_OPTIONS.filter(
       (c) => c.value && c.value !== "General" && canAccessCompany(c.value as CompanyName)
@@ -12279,6 +12362,7 @@ export default function App() {
         ivaPosicion: ivaPos.posicion,
         deudaConLaGente: deudaGente.total,
         deudaConLaGenteCount: deudaGente.debts.reduce((acc, d) => acc + d.count, 0),
+        deudaProveedores: Number(deudaProveedoresPorEmpresa.get(String(company)) || 0),
       };
     });
   }, [
@@ -12292,6 +12376,7 @@ export default function App() {
     issuedInvoices,
     visiblePurchaseInvoices,
     purchaseLedgerInvoices,
+    deudaProveedoresPorEmpresa,
     visibleIvaVepPayments,
     approvedJobsSummary,
     effectiveIsAdmin,
@@ -12447,7 +12532,11 @@ export default function App() {
         | "desendeudamiento"
         | "banco"
         | "trabajo"
-        | "comision";
+        | "comision"
+        // Fuentes que se sumaron el 2026-08-26 para cerrar el circuito hacia el calendario:
+        | "gasto"             // pago de Costos que NO pasa por el banco (efectivo / negro)
+        | "caja-chica-fondo"  // asignacion de un fondo de caja chica (y su devolucion)
+        | "haberes-negro";    // el sueldo en negro, que no deja rastro en el extracto
       amount: number;
       statusLabel: string;
       subcat?: string;
@@ -12549,6 +12638,120 @@ export default function App() {
       });
     });
 
+    // GASTOS de la solapa Costos que NO pasan por el banco (efectivo o negro). Regla del usuario
+    // (2026-08-26): el gasto entra al calendario como EGRESO, aclarando su circuito blanco/negro, cómo
+    // se pagó y el renglón al que se imputa. Los pagos que SÍ salen del banco no entran acá: esa misma
+    // plata ya llega por el débito del extracto y contarla dos veces rompería el cash flow.
+    costEntries.forEach((item) => {
+      if (!canAccessCompany(item.company)) return;
+      if (!item.date || !item.date.startsWith(String(analysisYear))) return;
+      // Ya vino por el banco: importado del extracto, o conciliado contra un débito, o pagado por un
+      // medio que pasa por la cuenta (transferencia, cheque, débito). La regla, con tests, vive en
+      // domain/calendarFeeds.ts: es lo que impide contar el mismo peso dos veces.
+      if (!pagoAlimentaCalendario(item)) return;
+      const comoSePago = item.paymentMethod
+        ? PAYMENT_METHOD_OPTIONS.find((o) => o.value === item.paymentMethod)?.label || item.paymentMethod
+        : "(D) falta cómo se pagó";
+      const grupo = costGroups.find((g) => g.name === item.group);
+      entries.push({
+        id: `cost-${item.id}`,
+        date: item.date,
+        company: item.company,
+        title: `${item.description || item.supplier || item.group || "Gasto"} · ${comoSePago}`,
+        kind: "gasto",
+        amount: Number(item.amount || 0),
+        // "debito" = egreso: es lo que mira el calendario para firmar el monto en Sin clasificar.
+        statusLabel: "debito",
+        conceptKey: item.conceptKey || undefined,
+        administration: item.administration === "negro" ? "negro" : "blanco",
+        costKind: grupo?.kind === "fijo" || grupo?.kind === "variable" ? grupo.kind : undefined,
+      });
+    });
+
+    // CAJA CHICA. Regla del usuario (2026-08-26): la plata se considera gastada cuando se le ASIGNA el
+    // fondo a alguien, no cuando rinde los tickets. Entonces:
+    //   - la asignación del fondo entra como EGRESO en el renglón "Caja chica";
+    //   - lo que sobra al cerrarlo vuelve como INGRESO "Devolución de caja chica";
+    //   - los gastos sueltos del fondo NO entran (son el rinde, viven en la solapa Caja chica).
+    // Si entraran los dos, la misma plata se gastaría dos veces.
+    visiblePettyCashFunds.forEach((fund) => {
+      if (!fund.deliveredDate || !fund.deliveredDate.startsWith(String(analysisYear))) return;
+      const total = Number(fund.assignedAmount || 0);
+      if (!(total > 0)) return;
+      const { blanco, negro } = repartoDelFondo(fund);
+      const titulo = `Caja chica${fund.responsible ? " · " + fund.responsible : ""}`;
+      const push = (amount: number, administration: "blanco" | "negro") => {
+        if (!(amount > 0)) return;
+        entries.push({
+          id: `petty-fund-${fund.id}-${administration}`,
+          date: fund.deliveredDate,
+          company: fund.company,
+          title: titulo,
+          kind: "caja-chica-fondo",
+          amount,
+          statusLabel: "debito",
+          conceptKey: "cc_caja_chica",
+          administration,
+        });
+      };
+      push(blanco, "blanco");
+      push(negro, "negro");
+    });
+
+    // Devolución: al cerrar el fondo, lo que no se gastó vuelve a entrar. Sin esto la plata quedaría
+    // gastada aunque haya vuelto al bolsillo.
+    visiblePettyCashFunds.forEach((fund) => {
+      if (!fund.closed || !fund.closedDate || !fund.closedDate.startsWith(String(analysisYear))) return;
+      const rendido = visiblePettyCashExpenses
+        .filter((exp) => exp.fundId === fund.id)
+        .reduce((acc, exp) => acc + Number(exp.amount || 0), 0);
+      const sobrante = devolucionDeCajaChica(Number(fund.assignedAmount || 0), rendido);
+      if (!(sobrante > 0.5)) return;
+      entries.push({
+        id: `petty-fund-return-${fund.id}`,
+        date: fund.closedDate,
+        company: fund.company,
+        title: `Devolución de caja chica${fund.responsible ? " · " + fund.responsible : ""}`,
+        kind: "caja-chica-fondo",
+        amount: sobrante,
+        statusLabel: "credito",
+        conceptKey: "iv_devolucion_caja_chica",
+        administration: Number(fund.assignedBlack || 0) > 0 ? "negro" : "blanco",
+      });
+    });
+
+    // HABERES EN NEGRO. El sueldo blanco llega al calendario por la transferencia del banco; el negro
+    // se paga en efectivo y hasta ahora era invisible. Regla del usuario (2026-08-26): tiene que
+    // figurar en Haberes, en el renglón del empleado, con la pill N. La fecha es la de pago del sueldo
+    // (4to día hábil del mes siguiente, LCT art. 128), la misma que usa el recibo.
+    visibleEmployees.forEach((emp) => {
+      (emp.payrolls || []).forEach((pr) => {
+        if (!pr?.month) return;
+        const fecha = paymentDateForPeriod(pr.month);
+        if (!fecha || !fecha.startsWith(String(analysisYear))) return;
+        const negro = monthlyBlackPay({
+          cashBonus: Number(pr.cashBonus || 0),
+          isTemporal: emp.employmentType === "temporal",
+          agreedSalary: Number(emp.agreedSalary || 0),
+          isFueraConvenio: emp.employmentType === "fuera_convenio",
+          agreedBlack: Number(emp.agreedBlack || 0),
+        });
+        if (!(negro > 0)) return;
+        entries.push({
+          id: `payroll-black-${emp.id}-${pr.month}`,
+          date: fecha,
+          company: emp.company,
+          title: emp.name || "Empleado",
+          kind: "haberes-negro",
+          amount: negro,
+          statusLabel: "debito",
+          // Mismo renglón que usa el calendario para cada empleado en Haberes.
+          conceptKey: `custom:haberes:${emp.name}`,
+          administration: "negro",
+        });
+      });
+    });
+
     visibleBankStatementEntries.forEach((item) => {
       if (!item.date || !item.date.startsWith(String(analysisYear))) return;
       // Si el movimiento se asignó a la cobranza de un trabajo, el título es ppto·cliente (así se agrupa
@@ -12598,6 +12801,10 @@ export default function App() {
     visibleBankStatementEntries,
     visibleFinancialItems,
     visiblePettyCashExpenses,
+    visiblePettyCashFunds,
+    visibleEmployees,
+    costEntries,
+    costGroups,
     purchaseCalendarRows,
     visiblePurchaseInvoices,
   ]);
@@ -13452,68 +13659,6 @@ export default function App() {
   // ---- CUENTA CORRIENTE DE COMPRAS (solapa Compras) ----------------------------------------------
   // Con algunos proveedores hay convenio de comprar e ir pagando diferido. El libro mayor por
   // proveedor sale de domain/purchaseLedger.ts: cada factura SUMA, cada pago DESCUENTA.
-
-  const purchaseLedgerPayments = useMemo(() => {
-    const taxIdBySupplierId = new Map(suppliers.map((sup) => [sup.id, sup.taxId || ""]));
-    // Los PAGOS son los gastos cargados (CostEntry): manuales y los que bajaron del extracto.
-    const gastos = costEntries
-      .filter((entry) => canAccessCompany(entry.company))
-      .map((entry) => ({
-        id: entry.id,
-        kind: "gasto" as const,
-        company: String(entry.company),
-        supplier: entry.supplier || "",
-        taxId: entry.supplierId ? taxIdBySupplierId.get(entry.supplierId) || "" : "",
-        date: entry.date || "",
-        amount: Number(entry.amount || 0),
-        administration: entry.administration,
-        description: entry.description || "",
-        bankEntryId: entry.bankEntryId ?? null,
-      }));
-    // Ademas, un debito del extracto que se vinculo a una factura de compra SIN cargar el gasto: esa
-    // plata ya salio. El proveedor lo da la factura que paga. Si ese debito ya figura como gasto,
-    // purchaseLedger lo descarta (no se cuenta dos veces).
-    const invoiceById = new Map(purchaseLedgerInvoices.map((inv) => [inv.id, inv]));
-    const bancos = visibleBankStatementEntries
-      .filter((entry) => entry.movementType === "debito" && entry.assignedPurchaseInvoiceId)
-      .map((entry) => {
-        const inv = invoiceById.get(Number(entry.assignedPurchaseInvoiceId));
-        if (!inv) return null;
-        return {
-          id: entry.id,
-          kind: "banco" as const,
-          company: String(entry.company),
-          supplier: inv.supplier,
-          taxId: inv.taxId,
-          date: entry.date || "",
-          amount: Number(entry.amount || 0),
-          administration: (entry.administration || "blanco") as "blanco" | "negro",
-          description: entry.concept || "Debito del banco",
-          bankEntryId: null,
-        };
-      })
-      .filter(Boolean) as LedgerPayment[];
-    return [...gastos, ...bancos];
-  }, [
-    costEntries,
-    suppliers,
-    visibleBankStatementEntries,
-    purchaseLedgerInvoices,
-    allowedCompaniesForSession,
-    effectiveIsAdmin,
-  ]);
-
-  const purchaseLedger = useMemo(
-    () =>
-      computeSupplierLedgers({
-        invoices: purchaseLedgerInvoices,
-        payments: purchaseLedgerPayments,
-        currentAccountKeys: visibleSuppliers
-          .filter((sup) => sup.currentAccount)
-          .map((sup) => supplierKey(sup.name, sup.taxId)),
-      }),
-    [purchaseLedgerInvoices, purchaseLedgerPayments, visibleSuppliers]
-  );
 
   // Deuda con la gente: lo que puso de su bolsillo un empleado, un socio o un tercero y todavia no se
   // le devolvio. Se quiere saldar rapido, asi que ademas sube a la barra de plata disponible.

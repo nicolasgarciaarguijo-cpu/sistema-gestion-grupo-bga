@@ -583,6 +583,9 @@ export type PettyCashFund = {
   company: CompanyName;
   description: string;
   responsible: string;
+  // Plata que se le entrega al responsable. Regla del usuario (2026-08-26): con la ASIGNACION la
+  // plata ya se considera gastada, asi que este es el EGRESO que ve el Calendario anual. Los gastos
+  // sueltos del fondo son el rinde y NO van al calendario (si fueran, se gastaria dos veces).
   assignedAmount: number;
   // Origen de la plata del fondo (cuanto entro por cada circuito). Opcionales para datos viejos.
   assignedWhite?: number;
@@ -815,6 +818,11 @@ export type CostEntry = {
   supplierId?: number; // proveedor del listado (el nombre libre queda en `supplier`)
   bankEntryId?: number; // debito del extracto con el que quedo conciliado
   invoiceRef?: string; // factura que respalda el pago (numero); la factura NO suma, solo respalda
+  // Renglon del Calendario anual al que se imputa este pago. Con esto el gasto ALIMENTA el calendario
+  // (regla del usuario 2026-08-26). Ausente = cae en "Sin clasificar" con la pill D hasta asignarlo.
+  // OJO: solo llegan al calendario los pagos que NO pasan por el banco (efectivo / negro); los que
+  // salen del banco ya entran por el debito del extracto y contarlos aca los duplicaria.
+  conceptKey?: string;
 };
 
 export type PaymentMethod = "transferencia" | "cheque" | "efectivo" | "debito";

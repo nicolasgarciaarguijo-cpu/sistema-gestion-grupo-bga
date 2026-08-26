@@ -292,7 +292,14 @@ export function CajaChicaTab({
               <MiniMetric label="Administracion negro" value={money(pettyCashSummary.blackTotal)} />
             </div>
             <div style={styles.noticeBox}>
-              Caja chica queda pensada como administracion fuera del circuito bancario. Si un gasto se marca en blanco, tambien queda referenciado dentro de Compras para seguimiento contable.
+              Caja chica queda pensada como administración fuera del circuito bancario. Si un gasto se
+              marca en blanco, también queda referenciado dentro de Compras para seguimiento contable.
+              <br />
+              <strong>Cómo lo ve el Calendario anual:</strong> la plata se considera gastada cuando se{" "}
+              <strong>asigna el fondo</strong> — eso es lo que entra como egreso en el renglón “Caja
+              chica”. Lo que sobra al cerrarlo vuelve como ingreso “Devolución de caja chica”. Los gastos
+              y facturas de esta solapa son <strong>el rinde</strong>: son información y no van al
+              calendario, porque si fueran se gastaría la misma plata dos veces.
             </div>
           </Panel>
 

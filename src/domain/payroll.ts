@@ -26,6 +26,30 @@ export function isPartnerCategory(category: string): boolean {
   return /^socios?( gerentes?)?$/.test(c) || /^gerente socios?$/.test(c);
 }
 
+// Plata en NEGRO que cobra el empleado en el mes: el premio/acuerdo en efectivo (cashBonus), el
+// sueldo del temporal y la parte negra del fuera de convenio. Sale como funcion aparte para que el
+// Calendario anual pueda mostrar los haberes en negro sin recalcular toda la liquidacion (y para que
+// la regla viva en un solo lugar: computePayrollSummary usa esta misma).
+export function monthlyBlackPay({
+  cashBonus,
+  isTemporal,
+  agreedSalary,
+  isFueraConvenio,
+  agreedBlack,
+}: {
+  cashBonus?: number;
+  isTemporal?: boolean;
+  agreedSalary?: number;
+  isFueraConvenio?: boolean;
+  agreedBlack?: number;
+}): number {
+  return (
+    Number(cashBonus || 0) +
+    (isTemporal ? Number(agreedSalary || 0) : 0) +
+    (isFueraConvenio ? Number(agreedBlack || 0) : 0)
+  );
+}
+
 export type PayrollScale = {
   baseHourly?: number;
   vht?: number;
@@ -144,7 +168,7 @@ export function computePayrollSummary({
   // Es dinero de la empresa: entra al costo hora hombre para cotizar el valor real.
   const agreedMonthly = isTemporal ? Number(agreedSalary || 0) : 0;
   const fueraBlack = isFueraConvenio ? Number(agreedBlack || 0) : 0;
-  const blackMonthly = cashBonus + agreedMonthly + fueraBlack;
+  const blackMonthly = monthlyBlackPay({ cashBonus, isTemporal, agreedSalary, isFueraConvenio, agreedBlack });
   // El blanco "tal cual" (sin cargas) se recibe entero y cuesta entero, sin descuentos de ley.
   const net = totalGross - descuentos - payroll.anticipos + flatAgreedWhite;
   const netWithCashBonus = net + cashBonus;

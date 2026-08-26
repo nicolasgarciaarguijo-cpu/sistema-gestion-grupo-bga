@@ -127,6 +127,9 @@ export const CALENDAR_SECTIONS: CalSection[] = [
       { key: "iv_pasaje_bga", label: "Pasaje de BGA Santander a BGA Patagonia" },
       { key: "iv_reintegro_art", label: "Reintegro de ART" },
       { key: "iv_venta_dolares", label: "Venta de dólares a pesos" },
+      // Lo que sobra de una caja chica y se devuelve. La asignacion ya salio como egreso (ver la
+      // seccion CAJA CHICA), asi que el vuelto tiene que volver a entrar o la plata queda gastada.
+      { key: "iv_devolucion_caja_chica", label: "Devolución de caja chica" },
     ],
   },
   // ===================== EGRESOS =====================
@@ -164,6 +167,18 @@ export const CALENDAR_SECTIONS: CalSection[] = [
   {
     key: "haberes", label: "EGRESOS · HABERES", group: "egreso", dir: "out", totalLabel: "Total Haberes",
     items: [],
+  },
+  {
+    // CAJA CHICA. Regla del usuario (2026-08-26): la plata se considera GASTADA cuando se le asigna el
+    // fondo a alguien, no cuando esa persona rinde los tickets. Por eso el calendario muestra la
+    // ASIGNACION del fondo (egreso) y la DEVOLUCION de lo que sobro (ingreso, en Ingresos varios), y
+    // NUNCA los gastos sueltos: esos son el rinde y viven en la solapa Caja chica. Si se mostraran los
+    // dos, la misma plata se gastaria dos veces.
+    key: "caja_chica", label: "EGRESOS · CAJA CHICA", group: "egreso", dir: "out",
+    totalLabel: "Total Caja Chica",
+    items: [
+      { key: "cc_caja_chica", label: "Caja chica" },
+    ],
   },
   {
     key: "cargas_sociales", label: "EGRESOS · CARGAS SOCIALES", group: "egreso", dir: "out",

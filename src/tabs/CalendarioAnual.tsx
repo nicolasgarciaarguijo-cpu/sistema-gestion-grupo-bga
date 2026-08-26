@@ -272,11 +272,25 @@ export function CalendarioAnualTab({
     entries.forEach((e) => {
       if (companyScope !== "__ALL__" && e.company !== companyScope) return;
       if (!e.date || e.date < firstIso || e.date > lastIso) return;
-      // El calendario se alimenta de la plata REAL: movimientos del banco + cobranzas + lo cargado a
-      // mano (con renglón). NO metemos compras/caja chica/facturación/desendeudamiento: esa misma plata
-      // ya viene por el débito del banco, así evitamos duplicar en "Sin clasificar" y en los totales.
-      const isCalendarSource = e.kind === "banco" || e.kind === "cobranza" || e.kind === "comision" || !!e.conceptKey;
+      // El calendario se alimenta de la plata REAL. Entran: los movimientos del banco, las cobranzas,
+      // las comisiones, lo cargado a mano con renglón, y (desde 2026-08-26) las tres fuentes que NO
+      // dejan rastro en el extracto y por eso eran invisibles: los gastos pagados en efectivo o en
+      // negro, la asignación de un fondo de caja chica y el sueldo en negro.
+      // NO entran compras/facturación/desendeudamiento ni los gastos sueltos de caja chica: esa misma
+      // plata ya viene por el débito del banco o por la asignación del fondo. Si entraran, se gastaría
+      // dos veces.
+      const isCalendarSource =
+        e.kind === "banco" ||
+        e.kind === "cobranza" ||
+        e.kind === "comision" ||
+        e.kind === "gasto" ||
+        e.kind === "caja-chica-fondo" ||
+        e.kind === "haberes-negro" ||
+        !!e.conceptKey;
       if (!isCalendarSource) return;
+      // Un débito del banco clasificado como "Caja chica" ES la extracción para armar el fondo, y ese
+      // fondo ya entró como egreso por su asignación. Contarlo también acá sería gastarlo dos veces.
+      if (e.kind === "banco" && e.conceptKey === "cc_caja_chica") return;
       const amt = Number(e.amount || 0);
       const title = (e.title || "—").trim();
       // USD: se acumula aparte (firmado por crédito/débito), nunca en los mapas de pesos.

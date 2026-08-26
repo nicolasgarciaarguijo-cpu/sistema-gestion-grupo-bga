@@ -2517,6 +2517,31 @@ export function CostosTab({
                   >
                     Cambiar a {entry.administration === "negro" ? "BLANCO (B)" : "NEGRO (N)"}
                   </button>
+                  <QuickMenuSep />
+                  <QuickMenuTitle>Renglón del Calendario anual…</QuickMenuTitle>
+                  <select
+                    style={{ ...quickMenuItem, width: "100%", cursor: "pointer" }}
+                    value={entry.conceptKey || ""}
+                    onChange={(ev) => {
+                      updateCostEntry(ctxMenu.id, "conceptKey", ev.target.value);
+                      setCtxMenu(null);
+                    }}
+                  >
+                    <option value="">Sin renglón (cae en Sin clasificar)</option>
+                    {CALENDAR_SECTIONS.filter((sec) => sec.dir === "out" && sec.items.length > 0).map((sec) => (
+                      <optgroup key={sec.key} label={sec.label}>
+                        {sec.items.map((it) => (
+                          <option key={it.key} value={it.key}>
+                            {it.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <div style={{ padding: "4px 10px", fontSize: 11, color: "#64748b", maxWidth: 280 }}>
+                    Solo llegan al calendario los pagos que <strong>no pasan por el banco</strong>
+                    {" "}(efectivo o negro). Los que salen del banco ya entran por el débito del extracto.
+                  </div>
                 </>
               )}
             </QuickMenu>
