@@ -27,6 +27,7 @@ import {
   pagoAlimentaCalendario,
   devolucionDeCajaChica,
   repartoDelFondo,
+  movimientoBancarioAlimenta,
 } from "./domain/calendarFeeds";
 import {
   computeSupplierLedgers,
@@ -1633,6 +1634,9 @@ type PersistedAppStateData = {
   scaleRows: ScaleRow[];
   allocationMode: "auto" | "manual";
   manualAllocationPct: number;
+  // Hasta que fecha el extracto bancario ALIMENTA el calendario. Ver domain/calendarFeeds.ts: el banco
+  // corrobora, no carga; la excepcion es el ejercicio de puesta al dia. Vacio = carga siempre (viejo).
+  bankLoadsUntil: string;
   deviationPct: number;
   markupPct: number;
   vatPct: number;
@@ -1654,7 +1658,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "configuracion",
     label: "configuracion general",
-    fields: ["companyCatalog", "allocationMode", "manualAllocationPct"] as const,
+    fields: ["companyCatalog", "allocationMode", "manualAllocationPct", "bankLoadsUntil"] as const,
   },
   {
     key: "mensuales",
@@ -2869,6 +2873,17 @@ export default function App() {
     negro?: { totalBlack: number; workingDays: number; daysWorked: number; negroAmount: number };
   }>(null);
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto");
+  // EL BANCO CORROBORA, NO CARGA (regla de Nicolas, 2026-08-26). El extracto solo alimenta el
+  // calendario mientras se pone el sistema al dia; por default, hasta el cierre del ejercicio en
+  // curso. Pasada esa fecha la carga es manual dia a dia y el banco pasa a verificar. Se puede correr
+  // la fecha si la puesta al dia se estira ("a menos que se avise").
+  const [bankLoadsUntil, setBankLoadsUntil] = useState<string>(
+    () =>
+      fiscalYearBounds(
+        DEFAULT_FISCAL_START_MONTH,
+        currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date())
+      ).endIso
+  );
   const [manualAllocationPct, setManualAllocationPct] = useState(18.75);
   const [deviationPct, setDeviationPct] = useState(5);
   const [markupPct, setMarkupPct] = useState(30);
@@ -8401,6 +8416,7 @@ export default function App() {
     scaleRows: scaleRows.map((item) => ({ ...item })),
     allocationMode,
     manualAllocationPct,
+    bankLoadsUntil,
     deviationPct,
     markupPct,
     vatPct,
@@ -8716,6 +8732,7 @@ export default function App() {
     });
     setScaleRows((data.scaleRows || seededScaleRows).map((item) => ({ ...item })));
     setAllocationMode(data.allocationMode || "auto");
+    if (typeof data.bankLoadsUntil === "string") setBankLoadsUntil(data.bankLoadsUntil);
     setManualAllocationPct(data.manualAllocationPct ?? 18.75);
     setDeviationPct(data.deviationPct ?? 5);
     setMarkupPct(data.markupPct ?? 30);
@@ -12648,7 +12665,7 @@ export default function App() {
       // Ya vino por el banco: importado del extracto, o conciliado contra un débito, o pagado por un
       // medio que pasa por la cuenta (transferencia, cheque, débito). La regla, con tests, vive en
       // domain/calendarFeeds.ts: es lo que impide contar el mismo peso dos veces.
-      if (!pagoAlimentaCalendario(item)) return;
+      if (!pagoAlimentaCalendario(item, item.date, bankLoadsUntil)) return;
       const comoSePago = item.paymentMethod
         ? PAYMENT_METHOD_OPTIONS.find((o) => o.value === item.paymentMethod)?.label || item.paymentMethod
         : "(D) falta cómo se pagó";
@@ -12754,6 +12771,10 @@ export default function App() {
 
     visibleBankStatementEntries.forEach((item) => {
       if (!item.date || !item.date.startsWith(String(analysisYear))) return;
+      // EL BANCO CORROBORA, NO CARGA. Pasado el ejercicio de puesta al dia, el movimiento del extracto
+      // NO suma al calendario: esa plata ya esta cargada a mano. El extracto sigue estando para
+      // verificar que asi sea (solapa Costos, bloque del banco). Ver domain/calendarFeeds.ts.
+      if (!movimientoBancarioAlimenta(item.date, bankLoadsUntil)) return;
       // Si el movimiento se asignó a la cobranza de un trabajo, el título es ppto·cliente (así se agrupa
       // en Cobranzas junto al resto del trabajo); si no, el título crudo del banco.
       const bankRawTitle = `${item.bank || "Banco"} · ${item.concept || "Movimiento"}`;
@@ -12805,6 +12826,7 @@ export default function App() {
     visibleEmployees,
     costEntries,
     costGroups,
+    bankLoadsUntil,
     purchaseCalendarRows,
     visiblePurchaseInvoices,
   ]);
@@ -15995,6 +16017,8 @@ export default function App() {
 
       {activeTab === "costos" && (
         <CostosTab
+          bankLoadsUntil={bankLoadsUntil}
+          onBankLoadsUntilChange={setBankLoadsUntil}
           fiscalLabel={costsFiscalLabel}
           months={costsMonths}
           aggregation={costsAggregation}

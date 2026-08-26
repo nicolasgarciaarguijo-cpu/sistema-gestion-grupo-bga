@@ -1,4 +1,10 @@
-import { pagoAlimentaCalendario, devolucionDeCajaChica, repartoDelFondo } from "./calendarFeeds";
+import {
+  pagoAlimentaCalendario,
+  devolucionDeCajaChica,
+  repartoDelFondo,
+  modoDelBanco,
+  movimientoBancarioAlimenta,
+} from "./calendarFeeds";
 import { monthlyBlackPay } from "./payroll";
 
 // Si esta regla se equivoca, el cash flow miente en los dos sentidos: o falta plata que salio, o la
@@ -86,5 +92,57 @@ describe("monthlyBlackPay", () => {
 
   it("sin nada en negro devuelve cero (no ensucia el calendario con filas vacias)", () => {
     expect(monthlyBlackPay({})).toBe(0);
+  });
+});
+
+// EL BANCO CORROBORA, NO CARGA. Mientras se pone el sistema al dia el extracto alimenta el calendario;
+// desde el ejercicio siguiente la carga es manual y el banco solo verifica. Si esto se invierte mal,
+// o se duplica cada peso o desaparece medio cash flow.
+describe("modo del banco", () => {
+  const CIERRE = "2026-10-31"; // fin del ejercicio de puesta al dia
+
+  it("hasta el cierre del ejercicio, el banco carga", () => {
+    expect(modoDelBanco("2026-08-26", CIERRE)).toBe("carga");
+    expect(modoDelBanco("2026-10-31", CIERRE)).toBe("carga"); // el dia del cierre entra
+    expect(movimientoBancarioAlimenta("2026-10-31", CIERRE)).toBe(true);
+  });
+
+  it("desde el 1 de noviembre, el banco solo corrobora", () => {
+    expect(modoDelBanco("2026-11-01", CIERRE)).toBe("corrobora");
+    expect(movimientoBancarioAlimenta("2026-11-01", CIERRE)).toBe(false);
+  });
+
+  it("sin fecha de corte configurada se comporta como antes (el banco carga)", () => {
+    expect(modoDelBanco("2027-05-10", "")).toBe("carga");
+    expect(movimientoBancarioAlimenta("2027-05-10", "")).toBe(true);
+  });
+
+  it("en modo CARGA manda el extracto: el pago por transferencia no se cuenta dos veces", () => {
+    expect(pagoAlimentaCalendario({ paymentMethod: "transferencia" }, "2026-08-26", CIERRE)).toBe(false);
+    expect(pagoAlimentaCalendario({ paymentMethod: "efectivo" }, "2026-08-26", CIERRE)).toBe(true);
+  });
+
+  it("en modo CORROBORA manda la carga manual: el pago suma aunque haya salido del banco", () => {
+    expect(pagoAlimentaCalendario({ paymentMethod: "transferencia" }, "2026-11-05", CIERRE)).toBe(true);
+    expect(pagoAlimentaCalendario({ paymentMethod: "efectivo" }, "2026-11-05", CIERRE)).toBe(true);
+    // conciliado contra un debito: sigue sumando, porque el debito ya no suma por su cuenta
+    expect(pagoAlimentaCalendario({ bankEntryId: 77 }, "2026-11-05", CIERRE)).toBe(true);
+  });
+
+  it("en modo CORROBORA, un gasto que ES el movimiento importado no se duplica", () => {
+    expect(pagoAlimentaCalendario({ source: "extracto" }, "2026-11-05", CIERRE)).toBe(false);
+  });
+
+  it("cada peso una sola vez: en ninguno de los dos modos suman el pago Y el debito", () => {
+    const pagoPorBanco = { paymentMethod: "transferencia", bankEntryId: 77 };
+    [
+      { fecha: "2026-08-26", modo: "carga" },
+      { fecha: "2026-11-05", modo: "corrobora" },
+    ].forEach(({ fecha }) => {
+      const sumaElPago = pagoAlimentaCalendario(pagoPorBanco, fecha, CIERRE);
+      const sumaElBanco = movimientoBancarioAlimenta(fecha, CIERRE);
+      expect(sumaElPago && sumaElBanco).toBe(false);
+      expect(sumaElPago || sumaElBanco).toBe(true); // y alguno de los dos SI suma
+    });
   });
 });

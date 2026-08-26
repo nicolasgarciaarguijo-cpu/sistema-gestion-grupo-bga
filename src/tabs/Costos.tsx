@@ -20,11 +20,12 @@ import {
 } from "../ui/planilla";
 import { bankEntryMissingInfo } from "../domain/bankAssignment";
 import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
-import { money } from "../lib/format";
+import { money, todayIso } from "../lib/format";
 import { isAutoCostGroup, monthKeyLabel, composeCostEntriesByGroup, resolveGroupKind } from "../domain/costs";
 import { computeSupplierAccounts } from "../domain/supplierAccounts";
 import type { CostAggregation, CostSourceRow } from "../domain/costs";
 import { PAYMENT_METHOD_OPTIONS } from "../domain/types";
+import { modoDelBanco } from "../domain/calendarFeeds";
 import type {
   CompanyName,
   CostEntry,
@@ -77,6 +78,10 @@ const KindPill = ({ kind }: { kind: CostKind }) => (
 );
 
 type CostosTabProps = {
+  // El banco corrobora, no carga: hasta esta fecha el extracto alimenta el Calendario anual (la
+  // excepcion del ejercicio de puesta al dia). Ver domain/calendarFeeds.ts.
+  bankLoadsUntil: string;
+  onBankLoadsUntilChange: (value: string) => void;
   fiscalLabel: string;
   months: string[];
   aggregation: CostAggregation;
@@ -168,6 +173,8 @@ type CostosTabProps = {
 };
 
 export function CostosTab({
+  bankLoadsUntil,
+  onBankLoadsUntilChange,
   suppliers,
   addSupplier,
   removeSupplier,
@@ -274,6 +281,8 @@ export function CostosTab({
 
   // ---- PLANILLA del espejo bancario ----------------------------------------------------------
   const anchosBanco = usePlanillaWidths("costos.banco", { label: 260, col: 104, colCompact: 78 });
+  // En que modo esta operando el banco HOY, para que se vea de un vistazo sin tener que comparar fechas.
+  const modoBancoHoy = modoDelBanco(todayIso(), bankLoadsUntil);
   const marcaBanco = useCeldaMarcada();
   const [soloSinAsignar, setSoloSinAsignar] = React.useState(false);
 
@@ -1618,6 +1627,35 @@ export function CostosTab({
           </div>
         }
       >
+        <div style={styles.sectionNote}>
+          <strong>El banco corrobora, no carga.</strong> La carga del sistema es manual; el extracto
+          está para constatar que todo lo que pasó por la cuenta esté cargado. La excepción es el
+          ejercicio de puesta al día: hasta esa fecha el extracto <strong>sí</strong> alimenta el
+          Calendario anual. Después, el movimiento se sigue viendo acá pero ya no suma al calendario.
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+            <span>El extracto alimenta el calendario hasta:</span>
+            <input
+              type="date"
+              style={{ ...styles.input, width: 170 }}
+              value={bankLoadsUntil || ""}
+              onChange={(e) => onBankLoadsUntilChange(e.target.value)}
+              title="Fin del ejercicio que se está poniendo al día. Corré la fecha solo si la puesta al día se estira."
+            />
+            <span
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: 0.5,
+                borderRadius: 999,
+                padding: "2px 9px",
+                color: modoBancoHoy === "carga" ? "#166534" : "#1e40af",
+                background: modoBancoHoy === "carga" ? "#dcfce7" : "#dbeafe",
+              }}
+            >
+              {modoBancoHoy === "carga" ? "HOY: CARGA" : "HOY: SOLO CORROBORA"}
+            </span>
+          </div>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
           <ButtonLike secondary onClick={() => shiftOperationalMonth(-1)}>
             ‹ Mes anterior
