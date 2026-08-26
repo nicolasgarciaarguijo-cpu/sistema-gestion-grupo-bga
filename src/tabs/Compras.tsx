@@ -1,8 +1,7 @@
+import { useState } from "react";
 import { styles } from "../ui/styles";
 import {
   Panel,
-  SemaforoResumen,
-  Semaforo,
   MiniMetric,
   ButtonLike,
   Field,
@@ -16,9 +15,11 @@ import {
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+  inputCelda,
 } from "../ui/planilla";
 import { money, formatDateDisplay, todayIso } from "../lib/format";
 import { purchaseInvoiceMissing } from "../domain/completeness";
+import { supplierKey } from "../domain/purchaseLedger";
 
 // Procedencia efectiva de una factura de compra: con numero de factura es SIEMPRE blanco (una factura
 // no puede ser negra); si no, manda el campo administracion. Mismo criterio que el select de la ficha.
@@ -27,18 +28,19 @@ const invoiceOrigin = (invoice: { invoiceNumber?: string; administration?: strin
 import type { CompanyName, PurchaseInvoice } from "../domain/types";
 
 type ComprasTabProps = {
-  stockSemaphoreSummary: any;
-  purchaseDeadlineSemaphore: any;
-  stockNeedRows: any[];
-  totalPurchaseNeed: number;
-  purchaseCalendarRows: any[];
+  // Compras quedo SOLO administrativa: el vinculo factura-pago y las cuentas corrientes. Lo operativo
+  // (que falta comprar, fechas limite, Gantt) se mudo a Fabricacion.
+  purchaseLedger: any;
+  personDebts: any;
+  suppliers: any[];
+  updateSupplier: (id: number, field: string, value: string | number | boolean) => void;
+  purchaseInvoiceRows: any[];
+  costEntries: any[];
+  employeeNames: string[];
   purchaseInvoiceSummary: any;
   pettyCashSummary: any;
   monthPettyCashExpenses: any[];
   purchaseMonth: string;
-  purchaseMonthData: any;
-  purchaseItemsByDate: Map<string, any[]>;
-  approvedJobsSummary: any[];
   monthPurchaseInvoices: PurchaseInvoice[];
   monthLabel: (month: string) => string;
   getCompanyMeta: (company: CompanyName) => any;
@@ -55,18 +57,17 @@ type ComprasTabProps = {
 };
 
 export function ComprasTab({
-  stockSemaphoreSummary,
-  purchaseDeadlineSemaphore,
-  stockNeedRows,
-  totalPurchaseNeed,
-  purchaseCalendarRows,
+  purchaseLedger,
+  personDebts,
+  suppliers,
+  updateSupplier,
+  purchaseInvoiceRows,
+  costEntries,
+  employeeNames,
   purchaseInvoiceSummary,
   pettyCashSummary,
   monthPettyCashExpenses,
   purchaseMonth,
-  purchaseMonthData,
-  purchaseItemsByDate,
-  approvedJobsSummary,
   monthPurchaseInvoices,
   monthLabel,
   getCompanyMeta,
@@ -77,102 +78,502 @@ export function ComprasTab({
   updatePurchaseInvoice,
   uploadPurchaseInvoiceFile,
 }: ComprasTabProps) {
-  const anchosFaltantes = usePlanillaWidths("compras.faltantes", { label: 300, col: 106, colCompact: 82 });
-  const anchosCajaBlanca = usePlanillaWidths("compras.cajablanca", { label: 300, col: 118, colCompact: 90 });
-  const anchosLimite = usePlanillaWidths("compras.limite", { label: 300, col: 118, colCompact: 90 });
+  const anchosCajaBlanca = usePlanillaWidths("compras.cajachica", { label: 300, col: 118, colCompact: 90 });
+  const anchosCtaCte = usePlanillaWidths("compras.ctacte", { label: 260, col: 124, colCompact: 96 });
+  const anchosPagos = usePlanillaWidths("compras.pagos", { label: 260, col: 118, colCompact: 90 });
+
+  // Que cuentas estan desplegadas y si se muestran todos los proveedores o solo los que importan.
+  // Solo UI, no se persiste.
+  const [cuentasAbiertas, setCuentasAbiertas] = useState<string[]>([]);
+  const [verTodosLosProveedores, setVerTodosLosProveedores] = useState(false);
+  const toggleCuenta = (key: string) =>
+    setCuentasAbiertas((abiertas) =>
+      abiertas.includes(key) ? abiertas.filter((k) => k !== key) : [...abiertas, key]
+    );
+
+  // El proveedor del listado que corresponde a cada cuenta, para poder marcarla como cuenta corriente
+  // desde la propia cuenta. La llave es la misma que usa el libro mayor (CUIT o nombre normalizado).
+  const proveedorPorLlave = new Map<string, any>(
+    suppliers.map((sup) => [supplierKey(sup.name, sup.taxId), sup])
+  );
+
+  // Se muestran las cuentas de convenio y las que tienen saldo; el resto queda detras del boton (hay
+  // mas de cien proveedores y la mayoria son compras sueltas ya pagadas).
+  const cuentasVisibles = (purchaseLedger?.ledgers || []).filter(
+    (l: any) => verTodosLosProveedores || l.esCuentaCorriente || Math.abs(l.saldo) > 1
+  );
+
+  // Pagos que se pueden vincular a una factura: los gastos de la misma empresa, y si la factura trae
+  // proveedor, los de ese proveedor (o los que no tienen proveedor cargado).
+  const pagosVinculables = (invCompany: string, supplierName: string) =>
+    costEntries.filter(
+      (e: any) =>
+        e.company === invCompany &&
+        (!supplierName ||
+          !e.supplier ||
+          String(e.supplier).trim().toLowerCase() === String(supplierName).trim().toLowerCase())
+    );
+
+  // Lo que salio por caja chica en el mes, partido por circuito. El negro no tiene factura pero es
+  // plata que salio igual: se controla aca, no se esconde.
+  const pettyCashCajaBlanco = monthPettyCashExpenses
+    .filter((item: any) => item.administration !== "negro")
+    .reduce((acc: number, item: any) => acc + Number(item.amount || 0), 0);
+  const pettyCashCajaNegro = monthPettyCashExpenses
+    .filter((item: any) => item.administration === "negro")
+    .reduce((acc: number, item: any) => acc + Number(item.amount || 0), 0);
+
+  // El control que pidio el usuario: que todo lo facturado se este pagando. Lo que no tiene pago
+  // registrado es lo que hay que mirar.
+  const facturasDeArca = purchaseInvoiceRows.filter((inv: any) => inv.origin === "arca");
+  const facturasSinPago = purchaseInvoiceRows.filter((inv: any) => !inv.pagoFecha);
+  const totalSinPago = facturasSinPago.reduce((acc: number, inv: any) => acc + Number(inv.total || 0), 0);
+
+  const origenLabel: Record<string, string> = {
+    arca: "ARCA",
+    caja_chica: "Caja chica",
+    compras: "Compras",
+  };
 
   return (
         <div style={styles.column}>
-          <Panel span="wide" title="Semaforo de compras">
-            <SemaforoResumen
-              items={[
-                { level: "verde", label: "Materiales cubiertos", value: String(stockSemaphoreSummary.verde) },
-                { level: "amarillo", label: "Compra parcial", value: String(stockSemaphoreSummary.amarillo) },
-                { level: "rojo", label: "Faltantes", value: String(stockSemaphoreSummary.rojo) },
-              ]}
-            />
-            <div style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
-              <Semaforo level={purchaseDeadlineSemaphore.level} size={24} ring />
-              <div>
-                <div style={styles.metricLabel}>Fechas limite de compra</div>
-                <div style={{ fontWeight: 700 }}>{purchaseDeadlineSemaphore.label}</div>
+          {/* Sugerencias de quien puede haber puesto plata de su bolsillo. Va suelto en la solapa (no
+              dentro de un panel) para que los dos lugares donde se carga lo encuentren siempre. */}
+          <datalist id="personas-que-pagan">
+            {employeeNames.map((nombre) => (
+              <option key={nombre} value={nombre} />
+            ))}
+          </datalist>
+
+          <Panel
+            title="Cuentas corrientes con proveedores"
+            span="full"
+            actions={
+              <div style={styles.inlineActions}>
+                <ButtonLike onClick={() => setVerTodosLosProveedores((v) => !v)} secondary>
+                  {verTodosLosProveedores ? "Solo convenio y con saldo" : "Ver todos los proveedores"}
+                </ButtonLike>
+                <ButtonLike onClick={anchosCtaCte.toggleCompacto} secondary>
+                  {anchosCtaCte.esCompacto ? "Ancho normal" : "Compacto"}
+                </ButtonLike>
               </div>
+            }
+          >
+            <div style={styles.sectionNote}>
+              Con el <strong>punto verde</strong> marcás a los proveedores con los que hay convenio de
+              comprar e ir pagando diferido. Cada factura <strong>suma</strong> a la cuenta y cada pago
+              la <strong>descuenta</strong>.{" "}
+              <strong style={{ color: Number(purchaseLedger?.saldoTotal || 0) > 1 ? "#b45309" : "#16a34a" }}>
+                Saldo total: {money(Number(purchaseLedger?.saldoTotal || 0))}
+              </strong>
+              {Number(purchaseLedger?.sinConciliarTotal || 0) > 1 && (
+                <>
+                  {" · "}
+                  <span style={{ color: "#ca8a04" }}>
+                    {money(Number(purchaseLedger.sinConciliarTotal))} en facturas sin pago vinculado
+                  </span>
+                </>
+              )}
+              .
             </div>
-          </Panel>
-          <Panel title="Resumen de compras pendientes" span="full">
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
-              <MiniMetric label="Costo estimado" value={money(totalPurchaseNeed)} />
-              <MiniMetric label="Trabajos con fecha limite" value={String(purchaseCalendarRows.length)} />
-            </div>
-            {stockNeedRows.length === 0 ? (
-              <div style={styles.empty}>No hay compras pendientes detectadas desde stock y trabajos aprobados.</div>
+            {cuentasVisibles.length === 0 ? (
+              <div style={styles.empty}>
+                Todavía no hay compras cargadas. Importá el listado de ARCA o cargá una factura para que
+                la cuenta empiece a moverse.
+              </div>
             ) : (
-              <div style={{ ...planillaWrap, ...anchosFaltantes.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Material
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosFaltantes.startResize(ev, "label")}
-                        onDoubleClick={anchosFaltantes.resetLabel}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Requerido
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosFaltantes.startResize(ev, "col")}
-                        onDoubleClick={anchosFaltantes.resetCol}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>Faltante</th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>Costo estimado</th>
-                    <th style={thFlexible}>Trabajos · empresas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {stockNeedRows.map((row) => {
-                    const estado = row.missing === 0 ? "#16a34a" : row.available > 0 ? "#ca8a04" : "#dc2626";
-                    return (
-                    <tr key={row.description}>
-                      <td style={{ ...tdNombre, fontWeight: 400 }} title={row.description}>
-                        <span
-                          title={row.missing === 0 ? "Completo" : row.available > 0 ? "Parcial" : "Hay que comprar todo"}
+              cuentasVisibles.map((cuenta: any) => {
+                const proveedor = proveedorPorLlave.get(cuenta.key);
+                const abierta = cuentasAbiertas.includes(cuenta.key);
+                const debe = cuenta.saldo > 1;
+                return (
+                  <div
+                    key={cuenta.key}
+                    style={{ border: "1px solid #e2e8f0", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 8,
+                        padding: "6px 10px",
+                        background: debe ? "#fffbeb" : "#f0fdf4",
+                        cursor: "pointer",
+                      }}
+                      onClick={() => toggleCuenta(cuenta.key)}
+                      title="Tocá para ver el detalle de compras y pagos"
+                    >
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                        <button
                           style={{
-                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
-                            background: estado,
+                            width: 12,
+                            height: 12,
+                            borderRadius: 999,
+                            border: "1px solid #94a3b8",
+                            padding: 0,
+                            cursor: proveedor ? "pointer" : "not-allowed",
+                            background: cuenta.esCuentaCorriente ? "#16a34a" : "#e2e8f0",
+                          }}
+                          title={
+                            proveedor
+                              ? cuenta.esCuentaCorriente
+                                ? "Tiene convenio de cuenta corriente. Tocá para quitarlo."
+                                : "Sin convenio. Tocá para marcarlo como cuenta corriente."
+                              : "Este proveedor no está en el listado: dalo de alta para poder marcarlo."
+                          }
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            if (!proveedor) return;
+                            updateSupplier(proveedor.id, "currentAccount", !cuenta.esCuentaCorriente);
                           }}
                         />
-                        {row.description}
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right" }}>
-                        {row.required} <span style={{ color: "#94a3b8" }}>{row.unit}</span>
-                        <span style={{ color: "#94a3b8" }}> · hay {row.available}</span>
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: estado }}>
-                        {row.missing} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{row.unit}</span>
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(row.estimatedCost)}</td>
-                      <td
-                        style={{ ...tdFlexible, color: "#64748b" }}
-                        title={`${row.jobs.join(", ")} · ${row.companyLabels.join(", ")}`}
-                      >
-                        {row.jobs.join(", ")}
-                        <span style={{ color: "#94a3b8" }}> · {row.companyLabels.join(", ")}</span>
-                      </td>
+                        <strong>{cuenta.supplier}</strong>
+                        {cuenta.taxId && (
+                          <span style={{ fontSize: 11, color: "#94a3b8" }}>({cuenta.taxId})</span>
+                        )}
+                        {cuenta.esCuentaCorriente && (
+                          <span
+                            style={{
+                              fontSize: 10,
+                              fontWeight: 800,
+                              letterSpacing: 0.6,
+                              color: "#166534",
+                              background: "#dcfce7",
+                              borderRadius: 999,
+                              padding: "1px 7px",
+                            }}
+                          >
+                            CONVENIO
+                          </span>
+                        )}
+                      </span>
+                      <span style={{ display: "inline-flex", gap: 12, alignItems: "baseline" }}>
+                        <span style={{ fontSize: 12, color: "#64748b" }}>
+                          Comprado {money(cuenta.comprado)} · Pagado {money(cuenta.pagado)}
+                        </span>
+                        <span style={{ fontWeight: 800, color: debe ? "#b45309" : "#16a34a" }}>
+                          {debe
+                            ? `Debemos ${money(cuenta.saldo)}`
+                            : cuenta.saldo < -1
+                            ? `A favor ${money(Math.abs(cuenta.saldo))}`
+                            : "Al día"}
+                        </span>
+                      </span>
+                    </div>
+                    {abierta && (
+                      <div style={{ ...planillaWrap, ...anchosCtaCte.vars }}>
+                        <table style={planillaTable}>
+                          <colgroup>
+                            <col style={colLabel} />
+                            <col style={colDato} />
+                            <col style={colDato} />
+                            <col style={colDato} />
+                            <col style={colFlexible} />
+                          </colgroup>
+                          <thead>
+                            <tr>
+                              <th style={thEsquina}>
+                                Movimiento
+                                <PlanillaManija
+                                  onMouseDown={(ev) => anchosCtaCte.startResize(ev, "label")}
+                                  onDoubleClick={anchosCtaCte.resetLabel}
+                                />
+                              </th>
+                              <th style={{ ...thColumna, textAlign: "right" }}>
+                                Compra
+                                <PlanillaManija
+                                  onMouseDown={(ev) => anchosCtaCte.startResize(ev, "col")}
+                                  onDoubleClick={anchosCtaCte.resetCol}
+                                />
+                              </th>
+                              <th style={{ ...thColumna, textAlign: "right" }}>Pago</th>
+                              <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
+                              <th style={thFlexible}>Fecha · estado</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cuenta.movimientos.map((mov: any) => (
+                              <tr key={mov.key}>
+                                <td style={{ ...tdNombre, fontWeight: 400 }} title={mov.detail}>
+                                  {mov.type === "compra" && (
+                                    <span
+                                      title={mov.conciliada ? "Con pago vinculado" : "Sin pago vinculado"}
+                                      style={{
+                                        display: "inline-block",
+                                        width: 8,
+                                        height: 8,
+                                        borderRadius: 999,
+                                        marginRight: 7,
+                                        background: mov.conciliada ? "#16a34a" : "#ca8a04",
+                                      }}
+                                    />
+                                  )}
+                                  {mov.detail}
+                                  <ColorTag color={mov.administration} />
+                                </td>
+                                <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                                  {mov.type === "compra" ? money(mov.amount) : ""}
+                                </td>
+                                <td
+                                  style={{
+                                    ...tdDato,
+                                    textAlign: "right",
+                                    fontWeight: 700,
+                                    color: mov.type === "pago" ? MONEY_OUT_COLOR : undefined,
+                                  }}
+                                >
+                                  {mov.type === "pago" ? money(mov.amount) : ""}
+                                </td>
+                                <td style={{ ...tdDato, textAlign: "right", fontWeight: 800 }}>
+                                  {money(mov.saldo)}
+                                </td>
+                                <td style={{ ...tdFlexible, color: "#64748b" }}>
+                                  {formatDateDisplay(mov.date) || "sin fecha"}
+                                  {mov.type === "compra" && mov.paidByPerson && (
+                                    <span style={{ color: "#b45309" }}>
+                                      {" · la puso "}
+                                      {mov.paidByPerson}
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </Panel>
+
+          <Panel title="Deuda con la gente (lo que pusieron de su bolsillo)" span="full">
+            <div style={styles.sectionNote}>
+              Cuando una factura la paga un empleado, un socio o un tercero, la empresa le queda
+              debiendo hasta que se le reintegra. Se marca en el bloque de abajo, en la columna del
+              pago.{" "}
+              <strong style={{ color: Number(personDebts?.total || 0) > 1 ? "#b45309" : "#16a34a" }}>
+                Total a devolver: {money(Number(personDebts?.total || 0))}
+              </strong>
+              .
+            </div>
+            {(personDebts?.debts || []).length === 0 ? (
+              <div style={styles.empty}>No hay facturas puestas por alguien sin reintegrar. Al día.</div>
+            ) : (
+              (personDebts.debts || []).map((deuda: any) => (
+                <div
+                  key={deuda.person}
+                  style={{ border: "1px solid #fed7aa", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      background: "#fffbeb",
+                    }}
+                  >
+                    <strong>{deuda.person}</strong>
+                    <span style={{ display: "inline-flex", gap: 12, alignItems: "baseline" }}>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>
+                        {deuda.count} {deuda.count === 1 ? "factura" : "facturas"}
+                      </span>
+                      <span style={{ fontWeight: 800, color: "#b45309" }}>{money(deuda.total)}</span>
+                    </span>
+                  </div>
+                  <table style={planillaTable}>
+                    <colgroup>
+                      <col style={colLabel} />
+                      <col style={colDato} />
+                      <col style={colDato} />
+                      <col style={colFlexible} />
+                    </colgroup>
+                    <tbody>
+                      {deuda.invoices.map((inv: any) => (
+                        <tr key={`deuda-${inv.id}`}>
+                          <td style={{ ...tdNombre, fontWeight: 400 }}>
+                            {inv.supplier || "sin proveedor"}
+                            <ColorTag color={inv.administration} />
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                            {money(inv.total)}
+                          </td>
+                          <td style={{ ...tdDato, color: "#475569" }}>
+                            {formatDateDisplay(inv.invoiceDate)}
+                          </td>
+                          <td style={tdFlexible}>
+                            <button
+                              style={styles.smallBtn}
+                              title="Ya se le devolvió la plata: sale de la deuda"
+                              onClick={() => updatePurchaseInvoice(inv.id, "reimbursedAt" as any, todayIso())}
+                            >
+                              Marcar reintegrado
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))
+            )}
+          </Panel>
+
+          <Panel
+            title="Facturas recibidas y su pago"
+            span="full"
+            actions={
+              <ButtonLike onClick={anchosPagos.toggleCompacto} secondary>
+                {anchosPagos.esCompacto ? "Ancho normal" : "Compacto"}
+              </ButtonLike>
+            }
+          >
+            <div style={styles.sectionNote}>
+              Todo lo que nos facturaron -- el listado de ARCA, lo cargado a mano y lo que sube de caja
+              chica -- con <strong>su pago al lado</strong>. El punto verde es que el pago está
+              registrado; el amarillo es que falta. Si la puso alguien de su bolsillo, escribí el nombre
+              en "la pagó" y pasa a la deuda con la gente.
+            </div>
+            {purchaseInvoiceRows.length === 0 ? (
+              <div style={styles.empty}>No hay facturas de compra cargadas.</div>
+            ) : (
+              <div style={{ ...planillaWrap, ...anchosPagos.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thEsquina}>
+                        Proveedor · comprobante
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosPagos.startResize(ev, "label")}
+                          onDoubleClick={anchosPagos.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        Total
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosPagos.startResize(ev, "col")}
+                          onDoubleClick={anchosPagos.resetCol}
+                        />
+                      </th>
+                      <th style={thColumna}>Fecha</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Pago</th>
+                      <th style={thFlexible}>Estado del pago</th>
                     </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {purchaseInvoiceRows.map((inv: any) => {
+                      const pagada = !!inv.pagoFecha;
+                      const laPuso = String(inv.paidByPerson || "").trim();
+                      return (
+                        <tr key={`pago-${inv.id}`}>
+                          <td
+                            style={{
+                              ...tdNombre,
+                              fontWeight: 400,
+                              boxShadow: `inset 4px 0 0 ${getCompanyMeta(inv.company).primary}`,
+                            }}
+                            title={`${inv.supplier} · ${inv.invoiceNumber || "sin comprobante"}`}
+                          >
+                            <span
+                              title={pagada ? "Pago registrado" : "Sin pago registrado"}
+                              style={{
+                                display: "inline-block",
+                                width: 8,
+                                height: 8,
+                                borderRadius: 999,
+                                marginRight: 7,
+                                background: pagada ? "#16a34a" : "#ca8a04",
+                              }}
+                            />
+                            {inv.supplier || "sin proveedor"}
+                            <span style={{ color: "#94a3b8" }}>
+                              {" · "}
+                              {inv.invoiceNumber || "sin comprobante"}
+                              {" · "}
+                              {origenLabel[inv.origin] || inv.origin}
+                            </span>
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                            {money(inv.total)}
+                            <ColorTag color={inv.administration} />
+                          </td>
+                          <td style={{ ...tdDato, color: "#475569" }}>
+                            {formatDateDisplay(inv.invoiceDate)}
+                          </td>
+                          <td
+                            style={{
+                              ...tdDato,
+                              textAlign: "right",
+                              fontWeight: 700,
+                              color: pagada ? MONEY_OUT_COLOR : "#94a3b8",
+                            }}
+                          >
+                            {pagada ? money(inv.pagoMonto) : "-"}
+                          </td>
+                          <td style={{ ...tdFlexible, padding: "2px 6px" }}>
+                            {pagada ? (
+                              <span style={{ color: "#166534" }}>
+                                Pagada el {formatDateDisplay(inv.pagoFecha)}
+                                {inv.pagoDetalle ? ` · ${inv.pagoDetalle}` : ""}
+                                {inv.pagoVia === "banco" ? " · del banco" : ""}
+                                {Math.abs(inv.pagoMonto - inv.total) > 1 && (
+                                  <span style={{ color: "#b45309" }}>
+                                    {" · el pago no coincide con el total"}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              <span
+                                style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}
+                              >
+                                <select
+                                  style={{ ...inputCelda, minWidth: 190 }}
+                                  value=""
+                                  onChange={(e) =>
+                                    updatePurchaseInvoice(
+                                      inv.id,
+                                      "paidByCostEntryId" as any,
+                                      e.target.value ? Number(e.target.value) : null
+                                    )
+                                  }
+                                >
+                                  <option value="">Sin pago · vincular uno</option>
+                                  {pagosVinculables(inv.company, inv.supplier).map((pago: any) => (
+                                    <option key={pago.id} value={pago.id}>
+                                      {formatDateDisplay(pago.date)} · {money(pago.amount)}
+                                      {pago.description ? ` · ${pago.description}` : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  style={{ ...inputCelda, minWidth: 150 }}
+                                  value={laPuso}
+                                  list="personas-que-pagan"
+                                  placeholder="la pagó (empleado/socio)"
+                                  title="Si la puso alguien de su bolsillo, la empresa le queda debiendo"
+                                  onChange={(e) =>
+                                    updatePurchaseInvoice(inv.id, "paidByPerson" as any, e.target.value)
+                                  }
+                                />
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </Panel>
@@ -193,52 +594,85 @@ export function ComprasTab({
                 />
               )}
               <MiniMetric label="Caja chica blanco" value={money(pettyCashSummary.whiteTotal)} tone="out" />
+              <MiniMetric label="Caja chica negro" value={money(pettyCashSummary.blackTotal)} tone="out" />
+              <MiniMetric label="Del listado de ARCA" value={String(facturasDeArca.length)} />
+              <MiniMetric
+                label="Sin pago registrado"
+                value={`${facturasSinPago.length} · ${money(totalSinPago)}`}
+                tone={facturasSinPago.length > 0 ? "out" : undefined}
+              />
             </div>
             <div style={styles.noticeBox}>
-              Este bloque ya queda armado siguiendo la lógica de sus planillas auxiliares: proveedor, comprobante, moneda, neto gravado, exento e IVA separado para luego exportar al estudio contable.
+              Proveedor, comprobante, moneda, neto gravado, exento e IVA separado, listo para exportar al
+              estudio contable. <strong>Sin pago registrado</strong> es el control: si ese número no baja,
+              o falta cargar el pago, o se pagó en negro, o lo puso alguien de su bolsillo.
             </div>
           </Panel>
 
-          <Panel title={`Facturas blancas vinculadas desde caja chica - ${monthLabel(purchaseMonth)}`} span="full">
-            {monthPettyCashExpenses.filter((item) => item.administration === "blanco").length === 0 ? (
-              <div style={styles.empty}>No hay gastos de caja chica en blanco en {monthLabel(purchaseMonth)} para levantar dentro de compras.</div>
+          <Panel
+            title={`Compras de caja chica - ${monthLabel(purchaseMonth)}`}
+            span="full"
+            actions={
+              <div style={styles.monthToolbar}>
+                <ButtonLike onClick={() => shiftPurchaseMonth(-1)} secondary>
+                  Mes anterior
+                </ButtonLike>
+                <div style={styles.calendarMonthLabel}>{monthLabel(purchaseMonth)}</div>
+                <ButtonLike onClick={() => shiftPurchaseMonth(1)} secondary>
+                  Mes siguiente
+                </ButtonLike>
+              </div>
+            }
+          >
+            <div style={styles.sectionNote}>
+              Lo que se compró por caja chica en el mes, <strong>en blanco y en negro</strong>. Lo blanco
+              tiene factura y sube a compras; lo negro no, pero igual es plata que salió y se controla
+              acá.{" "}
+              <strong>Blanco {money(pettyCashCajaBlanco)}</strong>
+              {" · "}
+              <strong style={{ color: MONEY_OUT_COLOR }}>Negro {money(pettyCashCajaNegro)}</strong>
+              .
+            </div>
+            {monthPettyCashExpenses.length === 0 ? (
+              <div style={styles.empty}>
+                No hay gastos de caja chica en {monthLabel(purchaseMonth)}.
+              </div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosCajaBlanca.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Descripción
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosCajaBlanca.startResize(ev, "label")}
-                        onDoubleClick={anchosCajaBlanca.resetLabel}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Total
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosCajaBlanca.startResize(ev, "col")}
-                        onDoubleClick={anchosCajaBlanca.resetCol}
-                      />
-                    </th>
-                    <th style={thColumna}>Fecha</th>
-                    <th style={thFlexible}>Proveedor · factura · empresa</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {monthPettyCashExpenses
-                    .filter((item) => item.administration === "blanco")
-                    .map((item) => (
-                      <tr key={`pc-white-${item.id}`}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thEsquina}>
+                        Descripción
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCajaBlanca.startResize(ev, "label")}
+                          onDoubleClick={anchosCajaBlanca.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        Total
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCajaBlanca.startResize(ev, "col")}
+                          onDoubleClick={anchosCajaBlanca.resetCol}
+                        />
+                      </th>
+                      <th style={thColumna}>Fecha</th>
+                      <th style={thFlexible}>Proveedor · factura · empresa</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthPettyCashExpenses.map((item) => (
+                      <tr key={`pc-${item.id}`}>
                         <td
                           style={{
-                            ...tdNombre, fontWeight: 400,
+                            ...tdNombre,
+                            fontWeight: 400,
                             boxShadow: `inset 4px 0 0 ${getCompanyMeta(item.company).primary}`,
                           }}
                           title={item.description}
@@ -247,150 +681,22 @@ export function ComprasTab({
                         </td>
                         <td style={{ ...tdDato, ...styles.amountOut, textAlign: "right", fontWeight: 700 }}>
                           {money(item.amount)}
+                          <ColorTag color={item.administration === "negro" ? "negro" : "blanco"} />
                         </td>
                         <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.date)}</td>
                         <td style={{ ...tdFlexible, color: "#64748b" }}>
                           {item.supplier || "sin proveedor"}
                           <span style={{ color: "#94a3b8" }}>
-                            {" · "}{item.invoiceNumber || "sin factura"}
-                            {" · "}{getCompanyMeta(item.company).short}
+                            {" · "}
+                            {item.invoiceNumber || "sin factura"}
+                            {" · "}
+                            {getCompanyMeta(item.company).short}
                           </span>
                         </td>
                       </tr>
                     ))}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </Panel>
-
-          <Panel
-            title="Calendario de fechas limite de compra"
-            span="wide"
-            actions={
-              <div style={styles.monthToolbar}>
-                <ButtonLike onClick={() => shiftPurchaseMonth(-1)} secondary>Mes anterior</ButtonLike>
-                <div style={styles.calendarMonthLabel}>{purchaseMonthData.label}</div>
-                <ButtonLike onClick={() => shiftPurchaseMonth(1)} secondary>Mes siguiente</ButtonLike>
-              </div>
-            }
-          >
-            <div style={styles.calendarWeekdays}>
-              {["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"].map((day) => (
-                <div key={day} style={styles.calendarWeekdayCell}>{day}</div>
-              ))}
-            </div>
-            <div style={styles.calendarGrid}>
-              {purchaseMonthData.cells.map((cell) => {
-                const items = purchaseItemsByDate.get(cell.date) ?? [];
-                return (
-                  <div
-                    key={cell.date}
-                    style={{
-                      ...styles.calendarCell,
-                      ...(cell.inCurrentMonth ? {} : styles.calendarCellMuted),
-                    }}
-                  >
-                    <div style={styles.calendarCellHeader}>
-                      <strong>{cell.day}</strong>
-                    </div>
-                    {items.length === 0 ? (
-                      <div style={styles.calendarEmpty}>Sin fecha</div>
-                    ) : (
-                      items.map((item) => {
-                        const meta = getCompanyMeta(item.company);
-                        return (
-                          <div
-                            key={`${item.id}-${item.deadlineDate}`}
-                            style={{
-                              ...styles.calendarItem,
-                              background: `${meta.soft}`,
-                              color: meta.primary,
-                              borderLeft: `8px solid ${meta.primary}`,
-                            }}
-                          >
-                            <div><strong>{item.budgetNumber}</strong></div>
-                            <div>{item.client}</div>
-                            <div style={styles.calendarItemMeta}>{item.missingCount} faltantes</div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Panel>
-
-          <Panel title="Gantt de compras" span="full">
-            {purchaseCalendarRows.length === 0 ? (
-              <div style={styles.empty}>Carga fechas de inicio de fabricacion para ver el avance de compras.</div>
-            ) : (
-              <div style={{ ...planillaWrap, ...anchosLimite.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Presupuesto · cliente
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosLimite.startResize(ev, "label")}
-                        onDoubleClick={anchosLimite.resetLabel}
-                      />
-                    </th>
-                    <th style={thColumna}>
-                      Fecha límite
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosLimite.startResize(ev, "col")}
-                        onDoubleClick={anchosLimite.resetCol}
-                      />
-                    </th>
-                    <th style={thFlexible}>Avance desde la aprobación</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {purchaseCalendarRows.map((row) => {
-                    const job = approvedJobsSummary.find((item) => item.id === row.id);
-                    const start = job?.approvalDate || row.deadlineDate;
-                    const end = row.deadlineDate;
-                    const totalDays = Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)));
-                    const elapsedDays = Math.max(0, Math.ceil((new Date(todayIso()).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)));
-                    const progressPct = Math.max(0, Math.min(100, (elapsedDays / totalDays) * 100));
-                    const meta = getCompanyMeta(row.company);
-                    return (
-                      <tr key={`gantt-purchase-${row.id}`}>
-                        <td
-                          style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
-                          title={`${row.budgetNumber} · ${row.client}`}
-                        >
-                          <strong style={{ color: "#0f172a" }}>{row.budgetNumber}</strong>{" "}
-                          <span style={{ color: "#475569" }}>{row.client}</span>
-                        </td>
-                        <td
-                          style={{
-                            ...tdDato, fontWeight: 600,
-                            color: progressPct >= 100 ? "#dc2626" : progressPct >= 80 ? "#ca8a04" : "#475569",
-                          }}
-                        >
-                          {formatDateDisplay(end)}
-                        </td>
-                        <td style={{ ...tdFlexible, padding: "2px 8px" }}>
-                          <div style={styles.ganttTrack}>
-                            <div style={{ ...styles.ganttFill, width: `${progressPct}%`, background: meta.primary }} />
-                          </div>
-                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                            desde {formatDateDisplay(start)} · {elapsedDays} de {totalDays} días · {meta.short}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                  </tbody>
+                </table>
               </div>
             )}
           </Panel>
@@ -512,6 +818,26 @@ export function ComprasTab({
                     </Field>
                     <Field label="Carga automatica">
                       <input style={styles.input} value={invoice.extractedAutomatically ? "Si" : "Manual"} readOnly />
+                    </Field>
+                    {/* Quien puso la plata. Es el MISMO campo que se edita desde "Facturas recibidas y
+                        su pago": un solo dato, dos lugares para cargarlo, sin que puedan contradecirse. */}
+                    <Field label="La pagó (si la puso alguien de su bolsillo)">
+                      <input
+                        style={styles.input}
+                        value={invoice.paidByPerson || ""}
+                        list="personas-que-pagan"
+                        placeholder="Vacío = la pagó la empresa"
+                        onChange={(e) =>
+                          updatePurchaseInvoice(invoice.id, "paidByPerson" as any, e.target.value)
+                        }
+                      />
+                      {invoice.paidByPerson?.trim() ? (
+                        <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                          {invoice.reimbursedAt
+                            ? `Reintegrado el ${formatDateDisplay(invoice.reimbursedAt)}.`
+                            : "Queda como deuda con esa persona hasta marcarla reintegrada."}
+                        </div>
+                      ) : null}
                     </Field>
                   </TwoCol>
                   <Field label="Notas">

@@ -23,6 +23,12 @@ import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
 import { computePayrollSummary, isPartnerCategory } from "./domain/payroll";
+import {
+  computeSupplierLedgers,
+  computePersonDebts,
+  supplierKey,
+  type LedgerPayment,
+} from "./domain/purchaseLedger";
 import { deriveConvenioHours } from "./domain/attendance";
 import { computeVatPosition } from "./domain/vatBalance";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
@@ -4018,6 +4024,36 @@ export default function App() {
       byInvoice.has(inv.id) ? { ...inv, paidByBankEntryId: byInvoice.get(inv.id) } : inv
     );
   }, [visiblePurchaseInvoices, bankStatementEntries]);
+
+  // Procedencia de una factura de compra para el libro mayor. Las de ARCA se reconocen por la nota
+  // que les pone el importador (`importArcaFiles`): es el unico rastro de que salieron del listado.
+  const purchaseInvoiceOrigin = (inv: PurchaseInvoice): "compras" | "caja_chica" | "arca" =>
+    inv.source === "caja_chica" ? "caja_chica" : /listado de ARCA/i.test(inv.notes || "") ? "arca" : "compras";
+
+  const purchaseLedgerInvoices = useMemo(
+    () =>
+      purchaseInvoicesWithBankLink.map((inv) => ({
+        id: inv.id,
+        company: String(inv.company),
+        supplier: inv.supplier || "",
+        taxId: inv.taxId || "",
+        invoiceNumber: inv.invoiceNumber || "",
+        invoiceDate: inv.invoiceDate || "",
+        total: Number(inv.total || 0),
+        // Mismo criterio que la ficha: con numero de comprobante es SIEMPRE blanco.
+        administration: (inv.invoiceNumber?.trim()
+          ? "blanco"
+          : inv.administration === "negro"
+          ? "negro"
+          : "blanco") as "blanco" | "negro",
+        origin: purchaseInvoiceOrigin(inv),
+        paidByCostEntryId: inv.paidByCostEntryId,
+        paidByBankEntryId: inv.paidByBankEntryId,
+        paidByPerson: inv.paidByPerson || "",
+        reimbursedAt: inv.reimbursedAt || "",
+      })),
+    [purchaseInvoicesWithBankLink]
+  );
 
   const visiblePettyCashFunds = useMemo(
     () => pettyCashFunds.filter((item) => canAccessCompany(item.company)),
@@ -12218,6 +12254,9 @@ export default function App() {
         })),
         veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })),
       });
+      // Deuda con la gente: facturas que puso alguien de su bolsillo y no se le reintegraron. La
+      // regla vive en domain/purchaseLedger.ts; aca solo se corta por empresa.
+      const deudaGente = computePersonDebts(purchaseLedgerInvoices, company);
       return {
         company,
         short: c.short || company,
@@ -12238,6 +12277,8 @@ export default function App() {
         ivaDebito: ivaPos.debito,
         ivaCredito: ivaPos.credito,
         ivaPosicion: ivaPos.posicion,
+        deudaConLaGente: deudaGente.total,
+        deudaConLaGenteCount: deudaGente.debts.reduce((acc, d) => acc + d.count, 0),
       };
     });
   }, [
@@ -12250,6 +12291,7 @@ export default function App() {
     visibleDebtPlans,
     issuedInvoices,
     visiblePurchaseInvoices,
+    purchaseLedgerInvoices,
     visibleIvaVepPayments,
     approvedJobsSummary,
     effectiveIsAdmin,
@@ -13406,6 +13448,107 @@ export default function App() {
     () => suppliers.filter((item) => canAccessCompany(item.company as any)),
     [suppliers, allowedCompaniesForSession, effectiveIsAdmin]
   );
+
+  // ---- CUENTA CORRIENTE DE COMPRAS (solapa Compras) ----------------------------------------------
+  // Con algunos proveedores hay convenio de comprar e ir pagando diferido. El libro mayor por
+  // proveedor sale de domain/purchaseLedger.ts: cada factura SUMA, cada pago DESCUENTA.
+
+  const purchaseLedgerPayments = useMemo(() => {
+    const taxIdBySupplierId = new Map(suppliers.map((sup) => [sup.id, sup.taxId || ""]));
+    // Los PAGOS son los gastos cargados (CostEntry): manuales y los que bajaron del extracto.
+    const gastos = costEntries
+      .filter((entry) => canAccessCompany(entry.company))
+      .map((entry) => ({
+        id: entry.id,
+        kind: "gasto" as const,
+        company: String(entry.company),
+        supplier: entry.supplier || "",
+        taxId: entry.supplierId ? taxIdBySupplierId.get(entry.supplierId) || "" : "",
+        date: entry.date || "",
+        amount: Number(entry.amount || 0),
+        administration: entry.administration,
+        description: entry.description || "",
+        bankEntryId: entry.bankEntryId ?? null,
+      }));
+    // Ademas, un debito del extracto que se vinculo a una factura de compra SIN cargar el gasto: esa
+    // plata ya salio. El proveedor lo da la factura que paga. Si ese debito ya figura como gasto,
+    // purchaseLedger lo descarta (no se cuenta dos veces).
+    const invoiceById = new Map(purchaseLedgerInvoices.map((inv) => [inv.id, inv]));
+    const bancos = visibleBankStatementEntries
+      .filter((entry) => entry.movementType === "debito" && entry.assignedPurchaseInvoiceId)
+      .map((entry) => {
+        const inv = invoiceById.get(Number(entry.assignedPurchaseInvoiceId));
+        if (!inv) return null;
+        return {
+          id: entry.id,
+          kind: "banco" as const,
+          company: String(entry.company),
+          supplier: inv.supplier,
+          taxId: inv.taxId,
+          date: entry.date || "",
+          amount: Number(entry.amount || 0),
+          administration: (entry.administration || "blanco") as "blanco" | "negro",
+          description: entry.concept || "Debito del banco",
+          bankEntryId: null,
+        };
+      })
+      .filter(Boolean) as LedgerPayment[];
+    return [...gastos, ...bancos];
+  }, [
+    costEntries,
+    suppliers,
+    visibleBankStatementEntries,
+    purchaseLedgerInvoices,
+    allowedCompaniesForSession,
+    effectiveIsAdmin,
+  ]);
+
+  const purchaseLedger = useMemo(
+    () =>
+      computeSupplierLedgers({
+        invoices: purchaseLedgerInvoices,
+        payments: purchaseLedgerPayments,
+        currentAccountKeys: visibleSuppliers
+          .filter((sup) => sup.currentAccount)
+          .map((sup) => supplierKey(sup.name, sup.taxId)),
+      }),
+    [purchaseLedgerInvoices, purchaseLedgerPayments, visibleSuppliers]
+  );
+
+  // Deuda con la gente: lo que puso de su bolsillo un empleado, un socio o un tercero y todavia no se
+  // le devolvio. Se quiere saldar rapido, asi que ademas sube a la barra de plata disponible.
+  const personDebts = useMemo(() => computePersonDebts(purchaseLedgerInvoices), [purchaseLedgerInvoices]);
+
+  // Nombres de la gente que puede haber puesto plata de su bolsillo: los empleados y socios del
+  // sistema. Es solo una lista de sugerencias -- el campo admite cualquier nombre (un tercero).
+  const employeeNames = useMemo(
+    () =>
+      Array.from(new Set(visibleEmployees.map((emp) => String(emp.name || "").trim()).filter(Boolean))).sort(
+        (a, b) => a.localeCompare(b)
+      ),
+    [visibleEmployees]
+  );
+
+  // Cada factura recibida con SU pago al lado (fecha y monto), que es el control que pidio el usuario:
+  // ver de un vistazo que todo lo que se facturo se esta pagando. Sin pago vinculado, la fila queda
+  // marcada -- puede ser que falte cargarlo, que se haya pagado en negro o que lo haya puesto alguien.
+  const purchaseInvoiceRows = useMemo(() => {
+    const gastoById = new Map(costEntries.map((entry) => [entry.id, entry]));
+    const bancoById = new Map(visibleBankStatementEntries.map((entry) => [entry.id, entry]));
+    return purchaseLedgerInvoices
+      .map((inv) => {
+        const gasto = inv.paidByCostEntryId != null ? gastoById.get(Number(inv.paidByCostEntryId)) : null;
+        const banco = !gasto && inv.paidByBankEntryId != null ? bancoById.get(Number(inv.paidByBankEntryId)) : null;
+        return {
+          ...inv,
+          pagoFecha: String(gasto?.date || banco?.date || ""),
+          pagoMonto: Number(gasto?.amount ?? banco?.amount ?? 0),
+          pagoDetalle: String(gasto?.description || banco?.concept || ""),
+          pagoVia: gasto ? ("gasto" as const) : banco ? ("banco" as const) : ("" as const),
+        };
+      })
+      .sort((a, b) => (b.invoiceDate || "").localeCompare(a.invoiceDate || "") || b.id - a.id);
+  }, [purchaseLedgerInvoices, costEntries, visibleBankStatementEntries]);
 
   // COTEJO contra el extracto: un pago en BLANCO que sale del BANCO tiene que aparecer si o si como
   // debito. Si no aparece, o falta cargar el extracto o el pago esta mal. Los pagos en efectivo o en
@@ -15523,18 +15666,17 @@ export default function App() {
 
       {activeTab === "compras" && (
         <ComprasTab
-          stockSemaphoreSummary={stockSemaphoreSummary}
-          purchaseDeadlineSemaphore={purchaseDeadlineSemaphore}
-          stockNeedRows={stockNeedRows}
-          totalPurchaseNeed={totalPurchaseNeed}
-          purchaseCalendarRows={purchaseCalendarRows}
+          purchaseLedger={purchaseLedger}
+          personDebts={personDebts}
+          suppliers={visibleSuppliers}
+          updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field as any, value as any)}
+          purchaseInvoiceRows={purchaseInvoiceRows}
+          costEntries={costEntries}
+          employeeNames={employeeNames}
           purchaseInvoiceSummary={purchaseInvoiceSummary}
           pettyCashSummary={pettyCashSummary}
           monthPettyCashExpenses={monthPettyCashExpenses}
           purchaseMonth={purchaseMonth}
-          purchaseMonthData={purchaseMonthData}
-          purchaseItemsByDate={purchaseItemsByDate}
-          approvedJobsSummary={approvedJobsSummary}
           monthPurchaseInvoices={monthPurchaseInvoices}
           monthLabel={monthLabel}
           getCompanyMeta={getCompanyMeta}
@@ -16009,6 +16151,15 @@ export default function App() {
       {activeTab === "fabricacion" && (
         <FabricacionTab
           stockSemaphoreSummary={stockSemaphoreSummary}
+          purchaseDeadlineSemaphore={purchaseDeadlineSemaphore}
+          stockNeedRows={stockNeedRows}
+          totalPurchaseNeed={totalPurchaseNeed}
+          purchaseCalendarRows={purchaseCalendarRows}
+          purchaseMonth={purchaseMonth}
+          purchaseMonthData={purchaseMonthData}
+          purchaseItemsByDate={purchaseItemsByDate}
+          shiftPurchaseMonth={shiftPurchaseMonth}
+          approvedJobsSummary={approvedJobsSummary}
           occupancyPct={occupancyPct}
           fabricationOpenJobsCount={fabricationOpenJobsCount}
           fabricationInProgressCount={fabricationInProgressCount}

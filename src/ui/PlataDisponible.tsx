@@ -29,6 +29,10 @@ export type PlataDisponibleCompany = {
   ivaDebito: number;
   ivaCredito: number;
   ivaPosicion: number;
+  // Lo que la empresa le debe a la gente: facturas que puso de su bolsillo un empleado, un socio o un
+  // tercero y todavia no se le reintegraron. Se quiere saldar rapido, por eso sube aca arriba.
+  deudaConLaGente: number;
+  deudaConLaGenteCount: number;
 };
 
 const wrap: React.CSSProperties = {
@@ -203,6 +207,22 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                     <span style={pagarTag}>
                       A pagar este mes (desendeud.):{" "}
                       <b style={{ color: "#fca5a5" }}>{money(c.desendeudamientoMes)}</b>
+                    </span>
+                  )}
+                  {c.deudaConLaGente > 1 && (
+                    <span
+                      style={pagarTag}
+                      title="Facturas que puso alguien de su bolsillo y todavia no se le devolvieron. Se salda desde Compras."
+                    >
+                      Le debemos a la gente:{" "}
+                      <b style={{ color: "#fca5a5" }}>{money(c.deudaConLaGente)}</b>
+                      {c.deudaConLaGenteCount > 0 && (
+                        <span style={{ color: "#94a3b8" }}>
+                          {" ("}
+                          {c.deudaConLaGenteCount}
+                          {c.deudaConLaGenteCount === 1 ? " factura)" : " facturas)"}
+                        </span>
+                      )}
                     </span>
                   )}
                   <span

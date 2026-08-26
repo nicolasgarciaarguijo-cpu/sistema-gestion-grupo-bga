@@ -569,6 +569,13 @@ export type PurchaseInvoice = {
   // DERIVADO (no se guarda): id del movimiento del banco que paga esta factura. Sale de
   // BankStatementEntry.assignedPurchaseInvoiceId, que es la unica fuente de verdad del vinculo.
   paidByBankEntryId?: number | null;
+  // QUIEN PUSO LA PLATA. Vacio = la empresa (lo normal). Con un nombre = esa persona (empleado, socio
+  // o un tercero) la pago de su bolsillo, asi que la empresa le queda debiendo hasta `reimbursedAt`.
+  // Es UN solo campo aunque se pueda editar desde dos lados (la ficha de la factura y el vinculo del
+  // pago): asi las dos vistas no pueden contradecirse. Ver domain/purchaseLedger.ts.
+  paidByPerson?: string;
+  // Fecha en que se le reintegro a esa persona. Con fecha, sale de la deuda.
+  reimbursedAt?: string;
 };
 
 export type PettyCashFund = {
@@ -924,6 +931,10 @@ export type Supplier = {
   aliases: string; // como figura en el extracto, separado por comas
   active: boolean;
   notes: string;
+  // CUENTA CORRIENTE: hay convenio de comprar e ir pagando diferido. Los proveedores marcados suben
+  // al bloque de cuentas corrientes de Compras, con su libro mayor (cada compra suma, cada pago
+  // descuenta). Ausente/false = proveedor suelto, se paga contra entrega.
+  currentAccount?: boolean;
 };
 
 export type RemitoDraftRow = {

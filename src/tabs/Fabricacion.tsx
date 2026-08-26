@@ -6,11 +6,22 @@ import {
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
   inputCelda, focoCelda,
 } from "../ui/planilla";
-import { formatDateDisplay, money } from "../lib/format";
+import { formatDateDisplay, money, todayIso } from "../lib/format";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
 type FabricacionTabProps = {
   stockSemaphoreSummary: any;
+  // Lo de COMPRAS que es operativo (que falta comprar y para cuando) vive aca, no en la solapa
+  // Compras: esa quedo solo para el circuito administrativo (facturas, pagos y cuentas corrientes).
+  purchaseDeadlineSemaphore: any;
+  stockNeedRows: any[];
+  totalPurchaseNeed: number;
+  purchaseCalendarRows: any[];
+  purchaseMonth: string;
+  purchaseMonthData: any;
+  purchaseItemsByDate: Map<string, any[]>;
+  shiftPurchaseMonth: (delta: number) => void;
+  approvedJobsSummary: any[];
   occupancyPct: number;
   fabricationOpenJobsCount: number;
   fabricationInProgressCount: number;
@@ -31,6 +42,15 @@ type FabricacionTabProps = {
 
 export function FabricacionTab({
   stockSemaphoreSummary,
+  purchaseDeadlineSemaphore,
+  stockNeedRows,
+  totalPurchaseNeed,
+  purchaseCalendarRows,
+  purchaseMonth,
+  purchaseMonthData,
+  purchaseItemsByDate,
+  shiftPurchaseMonth,
+  approvedJobsSummary,
   occupancyPct,
   fabricationOpenJobsCount,
   fabricationInProgressCount,
@@ -59,6 +79,7 @@ export function FabricacionTab({
   const anchosCompras = usePlanillaWidths("fabricacion.compras", { label: 280, col: 120, colCompact: 92 });
   const anchosStock = usePlanillaWidths("fabricacion.stock", { label: 300, col: 110, colCompact: 84 });
   const anchosCalendario = usePlanillaWidths("fabricacion.calendario", { label: 280, col: 132, colCompact: 100 });
+  const anchosLimite = usePlanillaWidths("fabricacion.limite", { label: 300, col: 118, colCompact: 90 });
 
   return (
         <div style={styles.column}>
@@ -105,7 +126,29 @@ export function FabricacionTab({
             </div>
           </Panel>
 
+          <Panel span="wide" title="Semaforo de compras">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Materiales cubiertos", value: String(stockSemaphoreSummary.verde) },
+                { level: "amarillo", label: "Compra parcial", value: String(stockSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Faltantes", value: String(stockSemaphoreSummary.rojo) },
+              ]}
+            />
+            <div style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+              <Semaforo level={purchaseDeadlineSemaphore.level} size={24} ring />
+              <div>
+                <div style={styles.metricLabel}>Fechas limite de compra</div>
+                <div style={{ fontWeight: 700 }}>{purchaseDeadlineSemaphore.label}</div>
+              </div>
+            </div>
+          </Panel>
+
           <Panel title="Compras pendientes para fabricacion" span="full">
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
+              <MiniMetric label="Costo estimado" value={money(totalPurchaseNeed)} />
+              <MiniMetric label="Trabajos con fecha limite" value={String(purchaseCalendarRows.length)} />
+            </div>
             {fabricationPendingPurchases.length === 0 ? (
               <div style={styles.empty}>No hay faltantes pendientes para trabajos activos.</div>
             ) : (
@@ -580,6 +623,138 @@ export function FabricacionTab({
                     );
                   })}
                 </div>
+              </div>
+            )}
+          </Panel>
+          <Panel
+            title="Calendario de fechas limite de compra"
+            span="wide"
+            actions={
+              <div style={styles.monthToolbar}>
+                <ButtonLike onClick={() => shiftPurchaseMonth(-1)} secondary>Mes anterior</ButtonLike>
+                <div style={styles.calendarMonthLabel}>{purchaseMonthData.label}</div>
+                <ButtonLike onClick={() => shiftPurchaseMonth(1)} secondary>Mes siguiente</ButtonLike>
+              </div>
+            }
+          >
+            <div style={styles.calendarWeekdays}>
+              {["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"].map((day) => (
+                <div key={day} style={styles.calendarWeekdayCell}>{day}</div>
+              ))}
+            </div>
+            <div style={styles.calendarScroll}>
+            <div style={styles.calendarGrid}>
+              {purchaseMonthData.cells.map((cell) => {
+                const items = purchaseItemsByDate.get(cell.date) ?? [];
+                return (
+                  <div
+                    key={cell.date}
+                    style={{
+                      ...styles.calendarCell,
+                      ...(cell.inCurrentMonth ? {} : styles.calendarCellMuted),
+                    }}
+                  >
+                    <div style={styles.calendarCellHeader}>
+                      <strong>{cell.day}</strong>
+                    </div>
+                    {items.length === 0 ? (
+                      <div style={styles.calendarEmpty}>Sin fecha</div>
+                    ) : (
+                      items.map((item) => {
+                        const meta = getCompanyMeta(item.company);
+                        return (
+                          <div
+                            key={`${item.id}-${item.deadlineDate}`}
+                            style={{
+                              ...styles.calendarItem,
+                              background: `${meta.soft}`,
+                              color: meta.primary,
+                              borderLeft: `8px solid ${meta.primary}`,
+                            }}
+                          >
+                            <div><strong>{item.budgetNumber}</strong></div>
+                            <div>{item.client}</div>
+                            <div style={styles.calendarItemMeta}>{item.missingCount} faltantes</div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            </div>
+          </Panel>
+
+          <Panel title="Gantt de compras" span="full">
+            {purchaseCalendarRows.length === 0 ? (
+              <div style={styles.empty}>Carga fechas de inicio de fabricacion para ver el avance de compras.</div>
+            ) : (
+              <div style={{ ...planillaWrap, ...anchosLimite.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={thEsquina}>
+                      Presupuesto · cliente
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosLimite.startResize(ev, "label")}
+                        onDoubleClick={anchosLimite.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Fecha límite
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosLimite.startResize(ev, "col")}
+                        onDoubleClick={anchosLimite.resetCol}
+                      />
+                    </th>
+                    <th style={thFlexible}>Avance desde la aprobación</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {purchaseCalendarRows.map((row) => {
+                    const job = approvedJobsSummary.find((item) => item.id === row.id);
+                    const start = job?.approvalDate || row.deadlineDate;
+                    const end = row.deadlineDate;
+                    const totalDays = Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)));
+                    const elapsedDays = Math.max(0, Math.ceil((new Date(todayIso()).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)));
+                    const progressPct = Math.max(0, Math.min(100, (elapsedDays / totalDays) * 100));
+                    const meta = getCompanyMeta(row.company);
+                    return (
+                      <tr key={`gantt-purchase-${row.id}`}>
+                        <td
+                          style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
+                          title={`${row.budgetNumber} · ${row.client}`}
+                        >
+                          <strong style={{ color: "#0f172a" }}>{row.budgetNumber}</strong>{" "}
+                          <span style={{ color: "#475569" }}>{row.client}</span>
+                        </td>
+                        <td
+                          style={{
+                            ...tdDato, fontWeight: 600,
+                            color: progressPct >= 100 ? "#dc2626" : progressPct >= 80 ? "#ca8a04" : "#475569",
+                          }}
+                        >
+                          {formatDateDisplay(end)}
+                        </td>
+                        <td style={{ ...tdFlexible, padding: "2px 8px" }}>
+                          <div style={styles.ganttTrack}>
+                            <div style={{ ...styles.ganttFill, width: `${progressPct}%`, background: meta.primary }} />
+                          </div>
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
+                            desde {formatDateDisplay(start)} · {elapsedDays} de {totalDays} días · {meta.short}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
               </div>
             )}
           </Panel>

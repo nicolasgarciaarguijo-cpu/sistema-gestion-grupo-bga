@@ -1396,6 +1396,14 @@ export const styles: Record<string, CSSProperties> = {
     borderRadius: 10,
   },
   calendarGrid: { display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 8 },
+  // Regla del usuario (2026-08-26): los calendarios van con SCROLL propio, no estirando la pagina.
+  // Asi la barra de mes y el encabezado de dias quedan a la vista mientras se recorre el mes.
+  calendarScroll: {
+    maxHeight: 460,
+    overflowY: "auto",
+    overflowX: "hidden",
+    paddingRight: 4,
+  },
   yearCalendarGrid: {
     display: "grid",
     gridTemplateColumns: "repeat(3, minmax(0, 1fr))",

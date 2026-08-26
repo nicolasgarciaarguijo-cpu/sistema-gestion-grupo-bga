@@ -231,6 +231,7 @@ export function FacturacionTab({
               ))}
             </div>
 
+            <div style={styles.calendarScroll}>
             <div style={styles.calendarGrid}>
               {financialMonthData.cells.map((cell) => {
                 const items = financialItemsByDate.get(cell.date) ?? [];
@@ -311,6 +312,7 @@ export function FacturacionTab({
                   </div>
                 );
               })}
+            </div>
             </div>
           </Panel>
 
