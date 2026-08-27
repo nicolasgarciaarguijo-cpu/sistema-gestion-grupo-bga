@@ -128,112 +128,18 @@ export function CajaChicaTab({
 
   return (
         <div style={styles.column}>
-          <Panel span="wide" title="Cargar ticket con OCR (leer y confirmar)">
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
-              <Field label="Fondo">
-                <select
-                  style={styles.input}
-                  value={effectiveFundId ?? ""}
-                  onChange={(e) => setOcrFundId(e.target.value ? Number(e.target.value) : null)}
-                >
-                  {visiblePettyCashFunds.map((fund) => (
-                    <option key={fund.id} value={fund.id}>
-                      {fund.description || `Fondo ${fund.id}`}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <label
-                style={{
-                  ...styles.input,
-                  cursor: "pointer",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  fontWeight: 700,
-                  background: "#0f172a",
-                  color: "#fff",
-                  border: "none",
-                }}
-              >
-                {pettyOcrBusy ? "Leyendo..." : "Elegir ticket (foto o PDF)"}
-                <input
-                  type="file"
-                  accept="image/*,application/pdf"
-                  style={{ display: "none" }}
-                  disabled={pettyOcrBusy}
-                  onChange={(e) => {
-                    onRunTicketOcr(effectiveFundId, e.target.files?.[0] || null);
-                    e.target.value = "";
-                  }}
-                />
-              </label>
-            </div>
-            {pettyOcrMsg && <div style={{ ...styles.noticeBox, marginTop: 8 }}>{pettyOcrMsg}</div>}
-
-            {pettyTicketDraft && (
-              <div style={{ ...styles.noticeBox, marginTop: 10, background: "#f8fafc" }}>
-                <div style={styles.sectionHeader}>Confirma el gasto (revisa el monto)</div>
-                <div style={styles.grid2}>
-                  <Field label="Fondo">
-                    <select
-                      style={styles.input}
-                      value={pettyTicketDraft.fundId ?? ""}
-                      onChange={(e) => onUpdateTicketDraft("fundId", Number(e.target.value))}
-                    >
-                      {visiblePettyCashFunds.map((fund) => (
-                        <option key={fund.id} value={fund.id}>
-                          {fund.description || `Fondo ${fund.id}`}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Fecha">
-                    <input
-                      style={styles.input}
-                      type="date"
-                      value={pettyTicketDraft.date}
-                      onChange={(e) => onUpdateTicketDraft("date", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Monto (verificalo)">
-                    <AmountInput
-                      style={styles.input}
-                      value={pettyTicketDraft.amount}
-                      onChange={(n) => onUpdateTicketDraft("amount", n)}
-                    />
-                  </Field>
-                  <Field label="Descripcion / proveedor">
-                    <input
-                      style={styles.input}
-                      value={pettyTicketDraft.description}
-                      onChange={(e) => onUpdateTicketDraft("description", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Administracion (factura = blanco)">
-                    <select
-                      style={styles.input}
-                      value={pettyTicketDraft.administration}
-                      onChange={(e) => onUpdateTicketDraft("administration", e.target.value)}
-                    >
-                      <option value="negro">Negro (ticket sin factura)</option>
-                      <option value="blanco">Blanco (factura - se vincula a Compras)</option>
-                    </select>
-                  </Field>
-                </div>
-                <div style={{ ...styles.muted, margin: "6px 0" }}>Archivo: {pettyTicketDraft.fileName}</div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <ButtonLike onClick={onSaveTicketDraft}>Guardar gasto</ButtonLike>
-                  <ButtonLike secondary onClick={onCancelTicketDraft}>Cancelar</ButtonLike>
-                </div>
-              </div>
-            )}
-            <div style={{ ...styles.muted, marginTop: 8 }}>
-              El OCR lee el ticket y precompleta el monto y la fecha; siempre revisalo antes de guardar
-              (asi queda preciso). La primera vez descarga el motor de OCR, puede tardar unos segundos.
-            </div>
+          <Panel span="full" title="Semaforo de caja chica">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Fondos con saldo", value: String(fundSemaphoreSummary.verde) },
+                { level: "amarillo", label: "Saldo bajo", value: String(fundSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Saldo agotado", value: String(fundSemaphoreSummary.rojo) },
+              ]}
+            />
           </Panel>
 
-          <Panel span="wide" title="Balance blanco / negro de caja chica">
+          <Panel span="full" title="Balance y resumen de caja chica">
+            <div style={styles.sectionHeader}>Balance por circuito — blanco / negro</div>
             <div style={styles.grid2}>
               <div>
                 <div style={styles.sectionHeader}>Circuito BLANCO</div>
@@ -270,18 +176,7 @@ export function CajaChicaTab({
               un lado, ajusta de que circuito cargas o gastas antes del cierre. Lo negro nunca se mezcla
               con lo blanco.
             </div>
-          </Panel>
-
-          <Panel span="full" title="Semaforo de caja chica">
-            <SemaforoResumen
-              items={[
-                { level: "verde", label: "Fondos con saldo", value: String(fundSemaphoreSummary.verde) },
-                { level: "amarillo", label: "Saldo bajo", value: String(fundSemaphoreSummary.amarillo) },
-                { level: "rojo", label: "Saldo agotado", value: String(fundSemaphoreSummary.rojo) },
-              ]}
-            />
-          </Panel>
-          <Panel title="Resumen de caja chica" span="full">
+            <div style={styles.sectionHeader}>Resumen — fondos, rendido y saldo</div>
             <div style={styles.metricGrid}>
               <MiniMetric label="Fondos activos" value={String(visiblePettyCashFunds.filter((item) => item.active).length)} />
               <MiniMetric label="Monto asignado" value={money(pettyCashSummary.assignedTotal)} />
@@ -303,7 +198,14 @@ export function CajaChicaTab({
             </div>
           </Panel>
 
-          <Panel title="Rendicion por responsable" span="full">
+          {/* Los tres bloques que estaban sueltos son la misma historia: a quien se le dio plata,
+              cuanto rindio y que queda abierto. Separados obligaban a cruzarlos de memoria. */}
+          <Panel
+            span="full"
+            title="Responsables, fondos y rendición"
+            actions={<ButtonLike onClick={addPettyCashFund}>Agregar caja chica</ButtonLike>}
+          >
+            <div style={styles.sectionHeader}>Rendición por responsable</div>
             {responsibleRendicion.length === 0 ? (
               <div style={styles.empty}>Todavia no hay responsables con cajas asignadas.</div>
             ) : (
@@ -383,12 +285,7 @@ export function CajaChicaTab({
                 })}
               </div>
             )}
-          </Panel>
-
-          <Panel
-            title="Responsabilidad y fondos" span="full"
-            actions={<ButtonLike onClick={addPettyCashFund}>Agregar caja chica</ButtonLike>}
-          >
+            <div style={styles.sectionHeader}>Responsabilidad y fondos asignados</div>
             <datalist id="petty-cash-responsibles">
               {Array.from(
                 new Set(visiblePettyCashFunds.map((f) => (f.responsible || "").trim()).filter(Boolean))
@@ -593,9 +490,7 @@ export function CajaChicaTab({
                   </QuickMenu>
                 );
               })()}
-          </Panel>
-
-          <Panel title="Fondos operativos y rendicion" span="full">
+            <div style={styles.sectionHeader}>Fondos operativos y su rendición</div>
             {pettyCashFundSummaries.length === 0 ? (
               <div style={styles.empty}>Agrega una caja chica para empezar a rendir gastos.</div>
             ) : (
@@ -884,6 +779,112 @@ export function CajaChicaTab({
               </div>
             )}
           </Panel>
+
+          <Panel span="wide" title="Cargar ticket con OCR (leer y confirmar)">
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end" }}>
+              <Field label="Fondo">
+                <select
+                  style={styles.input}
+                  value={effectiveFundId ?? ""}
+                  onChange={(e) => setOcrFundId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  {visiblePettyCashFunds.map((fund) => (
+                    <option key={fund.id} value={fund.id}>
+                      {fund.description || `Fondo ${fund.id}`}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <label
+                style={{
+                  ...styles.input,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  fontWeight: 700,
+                  background: "#0f172a",
+                  color: "#fff",
+                  border: "none",
+                }}
+              >
+                {pettyOcrBusy ? "Leyendo..." : "Elegir ticket (foto o PDF)"}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf"
+                  style={{ display: "none" }}
+                  disabled={pettyOcrBusy}
+                  onChange={(e) => {
+                    onRunTicketOcr(effectiveFundId, e.target.files?.[0] || null);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </div>
+            {pettyOcrMsg && <div style={{ ...styles.noticeBox, marginTop: 8 }}>{pettyOcrMsg}</div>}
+
+            {pettyTicketDraft && (
+              <div style={{ ...styles.noticeBox, marginTop: 10, background: "#f8fafc" }}>
+                <div style={styles.sectionHeader}>Confirma el gasto (revisa el monto)</div>
+                <div style={styles.grid2}>
+                  <Field label="Fondo">
+                    <select
+                      style={styles.input}
+                      value={pettyTicketDraft.fundId ?? ""}
+                      onChange={(e) => onUpdateTicketDraft("fundId", Number(e.target.value))}
+                    >
+                      {visiblePettyCashFunds.map((fund) => (
+                        <option key={fund.id} value={fund.id}>
+                          {fund.description || `Fondo ${fund.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Fecha">
+                    <input
+                      style={styles.input}
+                      type="date"
+                      value={pettyTicketDraft.date}
+                      onChange={(e) => onUpdateTicketDraft("date", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Monto (verificalo)">
+                    <AmountInput
+                      style={styles.input}
+                      value={pettyTicketDraft.amount}
+                      onChange={(n) => onUpdateTicketDraft("amount", n)}
+                    />
+                  </Field>
+                  <Field label="Descripcion / proveedor">
+                    <input
+                      style={styles.input}
+                      value={pettyTicketDraft.description}
+                      onChange={(e) => onUpdateTicketDraft("description", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Administracion (factura = blanco)">
+                    <select
+                      style={styles.input}
+                      value={pettyTicketDraft.administration}
+                      onChange={(e) => onUpdateTicketDraft("administration", e.target.value)}
+                    >
+                      <option value="negro">Negro (ticket sin factura)</option>
+                      <option value="blanco">Blanco (factura - se vincula a Compras)</option>
+                    </select>
+                  </Field>
+                </div>
+                <div style={{ ...styles.muted, margin: "6px 0" }}>Archivo: {pettyTicketDraft.fileName}</div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <ButtonLike onClick={onSaveTicketDraft}>Guardar gasto</ButtonLike>
+                  <ButtonLike secondary onClick={onCancelTicketDraft}>Cancelar</ButtonLike>
+                </div>
+              </div>
+            )}
+            <div style={{ ...styles.muted, marginTop: 8 }}>
+              El OCR lee el ticket y precompleta el monto y la fecha; siempre revisalo antes de guardar
+              (asi queda preciso). La primera vez descarga el motor de OCR, puede tardar unos segundos.
+            </div>
+          </Panel>
+
         </div>
   );
 }
