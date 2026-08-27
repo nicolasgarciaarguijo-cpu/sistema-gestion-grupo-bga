@@ -97,7 +97,6 @@ type CostosTabProps = {
   updatePurchaseInvoice: (id: number, field: any, value: any) => void;
   // Vínculo factura emitida (ARCA) -> trabajo aprobado (por número de presupuesto).
   approvedJobsForLink: { budgetNumber: string; client: string; company: string }[];
-  updateIssuedInvoice: (id: number, field: any, value: any) => void;
   costRows: CostSourceRow[];
   companyScope: string;
   // Objetos { value, short, ... } del catalogo de empresas (misma forma que en las otras solapas).
@@ -129,8 +128,6 @@ type CostosTabProps = {
   updateSupplier: (id: number, field: keyof Supplier, value: any) => void;
   paymentsReconciliation: ReconciliationSummary;
   // Facturas emitidas (listado de ARCA): registro, no suma al resultado.
-  issuedInvoices: IssuedInvoice[];
-  onImportArca: (files: FileList | File[] | null) => void;
   // Giros entre las empresas del grupo: no son pagos, pero hay que cruzarlos con factura o devolucion.
   intercompanyAccount: {
     transfers: IntercompanyTransfer[];
@@ -181,8 +178,6 @@ export function CostosTab({
   updateSupplier,
   paymentsReconciliation,
   intercompanyAccount,
-  issuedInvoices,
-  onImportArca,
   fiscalLabel,
   months,
   aggregation,
@@ -195,7 +190,6 @@ export function CostosTab({
   purchaseInvoices,
   updatePurchaseInvoice,
   approvedJobsForLink,
-  updateIssuedInvoice,
   companyScope,
   COMPANY_OPTIONS,
   getCompanyMeta,
@@ -265,7 +259,6 @@ export function CostosTab({
     );
 
   // ---- PLANILLA de gastos cargados -------------------------------------------------------------
-  const anchosArca = usePlanillaWidths("costos.arca", { label: 300, col: 124, colCompact: 94 });
   const anchosCcPares = usePlanillaWidths("costos.cc.pares", { label: 240, col: 124, colCompact: 94 });
   const anchosCcGiros = usePlanillaWidths("costos.cc.giros", { label: 240, col: 124, colCompact: 94 });
   const anchosProveedores = usePlanillaWidths("costos.proveedores", { label: 280, col: 150, colCompact: 112 });
@@ -886,128 +879,6 @@ export function CostosTab({
         )}
       </Panel>
 
-      <Panel
-        title="Facturas emitidas (listado de ARCA)"
-        span="full"
-        actions={
-          <FileDropButton
-            label="Importar listados de ARCA"
-            accept=".xlsx,.xls,.csv"
-            allowMultiple
-            onFilesSelected={(files) => onImportArca(files)}
-          />
-        }
-      >
-        <div style={styles.sectionNote}>
-          Es el export <strong>"Mis Comprobantes Emitidos"</strong> tal como lo baja ARCA. Se guardan
-          los DATOS, no el PDF. <strong>La factura no suma ni resta al resultado</strong>: sirve para
-          tener el listado, para cruzar las facturas entre las dos empresas contra los giros, y para
-          saber lo que falta cobrar. La empresa emisora sale del CUIT del titulo del archivo, asi que
-          no importa desde que empresa lo cargues. Los comprobantes repetidos no se duplican.
-        </div>
-        {issuedInvoices.length === 0 ? (
-          <div style={{ ...styles.muted, marginTop: 8 }}>
-            Todavia no cargaste ningun listado.
-          </div>
-        ) : (
-          <>
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Comprobantes" value={String(issuedInvoices.length)} />
-              <MiniMetric
-                label="Total emitido"
-                value={money(issuedInvoices.reduce((acc, inv) => acc + Number(inv.total || 0), 0))}
-              />
-              <MiniMetric
-                label="Periodo"
-                value={`${issuedInvoices.reduce((a, i) => (a < i.date ? a : i.date), issuedInvoices[0].date)} a ${issuedInvoices.reduce((a, i) => (a > i.date ? a : i.date), issuedInvoices[0].date)}`}
-              />
-            </div>
-            <details style={{ marginTop: 10 }}>
-              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569" }}>
-                Ver los {issuedInvoices.length} comprobantes
-              </summary>
-              <div style={{ overflowX: "auto", marginTop: 8, maxHeight: 420, overflowY: "auto" }}>
-                <table style={planillaTable}>
-                  <colgroup>
-                    <col style={colLabel} />
-                    <col style={colDato} />
-                    <col style={colDato} />
-                    <col style={colFlexible} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th style={thEsquina}>
-                        Factura
-                        <PlanillaManija
-                          onMouseDown={(ev) => anchosArca.startResize(ev, "label")}
-                          onDoubleClick={anchosArca.resetLabel}
-                        />
-                      </th>
-                      <th style={thColumna}>
-                        Fecha
-                        <PlanillaManija
-                          onMouseDown={(ev) => anchosArca.startResize(ev, "col")}
-                          onDoubleClick={anchosArca.resetCol}
-                        />
-                      </th>
-                      <th style={{ ...thColumna, textAlign: "right" }}>Total</th>
-                      <th style={thFlexible}>Trabajo vinculado · receptor · tipo</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...issuedInvoices]
-                      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
-                      .map((inv) => (
-                        <tr key={inv.id}>
-                          <td
-                            style={{
-                              ...tdNombre, fontWeight: 400,
-                              boxShadow: `inset 4px 0 0 ${getCompanyMeta(inv.company)?.primary || "#94a3b8"}`,
-                            }}
-                          >
-                            <span
-                              title={inv.jobBudgetNumber ? "Vinculada a un trabajo" : "Sin vincular"}
-                              style={{
-                                display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
-                                background: inv.jobBudgetNumber ? "#16a34a" : "#cbd5f5",
-                              }}
-                            />
-                            {inv.pointOfSale}-{inv.number}
-                          </td>
-                          <td style={{ ...tdDato, color: "#475569" }}>{inv.date}</td>
-                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(inv.total)}</td>
-                          <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
-                            <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                              <select
-                                style={{ ...inputCelda, width: "auto", minWidth: 170 }}
-                                value={inv.jobBudgetNumber || ""}
-                                onChange={(e) => updateIssuedInvoice(inv.id, "jobBudgetNumber", e.target.value)}
-                              >
-                                <option value="">— sin vincular —</option>
-                                {approvedJobsForLink
-                                  .filter((j) => j.company === inv.company)
-                                  .map((j) => (
-                                    <option key={j.budgetNumber} value={j.budgetNumber}>
-                                      {j.budgetNumber} · {j.client}
-                                    </option>
-                                  ))}
-                              </select>
-                              <span style={{ color: "#94a3b8" }}>
-                                {(inv.counterpartyName || "").slice(0, 46)}
-                                {" · "}{inv.kind}
-                                {" · "}{getCompanyMeta(inv.company)?.short || inv.company}
-                              </span>
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </details>
-          </>
-        )}
-      </Panel>
 
       <Panel title="Cuenta corriente entre las empresas del grupo" span="full">
         <div style={styles.sectionNote}>

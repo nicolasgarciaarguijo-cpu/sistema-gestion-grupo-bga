@@ -1,11 +1,24 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Semaforo, ButtonLike, Field, AmountInput, ColorTagToggle } from "../ui/primitives";
+import { Panel, Semaforo, ButtonLike, Field, AmountInput, ColorTagToggle, MiniMetric, FileDropButton } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija, inputCelda,
+} from "../ui/planilla";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode } from "../domain/types";
 
 type FacturacionTabProps = {
+  // El calendario anual filtrado a COBRANZAS, armado en App y pasado como slot para no repetir aca
+  // los veinte props que necesita. Al ser el mismo componente, las dos vistas quedan vinculadas.
+  calendarioCobranzasSlot?: React.ReactNode;
+  // Facturas emitidas (listado de ARCA). Se mudaron de Pago a proveedores: van debajo del calendario
+  // de facturas, que es donde se las mira.
+  issuedInvoices: any[];
+  updateIssuedInvoice: (id: number, field: any, value: any) => void;
+  onImportArca: (files: FileList | File[] | null) => void;
+  approvedJobsForLink: { budgetNumber: string; client: string; company: string }[];
   financialSemaphoreSummary: any;
   jobBillingCards: any[];
   annualCalendarMonths: any[];
@@ -32,6 +45,11 @@ type FacturacionTabProps = {
 };
 
 export function FacturacionTab({
+  calendarioCobranzasSlot,
+  issuedInvoices,
+  updateIssuedInvoice,
+  onImportArca,
+  approvedJobsForLink,
   financialSemaphoreSummary,
   jobBillingCards,
   annualCalendarMonths,
@@ -56,6 +74,8 @@ export function FacturacionTab({
   removeFinancialItem,
   exportPrint,
 }: FacturacionTabProps) {
+  const anchosArca = usePlanillaWidths("facturacion.arca", { label: 300, col: 124, colCompact: 94 });
+
   // Colapso por mes del calendario anual. Sin entrada explicita: los meses vacios nacen minimizados.
   const [collapsedMonths, setCollapsedMonths] = React.useState<Record<string, boolean>>({});
   const isMonthCollapsed = (key: string, count: number) => collapsedMonths[key] ?? count === 0;
@@ -86,127 +106,13 @@ export function FacturacionTab({
               ))}
             </div>
           </Panel>
-          <Panel
-            title="Calendario anual unificado"
-            actions={
-              <div style={styles.monthToolbar}>
-                <select
-                  style={styles.input}
-                  value={annualCalendarStartYear}
-                  onChange={(e) => setAnnualCalendarStartYear(Number(e.target.value))}
-                >
-                  {annualCalendarYearOptions.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-                <ButtonLike onClick={() => setAllMonths(false)} secondary>Expandir todo</ButtonLike>
-                <ButtonLike onClick={() => setAllMonths(true)} secondary>Minimizar todo</ButtonLike>
-              </div>
-            }
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {annualCalendarMonths.map((month) => {
-                const collapsed = isMonthCollapsed(month.key, month.count);
-                return (
-                  <div
-                    key={month.key}
-                    style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}
-                  >
-                    <button
-                      onClick={() => toggleMonth(month.key, month.count)}
-                      style={{
-                        width: "100%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 12,
-                        padding: "10px 14px",
-                        background: "#f8fafc",
-                        border: "none",
-                        cursor: "pointer",
-                        textAlign: "left",
-                      }}
-                    >
-                      <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ fontSize: 16, color: "#64748b", width: 14, display: "inline-block" }}>
-                          {collapsed ? "▸" : "▾"}
-                        </span>
-                        <strong style={{ textTransform: "capitalize", fontSize: 15 }}>{month.label}</strong>
-                        <span style={{ ...styles.statusPill, background: "#e2e8f0", color: "#475569" }}>
-                          {month.count} mov.
-                        </span>
-                      </span>
-                      <span style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12, color: "#475569" }}>
-                        <span>Facturado <strong>{money(month.facturado)}</strong></span>
-                        <span>Cobrado <strong>{money(month.cobrado)}</strong></span>
-                        {month.pagos > 0 && <span>Pagos <strong>{money(month.pagos)}</strong></span>}
-                      </span>
-                    </button>
-
-                    {!collapsed &&
-                      (month.count === 0 ? (
-                        <div style={{ ...styles.calendarEmpty, padding: "10px 14px" }}>Sin movimientos este mes</div>
-                      ) : (
-                        <div style={{ display: "flex", flexDirection: "column" }}>
-                          {month.items.map((item) => {
-                            const meta = getCompanyMeta(item.company);
-                            const sem = getDateSemaphore(item.date, item.status === "realizado");
-                            const negro = item.administration === "negro";
-                            return (
-                              <button
-                                key={item.id}
-                                onClick={() => setSelectedFinancialItemId(item.id)}
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "92px 1fr auto",
-                                  alignItems: "center",
-                                  gap: 12,
-                                  padding: "9px 14px",
-                                  borderTop: "1px solid #f1f5f9",
-                                  borderLeft: `6px solid ${meta.primary}`,
-                                  background: negro ? "#1f2937" : "#ffffff",
-                                  color: negro ? "#f9fafb" : "#0f172a",
-                                  cursor: "pointer",
-                                  textAlign: "left",
-                                  width: "100%",
-                                }}
-                              >
-                                <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                                  <Semaforo level={sem.level} size={10} title={sem.label} />
-                                  {formatDateDisplay(item.date)}
-                                </span>
-                                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  <strong>{meta.short}</strong> · {getFinancialTypeLabel(item.type)}
-                                  {item.client || item.title ? ` · ${item.client || item.title}` : ""}
-                                </span>
-                                <span style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                                  {money(item.amount)}
-                                  <span
-                                    style={{
-                                      ...styles.statusPill,
-                                      ...(negro ? styles.adminBlack : styles.adminWhite),
-                                      fontSize: 9,
-                                      padding: "1px 5px",
-                                    }}
-                                  >
-                                    {negro ? "N" : "B"}
-                                  </span>
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ))}
-                  </div>
-                );
-              })}
-            </div>
-          </Panel>
+          {/* Reflejo de la seccion COBRANZAS del Calendario anual - cash flow. Es el MISMO
+              componente con los mismos datos y handlers, filtrado a cobranzas: por eso lo que se
+              edita aca aparece alla y al reves, sin sincronizar nada a mano. */}
+          {calendarioCobranzasSlot}
 
           <Panel
-            title="Calendario de facturacion y cobranzas"
+            title="Calendario de facturas"
             actions={
               <div style={styles.monthToolbar}>
                 <ButtonLike onClick={() => shiftFinancialMonth(-1)} secondary>Mes anterior</ButtonLike>
@@ -220,8 +126,8 @@ export function FacturacionTab({
               <span style={{ ...styles.statusPill, ...styles.adminWhite }}>BLANCO (claro)</span>
               <span style={{ ...styles.statusPill, ...styles.adminBlack }}>NEGRO (oscuro)</span>
               <span style={{ ...styles.muted }}>
-                Los items reflejan las facturas y pagos reales del trabajo. El semaforo marca la fecha;
-                el color, la administracion (blanco/negro).
+                Solo <strong>facturas emitidas</strong>: las cobranzas se ven arriba, en el reflejo del
+                Calendario anual. El semaforo marca la fecha; el color, la administracion (blanco/negro).
               </span>
             </div>
 
@@ -234,7 +140,11 @@ export function FacturacionTab({
             <div style={styles.calendarScroll}>
             <div style={styles.calendarGrid}>
               {financialMonthData.cells.map((cell) => {
-                const items = financialItemsByDate.get(cell.date) ?? [];
+                // Solo FACTURAS. Las cobranzas viven arriba, en el reflejo del calendario anual:
+                // repetirlas aca haria que el mismo cobro se lea dos veces en la misma solapa.
+                const items = (financialItemsByDate.get(cell.date) ?? []).filter(
+                  (it: any) => it.type === "facturacion"
+                );
                 return (
                   <div
                     key={cell.date}
@@ -314,6 +224,129 @@ export function FacturacionTab({
               })}
             </div>
             </div>
+          </Panel>
+
+          <Panel
+            title="Facturas emitidas (listado de ARCA)"
+            span="full"
+            actions={
+              <FileDropButton
+                label="Importar listados de ARCA"
+                accept=".xlsx,.xls,.csv"
+                allowMultiple
+                onFilesSelected={(files) => onImportArca(files)}
+              />
+            }
+          >
+            <div style={styles.sectionNote}>
+              Es el export <strong>"Mis Comprobantes Emitidos"</strong> tal como lo baja ARCA. Se guardan
+              los DATOS, no el PDF. <strong>La factura no suma ni resta al resultado</strong>: sirve para
+              tener el listado, para cruzar las facturas entre las dos empresas contra los giros, y para
+              saber lo que falta cobrar. La empresa emisora sale del CUIT del titulo del archivo, asi que
+              no importa desde que empresa lo cargues. Los comprobantes repetidos no se duplican.
+            </div>
+            {issuedInvoices.length === 0 ? (
+              <div style={{ ...styles.muted, marginTop: 8 }}>
+                Todavia no cargaste ningun listado.
+              </div>
+            ) : (
+              <>
+                <div style={styles.metricGrid}>
+                  <MiniMetric label="Comprobantes" value={String(issuedInvoices.length)} />
+                  <MiniMetric
+                    label="Total emitido"
+                    value={money(issuedInvoices.reduce((acc, inv) => acc + Number(inv.total || 0), 0))}
+                  />
+                  <MiniMetric
+                    label="Periodo"
+                    value={`${issuedInvoices.reduce((a, i) => (a < i.date ? a : i.date), issuedInvoices[0].date)} a ${issuedInvoices.reduce((a, i) => (a > i.date ? a : i.date), issuedInvoices[0].date)}`}
+                  />
+                </div>
+                <details style={{ marginTop: 10 }}>
+                  <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569" }}>
+                    Ver los {issuedInvoices.length} comprobantes
+                  </summary>
+                  <div style={{ overflowX: "auto", marginTop: 8, maxHeight: 420, overflowY: "auto" }}>
+                    <table style={planillaTable}>
+                      <colgroup>
+                        <col style={colLabel} />
+                        <col style={colDato} />
+                        <col style={colDato} />
+                        <col style={colFlexible} />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th style={thEsquina}>
+                            Factura
+                            <PlanillaManija
+                              onMouseDown={(ev) => anchosArca.startResize(ev, "label")}
+                              onDoubleClick={anchosArca.resetLabel}
+                            />
+                          </th>
+                          <th style={thColumna}>
+                            Fecha
+                            <PlanillaManija
+                              onMouseDown={(ev) => anchosArca.startResize(ev, "col")}
+                              onDoubleClick={anchosArca.resetCol}
+                            />
+                          </th>
+                          <th style={{ ...thColumna, textAlign: "right" }}>Total</th>
+                          <th style={thFlexible}>Trabajo vinculado · receptor · tipo</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...issuedInvoices]
+                          .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+                          .map((inv) => (
+                            <tr key={inv.id}>
+                              <td
+                                style={{
+                                  ...tdNombre, fontWeight: 400,
+                                  boxShadow: `inset 4px 0 0 ${getCompanyMeta(inv.company)?.primary || "#94a3b8"}`,
+                                }}
+                              >
+                                <span
+                                  title={inv.jobBudgetNumber ? "Vinculada a un trabajo" : "Sin vincular"}
+                                  style={{
+                                    display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                                    background: inv.jobBudgetNumber ? "#16a34a" : "#cbd5f5",
+                                  }}
+                                />
+                                {inv.pointOfSale}-{inv.number}
+                              </td>
+                              <td style={{ ...tdDato, color: "#475569" }}>{inv.date}</td>
+                              <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(inv.total)}</td>
+                              <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                                <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                                  <select
+                                    style={{ ...inputCelda, width: "auto", minWidth: 170 }}
+                                    value={inv.jobBudgetNumber || ""}
+                                    onChange={(e) => updateIssuedInvoice(inv.id, "jobBudgetNumber", e.target.value)}
+                                  >
+                                    <option value="">— sin vincular —</option>
+                                    {approvedJobsForLink
+                                      .filter((j) => j.company === inv.company)
+                                      .map((j) => (
+                                        <option key={j.budgetNumber} value={j.budgetNumber}>
+                                          {j.budgetNumber} · {j.client}
+                                        </option>
+                                      ))}
+                                  </select>
+                                  <span style={{ color: "#94a3b8" }}>
+                                    {(inv.counterpartyName || "").slice(0, 46)}
+                                    {" · "}{inv.kind}
+                                    {" · "}{getCompanyMeta(inv.company)?.short || inv.company}
+                                  </span>
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </>
+            )}
           </Panel>
 
           <Panel

@@ -94,8 +94,13 @@ export function CalendarioAnualTab({
   onDeleteEntry,
   rowConfig = DEFAULT_CALENDAR_ROW_CONFIG,
   onRowConfigChange,
+  onlySection,
 }: {
   entries: Entry[];
+  // Ver SOLO una seccion de la planilla (ej. "cobranzas" para el reflejo en Facturacion y cobranzas).
+  // Es el MISMO componente con los mismos datos y los mismos handlers: por eso las dos vistas quedan
+  // vinculadas sin esfuerzo -- lo que se edita en una aparece en la otra.
+  onlySection?: string;
   companyScope: string;
   setCompanyScope: (v: string) => void;
   fiscalStartYear: number;
@@ -210,7 +215,10 @@ export function CalendarioAnualTab({
   );
 
   // La planilla que se dibuja: la estructura fija MAS las secciones propias del usuario.
-  const sections = useMemo(() => allSectionsWith(rowConfig), [rowConfig]);
+  const sections = useMemo(() => {
+    const todas = allSectionsWith(rowConfig);
+    return onlySection ? todas.filter((sec) => sec.key === onlySection) : todas;
+  }, [rowConfig, onlySection]);
   const sectionByKey = useMemo(() => new Map(sections.map((x) => [x.key, x])), [sections]);
 
   const agg = useMemo(() => {
@@ -221,6 +229,8 @@ export function CalendarioAnualTab({
     const cobranzaDetailB = new Map<string, Map<string, number>>(); // título -> date -> blanco
     const cobranzaDetailN = new Map<string, Map<string, number>>(); // título -> date -> negro
     const cobranzaByDate = new Map<string, number>();
+    const cobranzaByDateB = new Map<string, number>();
+    const cobranzaByDateN = new Map<string, number>();
     const unclDetail = new Map<string, Map<string, number>>();
     const unclByDate = new Map<string, number>();
     const unclTitleTotal = new Map<string, number>(); // título -> total firmado (para ver el impacto)
@@ -318,6 +328,7 @@ export function CalendarioAnualTab({
         addDeep(cobranzaDetail, title, e.date, amt);
         addDeep(neg ? cobranzaDetailN : cobranzaDetailB, title, e.date, amt);
         add(cobranzaByDate, e.date, amt);
+        add(neg ? cobranzaByDateN : cobranzaByDateB, e.date, amt);
         add(incomeByDate, e.date, amt);
         add(neg ? incN : incB, e.date, amt);
         track("cobranzas", "in", neg, e.company, e.date, amt);
@@ -383,7 +394,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
+    return { byConcept, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
   }, [entries, companyScope, dayCols, sectionByKey]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
@@ -1312,6 +1323,23 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   background: bg,
                   borderBottom: "1px solid #e2e8f0",
                 });
+                // Vista de UNA sola seccion (el reflejo de cobranzas): los totales generales no
+                // aplican -- serian los de toda la planilla. Va un unico total de la seccion.
+                if (onlySection === "cobranzas") {
+                  const top = nextTop();
+                  return (
+                    <tr>
+                      <td style={{ ...labelSticky(top, "#ecfdf5"), fontWeight: 800, color: "#065f46" }}>
+                        TOTAL COBRANZAS
+                      </td>
+                      {visibleDayCols.map((c) => (
+                        <td key={`tcob-${c.iso}`} style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: "#ecfdf5", ...hi(c.iso) }}>
+                          {bnCell(agg.cobranzaByDateB, agg.cobranzaByDateN, c.iso, false)}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                }
                 return (
                   <>
                     {([
@@ -1574,7 +1602,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               })}
 
               {/* SIN CLASIFICAR */}
-              {agg.unclDetail.size > 0 && (
+              {!onlySection && agg.unclDetail.size > 0 && (
                 <>
                   <tr>
                     <td style={{ ...tdStickyLabel, background: "#fef9c3", fontWeight: 800, color: "#854d0e" }}>
@@ -1668,7 +1696,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               {/* ===== CUENTA CORRIENTE: los movimientos internos (entre cuentas propias, entre las dos
                    empresas, pasajes $↔U$S). NO son ingreso ni egreso: es plata que se mueve de un
                    bolsillo propio a otro. Se muestran acá con su saldo del día. ===== */}
-              {agg.internoDetail.size > 0 && (
+              {!onlySection && agg.internoDetail.size > 0 && (
                 <>
                   <tr>
                     <td style={{ ...tdStickyLabel, background: "#f1f5f9", fontWeight: 800, color: "#475569" }}>
@@ -1714,7 +1742,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               )}
 
               {/* ===== MOVIMIENTOS EN U$S (nunca se suman con pesos) ===== */}
-              {agg.usdDetail.size > 0 && (
+              {!onlySection && agg.usdDetail.size > 0 && (
                 <>
                   <tr>
                     <td style={{ ...tdStickyLabel, background: "#e0f2fe", fontWeight: 800, color: "#075985" }}>

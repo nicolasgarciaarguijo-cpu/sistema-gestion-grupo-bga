@@ -15303,6 +15303,78 @@ export default function App() {
     </>
   );
 
+  // El Calendario anual se usa en DOS lugares: completo en su solapa, y filtrado a COBRANZAS como
+  // reflejo dentro de Facturacion y cobranzas. Es el MISMO componente con los mismos datos y los
+  // mismos handlers, asi que las dos vistas quedan vinculadas solas: lo que se edita en una aparece
+  // en la otra. Se arma una sola vez aca para no repetir la lista de props.
+  const renderCalendarioAnual = (onlySection?: string) => (
+    <CalendarioAnualTab
+      onlySection={onlySection}
+          entries={annualCashFlowEntries}
+          companyScope={balanceCompanyScope}
+          setCompanyScope={setBalanceCompanyScope}
+          fiscalStartYear={balanceFiscalStartYear}
+          setFiscalStartYear={setBalanceFiscalStartYear}
+          fiscalYearOptions={balanceFiscalYearOptions}
+          companyOptions={COMPANY_OPTIONS}
+          onAddMovement={addCalendarMovement}
+          onAssignConcept={assignBankConcept}
+          bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}
+          money={money}
+          employees={visibleEmployees.map((e) => ({ name: e.name, company: e.company }))}
+          jobs={approvedJobsSummary.map((j) => {
+            const target = Number(j.soldNetPrice || 0) * (Number(j.billedPct || 0) / 100);
+            const invoiced = (j.invoices || []).reduce((a: number, i: any) => a + Number(i?.subtotal || 0), 0);
+            const faltaFacturar = Math.max(0, target - invoiced);
+            const faltaCobrar = Number(j.remainingToPay || 0);
+            const faltaComision = Number(j.commissionPending || 0);
+            const noFinalizado = j.executionStatus !== "finalizado";
+            const partes: string[] = [];
+            if (noFinalizado) partes.push("sin finalizar");
+            if (faltaFacturar > 1) partes.push(`facturar ${money(faltaFacturar)}`);
+            if (faltaCobrar > 1) partes.push(`cobrar ${money(faltaCobrar)}`);
+            if (faltaComision > 1) partes.push(`comisión ${money(faltaComision)}`);
+            return {
+              budgetNumber: j.budgetNumber,
+              client: j.client,
+              company: j.company,
+              active: noFinalizado || faltaCobrar > 1 || faltaComision > 1 || faltaFacturar > 1,
+              falta: partes.join(" · "),
+              // Para el resumen del cliente en el boton derecho del calendario.
+              id: j.id,
+              estado: j.executionStatus,
+              vendido: Number(j.soldNetPrice || 0),
+              faltaFacturar,
+              faltaCobrar,
+              faltaComision,
+            };
+          })}
+          onAssignToJob={assignBankToJob}
+          onOpenJob={(jobId) => {
+            setSelectedApprovedJobId(jobId);
+            setActiveTab("aprobados");
+          }}
+          suppliers={visibleSuppliers.map((s2) => ({ name: s2.name, taxId: s2.taxId, aliases: s2.aliases, active: s2.active }))}
+          purchaseInvoices={purchaseInvoicesWithBankLink.map((i) => ({
+            id: i.id,
+            company: i.company,
+            supplier: i.supplier,
+            taxId: i.taxId,
+            invoiceNumber: i.invoiceNumber,
+            invoiceDate: i.invoiceDate,
+            total: Number(i.total || 0),
+            paid: i.paidByCostEntryId != null || i.paidByBankEntryId != null,
+            paidByBankEntryId: i.paidByBankEntryId,
+          }))}
+          onAssignToSupplier={assignBankToSupplier}
+          onUnlinkInvoice={unlinkBankInvoice}
+          onEditEntry={editCalendarEntry}
+          onDeleteEntry={deleteCalendarEntry}
+          rowConfig={calendarRowConfig}
+          onRowConfigChange={setCalendarRowConfig}
+    />
+  );
+
   return (
     <div style={{ ...styles.page, background: workspaceTheme.pageBackground }}>
       <style>{`
@@ -15746,72 +15818,7 @@ export default function App() {
         />
       )}
 
-      {activeTab === "calendarioAnual" && (
-        <CalendarioAnualTab
-          entries={annualCashFlowEntries}
-          companyScope={balanceCompanyScope}
-          setCompanyScope={setBalanceCompanyScope}
-          fiscalStartYear={balanceFiscalStartYear}
-          setFiscalStartYear={setBalanceFiscalStartYear}
-          fiscalYearOptions={balanceFiscalYearOptions}
-          companyOptions={COMPANY_OPTIONS}
-          onAddMovement={addCalendarMovement}
-          onAssignConcept={assignBankConcept}
-          bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}
-          money={money}
-          employees={visibleEmployees.map((e) => ({ name: e.name, company: e.company }))}
-          jobs={approvedJobsSummary.map((j) => {
-            const target = Number(j.soldNetPrice || 0) * (Number(j.billedPct || 0) / 100);
-            const invoiced = (j.invoices || []).reduce((a: number, i: any) => a + Number(i?.subtotal || 0), 0);
-            const faltaFacturar = Math.max(0, target - invoiced);
-            const faltaCobrar = Number(j.remainingToPay || 0);
-            const faltaComision = Number(j.commissionPending || 0);
-            const noFinalizado = j.executionStatus !== "finalizado";
-            const partes: string[] = [];
-            if (noFinalizado) partes.push("sin finalizar");
-            if (faltaFacturar > 1) partes.push(`facturar ${money(faltaFacturar)}`);
-            if (faltaCobrar > 1) partes.push(`cobrar ${money(faltaCobrar)}`);
-            if (faltaComision > 1) partes.push(`comisión ${money(faltaComision)}`);
-            return {
-              budgetNumber: j.budgetNumber,
-              client: j.client,
-              company: j.company,
-              active: noFinalizado || faltaCobrar > 1 || faltaComision > 1 || faltaFacturar > 1,
-              falta: partes.join(" · "),
-              // Para el resumen del cliente en el boton derecho del calendario.
-              id: j.id,
-              estado: j.executionStatus,
-              vendido: Number(j.soldNetPrice || 0),
-              faltaFacturar,
-              faltaCobrar,
-              faltaComision,
-            };
-          })}
-          onAssignToJob={assignBankToJob}
-          onOpenJob={(jobId) => {
-            setSelectedApprovedJobId(jobId);
-            setActiveTab("aprobados");
-          }}
-          suppliers={visibleSuppliers.map((s2) => ({ name: s2.name, taxId: s2.taxId, aliases: s2.aliases, active: s2.active }))}
-          purchaseInvoices={purchaseInvoicesWithBankLink.map((i) => ({
-            id: i.id,
-            company: i.company,
-            supplier: i.supplier,
-            taxId: i.taxId,
-            invoiceNumber: i.invoiceNumber,
-            invoiceDate: i.invoiceDate,
-            total: Number(i.total || 0),
-            paid: i.paidByCostEntryId != null || i.paidByBankEntryId != null,
-            paidByBankEntryId: i.paidByBankEntryId,
-          }))}
-          onAssignToSupplier={assignBankToSupplier}
-          onUnlinkInvoice={unlinkBankInvoice}
-          onEditEntry={editCalendarEntry}
-          onDeleteEntry={deleteCalendarEntry}
-          rowConfig={calendarRowConfig}
-          onRowConfigChange={setCalendarRowConfig}
-        />
-      )}
+      {activeTab === "calendarioAnual" && renderCalendarioAnual()}
       {activeTab === "cashflow" && (
         <CashflowTab
           personDebts={personDebts}
@@ -16069,15 +16076,12 @@ export default function App() {
             client: j.client,
             company: j.company,
           }))}
-          updateIssuedInvoice={updateIssuedInvoice}
           suppliers={visibleSuppliers}
           addSupplier={addSupplier}
           removeSupplier={removeSupplier}
           updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field, value)}
           paymentsReconciliation={paymentsReconciliation}
           intercompanyAccount={intercompanyAccount}
-          issuedInvoices={visibleIssuedInvoices}
-          onImportArca={importArcaFiles}
           costRows={costRows}
           companyScope={costsCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
@@ -16325,6 +16329,15 @@ export default function App() {
 
       {activeTab === "facturacion" && (
         <FacturacionTab
+          calendarioCobranzasSlot={renderCalendarioAnual("cobranzas")}
+          issuedInvoices={visibleIssuedInvoices}
+          updateIssuedInvoice={updateIssuedInvoice}
+          onImportArca={importArcaFiles}
+          approvedJobsForLink={visibleApprovedJobs.map((j) => ({
+            budgetNumber: j.budgetNumber,
+            client: j.client,
+            company: j.company,
+          }))}
           financialSemaphoreSummary={financialSemaphoreSummary}
           jobBillingCards={jobBillingCards}
           annualCalendarMonths={annualCalendarMonths}
