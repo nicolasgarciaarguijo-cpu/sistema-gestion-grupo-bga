@@ -2785,6 +2785,24 @@ export default function App() {
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>(defaultCapitalEntries);
   // Cierres de ejercicio (uno por empresa y ano cerrado). Ver domain/cierreEjercicio.ts.
   const [fiscalClosings, setFiscalClosings] = useState<CierreEjercicio[]>([]);
+
+  // EL CANDADO DEL CIERRE. Un ejercicio cerrado se SIGUE VIENDO ENTERO -- los datos no se borran --
+  // pero queda de solo lectura: la unica persona que puede editarlo es el superadmin (regla de
+  // Nicolas, 2026-08-27). Sin esto, el numero de la foto y lo que el sistema muestra se separarian
+  // con el primer retoque y la foto dejaria de servir.
+  const bloqueadoPorCierre = (company: string, iso: string): boolean => {
+    const c = cierreQueBloquea(fiscalClosings, company, iso);
+    if (!c) return false;
+    if (isSupabaseAdmin) return false; // el superadmin puede corregir un ano cerrado
+    window.alert(
+      `El ejercicio ${c.startIso} al ${c.endIso} esta CERRADO.` +
+        `
+
+Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace falta ser superadmin.`
+    );
+    return true;
+  };
+
   const [cashHoldings, setCashHoldings] = useState<CashHolding[]>(defaultCashHoldings);
   const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
@@ -6756,31 +6774,81 @@ export default function App() {
     return escritos;
   };
 
-  // Saca del sistema lo que ya quedo archivado. Se llama SOLO despues de que la carpeta confirmo.
-  const limpiarDespuesDelCierre = (plan: ReturnType<typeof planDelCierre>) => {
-    const idsDe = (lista: Array<{ id: number }>) => new Set(lista.map((x) => x.id));
-    const fuera = {
-      banco: idsDe(plan.banco.archivar as any[]),
-      gastos: idsDe(plan.gastos.archivar as any[]),
-      calendario: idsDe(plan.calendario.archivar as any[]),
-      emitidas: idsDe(plan.emitidas.archivar as any[]),
-      consumos: idsDe(plan.consumos.archivar as any[]),
-      presupuestos: idsDe(plan.presupuestos.archivar as any[]),
-      trabajos: idsDe(plan.trabajos.archivar),
-      facturas: idsDe(plan.facturasCompra.archivar),
-      fondos: idsDe(plan.fondos.archivar),
-      gastosCaja: idsDe(plan.gastosCajaChica.archivar as any[]),
+  // Lo unico que el cierre SACA del sistema son las IMAGENES del ejercicio, que es donde esta el peso
+  // de verdad (2026-08-27: de 6 MB del sistema, 3,7 MB eran 73 presupuestos cuyo 99,7% son fotos en
+  // base64). Los datos NO se borran: el ano cerrado queda entero, para leer.
+  //
+  // Primero intenta subir cada imagen a Storage y dejar la URL: asi la imagen se sigue viendo en el
+  // sistema y el peso igual se va. Solo si Storage falla la saca, y sin miedo, porque el HTML que se
+  // acaba de escribir en la carpeta lleva la imagen incrustada.
+  const quitarImagenesDelEjercicio = async (
+    company: CompanyName,
+    endIso: string
+  ): Promise<{ aStorage: number; sacadas: number }> => {
+    const esBase64 = (v?: string) => typeof v === "string" && v.startsWith("data:");
+    const delEjercicio = (iso?: string) => {
+      const d = String(iso || "").slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(d) && d <= endIso;
     };
-    setBankStatementEntries((prev) => prev.filter((x) => !fuera.banco.has(x.id)));
-    setCostEntries((prev) => prev.filter((x) => !fuera.gastos.has(x.id)));
-    setFinancialItems((prev) => prev.filter((x) => !fuera.calendario.has(x.id)));
-    setIssuedInvoices((prev) => prev.filter((x) => !fuera.emitidas.has(x.id)));
-    setCreditCardConsumptions((prev) => prev.filter((x) => !fuera.consumos.has(x.id)));
-    setSavedBudgets((prev) => prev.filter((x) => !fuera.presupuestos.has(x.id)));
-    setApprovedJobs((prev) => prev.filter((x) => !fuera.trabajos.has(x.id)));
-    setPurchaseInvoices((prev) => prev.filter((x) => !fuera.facturas.has(x.id)));
-    setPettyCashFunds((prev) => prev.filter((x) => !fuera.fondos.has(x.id)));
-    setPettyCashExpenses((prev) => prev.filter((x) => !fuera.gastosCaja.has(x.id)));
+    let aStorage = 0;
+    let sacadas = 0;
+
+    const procesar = async (list?: BudgetImage[]): Promise<BudgetImage[]> => {
+      const out: BudgetImage[] = [];
+      for (const img of list || []) {
+        if (!esBase64(img.preview)) {
+          out.push(img);
+          continue;
+        }
+        try {
+          const url = await uploadDataUrlToStorage(img.preview);
+          out.push({ ...img, preview: url });
+          aStorage += 1;
+        } catch (e) {
+          console.error("[cierre] no se pudo subir una imagen a Storage:", e);
+          // Se conserva el nombre para saber cual era; la imagen esta en el HTML de la carpeta.
+          out.push({ ...img, preview: "" });
+          sacadas += 1;
+        }
+      }
+      return out;
+    };
+
+    const aligerarSnapshot = async (snapshot: any) => {
+      const bd = snapshot?.budget;
+      if (!bd) return snapshot;
+      return {
+        ...snapshot,
+        budget: {
+          ...bd,
+          logos: await procesar(bd.logos),
+          referenceImages: await procesar(bd.referenceImages),
+        },
+      };
+    };
+
+    const presupuestos: SavedBudget[] = [];
+    for (const sb of savedBudgets) {
+      if (sb.company !== company || !delEjercicio(sb.date)) {
+        presupuestos.push(sb);
+        continue;
+      }
+      presupuestos.push({ ...sb, snapshot: await aligerarSnapshot(sb.snapshot) });
+    }
+
+    const trabajos: any[] = [];
+    for (const job of approvedJobs as any[]) {
+      const fecha = job.startDate || job.approvalDate || "";
+      if (job.company !== company || !delEjercicio(fecha)) {
+        trabajos.push(job);
+        continue;
+      }
+      trabajos.push({ ...job, snapshot: await aligerarSnapshot(job.snapshot) });
+    }
+
+    setSavedBudgets(presupuestos);
+    setApprovedJobs(trabajos as any);
+    return { aStorage, sacadas };
   };
 
   // EL BOTON. Orquesta todo y no deja saltearse ningun paso.
@@ -6885,38 +6953,53 @@ export default function App() {
     if (escritos.length === 0) {
       setCierreBusy(false);
       setCierreMensaje("");
-      window.alert("La carpeta no confirmo ningun archivo escrito. No se limpio nada.");
+      window.alert("La carpeta no confirmo ningun archivo escrito. No se cerro nada.");
       return;
     }
 
-    // 2) CONFIRMAR A MANO. Es la unica accion del sistema que borra de verdad.
+    // 2) CONFIRMAR A MANO. Es la unica accion del sistema que toca un ano entero de una.
     const palabra = window.prompt(
-      `Ya esta todo guardado en la carpeta (${escritos.length} archivo(s) del cierre).\n\n` +
-        `Ahora se va a SACAR DEL SISTEMA lo del ejercicio ${cierre.startIso} al ${cierre.endIso} de ${meta.short}.\n` +
-        `Queda lo pendiente, y el resto se revisa en la carpeta.\n\n` +
-        `Escribi CERRAR para confirmar:`
+      `Ya esta todo guardado en la carpeta (${escritos.length} archivo(s) del cierre).` +
+        `
+
+Ahora el ejercicio ${cierre.startIso} al ${cierre.endIso} de ${meta.short} queda CERRADO:` +
+        `
+se sigue viendo entero, pero solo el superadmin puede editarlo.` +
+        `
+Y se sacan las imagenes del ejercicio (quedan en la carpeta).` +
+        `
+
+Escribi CERRAR para confirmar:`
     );
     if ((palabra || "").trim().toUpperCase() !== "CERRAR") {
       setCierreBusy(false);
       setCierreMensaje(
-        `El ejercicio quedo guardado en la carpeta, pero NO se limpio el sistema (no se confirmo).`
+        `El ejercicio quedo guardado en la carpeta, pero NO se cerro (no se confirmo).`
       );
       return;
     }
 
-    // 3) LIMPIAR
-    limpiarDespuesDelCierre(plan);
+    // 3) CERRAR: queda el candado, y se saca de encima el peso de las imagenes.
+    setCierreMensaje("Sacando las imagenes del ejercicio...");
+    let imagenes = { aStorage: 0, sacadas: 0 };
+    try {
+      imagenes = await quitarImagenesDelEjercicio(company, cierre.endIso);
+    } catch (err) {
+      console.error("[cierre] al quitar imagenes:", err);
+    }
     setFiscalClosings((prev) => [...prev, cierre]);
     setCierreBusy(false);
     setCierreMensaje(
-      `Ejercicio ${cierre.startIso} al ${cierre.endIso} de ${meta.short} cerrado. ` +
-        `${plan.resumen.archivados} registro(s) archivados en la carpeta y sacados del sistema; ` +
-        `${plan.resumen.conservados} quedaron por estar pendientes.`
+      `Ejercicio ${cierre.startIso} al ${cierre.endIso} de ${meta.short} CERRADO. ` +
+        `${escritos.length} archivo(s) del cierre en la carpeta. ` +
+        `El ano se sigue viendo entero; para editarlo hace falta ser superadmin. ` +
+        `Imagenes: ${imagenes.aStorage} pasaron a Storage` +
+        `${imagenes.sacadas > 0 ? ", " + imagenes.sacadas + " se sacaron (estan en la carpeta)" : ""}.`
     );
   };
 
-  // Reabrir: el cierre deja de mandar (ni bloquea ni da apertura) pero NO se borra, queda el rastro.
-  // Lo archivado NO vuelve solo: para eso esta el cierre.json de la carpeta.
+  // Reabrir: el cierre deja de mandar (ni traba la edicion ni da apertura) pero NO se borra, queda el
+  // rastro. Las imagenes que se sacaron NO vuelven solas: estan en la carpeta.
   const reabrirEjercicio = (cierreId: number) => {
     const c = fiscalClosings.find((x) => x.id === cierreId);
     if (!c) return;
@@ -10217,6 +10300,11 @@ export default function App() {
     field: keyof ApprovedJob,
     value: string | number
   ) => {
+    // Un trabajo de un ejercicio cerrado se mira pero no se toca. Ojo: los trabajos que quedaron
+    // ABIERTOS (con saldo a cobrar) tambien caen aca si su fecha es del ano cerrado, y eso es a
+    // proposito: el saldo se sigue cobrando cargando el PAGO, que lleva su propia fecha nueva.
+    const actualJob = approvedJobs.find((j) => j.id === jobId);
+    if (actualJob && bloqueadoPorCierre(actualJob.company, actualJob.startDate || actualJob.approvalDate || "")) return;
     setApprovedJobs((prev) =>
       prev.map((job) => {
         if (job.id !== jobId) return job;
@@ -11688,6 +11776,8 @@ export default function App() {
     field: keyof PurchaseInvoice,
     value: string | number | boolean
   ) => {
+    const actualFactura = purchaseInvoices.find((item) => item.id === invoiceId);
+    if (actualFactura && bloqueadoPorCierre(actualFactura.company, actualFactura.invoiceDate)) return;
     setPurchaseInvoices((prev) =>
       prev.map((item) => {
         if (item.id !== invoiceId) return item;
@@ -11707,6 +11797,8 @@ export default function App() {
   // Vincula/edita una factura emitida (ARCA). Se usa para atarla a un trabajo (jobBudgetNumber) desde
   // Costos o desde Trabajos Aprobados: como es el mismo array, ambos lados quedan sincronizados.
   const updateIssuedInvoice = (id: number, field: keyof IssuedInvoice, value: string | number) => {
+    const actual = issuedInvoices.find((inv) => inv.id === id);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     setIssuedInvoices((prev) => prev.map((inv) => (inv.id === id ? { ...inv, [field]: value } : inv)));
   };
 
@@ -11834,6 +11926,8 @@ export default function App() {
     field: keyof PettyCashExpense,
     value: string | number | null
   ) => {
+    const actualGasto = pettyCashExpenses.find((item) => item.id === expenseId);
+    if (actualGasto && bloqueadoPorCierre(actualGasto.company, actualGasto.date)) return;
     setPettyCashExpenses((prev) =>
       prev.map((item) => {
         if (item.id !== expenseId) return item;
@@ -11845,6 +11939,8 @@ export default function App() {
   };
 
   const removePettyCashExpense = (expenseId: number) => {
+    const actual = pettyCashExpenses.find((item) => item.id === expenseId);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     setPettyCashExpenses((prev) => prev.filter((item) => item.id !== expenseId));
     setPurchaseInvoices((prev) =>
       prev.filter((item) => item.pettyCashExpenseId !== expenseId)
@@ -11989,6 +12085,8 @@ export default function App() {
   };
 
   const removeBankStatementEntry = (entryId: number) => {
+    const actual = bankStatementEntries.find((item) => item.id === entryId);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     setBankStatementEntries((prev) => prev.filter((item) => item.id !== entryId));
   };
 
@@ -12011,26 +12109,15 @@ export default function App() {
     );
   };
 
-  // EL CANDADO DEL CIERRE. Con el ejercicio cerrado, sus datos ya no estan en el sistema (estan en la
-  // carpeta), asi que lo unico que queda por evitar es que alguien MANDE algo nuevo hacia atras: un
-  // movimiento fechado dentro de un ano cerrado no aparece en ningun lado y descuadra la foto.
-  const bloqueadoPorCierre = (company: string, iso: string): boolean => {
-    const c = cierreQueBloquea(fiscalClosings, company, iso);
-    if (!c) return false;
-    window.alert(
-      `El ejercicio ${c.startIso} al ${c.endIso} esta CERRADO: no se puede fechar nada ahi.\n\n` +
-        `Lo de ese ano se revisa en la carpeta. Si de verdad hay que corregirlo, reabri el ejercicio ` +
-        `desde Balance y volve a cerrarlo despues.`
-    );
-    return true;
-  };
-
   const updateBankStatementEntry = (
     entryId: number,
     field: keyof BankStatementEntry,
     value: string | number | boolean
   ) => {
     const actual = bankStatementEntries.find((item) => item.id === entryId);
+    // Bloquea por la fecha QUE TIENE (no se edita nada de un ano cerrado) y tambien por la que se le
+    // quiere poner (no se manda nada nuevo hacia un ano cerrado).
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     if (field === "date" && actual && bloqueadoPorCierre(actual.company, String(value))) return;
     setBankStatementEntries((prev) =>
       prev.map((item) => (item.id === entryId ? { ...item, [field]: value } : item))
@@ -12210,6 +12297,8 @@ export default function App() {
     field: keyof FinancialCalendarItem,
     value: string | number
   ) => {
+    const actual = financialItems.find((item) => item.id === itemId);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     setFinancialItems((prev) =>
       prev.map((item) =>
         item.id === itemId ? { ...item, [field]: value, userEdited: true } : item
@@ -12218,6 +12307,8 @@ export default function App() {
   };
 
   const removeFinancialItem = (itemId: number) => {
+    const actual = financialItems.find((item) => item.id === itemId);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     setFinancialItems((prev) => prev.filter((item) => item.id !== itemId));
   };
 
@@ -14655,6 +14746,8 @@ export default function App() {
   };
 
   const removeCostEntry = (id: number) => {
+    const actual = costEntries.find((e) => e.id === id);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     setCostEntries((prev) => prev.filter((entry) => entry.id !== id));
   };
 
@@ -14696,6 +14789,7 @@ export default function App() {
 
   const updateCostEntry = (id: number, field: keyof CostEntry, value: any) => {
     const actual = costEntries.find((e) => e.id === id);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     if (field === "date" && actual && bloqueadoPorCierre(actual.company, String(value))) return;
     setCostEntries((prev) =>
       prev.map((entry) => {
@@ -14805,13 +14899,18 @@ export default function App() {
         notes: "",
       },
     ]);
-  const removeCreditCardConsumption = (id: number) =>
+  const removeCreditCardConsumption = (id: number) => {
+    const actual = creditCardConsumptions.find((c) => c.id === id);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     setCreditCardConsumptions((prev) => prev.filter((c) => c.id !== id));
+  };
   const updateCreditCardConsumption = (
     id: number,
     field: keyof CreditCardConsumption,
     value: any
   ) => {
+    const actualConsumo = creditCardConsumptions.find((c) => c.id === id);
+    if (actualConsumo && bloqueadoPorCierre(actualConsumo.company, actualConsumo.date)) return;
     setCreditCardConsumptions((prev) =>
       prev.map((c) => {
         if (c.id !== id) return c;

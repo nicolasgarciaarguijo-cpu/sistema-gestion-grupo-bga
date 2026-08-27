@@ -466,14 +466,16 @@ export function CashflowTab({
             </details>
           </Panel>
 
-          {/* CIERRE DE EJERCICIO. Da por terminado el año: guarda TODO en la carpeta y saca del
-              sistema lo que ya no sigue abierto. Por eso vive acá, junto al balance, y no en una
-              solapa cualquiera: es la foto con la que arranca el año siguiente. */}
+          {/* CIERRE DE EJERCICIO. Da por terminado el año: guarda TODO en la carpeta y deja el año
+              de solo lectura. Los datos NO se borran; lo único que sale del sistema son las
+              imágenes, que es donde está el peso. Vive acá, junto al balance, porque es la foto con
+              la que arranca el año siguiente. */}
           <Panel title="Cierre de ejercicio" span="full">
             <div style={{ ...styles.sectionNote, marginBottom: 10 }}>
-              El cierre <strong>guarda todo el ejercicio en la carpeta</strong> y después lo saca del
-              sistema. En el sistema queda solo lo que sigue pendiente — lo que falta cobrar, lo que
-              falta pagar y la cuenta corriente del grupo. Todo lo demás se revisa en la carpeta.
+              El cierre <strong>guarda todo el ejercicio en la carpeta</strong> y deja el año{" "}
+              <strong>cerrado para editar</strong>: se sigue viendo entero, pero solo el superadmin
+              puede corregir algo. Los datos no se borran — lo único que sale del sistema son las{" "}
+              <strong>imágenes</strong>, que es donde está el peso, y quedan guardadas en la carpeta.
               El saldo del cierre es con el que arranca el año siguiente.
             </div>
 
@@ -564,9 +566,9 @@ export function CashflowTab({
             )}
 
             <div style={{ ...styles.sectionNote, marginTop: 12 }}>
-              Hace falta la <strong>carpeta vinculada</strong>: sin ella no se cierra, porque limpiar
-              sin haber guardado sería perder el año. El cierre pide confirmación dos veces y la
-              segunda hay que escribirla — es la única acción del sistema que borra de verdad.
+              Hace falta la <strong>carpeta vinculada</strong>: sin ella no se cierra, porque el archivo
+              de la carpeta es lo que queda si algún día el sistema se migra o se vacía. El cierre pide
+              confirmación dos veces y la segunda hay que escribirla.
             </div>
           </Panel>
 

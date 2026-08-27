@@ -13,15 +13,15 @@
 //   2. "TOCAR NO SE PUEDE, REVISAR SÍ": una vez cerrado, lo de ese ejercicio se mira pero no se
 //      edita. Sin esto, el número de la foto y lo que el sistema muestra se separan con el primer
 //      retoque, y la foto deja de servir.
-//   3. EL SISTEMA SE LIMPIA (2026-08-27): el cierre GUARDA TODO EN LAS CARPETAS y despues SACA del
-//      sistema lo del ejercicio cerrado. En el sistema queda unicamente lo que sigue PENDIENTE (lo
-//      que falta cobrar, lo que falta pagar, la cuenta corriente del grupo) mas la foto. Todo lo
-//      demas se revisa en las carpetas, no en el sistema. Asi el sistema no se hace cada vez mas
-//      pesado con anos que ya no se tocan.
+//   3. LOS DATOS NO SE BORRAN (afinado por Nicolas el 2026-08-27, despues de medir el peso real):
+//      el ano cerrado QUEDA ENTERO en el sistema y se puede leer. Lo unico que el cierre saca son
+//      las IMAGENES, que es donde estaba el peso -- de 6 MB del sistema, 3,7 MB eran 73 presupuestos
+//      cuyo 99,7% son fotos en base64. Sin las imagenes, un ano entero de datos pesa poco y no
+//      molesta a nadie.
 //
-// ORDEN QUE NO SE NEGOCIA: primero se escribe en la carpeta y se verifica, despues se borra. Nunca
-// al reves. Ver `particionarCierre`: dice que se queda y que se archiva, y no borra nada por su
-// cuenta -- devolver la particion y ejecutarla son dos pasos distintos a proposito.
+// ORDEN QUE NO SE NEGOCIA: primero se escribe en la carpeta y se verifica, despues se toca el
+// sistema. Nunca al reves. Las funciones de particion dicen QUE es del ejercicio y que sigue
+// abierto; no tocan nada por su cuenta.
 //
 // Todo acá es puro: se le pasan los números ya calculados y arma/lee la foto. Nada de fechas de hoy
 // ni de estado global, para poder testearlo.
@@ -274,24 +274,16 @@ export function motivosParaNoCerrar(input: {
 // LA PARTICIÓN: qué se queda en el sistema y qué se va a las carpetas.
 // ================================================================================================
 //
-// Regla de Nicolás (2026-08-27): en el sistema queda SOLO lo que sigue pendiente; el resto se revisa
-// en las carpetas. Entonces, de todo lo que tenga fecha dentro del ejercicio cerrado:
+// Los datos del ejercicio cerrado NO se borran: quedan para leer. Pero igual hace falta saber QUÉ es
+// del ejercicio y QUÉ sigue abierto, por dos motivos:
 //
-//   SE QUEDA                                    SE ARCHIVA (y se saca del sistema)
-//   ────────────────────────────────────────    ──────────────────────────────────────────────
-//   trabajos con saldo a cobrar o comisión      trabajos cobrados y terminados
-//   facturas de compra sin pagar                facturas de compra ya pagadas
-//   fondos de caja chica todavía abiertos       fondos cerrados y sus gastos rendidos
-//   catálogos (proveedores, grupos, stock,      movimientos del banco, gastos, ítems del
-//   empleados, marcadores, tarjetas)            calendario, facturas emitidas, consumos de
-//                                               tarjeta, asistencia, presupuestos guardados
+//   - para el archivo de la carpeta: lo del ejercicio se escribe ahí (los resúmenes y el cierre.json);
+//   - para avisarle al usuario, antes de cerrar, qué queda todavía sin cobrar o sin pagar.
 //
-// Un trabajo pendiente se queda ENTERO, con sus pagos y su historia: si le sacáramos los pagos
-// viejos, el saldo a cobrar dejaría de poder calcularse y el arrastre sería un número suelto sin
-// respaldo. Lo mismo con el fondo de caja chica abierto y sus gastos.
+// "Sigue abierto" = trabajos con saldo a cobrar, con comisión pendiente o sin terminar; facturas de
+// compra impagas; fondos de caja chica sin cerrar. Todo lo demás del ejercicio ya está consumado.
 //
-// Nada de esto BORRA: devuelve dos listas. Ejecutar la partición es un paso aparte, y va DESPUÉS de
-// que la carpeta confirmó que escribió.
+// Nada de esto TOCA el estado: devuelve dos listas y ya.
 
 // Lo mínimo que necesitamos saber de cada cosa para decidir. Se usan tipos laxos a propósito: este
 // módulo no tiene por qué conocer la forma completa de un trabajo ni de una factura.

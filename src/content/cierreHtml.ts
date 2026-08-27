@@ -1,9 +1,9 @@
 // HTML del CIERRE DE EJERCICIO: lo que queda en la carpeta cuando el año se da por terminado.
 //
-// Existe porque el cierre saca los datos del sistema, y la revisión pasa a ser en las carpetas. Lo
-// que "Exportar TODO" ya escribe (presupuestos, trabajos, compras, personal, caja chica, remitos,
-// facturación, marcadores) NO se repite acá: esto cubre justamente lo que ese export NO tenía y que,
-// sin esto, se perdería al limpiar el sistema:
+// El ejercicio cerrado sigue en el sistema para leer, pero la carpeta es el archivo definitivo: es lo
+// que queda cuando el sistema se recicle, se migre o se vacíe. Lo que "Exportar TODO" ya escribe
+// (presupuestos, trabajos, compras, personal, caja chica, remitos, facturación, marcadores) NO se
+// repite acá: esto cubre justamente lo que ese export NO tenía:
 //
 //   - los movimientos del banco del ejercicio
 //   - los gastos de Costos
@@ -92,8 +92,8 @@ export function buildCierreResumenHtml(c: CierreEjercicio, companyShort: string)
   )} por ${esc(c.closedBy || "-")}</p>
 
     <div class="aviso">
-      <strong>Este es el saldo con el que arranca el ejercicio siguiente.</strong> El detalle del año
-      cerrado ya no vive en el sistema: se revisa en esta carpeta. Pesos y dólares no se suman entre sí.
+      <strong>Este es el saldo con el que arranca el ejercicio siguiente.</strong> El año cerrado se
+      sigue viendo en el sistema, pero solo para leer. Pesos y dólares no se suman entre sí.
     </div>
 
     ${tabla("ARS")}
@@ -322,18 +322,18 @@ export function buildCierreIndiceHtml(
     String(c.closedAt).slice(0, 10)
   )}</p>
     <div class="aviso">
-      <strong>Acá está todo el ejercicio.</strong> El sistema se quedó únicamente con lo que seguía
-      pendiente al cierre (lo que faltaba cobrar, lo que faltaba pagar y la cuenta corriente del grupo).
-      Todo lo demás se revisa desde esta carpeta.
+      <strong>Acá está todo el ejercicio.</strong> En el sistema el año quedó cerrado: se puede mirar
+      entero, pero solo el superadmin puede editarlo. Las imágenes del ejercicio se sacaron del sistema
+      (ahí estaba el peso) y quedaron acá, incrustadas en estos archivos.
       <br><br>
       <strong>cierre.json</strong> es el respaldo completo y crudo del ejercicio: no es para leer, es
       para poder restaurarlo si alguna vez hiciera falta. No lo borres.
     </div>
     <h2>Archivos</h2>
     <table><thead><tr><th>Archivo</th><th>Qué tiene</th></tr></thead><tbody>${lista}</tbody></table>
-    <h2>Qué se sacó del sistema y qué quedó</h2>
+    <h2>Qué hay del ejercicio y qué seguía abierto al cierre</h2>
     <table>
-      <thead><tr><th>Bloque</th><th class="num">Archivado</th><th class="num">Quedó en el sistema</th></tr></thead>
+      <thead><tr><th>Bloque</th><th class="num">Del ejercicio</th><th class="num">Sigue abierto</th></tr></thead>
       <tbody>${filas}</tbody>
     </table>`;
   return page(`Ejercicio cerrado ${companyShort}`, body);
