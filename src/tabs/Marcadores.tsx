@@ -25,9 +25,6 @@ const SECCIONES_COSTOS = [
   { kind: "variable" as const, titulo: "COSTOS VARIABLES", fondo: "#fef3c7", tinta: "#92400e" },
 ];
 
-// Aclaracion corta arriba de una tabla, para explicar de donde sale el numero.
-const notaBloque: React.CSSProperties = { fontSize: 12, color: "#64748b", lineHeight: 1.45 };
-
 type MarcadoresTabProps = {
   markupPct: number;
   deviationPct: number;
@@ -352,7 +349,7 @@ export function MarcadoresTab({
               />
             </div>
 
-            <div style={{ ...notaBloque, marginTop: 10, marginBottom: 8 }}>
+            <div style={{ ...styles.sectionNote, marginTop: 10, marginBottom: 8 }}>
               Esto es lo que sale de <strong>Costos</strong>, promediado sobre los meses que tienen
               movimientos cargados. <strong>Click derecho</strong> sobre un grupo para volcarlo al
               marcador que se usa para presupuestar.
@@ -494,7 +491,7 @@ export function MarcadoresTab({
               </table>
             </div>
 
-            <div style={{ ...notaBloque, marginBottom: 8 }}>
+            <div style={{ ...styles.sectionNote, marginBottom: 8 }}>
               <strong>Marcadores</strong> — lo que se usa hoy para poner precio a los presupuestos.
             </div>
             <div style={styles.metricGrid}>

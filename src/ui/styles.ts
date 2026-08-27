@@ -545,6 +545,14 @@ export const styles: Record<string, CSSProperties> = {
     marginTop: 10,
   },
   muted: { color: "#475569", fontSize: 13 },
+  // Aclaracion corta arriba de una tabla o un bloque: de donde sale el numero, o como se usa.
+  // Se usa en 7 solapas y NO estaba definida: hasta el 2026-08-27 esas notas salian sin estilo.
+  sectionNote: {
+    fontSize: 12,
+    color: "#64748b",
+    lineHeight: 1.45,
+    marginBottom: 8,
+  },
   empty: {
     padding: 16,
     border: "1px dashed #cbd5e1",
