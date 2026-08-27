@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "./lib/supabase";
 import {
   money,
@@ -397,40 +397,46 @@ const STOCK_GROUP_CODE_PREFIX: Record<StockGeneralGroupName, string> = {
   "Maquinas manuales": "MMA",
 };
 
+// ORDEN DE LAS SOLAPAS. Lo fijo Nicolas el 2026-08-26: los titulos van en MAYUSCULA y el orden
+// dentro de cada grupo es el que sigue el trabajo diario, no el historico. El Calendario anual va
+// primero porque es el centro del sistema (ver domain/calendarStructure.ts y el roadmap).
 const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
-  { key: "acceso", label: "Acceso" },
-  { key: "cashflow", label: "Balance, cash flow y resultados" },
-  { key: "calendarioAnual", label: "Calendario anual" },
-  { key: "facturacion", label: "Facturacion y cobranzas" },
-  { key: "emitirFacturas", label: "Emitir facturas" },
-  { key: "aprobados", label: "Trabajos aprobados" },
-  { key: "fabricacion", label: "Fabricacion" },
-  { key: "compras", label: "Compras" },
-  { key: "cajaChica", label: "Caja chica" },
-  { key: "presupuesto", label: "Presupuesto actual" },
+  { key: "acceso", label: "ACCESO" },
+  // --- ADMINISTRACION BRUTA ---
+  { key: "calendarioAnual", label: "CALENDARIO ANUAL · CASH FLOW" },
+  { key: "cashflow", label: "BALANCE Y ESTADO DE RESULTADOS" },
+  { key: "aprobados", label: "TRABAJOS APROBADOS" },
+  { key: "facturacion", label: "FACTURACIÓN Y COBRANZAS" },
+  { key: "costos", label: "PAGO A PROVEEDORES · BANCOS · TARJETAS" },
+  { key: "compras", label: "COMPRAS" },
+  { key: "cajaChica", label: "CAJA CHICA" },
+  { key: "emitirFacturas", label: "EMITIR FACTURAS" },
+  { key: "fabricacion", label: "FABRICACIÓN" },
+  { key: "personal", label: "PERSONAL" },
+  { key: "asistencia", label: "ASISTENCIA" },
+  // --- ADMINISTRACION NETA ---
+  { key: "presupuesto", label: "PRESUPUESTOS" },
   { key: "historial", label: "CRM" },
-  { key: "stock", label: "Stock, agenda y analisis de costos" },
-  { key: "personal", label: "Personal" },
-  { key: "asistencia", label: "Asistencia" },
-  { key: "costos", label: "Pago a proveedores · Bancos · Tarjetas · (Costos fijos y variables)" },
-  { key: "documentos", label: "Documentos" },
-  { key: "marcadores", label: "Marcadores" },
-  { key: "manual", label: "Manual" },
+  { key: "stock", label: "STOCKS" },
+  { key: "marcadores", label: "MARCADORES" },
+  // --- INFORMACION DE CARGA ---
+  { key: "documentos", label: "DOCUMENTOS" },
+  { key: "manual", label: "MANUALES" },
 ];
 
 const NETA_TAB_KEYS: TabKey[] = ["presupuesto", "historial", "stock", "marcadores"];
 const BRUTA_TAB_KEYS: TabKey[] = [
-  "cashflow",
   "calendarioAnual",
-  "facturacion",
-  "emitirFacturas",
+  "cashflow",
   "aprobados",
-  "fabricacion",
+  "facturacion",
+  "costos",
   "compras",
   "cajaChica",
+  "emitirFacturas",
+  "fabricacion",
   "personal",
   "asistencia",
-  "costos",
 ];
 const CARGA_TAB_KEYS: TabKey[] = ["documentos", "manual"];
 
@@ -484,10 +490,10 @@ const getCompanyScopeLabel = (company: CompanyScope) =>
 const getAllCompanyOptions = () => runtimeCompanyOptions;
 
 const getTabAdministrationType = (tab: TabKey) => {
-  if (tab === "acceso") return "Sistema";
-  if (CARGA_TAB_KEYS.includes(tab)) return "Informacion de carga";
-  if (NETA_TAB_KEYS.includes(tab)) return "Administracion neta";
-  return "Administracion bruta";
+  if (tab === "acceso") return "SISTEMA";
+  if (CARGA_TAB_KEYS.includes(tab)) return "INFORMACIÓN DE CARGA";
+  if (NETA_TAB_KEYS.includes(tab)) return "ADMINISTRACIÓN NETA";
+  return "ADMINISTRACIÓN BRUTA";
 };
 
 const getTabLabel = (tabKey: string) =>
@@ -2940,6 +2946,27 @@ export default function App() {
     },
   ]);
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false);
+
+  // Alto del encabezado FIJO. Se mide en vivo porque cambia al plegar/desplegar la plata disponible;
+  // las dos columnas laterales (menu y comunicacion) se pegan justo debajo para no quedar tapadas.
+  const [stickyHeaderHeight, setStickyHeaderHeight] = useState(0);
+  const stickyHeaderObs = useRef<ResizeObserver | null>(null);
+  // Ref por callback (y no useEffect) porque el encabezado se monta y desmonta segun la solapa y el
+  // permiso: asi la medicion se engancha justo cuando el nodo existe.
+  const stickyHeaderRef = useCallback((node: HTMLDivElement | null) => {
+    stickyHeaderObs.current?.disconnect();
+    stickyHeaderObs.current = null;
+    if (!node) {
+      setStickyHeaderHeight(0);
+      return;
+    }
+    const medir = () => setStickyHeaderHeight(node.getBoundingClientRect().height);
+    medir();
+    if (typeof ResizeObserver === "undefined") return;
+    const obs = new ResizeObserver(medir);
+    obs.observe(node);
+    stickyHeaderObs.current = obs;
+  }, []);
   const [isCommunicationExpanded, setIsCommunicationExpanded] = useState(false);
   const lastSupabaseSnapshotSavedAtRef = useRef("");
   const lastMarkerSourceKeyRef = useRef("");
@@ -3795,10 +3822,10 @@ export default function App() {
     const cargaTabs = visibleTabOptions.filter((item) => CARGA_TAB_KEYS.includes(item.key));
 
     return [
-      { title: "Sistema", hint: "Acceso y seguridad", tabs: accessTabs },
-      { title: "Administracion bruta", hint: "Operacion y resultados", tabs: brutaTabs },
-      { title: "Administracion neta", hint: "Costos y presupuestacion", tabs: netaTabs },
-      { title: "Informacion de carga", hint: "Carga de archivos y documentos", tabs: cargaTabs },
+      { title: "SISTEMA", hint: "Acceso y seguridad", tabs: accessTabs },
+      { title: "ADMINISTRACIÓN BRUTA", hint: "Operación y resultados", tabs: brutaTabs },
+      { title: "ADMINISTRACIÓN NETA", hint: "Costos y presupuestación", tabs: netaTabs },
+      { title: "INFORMACIÓN DE CARGA", hint: "Carga de archivos y documentos", tabs: cargaTabs },
     ].filter((section) => section.tabs.length > 0);
   }, [visibleTabOptions]);
 
@@ -15333,17 +15360,19 @@ export default function App() {
           }
         }
       `}</style>
+      {/* Encabezado FIJO: la barra de estado y la plata disponible quedan inmovilizadas arriba para
+          tenerlas a la vista mientras se trabaja en cualquier solapa. */}
       {isSupabaseLoggedIn && activeTab !== "acceso" && (
-        <TopStatusBar
-          rates={dollarRates}
-          ratesUpdatedAt={dollarRatesUpdatedAt}
-          connectedUsers={otherActiveSessions}
-          primary={workspaceTheme.primary}
-          pettyCash={pettyCashHeader}
-        />
-      )}
-      {isSupabaseLoggedIn && activeTab !== "acceso" && canSeePlataDisponible && (
-        <PlataDisponible companies={plataDisponibleByCompany} />
+        <div ref={stickyHeaderRef} style={styles.stickyHeader}>
+          <TopStatusBar
+            rates={dollarRates}
+            ratesUpdatedAt={dollarRatesUpdatedAt}
+            connectedUsers={otherActiveSessions}
+            primary={workspaceTheme.primary}
+            pettyCash={pettyCashHeader}
+          />
+          {canSeePlataDisponible && <PlataDisponible companies={plataDisponibleByCompany} />}
+        </div>
       )}
       <div style={{ ...styles.headerBar, borderTop: `8px solid ${workspaceTheme.primary}` }}>
         <div>
@@ -15436,6 +15465,9 @@ export default function App() {
         <aside
           style={{
             ...styles.sidebar,
+            // Pega justo debajo del encabezado fijo (su alto cambia al plegar la billetera).
+            top: stickyHeaderHeight + 12,
+            minHeight: `calc(100vh - ${stickyHeaderHeight + 28}px)`,
             width: isSidebarExpanded ? 270 : 84,
             background: workspaceTheme.sidebarGradient,
           }}
@@ -16484,6 +16516,8 @@ export default function App() {
         <aside
           style={{
             ...styles.communicationRail,
+            top: stickyHeaderHeight + 12,
+            minHeight: `calc(100vh - ${stickyHeaderHeight + 40}px)`,
             width: isCommunicationExpanded ? 252 : 88,
             background: workspaceTheme.sidebarGradient,
           }}

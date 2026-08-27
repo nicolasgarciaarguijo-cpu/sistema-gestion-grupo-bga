@@ -20,6 +20,20 @@ export const styles: Record<string, CSSProperties> = {
     boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
   },
   tabsRow: { display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 },
+  // ENCABEZADO FIJO. Nicolas pidio (2026-08-26) que la informacion bancaria quede inmovilizada arriba
+  // para tenerla a la vista mientras trabaja. Los margenes negativos compensan el padding de la pagina
+  // para que la barra ocupe todo el ancho; el max-height evita que se coma la pantalla cuando la
+  // billetera esta desplegada (adentro scrollea sola).
+  stickyHeader: {
+    position: "sticky",
+    top: 0,
+    zIndex: 60,
+    margin: "-18px -18px 14px",
+    background: "#0f172a",
+    maxHeight: "48vh",
+    overflowY: "auto",
+    boxShadow: "0 8px 18px rgba(15,23,42,0.30)",
+  },
   workspaceShell: {
     display: "grid",
     gridTemplateColumns: "auto minmax(0, 1fr) auto",
