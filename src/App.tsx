@@ -36,7 +36,31 @@ import {
   type LedgerPayment,
 } from "./domain/purchaseLedger";
 import { deriveConvenioHours } from "./domain/attendance";
+import {
+  buildCierreResumenHtml,
+  buildCierreBancoHtml,
+  buildCierreCostosHtml,
+  buildCierreTarjetasHtml,
+  buildCierreCalendarioHtml,
+  buildCierreAsistenciaHtml,
+  buildCierreIndiceHtml,
+  cierreFolderName,
+} from "./content/cierreHtml";
 import { computeVatPosition } from "./domain/vatBalance";
+import {
+  construirCierre,
+  motivosParaNoCerrar,
+  particionarFacturasCompra,
+  particionarFondos,
+  particionarGastosDeCajaChica,
+  particionarPorFecha,
+  particionarTrabajos,
+  resumenDeLaPurga,
+  ultimoCierre,
+  cierreQueBloquea,
+  totalDeMoneda,
+} from "./domain/cierreEjercicio";
+import type { CierreEjercicio } from "./domain/cierreEjercicio";
 import { countPersistedContent, isEmptyOverwrite } from "./domain/persistGuard";
 import {
   buildCrmRows,
@@ -1628,6 +1652,9 @@ type PersistedAppStateData = {
   capitalEntries: CapitalEntry[];
   cashHoldings: CashHolding[];
   ivaVepPayments: IvaVepPayment[];
+  // Cierres de ejercicio: la foto de cada ano cerrado. Es lo que le da al ejercicio nuevo su saldo
+  // de apertura, y lo que traba que se edite un ano ya cerrado.
+  fiscalClosings: CierreEjercicio[];
   // Retoques del Calendario anual sobre la estructura fija (renglones renombrados / ocultos).
   calendarRowConfig: CalendarRowConfig;
   stockItems: StockItem[];
@@ -1728,7 +1755,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "calendarRowConfig"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig"] as const,
   },
   {
     key: "compras",
@@ -2756,6 +2783,8 @@ export default function App() {
   const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>(defaultCapitalEntries);
+  // Cierres de ejercicio (uno por empresa y ano cerrado). Ver domain/cierreEjercicio.ts.
+  const [fiscalClosings, setFiscalClosings] = useState<CierreEjercicio[]>([]);
   const [cashHoldings, setCashHoldings] = useState<CashHolding[]>(defaultCashHoldings);
   const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
@@ -6486,6 +6515,428 @@ export default function App() {
     );
   };
 
+  // ================================================================================================
+  // CIERRE DE EJERCICIO
+  // ================================================================================================
+  // El boton que da por terminado el ano. Hace SIEMPRE lo mismo y en este orden, que no se negocia:
+  //
+  //   1. guarda TODO el ejercicio en la carpeta (y verifica que se haya escrito)
+  //   2. muestra que se va a sacar del sistema y que se va a conservar
+  //   3. pide confirmacion escrita
+  //   4. recien ahi limpia
+  //
+  // Si la carpeta no esta vinculada, NO se cierra: sin el archivo, limpiar seria perder.
+  const [cierreBusy, setCierreBusy] = useState(false);
+  const [cierreMensaje, setCierreMensaje] = useState("");
+
+  // La reserva de UNA empresa cortada a una fecha: es de donde salen las 8 billeteras de la foto.
+  const reservaDeEmpresaAlCierre = (company: CompanyName, endIso: string) => {
+    const entriesDeLaEmpresa = bankStatementEntries.filter(
+      (e) => e.company === company && String(e.date || "") <= endIso
+    );
+    const banks = latestBankBalancesByAccount(entriesDeLaEmpresa);
+    return buildReservaFromSources({
+      openingBankArs: banks.filter((b) => b.currency !== "USD").reduce((a, b) => a + b.balance, 0),
+      openingBankUsd: banks.filter((b) => b.currency === "USD").reduce((a, b) => a + b.balance, 0),
+      until: endIso,
+      pettyCashFunds: pettyCashFunds
+        .filter((f) => f.company === company)
+        .map((f) => ({
+          deliveredDate: f.deliveredDate,
+          assignedAmount: Number(f.assignedAmount || 0),
+          assignedWhite: f.assignedWhite,
+          assignedBlack: f.assignedBlack,
+        })),
+      pettyCashExpenses: pettyCashExpenses
+        .filter((e) => e.company === company)
+        .map((e) => ({
+          date: e.date,
+          amount: Number(e.amount || 0),
+          administration: e.administration === "negro" ? "negro" : "blanco",
+        })),
+      cashHoldings: cashHoldings
+        .filter((h) => h.company === company)
+        .map((h) => ({
+          date: h.date,
+          amount: Number(h.amount || 0),
+          currency: h.currency === "USD" ? "USD" : "ARS",
+          color: h.color === "negro" ? "negro" : "blanco",
+          kind: h.kind === "egreso" ? "egreso" : "ingreso",
+        })),
+    });
+  };
+
+  // Lo que el cierre va a sacar del sistema y lo que va a conservar. Se calcula ANTES de tocar nada:
+  // sirve para mostrarselo al usuario y despues para ejecutarlo, con exactamente el mismo criterio.
+  const planDelCierre = (company: CompanyName, endIso: string) => {
+    const saldoDelTrabajo = (job: any) => {
+      const resumen = approvedJobsSummary.find((x) => x.id === job.id);
+      return {
+        id: job.id,
+        company: job.company,
+        date: job.startDate || job.approvalDate || "",
+        saldoACobrar: Number(resumen?.remainingToPay || 0),
+        comisionPendiente: Number(resumen?.commissionPending || 0),
+        terminado: resumen?.executionStatus === "finalizado",
+      };
+    };
+    const decisionTrabajos = particionarTrabajos(approvedJobs.map(saldoDelTrabajo), company, endIso);
+    const idsTrabajosQueQuedan = new Set(decisionTrabajos.quedan.map((t) => t.id));
+
+    const facturasCompra = particionarFacturasCompra(
+      purchaseInvoices.map((f: any) => ({
+        id: f.id,
+        company: f.company,
+        date: f.invoiceDate,
+        pagada: f.paidByCostEntryId != null,
+      })),
+      company,
+      endIso
+    );
+    const idsFacturasQueQuedan = new Set(facturasCompra.quedan.map((f) => f.id));
+
+    const fondos = particionarFondos(
+      pettyCashFunds.map((f: any) => ({ id: f.id, company: f.company, date: f.deliveredDate, closed: f.closed })),
+      company,
+      endIso
+    );
+    const idsFondosQueQuedan = new Set(fondos.quedan.map((f) => f.id));
+    const gastosCajaChica = particionarGastosDeCajaChica(
+      pettyCashExpenses as any[],
+      company,
+      endIso,
+      fondos.quedan
+    );
+
+    const banco = particionarPorFecha(bankStatementEntries as any[], company, endIso);
+    const gastos = particionarPorFecha(costEntries as any[], company, endIso);
+    const calendario = particionarPorFecha(financialItems as any[], company, endIso);
+    const emitidas = particionarPorFecha(
+      issuedInvoices.map((i: any) => ({ ...i, date: i.date })) as any[],
+      company,
+      endIso
+    );
+    const consumos = particionarPorFecha(creditCardConsumptions as any[], company, endIso);
+    const presupuestos = particionarPorFecha(savedBudgets as any[], company, endIso);
+
+    return {
+      idsTrabajosQueQuedan,
+      idsFacturasQueQuedan,
+      idsFondosQueQuedan,
+      trabajos: decisionTrabajos,
+      facturasCompra,
+      fondos,
+      gastosCajaChica,
+      banco,
+      gastos,
+      calendario,
+      emitidas,
+      consumos,
+      presupuestos,
+      resumen: resumenDeLaPurga([
+        { nombre: "Movimientos del banco", ...banco },
+        { nombre: "Gastos y pagos a proveedores", ...gastos },
+        { nombre: "Calendario (carga manual)", ...calendario },
+        { nombre: "Facturas emitidas", ...emitidas },
+        { nombre: "Consumos de tarjeta", ...consumos },
+        { nombre: "Presupuestos guardados", ...presupuestos },
+        { nombre: "Trabajos aprobados", ...decisionTrabajos },
+        { nombre: "Facturas de compra", ...facturasCompra },
+        { nombre: "Fondos de caja chica", ...fondos },
+        { nombre: "Gastos de caja chica", ...gastosCajaChica },
+      ]),
+    };
+  };
+
+  // Escribe TODO el ejercicio en la carpeta. Devuelve los archivos escritos: si vuelve vacio, no se
+  // limpia nada (el orden es guardar y despues borrar, nunca al reves).
+  const escribirCierreEnCarpeta = async (
+    handle: any,
+    cierre: CierreEjercicio,
+    company: CompanyName,
+    plan: ReturnType<typeof planDelCierre>
+  ): Promise<string[]> => {
+    const meta = getCompanyMeta(company);
+    const carpeta = `Cierres/${companyFolderName(meta.short)}/${cierreFolderName(cierre)}`;
+    const periodo = `${cierre.startIso} al ${cierre.endIso}`;
+    await ensureFolder(handle, carpeta);
+    const escritos: string[] = [];
+    const escribir = async (nombre: string, contenido: string) => {
+      const ruta = `${carpeta}/${nombre}`;
+      await writeFileToFolder(handle, ruta, contenido);
+      escritos.push(ruta);
+    };
+
+    // El respaldo CRUDO: no es para leer, es para poder restaurar. Va primero, por si algo falla
+    // despues: si existe este archivo, el ejercicio se puede reconstruir entero.
+    await escribir(
+      "cierre.json",
+      JSON.stringify(
+        {
+          version: 1,
+          cierre,
+          empresa: company,
+          generado: new Date().toISOString(),
+          archivado: {
+            bankStatementEntries: plan.banco.archivar,
+            costEntries: plan.gastos.archivar,
+            financialItems: plan.calendario.archivar,
+            issuedInvoices: plan.emitidas.archivar,
+            creditCardConsumptions: plan.consumos.archivar,
+            savedBudgets: plan.presupuestos.archivar,
+            approvedJobs: approvedJobs.filter((j: any) =>
+              plan.trabajos.archivar.some((t) => t.id === j.id)
+            ),
+            purchaseInvoices: purchaseInvoices.filter((f: any) =>
+              plan.facturasCompra.archivar.some((x) => x.id === f.id)
+            ),
+            pettyCashFunds: pettyCashFunds.filter((f: any) =>
+              plan.fondos.archivar.some((x) => x.id === f.id)
+            ),
+            pettyCashExpenses: plan.gastosCajaChica.archivar,
+            asistencia: employees
+              .filter((e) => e.company === company)
+              .map((e) => ({
+                id: e.id,
+                legajo: e.legajo,
+                name: e.name,
+                attendance: (e.attendance || []).filter(
+                  (a: any) => String(a.date || "") >= cierre.startIso && String(a.date || "") <= cierre.endIso
+                ),
+              })),
+          },
+        },
+        null,
+        2
+      )
+    );
+
+    await escribir("Resumen de cierre.html", buildCierreResumenHtml(cierre, meta.short));
+    await escribir("Banco.html", buildCierreBancoHtml(plan.banco.archivar, periodo, meta.short));
+    await escribir("Costos.html", buildCierreCostosHtml(plan.gastos.archivar, periodo, meta.short));
+    await escribir(
+      "Tarjetas.html",
+      buildCierreTarjetasHtml(
+        plan.consumos.archivar,
+        creditCards.filter((c: any) => c.company === company),
+        periodo,
+        meta.short
+      )
+    );
+    await escribir(
+      "Calendario anual.html",
+      buildCierreCalendarioHtml(plan.calendario.archivar, periodo, meta.short)
+    );
+    await escribir(
+      "Asistencia.html",
+      buildCierreAsistenciaHtml(
+        employees.filter((e) => e.company === company),
+        cierre.startIso,
+        cierre.endIso,
+        meta.short
+      )
+    );
+    await escribir(
+      "index.html",
+      buildCierreIndiceHtml(
+        cierre,
+        meta.short,
+        [
+          { nombre: "Resumen de cierre.html", que: "La foto: con qué saldo arranca el año nuevo" },
+          { nombre: "Banco.html", que: "Todos los movimientos bancarios del ejercicio" },
+          { nombre: "Costos.html", que: "Gastos y pagos a proveedores, por grupo y en detalle" },
+          { nombre: "Tarjetas.html", que: "Consumos de tarjeta" },
+          { nombre: "Calendario anual.html", que: "Lo cargado a mano en el cash flow" },
+          { nombre: "Asistencia.html", que: "Fichadas del personal, día por día" },
+          { nombre: "cierre.json", que: "Respaldo crudo para restaurar. No lo borres." },
+        ],
+        plan.resumen.detalle
+      )
+    );
+    return escritos;
+  };
+
+  // Saca del sistema lo que ya quedo archivado. Se llama SOLO despues de que la carpeta confirmo.
+  const limpiarDespuesDelCierre = (plan: ReturnType<typeof planDelCierre>) => {
+    const idsDe = (lista: Array<{ id: number }>) => new Set(lista.map((x) => x.id));
+    const fuera = {
+      banco: idsDe(plan.banco.archivar as any[]),
+      gastos: idsDe(plan.gastos.archivar as any[]),
+      calendario: idsDe(plan.calendario.archivar as any[]),
+      emitidas: idsDe(plan.emitidas.archivar as any[]),
+      consumos: idsDe(plan.consumos.archivar as any[]),
+      presupuestos: idsDe(plan.presupuestos.archivar as any[]),
+      trabajos: idsDe(plan.trabajos.archivar),
+      facturas: idsDe(plan.facturasCompra.archivar),
+      fondos: idsDe(plan.fondos.archivar),
+      gastosCaja: idsDe(plan.gastosCajaChica.archivar as any[]),
+    };
+    setBankStatementEntries((prev) => prev.filter((x) => !fuera.banco.has(x.id)));
+    setCostEntries((prev) => prev.filter((x) => !fuera.gastos.has(x.id)));
+    setFinancialItems((prev) => prev.filter((x) => !fuera.calendario.has(x.id)));
+    setIssuedInvoices((prev) => prev.filter((x) => !fuera.emitidas.has(x.id)));
+    setCreditCardConsumptions((prev) => prev.filter((x) => !fuera.consumos.has(x.id)));
+    setSavedBudgets((prev) => prev.filter((x) => !fuera.presupuestos.has(x.id)));
+    setApprovedJobs((prev) => prev.filter((x) => !fuera.trabajos.has(x.id)));
+    setPurchaseInvoices((prev) => prev.filter((x) => !fuera.facturas.has(x.id)));
+    setPettyCashFunds((prev) => prev.filter((x) => !fuera.fondos.has(x.id)));
+    setPettyCashExpenses((prev) => prev.filter((x) => !fuera.gastosCaja.has(x.id)));
+  };
+
+  // EL BOTON. Orquesta todo y no deja saltearse ningun paso.
+  const cerrarEjercicio = async (company: CompanyName, fiscalStartYear: number) => {
+    const meta = getCompanyMeta(company);
+    const co = COMPANY_OPTIONS.find((c) => c.value === company);
+    const startMonth = co?.fiscalYearStartMonth ?? DEFAULT_FISCAL_START_MONTH;
+
+    const motivos = motivosParaNoCerrar({
+      cierres: fiscalClosings,
+      company,
+      fiscalStartMonth: startMonth,
+      fiscalStartYear,
+      hoyIso: todayIso(),
+    });
+    if (motivos.length > 0) {
+      window.alert(`No se puede cerrar el ejercicio de ${meta.short}:\n\n- ${motivos.join("\n- ")}`);
+      return;
+    }
+
+    // Sin carpeta no hay cierre: limpiar sin haber guardado seria perder el ano.
+    setCierreBusy(true);
+    setCierreMensaje("Buscando la carpeta vinculada...");
+    const handle = await getWritableFolder();
+    if (!handle) {
+      setCierreBusy(false);
+      setCierreMensaje("");
+      window.alert(
+        "Para cerrar el ejercicio hace falta la carpeta vinculada: el cierre GUARDA todo ahi antes de limpiar el sistema.\n\nVinculala en Documentos y volvé a intentar."
+      );
+      return;
+    }
+
+    const cierre = construirCierre({
+      id: newId(),
+      company,
+      fiscalStartMonth: startMonth,
+      fiscalStartYear,
+      closedAt: new Date().toISOString(),
+      closedBy: supabaseProfile?.full_name || "—",
+      reserva: reservaDeEmpresaAlCierre(company, fiscalYearBounds(startMonth, fiscalStartYear).endIso) as any,
+      aCobrar: approvedJobsSummary
+        .filter((j) => j.company === company)
+        .reduce((a, j) => a + Number(j.remainingToPay || 0), 0),
+      aPagar: Number(deudaProveedoresPorEmpresa.get(String(company)) || 0),
+      cuentaCorrienteGrupo: Number(intercompanyAccount.summary.netByCompany?.[String(company)] || 0),
+      resultado: (() => {
+        const r: any = reservaDeEmpresaAlCierre(company, fiscalYearBounds(startMonth, fiscalStartYear).endIso);
+        const ars = r.totals.find((t: any) => t.currency === "ARS");
+        return {
+          ingresos: Number(ars?.ingresos || 0),
+          egresos: Number(ars?.egresos || 0),
+          resultado: Number(ars?.ingresos || 0) - Number(ars?.egresos || 0),
+        };
+      })(),
+      iva: (() => {
+        const fila = plataDisponibleByCompany.find((x) => x.company === company);
+        return {
+          debito: Number(fila?.ivaDebito || 0),
+          credito: Number(fila?.ivaCredito || 0),
+          saldo: Number(fila?.ivaPosicion || 0),
+        };
+      })(),
+    });
+
+    const plan = planDelCierre(company, cierre.endIso);
+
+    // Lo que se va y lo que queda, ANTES de tocar nada.
+    const detalle = plan.resumen.detalle
+      .filter((d) => d.archivar > 0 || d.quedan > 0)
+      .map((d) => `  ${d.nombre}: se archivan ${d.archivar}, quedan ${d.quedan}`)
+      .join("\n");
+    const ok = window.confirm(
+      `CIERRE DE EJERCICIO — ${meta.short}\n${cierre.startIso} al ${cierre.endIso}\n\n` +
+        `Se va a guardar TODO el ejercicio en la carpeta y despues SACARLO del sistema.\n` +
+        `En el sistema queda solo lo que sigue pendiente.\n\n${detalle}\n\n` +
+        `Saldo con el que arranca el ano nuevo: ${money(totalDeMoneda(cierre.billeteras, "ARS"))}` +
+        `${totalDeMoneda(cierre.billeteras, "USD") !== 0 ? " + " + money(totalDeMoneda(cierre.billeteras, "USD"), "USD") : ""}\n\n` +
+        `¿Seguimos? (todavia no se borra nada)`
+    );
+    if (!ok) {
+      setCierreBusy(false);
+      setCierreMensaje("");
+      return;
+    }
+
+    // 1) GUARDAR
+    let escritos: string[] = [];
+    try {
+      setCierreMensaje("Guardando el ejercicio en la carpeta...");
+      escritos = await escribirCierreEnCarpeta(handle, cierre, company, plan);
+      setCierreMensaje("Exportando el resto del sistema a la carpeta...");
+      await exportAllToFolder();
+    } catch (err: any) {
+      setCierreBusy(false);
+      setCierreMensaje("");
+      window.alert(
+        `No se pudo guardar el ejercicio en la carpeta, asi que NO se limpio nada.\n\n${err?.message || err}`
+      );
+      return;
+    }
+    if (escritos.length === 0) {
+      setCierreBusy(false);
+      setCierreMensaje("");
+      window.alert("La carpeta no confirmo ningun archivo escrito. No se limpio nada.");
+      return;
+    }
+
+    // 2) CONFIRMAR A MANO. Es la unica accion del sistema que borra de verdad.
+    const palabra = window.prompt(
+      `Ya esta todo guardado en la carpeta (${escritos.length} archivo(s) del cierre).\n\n` +
+        `Ahora se va a SACAR DEL SISTEMA lo del ejercicio ${cierre.startIso} al ${cierre.endIso} de ${meta.short}.\n` +
+        `Queda lo pendiente, y el resto se revisa en la carpeta.\n\n` +
+        `Escribi CERRAR para confirmar:`
+    );
+    if ((palabra || "").trim().toUpperCase() !== "CERRAR") {
+      setCierreBusy(false);
+      setCierreMensaje(
+        `El ejercicio quedo guardado en la carpeta, pero NO se limpio el sistema (no se confirmo).`
+      );
+      return;
+    }
+
+    // 3) LIMPIAR
+    limpiarDespuesDelCierre(plan);
+    setFiscalClosings((prev) => [...prev, cierre]);
+    setCierreBusy(false);
+    setCierreMensaje(
+      `Ejercicio ${cierre.startIso} al ${cierre.endIso} de ${meta.short} cerrado. ` +
+        `${plan.resumen.archivados} registro(s) archivados en la carpeta y sacados del sistema; ` +
+        `${plan.resumen.conservados} quedaron por estar pendientes.`
+    );
+  };
+
+  // Reabrir: el cierre deja de mandar (ni bloquea ni da apertura) pero NO se borra, queda el rastro.
+  // Lo archivado NO vuelve solo: para eso esta el cierre.json de la carpeta.
+  const reabrirEjercicio = (cierreId: number) => {
+    const c = fiscalClosings.find((x) => x.id === cierreId);
+    if (!c) return;
+    if (
+      !window.confirm(
+        `Reabrir el ejercicio ${c.startIso} al ${c.endIso}?\n\n` +
+          `Se destraba la edicion, pero lo que se archivo NO vuelve al sistema: eso esta en la carpeta ` +
+          `(cierre.json). El ejercicio siguiente se queda sin saldo de apertura hasta que lo cierres de nuevo.`
+      )
+    )
+      return;
+    setFiscalClosings((prev) =>
+      prev.map((x) =>
+        x.id === cierreId
+          ? { ...x, reopenedAt: new Date().toISOString(), reopenedBy: supabaseProfile?.full_name || "—" }
+          : x
+      )
+    );
+  };
+
   const crmClientRows = useMemo(
     () =>
       buildCrmRows({
@@ -8508,6 +8959,7 @@ export default function App() {
     capitalEntries: capitalEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
     cashHoldings: cashHoldings.map((item) => ({ ...item, date: stampDate(item.date) })),
     ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
+    fiscalClosings: fiscalClosings.map((item) => ({ ...item })),
     calendarRowConfig: {
       labels: { ...(calendarRowConfig.labels || {}) },
       hidden: [...(calendarRowConfig.hidden || [])],
@@ -8742,6 +9194,7 @@ export default function App() {
     setBankStatementEntries(
       keepAccessibleByCompany(data.bankStatementEntries || defaultBankStatementEntries).map((item) => ({ ...item }))
     );
+    setFiscalClosings(keepAccessibleByCompany(data.fiscalClosings || []).map((item) => ({ ...item })));
     setCapitalEntries(
       keepAccessibleByCompany(data.capitalEntries || defaultCapitalEntries).map((item) => ({
         ...item,
@@ -11558,11 +12011,27 @@ export default function App() {
     );
   };
 
+  // EL CANDADO DEL CIERRE. Con el ejercicio cerrado, sus datos ya no estan en el sistema (estan en la
+  // carpeta), asi que lo unico que queda por evitar es que alguien MANDE algo nuevo hacia atras: un
+  // movimiento fechado dentro de un ano cerrado no aparece en ningun lado y descuadra la foto.
+  const bloqueadoPorCierre = (company: string, iso: string): boolean => {
+    const c = cierreQueBloquea(fiscalClosings, company, iso);
+    if (!c) return false;
+    window.alert(
+      `El ejercicio ${c.startIso} al ${c.endIso} esta CERRADO: no se puede fechar nada ahi.\n\n` +
+        `Lo de ese ano se revisa en la carpeta. Si de verdad hay que corregirlo, reabri el ejercicio ` +
+        `desde Balance y volve a cerrarlo despues.`
+    );
+    return true;
+  };
+
   const updateBankStatementEntry = (
     entryId: number,
     field: keyof BankStatementEntry,
     value: string | number | boolean
   ) => {
+    const actual = bankStatementEntries.find((item) => item.id === entryId);
+    if (field === "date" && actual && bloqueadoPorCierre(actual.company, String(value))) return;
     setBankStatementEntries((prev) =>
       prev.map((item) => (item.id === entryId ? { ...item, [field]: value } : item))
     );
@@ -12249,6 +12718,30 @@ export default function App() {
     [visibleBankStatementEntries, balanceCompanyScope, reservaUntil]
   );
 
+  // ARRANQUE DEL EJERCICIO. Despues de un cierre, el ano viejo ya NO esta en el sistema, asi que la
+  // reserva no se puede seguir calculando "desde el principio de los tiempos": el efectivo quedaria
+  // en cero porque sus movimientos se archivaron. Lo que hace el cierre es dejar el saldo clavado, y
+  // esto es lo que lo usa.
+  //
+  // El banco se arregla solo (cada linea del extracto trae el saldo acumulado, asi que el ultimo
+  // movimiento que quede ya es el saldo real), pero el EFECTIVO no: se arma sumando movimientos. Por
+  // eso el efectivo del cierre entra como saldo inicial y solo se cuentan los movimientos POSTERIORES.
+  const arranqueDeEmpresa = (company: string) => {
+    const c = ultimoCierre(fiscalClosings, company);
+    if (!c) return { desdeIso: "", cashArs: 0, cashUsd: 0 };
+    return {
+      desdeIso: c.endIso,
+      cashArs: totalDeMoneda(c.billeteras, "ARS", { location: "efectivo" }),
+      cashUsd: totalDeMoneda(c.billeteras, "USD", { location: "efectivo" }),
+    };
+  };
+  // Lo de antes del cierre ya se archivo: si quedo algo suelto en el estado, no vuelve a contarse.
+  const despuesDelCierre = (company: string, iso: string): boolean => {
+    const c = ultimoCierre(fiscalClosings, company);
+    if (!c) return true;
+    return String(iso || "") > c.endIso;
+  };
+
   const reservaSummary = useMemo(() => {
     const inScope = (company: string) =>
       balanceCompanyScope === "__ALL__" || company === balanceCompanyScope;
@@ -12274,13 +12767,23 @@ export default function App() {
           )
         )
     );
+    // Efectivo: arranca del cierre del ultimo ejercicio cerrado (con scope "todas" no se puede sumar
+    // el arranque de cada empresa sin saber cual se esta mirando, asi que se toma el de la empresa
+    // elegida; con "todas" se suman los de todas).
+    const empresasDelScope = COMPANY_OPTIONS.map((c) => String(c.value)).filter((c) =>
+      balanceCompanyScope === "__ALL__" ? true : c === balanceCompanyScope
+    );
+    const arranqueCashArs = empresasDelScope.reduce((a, c) => a + arranqueDeEmpresa(c).cashArs, 0);
+    const arranqueCashUsd = empresasDelScope.reduce((a, c) => a + arranqueDeEmpresa(c).cashUsd, 0);
     return buildReservaFromSources({
       openingBankArs,
       openingBankUsd,
+      openingCashArs: arranqueCashArs,
+      openingCashUsd: arranqueCashUsd,
       until: reservaUntil,
       extraMovements: usdPaymentMovements,
       pettyCashFunds: visiblePettyCashFunds
-        .filter((f) => inScope(f.company))
+        .filter((f) => inScope(f.company) && despuesDelCierre(String(f.company), f.deliveredDate))
         .map((f) => ({
           deliveredDate: f.deliveredDate,
           assignedAmount: Number(f.assignedAmount || 0),
@@ -12288,7 +12791,7 @@ export default function App() {
           assignedBlack: f.assignedBlack,
         })),
       pettyCashExpenses: visiblePettyCashExpenses
-        .filter((e) => inScope(e.company))
+        .filter((e) => inScope(e.company) && despuesDelCierre(String(e.company), e.date))
         .map((e) => ({
           date: e.date,
           amount: Number(e.amount || 0),
@@ -12297,7 +12800,7 @@ export default function App() {
       // Efectivo fuera del banco y de caja chica (caja de seguridad): entra a la billetera de
       // efectivo con su color (blanco/negro). Respeta el corte por período (until) como movimiento.
       cashHoldings: visibleCashHoldings
-        .filter((h) => inScope(h.company))
+        .filter((h) => inScope(h.company) && despuesDelCierre(String(h.company), h.date))
         .map((h) => ({
           date: h.date,
           currency: h.currency === "USD" ? ("USD" as const) : ("ARS" as const),
@@ -12306,7 +12809,7 @@ export default function App() {
           amount: Number(h.amount || 0),
         })),
     });
-  }, [reservaBankAccounts, reservaUntil, visiblePettyCashFunds, visiblePettyCashExpenses, visibleCashHoldings, visibleApprovedJobs, balanceCompanyScope]);
+  }, [reservaBankAccounts, reservaUntil, visiblePettyCashFunds, visiblePettyCashExpenses, visibleCashHoldings, visibleApprovedJobs, balanceCompanyScope, fiscalClosings, COMPANY_OPTIONS]);
 
   // PLATA DISPONIBLE (tablero superior): la reserva calculada POR empresa (no sigue el selector del
   // balance), para ver de un vistazo cuánta plata hay en cada banco de cada empresa y cuánto en negro,
@@ -12405,11 +12908,15 @@ export default function App() {
       const openingBankUsd = banks
         .filter((b) => b.currency === "USD")
         .reduce((acc, b) => acc + b.balance, 0);
+      const arranque = arranqueDeEmpresa(String(company));
       const reserva = buildReservaFromSources({
         openingBankArs,
         openingBankUsd,
+        // Efectivo: arranca del cierre y solo cuenta lo posterior (ver arranqueDeEmpresa).
+        openingCashArs: arranque.cashArs,
+        openingCashUsd: arranque.cashUsd,
         pettyCashFunds: visiblePettyCashFunds
-          .filter((f) => f.company === company)
+          .filter((f) => f.company === company && despuesDelCierre(String(company), f.deliveredDate))
           .map((f) => ({
             deliveredDate: f.deliveredDate,
             assignedAmount: Number(f.assignedAmount || 0),
@@ -12417,14 +12924,14 @@ export default function App() {
             assignedBlack: f.assignedBlack,
           })),
         pettyCashExpenses: visiblePettyCashExpenses
-          .filter((e) => e.company === company)
+          .filter((e) => e.company === company && despuesDelCierre(String(company), e.date))
           .map((e) => ({
             date: e.date,
             amount: Number(e.amount || 0),
             administration: e.administration === "negro" ? "negro" : "blanco",
           })),
         cashHoldings: visibleCashHoldings
-          .filter((h) => h.company === company)
+          .filter((h) => h.company === company && despuesDelCierre(String(company), h.date))
           .map((h) => ({
             date: h.date,
             currency: h.currency === "USD" ? ("USD" as const) : ("ARS" as const),
@@ -14188,6 +14695,8 @@ export default function App() {
   };
 
   const updateCostEntry = (id: number, field: keyof CostEntry, value: any) => {
+    const actual = costEntries.find((e) => e.id === id);
+    if (field === "date" && actual && bloqueadoPorCierre(actual.company, String(value))) return;
     setCostEntries((prev) =>
       prev.map((entry) => {
         if (entry.id !== id) return entry;
@@ -15936,6 +16445,12 @@ export default function App() {
           setBalanceMonth={setBalanceMonth}
           balanceFiscalYearOptions={balanceFiscalYearOptions}
           updateCompanyFiscalStartMonth={updateCompanyFiscalStartMonth}
+          fiscalClosings={fiscalClosings}
+          onCerrarEjercicio={cerrarEjercicio}
+          onReabrirEjercicio={reabrirEjercicio}
+          cierreBusy={cierreBusy}
+          cierreMensaje={cierreMensaje}
+          puedeCerrar={effectiveIsAdmin}
           activeAssetsMonthlyDepreciation={activeAssetsMonthlyDepreciation}
           analysisYear={analysisYear}
           annualCashFlowEntries={annualCashFlowEntries}

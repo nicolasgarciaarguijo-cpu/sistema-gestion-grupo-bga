@@ -10,6 +10,9 @@ import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
 import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
 import { sameLender, type LoanLine } from "../domain/loanLines";
+import { totalDeMoneda, ultimoCierre } from "../domain/cierreEjercicio";
+import type { CierreEjercicio } from "../domain/cierreEjercicio";
+import { DEFAULT_FISCAL_START_MONTH, currentFiscalStartYear, fiscalYearLabel } from "../domain/fiscalYear";
 
 // Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
 // queda en el title (hover). Evita que un numero largo rompa una columna de ~80px.
@@ -143,6 +146,13 @@ type CashflowTabProps = {
   setBalanceMonth: (ym: string) => void;
   balanceFiscalYearOptions: { value: number; label: string }[];
   updateCompanyFiscalStartMonth: (companyValue: string, month: number) => void;
+  // Cierre de ejercicio: la foto del año cerrado y el saldo con el que arranca el siguiente.
+  fiscalClosings: CierreEjercicio[];
+  onCerrarEjercicio: (company: CompanyName, fiscalStartYear: number) => void;
+  onReabrirEjercicio: (cierreId: number) => void;
+  cierreBusy: boolean;
+  cierreMensaje: string;
+  puedeCerrar: boolean;
   activeAssetsMonthlyDepreciation: number;
   analysisYear: number;
   annualCashFlowEntries: any[];
@@ -243,6 +253,12 @@ export function CashflowTab({
   setBalanceMonth,
   balanceFiscalYearOptions,
   updateCompanyFiscalStartMonth,
+  fiscalClosings,
+  onCerrarEjercicio,
+  onReabrirEjercicio,
+  cierreBusy,
+  cierreMensaje,
+  puedeCerrar,
 }: CashflowTabProps) {
   const anchosDeudas = usePlanillaWidths("cashflow.deudas", { label: 280, col: 116, colCompact: 88 });
   const anchosCapital = usePlanillaWidths("cashflow.capital", { label: 260, col: 120, colCompact: 92 });
@@ -448,6 +464,110 @@ export function CashflowTab({
                 Hoy ambas empresas arrancan en octubre. Cambialo aca si sumas una empresa con otro calendario.
               </div>
             </details>
+          </Panel>
+
+          {/* CIERRE DE EJERCICIO. Da por terminado el año: guarda TODO en la carpeta y saca del
+              sistema lo que ya no sigue abierto. Por eso vive acá, junto al balance, y no en una
+              solapa cualquiera: es la foto con la que arranca el año siguiente. */}
+          <Panel title="Cierre de ejercicio" span="full">
+            <div style={{ ...styles.sectionNote, marginBottom: 10 }}>
+              El cierre <strong>guarda todo el ejercicio en la carpeta</strong> y después lo saca del
+              sistema. En el sistema queda solo lo que sigue pendiente — lo que falta cobrar, lo que
+              falta pagar y la cuenta corriente del grupo. Todo lo demás se revisa en la carpeta.
+              El saldo del cierre es con el que arranca el año siguiente.
+            </div>
+
+            {!puedeCerrar && (
+              <div style={{ ...styles.muted, marginBottom: 10 }}>
+                Solo un administrador puede cerrar un ejercicio.
+              </div>
+            )}
+
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              {COMPANY_OPTIONS.filter((c: any) => c.value && c.value !== "General").map((company: any) => {
+                const meta = getCompanyMeta(company.value);
+                const startMonth = company.fiscalYearStartMonth ?? DEFAULT_FISCAL_START_MONTH;
+                // El ejercicio que se puede cerrar es el ANTERIOR al que está corriendo: el actual
+                // todavía no terminó.
+                const enCurso = currentFiscalStartYear(startMonth, new Date());
+                const aCerrar = enCurso - 1;
+                const cierre = ultimoCierre(fiscalClosings, String(company.value));
+                const yaCerrado = cierre?.fiscalStartYear === aCerrar;
+                return (
+                  <div
+                    key={String(company.value)}
+                    style={{
+                      flex: "1 1 340px",
+                      minWidth: 320,
+                      border: "1px solid #e2e8f0",
+                      borderLeft: `4px solid ${meta.primary}`,
+                      borderRadius: 10,
+                      padding: "10px 12px",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ color: meta.primary, fontWeight: 800, marginBottom: 4 }}>
+                      {meta.short || String(company.value)}
+                    </div>
+                    <div style={{ fontSize: 13, color: "#475569" }}>
+                      En curso: <strong>{fiscalYearLabel(startMonth, enCurso)}</strong>
+                    </div>
+
+                    {cierre ? (
+                      <div style={{ marginTop: 8, fontSize: 13 }}>
+                        <div style={{ color: "#16a34a", fontWeight: 700 }}>
+                          Último cerrado: {fiscalYearLabel(startMonth, cierre.fiscalStartYear)}
+                        </div>
+                        <div style={{ color: "#475569" }}>
+                          Arrancó el año con {money(totalDeMoneda(cierre.billeteras, "ARS"))}
+                          {totalDeMoneda(cierre.billeteras, "USD") !== 0
+                            ? ` + ${money(totalDeMoneda(cierre.billeteras, "USD"), "USD")}`
+                            : ""}
+                        </div>
+                        <div style={{ color: "#64748b", fontSize: 12 }}>
+                          A cobrar {money(cierre.aCobrar)} · a pagar {money(cierre.aPagar)}
+                        </div>
+                        <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 2 }}>
+                          Cerrado el {String(cierre.closedAt).slice(0, 10)} por {cierre.closedBy || "—"}
+                        </div>
+                        {puedeCerrar && (
+                          <div style={{ marginTop: 6 }}>
+                            <ButtonLike secondary onClick={() => onReabrirEjercicio(cierre.id)}>
+                              Reabrir
+                            </ButtonLike>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 8, fontSize: 13, color: "#64748b" }}>
+                        Todavía no se cerró ningún ejercicio.
+                      </div>
+                    )}
+
+                    {puedeCerrar && !yaCerrado && (
+                      <div style={{ marginTop: 10 }}>
+                        <ButtonLike
+                          onClick={() => onCerrarEjercicio(company.value, aCerrar)}
+                          disabled={cierreBusy}
+                        >
+                          {cierreBusy ? "Cerrando…" : `Cerrar ${fiscalYearLabel(startMonth, aCerrar)}`}
+                        </ButtonLike>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {cierreMensaje && (
+              <div style={{ ...styles.noticeBox, marginTop: 12 }}>{cierreMensaje}</div>
+            )}
+
+            <div style={{ ...styles.sectionNote, marginTop: 12 }}>
+              Hace falta la <strong>carpeta vinculada</strong>: sin ella no se cierra, porque limpiar
+              sin haber guardado sería perder el año. El cierre pide confirmación dos veces y la
+              segunda hay que escribirla — es la única acción del sistema que borra de verdad.
+            </div>
           </Panel>
 
           <Panel title="Cash flow y estado de resultados del período" span="full">
