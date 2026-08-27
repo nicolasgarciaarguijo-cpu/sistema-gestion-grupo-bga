@@ -1,6 +1,10 @@
 import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { styles } from "../ui/styles";
 import { Panel, ButtonLike } from "../ui/primitives";
+import {
+  usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
+  thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
+} from "../ui/planilla";
 import { supabase } from "../lib/supabase";
 import {
   computeMonthAttendance,
@@ -199,6 +203,23 @@ export function AsistenciaTab({
 
   const weeks = useMemo(() => buildMonthGrid(month), [month]);
 
+  const anchosResumen = usePlanillaWidths("asistencia.resumen", { label: 260, col: 110, colCompact: 84 });
+
+  // El resumen se lee SEPARADO POR EMPRESA, igual que la nomina en Personal.
+  const resumenPorEmpresa = companyOptions
+    .filter((c: any) => c.value && c.value !== "General")
+    .map((c: any) => {
+      const meta = getCompanyMeta(c.value);
+      return {
+        company: c.value,
+        short: meta.short || c.value,
+        primary: meta.primary,
+        soft: (meta as any).soft || "#f1f5f9",
+        items: perEmployeeMonth.filter((r: any) => r.employee.company === c.value),
+      };
+    })
+    .filter((g: any) => g.items.length > 0);
+
   const dayCell = (cell: { key: string; day: number } | null, idx: number) => {
     if (!cell) return <div key={`blank-${idx}`} style={cellBlank} />;
     const sched = scheduleForDate(cell.key);
@@ -209,6 +230,31 @@ export function AsistenciaTab({
       const d = row.days.get(cell.key);
       if (d) chips.push({ name: row.employee.name || row.employee.legajo || "?", d });
     }
+    // Antes se apilaba el nombre de CADA empleado, uno debajo del otro y truncado: con doce personas
+    // el dia era un muro de texto ilegible. Ahora manda el conteo por estado (que es lo que se lee de
+    // un vistazo) y debajo van SOLO las excepciones -- los que llegaron tarde, faltaron o estan de
+    // vacaciones. A los que llegaron en horario no hace falta leerlos: se ven en el contador verde.
+    const porNivel = (nivel: AttendanceLevel) => chips.filter((c) => c.d.level === nivel);
+    const enHorario = porNivel("green");
+    const excepciones = chips.filter((c) => c.d.level !== "green" && c.d.level !== "none");
+    const contador = (nivel: AttendanceLevel, cant: number, titulo: string) =>
+      cant > 0 ? (
+        <span
+          key={nivel}
+          title={titulo}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 3,
+            fontSize: 12,
+            fontWeight: 800,
+            color: LEVEL_COLOR[nivel],
+          }}
+        >
+          <span style={{ width: 7, height: 7, borderRadius: 999, background: LEVEL_COLOR[nivel] }} />
+          {cant}
+        </span>
+      ) : null;
     return (
       <div key={cell.key} style={{ ...cellBase, ...(nonWorking ? cellOff : {}) }}>
         <div style={cellHead}>
@@ -216,13 +262,21 @@ export function AsistenciaTab({
           {sched && <span style={cellSched}>{sched.entry}</span>}
           {nonWorking && <span style={{ ...cellSched, color: "#94a3b8" }}>—</span>}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginTop: 4 }}>
-          {chips.map((c, i) => (
+        {chips.length > 0 && (
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
+            {contador("green", enHorario.length, enHorario.map((c) => c.name).join(", "))}
+            {contador("yellow", porNivel("yellow").length, porNivel("yellow").map((c) => c.name).join(", "))}
+            {contador("red", porNivel("red").length, porNivel("red").map((c) => c.name).join(", "))}
+            {contador("off", porNivel("off").length, porNivel("off").map((c) => c.name).join(", "))}
+          </div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 3 }}>
+          {excepciones.map((c, i) => (
             <span
               key={`${cell.key}-${i}`}
               title={c.d.label}
               style={{
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: 600,
                 color: LEVEL_COLOR[c.d.level],
                 whiteSpace: "nowrap",
@@ -303,13 +357,19 @@ export function AsistenciaTab({
           </div>
         </div>
 
-        <div style={{ ...styles.noticeBox, marginBottom: 10 }}>
-          Horario del taller: L-V {WORKSHOP_SCHEDULE.entry}–{WORKSHOP_SCHEDULE.exitWeekday}, Sáb{" "}
-          {WORKSHOP_SCHEDULE.entry}–{WORKSHOP_SCHEDULE.exitSaturday}. Tolerancia{" "}
-          {WORKSHOP_SCHEDULE.toleranceMinutes} min, máx {WORKSHOP_SCHEDULE.toleranceMaxPerMonth} por mes
-          (la 3.ª ya cuenta como tarde). Los horarios exactos se cargan/editan en la ficha de cada
-          empleado, bloque Presentismo. Cuando conectemos el reloj Dahua, se completa solo.
-        </div>
+        {/* Es informacion de referencia: se lee una vez y despues estorba arriba del calendario. */}
+        <details style={{ ...styles.noticeBox, marginBottom: 10 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+            Horario del taller: L-V {WORKSHOP_SCHEDULE.entry}–{WORKSHOP_SCHEDULE.exitWeekday}, Sáb{" "}
+            {WORKSHOP_SCHEDULE.entry}–{WORKSHOP_SCHEDULE.exitSaturday} · tolerancia{" "}
+            {WORKSHOP_SCHEDULE.toleranceMinutes} min
+          </summary>
+          <div style={{ marginTop: 6 }}>
+            Máx {WORKSHOP_SCHEDULE.toleranceMaxPerMonth} tolerancias por mes (la 3.ª ya cuenta como
+            tarde). Los horarios exactos se cargan y se editan en la ficha de cada empleado, bloque
+            Presentismo. Cuando conectemos el reloj Dahua, se completa solo.
+          </div>
+        </details>
 
         {shownEmployees.length === 0 ? (
           <div style={styles.empty}>No hay empleados para mostrar en esta empresa.</div>
@@ -332,37 +392,132 @@ export function AsistenciaTab({
       </Panel>
 
       {shownEmployees.length > 0 && (
-        <Panel title={`Resumen del mes — ${monthLabel(month)}`} span="full">
-          <div style={{ overflowX: "auto" }}>
-            <table style={styles.table}>
+        <Panel
+          title={`Resumen del mes — ${monthLabel(month)}`}
+          span="full"
+          actions={
+            <ButtonLike onClick={anchosResumen.toggleCompacto} secondary>
+              {anchosResumen.esCompacto ? "Ancho normal" : "Compacto"}
+            </ButtonLike>
+          }
+        >
+          <div style={{ ...planillaWrap, ...anchosResumen.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>Empleado</th>
-                  <th>Empresa</th>
-                  <th>Presentes</th>
-                  <th>En horario</th>
-                  <th>Tarde</th>
-                  <th>Tolerancias usadas</th>
-                  <th>Ausentes</th>
+                  <th style={thEsquina}>
+                    Empleado
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosResumen.startResize(ev, "label")}
+                      onDoubleClick={anchosResumen.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Presentes
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosResumen.startResize(ev, "col")}
+                      onDoubleClick={anchosResumen.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>En horario</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Tarde</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Ausentes</th>
+                  <th style={thFlexible}>Tolerancias usadas</th>
                 </tr>
               </thead>
               <tbody>
-                {perEmployeeMonth.map((row) => (
-                  <tr key={row.employee.id}>
-                    <td>{row.employee.name || row.employee.legajo}</td>
-                    <td>{getCompanyMeta(row.employee.company).short}</td>
-                    <td>{row.summary.present}</td>
-                    <td style={{ color: LEVEL_COLOR.green, fontWeight: 600 }}>{row.summary.onTime}</td>
-                    <td style={{ color: row.summary.late > 0 ? LEVEL_COLOR.yellow : undefined, fontWeight: 600 }}>
-                      {row.summary.late}
-                    </td>
-                    <td>
-                      {row.summary.toleratedLates}/{WORKSHOP_SCHEDULE.toleranceMaxPerMonth}
-                    </td>
-                    <td style={{ color: row.summary.absent > 0 ? LEVEL_COLOR.red : undefined, fontWeight: 600 }}>
-                      {row.summary.absent}
-                    </td>
-                  </tr>
+                {resumenPorEmpresa.map((grupo) => (
+                  <React.Fragment key={`asis-${grupo.company}`}>
+                    <tr>
+                      <td colSpan={6} style={styles.sectionCell}>
+                        <div
+                          style={{
+                            ...styles.sectionHeader,
+                            background: grupo.soft,
+                            color: grupo.primary,
+                            borderColor: grupo.primary,
+                          }}
+                        >
+                          {grupo.short} · {grupo.company}
+                        </div>
+                      </td>
+                    </tr>
+                    {grupo.items.map((row: any) => {
+                      const usadas = row.summary.toleratedLates;
+                      const tope = WORKSHOP_SCHEDULE.toleranceMaxPerMonth;
+                      return (
+                        <tr key={row.employee.id}>
+                          <td
+                            style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${grupo.primary}` }}
+                            title={`${row.employee.name} · legajo ${row.employee.legajo}`}
+                          >
+                            {row.employee.name || row.employee.legajo}
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{row.summary.present}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: LEVEL_COLOR.green }}>
+                            {row.summary.onTime}
+                          </td>
+                          <td
+                            style={{
+                              ...tdDato, textAlign: "right", fontWeight: 700,
+                              color: row.summary.late > 0 ? LEVEL_COLOR.yellow : "#cbd5e1",
+                            }}
+                          >
+                            {row.summary.late || "·"}
+                          </td>
+                          <td
+                            style={{
+                              ...tdDato, textAlign: "right", fontWeight: 700,
+                              color: row.summary.absent > 0 ? LEVEL_COLOR.red : "#cbd5e1",
+                            }}
+                          >
+                            {row.summary.absent || "·"}
+                          </td>
+                          <td style={tdFlexible}>
+                            {/* Se ve cuanto queda de tolerancia antes de que la proxima llegada tarde
+                                cuente como tarde de verdad. */}
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  width: 54,
+                                  height: 6,
+                                  borderRadius: 999,
+                                  background: "#e2e8f0",
+                                  overflow: "hidden",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    display: "block",
+                                    height: "100%",
+                                    width: `${Math.min(100, (usadas / Math.max(tope, 1)) * 100)}%`,
+                                    background: usadas >= tope ? LEVEL_COLOR.red : LEVEL_COLOR.yellow,
+                                  }}
+                                />
+                              </span>
+                              <span style={{ color: usadas >= tope ? LEVEL_COLOR.red : "#64748b", fontWeight: 600 }}>
+                                {usadas}/{tope}
+                              </span>
+                              {usadas >= tope && (
+                                <span style={{ color: LEVEL_COLOR.red, fontSize: 11 }}>
+                                  la próxima ya cuenta como tarde
+                                </span>
+                              )}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
