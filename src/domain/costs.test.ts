@@ -11,6 +11,7 @@ import {
   isAutoCostGroup,
   monthKeyLabel,
   resolveGroupKind,
+  realCostsByGroup,
   suggestedFixedMonthlyByGroup,
 } from "./costs";
 import type { CostGroup, CostEntry } from "./types";
@@ -341,5 +342,40 @@ describe("buildCostRows: caja chica clasificable", () => {
     expect(rows.find((r) => r.amount === 50)?.group).toBe(COST_GROUP_PETTY_CASH);
     // sigue siendo origen cajaChica (no se convierte en CostEntry -> no hay doble conteo)
     expect(rows.every((r) => r.origin === "cajaChica")).toBe(true);
+  });
+});
+
+describe("realCostsByGroup: la foto que viaja a Costos empresariales", () => {
+  const grupos: CostGroup[] = [
+    { id: 1, name: "Alquiler", kind: "fijo", auto: false, active: true } as CostGroup,
+    { id: 2, name: "Materiales", kind: "variable", auto: false, active: true } as CostGroup,
+  ];
+  const meses = ["2025-11", "2025-12", "2026-01"];
+  const fila = (group: string, date: string, amount: number) => ({
+    group, date, amount, company: "BGA" as any, administration: "blanco" as const, origin: "costo" as const,
+  });
+
+  it("trae los grupos FIJOS y los VARIABLES, no solo los fijos", () => {
+    const agg = aggregateCosts({ months: meses, groups: grupos, rows: [] as any });
+    expect(realCostsByGroup(agg).map((r) => r.group).sort()).toEqual(["Alquiler", "Materiales"]);
+  });
+
+  it("promedia sobre los meses CON movimientos, no sobre los del ejercicio", () => {
+    const agg = aggregateCosts({
+      months: meses,
+      groups: grupos,
+      rows: [fila("Alquiler", "2025-11-05", 100), fila("Alquiler", "2025-12-05", 200)] as any,
+    });
+    const alquiler = realCostsByGroup(agg).find((r) => r.group === "Alquiler")!;
+    expect(alquiler.total).toBe(300);
+    expect(alquiler.monthsWithData).toBe(2);
+    expect(alquiler.monthlyAverage).toBe(150);
+  });
+
+  it("un grupo sin gastos aparece igual, en cero y sin dividir por cero", () => {
+    const agg = aggregateCosts({ months: meses, groups: grupos, rows: [] as any });
+    const materiales = realCostsByGroup(agg).find((r) => r.group === "Materiales")!;
+    expect(materiales.monthsWithData).toBe(0);
+    expect(materiales.monthlyAverage).toBe(0);
   });
 });

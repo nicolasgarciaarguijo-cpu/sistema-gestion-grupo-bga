@@ -350,16 +350,37 @@ export function aggregateCosts(input: CostAggregationInput): CostAggregation {
   };
 }
 
+// Lo que la empresa gasta DE VERDAD, grupo por grupo: es lo que viaja al bloque
+// "Costos empresariales" de Marcadores. Van TODOS los grupos, fijos y variables, para que ahi se
+// vea el cuadro completo y no solo la mitad fija.
+// El promedio se saca sobre los meses que TIENEN movimientos: si de doce meses cargaste tres,
+// divide por tres. Si dividiera por doce, un ejercicio a medio cargar mostraria costos irreales
+// bajos y los presupuestos saldrian baratos.
+export type RealCostByGroup = {
+  group: string;
+  kind: CostKind;
+  auto: boolean;
+  monthlyAverage: number;
+  monthsWithData: number;
+  total: number;
+};
+
+export function realCostsByGroup(aggregation: CostAggregation): RealCostByGroup[] {
+  return aggregation.rows.map((row) => ({
+    group: row.group,
+    kind: row.kind,
+    auto: row.auto,
+    monthlyAverage: row.monthsWithData > 0 ? row.total / row.monthsWithData : 0,
+    monthsWithData: row.monthsWithData,
+    total: row.total,
+  }));
+}
+
 // Promedio mensual real de cada grupo FIJO, para sugerir el "monto mensual" de Marcadores.
-// Promedia solo sobre los meses que tienen movimientos (si cargaste 3 de 12, divide por 3).
 export function suggestedFixedMonthlyByGroup(
   aggregation: CostAggregation
 ): Array<{ group: string; monthlyAverage: number; monthsWithData: number }> {
-  return aggregation.rows
+  return realCostsByGroup(aggregation)
     .filter((row) => row.kind === "fijo" && row.monthsWithData > 0)
-    .map((row) => ({
-      group: row.group,
-      monthlyAverage: row.total / row.monthsWithData,
-      monthsWithData: row.monthsWithData,
-    }));
+    .map(({ group, monthlyAverage, monthsWithData }) => ({ group, monthlyAverage, monthsWithData }));
 }

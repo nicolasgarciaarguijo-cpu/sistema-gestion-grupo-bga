@@ -16213,6 +16213,10 @@ export default function App() {
           laborMarkers={laborMarkers}
           personalProvisionMarkers={personalProvisionMarkers}
           fixedMarkerGroupOptions={fixedMarkerGroupOptions}
+          costsMonths={costsMonths}
+          costGroups={costGroups}
+          costRows={costRows}
+          costsFiscalLabel={costsFiscalLabel}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
           promptAndCreateCostAnalysisGroup={promptAndCreateCostAnalysisGroup}
