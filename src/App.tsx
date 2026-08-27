@@ -327,6 +327,10 @@ type CompanyOption = {
   bankCbu: string;
   bankAccount: string;
   domicilio?: string; // domicilio de la empresa (para el recibo de sueldo, LCT art. 140)
+  // Logo que sale impreso en el recibo de sueldo de ESA empresa. Cada empresa tiene el suyo: antes
+  // el recibo tomaba el logo del presupuesto abierto, asi que un empleado de De Raiz podia salir con
+  // el logo de BGA (o sin logo, si no habia presupuesto con logo cargado).
+  reciboLogo?: string;
   fiscalYearStartMonth?: number; // mes de inicio del ano fiscal (1-12); default noviembre (11)
 };
 
@@ -8197,7 +8201,10 @@ export default function App() {
     window.setTimeout(() => exportPrint("payment-receipt"), 0);
   };
 
-  // Contexto común de los recibos: datos de la empresa (nombre/CUIT/domicilio/banco) + logo de presupuestos.
+  // Contexto comun de los recibos: datos de la empresa (nombre/CUIT/domicilio/banco) + su logo.
+  // CADA EMPRESA TIENE SU RECIBO: el logo sale del catalogo de la empresa del empleado. El logo del
+  // presupuesto abierto queda solo como respaldo para no romper los recibos de quien todavia no
+  // cargo el suyo.
   const buildReciboContext = (employee: Employee) => {
     const co = COMPANY_OPTIONS.find((c) => c.value === employee.company);
     const company = {
@@ -8206,8 +8213,27 @@ export default function App() {
       domicilio: co?.domicilio,
       bankName: co?.bankName,
     };
-    const logo = budget.logos?.[0]?.preview;
+    const logo = co?.reciboLogo || budget.logos?.[0]?.preview;
     return { company, logo };
+  };
+
+  // Carga (o quita) el logo del recibo de una empresa. Se comprime chico y en PNG: es un logo, no una
+  // foto, y viaja en el estado que se sincroniza.
+  const setCompanyReciboLogo = async (companyValue: string, file: File | null) => {
+    if (!file) {
+      setCompanyCatalog((prev) =>
+        prev.map((item) => (item.value === companyValue ? { ...item, reciboLogo: undefined } : item))
+      );
+      return;
+    }
+    try {
+      const image = await readImage(file, { maxDimension: 420, mimeType: "image/png", quality: 0.92 });
+      setCompanyCatalog((prev) =>
+        prev.map((item) => (item.value === companyValue ? { ...item, reciboLogo: image.preview } : item))
+      );
+    } catch {
+      window.alert("No se pudo leer la imagen del logo.");
+    }
   };
 
   const exportReciboBlanco = (employee: Employee) => {
@@ -16527,6 +16553,10 @@ export default function App() {
           createEmployeeProvisionFromModal={createEmployeeProvisionFromModal}
           exportPersonalReport={exportPersonalReport}
           exportReciboBlanco={exportReciboBlanco}
+          companyReciboLogos={Object.fromEntries(
+            COMPANY_OPTIONS.map((c) => [c.value, c.reciboLogo || ""])
+          )}
+          setCompanyReciboLogo={setCompanyReciboLogo}
           exportReciboNegro={exportReciboNegro}
           handleAttendanceAttachment={handleAttendanceAttachment}
           handleEmployeeDocumentUpload={handleEmployeeDocumentUpload}

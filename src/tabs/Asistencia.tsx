@@ -58,10 +58,8 @@ const buildMonthGrid = (month: string): Array<Array<{ key: string; day: number }
   return weeks;
 };
 
-// Empresa con reloj Dahua conectado hoy (De Raíz). Cuando se sume BGA, esto pasa a depender del filtro.
-const SYNC_COMPANY = "De raiz s.r.l";
-
 type DahuaSyncRow = {
+  company: string;
   requested_at: string | null;
   last_run_at: string | null;
   last_status: string | null;
@@ -69,20 +67,28 @@ type DahuaSyncRow = {
   last_count: number | null;
 };
 
-// Botón "Sincronizar asistencia" + estado. El botón NO lee el reloj (es de red local): deja un pedido
-// en Supabase (RPC) y la PC de la oficina (watcher) lo ejecuta y reporta el resultado acá.
-function SyncReloj() {
-  const [row, setRow] = useState<DahuaSyncRow | null>(null);
-  const [busy, setBusy] = useState(false);
+// Boton "Sincronizar asistencia" + estado, UNA TARJETA POR EMPRESA. El boton NO lee el reloj (es de
+// red local): deja un pedido en Supabase (RPC) y la PC de la oficina (watcher) lo ejecuta y reporta
+// el resultado aca.
+//
+// Cada empresa lleva su color: de un vistazo se ve DONDE se esta trabajando y cual quedo atrasada.
+// Antes habia una sola tarjeta con De Raiz hardcodeada, asi que BGA no existia en esta pantalla.
+function SyncReloj({
+  companyOptions,
+  getCompanyMeta,
+}: {
+  companyOptions: Array<{ value: CompanyName; short?: string }>;
+  getCompanyMeta: (company: CompanyName) => { short: string; primary: string };
+}) {
+  const [rows, setRows] = useState<DahuaSyncRow[]>([]);
+  const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async () => {
     const { data } = await supabase
       .from("dahua_sync")
-      .select("requested_at,last_run_at,last_status,last_message,last_count")
-      .eq("company", SYNC_COMPANY)
-      .maybeSingle();
-    if (data) setRow(data as DahuaSyncRow);
+      .select("company,requested_at,last_run_at,last_status,last_message,last_count");
+    if (data) setRows(data as DahuaSyncRow[]);
   }, []);
 
   useEffect(() => {
@@ -91,10 +97,10 @@ function SyncReloj() {
     return () => clearInterval(t);
   }, [load]);
 
-  const pedir = async () => {
-    setBusy(true);
+  const pedir = async (company: string) => {
+    setBusy(company);
     setMsg("");
-    const { error } = await supabase.rpc("request_attendance_sync", { p_company: SYNC_COMPANY });
+    const { error } = await supabase.rpc("request_attendance_sync", { p_company: company });
     if (error) {
       setMsg("No se pudo pedir la sincronización: " + error.message);
     } else {
@@ -102,51 +108,84 @@ function SyncReloj() {
         "Pedido enviado. La PC de la oficina lo procesa en 1–3 min (tiene que estar prendida y el reloj en red)."
       );
     }
-    setBusy(false);
+    setBusy(null);
     load();
   };
 
-  const pendiente =
-    !!row?.requested_at && (!row?.last_run_at || row.requested_at > row.last_run_at);
-  const st = row?.last_status || "";
-  const color =
-    st === "ok" ? "#16a34a" : st === "error" ? "#dc2626" : st === "running" ? "#ca8a04" : "#64748b";
   const fmt = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" }) : "—";
-  const estadoTxt =
-    st === "ok"
-      ? "OK"
-      : st === "error"
-      ? "Error"
-      : st === "running"
-      ? "Sincronizando…"
-      : st === "nada"
-      ? "Sin novedades"
-      : "—";
+
+  // Se muestran las empresas del catálogo (no las filas sueltas de la base): así una empresa nueva
+  // aparece en cuanto existe, aunque todavía no haya sincronizado nunca.
+  const empresas = companyOptions.filter((c) => c.value && String(c.value) !== "General");
 
   return (
     <Panel title="Sincronización con el reloj (Dahua)" span="full">
-      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14 }}>
-        <ButtonLike onClick={pedir} disabled={busy}>
-          {busy ? "Enviando pedido…" : "Sincronizar asistencia ahora"}
-        </ButtonLike>
-        <div style={{ fontSize: 13, lineHeight: 1.5 }}>
-          <div>
-            <strong>Última sincronización:</strong> {fmt(row?.last_run_at || null)}{" "}
-            <span style={{ color, fontWeight: 600 }}>· {estadoTxt}</span>
-          </div>
-          {row?.last_message && (
-            <div style={{ color: "#64748b" }}>{row.last_message}</div>
-          )}
-          {pendiente && (
-            <div style={{ color: "#ca8a04" }}>Pedido en cola — esperando a la PC de la oficina…</div>
-          )}
-        </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        {empresas.map((c) => {
+          const meta = getCompanyMeta(c.value);
+          const row = rows.find((r) => r.company === c.value) || null;
+          const pendiente =
+            !!row?.requested_at && (!row?.last_run_at || row.requested_at > row.last_run_at);
+          const st = row?.last_status || "";
+          const nuncaCorrio = !row?.last_run_at;
+          const color =
+            st === "ok" ? "#16a34a" : st === "error" ? "#dc2626" : st === "running" ? "#ca8a04" : "#64748b";
+          const estadoTxt =
+            st === "ok"
+              ? "OK"
+              : st === "error"
+              ? "Error"
+              : st === "running"
+              ? "Sincronizando…"
+              : st === "nada"
+              ? "Sin novedades"
+              : nuncaCorrio
+              ? "Nunca sincronizó"
+              : "—";
+          return (
+            <div
+              key={String(c.value)}
+              style={{
+                flex: "1 1 320px",
+                minWidth: 300,
+                border: "1px solid #e2e8f0",
+                borderRadius: 10,
+                borderLeft: `4px solid ${meta.primary}`,
+                padding: "10px 12px",
+                background: "#fff",
+              }}
+            >
+              <div style={{ color: meta.primary, fontWeight: 800, marginBottom: 6 }}>
+                {meta.short || String(c.value)}
+              </div>
+              <ButtonLike onClick={() => pedir(String(c.value))} disabled={busy === String(c.value)}>
+                {busy === String(c.value) ? "Enviando pedido…" : "Sincronizar ahora"}
+              </ButtonLike>
+              <div style={{ fontSize: 13, lineHeight: 1.5, marginTop: 8 }}>
+                <div>
+                  <strong>Última sincronización:</strong> {fmt(row?.last_run_at || null)}{" "}
+                  <span style={{ color, fontWeight: 600 }}>· {estadoTxt}</span>
+                </div>
+                {row?.last_message && <div style={{ color: "#64748b" }}>{row.last_message}</div>}
+                {pendiente && (
+                  <div style={{ color: "#ca8a04" }}>Pedido en cola — esperando a la PC de la oficina…</div>
+                )}
+                {nuncaCorrio && !pendiente && (
+                  <div style={{ color: "#64748b" }}>
+                    Falta darle de alta el reloj: los empleados tienen que estar cargados acá y en el
+                    equipo, con su UserID mapeado.
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
       {msg && <div style={{ ...styles.noticeBox, marginTop: 10 }}>{msg}</div>}
       <div style={{ ...styles.noticeBox, marginTop: 10, fontSize: 12 }}>
-        El botón deja un pedido; el reloj lo lee la PC de la oficina (es un equipo de red local). Requiere
-        esa PC prendida y en la red del reloj. También corre solo cada mañana. Solo De Raíz por ahora.
+        El botón deja un pedido; el reloj lo lee la PC de la oficina (es un equipo de red local).
+        Requiere esa PC prendida y en la red del reloj. También corre solo cada mañana.
       </div>
     </Panel>
   );
@@ -295,7 +334,7 @@ export function AsistenciaTab({
 
   return (
     <div style={styles.column}>
-      <SyncReloj />
+      <SyncReloj companyOptions={companyOptions} getCompanyMeta={getCompanyMeta} />
       {sinHoras > 0 && onPrecargarHoras && (
         <div style={{ ...styles.noticeBox, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderLeft: "4px solid #f59e0b" }}>
           <span style={{ flex: 1, minWidth: 260 }}>

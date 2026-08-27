@@ -78,6 +78,9 @@ type PersonalTabProps = {
   exportPersonalReport: any;
   exportReciboBlanco: any;
   exportReciboNegro: any;
+  // Logo del recibo POR EMPRESA (cada empresa tiene el suyo). Clave = value de la empresa.
+  companyReciboLogos: Record<string, string>;
+  setCompanyReciboLogo: (companyValue: string, file: File | null) => void;
   handleAttendanceAttachment: any;
   handleEmployeeDocumentUpload: any;
   handleEmployeeProvisionUpload: any;
@@ -162,7 +165,8 @@ export function PersonalTab(props: PersonalTabProps) {
     setEmployeeBaseConfig, setEmployeeDocumentModal, setEmployeeProvisionModal,
     setIsEmployeeSetupModalOpen, setNewEmployeeDraft, setPayrollMonth, setScaleRows,
     setSelectedEmployeeId, addEmployee, createEmployeeDocumentFromModal,
-    createEmployeeProvisionFromModal, exportPersonalReport, exportReciboBlanco, exportReciboNegro, handleAttendanceAttachment,
+    createEmployeeProvisionFromModal, exportPersonalReport, exportReciboBlanco, exportReciboNegro,
+    companyReciboLogos, setCompanyReciboLogo, handleAttendanceAttachment,
     handleEmployeeDocumentUpload, handleEmployeeProvisionUpload, handleScalePdfUpload,
     removeEmployee, removeEmployeeDocument, removeEmployeeProvisionItem,
     saveEmployeePayrollMonth, syncLaborMarkersFromPersonal, updateAttendanceRecord,
@@ -551,6 +555,27 @@ export function PersonalTab(props: PersonalTabProps) {
                     {selectedEmployeeId === emp.id ? "Cerrar ficha" : "Abrir ficha"}
                   </button>
                   <QuickMenuSep />
+                  {/* A fin de mes hay que corroborar recibo por recibo: desde la nomina se imprimen
+                      sin tener que abrir y cerrar la ficha de cada uno. */}
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      exportReciboBlanco(emp);
+                      cerrar();
+                    }}
+                  >
+                    Recibo blanco
+                  </button>
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      exportReciboNegro(emp);
+                      cerrar();
+                    }}
+                  >
+                    Recibo negro
+                  </button>
+                  <QuickMenuSep />
                   <button
                     style={{ ...quickMenuItem, color: "#b91c1c" }}
                     onClick={() => {
@@ -933,6 +958,46 @@ export function PersonalTab(props: PersonalTabProps) {
               title={`Ficha del empleado: ${selectedEmployee.name || "Empleado"}`}
               actions={
                 <div style={styles.inlineActions}>
+                  {/* El recibo sale con el logo de LA EMPRESA DEL EMPLEADO, no con el del presupuesto
+                      abierto. Se carga una vez por empresa y queda. */}
+                  {(() => {
+                    const empresa = String(selectedEmployee.company);
+                    const logo = companyReciboLogos?.[empresa] || "";
+                    const meta = getCompanyMeta(selectedEmployee.company);
+                    return (
+                      <label
+                        style={{ ...styles.buttonLikeLabel, display: "inline-flex", alignItems: "center", gap: 6 }}
+                        title={
+                          logo
+                            ? `Logo del recibo de ${meta.short || empresa}. Click derecho para quitarlo.`
+                            : `${meta.short || empresa} no tiene logo de recibo cargado`
+                        }
+                        onContextMenu={(ev) => {
+                          if (!logo) return;
+                          ev.preventDefault();
+                          if (window.confirm(`¿Quitar el logo del recibo de ${meta.short || empresa}?`)) {
+                            setCompanyReciboLogo(empresa, null);
+                          }
+                        }}
+                      >
+                        {logo ? (
+                          <img src={logo} alt="" style={{ height: 18, maxWidth: 70, objectFit: "contain" }} />
+                        ) : (
+                          <span style={{ color: "#b45309", fontWeight: 700 }}>Sin logo</span>
+                        )}
+                        <span style={{ color: meta.primary, fontWeight: 700 }}>{meta.short || empresa}</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          style={{ display: "none" }}
+                          onChange={(e) => {
+                            setCompanyReciboLogo(empresa, e.target.files?.[0] || null);
+                            e.target.value = "";
+                          }}
+                        />
+                      </label>
+                    );
+                  })()}
                   <ButtonLike onClick={() => exportReciboBlanco(selectedEmployee)}>Recibo blanco</ButtonLike>
                   <ButtonLike onClick={() => exportReciboNegro(selectedEmployee)} secondary>Recibo negro</ButtonLike>
                   <ButtonLike onClick={() => setSelectedEmployeeId(null)} secondary>Cerrar ficha</ButtonLike>
