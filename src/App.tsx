@@ -143,6 +143,7 @@ import { PresupuestoTab } from "./tabs/Presupuesto";
 import { PersonalTab } from "./tabs/Personal";
 import { AsistenciaTab } from "./tabs/Asistencia";
 import { createPortal } from "react-dom";
+import { renderToStaticMarkup } from "react-dom/server";
 import type {
   CompanyName,
   CompanyScope,
@@ -8236,6 +8237,45 @@ export default function App() {
     }
   };
 
+  // Guarda el recibo en el legajo del empleado: Personal/<EMPRESA>/<empleado>/Recibos/<ejercicio>/<mes>.
+  // Best-effort y en silencio: si no hay carpeta vinculada no molesta, se imprime igual. Se guarda
+  // EXACTAMENTE lo que se imprime (se renderiza el mismo componente), asi el papel y el archivo no se
+  // separan nunca.
+  const guardarReciboEnCarpeta = async (
+    employee: Employee,
+    monthKey: string,
+    tipo: "blanco" | "negro",
+    nodo: React.ReactElement
+  ): Promise<boolean> => {
+    try {
+      const handle = await loadDirHandle();
+      if (!handle) return false;
+      const granted = await ensureWritePermission(handle);
+      if (!granted) return false;
+      const meta = getCompanyMeta(employee.company);
+      const co = COMPANY_OPTIONS.find((c) => c.value === employee.company);
+      const carpeta = personalSectionPath({
+        companyShort: meta.short,
+        employeeFolder: safeName(employee.name || `Empleado ${employee.id}`),
+        section: "Recibos",
+        iso: `${monthKey}-01`,
+        fiscalStartMonth: co?.fiscalYearStartMonth,
+      });
+      const archivo = `Recibo ${tipo} ${monthKey} - ${safeName(employee.name || "empleado")}.html`;
+      const html =
+        `<!doctype html><html lang="es"><head><meta charset="utf-8">` +
+        `<title>Recibo ${tipo} ${monthKey} - ${employee.name || ""}</title></head>` +
+        `<body style="margin:0;padding:14mm;font-family:Arial,sans-serif">` +
+        renderToStaticMarkup(nodo) +
+        `</body></html>`;
+      await writeFileToFolder(handle, `${carpeta}/${archivo}`, html);
+      return true;
+    } catch (err) {
+      console.error("[recibo] guardar en la carpeta del empleado:", err);
+      return false;
+    }
+  };
+
   const exportReciboBlanco = (employee: Employee) => {
     const summary = getEmployeePayrollSummary(employee);
     const { company, logo } = buildReciboContext(employee);
@@ -8255,6 +8295,21 @@ export default function App() {
     const sussDeposit = sussE ? { date: String(sussE.date), amount: Number(sussE.amount || 0) } : null;
     const ivaVep = ivaE ? { date: String(ivaE.date), amount: Number(ivaE.amount || 0) } : null;
     setReciboData({ employee, monthKey: payrollMonth, summary, company, logo, sussDeposit, ivaVep });
+    void guardarReciboEnCarpeta(
+      employee,
+      payrollMonth,
+      "blanco",
+      <ReciboBlancoDocument
+        employee={employee}
+        company={company}
+        summary={summary}
+        config={employeeBaseConfig}
+        monthKey={payrollMonth}
+        logo={logo}
+        sussDeposit={sussDeposit}
+        ivaVep={ivaVep}
+      />
+    );
     window.setTimeout(() => exportPrint("recibo-blanco"), 0);
   };
 
@@ -8280,6 +8335,21 @@ export default function App() {
         employee.employmentType === "fuera_convenio" && isPartnerCategory(employee.category),
     });
     setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, workingDays, daysWorked, negroAmount } });
+    void guardarReciboEnCarpeta(
+      employee,
+      monthKey,
+      "negro",
+      <ReciboNegroDocument
+        employee={employee}
+        company={company}
+        monthKey={monthKey}
+        totalBlack={totalBlack}
+        workingDays={workingDays}
+        daysWorked={daysWorked}
+        negroAmount={negroAmount}
+        logo={logo}
+      />
+    );
     window.setTimeout(() => exportPrint("recibo-negro"), 0);
   };
 
