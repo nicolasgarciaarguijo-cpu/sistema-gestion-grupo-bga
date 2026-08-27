@@ -107,6 +107,12 @@ type AprobadosTabProps = {
   onClientSummary: (job: any) => void;
 };
 
+// Bloques que Nicolas pidio ocultar POR EL MOMENTO (2026-08-27). Se dejan en el codigo, no se
+// borran: volver a mostrarlos es poner el flag en true. El tipo va explicito para que TypeScript no
+// estreche a `false` y marque el JSX de adentro como inalcanzable.
+const MOSTRAR_PLANOS_PENDIENTES: boolean = false;
+const MOSTRAR_EVOLUCION_TRABAJOS: boolean = false;
+
 export function AprobadosTab({
   jobSemaphoreSummary,
   approvedJobsSummary,
@@ -233,78 +239,80 @@ export function AprobadosTab({
             />
           </Panel>
 
-          <Panel span="full" title="Planos de fabricacion pendientes">
-            {planosPending.length === 0 ? (
-              <div style={styles.empty}>
-                Todos los trabajos activos tienen los planos confirmados.
-              </div>
-            ) : (
-              <div style={{ ...planillaWrap, ...anchosPlanos.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Cliente · proyecto
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosPlanos.startResize(ev, "label")}
-                        onDoubleClick={anchosPlanos.resetLabel}
-                      />
-                    </th>
-                    <th style={thColumna}>
-                      Inicio fabricación
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosPlanos.startResize(ev, "col")}
-                        onDoubleClick={anchosPlanos.resetCol}
-                      />
-                    </th>
-                    <th style={thColumna}>Cuenta regresiva</th>
-                    <th style={thFlexible}>Planos · empresa</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {planosPending.map(({ job, sem }) => (
-                    <tr
-                      key={job.id}
-                      style={sem.overdue ? { background: "#fef2f2" } : undefined}
-                      title="Click derecho: abrir la ficha del trabajo"
-                      onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
-                    >
-                      <td
-                        style={{
-                          ...tdNombre, fontWeight: 400, background: "inherit",
-                          boxShadow: `inset 4px 0 0 ${getCompanyMeta(job.company).primary}`,
-                        }}
-                        title={`${job.client} · ${job.project}`}
-                      >
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
-                          <Semaforo level={PLANO_TONE_LEVEL[sem.tone]} size={10} title={sem.label} />
-                          <span>
-                            <strong style={{ color: "inherit" }}>{job.client}</strong>{" "}
-                            <span style={{ color: "#64748b" }}>{job.project}</span>
-                          </span>
-                        </span>
-                      </td>
-                      <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(job.startDate)}</td>
-                      <td style={{ ...tdDato, fontWeight: 600, color: sem.overdue ? "#dc2626" : "#475569" }}>
-                        {planoDaysText(sem.daysToStart)}
-                      </td>
-                      <td style={{ ...tdFlexible, color: "#64748b" }}>
-                        {sem.level === "sin" ? "Sin planos" : `${sem.fileCount} archivo(s), sin confirmar`}
-                        <span style={{ color: "#94a3b8" }}> · {getCompanyMeta(job.company).short}</span>
-                      </td>
+          {MOSTRAR_PLANOS_PENDIENTES && (
+            <Panel span="full" title="Planos de fabricacion pendientes">
+              {planosPending.length === 0 ? (
+                <div style={styles.empty}>
+                  Todos los trabajos activos tienen los planos confirmados.
+                </div>
+              ) : (
+                <div style={{ ...planillaWrap, ...anchosPlanos.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thEsquina}>
+                        Cliente · proyecto
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosPlanos.startResize(ev, "label")}
+                          onDoubleClick={anchosPlanos.resetLabel}
+                        />
+                      </th>
+                      <th style={thColumna}>
+                        Inicio fabricación
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosPlanos.startResize(ev, "col")}
+                          onDoubleClick={anchosPlanos.resetCol}
+                        />
+                      </th>
+                      <th style={thColumna}>Cuenta regresiva</th>
+                      <th style={thFlexible}>Planos · empresa</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </Panel>
+                  </thead>
+                  <tbody>
+                    {planosPending.map(({ job, sem }) => (
+                      <tr
+                        key={job.id}
+                        style={sem.overdue ? { background: "#fef2f2" } : undefined}
+                        title="Click derecho: abrir la ficha del trabajo"
+                        onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
+                      >
+                        <td
+                          style={{
+                            ...tdNombre, fontWeight: 400, background: "inherit",
+                            boxShadow: `inset 4px 0 0 ${getCompanyMeta(job.company).primary}`,
+                          }}
+                          title={`${job.client} · ${job.project}`}
+                        >
+                          <span style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                            <Semaforo level={PLANO_TONE_LEVEL[sem.tone]} size={10} title={sem.label} />
+                            <span>
+                              <strong style={{ color: "inherit" }}>{job.client}</strong>{" "}
+                              <span style={{ color: "#64748b" }}>{job.project}</span>
+                            </span>
+                          </span>
+                        </td>
+                        <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(job.startDate)}</td>
+                        <td style={{ ...tdDato, fontWeight: 600, color: sem.overdue ? "#dc2626" : "#475569" }}>
+                          {planoDaysText(sem.daysToStart)}
+                        </td>
+                        <td style={{ ...tdFlexible, color: "#64748b" }}>
+                          {sem.level === "sin" ? "Sin planos" : `${sem.fileCount} archivo(s), sin confirmar`}
+                          <span style={{ color: "#94a3b8" }}> · {getCompanyMeta(job.company).short}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
+              )}
+            </Panel>
+          )}
 
     <Panel
       span="full"
@@ -342,8 +350,14 @@ export function AprobadosTab({
               })()}
               <div style={{ ...planillaWrap, ...anchosAprobados.vars }}>
               <table style={planillaTable}>
+                {/* Antes la ultima columna metia estado, facturado, planos, fechas y origen en un
+                    solo renglon con flex-wrap: se leia todo apelmazado. Ahora cada cosa tiene su
+                    columna, con su ancho y su alineacion. */}
                 <colgroup>
                   <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colDato} />
@@ -369,14 +383,17 @@ export function AprobadosTab({
                     <th style={{ ...thColumna, textAlign: "right" }}>Cobrado</th>
                     <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
                     <th style={{ ...thColumna, textAlign: "right" }}>Comisión pend.</th>
-                    <th style={thFlexible}>Estado · facturado · planos · fechas</th>
+                    <th style={thColumna}>Estado</th>
+                    <th style={thColumna}>Facturado</th>
+                    <th style={thColumna}>Planos</th>
+                    <th style={thFlexible}>Aprobación → inicio → entrega</th>
                   </tr>
                 </thead>
                 <tbody>
                   {companyApprovedSections.map((group) => (
                     <React.Fragment key={group.value}>
                       <tr>
-                        <td colSpan={6} style={styles.sectionCell}>
+                        <td colSpan={9} style={styles.sectionCell}>
                           <div
                             style={{
                               ...styles.sectionHeader,
@@ -442,41 +459,43 @@ export function AprobadosTab({
                           <td style={{ ...tdDato, textAlign: "right", color: moneyToneColor("out") }}>
                             {money(job.commissionPending)}
                           </td>
-                          <td style={{ ...tdFlexible, color: "#64748b" }}>
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
+                          <td style={{ ...tdDato, color: "#64748b" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                               {(() => {
                                 const sj = getJobSemaphore(job);
                                 return <Semaforo level={sj.level} size={10} title={sj.label} />;
                               })()}
                               <span>{job.executionStatus}</span>
-                              <span style={{ color: "#cbd5e1" }}>·</span>
+                            </span>
+                          </td>
+                          <td style={{ ...tdDato, color: "#64748b" }}>
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
                               {(() => {
                                 const sem = jobInvoicingSem(job);
                                 return <Semaforo level={sem.level} size={10} title={sem.label} />;
                               })()}
-                              <span>{pct(job.billedPct)} facturado</span>
-                              <span style={{ color: "#cbd5e1" }}>·</span>
-                              {(() => {
-                                const ps = getPlanoSemaphore(job, today);
-                                return (
-                                  <span
-                                    style={{ display: "inline-flex", alignItems: "center", gap: 4 }}
-                                    title={`${ps.label}${ps.daysToStart !== null ? " · " + planoDaysText(ps.daysToStart) : ""}`}
-                                  >
-                                    <Semaforo level={PLANO_TONE_LEVEL[ps.tone]} size={10} title={ps.label} />
-                                    <span>
-                                      {ps.level === "listo" ? "planos listos" : ps.level === "proceso" ? "planos sin confirmar" : "sin planos"}
-                                    </span>
-                                  </span>
-                                );
-                              })()}
-                              <span style={{ color: "#cbd5e1" }}>·</span>
-                              <span style={{ color: "#94a3b8" }} title="Aprobación · inicio · entrega">
-                                {formatDateDisplay(job.approvalDate)} → {formatDateDisplay(job.startDate)} → {formatDateDisplay(job.estimatedDeliveryDate)}
-                              </span>
-                              <span style={{ color: "#cbd5e1" }}>·</span>
-                              <span style={{ color: "#94a3b8" }}>{getApprovedJobSourceLabel(job)}</span>
+                              <span>{pct(job.billedPct)}</span>
                             </span>
+                          </td>
+                          <td style={{ ...tdDato, color: "#64748b" }}>
+                            {(() => {
+                              const ps = getPlanoSemaphore(job, today);
+                              return (
+                                <span
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+                                  title={`${ps.label}${ps.daysToStart !== null ? " · " + planoDaysText(ps.daysToStart) : ""}`}
+                                >
+                                  <Semaforo level={PLANO_TONE_LEVEL[ps.tone]} size={10} title={ps.label} />
+                                  <span>
+                                    {ps.level === "listo" ? "listos" : ps.level === "proceso" ? "sin confirmar" : "sin planos"}
+                                  </span>
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td style={{ ...tdFlexible, color: "#94a3b8" }} title={getApprovedJobSourceLabel(job)}>
+                            {formatDateDisplay(job.approvalDate)} → {formatDateDisplay(job.startDate)} →{" "}
+                            {formatDateDisplay(job.estimatedDeliveryDate)}
                           </td>
                         </tr>
                         );
@@ -490,99 +509,101 @@ export function AprobadosTab({
             )}
           </Panel>
 
-          <Panel title="Evolucion de trabajos" span="full">
-            {approvedJobsTimelineRows.length === 0 ? (
-              <div style={styles.empty}>Todavia no hay trabajos aprobados para mostrar en la linea de tiempo.</div>
-            ) : (
-              <div style={{ ...planillaWrap, ...anchosLinea.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Presupuesto · cliente
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosLinea.startResize(ev, "label")}
-                        onDoubleClick={anchosLinea.resetLabel}
-                      />
-                    </th>
-                    <th style={thColumna}>
-                      Tiempo
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosLinea.startResize(ev, "col")}
-                        onDoubleClick={anchosLinea.resetCol}
-                      />
-                    </th>
-                    <th style={thColumna}>Avance</th>
-                    <th style={thFlexible}>Fechas · compras</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {approvedJobsTimelineRows.map((row) => {
-                    const companyMetaRow = getCompanyMeta(row.company);
-                    return (
-                      <tr key={`timeline-${row.id}`}>
-                        <td
-                          style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${companyMetaRow.primary}` }}
-                          title={`${row.budgetNumber} · ${row.client}`}
-                        >
-                          <strong style={{ color: "#0f172a" }}>
-                            {row.isUpdate ? `${row.budgetNumber} · Act. ${row.revisionNumber - 1}` : row.budgetNumber}
-                          </strong>{" "}
-                          <span style={{ color: "#475569" }}>{row.client}</span>
-                        </td>
-                        <td style={{ ...tdDato, padding: "2px 6px" }}>
-                          <div style={styles.timelineBlock}>
-                            <div style={styles.timelineLabel}>{row.elapsedDays} / {row.totalDays} dias</div>
-                            <div style={styles.ganttTrack}>
-                              <div
-                                style={{ ...styles.ganttFill, width: `${row.timeProgressPct}%`, background: companyMetaRow.primary }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ ...tdDato, padding: "2px 6px" }}>
-                          <div style={styles.timelineBlock}>
-                            <div style={styles.timelineLabel}>{row.executionStatus}</div>
-                            <div style={styles.ganttTrack}>
-                              <div
-                                style={{
-                                  ...styles.ganttFill,
-                                  width: `${row.statusProgressPct}%`,
-                                  background:
-                                    row.executionStatus === "finalizado"
-                                      ? "#166534"
-                                      : row.executionStatus === "en_curso"
-                                      ? companyMetaRow.primary
-                                      : "#92400e",
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ ...tdFlexible, color: "#64748b" }}>
-                          {formatDateDisplay(row.start)} → {formatDateDisplay(row.end)}
-                          <span style={{ color: "#cbd5e1" }}> · </span>
-                          <span
-                            style={{ fontWeight: 700, color: row.materialMissingCount > 0 ? "#ca8a04" : "#166534" }}
+          {MOSTRAR_EVOLUCION_TRABAJOS && (
+            <Panel title="Evolucion de trabajos" span="full">
+              {approvedJobsTimelineRows.length === 0 ? (
+                <div style={styles.empty}>Todavia no hay trabajos aprobados para mostrar en la linea de tiempo.</div>
+              ) : (
+                <div style={{ ...planillaWrap, ...anchosLinea.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thEsquina}>
+                        Presupuesto · cliente
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosLinea.startResize(ev, "label")}
+                          onDoubleClick={anchosLinea.resetLabel}
+                        />
+                      </th>
+                      <th style={thColumna}>
+                        Tiempo
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosLinea.startResize(ev, "col")}
+                          onDoubleClick={anchosLinea.resetCol}
+                        />
+                      </th>
+                      <th style={thColumna}>Avance</th>
+                      <th style={thFlexible}>Fechas · compras</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {approvedJobsTimelineRows.map((row) => {
+                      const companyMetaRow = getCompanyMeta(row.company);
+                      return (
+                        <tr key={`timeline-${row.id}`}>
+                          <td
+                            style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${companyMetaRow.primary}` }}
+                            title={`${row.budgetNumber} · ${row.client}`}
                           >
-                            {row.materialMissingCount > 0 ? `${row.materialMissingCount} faltantes` : "compras completas"}
-                          </span>
-                          <span style={{ color: "#94a3b8" }}> · {companyMetaRow.short}</span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </Panel>
+                            <strong style={{ color: "#0f172a" }}>
+                              {row.isUpdate ? `${row.budgetNumber} · Act. ${row.revisionNumber - 1}` : row.budgetNumber}
+                            </strong>{" "}
+                            <span style={{ color: "#475569" }}>{row.client}</span>
+                          </td>
+                          <td style={{ ...tdDato, padding: "2px 6px" }}>
+                            <div style={styles.timelineBlock}>
+                              <div style={styles.timelineLabel}>{row.elapsedDays} / {row.totalDays} dias</div>
+                              <div style={styles.ganttTrack}>
+                                <div
+                                  style={{ ...styles.ganttFill, width: `${row.timeProgressPct}%`, background: companyMetaRow.primary }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ ...tdDato, padding: "2px 6px" }}>
+                            <div style={styles.timelineBlock}>
+                              <div style={styles.timelineLabel}>{row.executionStatus}</div>
+                              <div style={styles.ganttTrack}>
+                                <div
+                                  style={{
+                                    ...styles.ganttFill,
+                                    width: `${row.statusProgressPct}%`,
+                                    background:
+                                      row.executionStatus === "finalizado"
+                                        ? "#166534"
+                                        : row.executionStatus === "en_curso"
+                                        ? companyMetaRow.primary
+                                        : "#92400e",
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ ...tdFlexible, color: "#64748b" }}>
+                            {formatDateDisplay(row.start)} → {formatDateDisplay(row.end)}
+                            <span style={{ color: "#cbd5e1" }}> · </span>
+                            <span
+                              style={{ fontWeight: 700, color: row.materialMissingCount > 0 ? "#ca8a04" : "#166534" }}
+                            >
+                              {row.materialMissingCount > 0 ? `${row.materialMissingCount} faltantes` : "compras completas"}
+                            </span>
+                            <span style={{ color: "#94a3b8" }}> · {companyMetaRow.short}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                </div>
+              )}
+            </Panel>
+          )}
 
           {selectedApprovedJob && (
             <Panel
