@@ -147,6 +147,11 @@ export function ComprasTab({
   const facturasSinPago = purchaseInvoiceRows.filter((inv: any) => !inv.pagoFecha);
   const totalSinPago = facturasSinPago.reduce((acc: number, inv: any) => acc + Number(inv.total || 0), 0);
 
+  // Que facturas ya tienen el pago registrado, para exigirlo con la D en el bloque de carga por mes.
+  const facturasConPago = new Set<number>(
+    purchaseInvoiceRows.filter((inv: any) => inv.pagoFecha).map((inv: any) => Number(inv.id))
+  );
+
   const origenLabel: Record<string, string> = {
     arca: "ARCA",
     caja_chica: "Caja chica",
@@ -178,6 +183,80 @@ export function ComprasTab({
                 <div style={{ fontWeight: 700 }}>{purchaseDeadlineSemaphore.label}</div>
               </div>
             </div>
+          </Panel>
+
+          <Panel title="Deuda con la gente (lo que pusieron de su bolsillo)" span="full">
+            <div style={styles.sectionNote}>
+              Cuando una factura la paga un empleado, un socio o un tercero, la empresa le queda
+              debiendo hasta que se le reintegra. Se marca en el bloque de abajo, en la columna del
+              pago.{" "}
+              <strong style={{ color: Number(personDebts?.total || 0) > 1 ? "#b45309" : "#16a34a" }}>
+                Total a devolver: {money(Number(personDebts?.total || 0))}
+              </strong>
+              .
+            </div>
+            {(personDebts?.debts || []).length === 0 ? (
+              <div style={styles.empty}>No hay facturas puestas por alguien sin reintegrar. Al día.</div>
+            ) : (
+              (personDebts.debts || []).map((deuda: any) => (
+                <div
+                  key={deuda.person}
+                  style={{ border: "1px solid #fed7aa", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      background: "#fffbeb",
+                    }}
+                  >
+                    <strong>{deuda.person}</strong>
+                    <span style={{ display: "inline-flex", gap: 12, alignItems: "baseline" }}>
+                      <span style={{ fontSize: 12, color: "#64748b" }}>
+                        {deuda.count} {deuda.count === 1 ? "factura" : "facturas"}
+                      </span>
+                      <span style={{ fontWeight: 800, color: "#b45309" }}>{money(deuda.total)}</span>
+                    </span>
+                  </div>
+                  <table style={planillaTable}>
+                    <colgroup>
+                      <col style={colLabel} />
+                      <col style={colDato} />
+                      <col style={colDato} />
+                      <col style={colFlexible} />
+                    </colgroup>
+                    <tbody>
+                      {deuda.invoices.map((inv: any) => (
+                        <tr key={`deuda-${inv.id}`}>
+                          <td style={{ ...tdNombre, fontWeight: 400 }}>
+                            {inv.supplier || "sin proveedor"}
+                            <ColorTag color={inv.administration} />
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                            {money(inv.total)}
+                          </td>
+                          <td style={{ ...tdDato, color: "#475569" }}>
+                            {formatDateDisplay(inv.invoiceDate)}
+                          </td>
+                          <td style={tdFlexible}>
+                            <button
+                              style={styles.smallBtn}
+                              title="Ya se le devolvió la plata: sale de la deuda"
+                              onClick={() => updatePurchaseInvoice(inv.id, "reimbursedAt" as any, todayIso())}
+                            >
+                              Marcar reintegrado
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))
+            )}
           </Panel>
 
           <Panel
@@ -384,77 +463,165 @@ export function ComprasTab({
             )}
           </Panel>
 
-          <Panel title="Deuda con la gente (lo que pusieron de su bolsillo)" span="full">
-            <div style={styles.sectionNote}>
-              Cuando una factura la paga un empleado, un socio o un tercero, la empresa le queda
-              debiendo hasta que se le reintegra. Se marca en el bloque de abajo, en la columna del
-              pago.{" "}
-              <strong style={{ color: Number(personDebts?.total || 0) > 1 ? "#b45309" : "#16a34a" }}>
-                Total a devolver: {money(Number(personDebts?.total || 0))}
-              </strong>
-              .
+          <Panel
+            title={`Facturas de compra - ${monthLabel(purchaseMonth)}`}
+            actions={<ButtonLike onClick={addPurchaseInvoice}>Agregar factura</ButtonLike>}
+          >
+            <div style={styles.noticeBox}>
+              Mostrando las facturas de <strong>{monthLabel(purchaseMonth)}</strong> — usá la barra de mes para navegar.
+              La <strong>D</strong> marca lo que falta: datos del comprobante y, sobre todo,{" "}
+              <strong>el pago sin registrar</strong>. Es el control para que no quede ninguna cargada
+              sin saber si se pagó; el detalle está en el bloque de abajo.
+              Puedes cargar una imagen o PDF y dejar que el sistema precomplete una base editable. Después podremos mejorar esta lectura automática con OCR más fino.
             </div>
-            {(personDebts?.debts || []).length === 0 ? (
-              <div style={styles.empty}>No hay facturas puestas por alguien sin reintegrar. Al día.</div>
+            {monthPurchaseInvoices.length === 0 ? (
+              <div style={styles.empty}>No hay facturas de compra cargadas en {monthLabel(purchaseMonth)}.</div>
             ) : (
-              (personDebts.debts || []).map((deuda: any) => (
-                <div
-                  key={deuda.person}
-                  style={{ border: "1px solid #fed7aa", borderRadius: 8, marginBottom: 8, overflow: "hidden" }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 10px",
-                      background: "#fffbeb",
-                    }}
-                  >
-                    <strong>{deuda.person}</strong>
-                    <span style={{ display: "inline-flex", gap: 12, alignItems: "baseline" }}>
-                      <span style={{ fontSize: 12, color: "#64748b" }}>
-                        {deuda.count} {deuda.count === 1 ? "factura" : "facturas"}
+              monthPurchaseInvoices.map((invoice) => {
+                // La D no solo marca datos faltantes de la factura: si el PAGO no esta registrado,
+                // tambien lo exige. Es el control que pidio Nicolas -- que no quede ninguna cargada
+                // sin saber si se pago.
+                const faltantes = [...purchaseInvoiceMissing(invoice)];
+                if (!facturasConPago.has(invoice.id)) faltantes.push("pago registrado");
+                return (
+                <div key={invoice.id} style={styles.subCard}>
+                  <div style={{ ...styles.inlineActions, justifyContent: "space-between" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                      {faltantes.length > 0 && <PillD missing={faltantes} />}
+                      <strong style={{ fontSize: 14 }}>{invoice.supplier || "Proveedor sin nombre"}</strong>
+                      <span style={{ color: MONEY_OUT_COLOR, fontWeight: 700, whiteSpace: "nowrap" }}>
+                        {money(
+                          Number(invoice.total || 0),
+                          String(invoice.currency || "").toUpperCase() === "USD" ? "USD" : "ARS"
+                        )}
+                        <ColorTag color={invoiceOrigin(invoice)} />
                       </span>
-                      <span style={{ fontWeight: 800, color: "#b45309" }}>{money(deuda.total)}</span>
                     </span>
+                    <button style={styles.smallBtn} onClick={() => removePurchaseInvoice(invoice.id)}>
+                      Quitar factura
+                    </button>
                   </div>
-                  <table style={planillaTable}>
-                    <colgroup>
-                      <col style={colLabel} />
-                      <col style={colDato} />
-                      <col style={colDato} />
-                      <col style={colFlexible} />
-                    </colgroup>
-                    <tbody>
-                      {deuda.invoices.map((inv: any) => (
-                        <tr key={`deuda-${inv.id}`}>
-                          <td style={{ ...tdNombre, fontWeight: 400 }}>
-                            {inv.supplier || "sin proveedor"}
-                            <ColorTag color={inv.administration} />
-                          </td>
-                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
-                            {money(inv.total)}
-                          </td>
-                          <td style={{ ...tdDato, color: "#475569" }}>
-                            {formatDateDisplay(inv.invoiceDate)}
-                          </td>
-                          <td style={tdFlexible}>
-                            <button
-                              style={styles.smallBtn}
-                              title="Ya se le devolvió la plata: sale de la deuda"
-                              onClick={() => updatePurchaseInvoice(inv.id, "reimbursedAt" as any, todayIso())}
-                            >
-                              Marcar reintegrado
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <TwoCol>
+                    <Field label="Empresa">
+                      <select
+                        style={styles.input}
+                        value={invoice.company}
+                        onChange={(e) => updatePurchaseInvoice(invoice.id, "company", e.target.value)}
+                      >
+                        {COMPANY_OPTIONS.map((company) => (
+                          <option key={company.value} value={company.value}>
+                            {company.value}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Administracion">
+                      <select
+                        style={styles.input}
+                        value={invoice.invoiceNumber.trim() ? "blanco" : invoice.administration}
+                        disabled={!!invoice.invoiceNumber.trim()}
+                        onChange={(e) => updatePurchaseInvoice(invoice.id, "administration", e.target.value)}
+                      >
+                        <option value="blanco">Blanco</option>
+                        <option value="negro">Negro</option>
+                      </select>
+                      {invoice.invoiceNumber.trim() ? (
+                        <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                          Con factura = blanco (una factura no puede ser negra).
+                        </div>
+                      ) : null}
+                    </Field>
+                    <Field label="Origen">
+                      <input style={styles.input} value={invoice.source} readOnly />
+                    </Field>
+                    <Field label="Proveedor">
+                      <input style={styles.input} value={invoice.supplier} onChange={(e) => updatePurchaseInvoice(invoice.id, "supplier", e.target.value)} />
+                    </Field>
+                    <Field label="CUIT / CUIL">
+                      <input style={styles.input} value={invoice.taxId} onChange={(e) => updatePurchaseInvoice(invoice.id, "taxId", e.target.value)} />
+                    </Field>
+                    <Field label="Tipo de comprobante">
+                      <input style={styles.input} value={invoice.receiptKind} onChange={(e) => updatePurchaseInvoice(invoice.id, "receiptKind", e.target.value)} />
+                    </Field>
+                    <Field label="Letra / tipo">
+                      <input style={styles.input} value={invoice.receiptLetter} onChange={(e) => updatePurchaseInvoice(invoice.id, "receiptLetter", e.target.value)} />
+                    </Field>
+                    <Field label="Numero">
+                      <input
+                        style={styles.input}
+                        value={invoice.invoiceNumber}
+                        onChange={(e) => {
+                          updatePurchaseInvoice(invoice.id, "invoiceNumber", e.target.value);
+                          if (e.target.value.trim())
+                            updatePurchaseInvoice(invoice.id, "administration", "blanco");
+                        }}
+                      />
+                    </Field>
+                    <Field label="Fecha">
+                      <input style={styles.input} type="date" value={invoice.invoiceDate} onChange={(e) => updatePurchaseInvoice(invoice.id, "invoiceDate", e.target.value)} />
+                    </Field>
+                    <Field label="Moneda">
+                      <select
+                        style={styles.input}
+                        value={String(invoice.currency || "").toUpperCase() === "USD" ? "USD" : "ARS"}
+                        onChange={(e) => updatePurchaseInvoice(invoice.id, "currency", e.target.value)}
+                      >
+                        <option value="ARS">$ Pesos</option>
+                        <option value="USD">U$S Dolares</option>
+                      </select>
+                    </Field>
+                    <Field label="Exento">
+                      <AmountInput style={styles.input} value={invoice.exemptAmount} onChange={(n) => updatePurchaseInvoice(invoice.id, "exemptAmount", n)} />
+                    </Field>
+                    <Field label="Neto 21%">
+                      <AmountInput style={styles.input} value={invoice.net21} onChange={(n) => updatePurchaseInvoice(invoice.id, "net21", n)} />
+                    </Field>
+                    <Field label="Subtotal">
+                      <AmountInput style={styles.input} value={invoice.subtotal} onChange={(n) => updatePurchaseInvoice(invoice.id, "subtotal", n)} />
+                    </Field>
+                    <Field label="IVA">
+                      <AmountInput style={styles.input} value={invoice.vat} onChange={(n) => updatePurchaseInvoice(invoice.id, "vat", n)} />
+                    </Field>
+                    <Field label="Total">
+                      <AmountInput style={styles.input} value={invoice.total} onChange={(n) => updatePurchaseInvoice(invoice.id, "total", n)} />
+                    </Field>
+                    <Field label="Carga automatica">
+                      <input style={styles.input} value={invoice.extractedAutomatically ? "Si" : "Manual"} readOnly />
+                    </Field>
+                    {/* Quien puso la plata. Es el MISMO campo que se edita desde "Facturas recibidas y
+                        su pago": un solo dato, dos lugares para cargarlo, sin que puedan contradecirse. */}
+                    <Field label="La pagó (si la puso alguien de su bolsillo)">
+                      <input
+                        style={styles.input}
+                        value={invoice.paidByPerson || ""}
+                        list="personas-que-pagan"
+                        placeholder="Vacío = la pagó la empresa"
+                        onChange={(e) =>
+                          updatePurchaseInvoice(invoice.id, "paidByPerson" as any, e.target.value)
+                        }
+                      />
+                      {invoice.paidByPerson?.trim() ? (
+                        <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                          {invoice.reimbursedAt
+                            ? `Reintegrado el ${formatDateDisplay(invoice.reimbursedAt)}.`
+                            : "Queda como deuda con esa persona hasta marcarla reintegrada."}
+                        </div>
+                      ) : null}
+                    </Field>
+                  </TwoCol>
+                  <Field label="Notas">
+                    <textarea style={styles.textarea} value={invoice.notes} onChange={(e) => updatePurchaseInvoice(invoice.id, "notes", e.target.value)} />
+                  </Field>
+                  <div style={styles.uploadActions}>
+                    <FileDropButton
+                      label="Cargar imagen o PDF"
+                      fileName={invoice.attachmentName}
+                      onFileSelected={(file) => uploadPurchaseInvoiceFile(invoice.id, file)}
+                    />
+                  </div>
                 </div>
-              ))
+                );
+              })
             )}
           </Panel>
 
@@ -662,7 +829,8 @@ export function ComprasTab({
             <div style={styles.sectionNote}>
               Lo que se compró por caja chica en el mes, <strong>en blanco y en negro</strong>. Lo blanco
               tiene factura y sube a compras; lo negro no, pero igual es plata que salió y se controla
-              acá.{" "}
+              acá. Son <strong>los mismos gastos</strong> que se rinden en la solapa Caja chica: acá se
+              miran por mes, allá se cargan y se rinden.{" "}
               <strong>Blanco {money(pettyCashCajaBlanco)}</strong>
               {" · "}
               <strong style={{ color: MONEY_OUT_COLOR }}>Negro {money(pettyCashCajaNegro)}</strong>
@@ -733,160 +901,6 @@ export function ComprasTab({
                   </tbody>
                 </table>
               </div>
-            )}
-          </Panel>
-
-          <Panel
-            title={`Facturas de compra - ${monthLabel(purchaseMonth)}`}
-            actions={<ButtonLike onClick={addPurchaseInvoice}>Agregar factura</ButtonLike>}
-          >
-            <div style={styles.noticeBox}>
-              Mostrando las facturas de <strong>{monthLabel(purchaseMonth)}</strong> — usá la barra de mes para navegar.
-              Puedes cargar una imagen o PDF y dejar que el sistema precomplete una base editable. Después podremos mejorar esta lectura automática con OCR más fino.
-            </div>
-            {monthPurchaseInvoices.length === 0 ? (
-              <div style={styles.empty}>No hay facturas de compra cargadas en {monthLabel(purchaseMonth)}.</div>
-            ) : (
-              monthPurchaseInvoices.map((invoice) => (
-                <div key={invoice.id} style={styles.subCard}>
-                  <div style={{ ...styles.inlineActions, justifyContent: "space-between" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                      {purchaseInvoiceMissing(invoice).length > 0 && (
-                        <PillD missing={purchaseInvoiceMissing(invoice)} />
-                      )}
-                      <strong style={{ fontSize: 14 }}>{invoice.supplier || "Proveedor sin nombre"}</strong>
-                      <span style={{ color: MONEY_OUT_COLOR, fontWeight: 700, whiteSpace: "nowrap" }}>
-                        {money(
-                          Number(invoice.total || 0),
-                          String(invoice.currency || "").toUpperCase() === "USD" ? "USD" : "ARS"
-                        )}
-                        <ColorTag color={invoiceOrigin(invoice)} />
-                      </span>
-                    </span>
-                    <button style={styles.smallBtn} onClick={() => removePurchaseInvoice(invoice.id)}>
-                      Quitar factura
-                    </button>
-                  </div>
-                  <TwoCol>
-                    <Field label="Empresa">
-                      <select
-                        style={styles.input}
-                        value={invoice.company}
-                        onChange={(e) => updatePurchaseInvoice(invoice.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.value}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Administracion">
-                      <select
-                        style={styles.input}
-                        value={invoice.invoiceNumber.trim() ? "blanco" : invoice.administration}
-                        disabled={!!invoice.invoiceNumber.trim()}
-                        onChange={(e) => updatePurchaseInvoice(invoice.id, "administration", e.target.value)}
-                      >
-                        <option value="blanco">Blanco</option>
-                        <option value="negro">Negro</option>
-                      </select>
-                      {invoice.invoiceNumber.trim() ? (
-                        <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
-                          Con factura = blanco (una factura no puede ser negra).
-                        </div>
-                      ) : null}
-                    </Field>
-                    <Field label="Origen">
-                      <input style={styles.input} value={invoice.source} readOnly />
-                    </Field>
-                    <Field label="Proveedor">
-                      <input style={styles.input} value={invoice.supplier} onChange={(e) => updatePurchaseInvoice(invoice.id, "supplier", e.target.value)} />
-                    </Field>
-                    <Field label="CUIT / CUIL">
-                      <input style={styles.input} value={invoice.taxId} onChange={(e) => updatePurchaseInvoice(invoice.id, "taxId", e.target.value)} />
-                    </Field>
-                    <Field label="Tipo de comprobante">
-                      <input style={styles.input} value={invoice.receiptKind} onChange={(e) => updatePurchaseInvoice(invoice.id, "receiptKind", e.target.value)} />
-                    </Field>
-                    <Field label="Letra / tipo">
-                      <input style={styles.input} value={invoice.receiptLetter} onChange={(e) => updatePurchaseInvoice(invoice.id, "receiptLetter", e.target.value)} />
-                    </Field>
-                    <Field label="Numero">
-                      <input
-                        style={styles.input}
-                        value={invoice.invoiceNumber}
-                        onChange={(e) => {
-                          updatePurchaseInvoice(invoice.id, "invoiceNumber", e.target.value);
-                          if (e.target.value.trim())
-                            updatePurchaseInvoice(invoice.id, "administration", "blanco");
-                        }}
-                      />
-                    </Field>
-                    <Field label="Fecha">
-                      <input style={styles.input} type="date" value={invoice.invoiceDate} onChange={(e) => updatePurchaseInvoice(invoice.id, "invoiceDate", e.target.value)} />
-                    </Field>
-                    <Field label="Moneda">
-                      <select
-                        style={styles.input}
-                        value={String(invoice.currency || "").toUpperCase() === "USD" ? "USD" : "ARS"}
-                        onChange={(e) => updatePurchaseInvoice(invoice.id, "currency", e.target.value)}
-                      >
-                        <option value="ARS">$ Pesos</option>
-                        <option value="USD">U$S Dolares</option>
-                      </select>
-                    </Field>
-                    <Field label="Exento">
-                      <AmountInput style={styles.input} value={invoice.exemptAmount} onChange={(n) => updatePurchaseInvoice(invoice.id, "exemptAmount", n)} />
-                    </Field>
-                    <Field label="Neto 21%">
-                      <AmountInput style={styles.input} value={invoice.net21} onChange={(n) => updatePurchaseInvoice(invoice.id, "net21", n)} />
-                    </Field>
-                    <Field label="Subtotal">
-                      <AmountInput style={styles.input} value={invoice.subtotal} onChange={(n) => updatePurchaseInvoice(invoice.id, "subtotal", n)} />
-                    </Field>
-                    <Field label="IVA">
-                      <AmountInput style={styles.input} value={invoice.vat} onChange={(n) => updatePurchaseInvoice(invoice.id, "vat", n)} />
-                    </Field>
-                    <Field label="Total">
-                      <AmountInput style={styles.input} value={invoice.total} onChange={(n) => updatePurchaseInvoice(invoice.id, "total", n)} />
-                    </Field>
-                    <Field label="Carga automatica">
-                      <input style={styles.input} value={invoice.extractedAutomatically ? "Si" : "Manual"} readOnly />
-                    </Field>
-                    {/* Quien puso la plata. Es el MISMO campo que se edita desde "Facturas recibidas y
-                        su pago": un solo dato, dos lugares para cargarlo, sin que puedan contradecirse. */}
-                    <Field label="La pagó (si la puso alguien de su bolsillo)">
-                      <input
-                        style={styles.input}
-                        value={invoice.paidByPerson || ""}
-                        list="personas-que-pagan"
-                        placeholder="Vacío = la pagó la empresa"
-                        onChange={(e) =>
-                          updatePurchaseInvoice(invoice.id, "paidByPerson" as any, e.target.value)
-                        }
-                      />
-                      {invoice.paidByPerson?.trim() ? (
-                        <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
-                          {invoice.reimbursedAt
-                            ? `Reintegrado el ${formatDateDisplay(invoice.reimbursedAt)}.`
-                            : "Queda como deuda con esa persona hasta marcarla reintegrada."}
-                        </div>
-                      ) : null}
-                    </Field>
-                  </TwoCol>
-                  <Field label="Notas">
-                    <textarea style={styles.textarea} value={invoice.notes} onChange={(e) => updatePurchaseInvoice(invoice.id, "notes", e.target.value)} />
-                  </Field>
-                  <div style={styles.uploadActions}>
-                    <FileDropButton
-                      label="Cargar imagen o PDF"
-                      fileName={invoice.attachmentName}
-                      onFileSelected={(file) => uploadPurchaseInvoiceFile(invoice.id, file)}
-                    />
-                  </div>
-                </div>
-              ))
             )}
           </Panel>
 
@@ -1025,6 +1039,7 @@ export function ComprasTab({
               </div>
             )}
           </Panel>
+
 
         </div>
   );
