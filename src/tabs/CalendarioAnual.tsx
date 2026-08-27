@@ -619,9 +619,15 @@ export function CalendarioAnualTab({
   // (no se hardcodea) porque cambia con el zoom del navegador y el tamaño de fuente.
   const monthRowRef = useRef<HTMLTableRowElement | null>(null);
   const [monthRowH, setMonthRowH] = useState(24);
+  // Alto de la fila de dias: hace falta para calcular donde se pegan los TOTALES, que van pegados
+  // justo debajo del encabezado (ver el bloque de totales dentro del thead).
+  const dayRowRef = useRef<HTMLTableRowElement | null>(null);
+  const [dayRowH, setDayRowH] = useState(22);
   useLayoutEffect(() => {
     const h = monthRowRef.current?.getBoundingClientRect().height;
     if (h && Math.round(h) !== monthRowH) setMonthRowH(Math.round(h));
+    const d = dayRowRef.current?.getBoundingClientRect().height;
+    if (d && Math.round(d) !== dayRowH) setDayRowH(Math.round(d));
   });
 
   // Los DIAS se ensanchan parejo hasta llenar la pantalla (pedido del usuario 2026-08-21: "que ocupe
@@ -1261,7 +1267,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   );
                 })}
               </tr>
-              <tr>
+              <tr ref={dayRowRef}>
                 <th style={{ ...thStickyCorner, top: monthRowH, zIndex: 6, boxShadow: "inset 0 -1px 0 #e2e8f0" }}></th>
                 {visibleDayCols.map((c) => (
                   <th
@@ -1284,6 +1290,108 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   </th>
                 ))}
               </tr>
+              {/* ===== TOTALES INMOVILIZADOS ARRIBA =====
+                  Van dentro del <thead> a propósito: son lo que se mira todo el tiempo, así que
+                  quedan pegados abajo del encabezado de días y no se pierden al scrollear la planilla.
+                  El `top` de cada fila se calcula con un contador porque la cantidad de filas cambia
+                  (el desglose por empresa solo aparece con scope = Todas). */}
+              {(() => {
+                let idx = 0;
+                const nextTop = () => monthRowH + dayRowH + idx++ * TOT_ROW_H;
+                const rowSticky = (top: number) => ({
+                  position: "sticky" as const,
+                  top,
+                  height: TOT_ROW_H,
+                  zIndex: 5,
+                });
+                const labelSticky = (top: number, bg: string) => ({
+                  ...tdStickyLabel,
+                  ...rowSticky(top),
+                  left: 0,
+                  zIndex: 7,
+                  background: bg,
+                  borderBottom: "1px solid #e2e8f0",
+                });
+                return (
+                  <>
+                    {([
+                      { lbl: "TOTAL INGRESOS", b: agg.incB, n: agg.incN, compB: agg.compIncB, compN: agg.compIncN, isOut: false, bg: "#ecfdf5", kp: "ti" },
+                      { lbl: "TOTAL EGRESOS", b: agg.egrB, n: agg.egrN, compB: agg.compEgrB, compN: agg.compEgrN, isOut: true, bg: "#fef2f2", kp: "te" },
+                    ] as const).map((row) => {
+                      const top = nextTop();
+                      return (
+                        <React.Fragment key={row.kp}>
+                          <tr>
+                            <td style={{ ...labelSticky(top, row.bg), fontWeight: 800, color: row.isOut ? "#991b1b" : "#065f46" }}>{row.lbl}</td>
+                            {visibleDayCols.map((c) => (
+                              <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: row.bg, ...hi(c.iso) }}>
+                                {bnCell(row.b, row.n, c.iso, row.isOut)}
+                              </td>
+                            ))}
+                          </tr>
+                          {/* Desglose por empresa (con su color) cuando se ven todas — el "×4" a la vista */}
+                          {showByCompany &&
+                            Array.from(new Set(Array.from(row.compB.keys()).concat(Array.from(row.compN.keys()))))
+                              .sort((a, b) => a.localeCompare(b))
+                              .map((company) => {
+                                const meta = companyMeta.get(company);
+                                const bMap = row.compB.get(company);
+                                const nMap = row.compN.get(company);
+                                if (!bMap && !nMap) return null;
+                                if (![...visibleDayCols].some((c) => (bMap?.get(c.iso) || 0) !== 0 || (nMap?.get(c.iso) || 0) !== 0)) return null;
+                                const topC = nextTop();
+                                return (
+                                  <tr key={`${row.kp}-${company}`}>
+                                    <td style={{ ...labelSticky(topC, row.bg), paddingLeft: 30, fontWeight: 700, fontSize: 11 }}>
+                                      <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />
+                                      {meta?.short || company}
+                                    </td>
+                                    {visibleDayCols.map((c) => (
+                                      <td key={`${row.kp}-${company}-${c.iso}`} style={{ ...tdCell, ...rowSticky(topC), fontSize: 11, background: row.bg, ...hi(c.iso) }}>
+                                        {bnCell(bMap, nMap, c.iso, row.isOut)}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                );
+                              })}
+                        </React.Fragment>
+                      );
+                    })}
+                    {([
+                      { lbl: "NETO DÍA · BLANCO", inc: agg.incB, egr: agg.egrB, bg: "#e2e8f0", kp: "ndb" },
+                      { lbl: "NETO DÍA · NEGRO", inc: agg.incN, egr: agg.egrN, bg: "#cbd5e1", kp: "ndn" },
+                    ] as const).map((row) => {
+                      const top = nextTop();
+                      return (
+                        <tr key={row.kp}>
+                          <td style={{ ...labelSticky(top, row.bg), fontWeight: 900 }}>{row.lbl}</td>
+                          {visibleDayCols.map((c) => {
+                            const v = (row.inc.get(c.iso) || 0) - (row.egr.get(c.iso) || 0);
+                            return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, ...rowSticky(top), fontWeight: 900, background: row.bg, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#94a3b8", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
+                          })}
+                        </tr>
+                      );
+                    })}
+                    {/* ===== EGRESOS por tipo de costo (solo los clasificados fijo/variable) ===== */}
+                    {(agg.fijoByDate.size > 0 || agg.varByDate.size > 0) &&
+                      ([
+                        { lbl: "COSTOS FIJOS (F)", m: agg.fijoByDate, bg: "#eef2ff", color: "#3730a3", kp: "cfij" },
+                        { lbl: "COSTOS VARIABLES (V)", m: agg.varByDate, bg: "#fffbeb", color: "#92400e", kp: "cvar" },
+                      ] as const).map((row) => {
+                        const top = nextTop();
+                        return (
+                          <tr key={row.kp}>
+                            <td style={{ ...labelSticky(top, row.bg), fontWeight: 800, color: row.color }}>{row.lbl}</td>
+                            {visibleDayCols.map((c) => {
+                              const v = row.m.get(c.iso) || 0;
+                              return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
+                            })}
+                          </tr>
+                        );
+                      })}
+                  </>
+                );
+              })()}
             </thead>
             <tbody>
               {sections.map((section) => {
@@ -1660,72 +1768,6 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 </>
               )}
 
-              {/* ===== TOTALES (blanco/negro con pill en la misma fila) ===== */}
-              {([
-                { lbl: "TOTAL INGRESOS", b: agg.incB, n: agg.incN, compB: agg.compIncB, compN: agg.compIncN, isOut: false, bg: "#ecfdf5", kp: "ti" },
-                { lbl: "TOTAL EGRESOS", b: agg.egrB, n: agg.egrN, compB: agg.compEgrB, compN: agg.compEgrN, isOut: true, bg: "#fef2f2", kp: "te" },
-              ] as const).map((row) => (
-                <React.Fragment key={row.kp}>
-                  <tr>
-                    <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.isOut ? "#991b1b" : "#065f46" }}>{row.lbl}</td>
-                    {visibleDayCols.map((c) => (
-                      <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, ...hi(c.iso) }}>
-                        {bnCell(row.b, row.n, c.iso, row.isOut)}
-                      </td>
-                    ))}
-                  </tr>
-                  {/* Desglose por empresa (con su color) cuando se ven todas — el "×4" a la vista */}
-                  {showByCompany &&
-                    Array.from(new Set(Array.from(row.compB.keys()).concat(Array.from(row.compN.keys()))))
-                      .sort((a, b) => a.localeCompare(b))
-                      .map((company) => {
-                        const meta = companyMeta.get(company);
-                        const bMap = row.compB.get(company);
-                        const nMap = row.compN.get(company);
-                        if (!bMap && !nMap) return null;
-                        if (![...visibleDayCols].some((c) => (bMap?.get(c.iso) || 0) !== 0 || (nMap?.get(c.iso) || 0) !== 0)) return null;
-                        return (
-                          <tr key={`${row.kp}-${company}`} style={{ background: row.bg }}>
-                            <td style={{ ...tdStickyLabel, background: row.bg, paddingLeft: 30, fontWeight: 700, fontSize: 11 }}>
-                              <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />
-                              {meta?.short || company}
-                            </td>
-                            {visibleDayCols.map((c) => (
-                              <td key={`${row.kp}-${company}-${c.iso}`} style={{ ...tdCell, fontSize: 11, background: row.bg, ...hi(c.iso) }}>
-                                {bnCell(bMap, nMap, c.iso, row.isOut)}
-                              </td>
-                            ))}
-                          </tr>
-                        );
-                      })}
-                </React.Fragment>
-              ))}
-              {([
-                { lbl: "NETO DÍA · BLANCO", inc: agg.incB, egr: agg.egrB, bg: "#e2e8f0", kp: "ndb" },
-                { lbl: "NETO DÍA · NEGRO", inc: agg.incN, egr: agg.egrN, bg: "#cbd5e1", kp: "ndn" },
-              ] as const).map((row) => (
-                <tr key={row.kp}>
-                  <td style={{ ...tdStickyLabel, fontWeight: 900, background: row.bg }}>{row.lbl}</td>
-                  {visibleDayCols.map((c) => {
-                    const v = (row.inc.get(c.iso) || 0) - (row.egr.get(c.iso) || 0);
-                    return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 900, background: row.bg, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#94a3b8", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
-                  })}
-                </tr>
-              ))}
-              {/* ===== EGRESOS por tipo de costo (solo los clasificados fijo/variable) ===== */}
-              {(agg.fijoByDate.size > 0 || agg.varByDate.size > 0) &&
-                ([
-                  { lbl: "COSTOS FIJOS (F)", m: agg.fijoByDate, bg: "#eef2ff", color: "#3730a3", kp: "cfij" },
-                  { lbl: "COSTOS VARIABLES (V)", m: agg.varByDate, bg: "#fffbeb", color: "#92400e", kp: "cvar" },
-                ] as const).map((row) => (
-                  <tr key={row.kp}>
-                    <td style={{ ...tdStickyLabel, fontWeight: 800, background: row.bg, color: row.color }}>{row.lbl}</td>
-                    {visibleDayCols.map((c) => {
-                      const v = row.m.get(c.iso) || 0;
-                      return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
-                    })}
-                  </tr>
-                ))}
             </tbody>
           </table>
         </div>
@@ -2463,6 +2505,10 @@ const tdStickyLabel: React.CSSProperties = {
   position: "sticky", left: 0, zIndex: 2, background: "#ffffff", padding: "5px 10px",
   borderBottom: "1px solid #f1f5f9", fontWeight: 600, ...labelWidth,
 };
+// Alto fijo de cada fila de TOTALES. Es fijo a proposito: con el alto conocido se puede calcular el
+// `top` de cada una sin medirlas, y quedan todas parejas una abajo de la otra pegadas al encabezado.
+const TOT_ROW_H = 22;
+
 const tdCell: React.CSSProperties = {
   padding: "4px 6px", borderBottom: "1px solid #f1f5f9", textAlign: "right", ...dayWidth,
 };

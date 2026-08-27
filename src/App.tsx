@@ -15814,6 +15814,8 @@ export default function App() {
       )}
       {activeTab === "cashflow" && (
         <CashflowTab
+          personDebts={personDebts}
+          purchaseLedger={purchaseLedger}
           cashFlowSummary={cashFlowSummary}
           billingBalance={billingBalance}
           periodStatement={periodStatement}

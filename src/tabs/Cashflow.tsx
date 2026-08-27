@@ -127,6 +127,9 @@ const MONTH_OPTIONS = [
 ];
 
 type CashflowTabProps = {
+  // Deudas que se administran en Compras y que aca se ven en modo lectura, junto al desendeudamiento.
+  personDebts: any;
+  purchaseLedger: any;
   cashFlowSummary: any;
   billingBalance: any;
   periodStatement: any;
@@ -192,6 +195,8 @@ type CashflowTabProps = {
 };
 
 export function CashflowTab({
+  personDebts,
+  purchaseLedger,
   cashFlowSummary,
   activeAssetsMonthlyDepreciation,
   analysisYear,
@@ -245,6 +250,97 @@ export function CashflowTab({
 
   return (
         <div style={styles.column}>
+          <Panel title={`Calendario anual ${analysisYear} · unificado y desendeudamiento`} span="full">
+            <div style={styles.sectionHeader}>Unificado — todo lo que pasa en el año</div>
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Eventos del año" value={String(annualCashFlowEntries.length)} />
+              <MiniMetric label="Mov. bancarios" value={String(bankStatementEntries.length)} />
+              <MiniMetric label="Compromisos deuda" value={String(annualDebtRows.length)} />
+              <MiniMetric label="Ultimo saldo banco" value={money(bankStatementSummary.lastBalance)} />
+            </div>
+            <div style={styles.noticeBox}>
+              Un vistazo del año en <strong>12 columnas</strong> (una por mes): cantidad de eventos y
+              monto movido. El detalle día por día está abajo, en la lista de movimientos del mes.
+            </div>
+            {(() => {
+              const monthly = annualCashFlowByMonth.map((month) => ({
+                key: month.key,
+                label: month.label,
+                count: month.items.length,
+                monto: month.items.reduce((acc: number, it: any) => acc + Math.abs(Number(it.amount || 0)), 0),
+              }));
+              const maxMonto = Math.max(1, ...monthly.map((m) => m.monto));
+              return (
+                <div style={styles.yearMonthsStrip}>
+                  {monthly.map((m) => (
+                    <div key={m.key} style={styles.yearMonthCol}>
+                      <div style={styles.yearMonthColHead}>{m.label.slice(0, 3)}</div>
+                      {m.count === 0 ? (
+                        <div style={{ ...styles.yearMonthColSub, marginTop: 8 }}>—</div>
+                      ) : (
+                        <>
+                          <div style={styles.yearMonthColBig}>{m.count}</div>
+                          <div style={styles.yearMonthColSub}>evento{m.count === 1 ? "" : "s"}</div>
+                          {m.monto > 0 && (
+                            <div style={styles.yearMonthColSub} title={money(m.monto)}>
+                              {compactAr(m.monto)}
+                            </div>
+                          )}
+                        </>
+                      )}
+                      <div style={styles.yearMonthColBarTrack}>
+                        <div
+                          style={{
+                            ...styles.yearMonthColBarFill,
+                            width: `${Math.round((m.monto / maxMonto) * 100)}%`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+            <div style={styles.sectionHeader}>Desendeudamiento — los compromisos del año</div>
+            <div style={styles.noticeBox}>
+              La cuota de cada mes en <strong>12 columnas</strong>: la barra baja a medida que las
+              cuotas se terminan de pagar, así se ve el desendeudamiento avanzar.
+            </div>
+            {(() => {
+              const maxTotal = Math.max(1, ...annualDebtByMonth.map((m) => Number(m.total || 0)));
+              return (
+                <div style={styles.yearMonthsStrip}>
+                  {annualDebtByMonth.map((month) => (
+                    <div key={month.key} style={styles.yearMonthCol}>
+                      <div style={styles.yearMonthColHead}>{month.label.slice(0, 3)}</div>
+                      {month.total > 0 ? (
+                        <>
+                          <div style={styles.yearMonthColBig} title={money(month.total)}>
+                            {compactAr(month.total)}
+                          </div>
+                          <div style={styles.yearMonthColSub}>
+                            {month.items.length} cuota{month.items.length === 1 ? "" : "s"}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ ...styles.yearMonthColSub, marginTop: 8 }}>—</div>
+                      )}
+                      <div style={styles.yearMonthColBarTrack}>
+                        <div
+                          style={{
+                            ...styles.yearMonthColBarFill,
+                            width: `${Math.round((Number(month.total || 0) / maxTotal) * 100)}%`,
+                            background: "#f59e0b",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+          </Panel>
+
           <Panel title="Balance · facturacion y cobranza" span="wide">
             <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginBottom: 12 }}>
               <Field label="Empresa">
@@ -354,114 +450,10 @@ export function CashflowTab({
             </details>
           </Panel>
 
-          <Panel title="Posicion de IVA (desde el ultimo VEP)" span="wide">
-            <div style={{ ...styles.muted, marginBottom: 10 }}>
-              Debito (IVA de ventas emitidas) menos credito (IVA de compras en blanco), acumulado desde el
-              ultimo VEP de pago. Positivo = <strong>a pagar</strong> (conviene comprar en blanco con esa
-              empresa); negativo = <strong>a favor</strong> (conviene facturar con esa empresa). El IVA es
-              por CUIT: no se suma entre empresas.
-            </div>
-            {vatPositionByCompany.length === 0 ? (
-              <div style={styles.empty}>Sin empresas en el alcance seleccionado.</div>
-            ) : (
-              vatPositionByCompany.map((v) => (
-                <div key={v.company} style={{ marginBottom: 12 }}>
-                  <div style={{ ...balanceSection, borderLeft: `4px solid ${v.primary}`, paddingLeft: 8 }}>
-                    {v.short}
-                    {v.lastVepDate
-                      ? ` · desde el VEP del ${formatDateDisplay(v.lastVepDate)}`
-                      : " · sin VEP (cuenta todo el historico)"}
-                  </div>
-                  <div style={balanceGrid}>
-                    <BalanceTile
-                      label={`IVA debito · ventas (${v.ventas})`}
-                      value={money(v.debito)}
-                      tone="white"
-                    />
-                    <BalanceTile
-                      label={`IVA credito · compras blanco (${v.compras})`}
-                      value={money(v.credito)}
-                      tone="white"
-                    />
-                    <BalanceTile
-                      label={
-                        v.posicion > 1
-                          ? "Posicion: A PAGAR"
-                          : v.posicion < -1
-                          ? "Posicion: A FAVOR"
-                          : "Posicion: equilibrado"
-                      }
-                      value={money(v.posicion)}
-                      tone={v.posicion > 1 ? "warn" : "strong"}
-                    />
-                  </div>
-                </div>
-              ))
-            )}
-
-            <div style={{ ...balanceSection, marginTop: 8 }}>
-              VEP de pago de IVA (al cargarlo se reinicia el contador de esa empresa)
-            </div>
-            <div style={{ marginBottom: 8 }}>
-              <ButtonLike onClick={addIvaVepPayment}>Cargar VEP de pago</ButtonLike>
-            </div>
-            {ivaVepPayments.length === 0 ? (
-              <div style={styles.empty}>
-                Sin VEP cargados. Al cargar el pago trimestral, el contador de esa empresa arranca de nuevo
-                desde la fecha del VEP.
-              </div>
-            ) : (
-              ivaVepPayments.map((v: any) => (
-                <div key={v.id} style={styles.subCard}>
-                  <div style={styles.inlineActions}>
-                    <button style={styles.smallBtn} onClick={() => removeIvaVepPayment(v.id)}>
-                      Quitar
-                    </button>
-                  </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-                    <Field label="Empresa">
-                      <select
-                        style={styles.input}
-                        value={v.company}
-                        onChange={(e) => updateIvaVepPayment(v.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.filter((c: any) => c.value && c.value !== "General").map((c: any) => (
-                          <option key={c.value} value={c.value}>
-                            {c.short || c.value}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Fecha del VEP">
-                      <input
-                        style={styles.input}
-                        type="date"
-                        value={v.date}
-                        onChange={(e) => updateIvaVepPayment(v.id, "date", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Periodo">
-                      <input
-                        style={styles.input}
-                        value={v.period}
-                        placeholder="3T 2026"
-                        onChange={(e) => updateIvaVepPayment(v.id, "period", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Monto pagado">
-                      <AmountInput
-                        style={styles.input}
-                        value={v.amount}
-                        onChange={(n) => updateIvaVepPayment(v.id, "amount", n)}
-                      />
-                    </Field>
-                  </div>
-                </div>
-              ))
-            )}
-          </Panel>
-
-          <Panel title="Estado de resultados del periodo (percibido, operativo)" span="half">
+          <Panel title="Cash flow y estado de resultados del período" span="full">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))", gap: 14, alignItems: "start" }}>
+              <div>
+            <div style={styles.sectionHeader}>Estado de resultados (percibido, operativo)</div>
             <div style={balanceSection}>Circuito blanco</div>
             <StatRow label="Cobrado" value={money(periodStatement.whiteIncome)} tone="in" />
             <StatRow label="Egresos" value={money(periodStatement.whiteExpense)} tone="out" />
@@ -494,9 +486,9 @@ export function CashflowTab({
               amortizacion se prorratea (ano fiscal = 12 meses, mes = 1). Respeta la empresa y el
               periodo elegidos arriba.
             </div>
-          </Panel>
-
-          <Panel title="Cash flow del periodo" span="half">
+              </div>
+              <div>
+            <div style={styles.sectionHeader}>Cash flow del período</div>
             <StatRow label="Flujo operativo (cobros - pagos)" value={money(periodStatement.totalResult)} strong />
             <StatRow label="Creditos banco" value={money(periodStatement.bankCredits)} tone="in" />
             <StatRow label="Debitos banco" value={money(periodStatement.bankDebits)} tone="out" />
@@ -505,13 +497,7 @@ export function CashflowTab({
               Flujo operativo = cobros menos pagos del periodo. El banco se muestra aparte para no
               duplicar (un cobro ya cuenta como ingreso). Mas abajo, el detalle mensual y las deudas.
             </div>
-          </Panel>
-
-          {/* Aca habia un segundo panel de resultado ("Contabilidad general blanco / negro") que
-              contaba la plata dos veces (sumaba el banco ademas del cobro y de la compra) y no
-              respetaba la empresa ni el periodo. El resultado por circuito, el total, el % en negro y
-              el desfasaje ya estan arriba, en "Estado de resultados del periodo", bien calculados. */}
-          <Panel title="Cash flow y estado de resultados" span="half">
+            <div style={styles.sectionHeader}>Resumen de registros</div>
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturado bruto" value={money(cashFlowSummary.billedGross)} />
               <MiniMetric label="Cobrado" value={money(cashFlowSummary.collected)} tone="in" />
@@ -522,316 +508,8 @@ export function CashflowTab({
               <MiniMetric label="Comisiones pendientes" value={money(cashFlowSummary.commissionsPending)} tone="out" />
               <MiniMetric label="Amortizacion mensual" value={money(activeAssetsMonthlyDepreciation)} tone="out" />
             </div>
-          </Panel>
-
-          <Panel title="Resultado preliminar (por registros)" span="half">
-            <div style={styles.sectionHeader}>Resultado — de cobranzas, compras y caja chica</div>
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Ingresos cobrados" value={money(cashFlowSummary.collected)} tone="in" />
-              <MiniMetric label="Compras" value={money(cashFlowSummary.purchaseInvoicesTotal)} tone="out" />
-              <MiniMetric label="Egresos negro" value={money(cashFlowSummary.pettyCashBlackTotal)} tone="out" color="negro" />
-              <MiniMetric label="Comisiones" value={money(cashFlowSummary.commissionsPending)} tone="out" />
-              <MiniMetric label="Amortizacion" value={money(activeAssetsMonthlyDepreciation)} tone="out" />
-              <MiniMetric label="Resultado blanco" value={money(cashFlowSummary.operatingResultWhite)} />
-              <MiniMetric label="Resultado negro" value={money(cashFlowSummary.operatingResultBlack)} />
-              <MiniMetric label="Resultado operativo" value={money(cashFlowSummary.operatingResult)} />
+              </div>
             </div>
-            <div style={styles.sectionHeader}>El banco real — movimiento de la cuenta (NO es resultado)</div>
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Entró (créditos)" value={money(cashFlowSummary.bankCredits)} tone="in" />
-              <MiniMetric label="Salió (débitos)" value={money(cashFlowSummary.bankDebits)} tone="out" />
-              <MiniMetric label="Flujo de caja del banco" value={money(cashFlowSummary.bankNet)} />
-            </div>
-            <div style={styles.noticeBox}>
-              El <strong>resultado</strong> sale de los registros (cobranzas, compras, caja chica): cada
-              cobro y cada pago cuenta una sola vez. El <strong>banco</strong> es el espejo de la cuenta
-              real (cuánta plata entró y salió) y se muestra aparte — un cobro que ya está en cobranzas
-              NO se vuelve a sumar por aparecer en el banco.
-            </div>
-          </Panel>
-
-          <Panel title={`Calendario anual unificado ${analysisYear}`} span="wide">
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Eventos del año" value={String(annualCashFlowEntries.length)} />
-              <MiniMetric label="Mov. bancarios" value={String(bankStatementEntries.length)} />
-              <MiniMetric label="Compromisos deuda" value={String(annualDebtRows.length)} />
-              <MiniMetric label="Ultimo saldo banco" value={money(bankStatementSummary.lastBalance)} />
-            </div>
-            <div style={styles.noticeBox}>
-              Un vistazo del año en <strong>12 columnas</strong> (una por mes): cantidad de eventos y
-              monto movido. El detalle día por día está abajo, en la lista de movimientos del mes.
-            </div>
-            {(() => {
-              const monthly = annualCashFlowByMonth.map((month) => ({
-                key: month.key,
-                label: month.label,
-                count: month.items.length,
-                monto: month.items.reduce((acc: number, it: any) => acc + Math.abs(Number(it.amount || 0)), 0),
-              }));
-              const maxMonto = Math.max(1, ...monthly.map((m) => m.monto));
-              return (
-                <div style={styles.yearMonthsStrip}>
-                  {monthly.map((m) => (
-                    <div key={m.key} style={styles.yearMonthCol}>
-                      <div style={styles.yearMonthColHead}>{m.label.slice(0, 3)}</div>
-                      {m.count === 0 ? (
-                        <div style={{ ...styles.yearMonthColSub, marginTop: 8 }}>—</div>
-                      ) : (
-                        <>
-                          <div style={styles.yearMonthColBig}>{m.count}</div>
-                          <div style={styles.yearMonthColSub}>evento{m.count === 1 ? "" : "s"}</div>
-                          {m.monto > 0 && (
-                            <div style={styles.yearMonthColSub} title={money(m.monto)}>
-                              {compactAr(m.monto)}
-                            </div>
-                          )}
-                        </>
-                      )}
-                      <div style={styles.yearMonthColBarTrack}>
-                        <div
-                          style={{
-                            ...styles.yearMonthColBarFill,
-                            width: `${Math.round((m.monto / maxMonto) * 100)}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
-          </Panel>
-
-          <Panel
-            title="Desendeudamiento" span="full"
-            actions={<ButtonLike onClick={addDebtPlan}>Agregar compromiso</ButtonLike>}
-          >
-            <div style={styles.metricGrid}>
-              <MiniMetric
-                label="Cuota mensual"
-                value={money(
-                  debtPlans
-                    .filter((item) => item.active)
-                    .reduce((acc, item) => acc + Number(item.nextInstallmentAmount || 0), 0)
-                )}
-              />
-              <MiniMetric
-                label="Total comprometido (restante)"
-                value={money(
-                  debtPlans
-                    .filter((item) => item.active)
-                    .reduce(
-                      (acc, item) =>
-                        acc +
-                        Number(item.nextInstallmentAmount || 0) *
-                          Math.max(0, Number(item.remainingInstallments || 0)),
-                      0
-                    )
-                )}
-              />
-              <MiniMetric
-                label="Compromisos activos"
-                value={String(debtPlans.filter((item) => item.active).length)}
-              />
-              {(() => {
-                const usdPend = debtPlans
-                  .filter((item) => item.active)
-                  .reduce(
-                    (acc, item) =>
-                      acc +
-                      Number(item.usdValuePerInstallment || 0) *
-                        Math.max(0, Number(item.remainingInstallments || 0)),
-                    0
-                  );
-                return usdPend > 0 ? (
-                  <MiniMetric
-                    label="USD congelado restante (ref.)"
-                    value={`US$ ${usdPend.toLocaleString("es-AR", {
-                      minimumFractionDigits: 2,
-                      maximumFractionDigits: 2,
-                    })}`}
-                  />
-                ) : null;
-              })()}
-            </div>
-            <div style={{ ...planillaWrap, ...anchosDeudas.vars }}>
-            <table style={planillaTable}>
-              <colgroup>
-                <col style={colLabel} />
-                <col style={colDato} />
-                <col style={colDato} />
-                <col style={colDato} />
-                <col style={colFlexible} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={thEsquina}>
-                    Concepto
-                    <PlanillaManija
-                      onMouseDown={(ev) => anchosDeudas.startResize(ev, "label")}
-                      onDoubleClick={anchosDeudas.resetLabel}
-                    />
-                  </th>
-                  <th style={{ ...thColumna, textAlign: "right" }}>
-                    Próxima cuota
-                    <PlanillaManija
-                      onMouseDown={(ev) => anchosDeudas.startResize(ev, "col")}
-                      onDoubleClick={anchosDeudas.resetCol}
-                    />
-                  </th>
-                  <th style={{ ...thColumna, textAlign: "right" }}>Cuotas restantes</th>
-                  <th style={thColumna}>Próx. vencimiento</th>
-                  <th style={thFlexible}>Día · USD por cuota · empresa · notas</th>
-                </tr>
-              </thead>
-              <tbody>
-                {debtPlans.map((item) => (
-                  <tr
-                    key={item.id}
-                    onContextMenu={(ev) => {
-                      ev.preventDefault();
-                      ev.stopPropagation();
-                      if (window.confirm(`¿Quitar "${item.concept}" de deudas y aportes?`)) removeDebtPlan(item.id);
-                    }}
-                    title="Click derecho: quitar. El punto verde activa o desactiva."
-                  >
-                    <td style={{ ...tdNombre, fontWeight: 400, padding: 0, opacity: item.active ? 1 : 0.45 }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                        <span
-                          title={item.active ? "Activo" : "Inactivo"}
-                          onClick={() => updateArrayItem(setDebtPlans, item.id, "active", !item.active)}
-                          style={{
-                            display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
-                            cursor: "pointer", background: item.active ? "#16a34a" : "#cbd5f5",
-                          }}
-                        />
-                        <input
-                          style={inputCelda}
-                          {...focoCelda}
-                          value={item.concept}
-                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "concept", e.target.value)}
-                        />
-                      </span>
-                    </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <AmountInput
-                        style={inputCeldaDerecha}
-                        {...focoCelda}
-                        value={item.nextInstallmentAmount}
-                        onChange={(n) => updateArrayItem(setDebtPlans, item.id, "nextInstallmentAmount", n)}
-                      />
-                    </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <input
-                        style={inputCeldaDerecha}
-                        {...focoCelda}
-                        type="number"
-                        value={item.remainingInstallments}
-                        onChange={(e) =>
-                          updateArrayItem(setDebtPlans, item.id, "remainingInstallments", Number(e.target.value))
-                        }
-                      />
-                    </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <input
-                        style={{ ...inputCelda, padding: "1px 6px" }}
-                        {...focoCelda}
-                        type="date"
-                        value={item.nextDueDate}
-                        onChange={(e) => updateArrayItem(setDebtPlans, item.id, "nextDueDate", e.target.value)}
-                      />
-                    </td>
-                    <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
-                      <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
-                        <span style={{ color: "#94a3b8" }}>día</span>
-                        <input
-                          style={{ ...inputCelda, width: 44, textAlign: "right" }}
-                          {...focoCelda}
-                          type="number"
-                          value={item.dueDay}
-                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "dueDay", Number(e.target.value))}
-                        />
-                        <span style={{ color: "#94a3b8" }}>U$S/cuota</span>
-                        <input
-                          style={{ ...inputCelda, width: 72, textAlign: "right" }}
-                          {...focoCelda}
-                          type="number"
-                          placeholder="opcional"
-                          value={item.usdValuePerInstallment ?? ""}
-                          onChange={(e) =>
-                            updateArrayItem(
-                              setDebtPlans,
-                              item.id,
-                              "usdValuePerInstallment",
-                              e.target.value === "" ? (undefined as any) : Number(e.target.value)
-                            )
-                          }
-                        />
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.company}
-                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "company", e.target.value)}
-                        >
-                          {COMPANY_OPTIONS.map((company) => (
-                            <option key={company.value} value={company.value}>
-                              {company.short}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                          {...focoCelda}
-                          value={item.notes}
-                          placeholder="notas"
-                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "notes", e.target.value)}
-                        />
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </Panel>
-
-          <Panel title={`Calendario anual de desendeudamiento ${analysisYear}`} span="wide">
-            <div style={styles.noticeBox}>
-              La cuota de cada mes en <strong>12 columnas</strong>: la barra baja a medida que las
-              cuotas se terminan de pagar, así se ve el desendeudamiento avanzar.
-            </div>
-            {(() => {
-              const maxTotal = Math.max(1, ...annualDebtByMonth.map((m) => Number(m.total || 0)));
-              return (
-                <div style={styles.yearMonthsStrip}>
-                  {annualDebtByMonth.map((month) => (
-                    <div key={month.key} style={styles.yearMonthCol}>
-                      <div style={styles.yearMonthColHead}>{month.label.slice(0, 3)}</div>
-                      {month.total > 0 ? (
-                        <>
-                          <div style={styles.yearMonthColBig} title={money(month.total)}>
-                            {compactAr(month.total)}
-                          </div>
-                          <div style={styles.yearMonthColSub}>
-                            {month.items.length} cuota{month.items.length === 1 ? "" : "s"}
-                          </div>
-                        </>
-                      ) : (
-                        <div style={{ ...styles.yearMonthColSub, marginTop: 8 }}>—</div>
-                      )}
-                      <div style={styles.yearMonthColBarTrack}>
-                        <div
-                          style={{
-                            ...styles.yearMonthColBarFill,
-                            width: `${Math.round((Number(month.total || 0) / maxTotal) * 100)}%`,
-                            background: "#f59e0b",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
           </Panel>
 
           <Panel title="Reserva · billetera de la empresa" span="full">
@@ -1370,6 +1048,370 @@ export function CashflowTab({
               </div>
             )}
           </Panel>
+
+          <Panel title="Posicion de IVA (desde el ultimo VEP)" span="wide">
+            <div style={{ ...styles.muted, marginBottom: 10 }}>
+              Debito (IVA de ventas emitidas) menos credito (IVA de compras en blanco), acumulado desde el
+              ultimo VEP de pago. Positivo = <strong>a pagar</strong> (conviene comprar en blanco con esa
+              empresa); negativo = <strong>a favor</strong> (conviene facturar con esa empresa). El IVA es
+              por CUIT: no se suma entre empresas.
+            </div>
+            {vatPositionByCompany.length === 0 ? (
+              <div style={styles.empty}>Sin empresas en el alcance seleccionado.</div>
+            ) : (
+              vatPositionByCompany.map((v) => (
+                <div key={v.company} style={{ marginBottom: 12 }}>
+                  <div style={{ ...balanceSection, borderLeft: `4px solid ${v.primary}`, paddingLeft: 8 }}>
+                    {v.short}
+                    {v.lastVepDate
+                      ? ` · desde el VEP del ${formatDateDisplay(v.lastVepDate)}`
+                      : " · sin VEP (cuenta todo el historico)"}
+                  </div>
+                  <div style={balanceGrid}>
+                    <BalanceTile
+                      label={`IVA debito · ventas (${v.ventas})`}
+                      value={money(v.debito)}
+                      tone="white"
+                    />
+                    <BalanceTile
+                      label={`IVA credito · compras blanco (${v.compras})`}
+                      value={money(v.credito)}
+                      tone="white"
+                    />
+                    <BalanceTile
+                      label={
+                        v.posicion > 1
+                          ? "Posicion: A PAGAR"
+                          : v.posicion < -1
+                          ? "Posicion: A FAVOR"
+                          : "Posicion: equilibrado"
+                      }
+                      value={money(v.posicion)}
+                      tone={v.posicion > 1 ? "warn" : "strong"}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+
+            <div style={{ ...balanceSection, marginTop: 8 }}>
+              VEP de pago de IVA (al cargarlo se reinicia el contador de esa empresa)
+            </div>
+            <div style={{ marginBottom: 8 }}>
+              <ButtonLike onClick={addIvaVepPayment}>Cargar VEP de pago</ButtonLike>
+            </div>
+            {ivaVepPayments.length === 0 ? (
+              <div style={styles.empty}>
+                Sin VEP cargados. Al cargar el pago trimestral, el contador de esa empresa arranca de nuevo
+                desde la fecha del VEP.
+              </div>
+            ) : (
+              ivaVepPayments.map((v: any) => (
+                <div key={v.id} style={styles.subCard}>
+                  <div style={styles.inlineActions}>
+                    <button style={styles.smallBtn} onClick={() => removeIvaVepPayment(v.id)}>
+                      Quitar
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                    <Field label="Empresa">
+                      <select
+                        style={styles.input}
+                        value={v.company}
+                        onChange={(e) => updateIvaVepPayment(v.id, "company", e.target.value)}
+                      >
+                        {COMPANY_OPTIONS.filter((c: any) => c.value && c.value !== "General").map((c: any) => (
+                          <option key={c.value} value={c.value}>
+                            {c.short || c.value}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                    <Field label="Fecha del VEP">
+                      <input
+                        style={styles.input}
+                        type="date"
+                        value={v.date}
+                        onChange={(e) => updateIvaVepPayment(v.id, "date", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Periodo">
+                      <input
+                        style={styles.input}
+                        value={v.period}
+                        placeholder="3T 2026"
+                        onChange={(e) => updateIvaVepPayment(v.id, "period", e.target.value)}
+                      />
+                    </Field>
+                    <Field label="Monto pagado">
+                      <AmountInput
+                        style={styles.input}
+                        value={v.amount}
+                        onChange={(n) => updateIvaVepPayment(v.id, "amount", n)}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              ))
+            )}
+          </Panel>
+
+          <Panel
+            title="Desendeudamiento" span="full"
+            actions={<ButtonLike onClick={addDebtPlan}>Agregar compromiso</ButtonLike>}
+          >
+            <div style={styles.metricGrid}>
+              <MiniMetric
+                label="Cuota mensual"
+                value={money(
+                  debtPlans
+                    .filter((item) => item.active)
+                    .reduce((acc, item) => acc + Number(item.nextInstallmentAmount || 0), 0)
+                )}
+              />
+              <MiniMetric
+                label="Total comprometido (restante)"
+                value={money(
+                  debtPlans
+                    .filter((item) => item.active)
+                    .reduce(
+                      (acc, item) =>
+                        acc +
+                        Number(item.nextInstallmentAmount || 0) *
+                          Math.max(0, Number(item.remainingInstallments || 0)),
+                      0
+                    )
+                )}
+              />
+              <MiniMetric
+                label="Compromisos activos"
+                value={String(debtPlans.filter((item) => item.active).length)}
+              />
+              {(() => {
+                const usdPend = debtPlans
+                  .filter((item) => item.active)
+                  .reduce(
+                    (acc, item) =>
+                      acc +
+                      Number(item.usdValuePerInstallment || 0) *
+                        Math.max(0, Number(item.remainingInstallments || 0)),
+                    0
+                  );
+                return usdPend > 0 ? (
+                  <MiniMetric
+                    label="USD congelado restante (ref.)"
+                    value={`US$ ${usdPend.toLocaleString("es-AR", {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })}`}
+                  />
+                ) : null;
+              })()}
+            </div>
+            <div style={{ ...planillaWrap, ...anchosDeudas.vars }}>
+            <table style={planillaTable}>
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style={thEsquina}>
+                    Concepto
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosDeudas.startResize(ev, "label")}
+                      onDoubleClick={anchosDeudas.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Próxima cuota
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosDeudas.startResize(ev, "col")}
+                      onDoubleClick={anchosDeudas.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Cuotas restantes</th>
+                  <th style={thColumna}>Próx. vencimiento</th>
+                  <th style={thFlexible}>Día · USD por cuota · empresa · notas</th>
+                </tr>
+              </thead>
+              <tbody>
+                {debtPlans.map((item) => (
+                  <tr
+                    key={item.id}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      if (window.confirm(`¿Quitar "${item.concept}" de deudas y aportes?`)) removeDebtPlan(item.id);
+                    }}
+                    title="Click derecho: quitar. El punto verde activa o desactiva."
+                  >
+                    <td style={{ ...tdNombre, fontWeight: 400, padding: 0, opacity: item.active ? 1 : 0.45 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                        <span
+                          title={item.active ? "Activo" : "Inactivo"}
+                          onClick={() => updateArrayItem(setDebtPlans, item.id, "active", !item.active)}
+                          style={{
+                            display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                            cursor: "pointer", background: item.active ? "#16a34a" : "#cbd5f5",
+                          }}
+                        />
+                        <input
+                          style={inputCelda}
+                          {...focoCelda}
+                          value={item.concept}
+                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "concept", e.target.value)}
+                        />
+                      </span>
+                    </td>
+                    <td style={{ ...tdDato, padding: 0 }}>
+                      <AmountInput
+                        style={inputCeldaDerecha}
+                        {...focoCelda}
+                        value={item.nextInstallmentAmount}
+                        onChange={(n) => updateArrayItem(setDebtPlans, item.id, "nextInstallmentAmount", n)}
+                      />
+                    </td>
+                    <td style={{ ...tdDato, padding: 0 }}>
+                      <input
+                        style={inputCeldaDerecha}
+                        {...focoCelda}
+                        type="number"
+                        value={item.remainingInstallments}
+                        onChange={(e) =>
+                          updateArrayItem(setDebtPlans, item.id, "remainingInstallments", Number(e.target.value))
+                        }
+                      />
+                    </td>
+                    <td style={{ ...tdDato, padding: 0 }}>
+                      <input
+                        style={{ ...inputCelda, padding: "1px 6px" }}
+                        {...focoCelda}
+                        type="date"
+                        value={item.nextDueDate}
+                        onChange={(e) => updateArrayItem(setDebtPlans, item.id, "nextDueDate", e.target.value)}
+                      />
+                    </td>
+                    <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
+                        <span style={{ color: "#94a3b8" }}>día</span>
+                        <input
+                          style={{ ...inputCelda, width: 44, textAlign: "right" }}
+                          {...focoCelda}
+                          type="number"
+                          value={item.dueDay}
+                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "dueDay", Number(e.target.value))}
+                        />
+                        <span style={{ color: "#94a3b8" }}>U$S/cuota</span>
+                        <input
+                          style={{ ...inputCelda, width: 72, textAlign: "right" }}
+                          {...focoCelda}
+                          type="number"
+                          placeholder="opcional"
+                          value={item.usdValuePerInstallment ?? ""}
+                          onChange={(e) =>
+                            updateArrayItem(
+                              setDebtPlans,
+                              item.id,
+                              "usdValuePerInstallment",
+                              e.target.value === "" ? (undefined as any) : Number(e.target.value)
+                            )
+                          }
+                        />
+                        <select
+                          style={{ ...inputCelda, width: "auto" }}
+                          value={item.company}
+                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "company", e.target.value)}
+                        >
+                          {COMPANY_OPTIONS.map((company) => (
+                            <option key={company.value} value={company.value}>
+                              {company.short}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
+                          {...focoCelda}
+                          value={item.notes}
+                          placeholder="notas"
+                          onChange={(e) => updateArrayItem(setDebtPlans, item.id, "notes", e.target.value)}
+                        />
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            </div>
+          </Panel>
+
+          {/* Las dos deudas que se administran en Compras, acá en modo lectura: son plata que hay que
+              sacar, así que tienen que estar a la vista junto al desendeudamiento. Se editan allá. */}
+          <Panel title="Deuda con la gente (lo que pusieron de su bolsillo)" span="full">
+            <div style={styles.sectionNote}>
+              Facturas que puso un empleado, un socio o un tercero y todavía no se le reintegraron. Se
+              salda desde <strong>Compras</strong>.{" "}
+              <strong style={{ color: Number(personDebts?.total || 0) > 1 ? "#b45309" : "#16a34a" }}>
+                Total a devolver: {money(Number(personDebts?.total || 0))}
+              </strong>
+              .
+            </div>
+            {(personDebts?.debts || []).length === 0 ? (
+              <div style={styles.empty}>No hay facturas puestas por alguien sin reintegrar. Al día.</div>
+            ) : (
+              <div style={styles.metricGrid}>
+                {(personDebts.debts || []).map((deuda: any) => (
+                  <MiniMetric
+                    key={`deuda-persona-${deuda.person}`}
+                    label={`${deuda.person} · ${deuda.count} ${deuda.count === 1 ? "factura" : "facturas"}`}
+                    value={money(deuda.total)}
+                    tone="out"
+                  />
+                ))}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="Cuenta corriente con proveedores" span="full">
+            <div style={styles.sectionNote}>
+              Saldo por proveedor: todo lo comprado menos todo lo pagado. El detalle movimiento por
+              movimiento está en <strong>Compras</strong>.{" "}
+              <strong style={{ color: Number(purchaseLedger?.saldoTotal || 0) > 1 ? "#b45309" : "#16a34a" }}>
+                Saldo total: {money(Number(purchaseLedger?.saldoTotal || 0))}
+              </strong>
+              {Number(purchaseLedger?.sinConciliarTotal || 0) > 1 && (
+                <>
+                  {" · "}
+                  <span style={{ color: "#ca8a04" }}>
+                    {money(Number(purchaseLedger.sinConciliarTotal))} en facturas sin pago vinculado
+                  </span>
+                </>
+              )}
+              .
+            </div>
+            {(() => {
+              const conSaldo = (purchaseLedger?.ledgers || []).filter((l: any) => l.saldo > 1);
+              if (conSaldo.length === 0) {
+                return <div style={styles.empty}>No le debemos nada a ningún proveedor. Al día.</div>;
+              }
+              return (
+                <div style={styles.metricGrid}>
+                  {conSaldo.map((l: any) => (
+                    <MiniMetric
+                      key={`cc-prov-${l.key}`}
+                      label={l.esCuentaCorriente ? `${l.supplier} · convenio` : l.supplier}
+                      value={money(l.saldo)}
+                      tone="out"
+                    />
+                  ))}
+                </div>
+              );
+            })()}
+          </Panel>
+
         </div>
   );
 }
