@@ -33,6 +33,7 @@ export type TabKey =
   | "personal"
   | "asistencia"
   | "costos"
+  | "bancos"
   | "tarjetas"
   | "documentos"
   | "manual";

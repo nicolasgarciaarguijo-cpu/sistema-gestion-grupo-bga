@@ -71,6 +71,7 @@ import { buildLoanLines, lenderFromLabel, type CalendarLoan } from "./domain/loa
 import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
 import { aggregateCardCosts } from "./domain/cardCosts";
 import { TarjetasTab } from "./tabs/Tarjetas";
+import { BancosTab } from "./tabs/Bancos";
 import { detectIntercompanyTransfers, summarizeIntercompany } from "./domain/intercompany";
 import {
   companyFolderName,
@@ -407,7 +408,8 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "cashflow", label: "BALANCE Y ESTADO DE RESULTADOS" },
   { key: "aprobados", label: "TRABAJOS APROBADOS" },
   { key: "facturacion", label: "FACTURACIÓN Y COBRANZAS" },
-  { key: "costos", label: "PAGO A PROVEEDORES · BANCOS · TARJETAS" },
+  { key: "costos", label: "PAGO A PROVEEDORES" },
+  { key: "bancos", label: "BANCOS Y TARJETAS" },
   { key: "compras", label: "COMPRAS" },
   { key: "cajaChica", label: "CAJA CHICA" },
   { key: "emitirFacturas", label: "EMITIR FACTURAS" },
@@ -431,6 +433,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "aprobados",
   "facturacion",
   "costos",
+  "bancos",
   "compras",
   "cajaChica",
   "emitirFacturas",
@@ -515,7 +518,8 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   stock: "SA",
   personal: "PE",
   asistencia: "ASI",
-  costos: "CFV",
+  costos: "PRV",
+  bancos: "BCO",
   tarjetas: "TAR",
   documentos: "DOC",
   manual: "MAN",
@@ -16065,8 +16069,6 @@ export default function App() {
 
       {activeTab === "costos" && (
         <CostosTab
-          bankLoadsUntil={bankLoadsUntil}
-          onBankLoadsUntilChange={setBankLoadsUntil}
           fiscalLabel={costsFiscalLabel}
           months={costsMonths}
           aggregation={costsAggregation}
@@ -16099,35 +16101,30 @@ export default function App() {
           removeCostGroup={removeCostGroup}
           updateCostGroup={updateCostGroup}
           createCostGroup={createCostGroup}
-          tarjetasSlot={
-            <TarjetasTab
-              companyScope={tarjetasCompanyScope}
-              onScopeChange={setTarjetasCompanyScope}
-              COMPANY_OPTIONS={COMPANY_OPTIONS}
-              getCompanyMeta={getCompanyMeta}
-              cards={visibleCreditCards}
-              statements={visibleCreditCardStatements}
-              consumptions={visibleCreditCardConsumptions}
-              cardCostSummary={cardCostSummary}
-              manualGroupOptions={costGroups.filter((g) => g.active && !g.auto).map((g) => g.name)}
-              createCostGroup={createCostGroup}
-              addCreditCard={addCreditCard}
-              removeCreditCard={removeCreditCard}
-              updateCreditCard={updateCreditCard}
-              addCreditCardStatement={addCreditCardStatement}
-              removeCreditCardStatement={removeCreditCardStatement}
-              updateCreditCardStatement={updateCreditCardStatement}
-              addCreditCardConsumption={addCreditCardConsumption}
-              removeCreditCardConsumption={removeCreditCardConsumption}
-              updateCreditCardConsumption={updateCreditCardConsumption}
-            />
-          }
           addCostEntry={addCostEntry}
           removeCostEntry={removeCostEntry}
           updateCostEntry={updateCostEntry}
           costRules={costRules}
           updateCostRule={updateCostRule}
           removeCostRule={removeCostRule}
+        />
+      )}
+
+
+      {activeTab === "bancos" && (
+        <BancosTab
+          bankLoadsUntil={bankLoadsUntil}
+          onBankLoadsUntilChange={setBankLoadsUntil}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          getCompanyMeta={getCompanyMeta}
+          costGroups={costGroups}
+          createCostGroup={createCostGroup}
+          approvedJobsForLink={visibleApprovedJobs.map((j) => ({
+            budgetNumber: j.budgetNumber,
+            client: j.client,
+            company: j.company,
+          }))}
+          suppliers={visibleSuppliers}
           statementDraft={costStatementDraft}
           statementMessage={costStatementMessage}
           statementBusy={costStatementBusy}
@@ -16158,9 +16155,31 @@ export default function App() {
           commitBankMirrorDraft={commitBankMirrorDraft}
           discardBankMirrorDraft={discardBankMirrorDraft}
           knownBanks={knownBanks}
+          tarjetasSlot={
+            <TarjetasTab
+              companyScope={tarjetasCompanyScope}
+              onScopeChange={setTarjetasCompanyScope}
+              COMPANY_OPTIONS={COMPANY_OPTIONS}
+              getCompanyMeta={getCompanyMeta}
+              cards={visibleCreditCards}
+              statements={visibleCreditCardStatements}
+              consumptions={visibleCreditCardConsumptions}
+              cardCostSummary={cardCostSummary}
+              manualGroupOptions={costGroups.filter((g) => g.active && !g.auto).map((g) => g.name)}
+              createCostGroup={createCostGroup}
+              addCreditCard={addCreditCard}
+              removeCreditCard={removeCreditCard}
+              updateCreditCard={updateCreditCard}
+              addCreditCardStatement={addCreditCardStatement}
+              removeCreditCardStatement={removeCreditCardStatement}
+              updateCreditCardStatement={updateCreditCardStatement}
+              addCreditCardConsumption={addCreditCardConsumption}
+              removeCreditCardConsumption={removeCreditCardConsumption}
+              updateCreditCardConsumption={updateCreditCardConsumption}
+            />
+          }
         />
       )}
-
 
       {activeTab === "documentos" && (
         <DocumentosTab
