@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { styles } from "../ui/styles";
 import {
   Panel,
@@ -201,10 +201,134 @@ export function PersonalTab(props: PersonalTabProps) {
   const anchosCategorias = usePlanillaWidths("personal.categorias", { label: 260, col: 116, colCompact: 88 });
   const anchosEscalas = usePlanillaWidths("personal.escalas", { label: 220, col: 116, colCompact: 88 });
 
+  // La nomina se lee SEPARADA POR EMPRESA (pedido de Nicolas): una sola lista mezclada no dejaba ver
+  // cuanta gente tiene cada una. Se respeta el orden por sueldo dentro de cada grupo.
+  const empleadosPorEmpresa = COMPANY_OPTIONS.filter((c: any) => c.value && c.value !== "General")
+    .map((c: any) => {
+      const meta = getCompanyMeta(c.value);
+      return {
+        company: c.value,
+        short: meta.short || c.value,
+        primary: meta.primary,
+        soft: meta.soft,
+        items: employeesSortedByPay.filter((e: any) => e.company === c.value),
+      };
+    })
+    .filter((g: any) => g.items.length > 0);
+
   return (
         <div style={styles.personalStack}>
-          <div style={{ order: -1, gridColumn: "1 / -1" }}>
-            <Panel span="full" title={`Capacidad horaria de la dotacion (${visibleEmployees.length} empleados)`}>
+          {!selectedEmployee && (
+          <div style={{ order: 1, gridColumn: "1 / -1" }}>
+          {(() => {
+            let rojo = 0;
+            let amarillo = 0;
+            let verde = 0;
+            employeesSortedByPay.forEach((employee) => {
+              const level = getEmployeeSemaphore(employee).level;
+              if (level === "rojo") rojo += 1;
+              else if (level === "amarillo") amarillo += 1;
+              else verde += 1;
+            });
+            return (
+              <Panel span="full" title="Semaforo de personal">
+                <SemaforoResumen
+                  items={[
+                    { level: "verde", label: "Fichas completas", value: String(verde) },
+                    { level: "amarillo", label: "Documentacion por vencer", value: String(amarillo) },
+                    { level: "rojo", label: "Falta info / vencidos", value: String(rojo) },
+                  ]}
+                />
+              </Panel>
+            );
+          })()}
+          </div>
+          )}
+
+          <div style={{ order: 2, gridColumn: "1 / -1" }}>
+          <Panel
+            title="Resumen por empresa"
+            span="full"
+            actions={
+              <div style={styles.inlineActions}>
+                <ButtonLike onClick={() => exportPersonalReport("General")} secondary>
+                  Reporte general
+                </ButtonLike>
+                {COMPANY_OPTIONS.filter((company) => canAccessCompany(company.value)).map((company) => (
+                  <ButtonLike
+                    key={`personal-report-${company.value}`}
+                    onClick={() => exportPersonalReport(company.value)}
+                    secondary
+                  >
+                    Reporte {company.short}
+                  </ButtonLike>
+                ))}
+                <ButtonLike onClick={anchosNomina.toggleCompacto} secondary>
+                  {anchosNomina.esCompacto ? "Ancho normal" : "Compacto"}
+                </ButtonLike>
+              </div>
+            }
+          >
+            <div style={styles.metricGrid}>
+              {totalCompanyPayroll.map((row: any) => {
+                const meta = getCompanyMeta(row.company);
+                const porTipo = row.provisionesPorTipo || {};
+                const tiposConCosto = PERSONAL_PROVISION_KINDS.filter(
+                  (kind) => Number(porTipo[kind] || 0) > 0
+                );
+                return (
+                  <div key={row.company} style={{ ...styles.metric, borderColor: meta.primary, background: meta.soft }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+                      <span style={{ fontWeight: 800, color: meta.primary }}>{row.label}</span>
+                      <span style={styles.muted}>
+                        {row.headcount} {row.headcount === 1 ? "empleado" : "empleados"}
+                      </span>
+                    </div>
+                    <div style={styles.muted}>Total neto</div>
+                    <div style={{ fontWeight: 700 }}>{money(row.totalNet)}</div>
+
+                    <LineaResumen label="Salarios" value={money(row.salarios)} fuerte separador />
+                    <LineaResumen label="Blanco" value={money(row.salariosWhite)} sangria />
+                    <LineaResumen
+                      label="Negro"
+                      value={money(row.salariosBlack)}
+                      sangria
+                      color={MONEY_OUT_COLOR}
+                    />
+
+                    <LineaResumen label="Cargas sociales" value={money(row.cargasSociales)} fuerte separador />
+
+                    <LineaResumen
+                      label="Exámenes, EPP y capacitaciones"
+                      value={money(row.provisiones)}
+                      fuerte
+                      separador
+                    />
+                    {tiposConCosto.length === 0 ? (
+                      <div style={{ ...styles.muted, paddingLeft: 10 }}>Sin provisiones cargadas.</div>
+                    ) : (
+                      tiposConCosto.map((kind) => (
+                        <LineaResumen
+                          key={`${row.company}-prov-${kind}`}
+                          label={ETIQUETA_PROVISION[kind]}
+                          value={money(Number(porTipo[kind] || 0))}
+                          sangria
+                        />
+                      ))
+                    )}
+
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 6, borderTop: "1px solid rgba(0,0,0,0.12)", paddingTop: 4 }}>
+                      <span style={{ ...styles.muted, fontWeight: 700 }}>Impacto total</span>
+                      <span style={{ fontWeight: 800 }}>{money(row.totalImpact)}</span>
+                    </div>
+                    <div style={{ ...styles.muted, fontSize: 11 }}>
+                      Blanco {money(row.totalWhite)} · Negro {money(row.totalBlack)}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={styles.sectionHeader}>Capacidad horaria de la dotación</div>
               <div style={styles.metricGrid}>
                 <MiniMetric label="Horas nominales / año" value={nfHours(workforceHours.nominal)} />
                 <MiniMetric label="Horas productivas / año" value={nfHours(workforceHours.productive)} />
@@ -214,771 +338,241 @@ export function PersonalTab(props: PersonalTabProps) {
                 />
                 <MiniMetric label="Productividad" value={pct(workforceProductivityPct)} />
               </div>
-            </Panel>
+          </Panel>
           </div>
-          <div style={{ order: 0, gridColumn: "1 / -1" }}>
-            <Panel span="full" title={`Recordatorios de personal (${personalReminders.length})`}>
-              {personalReminders.length === 0 ? (
-                <div style={styles.empty}>
-                  No hay vencimientos ni documentacion pendiente en los proximos 30 dias.
-                </div>
-              ) : (
-                <div style={{ ...planillaWrap, ...anchosRecordatorios.vars }}>
-                <table style={planillaTable}>
-                  <colgroup>
-                    <col style={colLabel} />
-                    <col style={colDato} />
-                    <col style={colDato} />
-                    <col style={colFlexible} />
-                  </colgroup>
-                  <thead>
+
+          {!selectedEmployee && (
+          <div style={{ order: 3, gridColumn: "1 / -1" }}>
+          <Panel title="Empleados" span="full">
+            <div style={{ ...planillaWrap, ...anchosNomina.vars }}>
+            <table style={planillaTable}>
+              {/* Antes la ultima columna metia asistencia, documentacion, las cuatro provisiones,
+                  categoria, antiguedad, ingreso, impacto y empresa en un solo renglon: no se leia
+                  nada. Ahora cada cosa tiene su columna, y la empresa pasa al encabezado de grupo. */}
+              <colgroup>
+                <col style={colLabel} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
+                <col style={colFlexible} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th style={thEsquina}>
+                    Empleado
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosNomina.startResize(ev, "label")}
+                      onDoubleClick={anchosNomina.resetLabel}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>
+                    Hs mes
+                    <PlanillaManija
+                      onMouseDown={(ev) => anchosNomina.startResize(ev, "col")}
+                      onDoubleClick={anchosNomina.resetCol}
+                    />
+                  </th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Bruto</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Neto</th>
+                  <th style={{ ...thColumna, textAlign: "right" }}>Costo hora real</th>
+                  <th style={thColumna}>Categoría</th>
+                  <th style={thColumna}>Asistencia</th>
+                  <th style={thColumna}>Documentación</th>
+                  <th style={thColumna}>EPP · insumos</th>
+                  <th style={thFlexible}>Impacto mensual</th>
+                </tr>
+              </thead>
+              <tbody>
+                {empleadosPorEmpresa.map((grupo) => (
+                  <React.Fragment key={`grupo-${grupo.company}`}>
                     <tr>
-                      <th style={thEsquina}>
-                        Empleado
-                        <PlanillaManija
-                          onMouseDown={(ev) => anchosRecordatorios.startResize(ev, "label")}
-                          onDoubleClick={anchosRecordatorios.resetLabel}
-                        />
-                      </th>
-                      <th style={thColumna}>
-                        Vence
-                        <PlanillaManija
-                          onMouseDown={(ev) => anchosRecordatorios.startResize(ev, "col")}
-                          onDoubleClick={anchosRecordatorios.resetCol}
-                        />
-                      </th>
-                      <th style={{ ...thColumna, textAlign: "right" }}>Días</th>
-                      <th style={thFlexible}>Qué falta</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {personalReminders.map((rem, i) => {
-                      const level = rem.state === "vence_pronto" ? "amarillo" : "rojo";
-                      const estadoLabel =
-                        rem.state === "faltante"
-                          ? "Falta cargar"
-                          : rem.state === "vencido"
-                          ? "Vencido"
-                          : "Vence pronto";
-                      return (
-                        <tr key={`${rem.type}-${rem.employeeName}-${rem.label}-${i}`}>
-                          <td style={{ ...tdNombre, fontWeight: 400 }} title={rem.employeeName}>
-                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <Semaforo level={level} size={10} title={estadoLabel} />
-                              {rem.employeeName}
-                            </span>
-                          </td>
-                          <td style={{ ...tdDato, color: "#475569" }}>
-                            {rem.dueDate ? formatDateDisplay(rem.dueDate) : "—"}
-                          </td>
-                          <td
-                            style={{
-                              ...tdDato, textAlign: "right", fontWeight: 700,
-                              color: rem.state === "faltante" ? "#94a3b8" : rem.daysLeft < 0 ? "#dc2626" : "#ca8a04",
-                            }}
-                          >
-                            {rem.state === "faltante"
-                              ? "—"
-                              : rem.daysLeft < 0
-                              ? `${Math.abs(rem.daysLeft)} d vencido`
-                              : `${rem.daysLeft} d`}
-                          </td>
-                          <td style={{ ...tdFlexible, color: "#64748b" }}>
-                            <strong style={{ color: "#0f172a" }}>{estadoLabel}</strong>
-                            <span style={{ color: "#94a3b8" }}>
-                              {" · "}{rem.type === "provision" ? "Provisión" : "Documento"}
-                              {" · "}{rem.label}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-              )}
-            </Panel>
-          </div>
-          <div style={{ order: 5, gridColumn: "1 / -1" }}>
-            <Panel
-              title="Costo real por empresa y categoria"
-              span="full"
-              actions={
-                <ButtonLike onClick={syncLaborMarkersFromPersonal}>
-                  Volcar a mano de obra base
-                </ButtonLike>
-              }
-            >
-              <div style={styles.muted}>
-                Este bloque consolida el costo integral real por empresa y categoria a partir de
-                los empleados cargados. Sirve para actualizar la mano de obra base de Marcadores
-                con un valor hora mas fiel, sin perder la edicion manual posterior.
-              </div>
-
-              <div style={{ ...styles.metricGrid, marginTop: 12 }}>
-                <MiniMetric label="Empleados totales" value={String(employees.length)} />
-                <MiniMetric
-                  label="Categorias activas"
-                  value={String(companyCategoryCostRows.length)}
-                />
-              </div>
-
-              {companyCategoryCostRows.length === 0 ? (
-                <div style={{ ...styles.empty, marginTop: 12 }}>
-                  Cuando cargues empleados, aqui vas a ver el costo real promedio por categoria y
-                  empresa.
-                </div>
-              ) : (
-                <div style={{ ...planillaWrap, ...anchosCategorias.vars, marginTop: 12 }}>
-                <table style={planillaTable}>
-                  <colgroup>
-                    <col style={colLabel} />
-                    <col style={colDato} />
-                    <col style={colDato} />
-                    <col style={colDato} />
-                    <col style={colDato} />
-                    <col style={colFlexible} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th style={thEsquina}>
-                        Categoría
-                        <PlanillaManija
-                          onMouseDown={(ev) => anchosCategorias.startResize(ev, "label")}
-                          onDoubleClick={anchosCategorias.resetLabel}
-                        />
-                      </th>
-                      <th style={{ ...thColumna, textAlign: "right" }}>
-                        Empleados
-                        <PlanillaManija
-                          onMouseDown={(ev) => anchosCategorias.startResize(ev, "col")}
-                          onDoubleClick={anchosCategorias.resetCol}
-                        />
-                      </th>
-                      <th style={{ ...thColumna, textAlign: "right" }}>Bruto prom.</th>
-                      <th style={{ ...thColumna, textAlign: "right" }}>Neto prom.</th>
-                      <th style={{ ...thColumna, textAlign: "right" }}>Costo hora prom.</th>
-                      <th style={thFlexible}>Impacto · cargas · provisión · presentismo · antigüedad</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {companyCategoryCostRows.map((row) => {
-                      const meta = getCompanyMeta(row.company);
-                      return (
-                        <tr key={`${row.company}-${row.category}`}>
-                          <td
-                            style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
-                            title={`${row.category} · ${meta.short}`}
-                          >
-                            {row.category}
-                            <span style={{ color: "#94a3b8" }}> · {meta.short}</span>
-                          </td>
-                          <td style={{ ...tdDato, textAlign: "right" }}>{row.employeeCount}</td>
-                          <td style={{ ...tdDato, textAlign: "right" }}>{money(row.avgGross)}</td>
-                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(row.avgNet)}</td>
-                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(row.avgHourlyCost)}</td>
-                          <td style={{ ...tdFlexible, color: "#64748b" }}>
-                            <strong style={{ color: "#0f172a" }}>{money(row.avgEmployerImpact)}</strong>
-                            <span style={{ color: "#94a3b8" }}>
-                              {" · cargas "}{money(row.avgEmployerImpact - row.avgGross - row.avgMonthlyProvisionCost)}
-                              {" · provisión "}{money(row.avgMonthlyProvisionCost)}
-                              {" · descuentos "}{money(row.avgGross - row.avgNet)}
-                              {" · presentismo "}{pct(row.avgPresentismoPct)}
-                              {" · antig. "}{row.avgSeniorityYears.toFixed(1)} años
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                </div>
-              )}
-            </Panel>
-          </div>
-
-            {employeeDocumentModal && (
-              <div style={styles.modalBackdrop}>
-                <div style={styles.employeeSetupModal}>
-                  <Panel
-                    title="Agregar documentacion importante"
-                    span="full"
-                    actions={
-                      <div style={styles.inlineActions}>
-                        <ButtonLike onClick={createEmployeeDocumentFromModal}>
-                          Crear item
-                        </ButtonLike>
-                        <ButtonLike onClick={() => setEmployeeDocumentModal(null)} secondary>
-                          Cancelar
-                        </ButtonLike>
-                      </div>
-                    }
-                  >
-                    <TwoCol>
-                      <Field label="Titulo">
-                        <input
-                          style={styles.input}
-                          value={employeeDocumentModal.name}
-                          onChange={(e) =>
-                            setEmployeeDocumentModal({
-                              ...employeeDocumentModal,
-                              name: e.target.value,
-                            })
-                          }
-                          placeholder="Ej: DNI, Apto medico, Certificado"
-                        />
-                      </Field>
-                      <Field label="Vigencia / vencimiento">
-                        <input
-                          style={styles.input}
-                          type="date"
-                          value={employeeDocumentModal.dueDate}
-                          onChange={(e) =>
-                            setEmployeeDocumentModal({
-                              ...employeeDocumentModal,
-                              dueDate: e.target.value,
-                            })
-                          }
-                        />
-                      </Field>
-                    </TwoCol>
-                  </Panel>
-                </div>
-              </div>
-            )}
-
-            {employeeProvisionModal && (
-              <div style={styles.modalBackdrop}>
-                <div style={styles.employeeSetupModal}>
-                  <Panel
-                    title={`Agregar ${employeeProvisionModal.kind}`}
-                    span="full"
-                    actions={
-                      <div style={styles.inlineActions}>
-                        <ButtonLike onClick={createEmployeeProvisionFromModal}>
-                          Crear item
-                        </ButtonLike>
-                        <ButtonLike onClick={() => setEmployeeProvisionModal(null)} secondary>
-                          Cancelar
-                        </ButtonLike>
-                      </div>
-                    }
-                  >
-                    <TwoCol>
-                      <Field label="Titulo del item">
-                        <input
-                          style={styles.input}
-                          value={employeeProvisionModal.title}
-                          onChange={(e) =>
-                            setEmployeeProvisionModal({
-                              ...employeeProvisionModal,
-                              title: e.target.value,
-                            })
-                          }
-                          placeholder="Ej: Ropa de trabajo"
-                        />
-                      </Field>
-                      <Field label="Vigencia / vencimiento">
-                        <input
-                          style={styles.input}
-                          type="date"
-                          value={employeeProvisionModal.dueDate}
-                          onChange={(e) =>
-                            setEmployeeProvisionModal({
-                              ...employeeProvisionModal,
-                              dueDate: e.target.value,
-                            })
-                          }
-                        />
-                      </Field>
-                      <Field label="Costo neto">
-                        <AmountInput
-                          style={styles.input}
-                          value={employeeProvisionModal.unitPrice}
-                          onChange={(n) =>
-                            setEmployeeProvisionModal({
-                              ...employeeProvisionModal,
-                              unitPrice: n,
-                            })
-                          }
-                        />
-                      </Field>
-                    </TwoCol>
-                    <div style={{ ...styles.muted, marginTop: 10 }}>
-                      Al crear este item tambien se genera el item relacionado en Stock dentro de
-                      EPP/Insumos.
-                    </div>
-                  </Panel>
-                </div>
-              </div>
-            )}
-
-            {isEmployeeSetupModalOpen && (
-              <div style={styles.modalBackdrop}>
-                <div style={styles.employeeSetupModal}>
-                  <Panel
-                    title="Agregar empleado"
-                    span="full"
-                    actions={
-                      <div style={styles.inlineActions}>
-                        <ButtonLike
-                          onClick={() => {
-                            addEmployee();
-                            setIsEmployeeSetupModalOpen(false);
+                      <td colSpan={10} style={styles.sectionCell}>
+                        <div
+                          style={{
+                            ...styles.sectionHeader,
+                            background: grupo.soft,
+                            color: grupo.primary,
+                            borderColor: grupo.primary,
                           }}
                         >
-                          Agregar empleado
-                        </ButtonLike>
-                        <ButtonLike
-                          onClick={() => setIsEmployeeSetupModalOpen(false)}
-                          secondary
-                        >
-                          Cancelar
-                        </ButtonLike>
-                      </div>
-                    }
-                  >
-                    <TwoCol>
-                      <Field label="Empresa">
-                        <select
-                          style={styles.input}
-                          value={newEmployeeDraft.company}
-                          onChange={(e) =>
-                            setNewEmployeeDraft({
-                              ...newEmployeeDraft,
-                              company: e.target.value as CompanyName,
-                            })
-                          }
-                        >
-                          {COMPANY_OPTIONS.map((company) => (
-                            <option key={company.value} value={company.value}>
-                              {company.value}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <Field label="Legajo (automatico)">
-                        <input
-                          style={styles.inputReadOnly}
-                          value={newEmployeeDraft.legajo}
-                          onChange={(e) =>
-                            setNewEmployeeDraft({ ...newEmployeeDraft, legajo: e.target.value })
-                          }
-                          placeholder="Se asigna solo al crear"
-                        />
-                      </Field>
-                      <Field label="Nombre y apellido">
-                        <input
-                          style={styles.input}
-                          value={newEmployeeDraft.name}
-                          onChange={(e) =>
-                            setNewEmployeeDraft({ ...newEmployeeDraft, name: e.target.value })
-                          }
-                          placeholder="Nombre completo"
-                        />
-                      </Field>
-                      <Field label="Tipo de empleado">
-                        <select
-                          style={styles.input}
-                          value={newEmployeeDraft.employmentType || "temporal"}
-                          onChange={(e) =>
-                            setNewEmployeeDraft({
-                              ...newEmployeeDraft,
-                              employmentType: e.target.value,
-                            })
-                          }
-                        >
-                          <option value="convenio">Convenio (por escala)</option>
-                          <option value="temporal">Temporal (negro, por acuerdo)</option>
-                          <option value="fuera_convenio">Fuera de convenio (socio/gerente/admin.)</option>
-                        </select>
-                      </Field>
-                      {newEmployeeDraft.employmentType === "temporal" ? (
-                        <Field label="Categoria">
-                          <input style={styles.input} value="Temporal" readOnly />
-                        </Field>
-                      ) : newEmployeeDraft.employmentType === "fuera_convenio" ? (
-                        <Field label="Categoria (texto libre)">
-                          <input
-                            style={styles.input}
-                            value={newEmployeeDraft.category || ""}
-                            list="categorias-fuera-convenio-alta"
-                            placeholder="Socio gerente, Administracion, Encargado..."
-                            onChange={(e) =>
-                              setNewEmployeeDraft({ ...newEmployeeDraft, category: e.target.value })
-                            }
-                          />
-                          <datalist id="categorias-fuera-convenio-alta">
-                            {CATEGORIAS_FUERA_CONVENIO.map((option) => (
-                              <option key={option} value={option} />
-                            ))}
-                          </datalist>
-                          {isPartnerCategory(newEmployeeDraft.category || "") && (
-                            <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
-                              Socio: cobra el acordado completo, no se liquida por horas.
-                            </div>
-                          )}
-                        </Field>
-                      ) : (
-                        <Field label="Categoria base">
-                          <select
-                            style={styles.input}
-                            value={newEmployeeDraft.category}
-                            onChange={(e) =>
-                              setNewEmployeeDraft({
-                                ...newEmployeeDraft,
-                                category: e.target.value,
-                              })
-                            }
-                          >
-                            {CATEGORY_OPTIONS.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </Field>
-                      )}
-                      <Field label="Horas nominales">
-                        <input
-                          style={styles.input}
-                          type="number"
-                          value={newEmployeeDraft.nominalHours}
-                          onChange={(e) =>
-                            setNewEmployeeDraft({
-                              ...newEmployeeDraft,
-                              nominalHours: Number(e.target.value),
-                            })
-                          }
-                        />
-                      </Field>
-                    </TwoCol>
-                    <div style={{ ...styles.muted, marginTop: 10 }}>
-                      Con estos datos se crea el empleado. El resto se completa luego desde Abrir ficha.
-                      {newEmployeeDraft.employmentType === "temporal"
-                        ? " Temporal: no usa convenio; siempre en negro hasta efectivizar. El pago se carga como gasto de caja chica (de ahi sale el recibo)."
-                        : newEmployeeDraft.employmentType === "fuera_convenio"
-                        ? " Fuera de convenio: no usa escala; sueldo acordado repartido en blanco y negro (se carga en la ficha)."
-                        : ""}
-                    </div>
-                    {/* Configuracion base anterior retirada: el alta solo pide los cinco datos iniciales.
-                <div style={{ ...styles.muted, marginBottom: 10 }}>
-                  Los costos de EPP e insumos del personal se toman prioritariamente desde
-                  Marcadores. Los campos de esta seccion quedan como respaldo por si todavia no
-                  cargaste ese desglose.
-                </div>
-                <TwoCol>
-                  <Field label="Categoria base">
-                    <select
-                      style={styles.input}
-                      value={employeeBaseConfig.category}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, category: e.target.value })}
-                    >
-                      {CATEGORY_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                  <Field label="Antiguedad base">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      value={employeeBaseConfig.seniorityYears}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, seniorityYears: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Horas nominales">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      value={employeeBaseConfig.normalHoursDefault}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, normalHoursDefault: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Feriados / año (dias)">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      value={employeeBaseConfig.annualHolidayDays || 0}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, annualHolidayDays: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Vacaciones / año (dias)">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      value={employeeBaseConfig.annualVacationDays || 0}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, annualVacationDays: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Presentismo %">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      value={employeeBaseConfig.presentismoPct}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, presentismoPct: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Antiguedad % anual">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      value={employeeBaseConfig.seniorityPctPerYear}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, seniorityPctPerYear: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Jubilación patronal %">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      step={0.01}
-                      value={employeeBaseConfig.employerJubilacionPct ?? 18}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerJubilacionPct: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="OO.SS patronal %">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      step={0.01}
-                      value={employeeBaseConfig.employerObraSocialPct ?? 6}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerObraSocialPct: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="ART % (por actividad)">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      step={0.01}
-                      value={employeeBaseConfig.employerArtPct ?? 11.38}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerArtPct: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Seguro de vida (fijo $)">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      step={0.01}
-                      value={employeeBaseConfig.employerLifeInsuranceFixed ?? 424.62}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, employerLifeInsuranceFixed: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Total contribuciones patronales">
-                    <div style={{ padding: "8px 0", fontWeight: 700 }}>
-                      {(
-                        Number(employeeBaseConfig.employerJubilacionPct ?? 18) +
-                        Number(employeeBaseConfig.employerObraSocialPct ?? 6) +
-                        Number(employeeBaseConfig.employerArtPct ?? 11.38)
-                      ).toFixed(2)}
-                      % + seguro fijo
-                    </div>
-                  </Field>
-                  <Field label="Sindicato %">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      value={employeeBaseConfig.unionPct}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, unionPct: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Seguro %">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      value={employeeBaseConfig.insurancePct}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, insurancePct: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="Aguinaldo (sueldos/año)">
-                    <input
-                      style={styles.input}
-                      type="number"
-                      step={0.01}
-                      value={employeeBaseConfig.aguinaldoAnnualMonths}
-                      onChange={(e) => setEmployeeBaseConfig({ ...employeeBaseConfig, aguinaldoAnnualMonths: Number(e.target.value) })}
-                    />
-                  </Field>
-                  <Field label="EPP cada 6 meses (respaldo)">
-                    <AmountInput
-                      style={styles.input}
-                      value={employeeBaseConfig.eppSemiannualCost}
-                      onChange={(n) => setEmployeeBaseConfig({ ...employeeBaseConfig, eppSemiannualCost: n })}
-                    />
-                  </Field>
-                  <Field label="Insumos cada 6 meses (respaldo)">
-                    <AmountInput
-                      style={styles.input}
-                      value={employeeBaseConfig.suppliesSemiannualCost}
-                      onChange={(n) => setEmployeeBaseConfig({ ...employeeBaseConfig, suppliesSemiannualCost: n })}
-                    />
-                  </Field>
-                </TwoCol>
-
-                <div style={{ marginTop: 12 }}>
-                  <div style={styles.label}>EPP e insumos base por empleado</div>
-                  {employeeBaseConfig.provisionTemplates.map((item) => {
-                    const stockItem = stockPersonalItems.find((stock) => stock.code === item.stockCode);
-                    return (
-                      <div key={item.id} style={styles.configDocRow}>
-                        <select
-                          style={styles.input}
-                          value={item.stockCode}
-                          onChange={(e) =>
-                            setEmployeeBaseConfig((prev) => ({
-                              ...prev,
-                              provisionTemplates: prev.provisionTemplates.map((template) =>
-                                template.id === item.id
-                                  ? {
-                                      ...template,
-                                      stockCode: e.target.value,
-                                      kind:
-                                        stockPersonalItems.find((stock) => stock.code === e.target.value)?.kind ||
-                                        "Insumos",
-                                    }
-                                  : template
-                              ),
-                            }))
-                          }
-                        >
-                          {stockPersonalItems.map((stock) => (
-                            <option key={stock.code} value={stock.code}>
-                              {stock.description}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          style={{ ...styles.input, maxWidth: 110 }}
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) =>
-                            setEmployeeBaseConfig((prev) => ({
-                              ...prev,
-                              provisionTemplates: prev.provisionTemplates.map((template) =>
-                                template.id === item.id
-                                  ? { ...template, quantity: Number(e.target.value) }
-                                  : template
-                              ),
-                            }))
-                          }
-                        />
-                        <input
-                          style={{ ...styles.input, maxWidth: 110 }}
-                          type="number"
-                          value={item.validityMonths}
-                          onChange={(e) =>
-                            setEmployeeBaseConfig((prev) => ({
-                              ...prev,
-                              provisionTemplates: prev.provisionTemplates.map((template) =>
-                                template.id === item.id
-                                  ? { ...template, validityMonths: Number(e.target.value) }
-                                  : template
-                              ),
-                            }))
-                          }
-                        />
-                        <div style={{ minWidth: 120, fontSize: 12, color: "#475569" }}>
-                          {stockItem ? money(stockItem.unitPrice) : "-"}
+                          {grupo.short} · {grupo.company}
+                          <span style={{ fontWeight: 400, marginLeft: 8 }}>
+                            {grupo.items.length} {grupo.items.length === 1 ? "empleado" : "empleados"}
+                          </span>
                         </div>
-                        <button
-                          style={styles.smallBtn}
-                          onClick={() =>
-                            setEmployeeBaseConfig((prev) => ({
-                              ...prev,
-                              provisionTemplates: prev.provisionTemplates.filter(
-                                (template) => template.id !== item.id
-                              ),
-                            }))
-                          }
-                        >
-                          x
-                        </button>
-                      </div>
-                    );
-                  })}
-                  <button
-                    style={styles.smallBtn}
-                    onClick={() =>
-                      setEmployeeBaseConfig((prev) => ({
-                        ...prev,
-                        provisionTemplates: [
-                          ...prev.provisionTemplates,
-                          {
-                            id: newId(),
-                            stockCode: stockPersonalItems[0]?.code || "",
-                            kind: stockPersonalItems[0]?.kind || "Insumos",
-                            quantity: 1,
-                            validityMonths: 6,
-                          },
-                        ],
-                      }))
-                    }
-                  >
-                    Agregar item base
-                  </button>
-                  <div style={{ ...styles.rightStrong, marginTop: 8 }}>
-                    Provision mensual estimada por empleado:{" "}
-                    {money(
-                      baseProvisionTemplateRows.reduce(
-                        (acc, item) => acc + Number(item.monthlyCostPerEmployee || 0),
-                        0
-                      )
-                    )}
-                  </div>
-                </div>
-
-                <div style={{ marginTop: 12 }}>
-                  <div style={styles.label}>Documentacion requerida</div>
-                  {employeeBaseConfig.requiredDocuments.map((doc) => (
-                    <div key={doc.id} style={styles.configDocRow}>
-                      <input
-                        style={styles.input}
-                        value={doc.name}
-                        onChange={(e) =>
-                          setEmployeeBaseConfig((prev) => ({
-                            ...prev,
-                            requiredDocuments: prev.requiredDocuments.map((item) =>
-                              item.id === doc.id ? { ...item, name: e.target.value } : item
-                            ),
-                          }))
-                        }
-                      />
-                      <button
-                        style={styles.smallBtn}
-                        onClick={() =>
-                          setEmployeeBaseConfig((prev) => ({
-                            ...prev,
-                            requiredDocuments: prev.requiredDocuments.filter((item) => item.id !== doc.id),
-                          }))
-                        }
+                      </td>
+                    </tr>
+                    {grupo.items.map((employee: any) => {
+                  const meta = getCompanyMeta(employee.company);
+                  const att = getAttendanceSummary(employee);
+                  const docs = getEmployeeDocumentSummary(employee);
+                  const salary = getEmployeePayrollSummary(employee);
+                  const toneStyle =
+                    att.tone === "green"
+                      ? styles.statusGreen
+                      : att.tone === "red"
+                      ? styles.statusRed
+                      : att.tone === "yellow"
+                      ? styles.statusYellow
+                      : att.tone === "blue"
+                      ? styles.statusBlue
+                      : styles.statusGray;
+                  const docsStyle =
+                    docs.tone === "green"
+                      ? styles.statusGreen
+                      : docs.tone === "yellow"
+                      ? styles.statusYellow
+                      : styles.statusRed;
+                  const payroll = getCurrentPayroll(employee);
+                  return (
+                    <tr
+                      key={employee.id}
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        setMenuNomina({ x: ev.clientX, y: ev.clientY, id: employee.id });
+                      }}
+                      title="Click derecho: abrir la ficha del empleado"
+                    >
+                      <td
+                        style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
+                        title={`${employee.name} · legajo ${employee.legajo}`}
                       >
-                        x
-                      </button>
-                    </div>
-                  ))}
+                        {(() => {
+                          const se = getEmployeeSemaphore(employee);
+                          return (
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <Semaforo level={se.level} size={10} title={se.label} />
+                              <span style={{ display: "inline-flex", flexDirection: "column", minWidth: 0 }}>
+                                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {employee.name}
+                                </span>
+                                <span style={{ ...styles.muted, fontSize: 11 }}>
+                                  {employee.legajo} · {se.label}
+                                </span>
+                              </span>
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right" }}>
+                        {Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right" }}>
+                        {money(
+                          employee.employmentType === "temporal"
+                            ? Number(employee.agreedSalary || 0)
+                            : employee.employmentType === "fuera_convenio"
+                            ? Number(employee.agreedWhite || 0) + Number(employee.agreedBlack || 0)
+                            : salary.totalGross
+                        )}
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>
+                        {money(
+                          employee.employmentType === "temporal"
+                            ? Number(employee.agreedSalary || 0)
+                            : employee.employmentType === "fuera_convenio"
+                            ? Number(employee.agreedWhite || 0) + Number(employee.agreedBlack || 0)
+                            : salary.netSalary
+                        )}
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(salary.hourlyCost)}</td>
+                      <td style={{ ...tdDato, color: "#64748b", fontSize: 11 }}>
+                        {employee.category}
+                        <div style={{ ...styles.muted, fontSize: 10 }}>
+                          {employee.seniorityYears} años
+                          {employee.hireDate ? ` · desde ${formatDateDisplay(employee.hireDate)}` : ""}
+                        </div>
+                      </td>
+                      <td style={tdDato}>
+                        <span style={{ ...styles.statusPill, ...toneStyle }}>{att.label}</span>
+                      </td>
+                      <td style={tdDato}>
+                        <span style={{ ...styles.statusPill, ...docsStyle }}>{docs.label}</span>
+                      </td>
+                      <td style={tdDato}>
+                        <span style={{ display: "inline-flex", gap: 3, flexWrap: "wrap" }}>
+                          {PERSONAL_PROVISION_KINDS.map((k) => {
+                            const prov = getEmployeeProvisionSummary(employee, k);
+                            const provStyle =
+                              prov.tone === "green"
+                                ? styles.statusGreen
+                                : prov.tone === "yellow"
+                                ? styles.statusYellow
+                                : styles.statusRed;
+                            return (
+                              <span
+                                key={k}
+                                style={{ ...styles.statusPill, ...provStyle, fontSize: 9, padding: "1px 5px" }}
+                                title={`${k}: ${prov.label}`}
+                              >
+                                {k.slice(0, 3)}
+                              </span>
+                            );
+                          })}
+                        </span>
+                      </td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        {money(employee.employmentType === "temporal" ? 0 : salary.employerImpact)}
+                        {Number(salary.blackImpact || 0) > 0 && (
+                          <span style={{ color: MONEY_OUT_COLOR }}>
+                            {" + "}
+                            {money(Number(salary.blackImpact || 0))} negro
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                    })}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+            </div>
+            {menuNomina && (() => {
+              const emp = employeesSortedByPay.find((x: any) => x.id === menuNomina.id);
+              const cerrar = () => setMenuNomina(null);
+              if (!emp) return null;
+              return (
+                <QuickMenu x={menuNomina.x} y={menuNomina.y} onClose={cerrar}>
+                  <QuickMenuTitle>{emp.name || "empleado"} · legajo {emp.legajo}</QuickMenuTitle>
                   <button
-                    style={styles.smallBtn}
-                    onClick={() =>
-                      setEmployeeBaseConfig((prev) => ({
-                        ...prev,
-                        requiredDocuments: [
-                          ...prev.requiredDocuments,
-                          { id: newId(), name: "" },
-                        ],
-                      }))
-                    }
+                    style={quickMenuItem}
+                    onClick={() => {
+                      setSelectedEmployeeId(selectedEmployeeId === emp.id ? null : emp.id);
+                      cerrar();
+                    }}
                   >
-                    Agregar documento
+                    {selectedEmployeeId === emp.id ? "Cerrar ficha" : "Abrir ficha"}
                   </button>
+                  <QuickMenuSep />
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      if (window.confirm(`¿Quitar a ${emp.name} de la nomina?`)) removeEmployee(emp.id);
+                      cerrar();
+                    }}
+                  >
+                    Quitar de la nómina
+                  </button>
+                </QuickMenu>
+              );
+            })()}
+            <div style={styles.sectionHeader}>Alta de empleado</div>
+                <div style={styles.muted}>
+                  Carga rapida: empresa, legajo, nombre, categoria base y horas nominales. La
+                  ficha completa se edita luego desde el boton Abrir.
                 </div>
-                    */}
-                  </Panel>
-                </div>
-              </div>
-            )}
+          </Panel>
+          </div>
+          )}
 
-          <div style={{ order: 6, gridColumn: "1 / -1" }}>
+          <div style={{ order: 4, gridColumn: "1 / -1" }}>
               <Panel title="Escalas salariales" span="full">
                 <div style={styles.uploadActions}>
                   <label style={styles.buttonLikeLabel}>
@@ -1154,310 +748,183 @@ export function PersonalTab(props: PersonalTabProps) {
               </Panel>
           </div>
 
-          <div style={{ order: 1, gridColumn: "1 / -1" }}>
-          <Panel
-            title="Resumen por empresa"
-            span="full"
-            actions={
-              <div style={styles.inlineActions}>
-                <ButtonLike onClick={() => exportPersonalReport("General")} secondary>
-                  Reporte general
+          <div style={{ order: 5, gridColumn: "1 / -1" }}>
+            <Panel
+              title="Costo real por empresa y categoria"
+              span="full"
+              actions={
+                <ButtonLike onClick={syncLaborMarkersFromPersonal}>
+                  Volcar a mano de obra base
                 </ButtonLike>
-                {COMPANY_OPTIONS.filter((company) => canAccessCompany(company.value)).map((company) => (
-                  <ButtonLike
-                    key={`personal-report-${company.value}`}
-                    onClick={() => exportPersonalReport(company.value)}
-                    secondary
-                  >
-                    Reporte {company.short}
-                  </ButtonLike>
-                ))}
-                <ButtonLike onClick={anchosNomina.toggleCompacto} secondary>
-                  {anchosNomina.esCompacto ? "Ancho normal" : "Compacto"}
-                </ButtonLike>
+              }
+            >
+              <div style={styles.muted}>
+                Este bloque consolida el costo integral real por empresa y categoria a partir de
+                los empleados cargados. Sirve para actualizar la mano de obra base de Marcadores
+                con un valor hora mas fiel, sin perder la edicion manual posterior.
               </div>
-            }
-          >
-            <div style={styles.metricGrid}>
-              {totalCompanyPayroll.map((row: any) => {
-                const meta = getCompanyMeta(row.company);
-                const porTipo = row.provisionesPorTipo || {};
-                const tiposConCosto = PERSONAL_PROVISION_KINDS.filter(
-                  (kind) => Number(porTipo[kind] || 0) > 0
-                );
-                return (
-                  <div key={row.company} style={{ ...styles.metric, borderColor: meta.primary, background: meta.soft }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
-                      <span style={{ fontWeight: 800, color: meta.primary }}>{row.label}</span>
-                      <span style={styles.muted}>
-                        {row.headcount} {row.headcount === 1 ? "empleado" : "empleados"}
-                      </span>
-                    </div>
-                    <div style={styles.muted}>Total neto</div>
-                    <div style={{ fontWeight: 700 }}>{money(row.totalNet)}</div>
 
-                    <LineaResumen label="Salarios" value={money(row.salarios)} fuerte separador />
-                    <LineaResumen label="Blanco" value={money(row.salariosWhite)} sangria />
-                    <LineaResumen
-                      label="Negro"
-                      value={money(row.salariosBlack)}
-                      sangria
-                      color={MONEY_OUT_COLOR}
-                    />
-
-                    <LineaResumen label="Cargas sociales" value={money(row.cargasSociales)} fuerte separador />
-
-                    <LineaResumen
-                      label="Exámenes, EPP y capacitaciones"
-                      value={money(row.provisiones)}
-                      fuerte
-                      separador
-                    />
-                    {tiposConCosto.length === 0 ? (
-                      <div style={{ ...styles.muted, paddingLeft: 10 }}>Sin provisiones cargadas.</div>
-                    ) : (
-                      tiposConCosto.map((kind) => (
-                        <LineaResumen
-                          key={`${row.company}-prov-${kind}`}
-                          label={ETIQUETA_PROVISION[kind]}
-                          value={money(Number(porTipo[kind] || 0))}
-                          sangria
-                        />
-                      ))
-                    )}
-
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 6, borderTop: "1px solid rgba(0,0,0,0.12)", paddingTop: 4 }}>
-                      <span style={{ ...styles.muted, fontWeight: 700 }}>Impacto total</span>
-                      <span style={{ fontWeight: 800 }}>{money(row.totalImpact)}</span>
-                    </div>
-                    <div style={{ ...styles.muted, fontSize: 11 }}>
-                      Blanco {money(row.totalWhite)} · Negro {money(row.totalBlack)}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Panel>
-          </div>
-
-          {!selectedEmployee && (
-            <div style={{ order: 2, gridColumn: "1 / -1" }}>
-              <Panel
-                title="Alta de empleado"
-                span="full"
-                actions={
-                  <ButtonLike onClick={() => setIsEmployeeSetupModalOpen(true)}>
-                    Agregar empleado
-                  </ButtonLike>
-                }
-              >
-                <div style={styles.muted}>
-                  Carga rapida: empresa, legajo, nombre, categoria base y horas nominales. La
-                  ficha completa se edita luego desde el boton Abrir.
-                </div>
-              </Panel>
-            </div>
-          )}
-
-          {!selectedEmployee && (
-          <div style={{ order: 3, gridColumn: "1 / -1" }}>
-          {(() => {
-            let rojo = 0;
-            let amarillo = 0;
-            let verde = 0;
-            employeesSortedByPay.forEach((employee) => {
-              const level = getEmployeeSemaphore(employee).level;
-              if (level === "rojo") rojo += 1;
-              else if (level === "amarillo") amarillo += 1;
-              else verde += 1;
-            });
-            return (
-              <Panel span="full" title="Semaforo de personal">
-                <SemaforoResumen
-                  items={[
-                    { level: "verde", label: "Fichas completas", value: String(verde) },
-                    { level: "amarillo", label: "Documentacion por vencer", value: String(amarillo) },
-                    { level: "rojo", label: "Falta info / vencidos", value: String(rojo) },
-                  ]}
+              <div style={{ ...styles.metricGrid, marginTop: 12 }}>
+                <MiniMetric label="Empleados totales" value={String(employees.length)} />
+                <MiniMetric
+                  label="Categorias activas"
+                  value={String(companyCategoryCostRows.length)}
                 />
-              </Panel>
-            );
-          })()}
-          <Panel title="Empleados" span="full">
-            <div style={{ ...planillaWrap, ...anchosNomina.vars }}>
-            <table style={planillaTable}>
-              <colgroup>
-                <col style={colLabel} />
-                <col style={colDato} />
-                <col style={colDato} />
-                <col style={colDato} />
-                <col style={colDato} />
-                <col style={colFlexible} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={thEsquina}>
-                    Empleado
-                    <PlanillaManija
-                      onMouseDown={(ev) => anchosNomina.startResize(ev, "label")}
-                      onDoubleClick={anchosNomina.resetLabel}
-                    />
-                  </th>
-                  <th style={{ ...thColumna, textAlign: "right" }}>
-                    Hs mes
-                    <PlanillaManija
-                      onMouseDown={(ev) => anchosNomina.startResize(ev, "col")}
-                      onDoubleClick={anchosNomina.resetCol}
-                    />
-                  </th>
-                  <th style={{ ...thColumna, textAlign: "right" }}>Bruto</th>
-                  <th style={{ ...thColumna, textAlign: "right" }}>Neto</th>
-                  <th style={{ ...thColumna, textAlign: "right" }}>Costo hora real</th>
-                  <th style={thFlexible}>Asistencia · documentación · EPP · impacto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {employeesSortedByPay.map((employee) => {
-                  const meta = getCompanyMeta(employee.company);
-                  const att = getAttendanceSummary(employee);
-                  const docs = getEmployeeDocumentSummary(employee);
-                  const salary = getEmployeePayrollSummary(employee);
-                  const toneStyle =
-                    att.tone === "green"
-                      ? styles.statusGreen
-                      : att.tone === "red"
-                      ? styles.statusRed
-                      : att.tone === "yellow"
-                      ? styles.statusYellow
-                      : att.tone === "blue"
-                      ? styles.statusBlue
-                      : styles.statusGray;
-                  const docsStyle =
-                    docs.tone === "green"
-                      ? styles.statusGreen
-                      : docs.tone === "yellow"
-                      ? styles.statusYellow
-                      : styles.statusRed;
-                  const payroll = getCurrentPayroll(employee);
-                  return (
-                    <tr
-                      key={employee.id}
-                      onContextMenu={(ev) => {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        setMenuNomina({ x: ev.clientX, y: ev.clientY, id: employee.id });
-                      }}
-                      title="Click derecho: abrir la ficha del empleado"
-                    >
-                      <td
-                        style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
-                        title={`${employee.name} · legajo ${employee.legajo}`}
-                      >
-                        {(() => {
-                          const se = getEmployeeSemaphore(employee);
-                          return (
-                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <Semaforo level={se.level} size={10} title={se.label} />
-                              <span style={{ display: "inline-flex", flexDirection: "column", minWidth: 0 }}>
-                                <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                  {employee.name}
-                                </span>
-                                <span style={{ ...styles.muted, fontSize: 11 }}>
-                                  {employee.legajo} · {se.label}
-                                </span>
-                              </span>
-                            </span>
-                          );
-                        })()}
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right" }}>
-                        {Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right" }}>
-                        {money(
-                          employee.employmentType === "temporal"
-                            ? Number(employee.agreedSalary || 0)
-                            : employee.employmentType === "fuera_convenio"
-                            ? Number(employee.agreedWhite || 0) + Number(employee.agreedBlack || 0)
-                            : salary.totalGross
-                        )}
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>
-                        {money(
-                          employee.employmentType === "temporal"
-                            ? Number(employee.agreedSalary || 0)
-                            : employee.employmentType === "fuera_convenio"
-                            ? Number(employee.agreedWhite || 0) + Number(employee.agreedBlack || 0)
-                            : salary.netSalary
-                        )}
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(salary.hourlyCost)}</td>
-                      <td style={{ ...tdFlexible, color: "#64748b" }}>
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, flexWrap: "wrap" }}>
-                          <span style={{ ...styles.statusPill, ...toneStyle }}>{att.label}</span>
-                          <span style={{ ...styles.statusPill, ...docsStyle }}>{docs.label}</span>
-                          {PERSONAL_PROVISION_KINDS.map((k) => {
-                            const prov = getEmployeeProvisionSummary(employee, k);
-                            const provStyle =
-                              prov.tone === "green"
-                                ? styles.statusGreen
-                                : prov.tone === "yellow"
-                                ? styles.statusYellow
-                                : styles.statusRed;
-                            return (
-                              <span key={k} style={{ ...styles.statusPill, ...provStyle }} title={`${k}: ${prov.label}`}>
-                                {prov.label}
-                              </span>
-                            );
-                          })}
-                          <span style={{ color: "#94a3b8" }}>
-                            {employee.category} · {employee.seniorityYears} años
-                            {employee.hireDate ? ` · desde ${formatDateDisplay(employee.hireDate)}` : ""}
-                            {" · impacto "}
-                            {money(employee.employmentType === "temporal" ? 0 : salary.employerImpact)}
-                            {Number(salary.blackImpact || 0) > 0 ? ` + ${money(Number(salary.blackImpact || 0))} negro` : ""}
-                            {" · "}{meta.short}
-                          </span>
-                        </span>
-                      </td>
+              </div>
+
+              {companyCategoryCostRows.length === 0 ? (
+                <div style={{ ...styles.empty, marginTop: 12 }}>
+                  Cuando cargues empleados, aqui vas a ver el costo real promedio por categoria y
+                  empresa.
+                </div>
+              ) : (
+                <div style={{ ...planillaWrap, ...anchosCategorias.vars, marginTop: 12 }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thEsquina}>
+                        Categoría
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCategorias.startResize(ev, "label")}
+                          onDoubleClick={anchosCategorias.resetLabel}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>
+                        Empleados
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosCategorias.startResize(ev, "col")}
+                          onDoubleClick={anchosCategorias.resetCol}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Bruto prom.</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Neto prom.</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Costo hora prom.</th>
+                      <th style={thFlexible}>Impacto · cargas · provisión · presentismo · antigüedad</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-            </div>
-            {menuNomina && (() => {
-              const emp = employeesSortedByPay.find((x: any) => x.id === menuNomina.id);
-              const cerrar = () => setMenuNomina(null);
-              if (!emp) return null;
-              return (
-                <QuickMenu x={menuNomina.x} y={menuNomina.y} onClose={cerrar}>
-                  <QuickMenuTitle>{emp.name || "empleado"} · legajo {emp.legajo}</QuickMenuTitle>
-                  <button
-                    style={quickMenuItem}
-                    onClick={() => {
-                      setSelectedEmployeeId(selectedEmployeeId === emp.id ? null : emp.id);
-                      cerrar();
-                    }}
-                  >
-                    {selectedEmployeeId === emp.id ? "Cerrar ficha" : "Abrir ficha"}
-                  </button>
-                  <QuickMenuSep />
-                  <button
-                    style={{ ...quickMenuItem, color: "#b91c1c" }}
-                    onClick={() => {
-                      if (window.confirm(`¿Quitar a ${emp.name} de la nomina?`)) removeEmployee(emp.id);
-                      cerrar();
-                    }}
-                  >
-                    Quitar de la nómina
-                  </button>
-                </QuickMenu>
-              );
-            })()}
-          </Panel>
+                  </thead>
+                  <tbody>
+                    {companyCategoryCostRows.map((row) => {
+                      const meta = getCompanyMeta(row.company);
+                      return (
+                        <tr key={`${row.company}-${row.category}`}>
+                          <td
+                            style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
+                            title={`${row.category} · ${meta.short}`}
+                          >
+                            {row.category}
+                            <span style={{ color: "#94a3b8" }}> · {meta.short}</span>
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right" }}>{row.employeeCount}</td>
+                          <td style={{ ...tdDato, textAlign: "right" }}>{money(row.avgGross)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(row.avgNet)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(row.avgHourlyCost)}</td>
+                          <td style={{ ...tdFlexible, color: "#64748b" }}>
+                            <strong style={{ color: "#0f172a" }}>{money(row.avgEmployerImpact)}</strong>
+                            <span style={{ color: "#94a3b8" }}>
+                              {" · cargas "}{money(row.avgEmployerImpact - row.avgGross - row.avgMonthlyProvisionCost)}
+                              {" · provisión "}{money(row.avgMonthlyProvisionCost)}
+                              {" · descuentos "}{money(row.avgGross - row.avgNet)}
+                              {" · presentismo "}{pct(row.avgPresentismoPct)}
+                              {" · antig. "}{row.avgSeniorityYears.toFixed(1)} años
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                </div>
+              )}
+            <div style={styles.sectionHeader}>Recordatorios de personal</div>
+              {personalReminders.length === 0 ? (
+                <div style={styles.empty}>
+                  No hay vencimientos ni documentacion pendiente en los proximos 30 dias.
+                </div>
+              ) : (
+                <div style={{ ...planillaWrap, ...anchosRecordatorios.vars }}>
+                <table style={planillaTable}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    <col style={colDato} />
+                    <col style={colDato} />
+                    <col style={colFlexible} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thEsquina}>
+                        Empleado
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosRecordatorios.startResize(ev, "label")}
+                          onDoubleClick={anchosRecordatorios.resetLabel}
+                        />
+                      </th>
+                      <th style={thColumna}>
+                        Vence
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosRecordatorios.startResize(ev, "col")}
+                          onDoubleClick={anchosRecordatorios.resetCol}
+                        />
+                      </th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Días</th>
+                      <th style={thFlexible}>Qué falta</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {personalReminders.map((rem, i) => {
+                      const level = rem.state === "vence_pronto" ? "amarillo" : "rojo";
+                      const estadoLabel =
+                        rem.state === "faltante"
+                          ? "Falta cargar"
+                          : rem.state === "vencido"
+                          ? "Vencido"
+                          : "Vence pronto";
+                      return (
+                        <tr key={`${rem.type}-${rem.employeeName}-${rem.label}-${i}`}>
+                          <td style={{ ...tdNombre, fontWeight: 400 }} title={rem.employeeName}>
+                            <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <Semaforo level={level} size={10} title={estadoLabel} />
+                              {rem.employeeName}
+                            </span>
+                          </td>
+                          <td style={{ ...tdDato, color: "#475569" }}>
+                            {rem.dueDate ? formatDateDisplay(rem.dueDate) : "—"}
+                          </td>
+                          <td
+                            style={{
+                              ...tdDato, textAlign: "right", fontWeight: 700,
+                              color: rem.state === "faltante" ? "#94a3b8" : rem.daysLeft < 0 ? "#dc2626" : "#ca8a04",
+                            }}
+                          >
+                            {rem.state === "faltante"
+                              ? "—"
+                              : rem.daysLeft < 0
+                              ? `${Math.abs(rem.daysLeft)} d vencido`
+                              : `${rem.daysLeft} d`}
+                          </td>
+                          <td style={{ ...tdFlexible, color: "#64748b" }}>
+                            <strong style={{ color: "#0f172a" }}>{estadoLabel}</strong>
+                            <span style={{ color: "#94a3b8" }}>
+                              {" · "}{rem.type === "provision" ? "Provisión" : "Documento"}
+                              {" · "}{rem.label}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                </div>
+              )}
+            </Panel>
           </div>
-          )}
 
           {selectedEmployee && (
             <div style={{ order: 3, gridColumn: "1 / -1" }}>
