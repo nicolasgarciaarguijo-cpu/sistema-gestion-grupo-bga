@@ -15874,6 +15874,13 @@ export default function App() {
 
       {activeTab === "compras" && (
         <ComprasTab
+          stockSemaphoreSummary={stockSemaphoreSummary}
+          purchaseDeadlineSemaphore={purchaseDeadlineSemaphore}
+          fabricationPendingPurchases={fabricationPendingPurchases}
+          fabricationCompletedPurchases={fabricationCompletedPurchases}
+          stockNeedRows={stockNeedRows}
+          totalPurchaseNeed={totalPurchaseNeed}
+          purchaseCalendarRows={purchaseCalendarRows}
           purchaseLedger={purchaseLedger}
           personDebts={personDebts}
           suppliers={visibleSuppliers}

@@ -40,6 +40,9 @@ type FabricacionTabProps = {
   updateApprovedJob: (jobId: number, field: keyof ApprovedJob, value: string | number) => void;
 };
 
+// Oculto POR EL MOMENTO y SOLO en esta solapa (regla de Nicolas: "oculto" es por solapa).
+const MOSTRAR_ESTADO_STOCK: boolean = false;
+
 export function FabricacionTab({
   stockSemaphoreSummary,
   purchaseDeadlineSemaphore,
@@ -81,6 +84,32 @@ export function FabricacionTab({
   const anchosCalendario = usePlanillaWidths("fabricacion.calendario", { label: 280, col: 132, colCompact: 100 });
   const anchosLimite = usePlanillaWidths("fabricacion.limite", { label: 300, col: 118, colCompact: 90 });
 
+  // FECHAS LIMITE DE COMPRA como planilla, con la estetica del Calendario anual: un renglon por
+  // trabajo y una columna por dia. Reemplaza a la grilla de mes (no se entendia que trabajo vencia
+  // cuando) y al Gantt de compras, que decia lo mismo con otra forma.
+  const hoyIso = todayIso();
+  const limiteDias = ((purchaseMonthData?.cells || []) as any[])
+    .filter((c) => c.inCurrentMonth)
+    .map((c) => {
+      const dow = new Date(String(c.date) + "T00:00:00").getDay();
+      return { iso: String(c.date), day: c.day, finde: dow === 0 || dow === 6 };
+    });
+  const limiteRows = (() => {
+    const desdeMes = limiteDias[0]?.iso || "";
+    const hastaMes = limiteDias[limiteDias.length - 1]?.iso || "";
+    if (!desdeMes) return [] as any[];
+    return purchaseCalendarRows
+      .map((row: any) => {
+        // La barra arranca cuando se aprobo el trabajo: es el tiempo real que hubo para comprar.
+        const job = approvedJobsSummary.find((j: any) => j.id === row.id);
+        const inicio = String(job?.approvalDate || row.deadlineDate || "");
+        return { ...row, desde: inicio && inicio < row.deadlineDate ? inicio : row.deadlineDate };
+      })
+      // Entra si la fecha limite cae en el mes o si la barra lo atraviesa.
+      .filter((row: any) => row.deadlineDate >= desdeMes && row.desde <= hastaMes)
+      .sort((a: any, b: any) => String(a.deadlineDate || "").localeCompare(String(b.deadlineDate || "")));
+  })();
+
   return (
         <div style={styles.column}>
           <Panel span="wide" title="Semaforo de fabricacion">
@@ -103,6 +132,7 @@ export function FabricacionTab({
               </div>
             </div>
           </Panel>
+
           <Panel
             title="Tablero general de fabricacion"
             span="wide"
@@ -123,236 +153,6 @@ export function FabricacionTab({
               Esta solapa concentra seguimiento de fabricacion sin precios: compras necesarias,
               compras realizadas, estado de stock, ocupacion disponible, calendario y
               coordinacion de entregas para trabajar capacidad y faltantes.
-            </div>
-          </Panel>
-
-          <Panel span="wide" title="Semaforo de compras">
-            <SemaforoResumen
-              items={[
-                { level: "verde", label: "Materiales cubiertos", value: String(stockSemaphoreSummary.verde) },
-                { level: "amarillo", label: "Compra parcial", value: String(stockSemaphoreSummary.amarillo) },
-                { level: "rojo", label: "Faltantes", value: String(stockSemaphoreSummary.rojo) },
-              ]}
-            />
-            <div style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
-              <Semaforo level={purchaseDeadlineSemaphore.level} size={24} ring />
-              <div>
-                <div style={styles.metricLabel}>Fechas limite de compra</div>
-                <div style={{ fontWeight: 700 }}>{purchaseDeadlineSemaphore.label}</div>
-              </div>
-            </div>
-          </Panel>
-
-          <Panel title="Compras pendientes para fabricacion" span="full">
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
-              <MiniMetric label="Costo estimado" value={money(totalPurchaseNeed)} />
-              <MiniMetric label="Trabajos con fecha limite" value={String(purchaseCalendarRows.length)} />
-            </div>
-            {fabricationPendingPurchases.length === 0 ? (
-              <div style={styles.empty}>No hay faltantes pendientes para trabajos activos.</div>
-            ) : (
-              <div style={{ ...planillaWrap, ...anchosPendientes.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Material
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosPendientes.startResize(ev, "label")}
-                        onDoubleClick={anchosPendientes.resetLabel}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Requerido
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosPendientes.startResize(ev, "col")}
-                        onDoubleClick={anchosPendientes.resetCol}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>Faltante</th>
-                    <th style={thFlexible}>Trabajos · empresas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fabricationPendingPurchases.map((row) => (
-                    <tr key={row.description}>
-                      <td style={{ ...tdNombre, fontWeight: 400 }} title={row.description}>
-                        <span
-                          title={row.available > 0 ? "Hay parte en stock" : "Hay que comprar todo"}
-                          style={{
-                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
-                            background: row.available > 0 ? "#ca8a04" : "#dc2626",
-                          }}
-                        />
-                        {row.description}
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right" }}>
-                        {row.required} <span style={{ color: "#94a3b8" }}>{row.unit}</span>
-                        <span style={{ color: "#94a3b8" }}> · hay {row.available}</span>
-                      </td>
-                      <td
-                        style={{
-                          ...tdDato, textAlign: "right", fontWeight: 700,
-                          color: row.available > 0 ? "#ca8a04" : "#dc2626",
-                        }}
-                      >
-                        {row.missing} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{row.unit}</span>
-                      </td>
-                      <td
-                        style={{ ...tdFlexible, color: "#64748b" }}
-                        title={`${row.jobs.join(", ")} · ${row.companyLabels.join(", ")}`}
-                      >
-                        {row.jobs.join(", ")}
-                        <span style={{ color: "#94a3b8" }}> · {row.companyLabels.join(", ")}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </Panel>
-
-          <Panel title="Compras realizadas" span="full">
-            {fabricationCompletedPurchases.length === 0 ? (
-              <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
-            ) : (
-              <div style={{ ...planillaWrap, ...anchosCompras.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Proveedor
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosCompras.startResize(ev, "label")}
-                        onDoubleClick={anchosCompras.resetLabel}
-                      />
-                    </th>
-                    <th style={thColumna}>
-                      Fecha
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosCompras.startResize(ev, "col")}
-                        onDoubleClick={anchosCompras.resetCol}
-                      />
-                    </th>
-                    <th style={thFlexible}>Comprobante · origen · empresa</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {fabricationCompletedPurchases.map((item) => (
-                    <tr key={item.id}>
-                      <td
-                        style={{
-                          ...tdNombre, fontWeight: 400,
-                          boxShadow: `inset 4px 0 0 ${getCompanyMeta(item.company).primary}`,
-                        }}
-                        title={item.supplier}
-                      >
-                        {item.supplier}
-                      </td>
-                      <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.invoiceDate)}</td>
-                      <td style={{ ...tdFlexible, color: "#64748b" }}>
-                        {[item.receiptKind, item.receiptLetter].filter(Boolean).join(" ") || "sin comprobante"}
-                        <span style={{ color: "#94a3b8" }}>
-                          {" "}{item.invoiceNumber || ""}
-                          {" · "}{item.source === "caja_chica" ? "caja chica" : "compras"}
-                          {" · "}{getCompanyMeta(item.company).short}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </Panel>
-
-          <Panel title="Estado de stock para fabricacion" span="full">
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Items visibles" value={String(visibleStockItems.filter((item) => item.kind === "general").length)} />
-              <MiniMetric label="Items sin stock" value={String(visibleStockItems.filter((item) => item.kind === "general" && Number(item.quantity || 0) <= 0).length)} />
-              <MiniMetric label="Items activos" value={String(visibleStockItems.filter((item) => item.kind === "general" && item.active).length)} />
-              <MiniMetric label="Materiales con faltante" value={String(fabricationPendingPurchases.length)} />
-            </div>
-            <div style={{ ...planillaWrap, ...anchosStock.vars }}>
-            <table style={planillaTable}>
-              <colgroup>
-                <col style={colLabel} />
-                <col style={colDato} />
-                <col style={colFlexible} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th style={thEsquina}>
-                    Descripción
-                    <PlanillaManija
-                      onMouseDown={(ev) => anchosStock.startResize(ev, "label")}
-                      onDoubleClick={anchosStock.resetLabel}
-                    />
-                  </th>
-                  <th style={{ ...thColumna, textAlign: "right" }}>
-                    Cantidad
-                    <PlanillaManija
-                      onMouseDown={(ev) => anchosStock.startResize(ev, "col")}
-                      onDoubleClick={anchosStock.resetCol}
-                    />
-                  </th>
-                  <th style={thFlexible}>Código · grupo · ubicación · empresa</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleStockItems
-                  .filter((item) => item.kind === "general")
-                  .sort((a, b) => {
-                    const stockCompare = Number(a.quantity || 0) - Number(b.quantity || 0);
-                    if (stockCompare !== 0) return stockCompare;
-                    return a.description.localeCompare(b.description);
-                  })
-                  .slice(0, 20)
-                  .map((item) => (
-                    <tr key={item.id}>
-                      <td style={{ ...tdNombre, fontWeight: 400 }} title={item.description}>
-                        <span
-                          title={Number(item.quantity || 0) > 0 ? "Con stock" : "Sin stock"}
-                          style={{
-                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
-                            background: Number(item.quantity || 0) > 0 ? "#16a34a" : "#dc2626",
-                          }}
-                        />
-                        {item.description}
-                      </td>
-                      <td
-                        style={{
-                          ...tdDato, textAlign: "right", fontWeight: 600,
-                          color: Number(item.quantity || 0) > 0 ? "#0f172a" : "#dc2626",
-                        }}
-                      >
-                        {item.quantity} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{item.unit}</span>
-                      </td>
-                      <td style={{ ...tdFlexible, color: "#64748b" }}>
-                        {item.code || "sin código"}
-                        <span style={{ color: "#94a3b8" }}>
-                          {" · "}{item.group || "sin grupo"}
-                          {" · "}{item.location || "sin ubicar"}
-                          {" · "}{getCompanyScopeLabel(item.company)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
             </div>
           </Panel>
 
@@ -547,7 +347,23 @@ export function FabricacionTab({
             )}
           </Panel>
 
-          <Panel title="Gantt operativo de fabricacion" span="full">
+          {/* Los dos juntos, como pidio Nicolas: el avance de fabricacion y las fechas limite de
+              compra son la misma pregunta -- que hay que tener listo y para cuando. */}
+          <Panel
+            title="Avance de fabricación y fechas límite de compra"
+            span="full"
+            actions={
+              <div style={styles.monthToolbar}>
+                <ButtonLike onClick={() => shiftPurchaseMonth(-1)} secondary>Mes anterior</ButtonLike>
+                <div style={styles.calendarMonthLabel}>{purchaseMonthData.label}</div>
+                <ButtonLike onClick={() => shiftPurchaseMonth(1)} secondary>Mes siguiente</ButtonLike>
+                <ButtonLike onClick={anchosLimite.toggleCompacto} secondary>
+                  {anchosLimite.esCompacto ? "Ancho normal" : "Compacto"}
+                </ButtonLike>
+              </div>
+            }
+          >
+            <div style={styles.sectionHeader}>Gantt operativo de fabricación</div>
             {fabricationCalendarRows.length === 0 ? (
               <div style={styles.empty}>Todavia no hay trabajos suficientes para mostrar el Gantt.</div>
             ) : (
@@ -625,72 +441,143 @@ export function FabricacionTab({
                 </div>
               </div>
             )}
-          </Panel>
-          <Panel
-            title="Calendario de fechas limite de compra"
-            span="wide"
-            actions={
-              <div style={styles.monthToolbar}>
-                <ButtonLike onClick={() => shiftPurchaseMonth(-1)} secondary>Mes anterior</ButtonLike>
-                <div style={styles.calendarMonthLabel}>{purchaseMonthData.label}</div>
-                <ButtonLike onClick={() => shiftPurchaseMonth(1)} secondary>Mes siguiente</ButtonLike>
-              </div>
-            }
-          >
-            <div style={styles.calendarWeekdays}>
-              {["Dom", "Lun", "Mar", "Mie", "Jue", "Vie", "Sab"].map((day) => (
-                <div key={day} style={styles.calendarWeekdayCell}>{day}</div>
-              ))}
-            </div>
-            <div style={styles.calendarScroll}>
-            <div style={styles.calendarGrid}>
-              {purchaseMonthData.cells.map((cell) => {
-                const items = purchaseItemsByDate.get(cell.date) ?? [];
-                return (
-                  <div
-                    key={cell.date}
-                    style={{
-                      ...styles.calendarCell,
-                      ...(cell.inCurrentMonth ? {} : styles.calendarCellMuted),
-                    }}
-                  >
-                    <div style={styles.calendarCellHeader}>
-                      <strong>{cell.day}</strong>
-                    </div>
-                    {items.length === 0 ? (
-                      <div style={styles.calendarEmpty}>Sin fecha</div>
-                    ) : (
-                      items.map((item) => {
-                        const meta = getCompanyMeta(item.company);
-                        return (
-                          <div
-                            key={`${item.id}-${item.deadlineDate}`}
-                            style={{
-                              ...styles.calendarItem,
-                              background: `${meta.soft}`,
-                              color: meta.primary,
-                              borderLeft: `8px solid ${meta.primary}`,
-                            }}
-                          >
-                            <div><strong>{item.budgetNumber}</strong></div>
-                            <div>{item.client}</div>
-                            <div style={styles.calendarItemMeta}>{item.missingCount} faltantes</div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-            </div>
-          </Panel>
 
-          <Panel title="Gantt de compras" span="full">
-            {purchaseCalendarRows.length === 0 ? (
-              <div style={styles.empty}>Carga fechas de inicio de fabricacion para ver el avance de compras.</div>
+            <div style={styles.sectionHeader}>Compras · fecha límite por trabajo</div>
+            <div style={styles.sectionNote}>
+              Cada trabajo es un renglón y cada día una columna, como en el Calendario anual. La barra
+              va desde la aprobación hasta la <strong>fecha límite de compra</strong>: mientras es verde
+              hay tiempo, cuando llega al día límite se pone ámbar, y si ya pasó queda en rojo. El
+              número del final son los materiales que todavía faltan comprar.
+            </div>
+            {limiteRows.length === 0 ? (
+              <div style={styles.empty}>
+                Ningún trabajo tiene fecha límite de compra en {purchaseMonthData.label}. Cargá la fecha
+                de inicio de fabricación en el trabajo para que aparezca acá.
+              </div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosLimite.vars }}>
+                <table style={{ ...planillaTable, tableLayout: "fixed" }}>
+                  <colgroup>
+                    <col style={colLabel} />
+                    {limiteDias.map((d) => (
+                      <col key={`cl-${d.iso}`} style={{ width: 26 }} />
+                    ))}
+                    <col style={colFlexible} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th style={thEsquina}>
+                        Presupuesto · cliente
+                        <PlanillaManija
+                          onMouseDown={(ev) => anchosLimite.startResize(ev, "label")}
+                          onDoubleClick={anchosLimite.resetLabel}
+                        />
+                      </th>
+                      {limiteDias.map((d) => (
+                        <th
+                          key={`clh-${d.iso}`}
+                          style={{
+                            ...thColumna,
+                            textAlign: "center",
+                            padding: "4px 2px",
+                            fontSize: 10,
+                            ...(d.iso === hoyIso
+                              ? { background: "#f59e0b", color: "#fff", fontWeight: 800 }
+                              : d.finde
+                              ? { color: "#cbd5e1" }
+                              : null),
+                          }}
+                          title={d.iso === hoyIso ? "Hoy" : formatDateDisplay(d.iso)}
+                        >
+                          {d.day}
+                        </th>
+                      ))}
+                      <th style={thFlexible}>Faltan comprar</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {limiteRows.map((row) => {
+                      const meta = getCompanyMeta(row.company);
+                      return (
+                        <tr key={`cl-row-${row.id}`}>
+                          <td
+                            style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
+                            title={`${row.budgetNumber} · ${row.client} · límite ${formatDateDisplay(row.deadlineDate)}`}
+                          >
+                            <strong style={{ color: "#0f172a" }}>{row.budgetNumber}</strong>{" "}
+                            <span style={{ color: "#64748b" }}>{row.client}</span>
+                          </td>
+                          {limiteDias.map((d) => {
+                            const dentro = d.iso >= row.desde && d.iso <= row.deadlineDate;
+                            const esLimite = d.iso === row.deadlineDate;
+                            const vencido = row.deadlineDate < hoyIso;
+                            const fondo = esLimite
+                              ? vencido
+                                ? "#dc2626"
+                                : "#f59e0b"
+                              : dentro
+                              ? vencido
+                                ? "#fecaca"
+                                : "#bbf7d0"
+                              : d.finde
+                              ? "#f8fafc"
+                              : undefined;
+                            return (
+                              <td
+                                key={`cl-${row.id}-${d.iso}`}
+                                style={{
+                                  ...tdDato,
+                                  padding: 0,
+                                  textAlign: "center",
+                                  background: fondo,
+                                  color: esLimite ? "#fff" : undefined,
+                                  fontWeight: esLimite ? 800 : undefined,
+                                  fontSize: 10,
+                                }}
+                                title={
+                                  esLimite
+                                    ? `Fecha límite de compra: ${formatDateDisplay(row.deadlineDate)}`
+                                    : dentro
+                                    ? `${row.budgetNumber} · en plazo`
+                                    : undefined
+                                }
+                              >
+                                {esLimite ? "▲" : ""}
+                              </td>
+                            );
+                          })}
+                          <td style={tdFlexible}>
+                            {row.missingCount > 0 ? (
+                              <span style={{ color: row.deadlineDate < hoyIso ? "#b91c1c" : "#b45309", fontWeight: 700 }}>
+                                {row.missingCount} {row.missingCount === 1 ? "material" : "materiales"}
+                              </span>
+                            ) : (
+                              <span style={{ color: "#16a34a", fontWeight: 700 }}>todo comprado</span>
+                            )}
+                            <span style={{ color: "#94a3b8" }}>
+                              {" · límite "}
+                              {formatDateDisplay(row.deadlineDate)}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Panel>
+
+          {/* Nicolas lo pidio oculto POR EL MOMENTO (2026-08-27), solo en esta solapa. */}
+          {MOSTRAR_ESTADO_STOCK && (
+            <Panel title="Estado de stock para fabricacion" span="full">
+              <div style={styles.metricGrid}>
+                <MiniMetric label="Items visibles" value={String(visibleStockItems.filter((item) => item.kind === "general").length)} />
+                <MiniMetric label="Items sin stock" value={String(visibleStockItems.filter((item) => item.kind === "general" && Number(item.quantity || 0) <= 0).length)} />
+                <MiniMetric label="Items activos" value={String(visibleStockItems.filter((item) => item.kind === "general" && item.active).length)} />
+                <MiniMetric label="Materiales con faltante" value={String(fabricationPendingPurchases.length)} />
+              </div>
+              <div style={{ ...planillaWrap, ...anchosStock.vars }}>
               <table style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
@@ -700,64 +587,67 @@ export function FabricacionTab({
                 <thead>
                   <tr>
                     <th style={thEsquina}>
-                      Presupuesto · cliente
+                      Descripción
                       <PlanillaManija
-                        onMouseDown={(ev) => anchosLimite.startResize(ev, "label")}
-                        onDoubleClick={anchosLimite.resetLabel}
+                        onMouseDown={(ev) => anchosStock.startResize(ev, "label")}
+                        onDoubleClick={anchosStock.resetLabel}
                       />
                     </th>
-                    <th style={thColumna}>
-                      Fecha límite
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Cantidad
                       <PlanillaManija
-                        onMouseDown={(ev) => anchosLimite.startResize(ev, "col")}
-                        onDoubleClick={anchosLimite.resetCol}
+                        onMouseDown={(ev) => anchosStock.startResize(ev, "col")}
+                        onDoubleClick={anchosStock.resetCol}
                       />
                     </th>
-                    <th style={thFlexible}>Avance desde la aprobación</th>
+                    <th style={thFlexible}>Código · grupo · ubicación · empresa</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {purchaseCalendarRows.map((row) => {
-                    const job = approvedJobsSummary.find((item) => item.id === row.id);
-                    const start = job?.approvalDate || row.deadlineDate;
-                    const end = row.deadlineDate;
-                    const totalDays = Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)));
-                    const elapsedDays = Math.max(0, Math.ceil((new Date(todayIso()).getTime() - new Date(start).getTime()) / (1000 * 60 * 60 * 24)));
-                    const progressPct = Math.max(0, Math.min(100, (elapsedDays / totalDays) * 100));
-                    const meta = getCompanyMeta(row.company);
-                    return (
-                      <tr key={`gantt-purchase-${row.id}`}>
-                        <td
-                          style={{ ...tdNombre, fontWeight: 400, boxShadow: `inset 4px 0 0 ${meta.primary}` }}
-                          title={`${row.budgetNumber} · ${row.client}`}
-                        >
-                          <strong style={{ color: "#0f172a" }}>{row.budgetNumber}</strong>{" "}
-                          <span style={{ color: "#475569" }}>{row.client}</span>
+                  {visibleStockItems
+                    .filter((item) => item.kind === "general")
+                    .sort((a, b) => {
+                      const stockCompare = Number(a.quantity || 0) - Number(b.quantity || 0);
+                      if (stockCompare !== 0) return stockCompare;
+                      return a.description.localeCompare(b.description);
+                    })
+                    .slice(0, 20)
+                    .map((item) => (
+                      <tr key={item.id}>
+                        <td style={{ ...tdNombre, fontWeight: 400 }} title={item.description}>
+                          <span
+                            title={Number(item.quantity || 0) > 0 ? "Con stock" : "Sin stock"}
+                            style={{
+                              display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                              background: Number(item.quantity || 0) > 0 ? "#16a34a" : "#dc2626",
+                            }}
+                          />
+                          {item.description}
                         </td>
                         <td
                           style={{
-                            ...tdDato, fontWeight: 600,
-                            color: progressPct >= 100 ? "#dc2626" : progressPct >= 80 ? "#ca8a04" : "#475569",
+                            ...tdDato, textAlign: "right", fontWeight: 600,
+                            color: Number(item.quantity || 0) > 0 ? "#0f172a" : "#dc2626",
                           }}
                         >
-                          {formatDateDisplay(end)}
+                          {item.quantity} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{item.unit}</span>
                         </td>
-                        <td style={{ ...tdFlexible, padding: "2px 8px" }}>
-                          <div style={styles.ganttTrack}>
-                            <div style={{ ...styles.ganttFill, width: `${progressPct}%`, background: meta.primary }} />
-                          </div>
-                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>
-                            desde {formatDateDisplay(start)} · {elapsedDays} de {totalDays} días · {meta.short}
-                          </div>
+                        <td style={{ ...tdFlexible, color: "#64748b" }}>
+                          {item.code || "sin código"}
+                          <span style={{ color: "#94a3b8" }}>
+                            {" · "}{item.group || "sin grupo"}
+                            {" · "}{item.location || "sin ubicar"}
+                            {" · "}{getCompanyScopeLabel(item.company)}
+                          </span>
                         </td>
                       </tr>
-                    );
-                  })}
+                    ))}
                 </tbody>
               </table>
               </div>
-            )}
-          </Panel>
+            </Panel>
+          )}
+
         </div>
   );
 }

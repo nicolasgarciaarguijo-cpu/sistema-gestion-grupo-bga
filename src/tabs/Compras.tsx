@@ -2,6 +2,8 @@ import { useState } from "react";
 import { styles } from "../ui/styles";
 import {
   Panel,
+  Semaforo,
+  SemaforoResumen,
   MiniMetric,
   ButtonLike,
   Field,
@@ -28,8 +30,15 @@ const invoiceOrigin = (invoice: { invoiceNumber?: string; administration?: strin
 import type { CompanyName, PurchaseInvoice } from "../domain/types";
 
 type ComprasTabProps = {
-  // Compras quedo SOLO administrativa: el vinculo factura-pago y las cuentas corrientes. Lo operativo
-  // (que falta comprar, fechas limite, Gantt) se mudo a Fabricacion.
+  // Lo operativo de compras vive aca (se mudo de Fabricacion el 2026-08-27): que falta comprar, para
+  // cuando, y que se compro. En Fabricacion quedo oculto; aca es donde se mira.
+  stockSemaphoreSummary: any;
+  purchaseDeadlineSemaphore: any;
+  fabricationPendingPurchases: any[];
+  fabricationCompletedPurchases: any[];
+  stockNeedRows: any[];
+  totalPurchaseNeed: number;
+  purchaseCalendarRows: any[];
   purchaseLedger: any;
   personDebts: any;
   suppliers: any[];
@@ -57,6 +66,13 @@ type ComprasTabProps = {
 };
 
 export function ComprasTab({
+  stockSemaphoreSummary,
+  purchaseDeadlineSemaphore,
+  fabricationPendingPurchases,
+  fabricationCompletedPurchases,
+  stockNeedRows,
+  totalPurchaseNeed,
+  purchaseCalendarRows,
   purchaseLedger,
   personDebts,
   suppliers,
@@ -78,6 +94,8 @@ export function ComprasTab({
   updatePurchaseInvoice,
   uploadPurchaseInvoiceFile,
 }: ComprasTabProps) {
+  const anchosPendientes = usePlanillaWidths("compras.pendientes", { label: 300, col: 110, colCompact: 84 });
+  const anchosCompras = usePlanillaWidths("compras.realizadas", { label: 280, col: 120, colCompact: 92 });
   const anchosCajaBlanca = usePlanillaWidths("compras.cajachica", { label: 300, col: 118, colCompact: 90 });
   const anchosCtaCte = usePlanillaWidths("compras.ctacte", { label: 260, col: 124, colCompact: 96 });
   const anchosPagos = usePlanillaWidths("compras.pagos", { label: 260, col: 118, colCompact: 90 });
@@ -144,6 +162,23 @@ export function ComprasTab({
               <option key={nombre} value={nombre} />
             ))}
           </datalist>
+
+          <Panel span="wide" title="Semaforo de compras">
+            <SemaforoResumen
+              items={[
+                { level: "verde", label: "Materiales cubiertos", value: String(stockSemaphoreSummary.verde) },
+                { level: "amarillo", label: "Compra parcial", value: String(stockSemaphoreSummary.amarillo) },
+                { level: "rojo", label: "Faltantes", value: String(stockSemaphoreSummary.rojo) },
+              ]}
+            />
+            <div style={{ ...styles.metric, display: "flex", alignItems: "center", gap: 12, marginTop: 10 }}>
+              <Semaforo level={purchaseDeadlineSemaphore.level} size={24} ring />
+              <div>
+                <div style={styles.metricLabel}>Fechas limite de compra</div>
+                <div style={{ fontWeight: 700 }}>{purchaseDeadlineSemaphore.label}</div>
+              </div>
+            </div>
+          </Panel>
 
           <Panel
             title="Cuentas corrientes con proveedores"
@@ -854,6 +889,143 @@ export function ComprasTab({
               ))
             )}
           </Panel>
+
+          <Panel title="Compras pendientes para fabricacion" span="full">
+            <div style={styles.metricGrid}>
+              <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
+              <MiniMetric label="Costo estimado" value={money(totalPurchaseNeed)} />
+              <MiniMetric label="Trabajos con fecha limite" value={String(purchaseCalendarRows.length)} />
+            </div>
+            {fabricationPendingPurchases.length === 0 ? (
+              <div style={styles.empty}>No hay faltantes pendientes para trabajos activos.</div>
+            ) : (
+              <div style={{ ...planillaWrap, ...anchosPendientes.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={thEsquina}>
+                      Material
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosPendientes.startResize(ev, "label")}
+                        onDoubleClick={anchosPendientes.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Requerido
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosPendientes.startResize(ev, "col")}
+                        onDoubleClick={anchosPendientes.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Faltante</th>
+                    <th style={thFlexible}>Trabajos · empresas</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fabricationPendingPurchases.map((row) => (
+                    <tr key={row.description}>
+                      <td style={{ ...tdNombre, fontWeight: 400 }} title={row.description}>
+                        <span
+                          title={row.available > 0 ? "Hay parte en stock" : "Hay que comprar todo"}
+                          style={{
+                            display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                            background: row.available > 0 ? "#ca8a04" : "#dc2626",
+                          }}
+                        />
+                        {row.description}
+                      </td>
+                      <td style={{ ...tdDato, textAlign: "right" }}>
+                        {row.required} <span style={{ color: "#94a3b8" }}>{row.unit}</span>
+                        <span style={{ color: "#94a3b8" }}> · hay {row.available}</span>
+                      </td>
+                      <td
+                        style={{
+                          ...tdDato, textAlign: "right", fontWeight: 700,
+                          color: row.available > 0 ? "#ca8a04" : "#dc2626",
+                        }}
+                      >
+                        {row.missing} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{row.unit}</span>
+                      </td>
+                      <td
+                        style={{ ...tdFlexible, color: "#64748b" }}
+                        title={`${row.jobs.join(", ")} · ${row.companyLabels.join(", ")}`}
+                      >
+                        {row.jobs.join(", ")}
+                        <span style={{ color: "#94a3b8" }}> · {row.companyLabels.join(", ")}</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="Compras realizadas" span="full">
+            {fabricationCompletedPurchases.length === 0 ? (
+              <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
+            ) : (
+              <div style={{ ...planillaWrap, ...anchosCompras.vars }}>
+              <table style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={thEsquina}>
+                      Proveedor
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCompras.startResize(ev, "label")}
+                        onDoubleClick={anchosCompras.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Fecha
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosCompras.startResize(ev, "col")}
+                        onDoubleClick={anchosCompras.resetCol}
+                      />
+                    </th>
+                    <th style={thFlexible}>Comprobante · origen · empresa</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fabricationCompletedPurchases.map((item) => (
+                    <tr key={item.id}>
+                      <td
+                        style={{
+                          ...tdNombre, fontWeight: 400,
+                          boxShadow: `inset 4px 0 0 ${getCompanyMeta(item.company).primary}`,
+                        }}
+                        title={item.supplier}
+                      >
+                        {item.supplier}
+                      </td>
+                      <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.invoiceDate)}</td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        {[item.receiptKind, item.receiptLetter].filter(Boolean).join(" ") || "sin comprobante"}
+                        <span style={{ color: "#94a3b8" }}>
+                          {" "}{item.invoiceNumber || ""}
+                          {" · "}{item.source === "caja_chica" ? "caja chica" : "compras"}
+                          {" · "}{getCompanyMeta(item.company).short}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            )}
+          </Panel>
+
         </div>
   );
 }
