@@ -152,9 +152,7 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
             return (
               <div key={c.company} style={{ ...card, borderTop: `3px solid ${c.primary}` }}>
                 <div style={cardTop}>
-                  <span style={{ ...cardTitle, color: c.primary === "#14213d" ? "#93c5fd" : "#fbbf24" }}>
-                    {c.short}
-                  </span>
+                  <span style={{ ...cardTitle, color: c.soft || "#e2e8f0" }}>{c.short}</span>
                   <span style={{ fontSize: 11, color: "#94a3b8" }}>
                     Total {money(c.totalArs)}
                     {c.totalUsd !== 0 ? ` · ${money(c.totalUsd, "USD")}` : ""}

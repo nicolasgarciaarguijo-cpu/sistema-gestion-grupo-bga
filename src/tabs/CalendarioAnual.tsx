@@ -112,6 +112,7 @@ export function CalendarioAnualTab({
     company: string;
     short: string;
     color: string;
+    soft: string;
     byDay: Record<string, { banco: number; efectivoBlanco: number; efectivoNegro: number }>;
   }>;
   onToggleFlag?: (key: string, date: string, label: string, note: string) => void;
@@ -120,7 +121,7 @@ export function CalendarioAnualTab({
   fiscalStartYear: number;
   setFiscalStartYear: (v: number) => void;
   fiscalYearOptions: Array<{ value: number; label: string }>;
-  companyOptions: Array<{ value: string; short?: string; primary?: string }>;
+  companyOptions: Array<{ value: string; short?: string; primary?: string; soft?: string }>;
   employees?: Array<{ name: string; company: string }>;
   jobs?: Array<{
     budgetNumber: string; client: string; company: string; active?: boolean; falta?: string;
@@ -436,8 +437,10 @@ export function CalendarioAnualTab({
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
   const companyMeta = useMemo(() => {
-    const m = new Map<string, { short: string; color: string }>();
-    companyOptions.forEach((c) => m.set(c.value, { short: c.short || c.value, color: c.primary || "#64748b" }));
+    const m = new Map<string, { short: string; color: string; soft: string }>();
+    companyOptions.forEach((c) =>
+      m.set(c.value, { short: c.short || c.value, color: c.primary || "#64748b", soft: c.soft || "#f1f5f9" })
+    );
     return m;
   }, [companyOptions]);
   const showByCompany = companyScope === "__ALL__" && agg.companiesSeen.size > 1;
@@ -445,13 +448,9 @@ export function CalendarioAnualTab({
   // Sombreado por empresa (Nicolas, 2026-08-28): "si un egreso o ingreso es de BGA sombreado azul y
   // si es de De Raiz sombreado mostaza". Son tintes suaves a proposito: tienen que leerse como un
   // fondo, no tapar el numero ni pelearse con el resaltado del dia de hoy.
-  const TINTE_EMPRESA: Record<string, string> = { azul: "#d3e3fb", mostaza: "#fbeaad" };
-  const tinteDeEmpresa = (company: string): string | undefined => {
-    const c = company.toLowerCase();
-    if (c.startsWith("bga")) return TINTE_EMPRESA.azul;
-    if (c.startsWith("de raiz") || c.startsWith("de ra")) return TINTE_EMPRESA.mostaza;
-    return undefined;
-  };
+  // El tinte sale del color CLARO de la empresa (`soft`), no de una paleta propia: asi el azul de BGA
+  // y el mostaza de De Raiz son los mismos en el calendario, en el encabezado y en todo el sistema.
+  const tinteDeEmpresa = (company: string): string | undefined => companyMeta.get(company)?.soft;
   // Devuelve el fondo de una celda segun quien puso la plata, y el texto para el tooltip.
   const fondoEmpresa = (itemKey: string, iso: string): { style?: React.CSSProperties; detalle: string } => {
     const porEmp = agg.conceptCompany.get(itemKey)?.get(iso) || agg.detailCompany.get(itemKey)?.get(iso);
@@ -1226,7 +1225,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             title={empDet.detalle || undefined}
             style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...(empDet.style || {}), ...hi(c.iso), ...estiloMarcada(marcadaDet) }}
           >
-            {marcadaDet && <span style={flagPill} title="Marcado para revisar">🚩</span>}
+            {marcadaDet && <span title="Marcado para revisar"><BanderaRoja /></span>}
             {v ? money(v) : "·"}
           </td>
         );
@@ -1317,7 +1316,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   setFlagPanel({ x: ev.clientX, y: ev.clientY });
                 }}
               >
-                🚩 {(flags || []).length} para revisar
+                <BanderaRoja size={12} /> {(flags || []).length} para revisar
               </button>
             )}
             {hiddenRowList.length > 0 && (
@@ -1341,7 +1340,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           número (o sobre el nombre del renglón) para <strong>editar, corregir o borrar</strong>. El ancho de
           las columnas se cambia arrastrando el borde de “Concepto” o de los días (doble click vuelve al
           original), o de una con el botón <strong>“Compacto”</strong>. Si un nombre no entra se corta
-          con “…” y se lee completo pasando el mouse por encima. Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong>: ahí, con
+          con “…” y se lee completo pasando el mouse por encima. Si un número <strong>no se entiende</strong>,
+          botón derecho → <strong>Marcar para revisar</strong>: queda con bandera roja y recuadro rojo, y
+          arriba aparece el contador de todo lo que está marcado. Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong>: ahí, con
           <strong> botón derecho → Vincular</strong>, la plata que entró se engancha a un <strong>trabajo</strong> y
           la que salió a un <strong>proveedor</strong> (y a la factura de compra que cancela).
         </div>
@@ -1471,8 +1472,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                       .filter((emp) => companyScope === "__ALL__" || emp.company === companyScope)
                       .flatMap((emp) =>
                         ([
-                          { sub: "Banco", campo: "banco" as const, bg: "#eff6ff", color: "#1d4ed8" },
-                          { sub: "Efectivo blanco", campo: "efectivoBlanco" as const, bg: "#f8fafc", color: "#334155" },
+                          { sub: "Banco", campo: "banco" as const, bg: emp.soft, color: "#0f172a" },
+                          { sub: "Efectivo blanco", campo: "efectivoBlanco" as const, bg: emp.soft, color: "#0f172a" },
+                          // El NEGRO va en oscuro a proposito, como en el tablero de arriba.
                           { sub: "Efectivo negro", campo: "efectivoNegro" as const, bg: "#1f2937", color: "#fde68a" },
                         ]).map((linea) => {
                           const top = nextTop();
@@ -1671,7 +1673,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                     }
                                     style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...(emp.style || {}), ...hi(c.iso), ...estiloMarcada(marcada) }}
                                   >
-                                    {marcada && <span style={flagPill} title="Marcado para revisar">🚩</span>}
+                                    {marcada && <span title="Marcado para revisar"><BanderaRoja /></span>}
                                     {v ? money(v) : "+"}
                                   </td>
                                 );
@@ -1976,7 +1978,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               return (
                 <div key={f.id} style={{ padding: "4px 8px", borderBottom: "1px solid #f1f5f9" }}>
                   <div style={{ fontWeight: 600, fontSize: 12 }}>
-                    <span>🚩 </span>
+                    <BanderaRoja />
                     {f.label} · {dd}/{mm}/{yy}
                   </div>
                   <div style={{ fontSize: 11, color: "#64748b" }}>
@@ -2324,7 +2326,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                       close();
                     }}
                   >
-                    {marcada ? "Quitar la marca de revisar" : "🚩 Marcar para revisar"}
+                    {marcada ? "Quitar la marca de revisar" : "Marcar para revisar"}
                   </button>
                 </>
               );
@@ -2795,9 +2797,22 @@ const costChip: React.CSSProperties = {
 const bnPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 8, borderRadius: 3, padding: "0px 3px", marginRight: 3, verticalAlign: "middle",
 };
-const flagPill: React.CSSProperties = {
-  display: "inline-block", fontSize: 13, lineHeight: 1, marginRight: 2, verticalAlign: "middle",
-};
+// Bandera roja dibujada, NO un caracter: el emoji depende de la fuente del sistema y el glifo
+// U+2691 que habia antes era fino y monocromo, no se veia en una celda de dia.
+function BanderaRoja({ size = 11 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size + 2}
+      viewBox="0 0 11 13"
+      aria-hidden="true"
+      style={{ verticalAlign: "-1px", marginRight: 2, flexShrink: 0 }}
+    >
+      <rect x="0" y="0" width="1.6" height="13" fill="#7f1d1d" />
+      <path d="M1.6 0.8 H10.4 L7.6 4 L10.4 7.2 H1.6 Z" fill="#dc2626" />
+    </svg>
+  );
+}
 const dPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 9, borderRadius: 999, padding: "0px 6px", marginLeft: 6,
   background: "#fee2e2", color: "#b91c1c", border: "1px solid #fca5a5", verticalAlign: "middle",

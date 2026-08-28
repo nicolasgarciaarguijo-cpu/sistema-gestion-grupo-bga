@@ -13151,7 +13151,13 @@ Escribi CERRAR para confirmar:`
       serie.forEach((d) => {
         byDay[d.iso] = { banco: d.banco, efectivoBlanco: d.efectivoBlanco, efectivoNegro: d.efectivoNegro };
       });
-      return { company: String(company), short: c.short || String(company), color: c.primary || "#475569", byDay };
+      return {
+        company: String(company),
+        short: c.short || String(company),
+        color: c.primary || "#475569",
+        soft: c.soft || "#f1f5f9",
+        byDay,
+      };
     });
   }, [
     COMPANY_OPTIONS,
