@@ -548,6 +548,212 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               </Field>
             </Panel>
 
+            <Panel
+              span="full"
+              title="Materiales"
+              actions={
+                <div style={styles.inlineActions}>
+                  <ButtonLike onClick={addMaterial}>Agregar</ButtonLike>
+                  <ButtonLike onClick={anchosMateriales.toggleCompacto} secondary>
+                    {anchosMateriales.esCompacto ? "Ancho normal" : "Compacto"}
+                  </ButtonLike>
+                </div>
+              }
+            >
+              <datalist id="materials-stock-options">
+                {stockSearchOptions.flatMap((stockItem) => [
+                  <option
+                    key={`${stockItem.id}-combo`}
+                    value={`${stockItem.code} - ${stockItem.description}`}
+                  />,
+                  <option key={`${stockItem.id}-code`} value={stockItem.code} />,
+                  <option key={`${stockItem.id}-desc`} value={stockItem.description} />,
+                ])}
+              </datalist>
+              <datalist id="stock-general-group-options">
+                {STOCK_GENERAL_GROUP_OPTIONS.map((group) => (
+                  <option key={group} value={group} />
+                ))}
+              </datalist>
+              <div style={{ ...planillaWrap, ...anchosMateriales.vars }}>
+              <table className="planilla" style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={thEsquina}>
+                      Descripción
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosMateriales.startResize(ev, "label")}
+                        onDoubleClick={anchosMateriales.resetLabel}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>
+                      Cant.
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosMateriales.startResize(ev, "col")}
+                        onDoubleClick={anchosMateriales.resetCol}
+                      />
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
+                    <th style={thFlexible}>Stock · grupo · ubicación</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {displayedMaterials.map((item) => {
+                    const stockMatch = matchStockForMaterial(item, stockByCode, stockByDescription);
+                    const alcanza = stockMatch ? Number(stockMatch.quantity || 0) >= Number(item.qty || 0) : false;
+                    return (
+                      <tr
+                        key={item.id}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          marcaMateriales.marcar(String(item.id));
+                          setMenuMateriales({ x: ev.clientX, y: ev.clientY, id: item.id });
+                        }}
+                      >
+                        <td style={{ ...tdNombre, ...marcaMateriales.estilo(String(item.id)), fontWeight: 400, padding: 0 }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
+                            <span
+                              title={stockMatch ? (alcanza ? "Hay stock suficiente" : "Stock insuficiente") : "No esta en stock"}
+                              style={{
+                                display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
+                                background: !stockMatch ? "#cbd5f5" : alcanza ? "#16a34a" : "#ca8a04",
+                              }}
+                            />
+                            <input
+                              style={inputCelda}
+                              {...focoCelda}
+                              list="materials-stock-options"
+                              value={item.description}
+                              onChange={(e) => applyStockSuggestionToMaterial(item.id, e.target.value)}
+                            />
+                          </span>
+                        </td>
+                        <td style={{ ...tdDato, padding: 0 }}>
+                          <span style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
+                            <input
+                              style={inputCeldaDerecha}
+                              {...focoCelda}
+                              type="number"
+                              value={item.qty}
+                              onChange={(e) => updateArrayItem(setMaterials, item.id, "qty", Number(e.target.value))}
+                            />
+                            <input
+                              style={{ ...inputCelda, width: 44, color: "#94a3b8" }}
+                              {...focoCelda}
+                              value={item.unit}
+                              onChange={(e) => updateArrayItem(setMaterials, item.id, "unit", e.target.value)}
+                            />
+                          </span>
+                        </td>
+                        <td style={{ ...tdDato, padding: 0 }}>
+                          <AmountInput
+                            style={inputCeldaDerecha}
+                            {...focoCelda}
+                            value={item.unitPrice}
+                            onChange={(n) => updateArrayItem(setMaterials, item.id, "unitPrice", n)}
+                          />
+                        </td>
+                        <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
+                          {money(item.qty * item.unitPrice)}
+                        </td>
+                        <td style={{ ...tdFlexible, color: "#64748b" }}>
+                          {stockMatch ? (
+                            <span style={{ color: alcanza ? "#166534" : "#ca8a04", fontWeight: 600 }}>
+                              {stockMatch.quantity} {stockMatch.unit}
+                            </span>
+                          ) : (
+                            <span style={{ color: "#94a3b8" }}>sin stock</span>
+                          )}
+                          <span style={{ color: "#94a3b8" }}>
+                            {" · "}{item.stockGroup || stockMatch?.group || "sin grupo"}
+                            {" · "}{stockMatch?.location || item.stockLocation || "sin ubicación"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+              {menuMateriales && (() => {
+                const it = displayedMaterials.find((x: any) => x.id === menuMateriales.id);
+                const cerrar = () => {
+                  setMenuMateriales(null);
+                  marcaMateriales.marcar(null);
+                };
+                if (!it) return null;
+                const stockMatch = matchStockForMaterial(it, stockByCode, stockByDescription);
+                return (
+                  <QuickMenu x={menuMateriales.x} y={menuMateriales.y} onClose={cerrar}>
+                    <QuickMenuTitle>{it.description || "material"}</QuickMenuTitle>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        const v = window.prompt("Grupo de stock:", String(it.stockGroup || stockMatch?.group || ""));
+                        if (v !== null) updateArrayItem(setMaterials, it.id, "stockGroup", v.trim());
+                        cerrar();
+                      }}
+                    >
+                      Editar grupo de stock…
+                    </button>
+                    <QuickMenuSep />
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        moveMaterial(it.id, -1);
+                        cerrar();
+                      }}
+                    >
+                      Subir un lugar
+                    </button>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        moveMaterial(it.id, 1);
+                        cerrar();
+                      }}
+                    >
+                      Bajar un lugar
+                    </button>
+                    {!stockMatch && it.description.trim() ? (
+                      <>
+                        <QuickMenuSep />
+                        <button
+                          style={quickMenuItem}
+                          onClick={() => {
+                            addMaterialToStock(it.id);
+                            cerrar();
+                          }}
+                        >
+                          Agregar a stock
+                        </button>
+                      </>
+                    ) : null}
+                    <QuickMenuSep />
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        removeMaterial(it.id);
+                        cerrar();
+                      }}
+                    >
+                      Quitar del presupuesto
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
+              <div style={styles.rightStrong}>Total materiales: {money(totalMaterials)}</div>
+            </Panel>
+
             {false && (
             <Panel title="Imagenes">
               <div style={styles.grid2}>
@@ -641,111 +847,6 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
             </Panel>
             )}
 
-            <Panel span="full" title="CRM del cliente">
-              {budget.client.trim() === "" ? (
-                <div style={styles.empty}>Carga el nombre del cliente para ver si ya cotizo antes con ustedes.</div>
-              ) : currentClientHistory.length === 0 ? (
-                <div style={styles.empty}>No hay antecedentes para este cliente. Quedara como nuevo cliente en CRM.</div>
-              ) : (
-                <>
-                  <div style={styles.metricGrid}>
-                    <MiniMetric
-                      label="Tipo de cliente"
-                      value={currentClientHistory.length > 1 ? "Cliente habitual" : "Nuevo cliente"}
-                    />
-                    <MiniMetric label="Presupuestos previos" value={String(currentClientHistory.length)} />
-                    <MiniMetric
-                      label="Ultimo presupuesto"
-                      value={getSavedBudgetDisplayLabel(currentClientHistory[0])}
-                    />
-                    <MiniMetric
-                      label="Ultima fecha"
-                      value={formatDateDisplay(currentClientHistory[0].date)}
-                    />
-                  </div>
-                  <div style={{ ...planillaWrap, ...anchosCrm.vars }}>
-                  <table className="planilla" style={planillaTable}>
-                    <colgroup>
-                      <col style={colLabel} />
-                      <col style={colDato} />
-                      <col style={colDato} />
-                      <col style={colFlexible} />
-                    </colgroup>
-                    <thead>
-                      <tr>
-                        <th style={thEsquina}>
-                          Presupuesto
-                          <PlanillaManija
-                            onMouseDown={(ev) => anchosCrm.startResize(ev, "label")}
-                            onDoubleClick={anchosCrm.resetLabel}
-                          />
-                        </th>
-                        <th style={thColumna}>
-                          Fecha
-                          <PlanillaManija
-                            onMouseDown={(ev) => anchosCrm.startResize(ev, "col")}
-                            onDoubleClick={anchosCrm.resetCol}
-                          />
-                        </th>
-                        <th style={thColumna}>Estado</th>
-                        <th style={thFlexible}>Proyecto</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {currentClientHistory.slice(0, 5).map((item) => {
-                        const wasBought = approvedJobs.some(
-                          (job) => job.rootBudgetId === item.rootBudgetId || job.budgetId === item.id
-                        );
-                        return (
-                          <tr
-                            key={item.id}
-                            onContextMenu={(ev) => {
-                              ev.preventDefault();
-                              ev.stopPropagation();
-                              setMenuCrm({ x: ev.clientX, y: ev.clientY, id: item.id });
-                            }}
-                          >
-                            <td style={{ ...tdNombre, fontWeight: 400 }} title={getSavedBudgetDisplayLabel(item)}>
-                              <span
-                                title={wasBought ? "Compro" : "No compro"}
-                                style={{
-                                  display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
-                                  background: wasBought ? "#16a34a" : "#cbd5f5",
-                                }}
-                              />
-                              {getSavedBudgetDisplayLabel(item)}
-                            </td>
-                            <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.date)}</td>
-                            <td style={{ ...tdDato, color: "#475569" }}>{item.status}</td>
-                            <td style={{ ...tdFlexible, color: "#64748b" }} title={item.project}>{item.project}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                  </div>
-                  {menuCrm && (() => {
-                    const it = currentClientHistory.find((x: any) => x.id === menuCrm.id);
-                    const cerrar = () => setMenuCrm(null);
-                    if (!it) return null;
-                    return (
-                      <QuickMenu x={menuCrm.x} y={menuCrm.y} onClose={cerrar}>
-                        <QuickMenuTitle>{getSavedBudgetDisplayLabel(it)}</QuickMenuTitle>
-                        <button
-                          style={quickMenuItem}
-                          onClick={() => {
-                            loadBudgetFromSnapshot(it.snapshot, it.id);
-                            cerrar();
-                          }}
-                        >
-                          Cargar para editar
-                        </button>
-                      </QuickMenu>
-                    );
-                  })()}
-                </>
-              )}
-            </Panel>
 
             {false && (
             <>
@@ -1051,211 +1152,6 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
           </div>
 
           <div style={styles.budgetMainBottom}>
-            <Panel
-              span="full"
-              title="Materiales"
-              actions={
-                <div style={styles.inlineActions}>
-                  <ButtonLike onClick={addMaterial}>Agregar</ButtonLike>
-                  <ButtonLike onClick={anchosMateriales.toggleCompacto} secondary>
-                    {anchosMateriales.esCompacto ? "Ancho normal" : "Compacto"}
-                  </ButtonLike>
-                </div>
-              }
-            >
-              <datalist id="materials-stock-options">
-                {stockSearchOptions.flatMap((stockItem) => [
-                  <option
-                    key={`${stockItem.id}-combo`}
-                    value={`${stockItem.code} - ${stockItem.description}`}
-                  />,
-                  <option key={`${stockItem.id}-code`} value={stockItem.code} />,
-                  <option key={`${stockItem.id}-desc`} value={stockItem.description} />,
-                ])}
-              </datalist>
-              <datalist id="stock-general-group-options">
-                {STOCK_GENERAL_GROUP_OPTIONS.map((group) => (
-                  <option key={group} value={group} />
-                ))}
-              </datalist>
-              <div style={{ ...planillaWrap, ...anchosMateriales.vars }}>
-              <table className="planilla" style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Descripción
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosMateriales.startResize(ev, "label")}
-                        onDoubleClick={anchosMateriales.resetLabel}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Cant.
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosMateriales.startResize(ev, "col")}
-                        onDoubleClick={anchosMateriales.resetCol}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
-                    <th style={thFlexible}>Stock · grupo · ubicación</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedMaterials.map((item) => {
-                    const stockMatch = matchStockForMaterial(item, stockByCode, stockByDescription);
-                    const alcanza = stockMatch ? Number(stockMatch.quantity || 0) >= Number(item.qty || 0) : false;
-                    return (
-                      <tr
-                        key={item.id}
-                        onContextMenu={(ev) => {
-                          ev.preventDefault();
-                          ev.stopPropagation();
-                          marcaMateriales.marcar(String(item.id));
-                          setMenuMateriales({ x: ev.clientX, y: ev.clientY, id: item.id });
-                        }}
-                      >
-                        <td style={{ ...tdNombre, ...marcaMateriales.estilo(String(item.id)), fontWeight: 400, padding: 0 }}>
-                          <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                            <span
-                              title={stockMatch ? (alcanza ? "Hay stock suficiente" : "Stock insuficiente") : "No esta en stock"}
-                              style={{
-                                display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
-                                background: !stockMatch ? "#cbd5f5" : alcanza ? "#16a34a" : "#ca8a04",
-                              }}
-                            />
-                            <input
-                              style={inputCelda}
-                              {...focoCelda}
-                              list="materials-stock-options"
-                              value={item.description}
-                              onChange={(e) => applyStockSuggestionToMaterial(item.id, e.target.value)}
-                            />
-                          </span>
-                        </td>
-                        <td style={{ ...tdDato, padding: 0 }}>
-                          <span style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
-                            <input
-                              style={inputCeldaDerecha}
-                              {...focoCelda}
-                              type="number"
-                              value={item.qty}
-                              onChange={(e) => updateArrayItem(setMaterials, item.id, "qty", Number(e.target.value))}
-                            />
-                            <input
-                              style={{ ...inputCelda, width: 44, color: "#94a3b8" }}
-                              {...focoCelda}
-                              value={item.unit}
-                              onChange={(e) => updateArrayItem(setMaterials, item.id, "unit", e.target.value)}
-                            />
-                          </span>
-                        </td>
-                        <td style={{ ...tdDato, padding: 0 }}>
-                          <AmountInput
-                            style={inputCeldaDerecha}
-                            {...focoCelda}
-                            value={item.unitPrice}
-                            onChange={(n) => updateArrayItem(setMaterials, item.id, "unitPrice", n)}
-                          />
-                        </td>
-                        <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
-                          {money(item.qty * item.unitPrice)}
-                        </td>
-                        <td style={{ ...tdFlexible, color: "#64748b" }}>
-                          {stockMatch ? (
-                            <span style={{ color: alcanza ? "#166534" : "#ca8a04", fontWeight: 600 }}>
-                              {stockMatch.quantity} {stockMatch.unit}
-                            </span>
-                          ) : (
-                            <span style={{ color: "#94a3b8" }}>sin stock</span>
-                          )}
-                          <span style={{ color: "#94a3b8" }}>
-                            {" · "}{item.stockGroup || stockMatch?.group || "sin grupo"}
-                            {" · "}{stockMatch?.location || item.stockLocation || "sin ubicación"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-              </div>
-              {menuMateriales && (() => {
-                const it = displayedMaterials.find((x: any) => x.id === menuMateriales.id);
-                const cerrar = () => {
-                  setMenuMateriales(null);
-                  marcaMateriales.marcar(null);
-                };
-                if (!it) return null;
-                const stockMatch = matchStockForMaterial(it, stockByCode, stockByDescription);
-                return (
-                  <QuickMenu x={menuMateriales.x} y={menuMateriales.y} onClose={cerrar}>
-                    <QuickMenuTitle>{it.description || "material"}</QuickMenuTitle>
-                    <button
-                      style={quickMenuItem}
-                      onClick={() => {
-                        const v = window.prompt("Grupo de stock:", String(it.stockGroup || stockMatch?.group || ""));
-                        if (v !== null) updateArrayItem(setMaterials, it.id, "stockGroup", v.trim());
-                        cerrar();
-                      }}
-                    >
-                      Editar grupo de stock…
-                    </button>
-                    <QuickMenuSep />
-                    <button
-                      style={quickMenuItem}
-                      onClick={() => {
-                        moveMaterial(it.id, -1);
-                        cerrar();
-                      }}
-                    >
-                      Subir un lugar
-                    </button>
-                    <button
-                      style={quickMenuItem}
-                      onClick={() => {
-                        moveMaterial(it.id, 1);
-                        cerrar();
-                      }}
-                    >
-                      Bajar un lugar
-                    </button>
-                    {!stockMatch && it.description.trim() ? (
-                      <>
-                        <QuickMenuSep />
-                        <button
-                          style={quickMenuItem}
-                          onClick={() => {
-                            addMaterialToStock(it.id);
-                            cerrar();
-                          }}
-                        >
-                          Agregar a stock
-                        </button>
-                      </>
-                    ) : null}
-                    <QuickMenuSep />
-                    <button
-                      style={{ ...quickMenuItem, color: "#b91c1c" }}
-                      onClick={() => {
-                        removeMaterial(it.id);
-                        cerrar();
-                      }}
-                    >
-                      Quitar del presupuesto
-                    </button>
-                  </QuickMenu>
-                );
-              })()}
-              <div style={styles.rightStrong}>Total materiales: {money(totalMaterials)}</div>
-            </Panel>
 
             <Panel span="full"
               title="Insumos y fletes"
@@ -1686,6 +1582,112 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
           </div>
 
           <div style={styles.budgetAside}>
+            <Panel span="full" title="CRM del cliente">
+              {budget.client.trim() === "" ? (
+                <div style={styles.empty}>Carga el nombre del cliente para ver si ya cotizo antes con ustedes.</div>
+              ) : currentClientHistory.length === 0 ? (
+                <div style={styles.empty}>No hay antecedentes para este cliente. Quedara como nuevo cliente en CRM.</div>
+              ) : (
+                <>
+                  <div style={styles.metricGrid}>
+                    <MiniMetric
+                      label="Tipo de cliente"
+                      value={currentClientHistory.length > 1 ? "Cliente habitual" : "Nuevo cliente"}
+                    />
+                    <MiniMetric label="Presupuestos previos" value={String(currentClientHistory.length)} />
+                    <MiniMetric
+                      label="Ultimo presupuesto"
+                      value={getSavedBudgetDisplayLabel(currentClientHistory[0])}
+                    />
+                    <MiniMetric
+                      label="Ultima fecha"
+                      value={formatDateDisplay(currentClientHistory[0].date)}
+                    />
+                  </div>
+                  <div style={{ ...planillaWrap, ...anchosCrm.vars }}>
+                  <table className="planilla" style={planillaTable}>
+                    <colgroup>
+                      <col style={colLabel} />
+                      <col style={colDato} />
+                      <col style={colDato} />
+                      <col style={colFlexible} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style={thEsquina}>
+                          Presupuesto
+                          <PlanillaManija
+                            onMouseDown={(ev) => anchosCrm.startResize(ev, "label")}
+                            onDoubleClick={anchosCrm.resetLabel}
+                          />
+                        </th>
+                        <th style={thColumna}>
+                          Fecha
+                          <PlanillaManija
+                            onMouseDown={(ev) => anchosCrm.startResize(ev, "col")}
+                            onDoubleClick={anchosCrm.resetCol}
+                          />
+                        </th>
+                        <th style={thColumna}>Estado</th>
+                        <th style={thFlexible}>Proyecto</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {currentClientHistory.slice(0, 5).map((item) => {
+                        const wasBought = approvedJobs.some(
+                          (job) => job.rootBudgetId === item.rootBudgetId || job.budgetId === item.id
+                        );
+                        return (
+                          <tr
+                            key={item.id}
+                            onContextMenu={(ev) => {
+                              ev.preventDefault();
+                              ev.stopPropagation();
+                              setMenuCrm({ x: ev.clientX, y: ev.clientY, id: item.id });
+                            }}
+                          >
+                            <td style={{ ...tdNombre, fontWeight: 400 }} title={getSavedBudgetDisplayLabel(item)}>
+                              <span
+                                title={wasBought ? "Compro" : "No compro"}
+                                style={{
+                                  display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
+                                  background: wasBought ? "#16a34a" : "#cbd5f5",
+                                }}
+                              />
+                              {getSavedBudgetDisplayLabel(item)}
+                            </td>
+                            <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.date)}</td>
+                            <td style={{ ...tdDato, color: "#475569" }}>{item.status}</td>
+                            <td style={{ ...tdFlexible, color: "#64748b" }} title={item.project}>{item.project}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  </div>
+                  {menuCrm && (() => {
+                    const it = currentClientHistory.find((x: any) => x.id === menuCrm.id);
+                    const cerrar = () => setMenuCrm(null);
+                    if (!it) return null;
+                    return (
+                      <QuickMenu x={menuCrm.x} y={menuCrm.y} onClose={cerrar}>
+                        <QuickMenuTitle>{getSavedBudgetDisplayLabel(it)}</QuickMenuTitle>
+                        <button
+                          style={quickMenuItem}
+                          onClick={() => {
+                            loadBudgetFromSnapshot(it.snapshot, it.id);
+                            cerrar();
+                          }}
+                        >
+                          Cargar para editar
+                        </button>
+                      </QuickMenu>
+                    );
+                  })()}
+                </>
+              )}
+            </Panel>
+
             <Panel
               title="Subpresupuestos dentro de esta cotizacion"
               actions={
