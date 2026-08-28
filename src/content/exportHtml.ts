@@ -3,6 +3,7 @@
 import type { SavedBudget, RemitoDraft, Payment, Invoice } from "../domain/types";
 import { money } from "../lib/format";
 import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency } from "../domain/planos";
+import { describirTrabajo } from "../domain/jobDescription";
 
 const esc = (s: unknown): string =>
   String(s ?? "")
@@ -374,6 +375,31 @@ export function buildJobHtml(job: any): string {
 // Las retenciones son plata que el cliente ya pagó (se la quedó el fisco a cuenta nuestra): si no
 // figuran, el cliente ve un saldo que no coincide con lo que transfirió. Por eso van con su propia
 // tabla y con un cierre que muestra la resta completa.
+// Que se contrato: la descripcion del trabajo y cada subpresupuesto con la suya. Va arriba de los
+// numeros porque es lo que el cliente entiende (Nicolas, 2026-08-28: "tiene que quedar asentado que
+// es lo que se hizo"). La forma la arma domain/jobDescription.ts, la misma que usa la pantalla.
+function bloqueQueSeHizo(job: any): string {
+  const d = describirTrabajo(job);
+  if (d.vacio) return "";
+  const bloques = d.bloques.length
+    ? `<table><thead><tr><th>Bloque</th><th>Descripci&oacute;n</th></tr></thead><tbody>${d.bloques
+        .map(
+          (b) => `<tr>
+        <td>${esc(b.titulo)}${b.cantidad > 1 ? ` <b>&times;${b.cantidad}</b>` : ""}${
+            b.moneda === "USD" ? " (U$S)" : ""
+          }</td>
+        <td>${esc(b.descripcion || "-")}</td></tr>`
+        )
+        .join("")}</tbody></table>`
+    : "";
+  return `
+    <h2>Qu&eacute; se hizo</h2>
+    ${d.descripcion ? `<p><b>${esc(d.descripcion)}</b></p>` : ""}
+    ${d.alcance ? `<p class="sub">${esc(d.alcance)}</p>` : ""}
+    ${bloques}
+    ${d.notas ? `<p class="sub">Nota: ${esc(d.notas)}</p>` : ""}`;
+}
+
 export function buildJobClientSummaryHtml(job: any): string {
   const invoices = job.invoices || [];
   const payments = job.payments || [];
@@ -492,6 +518,7 @@ export function buildJobClientSummaryHtml(job: any): string {
         job.remainingToPay
       )}</div></div>
     </div>
+    ${bloqueQueSeHizo(job)}
     <h2>Facturas emitidas</h2>
     <table><thead><tr><th>Fecha</th><th>Comprobante</th><th class="num">Total</th></tr></thead>
       <tbody>${invRows}</tbody></table>

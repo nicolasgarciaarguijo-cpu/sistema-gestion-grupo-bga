@@ -1,5 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
+import { describirTrabajo } from "../domain/jobDescription";
 import {
   Panel,
   SemaforoResumen,
@@ -676,6 +677,34 @@ export function AprobadosTab({
                     </ButtonLike>
                   }
                 >
+                  {(() => {
+                    const d = describirTrabajo(selectedApprovedJob);
+                    if (d.vacio) return null;
+                    return (
+                      <div style={{ ...styles.noticeBox, marginBottom: 12 }}>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>Qué se hizo</div>
+                        {d.descripcion && <div style={{ marginBottom: 4 }}>{d.descripcion}</div>}
+                        {d.alcance && (
+                          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>{d.alcance}</div>
+                        )}
+                        {d.bloques.length > 0 && (
+                          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                            {d.bloques.map((b, i) => (
+                              <div key={`${b.titulo}-${i}`} style={{ fontSize: 12 }}>
+                                <strong>{b.titulo}</strong>
+                                {b.cantidad > 1 && <strong> ×{b.cantidad}</strong>}
+                                {b.moneda === "USD" && <span style={{ color: "#0f766e" }}> (U$S)</span>}
+                                {b.descripcion ? <span style={{ color: "#475569" }}> — {b.descripcion}</span> : null}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {d.notas && (
+                          <div style={{ fontSize: 12, color: "#b45309", marginTop: 6 }}>Nota: {d.notas}</div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <TwoCol>
                     <Field label="Fecha aprobacion">
                       <input
