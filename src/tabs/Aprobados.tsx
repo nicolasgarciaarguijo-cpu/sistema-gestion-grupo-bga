@@ -247,7 +247,7 @@ export function AprobadosTab({
                 </div>
               ) : (
                 <div style={{ ...planillaWrap, ...anchosPlanos.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -349,7 +349,7 @@ export function AprobadosTab({
                 );
               })()}
               <div style={{ ...planillaWrap, ...anchosAprobados.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 {/* Antes la ultima columna metia estado, facturado, planos, fechas y origen en un
                     solo renglon con flex-wrap: se leia todo apelmazado. Ahora cada cosa tiene su
                     columna, con su ancho y su alineacion. */}
@@ -515,7 +515,7 @@ export function AprobadosTab({
                 <div style={styles.empty}>Todavia no hay trabajos aprobados para mostrar en la linea de tiempo.</div>
               ) : (
                 <div style={{ ...planillaWrap, ...anchosLinea.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -971,7 +971,7 @@ export function AprobadosTab({
                 {selectedApprovedJob.workFiles.length === 0 ? (
                   <div style={styles.empty}>No hay archivos vinculados a este trabajo.</div>
                 ) : (
-                  <table style={planillaTable}>
+                  <table className="planilla" style={planillaTable}>
                     <colgroup>
                       <col style={colLabel} />
                       <col style={colFlexible} />
@@ -1036,7 +1036,7 @@ export function AprobadosTab({
                       )}
                     </div>
                     {linked.length > 0 && (
-                      <table style={planillaTable}>
+                      <table className="planilla" style={planillaTable}>
                         <colgroup>
                           <col style={colLabel} />
                           <col style={colDato} />

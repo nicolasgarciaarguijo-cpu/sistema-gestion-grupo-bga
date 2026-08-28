@@ -169,7 +169,7 @@ export function FabricacionTab({
               <div style={styles.empty}>Todavia no hay trabajos aprobados para fabricar.</div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosCalendario.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -300,7 +300,7 @@ export function FabricacionTab({
                               stock ya esta repartido entre los trabajos abiertos por fecha de
                               inicio, y al finalizar el trabajo estos faltantes desaparecen.
                             </div>
-                            <table style={planillaTable}>
+                            <table className="planilla" style={planillaTable}>
                               <colgroup>
                                 <col style={colLabel} />
                                 <col style={colDato} />
@@ -456,7 +456,7 @@ export function FabricacionTab({
               </div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosLimite.vars }}>
-                <table style={{ ...planillaTable, tableLayout: "fixed" }}>
+                <table className="planilla" style={{ ...planillaTable, tableLayout: "fixed" }}>
                   <colgroup>
                     <col style={colLabel} />
                     {limiteDias.map((d) => (
@@ -578,7 +578,7 @@ export function FabricacionTab({
                 <MiniMetric label="Materiales con faltante" value={String(fabricationPendingPurchases.length)} />
               </div>
               <div style={{ ...planillaWrap, ...anchosStock.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />

@@ -251,7 +251,7 @@ export function BancosTab({
             </div>
             <div style={{ overflowX: "auto", maxHeight: 320 }}>
               <div style={{ ...planillaWrap, ...anchosEspejo.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -347,7 +347,7 @@ export function BancosTab({
             </div>
             <div style={{ overflowX: "auto" }}>
               <div style={{ ...planillaWrap, ...anchosExtracto.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -534,7 +534,7 @@ export function BancosTab({
                 <option key={p} value={p} />
               ))}
             </datalist>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />

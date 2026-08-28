@@ -192,14 +192,18 @@ export function useCeldaMarcada() {
 // se escribe directo (materiales, insumos), sin perder la estetica de planilla.
 export const inputCelda: React.CSSProperties = {
   width: "100%",
-  border: "1px solid transparent",
+  // Pedido de Nicolas (2026-08-28): "que se marquen bien las columnas, sobre todo las que tienen
+  // edicion". Antes el input era invisible hasta que lo enfocabas, asi que no habia forma de saber
+  // que celdas se podian tocar. Ahora TODA celda editable se ve como un campo: recuadro suave y
+  // fondo blanco, que ademas se despega de las franjas grises de las filas pares.
+  border: "1px solid #cbd5e1",
   borderRadius: 4,
-  background: "transparent",
+  background: "#ffffff",
   padding: "1px 4px",
   font: "inherit",
   color: "inherit",
   outline: "none",
-  transition: "background-color 140ms ease, border-color 140ms ease",
+  transition: "background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease",
 };
 
 export const inputCeldaDerecha: React.CSSProperties = { ...inputCelda, textAlign: "right" };
@@ -207,11 +211,11 @@ export const inputCeldaDerecha: React.CSSProperties = { ...inputCelda, textAlign
 // Handlers para que el input se ilumine al enfocarlo, igual que la celda marcada.
 export const focoCelda = {
   onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
-    e.currentTarget.style.background = "#ffffff";
     e.currentTarget.style.borderColor = "#2563eb";
+    e.currentTarget.style.boxShadow = "0 0 0 2px rgba(37, 99, 235, 0.15)";
   },
   onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
-    e.currentTarget.style.background = "transparent";
-    e.currentTarget.style.borderColor = "transparent";
+    e.currentTarget.style.borderColor = "#cbd5e1";
+    e.currentTarget.style.boxShadow = "none";
   },
 };

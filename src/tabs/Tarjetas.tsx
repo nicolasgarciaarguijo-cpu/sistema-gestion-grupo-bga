@@ -202,7 +202,7 @@ export function TarjetasTab({
             Cargá consumos y clasificalos a un grupo para ver el desglose fijo/variable.
           </div>
         ) : (
-          <table style={{ ...planillaTable, marginTop: 10 }}>
+          <table className="planilla" style={{ ...planillaTable, marginTop: 10 }}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -256,7 +256,7 @@ export function TarjetasTab({
           <div style={styles.muted}>No hay tarjetas. Agregá la primera para empezar a cargar consumos.</div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosTarjetas.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -371,7 +371,7 @@ export function TarjetasTab({
           </div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosResumenes.vars, marginTop: 10 }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -506,7 +506,7 @@ export function TarjetasTab({
               editarla o borrarla.
             </div>
             <div style={{ ...planillaWrap, ...anchos.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />

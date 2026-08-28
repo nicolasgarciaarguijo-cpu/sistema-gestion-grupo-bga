@@ -233,7 +233,7 @@ export function MovimientosInternosTab({
           </div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosPases.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -415,7 +415,7 @@ export function MovimientosInternosTab({
           </div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosEfectivo.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -649,7 +649,7 @@ export function MovimientosInternosTab({
           </div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosCapital.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -857,7 +857,7 @@ export function MovimientosInternosTab({
                 </span>
               </summary>
               <div style={{ ...planillaWrap, ...anchosGente.vars, marginTop: 8 }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -1103,7 +1103,7 @@ export function MovimientosInternosTab({
           <>
             <div style={{ overflowX: "auto", marginTop: 10 }}>
               <div style={{ ...planillaWrap, ...anchosCcPares.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -1176,7 +1176,7 @@ export function MovimientosInternosTab({
               </summary>
               <div style={{ overflowX: "auto", marginTop: 8 }}>
                 <div style={{ ...planillaWrap, ...anchosCcGiros.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />

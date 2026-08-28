@@ -440,7 +440,7 @@ export function CostosTab({
           solapas y no se pueden editar ni borrar.
         </div>
         <div style={{ ...planillaWrap, ...anchosGrupos.vars }}>
-        <table style={planillaTable}>
+        <table className="planilla" style={planillaTable}>
           <colgroup>
             <col style={colLabel} />
             <col style={colDato} />
@@ -546,7 +546,7 @@ export function CostosTab({
           </div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosReglas.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -662,7 +662,7 @@ export function CostosTab({
         </div>
         <div style={{ overflowX: "auto" }}>
           <div style={{ ...planillaWrap, ...anchosProveedores.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -834,7 +834,7 @@ export function CostosTab({
           )}
         </div>
         <div style={{ ...planillaWrap, ...anchosGastos.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -953,7 +953,7 @@ export function CostosTab({
         </div>
         <div style={{ overflowX: "auto" }}>
           <div style={{ ...planillaWrap, ...anchosCajaChica.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -1093,7 +1093,7 @@ export function CostosTab({
                 </span>
               </div>
               {a.pendientes.length > 0 && (
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -1190,7 +1190,7 @@ export function CostosTab({
                     <span style={{ fontWeight: 800 }}>{money(c.total)}</span>
                   </div>
                   {c.entries.length > 0 && (
-                    <table style={planillaTable}>
+                    <table className="planilla" style={planillaTable}>
                       <colgroup>
                         <col style={colLabel} />
                         <col style={colDato} />
@@ -1233,7 +1233,7 @@ export function CostosTab({
               <span>⚠ Sin clasificar ({composition.sinClasificar.entries.length}) — ubicalos en un grupo</span>
               <span style={{ fontWeight: 800 }}>{money(composition.sinClasificar.total)}</span>
             </div>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -1274,7 +1274,7 @@ export function CostosTab({
           reclasificarlos.
         </div>
         <div style={{ ...planillaWrap, ...anchosCostos.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               {months.map((m) => (

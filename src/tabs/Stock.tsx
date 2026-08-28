@@ -195,7 +195,7 @@ export function StockTab({
             />
           </Panel>
           <Panel title="Agenda de fabricacion" span="full" actions={<ButtonLike onClick={() => exportPrint("report-stock")} secondary>Reporte</ButtonLike>}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -354,7 +354,7 @@ export function StockTab({
               </span>
             </div>
             <div style={{ ...planillaWrap, ...anchosStock.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -534,7 +534,7 @@ export function StockTab({
 
             <div style={styles.sectionHeader}>Grupos y categorias</div>
             <div style={{ ...planillaWrap, ...anchosGrupos.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -658,7 +658,7 @@ export function StockTab({
 
             <div style={styles.sectionHeader}>Items del analisis</div>
             <div style={{ ...planillaWrap, ...anchosCostos.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -1093,7 +1093,7 @@ export function StockTab({
             {recentMovements.length === 0 ? (
               <div style={styles.empty}>Todavia no hay movimientos registrados.</div>
             ) : (
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -1159,7 +1159,7 @@ export function StockTab({
             }
           >
             <div style={{ ...planillaWrap, ...anchosEpp.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -1331,7 +1331,7 @@ export function StockTab({
             {personalProvisionAlerts.length === 0 ? (
               <div style={styles.empty}>No hay vencimientos proximos cargados.</div>
             ) : (
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -1404,7 +1404,7 @@ export function StockTab({
               <MiniMetric label="Amortizacion mensual" value={money(activeAssetsMonthlyDepreciation)} />
             </div>
             <div style={{ ...planillaWrap, ...anchosActivos.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -1557,7 +1557,7 @@ export function StockTab({
             {stockNeedRows.length === 0 ? (
               <div style={styles.empty}>No hay faltantes pendientes para trabajos abiertos.</div>
             ) : (
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />

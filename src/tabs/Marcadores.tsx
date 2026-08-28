@@ -356,7 +356,7 @@ export function MarcadoresTab({
             </div>
 
             <div style={{ ...planillaWrap, ...anchosEmpresariales.vars, marginBottom: 14 }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -500,7 +500,7 @@ export function MarcadoresTab({
               ))}
             </div>
             <div style={{ ...planillaWrap, ...anchosFijos.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -640,7 +640,7 @@ export function MarcadoresTab({
             </div>
           }>
             <div style={{ ...planillaWrap, ...anchosInsumos.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -801,7 +801,7 @@ export function MarcadoresTab({
             }
           >
             <div style={{ ...planillaWrap, ...anchosMO.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />
@@ -960,7 +960,7 @@ export function MarcadoresTab({
             }
           >
             <div style={{ ...planillaWrap, ...anchosEppM.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />

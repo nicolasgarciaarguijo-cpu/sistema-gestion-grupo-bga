@@ -236,7 +236,7 @@ export function CajaChicaTab({
                         <MiniMetric label="Total asignado" value={money(r.totalAssigned)} />
                         <MiniMetric label="Total rendido" value={money(r.totalRendered)} />
                       </div>
-                      <table style={{ ...planillaTable, marginTop: 10 }}>
+                      <table className="planilla" style={{ ...planillaTable, marginTop: 10 }}>
                         <colgroup>
                           <col style={colLabel} />
                           <col style={colDato} />
@@ -302,7 +302,7 @@ export function CajaChicaTab({
               <div style={styles.empty}>Todavia no hay fondos de caja chica cargados.</div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosCajas.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -686,7 +686,7 @@ export function CajaChicaTab({
               </div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosSeguimiento.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />

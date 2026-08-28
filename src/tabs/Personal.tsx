@@ -349,7 +349,7 @@ export function PersonalTab(props: PersonalTabProps) {
           <div style={{ order: 3, gridColumn: "1 / -1" }}>
           <Panel title="Empleados" span="full">
             <div style={{ ...planillaWrap, ...anchosNomina.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               {/* Antes la ultima columna metia asistencia, documentacion, las cuatro provisiones,
                   categoria, antiguedad, ingreso, impacto y empresa en un solo renglon: no se leia
                   nada. Ahora cada cosa tiene su columna, y la empresa pasa al encabezado de grupo. */}
@@ -668,7 +668,7 @@ export function PersonalTab(props: PersonalTabProps) {
                   </ButtonLike>
                 </div>
                 <div style={{ ...planillaWrap, ...anchosEscalas.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -804,7 +804,7 @@ export function PersonalTab(props: PersonalTabProps) {
                 </div>
               ) : (
                 <div style={{ ...planillaWrap, ...anchosCategorias.vars, marginTop: 12 }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -875,7 +875,7 @@ export function PersonalTab(props: PersonalTabProps) {
                 </div>
               ) : (
                 <div style={{ ...planillaWrap, ...anchosRecordatorios.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />

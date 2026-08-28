@@ -70,7 +70,7 @@ export function EmitirFacturasTab({
           <div style={styles.empty}>No hay facturas cargadas pendientes de emitir. 👍</div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosPendientes.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -143,7 +143,7 @@ export function EmitirFacturasTab({
           <div style={styles.empty}>Todos los trabajos activos tienen al menos una factura cargada.</div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosSinFactura.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />
@@ -217,7 +217,7 @@ export function EmitirFacturasTab({
           <div style={styles.empty}>Todavia no se emitio ninguna factura desde el sistema.</div>
         ) : (
           <div style={{ ...planillaWrap, ...anchosEmitidas.vars }}>
-          <table style={planillaTable}>
+          <table className="planilla" style={planillaTable}>
             <colgroup>
               <col style={colLabel} />
               <col style={colDato} />

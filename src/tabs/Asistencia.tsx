@@ -441,7 +441,7 @@ export function AsistenciaTab({
           }
         >
           <div style={{ ...planillaWrap, ...anchosResumen.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />

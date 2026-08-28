@@ -267,7 +267,7 @@ export function FacturacionTab({
                     Ver los {issuedInvoices.length} comprobantes
                   </summary>
                   <div style={{ overflowX: "auto", marginTop: 8, maxHeight: 420, overflowY: "auto" }}>
-                    <table style={planillaTable}>
+                    <table className="planilla" style={planillaTable}>
                       <colgroup>
                         <col style={colLabel} />
                         <col style={colDato} />

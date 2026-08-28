@@ -31,3 +31,34 @@ body,
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
+
+/* ---- PLANILLAS -------------------------------------------------------------
+   La estetica de planilla vive en src/ui/planilla.tsx (anchos, sticky, inputs).
+   Aca va SOLO lo que un style inline no puede hacer: separar las columnas entre
+   si, alternar el fondo de las filas y resaltar la fila bajo el mouse.
+   Los !important son a proposito: el fondo de la primera columna y del encabezado
+   va inline porque lo necesita el sticky, y sin !important gana el inline. */
+.planilla th,
+.planilla td {
+  border-right: 1px solid #e2e8f0;
+}
+.planilla th:last-child,
+.planilla td:last-child {
+  border-right: none;
+}
+
+/* La primera columna es el nombre: se despega del resto con un borde mas fuerte. */
+.planilla th:first-child,
+.planilla td:first-child {
+  border-right: 2px solid #cbd5e1;
+}
+
+/* Franjas alternadas: sirven para no perder el renglon al leer de punta a punta. */
+.planilla tbody tr:nth-child(even) > td {
+  background: #f8fafc !important;
+}
+
+/* La fila donde esta el mouse, entera. */
+.planilla tbody tr:hover > td {
+  background: #eff6ff !important;
+}

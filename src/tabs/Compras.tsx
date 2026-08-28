@@ -223,7 +223,7 @@ export function ComprasTab({
                       <span style={{ fontWeight: 800, color: "#b45309" }}>{money(deuda.total)}</span>
                     </span>
                   </div>
-                  <table style={planillaTable}>
+                  <table className="planilla" style={planillaTable}>
                     <colgroup>
                       <col style={colLabel} />
                       <col style={colDato} />
@@ -379,7 +379,7 @@ export function ComprasTab({
                     </div>
                     {abierta && (
                       <div style={{ ...planillaWrap, ...anchosCtaCte.vars }}>
-                        <table style={planillaTable}>
+                        <table className="planilla" style={planillaTable}>
                           <colgroup>
                             <col style={colLabel} />
                             <col style={colDato} />
@@ -646,7 +646,7 @@ export function ComprasTab({
               <div style={styles.empty}>No hay facturas de compra cargadas.</div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosPagos.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -844,7 +844,7 @@ export function ComprasTab({
               </div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosCajaBlanca.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -916,7 +916,7 @@ export function ComprasTab({
               <div style={styles.empty}>No hay faltantes pendientes para trabajos activos.</div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosPendientes.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -988,7 +988,7 @@ export function ComprasTab({
               <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosCompras.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />

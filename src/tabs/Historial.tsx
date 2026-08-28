@@ -123,7 +123,7 @@ export function HistorialTab({
               </div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosFichas.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -240,7 +240,7 @@ export function HistorialTab({
               <div style={styles.empty}>Todavia no hay clientes en CRM porque no hay presupuestos guardados.</div>
             ) : (
               <div style={{ ...planillaWrap, ...anchosCrm.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -350,7 +350,7 @@ export function HistorialTab({
                 </Panel>
               </div>
               <div style={{ ...planillaWrap, ...anchosCotiz.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />

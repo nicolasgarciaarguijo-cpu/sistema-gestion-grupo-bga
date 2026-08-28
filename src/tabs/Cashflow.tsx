@@ -902,7 +902,7 @@ export function CashflowTab({
               })()}
             </div>
             <div style={{ ...planillaWrap, ...anchosDeudas.vars }}>
-            <table style={planillaTable}>
+            <table className="planilla" style={planillaTable}>
               <colgroup>
                 <col style={colLabel} />
                 <col style={colDato} />

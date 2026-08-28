@@ -664,7 +664,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     />
                   </div>
                   <div style={{ ...planillaWrap, ...anchosCrm.vars }}>
-                  <table style={planillaTable}>
+                  <table className="planilla" style={planillaTable}>
                     <colgroup>
                       <col style={colLabel} />
                       <col style={colDato} />
@@ -848,7 +848,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 <div style={styles.empty}>No hay aumentos cargados para esta actualizacion.</div>
               ) : (
                 <div style={{ ...planillaWrap, ...anchosAumentos.vars, marginBottom: 12 }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -932,7 +932,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 <div style={styles.empty}>No hay descuentos cargados.</div>
               ) : (
                 <div style={{ ...planillaWrap, ...anchosDescuentos.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -1079,7 +1079,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 ))}
               </datalist>
               <div style={{ ...planillaWrap, ...anchosMateriales.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -1269,7 +1269,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               }
             >
               <div style={{ ...planillaWrap, ...anchosInsumos.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -1393,7 +1393,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               }
             >
               <div style={{ ...planillaWrap, ...anchosMO.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />
@@ -1526,7 +1526,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 <div style={styles.empty}>Todavia no hay empleados cargados.</div>
               ) : (
                 <div style={{ ...planillaWrap, ...anchosRefPersonal.vars }}>
-                <table style={planillaTable}>
+                <table className="planilla" style={planillaTable}>
                   <colgroup>
                     <col style={colLabel} />
                     <col style={colDato} />
@@ -1594,7 +1594,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               }
             >
               <div style={{ ...planillaWrap, ...anchosFijos.vars }}>
-              <table style={planillaTable}>
+              <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
                   <col style={colDato} />

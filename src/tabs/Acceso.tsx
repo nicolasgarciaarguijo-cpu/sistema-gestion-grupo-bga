@@ -270,7 +270,7 @@ export function AccesoTab({
                     colaboracion actualizado para habilitar el directorio interno.
                   </div>
                 ) : (
-                  <table style={planillaTable}>
+                  <table className="planilla" style={planillaTable}>
                     <colgroup>
                       <col style={colLabel} />
                       <col style={colDato} />
