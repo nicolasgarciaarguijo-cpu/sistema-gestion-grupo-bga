@@ -123,8 +123,11 @@ export const thColumna: React.CSSProperties = {
   padding: "4px 6px", borderBottom: "1px solid #e2e8f0", textAlign: "left",
   boxShadow: "inset 0 -1px 0 #e2e8f0", ...anchoDato,
 };
+// background "inherit": la primera columna es sticky y necesita un fondo opaco, pero tiene que
+// tomar el de SU fila -la franja, o el color de estado que la planilla le haya puesto- y no
+// imponer blanco. El fondo opaco lo garantiza la regla `.planilla tbody tr` de styles.css.
 export const tdNombre: React.CSSProperties = {
-  position: "sticky", left: 0, zIndex: 2, background: "#ffffff", padding: "5px 10px",
+  position: "sticky", left: 0, zIndex: 2, background: "inherit", padding: "5px 10px",
   borderBottom: "1px solid #f1f5f9", fontWeight: 600, ...anchoLabel,
 };
 export const tdDato: React.CSSProperties = {

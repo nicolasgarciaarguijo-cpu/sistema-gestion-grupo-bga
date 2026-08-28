@@ -409,7 +409,8 @@ export function AprobadosTab({
                       {group.items.map((job) => {
                         const finalizado = job.executionStatus === "finalizado";
                         const done = isJobDone(job);
-                        // finalizado Y realmente cerrado (a cobrar 0 + comisión paga) → gris "cerrado".
+                        // finalizado Y realmente cerrado (a cobrar 0 + comisión paga) → CELESTE.
+                        // Antes era gris y se confundía con el resto; Nicolás lo quiere de un vistazo.
                         const completado = finalizado && done;
                         // finalizado PERO con pendientes (a cobrar o comisión) → NO se esconde: alerta.
                         const finalizadoPendiente = finalizado && !done;
@@ -425,7 +426,7 @@ export function AprobadosTab({
                           title={finalizadoPendiente ? `Figura finalizado pero falta: ${faltas.join(", ")}` : "Click derecho: resumen del cliente y abrir ficha"}
                           style={
                             completado
-                              ? { background: "#e2e8f0", color: "#64748b" }
+                              ? { background: "#dbeafe", color: "#075985" }
                               : finalizadoPendiente
                               ? { background: "#fef2f2", color: "#991b1b" }
                               : listo
@@ -441,7 +442,9 @@ export function AprobadosTab({
                             title={`${job.budgetNumber} · ${job.client}`}
                           >
                             <strong style={{ color: "inherit" }}>
-                              {completado ? "✓ " : finalizadoPendiente ? "⚠ " : listo ? "● " : ""}
+                              {completado ? (
+                                <span style={{ color: "#0284c7", fontSize: 14, fontWeight: 800 }}>✓ </span>
+                              ) : finalizadoPendiente ? "⚠ " : listo ? "● " : ""}
                               {job.isUpdate ? `${job.budgetNumber} · Act. ${job.revisionNumber - 1}` : job.budgetNumber}
                             </strong>{" "}
                             {job.client}

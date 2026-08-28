@@ -53,12 +53,19 @@ body,
   border-right: 2px solid #cbd5e1;
 }
 
-/* Franjas alternadas: sirven para no perder el renglon al leer de punta a punta. */
-.planilla tbody tr:nth-child(even) > td {
-  background: #f8fafc !important;
+/* Franjas alternadas: sirven para no perder el renglon al leer de punta a punta.
+   Van en la FILA y SIN !important a proposito: si una planilla pinta una fila por su estado
+   -en Trabajos aprobados el celeste de "completado", el rojo de "finalizado pendiente"- ese
+   color va inline en el <tr> y tiene que ganarle a la franja. Al reves, la franja tapaba el
+   estado y se perdia la lectura de un vistazo.
+   El fondo blanco explicito de TODAS las filas no es decorativo: la primera columna es sticky
+   y hereda este fondo, asi que sin el se transparenta y el contenido pasa por debajo. */
+.planilla tbody tr {
+  background: #ffffff;
 }
-
-/* La fila donde esta el mouse, entera. */
-.planilla tbody tr:hover > td {
-  background: #eff6ff !important;
+.planilla tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+.planilla tbody tr:hover {
+  background: #eff6ff;
 }
