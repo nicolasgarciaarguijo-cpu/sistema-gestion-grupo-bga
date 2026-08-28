@@ -225,6 +225,9 @@ export function CalendarioAnualTab({
     const firstIso = dayCols[0]?.iso || "";
     const lastIso = dayCols[dayCols.length - 1]?.iso || "";
     const byConcept = new Map<string, Map<string, number>>(); // itemKey -> date -> monto
+    // De que empresa es la plata de cada celda: itemKey -> date -> empresa -> monto. Pedido de
+    // Nicolas (2026-08-28): quiere ver de un vistazo si el ingreso/egreso es de BGA o de De Raiz.
+    const conceptCompany = new Map<string, Map<string, Map<string, number>>>();
     const cobranzaDetail = new Map<string, Map<string, number>>(); // título -> date -> monto
     const cobranzaDetailB = new Map<string, Map<string, number>>(); // título -> date -> blanco
     const cobranzaDetailN = new Map<string, Map<string, number>>(); // título -> date -> negro
@@ -367,6 +370,13 @@ export function CalendarioAnualTab({
       const idx = e.conceptKey ? CALENDAR_ITEM_INDEX[e.conceptKey] : undefined;
       if (idx) {
         addDeep(byConcept, e.conceptKey!, e.date, amt);
+        if (e.company) {
+          if (!conceptCompany.has(e.conceptKey!)) conceptCompany.set(e.conceptKey!, new Map());
+          const porDia = conceptCompany.get(e.conceptKey!)!;
+          if (!porDia.has(e.date)) porDia.set(e.date, new Map());
+          const porEmp = porDia.get(e.date)!;
+          porEmp.set(e.company, (porEmp.get(e.company) || 0) + Math.abs(amt));
+        }
         add(idx.dir === "in" ? incomeByDate : egresoByDate, e.date, amt);
         if (idx.dir === "in") add(neg ? incN : incB, e.date, amt);
         else add(neg ? egrN : egrB, e.date, amt);
@@ -394,7 +404,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
+    return { byConcept, conceptCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
   }, [entries, companyScope, dayCols, sectionByKey]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
@@ -404,6 +414,31 @@ export function CalendarioAnualTab({
     return m;
   }, [companyOptions]);
   const showByCompany = companyScope === "__ALL__" && agg.companiesSeen.size > 1;
+
+  // Sombreado por empresa (Nicolas, 2026-08-28): "si un egreso o ingreso es de BGA sombreado azul y
+  // si es de De Raiz sombreado mostaza". Son tintes suaves a proposito: tienen que leerse como un
+  // fondo, no tapar el numero ni pelearse con el resaltado del dia de hoy.
+  const TINTE_EMPRESA: Record<string, string> = { azul: "#e3edfd", mostaza: "#fdf4d3" };
+  const tinteDeEmpresa = (company: string): string | undefined => {
+    const c = company.toLowerCase();
+    if (c.startsWith("bga")) return TINTE_EMPRESA.azul;
+    if (c.startsWith("de raiz") || c.startsWith("de ra")) return TINTE_EMPRESA.mostaza;
+    return undefined;
+  };
+  // Devuelve el fondo de una celda segun quien puso la plata, y el texto para el tooltip.
+  const fondoEmpresa = (itemKey: string, iso: string): { style?: React.CSSProperties; detalle: string } => {
+    const porEmp = agg.conceptCompany.get(itemKey)?.get(iso);
+    if (!porEmp || porEmp.size === 0) return { detalle: "" };
+    let ganadora = "";
+    let mayor = -1;
+    const partes: string[] = [];
+    porEmp.forEach((monto, emp) => {
+      partes.push(`${companyMeta.get(emp)?.short || emp} ${money(monto)}`);
+      if (monto > mayor) { mayor = monto; ganadora = emp; }
+    });
+    const bg = tinteDeEmpresa(ganadora);
+    return { style: bg ? { background: bg } : undefined, detalle: partes.join(" · ") };
+  };
   const selectedColor = companyScope !== "__ALL__" ? companyMeta.get(companyScope)?.color : undefined;
 
   // Sugerencia de renglón para los movimientos del banco sin clasificar (mecánica bancaria).
@@ -648,15 +683,29 @@ export function CalendarioAnualTab({
   // (ano completo), manda el ancho elegido y la planilla scrollea.
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [wrapW, setWrapW] = useState(0);
+  // Alto: en vez de un 72vh fijo se mide cuanto espacio queda desde donde arranca la planilla hasta
+  // el borde de la ventana, y se usa TODO. Con el 72vh sobraba pantalla abajo y encima habia que
+  // scrollear adentro del bloque para ver los ultimos renglones.
+  const [maxH, setMaxH] = useState<number | null>(null);
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const medir = () => setWrapW(el.clientWidth);
+    const medir = () => {
+      setWrapW(el.clientWidth);
+      const arriba = el.getBoundingClientRect().top;
+      setMaxH(Math.max(360, Math.round(window.innerHeight - arriba - 16)));
+    };
     medir();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(medir);
-    ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", medir);
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(medir);
+      ro.observe(el);
+    }
+    return () => {
+      window.removeEventListener("resize", medir);
+      if (ro) ro.disconnect();
+    };
   }, []);
   const dayWEfectivo = useMemo(() => {
     const n = visibleDayCols.length;
@@ -664,6 +713,16 @@ export function CalendarioAnualTab({
     const sobra = wrapW - labelW - 2; // 2 = los bordes del contenedor
     return Math.max(dayW, Math.floor(sobra / n));
   }, [wrapW, labelW, dayW, visibleDayCols.length]);
+
+  // Año completo: mover el selector o las flechas lleva la planilla hasta ese mes. La columna
+  // "Concepto" es sticky, asi que el scroll es solo la suma de los dias anteriores.
+  useEffect(() => {
+    if (monthMode) return;
+    const el = wrapRef.current;
+    if (!el) return;
+    const diasAntes = dayCols.filter((c) => c.monthIdx < idx).length;
+    el.scrollTo({ left: diasAntes * dayWEfectivo, behavior: "smooth" });
+  }, [idx, monthMode, dayCols, dayWEfectivo]);
 
   const startResize = (ev: React.MouseEvent, which: "label" | "day") => {
     ev.preventDefault();
@@ -1160,13 +1219,25 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
-            {monthMode && (
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <button style={btnSecondary} onClick={() => setMonthIdx((v) => Math.max(0, v - 1))} disabled={idx <= 0}>‹</button>
-                <strong style={{ minWidth: 120, textAlign: "center", textTransform: "capitalize" }}>{months[idx]?.label}</strong>
-                <button style={btnSecondary} onClick={() => setMonthIdx((v) => Math.min(months.length - 1, v + 1))} disabled={idx >= months.length - 1}>›</button>
-              </div>
-            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <button
+                style={btnSecondary}
+                title={monthMode ? "Mes anterior" : "Llevar la planilla al mes anterior"}
+                onClick={() => setMonthIdx((v) => Math.max(0, v - 1))}
+                disabled={idx <= 0}
+              >
+                ‹
+              </button>
+              <strong style={{ minWidth: 120, textAlign: "center", textTransform: "capitalize" }}>{months[idx]?.label}</strong>
+              <button
+                style={btnSecondary}
+                title={monthMode ? "Mes siguiente" : "Llevar la planilla al mes siguiente"}
+                onClick={() => setMonthIdx((v) => Math.min(months.length - 1, v + 1))}
+                disabled={idx >= months.length - 1}
+              >
+                ›
+              </button>
+            </div>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
               <input type="checkbox" checked={!monthMode} onChange={(e) => setMonthMode(!e.target.checked)} />
               Año completo
@@ -1232,7 +1303,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             border: "1px solid #e2e8f0",
             borderRadius: 8,
             borderTop: `3px solid ${selectedColor || "#cbd5e1"}`,
-            maxHeight: "72vh",
+            maxHeight: maxH ? `${maxH}px` : "72vh",
             ["--cal-label-w" as any]: `${labelW}px`,
             ["--cal-day-w" as any]: `${dayWEfectivo}px`,
           } as React.CSSProperties}
@@ -1498,6 +1569,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               </td>
                               {visibleDayCols.map((c) => {
                                 const v = drow?.get(c.iso) || 0;
+                                const emp = v ? fondoEmpresa(it.key, c.iso) : { style: undefined, detalle: "" };
                                 return (
                                   <td
                                     key={`${it.key}-${c.iso}`}
@@ -1505,8 +1577,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                     onContextMenu={(ev) =>
                                       openCellMenu(ev, itLabel, c.iso, section.key, it.key, (e) => e.conceptKey === it.key)
                                     }
-                                    title="Click: cargar en este día · Click derecho: editar / borrar"
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...hi(c.iso) }}
+                                    title={
+                                      emp.detalle
+                                        ? `${emp.detalle} · Click: cargar · Click derecho: editar / borrar`
+                                        : "Click: cargar en este día · Click derecho: editar / borrar"
+                                    }
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...(emp.style || {}), ...hi(c.iso) }}
                                   >
                                     {v ? money(v) : "+"}
                                   </td>
