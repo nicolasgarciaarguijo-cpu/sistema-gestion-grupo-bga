@@ -363,6 +363,7 @@ export function AprobadosTab({
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colDato} />
+                  <col style={colDato} />
                   <col style={colFlexible} />
                 </colgroup>
                 <thead>
@@ -374,15 +375,21 @@ export function AprobadosTab({
                         onDoubleClick={anchosAprobados.resetLabel}
                       />
                     </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Neto
+                    <th style={{ ...thColumna, textAlign: "right" }} title="Precio de venta sin IVA">
+                      Neto s/IVA
                       <PlanillaManija
                         onMouseDown={(ev) => anchosAprobados.startResize(ev, "col")}
                         onDoubleClick={anchosAprobados.resetCol}
                       />
                     </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>Cobrado</th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
+                    <th
+                      style={{ ...thColumna, textAlign: "right" }}
+                      title="Lo que hay que cobrar: neto + adicionales - descuentos + IVA facturado. Es la base de Cobrado y Saldo."
+                    >
+                      A cobrar c/IVA
+                    </th>
+                    <th style={{ ...thColumna, textAlign: "right" }} title="Plata efectivamente cobrada (con IVA)">Cobrado</th>
+                    <th style={{ ...thColumna, textAlign: "right" }} title="A cobrar c/IVA - Cobrado">Saldo</th>
                     <th style={{ ...thColumna, textAlign: "right" }}>Comisión pend.</th>
                     <th style={thColumna}>Estado</th>
                     <th style={thColumna}>Facturado</th>
@@ -394,7 +401,7 @@ export function AprobadosTab({
                   {companyApprovedSections.map((group) => (
                     <React.Fragment key={group.value}>
                       <tr>
-                        <td colSpan={9} style={styles.sectionCell}>
+                        <td colSpan={10} style={styles.sectionCell}>
                           <div
                             style={{
                               ...styles.sectionHeader,
@@ -450,7 +457,8 @@ export function AprobadosTab({
                             </strong>{" "}
                             {job.client}
                           </td>
-                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(job.soldNetPrice)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", color: "#64748b" }}>{money(job.soldNetPrice)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 600 }}>{money(job.valueToCollect)}</td>
                           <td style={{ ...tdDato, textAlign: "right", color: moneyToneColor("in") }}>{money(job.collectedTotal)}</td>
                           <td
                             style={{
@@ -655,7 +663,7 @@ export function AprobadosTab({
                 <MiniMetric label="Cliente" value={selectedApprovedJob.client} />
                 <MiniMetric label="Aprobacion" value={formatDateDisplay(selectedApprovedJob.approvalDate)} />
                 <MiniMetric label="Entrega" value={formatDateDisplay(selectedApprovedJob.deliveryDate)} />
-                <MiniMetric label="Neto presupuesto" value={money(selectedApprovedJob.soldNetPrice)} />
+                <MiniMetric label="Neto presup. (s/IVA)" value={money(selectedApprovedJob.soldNetPrice)} />
                 <MiniMetric label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} tone="out" />
               </div>
 
@@ -820,7 +828,7 @@ export function AprobadosTab({
                 </Panel>
 
                 <Panel title="Resumen economico" nested>
-                  <SummaryRow label="Neto presupuesto" value={money(selectedApprovedJob.soldNetPrice)} />
+                  <SummaryRow label="Neto presupuesto (s/IVA)" value={money(selectedApprovedJob.soldNetPrice)} />
                   <SummaryRow label="Descuentos" value={money(selectedApprovedJob.totalDiscountAmount)} />
                   <SummaryRow label="% facturado" value={pct(selectedApprovedJob.billedPct)} />
                   {(() => {
@@ -851,9 +859,10 @@ export function AprobadosTab({
                       </div>
                     );
                   })()}
-                  <SummaryRow label="Neto factura" value={money(selectedApprovedJob.billedNet)} />
+                  <SummaryRow label="Neto facturado (s/IVA)" value={money(selectedApprovedJob.billedNet)} />
                   <SummaryRow label="Circuito negro" value={money(selectedApprovedJob.blackNet)} />
-                  <SummaryRow label="IVA 21%" value={money(selectedApprovedJob.invoiceVatAmount)} />
+                  <SummaryRow label="IVA 21% (sobre lo facturado)" value={money(selectedApprovedJob.invoiceVatAmount)} />
+                  <SummaryRow label="Bruto facturado (c/IVA)" value={money(selectedApprovedJob.billedGross)} />
                   <SummaryRow
                     label="Adicionales blanco (neto)"
                     value={money(selectedApprovedJob.additionalsWhiteNet || 0)}
@@ -879,7 +888,7 @@ export function AprobadosTab({
                       tone="out"
                     />
                   )}
-                  <SummaryRow label="Valor a cobrar" value={money(selectedApprovedJob.valueToCollect)} strong />
+                  <SummaryRow label="Valor a cobrar (c/IVA)" value={money(selectedApprovedJob.valueToCollect)} strong />
                   <SummaryRow
                     label={`Anticipo a cobrar (${pct(selectedApprovedJob.anticipoPctResolved)} neto + IVA facturado)`}
                     value={money(selectedApprovedJob.anticipoToCharge)}

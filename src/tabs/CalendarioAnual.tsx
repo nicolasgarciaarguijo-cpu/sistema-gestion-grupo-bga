@@ -97,6 +97,7 @@ export function CalendarioAnualTab({
   onlySection,
   flags,
   onToggleFlag,
+  onSetFlagNote,
   billeteraDiaria,
 }: {
   entries: Entry[];
@@ -116,6 +117,7 @@ export function CalendarioAnualTab({
     byDay: Record<string, { banco: number; efectivoBlanco: number; efectivoNegro: number }>;
   }>;
   onToggleFlag?: (key: string, date: string, label: string, note: string) => void;
+  onSetFlagNote?: (id: number, note: string) => void;
   companyScope: string;
   setCompanyScope: (v: string) => void;
   fiscalStartYear: number;
@@ -1494,6 +1496,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               </td>
                               {visibleDayCols.map((c) => {
                                 const v = emp.byDay[c.iso]?.[linea.campo] || 0;
+                                const marcada = flagSet.has(flagKey("billetera", kp, c.iso));
                                 return (
                                   <td
                                     key={`${kp}-${c.iso}`}
@@ -1504,8 +1507,13 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                       background: linea.bg,
                                       color: v < 0 ? "#dc2626" : linea.color,
                                       ...hi(c.iso),
+                                      ...estiloMarcada(marcada),
                                     }}
+                                    onContextMenu={(ev) =>
+                                      openCellMenu(ev, `${emp.short} · ${linea.sub}`, c.iso, "billetera", kp, () => false)
+                                    }
                                   >
+                                    {marcada && <BanderaRoja />}
                                     {v ? money(v) : "\u00b7"}
                                   </td>
                                 );
@@ -1523,11 +1531,19 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                         <React.Fragment key={row.kp}>
                           <tr>
                             <td style={{ ...labelSticky(top, row.bg), fontWeight: 800, color: row.isOut ? "#991b1b" : "#065f46" }}>{row.lbl}</td>
-                            {visibleDayCols.map((c) => (
-                              <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: row.bg, ...hi(c.iso) }}>
-                                {bnCell(row.b, row.n, c.iso, row.isOut)}
-                              </td>
-                            ))}
+                            {visibleDayCols.map((c) => {
+                              const marcada = flagSet.has(flagKey("total", row.kp, c.iso));
+                              return (
+                                <td
+                                  key={`${row.kp}-${c.iso}`}
+                                  style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: row.bg, ...hi(c.iso), ...estiloMarcada(marcada) }}
+                                  onContextMenu={(ev) => openCellMenu(ev, row.lbl, c.iso, "total", row.kp, () => false)}
+                                >
+                                  {marcada && <BanderaRoja />}
+                                  {bnCell(row.b, row.n, c.iso, row.isOut)}
+                                </td>
+                              );
+                            })}
                           </tr>
                           {/* Desglose por empresa (con su color) cuando se ven todas — el "×4" a la vista */}
                           {showByCompany &&
@@ -1981,10 +1997,21 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     <BanderaRoja />
                     {f.label} · {dd}/{mm}/{yy}
                   </div>
-                  <div style={{ fontSize: 11, color: "#64748b" }}>
-                    {f.note ? `${f.note} — ` : ""}
-                    marcó {f.createdBy}
-                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginBottom: 2 }}>marcó {f.createdBy}</div>
+                  {onSetFlagNote && (
+                    <input
+                      defaultValue={f.note}
+                      placeholder="¿Qué no se entiende? (opcional)"
+                      style={{
+                        width: "100%", fontSize: 11, padding: "2px 4px", borderRadius: 4,
+                        border: "1px solid #cbd5e1", background: "#fff", color: "inherit",
+                      }}
+                      onBlur={(ev) => onSetFlagNote(f.id, ev.target.value.trim())}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter") (ev.target as HTMLInputElement).blur();
+                      }}
+                    />
+                  )}
                   {onToggleFlag && (
                     <button
                       style={{ ...quickMenuItem, padding: "2px 0", fontSize: 11, color: "#475569" }}
@@ -2311,18 +2338,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   <button
                     style={quickMenuItem}
                     onClick={() => {
-                      if (marcada) {
-                        onToggleFlag(k, cellMenu.iso, cellMenu.label, "");
-                      } else {
-                        const nota = window.prompt(
-                          `¿Qué no se entiende de "${cellMenu.label}" del ${dayLabel}?
-
-(Se puede dejar vacío)`,
-                          ""
-                        );
-                        if (nota === null) return;
-                        onToggleFlag(k, cellMenu.iso, cellMenu.label, nota.trim());
-                      }
+                      onToggleFlag(k, cellMenu.iso, cellMenu.label, "");
                       close();
                     }}
                   >

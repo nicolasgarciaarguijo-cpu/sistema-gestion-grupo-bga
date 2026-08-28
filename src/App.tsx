@@ -16365,11 +16365,18 @@ Escribi CERRAR para confirmar:`
     });
   };
 
+  // La nota se escribe DESPUES, sobre la lista de marcadas. Antes se pedia con window.prompt al
+  // marcar, y si el navegador tenia los dialogos bloqueados devolvia null y no se marcaba nada.
+  const setCalendarFlagNote = (id: number, note: string) => {
+    setCalendarFlags((prev) => prev.map((f) => (f.id === id ? { ...f, note } : f)));
+  };
+
   const renderCalendarioAnual = (onlySection?: string) => (
     <CalendarioAnualTab
       onlySection={onlySection}
           flags={calendarFlags}
           onToggleFlag={toggleCalendarFlag}
+          onSetFlagNote={setCalendarFlagNote}
           billeteraDiaria={billeteraDiariaPorEmpresa}
           entries={annualCashFlowEntries}
           companyScope={balanceCompanyScope}
