@@ -95,12 +95,17 @@ export function CalendarioAnualTab({
   rowConfig = DEFAULT_CALENDAR_ROW_CONFIG,
   onRowConfigChange,
   onlySection,
+  flags,
+  onToggleFlag,
 }: {
   entries: Entry[];
   // Ver SOLO una seccion de la planilla (ej. "cobranzas" para el reflejo en Facturacion y cobranzas).
   // Es el MISMO componente con los mismos datos y los mismos handlers: por eso las dos vistas quedan
   // vinculadas sin esfuerzo -- lo que se edita en una aparece en la otra.
   onlySection?: string;
+  // Banderitas de revision: celdas marcadas por alguien que no entendio un numero.
+  flags?: Array<{ id: number; key: string; date: string; label: string; note: string; createdBy: string; createdAt: string }>;
+  onToggleFlag?: (key: string, date: string, label: string, note: string) => void;
   companyScope: string;
   setCompanyScope: (v: string) => void;
   fiscalStartYear: number;
@@ -762,6 +767,16 @@ export function CalendarioAnualTab({
     match: (e: Entry) => boolean;
     pickedId?: string;
   };
+  // ---- Banderitas de revision -----------------------------------------------------------------
+  // La clave es la COORDENADA de la celda dentro de la planilla: seccion|renglon|dia. No se marca el
+  // movimiento sino la celda, que es lo que la persona ve y toca.
+  const flagKey = (sectionKey: string, itemKey: string, iso: string) => `${sectionKey}|${itemKey}|${iso}`;
+  const flagSet = useMemo(() => new Set((flags || []).map((f) => f.key)), [flags]);
+  const [flagPanel, setFlagPanel] = useState<null | { x: number; y: number }>(null);
+  // Recuadro rojo: tiene que encontrarse de lejos, por eso va inset (no corre el layout) y grueso.
+  const estiloMarcada = (marcada: boolean): React.CSSProperties =>
+    marcada ? { boxShadow: "inset 0 0 0 2px #dc2626", background: "#fef2f2" } : {};
+
   const [cellMenu, setCellMenu] = useState<CellMenu | null>(null);
   const openCellMenu = (
     ev: React.MouseEvent,
@@ -1184,13 +1199,15 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
       {visibleDayCols.map((c) => {
         const v = drow.get(c.iso) || 0;
         const empDet = v ? fondoEmpresa(label, c.iso) : { style: undefined, detalle: "" };
+        const marcadaDet = menu ? flagSet.has(flagKey(menu.sectionKey, menu.itemKey, c.iso)) : false;
         return (
           <td
             key={`${key}-${c.iso}`}
             onContextMenu={menu ? (ev) => openCellMenu(ev, menu.label, c.iso, menu.sectionKey, menu.itemKey, menu.match) : undefined}
             title={empDet.detalle || undefined}
-            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...(empDet.style || {}), ...hi(c.iso) }}
+            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...(empDet.style || {}), ...hi(c.iso), ...estiloMarcada(marcadaDet) }}
           >
+            {marcadaDet && <span style={flagPill} title="Marcado para revisar">⚑</span>}
             {v ? money(v) : "·"}
           </td>
         );
@@ -1272,6 +1289,18 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             >
               {esCompacto ? "Ancho normal" : "Compacto"}
             </button>
+            {(flags || []).length > 0 && (
+              <button
+                style={{ ...btnSecondary, borderColor: "#fca5a5", color: "#b91c1c", fontWeight: 700 }}
+                title="Números marcados para revisar: tocá para verlos y saltar a cada uno"
+                onClick={(ev) => {
+                  ev.stopPropagation();
+                  setFlagPanel({ x: ev.clientX, y: ev.clientY });
+                }}
+              >
+                ⚑ {(flags || []).length} para revisar
+              </button>
+            )}
             {hiddenRowList.length > 0 && (
               <button
                 style={btnSecondary}
@@ -1474,23 +1503,10 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                         </tr>
                       );
                     })}
-                    {/* ===== EGRESOS por tipo de costo (solo los clasificados fijo/variable) ===== */}
-                    {(agg.fijoByDate.size > 0 || agg.varByDate.size > 0) &&
-                      ([
-                        { lbl: "COSTOS FIJOS (F)", m: agg.fijoByDate, bg: "#eef2ff", color: "#3730a3", kp: "cfij" },
-                        { lbl: "COSTOS VARIABLES (V)", m: agg.varByDate, bg: "#fffbeb", color: "#92400e", kp: "cvar" },
-                      ] as const).map((row) => {
-                        const top = nextTop();
-                        return (
-                          <tr key={row.kp}>
-                            <td style={{ ...labelSticky(top, row.bg), fontWeight: 800, color: row.color }}>{row.lbl}</td>
-                            {visibleDayCols.map((c) => {
-                              const v = row.m.get(c.iso) || 0;
-                              return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: row.bg, color: v ? row.color : "#cbd5e1", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
-                            })}
-                          </tr>
-                        );
-                      })}
+                    {/* Los COSTOS FIJOS / VARIABLES estaban acá como filas fijas del encabezado y se
+                        sacaron (Nicolas, 2026-08-28): "no es un monto que quiera ver constantemente".
+                        Comían pantalla en todo momento. El dato no se pierde: sigue en la solapa
+                        Costos y en las pills F/V que lleva cada renglón. */}
                   </>
                 );
               })()}
@@ -1573,6 +1589,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               {visibleDayCols.map((c) => {
                                 const v = drow?.get(c.iso) || 0;
                                 const emp = v ? fondoEmpresa(it.key, c.iso) : { style: undefined, detalle: "" };
+                                const marcada = flagSet.has(flagKey(section.key, it.key, c.iso));
                                 return (
                                   <td
                                     key={`${it.key}-${c.iso}`}
@@ -1585,8 +1602,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                         ? `${emp.detalle} · Click: cargar · Click derecho: editar / borrar`
                                         : "Click: cargar en este día · Click derecho: editar / borrar"
                                     }
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...(emp.style || {}), ...hi(c.iso) }}
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...(emp.style || {}), ...hi(c.iso), ...estiloMarcada(marcada) }}
                                   >
+                                    {marcada && <span style={flagPill} title="Marcado para revisar">⚑</span>}
                                     {v ? money(v) : "+"}
                                   </td>
                                 );
@@ -1880,6 +1898,37 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
         </div>
       </Panel>
 
+      {flagPanel && (
+        <QuickMenu x={flagPanel.x} y={flagPanel.y} onClose={() => setFlagPanel(null)}>
+          <QuickMenuTitle>Marcados para revisar ({(flags || []).length})</QuickMenuTitle>
+          {(flags || [])
+            .slice()
+            .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+            .map((f) => {
+              const [yy, mm, dd] = (f.date || "").split("-");
+              return (
+                <div key={f.id} style={{ padding: "4px 8px", borderBottom: "1px solid #f1f5f9" }}>
+                  <div style={{ fontWeight: 600, fontSize: 12 }}>
+                    <span style={{ color: "#dc2626" }}>⚑ </span>
+                    {f.label} · {dd}/{mm}/{yy}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b" }}>
+                    {f.note ? `${f.note} — ` : ""}
+                    marcó {f.createdBy}
+                  </div>
+                  {onToggleFlag && (
+                    <button
+                      style={{ ...quickMenuItem, padding: "2px 0", fontSize: 11, color: "#475569" }}
+                      onClick={() => onToggleFlag(f.key, f.date, f.label, "")}
+                    >
+                      Resuelto: quitar la marca
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+        </QuickMenu>
+      )}
       {hiddenMenu && (
         <QuickMenu x={hiddenMenu.x} y={hiddenMenu.y} onClose={() => setHiddenMenu(null)}>
           <QuickMenuTitle>Renglones ocultos — tocá uno para devolverlo</QuickMenuTitle>
@@ -2178,6 +2227,41 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             <QuickMenuTitle>
               {cellMenu.label} · {dayLabel}
             </QuickMenuTitle>
+            {onToggleFlag && (() => {
+              const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
+              const marcada = flagSet.has(k);
+              const flag = (flags || []).find((f) => f.key === k);
+              return (
+                <>
+                  {marcada && flag && (
+                    <div style={{ fontSize: 11, color: "#b91c1c", padding: "2px 8px" }}>
+                      Marcado por {flag.createdBy}
+                      {flag.note ? `: ${flag.note}` : ""}
+                    </div>
+                  )}
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      if (marcada) {
+                        onToggleFlag(k, cellMenu.iso, cellMenu.label, "");
+                      } else {
+                        const nota = window.prompt(
+                          `¿Qué no se entiende de "${cellMenu.label}" del ${dayLabel}?
+
+(Se puede dejar vacío)`,
+                          ""
+                        );
+                        if (nota === null) return;
+                        onToggleFlag(k, cellMenu.iso, cellMenu.label, nota.trim());
+                      }
+                      close();
+                    }}
+                  >
+                    {marcada ? "Quitar la marca de revisar" : "⚑ Marcar para revisar"}
+                  </button>
+                </>
+              );
+            })()}
             {!picked && list.length === 0 && (
               <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 8px" }}>Sin movimientos este día</div>
             )}
@@ -2643,6 +2727,9 @@ const costChip: React.CSSProperties = {
 };
 const bnPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 8, borderRadius: 3, padding: "0px 3px", marginRight: 3, verticalAlign: "middle",
+};
+const flagPill: React.CSSProperties = {
+  display: "inline-block", fontSize: 11, lineHeight: 1, marginRight: 3, color: "#dc2626", verticalAlign: "middle",
 };
 const dPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 9, borderRadius: 999, padding: "0px 6px", marginLeft: 6,

@@ -217,6 +217,7 @@ import type {
   CashHolding,
   InternalTransfer,
   PersonLedgerEntry,
+  CalendarFlag,
   IvaVepPayment,
   BankStatementEntry,
   StockItem,
@@ -1274,6 +1275,8 @@ const defaultInternalTransfers: InternalTransfer[] = [];
 
 const defaultPersonLedgerEntries: PersonLedgerEntry[] = [];
 
+const defaultCalendarFlags: CalendarFlag[] = [];
+
 const defaultIvaVepPayments: IvaVepPayment[] = [];
 
 const defaultCompanyAssets: CompanyAsset[] = [
@@ -1672,6 +1675,8 @@ type PersistedAppStateData = {
   fiscalClosings: CierreEjercicio[];
   // Retoques del Calendario anual sobre la estructura fija (renglones renombrados / ocultos).
   calendarRowConfig: CalendarRowConfig;
+  // Banderitas de revision del Calendario anual. Ver domain/types.ts CalendarFlag.
+  calendarFlags: CalendarFlag[];
   stockItems: StockItem[];
   costAnalysisGroups: CostAnalysisGroup[];
   costAnalysisEntries: CostAnalysisEntry[];
@@ -1770,7 +1775,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig", "calendarFlags"] as const,
   },
   {
     key: "movimientos-internos",
@@ -2830,6 +2835,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [internalTransfers, setInternalTransfers] = useState<InternalTransfer[]>(defaultInternalTransfers);
   // La solapa Movimientos internos filtra por su propia empresa: es su vista, no la del Balance.
   const [personLedgerEntries, setPersonLedgerEntries] = useState<PersonLedgerEntry[]>(defaultPersonLedgerEntries);
+  const [calendarFlags, setCalendarFlags] = useState<CalendarFlag[]>(defaultCalendarFlags);
   const [internalCompanyScope, setInternalCompanyScope] = useState<CompanyScope | "__ALL__">("__ALL__");
   const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
@@ -3842,6 +3848,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     cashHoldings,
     internalTransfers,
     personLedgerEntries,
+    calendarFlags,
     ivaVepPayments,
     creditCards,
     creditCardStatements,
@@ -9095,6 +9102,7 @@ Escribi CERRAR para confirmar:`
     cashHoldings: cashHoldings.map((item) => ({ ...item, date: stampDate(item.date) })),
     internalTransfers: internalTransfers.map((item) => ({ ...item, date: stampDate(item.date) })),
     personLedgerEntries: personLedgerEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
+    calendarFlags: calendarFlags.map((item) => ({ ...item })),
     ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
     fiscalClosings: fiscalClosings.map((item) => ({ ...item })),
     calendarRowConfig: {
@@ -9362,6 +9370,7 @@ Escribi CERRAR para confirmar:`
         notes: item.notes || "",
       }))
     );
+    setCalendarFlags((data.calendarFlags || defaultCalendarFlags).map((item) => ({ ...item })));
     setPersonLedgerEntries(
       keepAccessibleByCompany(data.personLedgerEntries || defaultPersonLedgerEntries).map((item) => ({
         ...item,
@@ -11527,6 +11536,7 @@ Escribi CERRAR para confirmar:`
     cashHoldings,
     internalTransfers,
     personLedgerEntries,
+    calendarFlags,
     ivaVepPayments,
     calendarRowConfig,
     creditCards,
@@ -16229,9 +16239,32 @@ Escribi CERRAR para confirmar:`
   // reflejo dentro de Facturacion y cobranzas. Es el MISMO componente con los mismos datos y los
   // mismos handlers, asi que las dos vistas quedan vinculadas solas: lo que se edita en una aparece
   // en la otra. Se arma una sola vez aca para no repetir la lista de props.
+  // Banderita de revision: la pone quien no entiende un numero, para preguntarle a quien lo cargo.
+  // Si la celda ya estaba marcada, se saca (es un toggle).
+  const toggleCalendarFlag = (key: string, date: string, label: string, note: string) => {
+    setCalendarFlags((prev) => {
+      const yaEsta = prev.some((f) => f.key === key);
+      if (yaEsta) return prev.filter((f) => f.key !== key);
+      return [
+        {
+          id: newId(),
+          key,
+          date,
+          label,
+          note: note || "",
+          createdBy: supabaseProfile?.full_name || "Usuario",
+          createdAt: new Date().toISOString(),
+        },
+        ...prev,
+      ];
+    });
+  };
+
   const renderCalendarioAnual = (onlySection?: string) => (
     <CalendarioAnualTab
       onlySection={onlySection}
+          flags={calendarFlags}
+          onToggleFlag={toggleCalendarFlag}
           entries={annualCashFlowEntries}
           companyScope={balanceCompanyScope}
           setCompanyScope={setBalanceCompanyScope}

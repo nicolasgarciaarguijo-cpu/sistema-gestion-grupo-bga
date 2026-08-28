@@ -649,6 +649,27 @@ export type CashHolding = {
   notes: string;
 };
 
+// BANDERITA DE REVISION en el Calendario anual.
+//
+// El sistema lo carga mas de una persona: si un numero no se entiende, en vez de mandar un mensaje
+// suelto se planta una banderita sobre esa celda. La celda queda recuadrada en rojo para encontrarla
+// de lejos, y el contador del encabezado dice cuantas hay abiertas.
+//
+// Marca una CELDA (renglon + dia), no un movimiento: es lo que la persona ve y toca, y sobrevive
+// aunque atras haya varios movimientos o se corrija alguno.
+export type CalendarFlag = {
+  id: number;
+  // sectionKey|itemKey|fecha — la coordenada de la celda dentro de la planilla.
+  key: string;
+  date: string;
+  // Nombre del renglon, para poder listar las banderitas sin tener que ir a buscarlas.
+  label: string;
+  // Que no se entiende. Es el mensaje para quien la cargo.
+  note: string;
+  createdBy: string;
+  createdAt: string;
+};
+
 // MOVIMIENTO INTERNO: la plata cambia de bolsillo dentro de la misma empresa. Deposito la caja en el
 // banco, o saco del cajero para pagar en efectivo. NO es ingreso ni egreso: el total de la empresa no
 // cambia, cambia donde esta. Existe para que el deposito no se cuente dos veces: el extracto ya trae
