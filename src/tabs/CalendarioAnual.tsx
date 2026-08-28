@@ -97,6 +97,7 @@ export function CalendarioAnualTab({
   onlySection,
   flags,
   onToggleFlag,
+  billeteraDiaria,
 }: {
   entries: Entry[];
   // Ver SOLO una seccion de la planilla (ej. "cobranzas" para el reflejo en Facturacion y cobranzas).
@@ -105,6 +106,14 @@ export function CalendarioAnualTab({
   onlySection?: string;
   // Banderitas de revision: celdas marcadas por alguien que no entendio un numero.
   flags?: Array<{ id: number; key: string; date: string; label: string; note: string; createdBy: string; createdAt: string }>;
+  // Plata disponible DIA POR DIA por empresa: banco, efectivo blanco y efectivo negro. Es lo mismo
+  // que muestra el tablero del encabezado, pero como serie, para verlo en la planilla.
+  billeteraDiaria?: Array<{
+    company: string;
+    short: string;
+    color: string;
+    byDay: Record<string, { banco: number; efectivoBlanco: number; efectivoNegro: number }>;
+  }>;
   onToggleFlag?: (key: string, date: string, label: string, note: string) => void;
   companyScope: string;
   setCompanyScope: (v: string) => void;
@@ -1445,6 +1454,54 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 }
                 return (
                   <>
+                    {/* ===== PLATA DISPONIBLE por empresa (banco / efectivo blanco / negro) =====
+                        Van arriba de todo y quedan fijas: es lo primero que se mira para decidir un
+                        pago. Mismo dato que el tablero del encabezado, pero dia por dia. */}
+                    {(billeteraDiaria || [])
+                      .filter((emp) => companyScope === "__ALL__" || emp.company === companyScope)
+                      .flatMap((emp) =>
+                        ([
+                          { sub: "Banco", campo: "banco" as const, bg: "#eff6ff", color: "#1d4ed8" },
+                          { sub: "Efectivo blanco", campo: "efectivoBlanco" as const, bg: "#f8fafc", color: "#334155" },
+                          { sub: "Efectivo negro", campo: "efectivoNegro" as const, bg: "#1f2937", color: "#fde68a" },
+                        ]).map((linea) => {
+                          const top = nextTop();
+                          const kp = `bil-${emp.company}-${linea.campo}`;
+                          return (
+                            <tr key={kp}>
+                              <td
+                                style={{
+                                  ...labelSticky(top, linea.bg),
+                                  fontWeight: 800,
+                                  color: linea.color,
+                                  borderLeft: `4px solid ${emp.color}`,
+                                }}
+                                title={`${emp.short} · ${linea.sub}`}
+                              >
+                                {emp.short} · {linea.sub}
+                              </td>
+                              {visibleDayCols.map((c) => {
+                                const v = emp.byDay[c.iso]?.[linea.campo] || 0;
+                                return (
+                                  <td
+                                    key={`${kp}-${c.iso}`}
+                                    style={{
+                                      ...tdCell,
+                                      ...rowSticky(top),
+                                      fontWeight: 700,
+                                      background: linea.bg,
+                                      color: v < 0 ? "#dc2626" : linea.color,
+                                      ...hi(c.iso),
+                                    }}
+                                  >
+                                    {v ? money(v) : "\u00b7"}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })
+                      )}
                     {([
                       { lbl: "TOTAL INGRESOS", b: agg.incB, n: agg.incN, compB: agg.compIncB, compN: agg.compIncN, isOut: false, bg: "#ecfdf5", kp: "ti" },
                       { lbl: "TOTAL EGRESOS", b: agg.egrB, n: agg.egrN, compB: agg.compEgrB, compN: agg.compEgrN, isOut: true, bg: "#fef2f2", kp: "te" },

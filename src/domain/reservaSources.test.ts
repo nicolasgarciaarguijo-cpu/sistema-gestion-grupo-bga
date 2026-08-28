@@ -6,6 +6,7 @@ import {
   gastoSaleDelEfectivo,
   internalTransfersToMovements,
   jobPaymentsToMovements,
+  serieDiariaDeBilletera,
   personLedgerToMovements,
   reintegroSaleDelEfectivo,
   latestBankBalancesByAccount,
@@ -367,5 +368,74 @@ describe("reintegros de la cuenta corriente con la gente", () => {
       personLedgerEntries: [{ date: "2026-03-15", amount: 250000, kind: "haber", paymentMethod: "efectivo" }],
     });
     expect(wallet(r, "ARS", "efectivo").closing).toBeCloseTo(750000, 2);
+  });
+});
+
+describe("serieDiariaDeBilletera", () => {
+  const dias = ["2026-03-01", "2026-03-02", "2026-03-03", "2026-03-04"];
+
+  it("el efectivo se acumula dia a dia y arrastra el saldo a los dias sin movimiento", () => {
+    const s = serieDiariaDeBilletera(
+      {
+        jobPayments: [
+          { paymentDate: "2026-03-02", amount: 500000, transactionType: "efectivo", administration: "negro" },
+        ],
+        costEntries: [{ date: "2026-03-04", amount: 120000, paymentMethod: "efectivo", administration: "negro" }],
+      },
+      dias
+    );
+    expect(s.map((d) => d.efectivoNegro)).toEqual([0, 500000, 500000, 380000]);
+  });
+
+  it("separa blanco de negro", () => {
+    const s = serieDiariaDeBilletera(
+      {
+        jobPayments: [
+          { paymentDate: "2026-03-01", amount: 100000, transactionType: "efectivo", administration: "blanco" },
+          { paymentDate: "2026-03-01", amount: 700000, transactionType: "efectivo", administration: "negro" },
+        ],
+      },
+      dias
+    );
+    expect(s[0].efectivoBlanco).toBe(100000);
+    expect(s[0].efectivoNegro).toBe(700000);
+  });
+
+  it("el banco NO se acumula: sale del ultimo saldo del extracto hasta ese dia", () => {
+    const s = serieDiariaDeBilletera(
+      {
+        bankBalanceEntries: [
+          { company: "X", bank: "Patagonia", date: "2026-03-01", balance: 1000, id: 1 },
+          { company: "X", bank: "Patagonia", date: "2026-03-03", balance: 2500, id: 2 },
+        ],
+      },
+      dias
+    );
+    // el 02 no tiene movimiento: arrastra el saldo del 01. El 04 arrastra el del 03.
+    expect(s.map((d) => d.banco)).toEqual([1000, 1000, 2500, 2500]);
+  });
+
+  it("el pase de efectivo al banco baja la caja sin tocar el saldo bancario", () => {
+    const s = serieDiariaDeBilletera(
+      {
+        jobPayments: [{ paymentDate: "2026-03-01", amount: 900000, transactionType: "efectivo" }],
+        internalTransfers: [{ date: "2026-03-03", direction: "efectivo_a_banco", amount: 400000 }],
+        bankBalanceEntries: [{ company: "X", bank: "Santander", date: "2026-03-01", balance: 50, id: 1 }],
+      },
+      dias
+    );
+    expect(s.map((d) => d.efectivoBlanco)).toEqual([900000, 900000, 500000, 500000]);
+    expect(s.map((d) => d.banco)).toEqual([50, 50, 50, 50]);
+  });
+
+  it("el reintegro en efectivo baja la caja el dia que se paga", () => {
+    const s = serieDiariaDeBilletera(
+      {
+        jobPayments: [{ paymentDate: "2026-03-01", amount: 300000, transactionType: "efectivo" }],
+        personLedgerEntries: [{ date: "2026-03-03", amount: 50000, kind: "haber", paymentMethod: "efectivo" }],
+      },
+      dias
+    );
+    expect(s.map((d) => d.efectivoBlanco)).toEqual([300000, 300000, 250000, 250000]);
   });
 });

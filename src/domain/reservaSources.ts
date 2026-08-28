@@ -425,3 +425,61 @@ export function buildReservaFromSources(input: ReservaSourcesInput): ReservaSumm
 
   return aggregateReserva({ openings, movements, until: input.until });
 }
+
+// --- SERIE DIARIA DE LA BILLETERA ---------------------------------------------------------------
+// Cuanta plata habia CADA DIA, separada en banco / efectivo blanco / efectivo negro. Pedido de
+// Nicolas (2026-08-28) para verlo en el Calendario anual arriba de los totales, en filas fijas por
+// empresa: en un cash flow no alcanza la foto de hoy, hace falta el saldo dia a dia.
+//
+// El BANCO no se acumula sumando movimientos: cada linea del extracto trae su saldo acumulado, asi
+// que el saldo de un dia es el ultimo saldo de cada cuenta hasta ese dia (mismo criterio que usa la
+// reserva; ver latestBankBalancesByAccount). Eso lo hace robusto a meses que falten en el medio.
+// El EFECTIVO si se acumula: es la suma de los movimientos de caja hasta ese dia, por color.
+export type SaldoDelDia = {
+  iso: string;
+  banco: number;
+  efectivoBlanco: number;
+  efectivoNegro: number;
+};
+
+export function serieDiariaDeBilletera(
+  input: ReservaSourcesInput & { bankBalanceEntries?: BankBalanceEntryLike[] },
+  dias: string[]
+): SaldoDelDia[] {
+  // Los movimientos de EFECTIVO en pesos, que son los unicos que se acumulan dia a dia.
+  const movimientos = [
+    ...pettyCashToMovements(input.pettyCashFunds || [], input.pettyCashExpenses || []),
+    ...cashHoldingsToMovements(input.cashHoldings || []),
+    ...jobPaymentsToMovements(input.jobPayments || []),
+    ...costEntriesToMovements(input.costEntries || []),
+    ...internalTransfersToMovements(input.internalTransfers || []),
+    ...personLedgerToMovements(input.personLedgerEntries || []),
+  ].filter((m) => m.currency === "ARS" && m.location === "efectivo");
+
+  // Se agrupa por dia una sola vez: recorrer todos los movimientos por cada dia seria O(dias x movs).
+  const porDia = new Map<string, { blanco: number; negro: number }>();
+  movimientos.forEach((m) => {
+    const signo = m.kind === "egreso" ? -1 : 1;
+    const d = porDia.get(m.date) || { blanco: 0, negro: 0 };
+    if (m.color === "negro") d.negro += signo * num(m.amount);
+    else d.blanco += signo * num(m.amount);
+    porDia.set(m.date, d);
+  });
+
+  const bancoEntries = input.bankBalanceEntries || [];
+  let blanco = num(input.openingCashArs);
+  let negro = 0;
+  return dias.map((iso) => {
+    const d = porDia.get(iso);
+    if (d) {
+      blanco += d.blanco;
+      negro += d.negro;
+    }
+    return {
+      iso,
+      banco: bancoEntries.length ? sumLatestBankBalances(bancoEntries, iso) : 0,
+      efectivoBlanco: Math.round(blanco * 100) / 100,
+      efectivoNegro: Math.round(negro * 100) / 100,
+    };
+  });
+}

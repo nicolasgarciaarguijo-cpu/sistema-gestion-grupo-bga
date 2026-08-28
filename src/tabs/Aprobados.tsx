@@ -348,7 +348,7 @@ export function AprobadosTab({
                   </div>
                 );
               })()}
-              <div style={{ ...planillaWrap, ...anchosAprobados.vars }}>
+              <div style={{ ...planillaWrap, ...anchosAprobados.vars, maxHeight: "none" }}>
               <table className="planilla" style={planillaTable}>
                 {/* Antes la ultima columna metia estado, facturado, planos, fechas y origen en un
                     solo renglon con flex-wrap: se leia todo apelmazado. Ahora cada cosa tiene su

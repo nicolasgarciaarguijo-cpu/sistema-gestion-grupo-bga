@@ -36,6 +36,7 @@ import {
   type LedgerPayment,
 } from "./domain/purchaseLedger";
 import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
+import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { deriveConvenioHours } from "./domain/attendance";
 import {
   buildCierreResumenHtml,
@@ -13068,6 +13069,104 @@ Escribi CERRAR para confirmar:`
   // balance), para ver de un vistazo cuánta plata hay en cada banco de cada empresa y cuánto en negro,
   // y decidir de dónde gastar. Solo empresas accesibles (canAccessCompany). Es sensible (muestra
   // negro): App lo renderiza solo para admins. Es una foto de HOY (sin corte por período).
+  // BILLETERA DIA POR DIA, por empresa. Es lo mismo que muestra el tablero de arriba pero como serie:
+  // el Calendario anual la pinta en filas fijas arriba de los totales, porque en un cash flow no
+  // alcanza con la foto de hoy (pedido de Nicolas, 2026-08-28). La cuenta vive en
+  // domain/reservaSources.ts (serieDiariaDeBilletera), con tests.
+  const billeteraDiariaPorEmpresa = useMemo(() => {
+    // Los 12 meses del ejercicio, arrancando en noviembre (mismo criterio que el Calendario anual).
+    const dias: string[] = [];
+    for (let i = 0; i < 12; i += 1) {
+      const mesCero = 10 + i; // 10 = noviembre en base 0
+      const anio = balanceFiscalStartYear + Math.floor(mesCero / 12);
+      const mes = (mesCero % 12) + 1;
+      const cuantos = new Date(anio, mes, 0).getDate();
+      for (let d = 1; d <= cuantos; d += 1) {
+        dias.push(`${anio}-${String(mes).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+      }
+    }
+    return COMPANY_OPTIONS.filter(
+      (c) => c.value && c.value !== "General" && canAccessCompany(c.value as CompanyName)
+    ).map((c) => {
+      const company = c.value as CompanyName;
+      const serie = serieDiariaDeBilletera(
+        {
+          openingCashArs: arranqueDeEmpresa(String(company)).cashArs,
+          bankBalanceEntries: visibleBankStatementEntries.filter(
+            (e) => e.company === company && (e.currency || "ARS") !== "USD"
+          ),
+          pettyCashFunds: visiblePettyCashFunds
+            .filter((f) => f.company === company && despuesDelCierre(String(company), f.deliveredDate))
+            .map((f) => ({
+              deliveredDate: f.deliveredDate,
+              assignedAmount: Number(f.assignedAmount || 0),
+              assignedWhite: f.assignedWhite,
+              assignedBlack: f.assignedBlack,
+            })),
+          pettyCashExpenses: visiblePettyCashExpenses
+            .filter((e) => e.company === company && despuesDelCierre(String(company), e.date))
+            .map((e) => ({
+              date: e.date,
+              amount: Number(e.amount || 0),
+              administration: e.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+            })),
+          cashHoldings: visibleCashHoldings
+            .filter((h) => h.company === company && despuesDelCierre(String(company), h.date))
+            .map((h) => ({
+              date: h.date,
+              currency: h.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+              color: h.color === "negro" ? ("negro" as const) : ("blanco" as const),
+              kind: h.kind === "egreso" ? ("egreso" as const) : ("ingreso" as const),
+              amount: Number(h.amount || 0),
+            })),
+          jobPayments: visibleApprovedJobs
+            .filter((j) => j.company === company)
+            .flatMap((j) => (j.payments || []).filter((p) => despuesDelCierre(String(company), p.paymentDate || ""))),
+          costEntries: costEntries
+            .filter((e) => e.company === company && canAccessCompany(e.company) && despuesDelCierre(String(company), e.date))
+            .map((e) => ({
+              date: e.date,
+              amount: Number(e.amount || 0),
+              administration: e.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+              source: e.source,
+              bankEntryId: e.bankEntryId ?? null,
+              paymentMethod: e.paymentMethod,
+            })),
+          internalTransfers: visibleInternalTransfers
+            .filter((t) => t.company === company && despuesDelCierre(String(company), t.date))
+            .map((t) => ({
+              date: t.date,
+              direction: t.direction,
+              currency: t.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+              color: t.color === "negro" ? ("negro" as const) : ("blanco" as const),
+              amount: Number(t.amount || 0),
+            })),
+          personLedgerEntries: visiblePersonLedgerEntries.filter(
+            (e) => e.company === company && despuesDelCierre(String(company), e.date)
+          ),
+        },
+        dias
+      );
+      const byDay: Record<string, { banco: number; efectivoBlanco: number; efectivoNegro: number }> = {};
+      serie.forEach((d) => {
+        byDay[d.iso] = { banco: d.banco, efectivoBlanco: d.efectivoBlanco, efectivoNegro: d.efectivoNegro };
+      });
+      return { company: String(company), short: c.short || String(company), color: c.primary || "#475569", byDay };
+    });
+  }, [
+    COMPANY_OPTIONS,
+    balanceFiscalStartYear,
+    visibleBankStatementEntries,
+    visiblePettyCashFunds,
+    visiblePettyCashExpenses,
+    visibleCashHoldings,
+    visibleApprovedJobs,
+    costEntries,
+    visibleInternalTransfers,
+    visiblePersonLedgerEntries,
+    fiscalClosings,
+  ]);
+
   const purchaseLedgerPayments = useMemo(() => {
     const taxIdBySupplierId = new Map(suppliers.map((sup) => [sup.id, sup.taxId || ""]));
     // Los PAGOS son los gastos cargados (CostEntry): manuales y los que bajaron del extracto.
@@ -16265,6 +16364,7 @@ Escribi CERRAR para confirmar:`
       onlySection={onlySection}
           flags={calendarFlags}
           onToggleFlag={toggleCalendarFlag}
+          billeteraDiaria={billeteraDiariaPorEmpresa}
           entries={annualCashFlowEntries}
           companyScope={balanceCompanyScope}
           setCompanyScope={setBalanceCompanyScope}
