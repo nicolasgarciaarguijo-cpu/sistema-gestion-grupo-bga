@@ -228,6 +228,20 @@ export function CalendarioAnualTab({
     // De que empresa es la plata de cada celda: itemKey -> date -> empresa -> monto. Pedido de
     // Nicolas (2026-08-28): quiere ver de un vistazo si el ingreso/egreso es de BGA o de De Raiz.
     const conceptCompany = new Map<string, Map<string, Map<string, number>>>();
+    // Lo mismo para las filas de DETALLE (cobranzas, sin clasificar, comisiones, internos, USD y
+    // renglones propios), que es donde esta el grueso del movimiento: titulo -> dia -> empresa -> monto.
+    const detailCompany = new Map<string, Map<string, Map<string, number>>>();
+    const marcarEmpresa = (
+      mapa: Map<string, Map<string, Map<string, number>>>,
+      clave: string, fecha: string, empresa: string, monto: number
+    ) => {
+      if (!clave || !empresa) return;
+      if (!mapa.has(clave)) mapa.set(clave, new Map());
+      const porDia = mapa.get(clave)!;
+      if (!porDia.has(fecha)) porDia.set(fecha, new Map());
+      const porEmp = porDia.get(fecha)!;
+      porEmp.set(empresa, (porEmp.get(empresa) || 0) + Math.abs(monto));
+    };
     const cobranzaDetail = new Map<string, Map<string, number>>(); // título -> date -> monto
     const cobranzaDetailB = new Map<string, Map<string, number>>(); // título -> date -> blanco
     const cobranzaDetailN = new Map<string, Map<string, number>>(); // título -> date -> negro
@@ -310,6 +324,7 @@ export function CalendarioAnualTab({
       if (e.currency === "USD") {
         const signedUsd = e.statusLabel === "debito" ? -amt : amt;
         addDeep(usdDetail, title, e.date, signedUsd);
+        marcarEmpresa(detailCompany, title, e.date, e.company, signedUsd);
         add(usdTitleTotal, title, signedUsd);
         add(usdByDate, e.date, signedUsd);
         return;
@@ -321,6 +336,7 @@ export function CalendarioAnualTab({
       const neg = e.administration === "negro";
       if (e.kind === "comision") {
         addDeep(comisionDetail, title, e.date, amt);
+        marcarEmpresa(detailCompany, title, e.date, e.company, amt);
         add(comisionByDate, e.date, amt);
         add(egresoByDate, e.date, amt);
         add(neg ? egrN : egrB, e.date, amt);
@@ -329,6 +345,7 @@ export function CalendarioAnualTab({
       }
       if (isCobranza) {
         addDeep(cobranzaDetail, title, e.date, amt);
+        marcarEmpresa(detailCompany, title, e.date, e.company, amt);
         addDeep(neg ? cobranzaDetailN : cobranzaDetailB, title, e.date, amt);
         add(cobranzaByDate, e.date, amt);
         add(neg ? cobranzaByDateN : cobranzaByDateB, e.date, amt);
@@ -342,6 +359,7 @@ export function CalendarioAnualTab({
       if (e.conceptKey === "__interno__") {
         const signed = e.statusLabel === "debito" ? -amt : amt;
         addDeep(internoDetail, title, e.date, signed);
+        marcarEmpresa(detailCompany, title, e.date, e.company, signed);
         add(internoByDate, e.date, signed);
         return;
       }
@@ -370,13 +388,7 @@ export function CalendarioAnualTab({
       const idx = e.conceptKey ? CALENDAR_ITEM_INDEX[e.conceptKey] : undefined;
       if (idx) {
         addDeep(byConcept, e.conceptKey!, e.date, amt);
-        if (e.company) {
-          if (!conceptCompany.has(e.conceptKey!)) conceptCompany.set(e.conceptKey!, new Map());
-          const porDia = conceptCompany.get(e.conceptKey!)!;
-          if (!porDia.has(e.date)) porDia.set(e.date, new Map());
-          const porEmp = porDia.get(e.date)!;
-          porEmp.set(e.company, (porEmp.get(e.company) || 0) + Math.abs(amt));
-        }
+        marcarEmpresa(conceptCompany, e.conceptKey!, e.date, e.company, amt);
         add(idx.dir === "in" ? incomeByDate : egresoByDate, e.date, amt);
         if (idx.dir === "in") add(neg ? incN : incB, e.date, amt);
         else add(neg ? egrN : egrB, e.date, amt);
@@ -394,6 +406,7 @@ export function CalendarioAnualTab({
       // tipo de movimiento: crédito = ingreso (+, negro), débito = egreso (−, rojo), para ver el impacto.
       const signed = e.statusLabel === "debito" ? -amt : amt;
       addDeep(unclDetail, title, e.date, signed);
+      marcarEmpresa(detailCompany, title, e.date, e.company, signed);
       add(unclByDate, e.date, signed);
       add(unclTitleTotal, title, signed);
       if (e.kind === "banco" && e.id.startsWith("bank-")) {
@@ -404,7 +417,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, conceptCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
+    return { byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
   }, [entries, companyScope, dayCols, sectionByKey]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
@@ -418,7 +431,7 @@ export function CalendarioAnualTab({
   // Sombreado por empresa (Nicolas, 2026-08-28): "si un egreso o ingreso es de BGA sombreado azul y
   // si es de De Raiz sombreado mostaza". Son tintes suaves a proposito: tienen que leerse como un
   // fondo, no tapar el numero ni pelearse con el resaltado del dia de hoy.
-  const TINTE_EMPRESA: Record<string, string> = { azul: "#e3edfd", mostaza: "#fdf4d3" };
+  const TINTE_EMPRESA: Record<string, string> = { azul: "#d3e3fb", mostaza: "#fbeaad" };
   const tinteDeEmpresa = (company: string): string | undefined => {
     const c = company.toLowerCase();
     if (c.startsWith("bga")) return TINTE_EMPRESA.azul;
@@ -427,7 +440,7 @@ export function CalendarioAnualTab({
   };
   // Devuelve el fondo de una celda segun quien puso la plata, y el texto para el tooltip.
   const fondoEmpresa = (itemKey: string, iso: string): { style?: React.CSSProperties; detalle: string } => {
-    const porEmp = agg.conceptCompany.get(itemKey)?.get(iso);
+    const porEmp = agg.conceptCompany.get(itemKey)?.get(iso) || agg.detailCompany.get(itemKey)?.get(iso);
     if (!porEmp || porEmp.size === 0) return { detalle: "" };
     let ganadora = "";
     let mayor = -1;
@@ -683,29 +696,15 @@ export function CalendarioAnualTab({
   // (ano completo), manda el ancho elegido y la planilla scrollea.
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const [wrapW, setWrapW] = useState(0);
-  // Alto: en vez de un 72vh fijo se mide cuanto espacio queda desde donde arranca la planilla hasta
-  // el borde de la ventana, y se usa TODO. Con el 72vh sobraba pantalla abajo y encima habia que
-  // scrollear adentro del bloque para ver los ultimos renglones.
-  const [maxH, setMaxH] = useState<number | null>(null);
   useLayoutEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
-    const medir = () => {
-      setWrapW(el.clientWidth);
-      const arriba = el.getBoundingClientRect().top;
-      setMaxH(Math.max(360, Math.round(window.innerHeight - arriba - 16)));
-    };
+    const medir = () => setWrapW(el.clientWidth);
     medir();
-    window.addEventListener("resize", medir);
-    let ro: ResizeObserver | null = null;
-    if (typeof ResizeObserver !== "undefined") {
-      ro = new ResizeObserver(medir);
-      ro.observe(el);
-    }
-    return () => {
-      window.removeEventListener("resize", medir);
-      if (ro) ro.disconnect();
-    };
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(medir);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
   const dayWEfectivo = useMemo(() => {
     const n = visibleDayCols.length;
@@ -1184,11 +1183,13 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
       </td>
       {visibleDayCols.map((c) => {
         const v = drow.get(c.iso) || 0;
+        const empDet = v ? fondoEmpresa(label, c.iso) : { style: undefined, detalle: "" };
         return (
           <td
             key={`${key}-${c.iso}`}
             onContextMenu={menu ? (ev) => openCellMenu(ev, menu.label, c.iso, menu.sectionKey, menu.itemKey, menu.match) : undefined}
-            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...hi(c.iso) }}
+            title={empDet.detalle || undefined}
+            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...(empDet.style || {}), ...hi(c.iso) }}
           >
             {v ? money(v) : "·"}
           </td>
@@ -1303,7 +1304,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             border: "1px solid #e2e8f0",
             borderRadius: 8,
             borderTop: `3px solid ${selectedColor || "#cbd5e1"}`,
-            maxHeight: maxH ? `${maxH}px` : "72vh",
+            // SIN alto maximo a proposito: el bloque mide lo que mida el calendario y quien scrollea
+            // es la pagina. Antes tenia un maxHeight y habia que bajar DENTRO del bloque para llegar
+            // a los ultimos renglones, que es justo lo que no se quiere.
             ["--cal-label-w" as any]: `${labelW}px`,
             ["--cal-day-w" as any]: `${dayWEfectivo}px`,
           } as React.CSSProperties}
