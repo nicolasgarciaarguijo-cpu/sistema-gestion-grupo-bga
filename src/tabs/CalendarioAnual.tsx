@@ -784,7 +784,17 @@ export function CalendarioAnualTab({
   const [flagPanel, setFlagPanel] = useState<null | { x: number; y: number }>(null);
   // Recuadro rojo: tiene que encontrarse de lejos, por eso va inset (no corre el layout) y grueso.
   const estiloMarcada = (marcada: boolean): React.CSSProperties =>
-    marcada ? { boxShadow: "inset 0 0 0 2px #dc2626", background: "#fef2f2" } : {};
+    marcada
+      ? {
+          // outline (no border ni box-shadow): se dibuja ENCIMA y no lo tapa el borderCollapse de la
+          // tabla, ademas de no correr el layout. Con offset negativo queda adentro de la celda.
+          outline: "2px solid #dc2626",
+          outlineOffset: "-2px",
+          background: "#fee2e2",
+          position: "relative",
+          zIndex: 1,
+        }
+      : {};
 
   const [cellMenu, setCellMenu] = useState<CellMenu | null>(null);
   const openCellMenu = (
@@ -1216,7 +1226,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             title={empDet.detalle || undefined}
             style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...(empDet.style || {}), ...hi(c.iso), ...estiloMarcada(marcadaDet) }}
           >
-            {marcadaDet && <span style={flagPill} title="Marcado para revisar">⚑</span>}
+            {marcadaDet && <span style={flagPill} title="Marcado para revisar">🚩</span>}
             {v ? money(v) : "·"}
           </td>
         );
@@ -1307,7 +1317,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   setFlagPanel({ x: ev.clientX, y: ev.clientY });
                 }}
               >
-                ⚑ {(flags || []).length} para revisar
+                🚩 {(flags || []).length} para revisar
               </button>
             )}
             {hiddenRowList.length > 0 && (
@@ -1661,7 +1671,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                     }
                                     style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...(emp.style || {}), ...hi(c.iso), ...estiloMarcada(marcada) }}
                                   >
-                                    {marcada && <span style={flagPill} title="Marcado para revisar">⚑</span>}
+                                    {marcada && <span style={flagPill} title="Marcado para revisar">🚩</span>}
                                     {v ? money(v) : "+"}
                                   </td>
                                 );
@@ -1966,7 +1976,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               return (
                 <div key={f.id} style={{ padding: "4px 8px", borderBottom: "1px solid #f1f5f9" }}>
                   <div style={{ fontWeight: 600, fontSize: 12 }}>
-                    <span style={{ color: "#dc2626" }}>⚑ </span>
+                    <span>🚩 </span>
                     {f.label} · {dd}/{mm}/{yy}
                   </div>
                   <div style={{ fontSize: 11, color: "#64748b" }}>
@@ -2314,7 +2324,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                       close();
                     }}
                   >
-                    {marcada ? "Quitar la marca de revisar" : "⚑ Marcar para revisar"}
+                    {marcada ? "Quitar la marca de revisar" : "🚩 Marcar para revisar"}
                   </button>
                 </>
               );
@@ -2786,7 +2796,7 @@ const bnPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 8, borderRadius: 3, padding: "0px 3px", marginRight: 3, verticalAlign: "middle",
 };
 const flagPill: React.CSSProperties = {
-  display: "inline-block", fontSize: 11, lineHeight: 1, marginRight: 3, color: "#dc2626", verticalAlign: "middle",
+  display: "inline-block", fontSize: 13, lineHeight: 1, marginRight: 2, verticalAlign: "middle",
 };
 const dPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 9, borderRadius: 999, padding: "0px 6px", marginLeft: 6,
