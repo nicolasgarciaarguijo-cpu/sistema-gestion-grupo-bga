@@ -1,6 +1,13 @@
 import {
   bankEntriesToMovements,
   buildReservaFromSources,
+  cobroEntraAlEfectivo,
+  costEntriesToMovements,
+  gastoSaleDelEfectivo,
+  internalTransfersToMovements,
+  jobPaymentsToMovements,
+  personLedgerToMovements,
+  reintegroSaleDelEfectivo,
   latestBankBalancesByAccount,
   pettyCashToMovements,
   RESERVA_OPENING_BANK_ARS,
@@ -229,5 +236,136 @@ describe("reservaSources", () => {
       expect(total(r, "ARS").closing).toBeCloseTo(1000000, 2); // los pesos quedan intactos
       expect(wallet(r, "USD", "efectivo").closing).toBeCloseTo(10000, 2);
     });
+  });
+});
+
+describe("billetera de efectivo derivada del sistema", () => {
+  describe("cobros de trabajos", () => {
+    it("un cobro en efectivo entra a la caja con su color", () => {
+      const movs = jobPaymentsToMovements([
+        { paymentDate: "2026-03-10", amount: 500000, transactionType: "efectivo", administration: "negro" },
+      ]);
+      expect(movs).toEqual([
+        { date: "2026-03-10", currency: "ARS", location: "efectivo", color: "negro", kind: "ingreso", amount: 500000 },
+      ]);
+    });
+
+    it("sin administracion cargada, el cobro en efectivo es blanco (default del tipo Payment)", () => {
+      expect(jobPaymentsToMovements([{ paymentDate: "2026-03-10", amount: 100, transactionType: "efectivo" }])[0].color)
+        .toBe("blanco");
+    });
+
+    it("transferencia, cheque y 'otros' NO entran: esa plata la trae el banco (o todavia no es plata)", () => {
+      expect(cobroEntraAlEfectivo({ amount: 1, transactionType: "transferencia" })).toBe(false);
+      expect(cobroEntraAlEfectivo({ amount: 1, transactionType: "cheque" })).toBe(false);
+      expect(cobroEntraAlEfectivo({ amount: 1, transactionType: "otros" })).toBe(false);
+      expect(cobroEntraAlEfectivo({ amount: 1 })).toBe(false);
+    });
+
+    it("un cobro en USD no toca la caja en pesos", () => {
+      expect(cobroEntraAlEfectivo({ amount: 1, currency: "USD", transactionType: "efectivo" })).toBe(false);
+    });
+  });
+
+  describe("gastos que salen de la caja", () => {
+    it("un gasto en efectivo baja la caja de su color", () => {
+      const movs = costEntriesToMovements([
+        { date: "2026-03-11", amount: 80000, paymentMethod: "efectivo", administration: "negro" },
+      ]);
+      expect(movs).toEqual([
+        { date: "2026-03-11", currency: "ARS", location: "efectivo", color: "negro", kind: "egreso", amount: 80000 },
+      ]);
+    });
+
+    it("sin metodo de pago cargado se asume efectivo (dato faltante, la UI lo marca)", () => {
+      expect(gastoSaleDelEfectivo({ date: "2026-03-11", amount: 1 })).toBe(true);
+    });
+
+    it("lo que paso por el banco no baja la caja: ya bajo el saldo bancario", () => {
+      expect(gastoSaleDelEfectivo({ date: "", amount: 1, paymentMethod: "transferencia" })).toBe(false);
+      expect(gastoSaleDelEfectivo({ date: "", amount: 1, paymentMethod: "cheque" })).toBe(false);
+      expect(gastoSaleDelEfectivo({ date: "", amount: 1, paymentMethod: "debito" })).toBe(false);
+      expect(gastoSaleDelEfectivo({ date: "", amount: 1, source: "extracto" })).toBe(false);
+      expect(gastoSaleDelEfectivo({ date: "", amount: 1, paymentMethod: "efectivo", bankEntryId: 7 })).toBe(false);
+    });
+  });
+
+  describe("movimientos internos (efectivo <-> banco)", () => {
+    it("un deposito saca plata de la caja y NO suma al banco (el extracto ya lo trae)", () => {
+      const movs = internalTransfersToMovements([
+        { date: "2026-03-12", direction: "efectivo_a_banco", amount: 300000, color: "blanco" },
+      ]);
+      expect(movs).toHaveLength(1);
+      expect(movs[0]).toMatchObject({ location: "efectivo", kind: "egreso", amount: 300000, isTransfer: true });
+    });
+
+    it("una extraccion entra a la caja", () => {
+      const movs = internalTransfersToMovements([
+        { date: "2026-03-12", direction: "banco_a_efectivo", amount: 200000 },
+      ]);
+      expect(movs[0]).toMatchObject({ location: "efectivo", kind: "ingreso", color: "blanco", isTransfer: true });
+    });
+
+    it("el pase mueve el saldo pero no cuenta como ingreso ni egreso de la empresa", () => {
+      const r = buildReservaFromSources({
+        jobPayments: [{ paymentDate: "2026-03-01", amount: 1000000, transactionType: "efectivo" }],
+        internalTransfers: [{ date: "2026-03-05", direction: "efectivo_a_banco", amount: 400000 }],
+      });
+      const caja = wallet(r, "ARS", "efectivo");
+      expect(caja.closing).toBeCloseTo(600000, 2);
+      expect(caja.ingresos).toBeCloseTo(1000000, 2); // el pase no infla los ingresos
+      expect(caja.egresos).toBeCloseTo(0, 2); // ni los egresos
+    });
+  });
+
+  it("caso completo: cobro negro en efectivo - gasto negro + deposito", () => {
+    const r = buildReservaFromSources({
+      openingBankArs: 4302064.53,
+      jobPayments: [
+        { paymentDate: "2026-03-01", amount: 5000000, transactionType: "efectivo", administration: "negro" },
+        { paymentDate: "2026-03-02", amount: 9000000, transactionType: "transferencia", administration: "blanco" },
+      ],
+      costEntries: [
+        { date: "2026-03-03", amount: 1200000, paymentMethod: "efectivo", administration: "negro" },
+        { date: "2026-03-04", amount: 700000, paymentMethod: "transferencia", administration: "blanco" },
+      ],
+      internalTransfers: [{ date: "2026-03-06", direction: "efectivo_a_banco", amount: 800000, color: "negro" }],
+    });
+    const caja = wallet(r, "ARS", "efectivo");
+    expect(caja.byColor.negro.closing).toBeCloseTo(3000000, 2); // 5.000.000 - 1.200.000 - 800.000
+    expect(caja.byColor.blanco.closing).toBeCloseTo(0, 2); // lo blanco fue todo por banco
+    expect(wallet(r, "ARS", "banco").closing).toBeCloseTo(4302064.53, 2); // el banco sigue siendo el extracto
+  });
+});
+
+describe("reintegros de la cuenta corriente con la gente", () => {
+  it("devolverle la plata en efectivo baja la caja", () => {
+    const movs = personLedgerToMovements([
+      { date: "2026-03-15", amount: 250000, kind: "haber", paymentMethod: "efectivo", color: "negro" },
+    ]);
+    expect(movs).toEqual([
+      { date: "2026-03-15", currency: "ARS", location: "efectivo", color: "negro", kind: "egreso", amount: 250000 },
+    ]);
+  });
+
+  it("el DEBE no mueve la caja: la plata la puso la persona, no la empresa", () => {
+    expect(reintegroSaleDelEfectivo({ date: "", amount: 1, kind: "debe", paymentMethod: "efectivo" })).toBe(false);
+  });
+
+  it("un reintegro por transferencia no baja la caja: ya salio por el banco", () => {
+    expect(reintegroSaleDelEfectivo({ date: "", amount: 1, kind: "haber", paymentMethod: "transferencia" })).toBe(false);
+    expect(reintegroSaleDelEfectivo({ date: "", amount: 1, kind: "haber", paymentMethod: "cheque" })).toBe(false);
+  });
+
+  it("sin metodo cargado se asume efectivo", () => {
+    expect(reintegroSaleDelEfectivo({ date: "", amount: 1, kind: "haber" })).toBe(true);
+  });
+
+  it("el reintegro en efectivo achica la billetera de efectivo", () => {
+    const r = buildReservaFromSources({
+      jobPayments: [{ paymentDate: "2026-03-01", amount: 1000000, transactionType: "efectivo" }],
+      personLedgerEntries: [{ date: "2026-03-15", amount: 250000, kind: "haber", paymentMethod: "efectivo" }],
+    });
+    expect(wallet(r, "ARS", "efectivo").closing).toBeCloseTo(750000, 2);
   });
 });

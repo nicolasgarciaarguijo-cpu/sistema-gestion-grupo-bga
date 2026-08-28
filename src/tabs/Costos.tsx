@@ -39,7 +39,6 @@ import type {
   Supplier,
 } from "../domain/types";
 import type { ReconciliationSummary } from "../domain/suppliers";
-import type { IntercompanyTransfer, IntercompanySummary } from "../domain/intercompany";
 
 export type CostStatementDraftRow = {
   id: number;
@@ -123,11 +122,6 @@ type CostosTabProps = {
   updateSupplier: (id: number, field: keyof Supplier, value: any) => void;
   paymentsReconciliation: ReconciliationSummary;
   // Facturas emitidas (listado de ARCA): registro, no suma al resultado.
-  // Giros entre las empresas del grupo: no son pagos, pero hay que cruzarlos con factura o devolucion.
-  intercompanyAccount: {
-    transfers: IntercompanyTransfer[];
-    summary: IntercompanySummary;
-  };
 };
 
 export function CostosTab({
@@ -136,7 +130,6 @@ export function CostosTab({
   removeSupplier,
   updateSupplier,
   paymentsReconciliation,
-  intercompanyAccount,
   fiscalLabel,
   months,
   aggregation,
@@ -187,8 +180,6 @@ export function CostosTab({
     );
 
   // ---- PLANILLA de gastos cargados -------------------------------------------------------------
-  const anchosCcPares = usePlanillaWidths("costos.cc.pares", { label: 240, col: 124, colCompact: 94 });
-  const anchosCcGiros = usePlanillaWidths("costos.cc.giros", { label: 240, col: 124, colCompact: 94 });
   const anchosProveedores = usePlanillaWidths("costos.proveedores", { label: 280, col: 150, colCompact: 112 });
   const anchosGrupos = usePlanillaWidths("costos.grupos", { label: 280, col: 120, colCompact: 92 });
   const anchosReglas = usePlanillaWidths("costos.reglas", { label: 320, col: 180, colCompact: 130 });
@@ -655,177 +646,6 @@ export function CostosTab({
             </tbody>
           </table>
           </div>
-        )}
-      </Panel>
-
-
-      <Panel title="Cuenta corriente entre las empresas del grupo" span="full">
-        <div style={styles.sectionNote}>
-          Lo que una empresa le gira a la otra <strong>no es un pago ni un cobro</strong>: para el grupo
-          no entro ni salio nada, solo cambio de bolsillo. Por eso no suma al resultado. Pero cada giro
-          se cruza con una <strong>factura entre las dos</strong> o con una <strong>devolucion</strong>,
-          y lo que no esta cruzado es lo que hay que definir. Los giros se detectan por el CUIT de la
-          otra empresa en la referencia del banco.
-        </div>
-        <div style={styles.metricGrid}>
-          <MiniMetric
-            label="Girado entre empresas"
-            value={money(intercompanyAccount.summary.totalTransferred)}
-          />
-          <MiniMetric
-            label="Giros detectados"
-            value={String(intercompanyAccount.transfers.length)}
-          />
-          <MiniMetric
-            label="Sin declarar factura"
-            value={money(
-              intercompanyAccount.summary.pairs.reduce((acc, p) => acc + p.withoutBacking, 0)
-            )}
-            tone="out"
-          />
-        </div>
-        {intercompanyAccount.transfers.length === 0 ? (
-          <div style={{ ...styles.muted, marginTop: 8 }}>
-            No se detectaron giros entre las empresas. Se necesitan los movimientos del banco cargados
-            y el CUIT de cada empresa configurado.
-          </div>
-        ) : (
-          <>
-            <div style={{ overflowX: "auto", marginTop: 10 }}>
-              <div style={{ ...planillaWrap, ...anchosCcPares.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Quién le giró a quién
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosCcPares.startResize(ev, "label")}
-                        onDoubleClick={anchosCcPares.resetLabel}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Girado
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosCcPares.startResize(ev, "col")}
-                        onDoubleClick={anchosCcPares.resetCol}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>A definir</th>
-                    <th style={thFlexible}>Dice factura · sin declarar · facturado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {intercompanyAccount.summary.pairs.map((p) => (
-                    <tr key={`${p.from}>${p.to}`}>
-                      <td style={{ ...tdNombre, fontWeight: 400 }}>
-                        <strong style={{ color: "#0f172a" }}>
-                          {getCompanyMeta(p.from as CompanyName)?.short || p.from}
-                        </strong>
-                        <span style={{ color: "#94a3b8" }}> → </span>
-                        <strong style={{ color: "#0f172a" }}>
-                          {getCompanyMeta(p.to as CompanyName)?.short || p.to}
-                        </strong>
-                      </td>
-                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
-                        {money(p.transferred)}
-                      </td>
-                      <td
-                        style={{
-                          ...tdDato, textAlign: "right", fontWeight: 700,
-                          color: Number(p.pending || 0) > 1 ? "#b45309" : "#166534",
-                        }}
-                      >
-                        {money(p.pending)}
-                      </td>
-                      <td style={{ ...tdFlexible, color: "#64748b" }}>
-                        dice factura {money(p.declaredWithInvoice)}
-                        <span style={{ color: "#b45309" }}> · sin declarar {money(p.withoutBacking)}</span>
-                        <span style={{ color: "#94a3b8" }}> · facturado {money(p.invoiced)}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </div>
-            <div style={{ ...styles.noticeBox, marginTop: 10 }}>
-              <strong>"Dice factura" no es prueba de que exista.</strong> Es lo que tipeo quien hizo la
-              transferencia en el concepto del banco. La columna "Facturado" se llena cuando se carguen
-              las facturas emitidas ENTRE las dos empresas; hasta entonces "A definir" es todo lo
-              girado.
-            </div>
-            <details style={{ marginTop: 10 }}>
-              <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569" }}>
-                Ver los {intercompanyAccount.transfers.length} giros
-              </summary>
-              <div style={{ overflowX: "auto", marginTop: 8 }}>
-                <div style={{ ...planillaWrap, ...anchosCcGiros.vars }}>
-                <table style={planillaTable}>
-                  <colgroup>
-                    <col style={colLabel} />
-                    <col style={colDato} />
-                    <col style={colDato} />
-                    <col style={colFlexible} />
-                  </colgroup>
-                  <thead>
-                    <tr>
-                      <th style={thEsquina}>
-                        Giro
-                        <PlanillaManija
-                          onMouseDown={(ev) => anchosCcGiros.startResize(ev, "label")}
-                          onDoubleClick={anchosCcGiros.resetLabel}
-                        />
-                      </th>
-                      <th style={{ ...thColumna, textAlign: "right" }}>
-                        Monto
-                        <PlanillaManija
-                          onMouseDown={(ev) => anchosCcGiros.startResize(ev, "col")}
-                          onDoubleClick={anchosCcGiros.resetCol}
-                        />
-                      </th>
-                      <th style={thColumna}>Fecha</th>
-                      <th style={thFlexible}>Respaldo · concepto del banco</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...intercompanyAccount.transfers]
-                      .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
-                      .map((t) => (
-                        <tr key={t.id}>
-                          <td style={{ ...tdNombre, fontWeight: 400 }}>
-                            <span
-                              title={t.declaresInvoice ? "Dice factura" : "Sin declarar"}
-                              style={{
-                                display: "inline-block", width: 8, height: 8, borderRadius: 999, marginRight: 7,
-                                background: t.declaresInvoice ? "#16a34a" : "#ca8a04",
-                              }}
-                            />
-                            {getCompanyMeta(t.from as CompanyName)?.short || t.from}
-                            <span style={{ color: "#94a3b8" }}> → </span>
-                            {getCompanyMeta(t.to as CompanyName)?.short || t.to}
-                          </td>
-                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(t.amount)}</td>
-                          <td style={{ ...tdDato, color: "#475569" }}>{t.date}</td>
-                          <td style={{ ...tdFlexible, color: "#64748b" }} title={t.text}>
-                            <strong style={{ color: t.declaresInvoice ? "#15803d" : "#b45309" }}>
-                              {t.declaresInvoice ? "dice factura" : "sin declarar"}
-                            </strong>
-                            <span style={{ color: "#94a3b8" }}> · {(t.text || "").slice(0, 70)}</span>
-                          </td>
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-                </div>
-              </div>
-            </details>
-          </>
         )}
       </Panel>
 

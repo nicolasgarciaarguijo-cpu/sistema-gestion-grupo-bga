@@ -189,7 +189,9 @@ export function ComprasTab({
             <div style={styles.sectionNote}>
               Cuando una factura la paga un empleado, un socio o un tercero, la empresa le queda
               debiendo hasta que se le reintegra. Se marca en el bloque de abajo, en la columna del
-              pago.{" "}
+              pago. Esta deuda entra sola a la <strong>cuenta corriente con la gente</strong>, en
+              Movimientos internos, junto con la caja chica excedida y lo que se cargue a mano; el
+              reintegro también se puede asentar allá (y si fue en efectivo, baja la caja).{" "}
               <strong style={{ color: Number(personDebts?.total || 0) > 1 ? "#b45309" : "#16a34a" }}>
                 Total a devolver: {money(Number(personDebts?.total || 0))}
               </strong>

@@ -7,6 +7,12 @@
 //     credito = ingreso, debito = egreso.
 //   - Caja chica: la asignacion de un fondo entra al EFECTIVO (partida por blanco/negro segun
 //     assignedWhite/assignedBlack); cada gasto sale del EFECTIVO con su color (administration).
+//   - Cobros de trabajos aprobados hechos EN EFECTIVO -> entran al EFECTIVO con su color. Los que
+//     entraron por transferencia o cheque NO se tocan: esa plata ya esta en el saldo del banco.
+//   - Gastos de la solapa Costos que NO pasaron por el banco -> salen del EFECTIVO con su color.
+//   - Movimientos internos (solapa Movimientos internos): el pase efectivo <-> banco. Ver
+//     internalTransfersToMovements: solo se emite la pata de EFECTIVO, a proposito.
+//   - Reintegros de la cuenta corriente con la gente pagados en efectivo -> salen del EFECTIVO.
 //
 // Saldo inicial (cierre oct-2025, de la reconciliacion banco↔planilla):
 //   De Raíz Patagonia = 4.302.064,53 ; BGA (Patagonia −37.786,98 + Santander 499.220,44) = 461.433,46.
@@ -62,6 +68,14 @@ export type ReservaSourcesInput = {
   extraMovements?: ReservaMovementInput[];
   // Efectivo fuera del banco y de caja chica (caja de seguridad, etc.), cargado a mano.
   cashHoldings?: CashHoldingLike[];
+  // Cobros de trabajos aprobados: solo los hechos en efectivo entran a la caja.
+  jobPayments?: JobPaymentLike[];
+  // Gastos de la solapa Costos: solo los que no pasaron por el banco salen de la caja.
+  costEntries?: CostPaymentLike[];
+  // Pases efectivo <-> banco de la solapa Movimientos internos.
+  internalTransfers?: InternalTransferLike[];
+  // Cuenta corriente con la gente: los reintegros pagados en efectivo bajan la caja.
+  personLedgerEntries?: PersonLedgerPaymentLike[];
   until?: string; // corte por fecha (yyyy-mm-dd) para ver la reserva a un mes dado
 };
 
@@ -257,6 +271,138 @@ export function usdPaymentsToMovements(payments: UsdPaymentLike[]): ReservaMovem
   }));
 }
 
+// --- COBROS DE TRABAJOS EN EFECTIVO -------------------------------------------------------------
+// Regla del usuario (2026-08-28): la billetera de efectivo se DERIVA del sistema, no se tipea aparte.
+// Un cobro cargado en Trabajos aprobados con medio "efectivo" es plata que entro a la caja y que no
+// deja ningun rastro en el extracto: si no entra por aca, no entra por ningun lado.
+//
+// Lo que NO entra, para no contar el mismo peso dos veces:
+//   - transferencia y debito: ya estan en el saldo del banco;
+//   - cheque: todavia no es plata (se cobra a 30/60/90); entra el dia que se acredita, por el banco;
+//   - "otros": medio indefinido, no se asume que sea efectivo.
+// El color sale de `administration` (ausente = blanco, como dice el tipo Payment).
+export type JobPaymentLike = {
+  paymentDate?: string;
+  amount: number;
+  currency?: string; // ausente = ARS
+  transactionType?: string;
+  administration?: ReservaColor;
+  // Cobro en USD que se pesifico: sale del circuito dolar. La billetera USD no lo cuenta y la de
+  // pesos tampoco (el equivalente en pesos descuenta del saldo del trabajo, no de la caja).
+  arsApplied?: boolean;
+};
+
+export function cobroEntraAlEfectivo(payment: JobPaymentLike): boolean {
+  if (String(payment.currency || "ARS").toUpperCase() === "USD") return false;
+  return String(payment.transactionType || "") === "efectivo";
+}
+
+export function jobPaymentsToMovements(payments: JobPaymentLike[]): ReservaMovementInput[] {
+  return payments.filter(cobroEntraAlEfectivo).map((p) => ({
+    date: p.paymentDate || "",
+    currency: "ARS" as const,
+    location: "efectivo" as const,
+    color: p.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+    kind: "ingreso" as const,
+    amount: num(p.amount),
+  }));
+}
+
+// --- GASTOS PAGADOS DE LA CAJA ------------------------------------------------------------------
+// La contracara: un gasto de la solapa Costos pagado en efectivo baja la caja. Mismo criterio que
+// `pagoAlimentaCalendario` en modo carga (domain/calendarFeeds.ts): sale del efectivo solo lo que NO
+// paso por el banco. Un gasto importado del extracto, o conciliado contra un debito, o pagado por
+// transferencia/cheque/debito automatico, ya bajo el saldo del banco: restarlo aca lo contaria dos veces.
+export type CostPaymentLike = {
+  date: string;
+  amount: number;
+  administration?: ReservaColor;
+  source?: string; // "extracto" = el gasto ES un movimiento del banco importado
+  bankEntryId?: number | null;
+  paymentMethod?: string; // sin metodo cargado = se asume efectivo (la UI lo marca con la D)
+};
+
+export function gastoSaleDelEfectivo(entry: CostPaymentLike): boolean {
+  if (String(entry.source || "") === "extracto") return false;
+  if (entry.bankEntryId != null) return false;
+  const metodo = String(entry.paymentMethod || "").trim();
+  return !metodo || metodo === "efectivo";
+}
+
+export function costEntriesToMovements(entries: CostPaymentLike[]): ReservaMovementInput[] {
+  return entries.filter(gastoSaleDelEfectivo).map((e) => ({
+    date: e.date,
+    currency: "ARS" as const,
+    location: "efectivo" as const,
+    color: e.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+    kind: "egreso" as const,
+    amount: num(e.amount),
+  }));
+}
+
+// --- REINTEGROS A LA GENTE ----------------------------------------------------------------------
+// Devolverle la plata a alguien que la puso de su bolsillo (ver domain/personLedger.ts) SI saca plata
+// de la empresa. Solo baja la caja si se le pago en efectivo: si se le transfirio, esa plata ya salio
+// por el extracto y restarla aca la contaria dos veces. Mismo criterio que los gastos.
+//
+// El DEBE no aparece aca a proposito: cuando la persona pone la plata, la empresa no mueve un peso
+// (por eso queda debiendo). La caja se mueve recien cuando se le devuelve.
+export type PersonLedgerPaymentLike = {
+  date: string;
+  amount: number;
+  kind?: string; // "debe" | "haber"
+  color?: ReservaColor;
+  paymentMethod?: string; // sin metodo cargado = se asume efectivo
+};
+
+export function reintegroSaleDelEfectivo(entry: PersonLedgerPaymentLike): boolean {
+  if (String(entry.kind || "") !== "haber") return false;
+  const metodo = String(entry.paymentMethod || "").trim();
+  return !metodo || metodo === "efectivo";
+}
+
+export function personLedgerToMovements(entries: PersonLedgerPaymentLike[]): ReservaMovementInput[] {
+  return entries.filter(reintegroSaleDelEfectivo).map((e) => ({
+    date: e.date,
+    currency: "ARS" as const,
+    location: "efectivo" as const,
+    color: e.color === "negro" ? ("negro" as const) : ("blanco" as const),
+    kind: "egreso" as const,
+    amount: num(e.amount),
+  }));
+}
+
+// --- MOVIMIENTOS INTERNOS: EL PASE EFECTIVO <-> BANCO -------------------------------------------
+// Deposito plata de la caja en el banco, o saco plata del cajero. Para la empresa no entro ni salio
+// nada: cambio de bolsillo. Por eso van marcados isTransfer (mueven el saldo, no cuentan como
+// ingreso/egreso).
+//
+// OJO, la sutileza que hace que el numero cierre: SOLO se emite la pata de EFECTIVO. La billetera de
+// banco de este sistema no se arma sumando movimientos, se toma del ULTIMO SALDO del extracto
+// (ver latestBankBalancesByAccount), y ese saldo YA tiene el deposito adentro. Emitir tambien la pata
+// de banco sumaria el mismo deposito dos veces. Si algun dia el banco se arma por movimientos, esta
+// funcion tiene que emitir las dos patas.
+export type InternalTransferLike = {
+  date: string;
+  direction?: string; // "efectivo_a_banco" (deposito) | "banco_a_efectivo" (extraccion)
+  currency?: ReservaCurrency;
+  color?: ReservaColor;
+  amount: number;
+};
+
+export function internalTransfersToMovements(items: InternalTransferLike[]): ReservaMovementInput[] {
+  return items.map((t) => ({
+    date: t.date,
+    currency: t.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+    location: "efectivo" as const,
+    color: t.color === "negro" ? ("negro" as const) : ("blanco" as const),
+    // Deposito = sale de la caja; extraccion = entra a la caja.
+    kind: t.direction === "banco_a_efectivo" ? ("ingreso" as const) : ("egreso" as const),
+    amount: num(t.amount),
+    isTransfer: true,
+  }));
+}
+
 // Arma la reserva de UNA empresa desde las fuentes del sistema.
 export function buildReservaFromSources(input: ReservaSourcesInput): ReservaSummary {
   const openings: ReservaOpening[] = [
@@ -270,6 +416,10 @@ export function buildReservaFromSources(input: ReservaSourcesInput): ReservaSumm
     ...bankEntriesToMovements(input.bankEntries || []),
     ...pettyCashToMovements(input.pettyCashFunds || [], input.pettyCashExpenses || []),
     ...cashHoldingsToMovements(input.cashHoldings || []),
+    ...jobPaymentsToMovements(input.jobPayments || []),
+    ...costEntriesToMovements(input.costEntries || []),
+    ...internalTransfersToMovements(input.internalTransfers || []),
+    ...personLedgerToMovements(input.personLedgerEntries || []),
     ...(input.extraMovements || []),
   ];
 

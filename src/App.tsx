@@ -35,6 +35,7 @@ import {
   supplierKey,
   type LedgerPayment,
 } from "./domain/purchaseLedger";
+import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
 import { deriveConvenioHours } from "./domain/attendance";
 import {
   buildCierreResumenHtml,
@@ -155,6 +156,7 @@ import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { AprobadosTab } from "./tabs/Aprobados";
+import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
 import { EmitirFacturasTab } from "./tabs/EmitirFacturas";
 import { StockTab } from "./tabs/Stock";
 import { FacturacionTab } from "./tabs/Facturacion";
@@ -213,6 +215,8 @@ import type {
   PettyCashExpense,
   DebtPlan,
   CashHolding,
+  InternalTransfer,
+  PersonLedgerEntry,
   IvaVepPayment,
   BankStatementEntry,
   StockItem,
@@ -436,6 +440,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "calendarioAnual", label: "CALENDARIO ANUAL · CASH FLOW" },
   { key: "cashflow", label: "BALANCE Y ESTADO DE RESULTADOS" },
   { key: "aprobados", label: "TRABAJOS APROBADOS" },
+  { key: "movimientosInternos", label: "MOVIMIENTOS INTERNOS" },
   { key: "facturacion", label: "FACTURACIÓN Y COBRANZAS" },
   { key: "costos", label: "PAGO A PROVEEDORES" },
   { key: "bancos", label: "BANCOS Y TARJETAS" },
@@ -460,6 +465,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "calendarioAnual",
   "cashflow",
   "aprobados",
+  "movimientosInternos",
   "facturacion",
   "costos",
   "bancos",
@@ -542,6 +548,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   marcadores: "MK",
   historial: "CRM",
   aprobados: "TA",
+  movimientosInternos: "MI",
   facturacion: "FC",
   emitirFacturas: "EF",
   stock: "SA",
@@ -1263,6 +1270,10 @@ const defaultCapitalEntries: CapitalEntry[] = [];
 
 const defaultCashHoldings: CashHolding[] = [];
 
+const defaultInternalTransfers: InternalTransfer[] = [];
+
+const defaultPersonLedgerEntries: PersonLedgerEntry[] = [];
+
 const defaultIvaVepPayments: IvaVepPayment[] = [];
 
 const defaultCompanyAssets: CompanyAsset[] = [
@@ -1651,6 +1662,10 @@ type PersistedAppStateData = {
   bankStatementEntries: BankStatementEntry[];
   capitalEntries: CapitalEntry[];
   cashHoldings: CashHolding[];
+  // Pases efectivo <-> banco (solapa Movimientos internos). Ver domain/types.ts InternalTransfer.
+  internalTransfers: InternalTransfer[];
+  // Cuenta corriente con la gente: lo cargado a mano (el resto se deriva). Ver domain/personLedger.ts.
+  personLedgerEntries: PersonLedgerEntry[];
   ivaVepPayments: IvaVepPayment[];
   // Cierres de ejercicio: la foto de cada ano cerrado. Es lo que le da al ejercicio nuevo su saldo
   // de apertura, y lo que traba que se edite un ano ya cerrado.
@@ -1758,6 +1773,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig"] as const,
   },
   {
+    key: "movimientos-internos",
+    label: "Movimientos internos",
+    fields: ["internalTransfers", "personLedgerEntries"] as const,
+  },
+  {
     key: "compras",
     label: "Compras",
     fields: ["purchaseInvoices", "remitoDrafts"] as const,
@@ -1818,6 +1838,9 @@ const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> 
   facturacion: ["mensuales", "cash-flow", "trabajos-aprobados", "caja-chica", "compras"],
   emitirFacturas: ["mensuales", "trabajos-aprobados", "cash-flow"],
   aprobados: ["mensuales", "trabajos-aprobados"],
+  // Movimientos internos edita capitalEntries + cashHoldings (viven en cash-flow) y los pases
+  // efectivo <-> banco (modulo propio). Lee compras para la deuda con la gente.
+  movimientosInternos: ["cash-flow", "movimientos-internos", "compras"],
   fabricacion: ["mensuales", "trabajos-aprobados", "compras", "stock-costos"],
   compras: ["mensuales", "compras", "caja-chica"],
   cajaChica: ["mensuales", "caja-chica", "compras", "cash-flow"],
@@ -2804,6 +2827,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   };
 
   const [cashHoldings, setCashHoldings] = useState<CashHolding[]>(defaultCashHoldings);
+  const [internalTransfers, setInternalTransfers] = useState<InternalTransfer[]>(defaultInternalTransfers);
+  // La solapa Movimientos internos filtra por su propia empresa: es su vista, no la del Balance.
+  const [personLedgerEntries, setPersonLedgerEntries] = useState<PersonLedgerEntry[]>(defaultPersonLedgerEntries);
+  const [internalCompanyScope, setInternalCompanyScope] = useState<CompanyScope | "__ALL__">("__ALL__");
   const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
   const [costAnalysisGroups, setCostAnalysisGroups] = useState<CostAnalysisGroup[]>(
@@ -3783,6 +3810,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     prune(bankStatementEntries, setBankStatementEntries);
     prune(capitalEntries, setCapitalEntries);
     prune(cashHoldings, setCashHoldings);
+    prune(internalTransfers, setInternalTransfers);
+    prune(personLedgerEntries, setPersonLedgerEntries);
     prune(ivaVepPayments, setIvaVepPayments);
     prune(creditCards, setCreditCards);
     prune(creditCardStatements, setCreditCardStatements);
@@ -3811,6 +3840,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     bankStatementEntries,
     capitalEntries,
     cashHoldings,
+    internalTransfers,
+    personLedgerEntries,
     ivaVepPayments,
     creditCards,
     creditCardStatements,
@@ -4241,6 +4272,16 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const visibleCashHoldings = useMemo(
     () => cashHoldings.filter((item) => canAccessCompany(item.company)),
     [cashHoldings, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  const visibleInternalTransfers = useMemo(
+    () => internalTransfers.filter((item) => canAccessCompany(item.company)),
+    [internalTransfers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  const visiblePersonLedgerEntries = useMemo(
+    () => personLedgerEntries.filter((item) => canAccessCompany(item.company)),
+    [personLedgerEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleIvaVepPayments = useMemo(
@@ -6581,6 +6622,29 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           color: h.color === "negro" ? "negro" : "blanco",
           kind: h.kind === "egreso" ? "egreso" : "ingreso",
         })),
+      // El efectivo de la foto se arma igual que el del tablero: derivado del sistema. Si no, el
+      // saldo de apertura del ejercicio siguiente arrancaria la caja en cero.
+      jobPayments: approvedJobs.filter((j) => j.company === company).flatMap((j) => j.payments || []),
+      costEntries: costEntries
+        .filter((e) => e.company === company)
+        .map((e) => ({
+          date: e.date,
+          amount: Number(e.amount || 0),
+          administration: e.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+          source: e.source,
+          bankEntryId: e.bankEntryId ?? null,
+          paymentMethod: e.paymentMethod,
+        })),
+      internalTransfers: internalTransfers
+        .filter((t) => t.company === company)
+        .map((t) => ({
+          date: t.date,
+          direction: t.direction,
+          currency: t.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+          color: t.color === "negro" ? ("negro" as const) : ("blanco" as const),
+          amount: Number(t.amount || 0),
+        })),
+      personLedgerEntries: personLedgerEntries.filter((e) => e.company === company),
     });
   };
 
@@ -7467,37 +7531,25 @@ Escribi CERRAR para confirmar:`
   // (figura como "Ajuste de deuda" en la caja nueva). Procesa las cajas del responsable por orden de
   // creacion arrastrando la deuda. Devuelve por caja: ajuste aplicado y saldo real para gastar; y la
   // deuda neta total que la empresa sigue debiendo a los responsables.
+  // La regla vive en domain/personLedger.ts (carryPettyCashDebt): la misma que arma el DEBE/HABER de
+  // caja chica en la cuenta corriente con la gente. Aca solo se adapta la forma de los fondos.
+  const personLedgerFunds = useMemo(
+    () =>
+      pettyCashFundSummaries.map((entry) => ({
+        id: entry.fund.id,
+        company: String(entry.fund.company),
+        responsible: entry.fund.responsible || "",
+        deliveredDate: entry.fund.deliveredDate || "",
+        assignedAmount: Number(entry.fund.assignedAmount || 0),
+        renderedAmount: entry.renderedTotal,
+      })),
+    [pettyCashFundSummaries]
+  );
+
   const { fundDebtAdjustments, totalResponsibleDebt } = useMemo(() => {
-    const map = new Map<number, { ajuste: number; adjustedRemaining: number }>();
-    const byResponsible = new Map<string, typeof pettyCashFundSummaries>();
-    pettyCashFundSummaries.forEach((entry) => {
-      const key =
-        (entry.fund.responsible || "").trim().toLowerCase() || `__sin_responsable_${entry.fund.id}`;
-      const list = byResponsible.get(key) || [];
-      list.push(entry);
-      byResponsible.set(key, list);
-    });
-    let totalDebt = 0;
-    byResponsible.forEach((funds) => {
-      const ordered = funds.slice().sort((a, b) => a.fund.id - b.fund.id);
-      let carriedDebt = 0;
-      ordered.forEach((entry) => {
-        const own = entry.remainingBalance; // asignado - rendido
-        if (own < 0) {
-          carriedDebt += -own;
-          map.set(entry.fund.id, { ajuste: 0, adjustedRemaining: own });
-        } else if (carriedDebt > 0) {
-          const ajuste = Math.min(own, carriedDebt);
-          carriedDebt -= ajuste;
-          map.set(entry.fund.id, { ajuste, adjustedRemaining: own - ajuste });
-        } else {
-          map.set(entry.fund.id, { ajuste: 0, adjustedRemaining: own });
-        }
-      });
-      totalDebt += carriedDebt;
-    });
-    return { fundDebtAdjustments: map, totalResponsibleDebt: totalDebt };
-  }, [pettyCashFundSummaries]);
+    const carry = carryPettyCashDebt(personLedgerFunds);
+    return { fundDebtAdjustments: carry.byFund, totalResponsibleDebt: carry.total };
+  }, [personLedgerFunds]);
 
   // Rendicion por responsable: agrupa las cajas de cada responsable para ver su evolucion y la
   // posicion neta (asignado - rendido). net<0 = la empresa le debe; net>0 = tiene saldo a rendir
@@ -9041,6 +9093,8 @@ Escribi CERRAR para confirmar:`
     })),
     capitalEntries: capitalEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
     cashHoldings: cashHoldings.map((item) => ({ ...item, date: stampDate(item.date) })),
+    internalTransfers: internalTransfers.map((item) => ({ ...item, date: stampDate(item.date) })),
+    personLedgerEntries: personLedgerEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
     ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
     fiscalClosings: fiscalClosings.map((item) => ({ ...item })),
     calendarRowConfig: {
@@ -9293,6 +9347,27 @@ Escribi CERRAR para confirmar:`
         currency: item.currency === "USD" ? "USD" : "ARS",
         color: item.color === "negro" ? "negro" : "blanco",
         kind: item.kind === "egreso" ? "egreso" : "ingreso",
+        description: item.description || "",
+        notes: item.notes || "",
+      }))
+    );
+    setInternalTransfers(
+      keepAccessibleByCompany(data.internalTransfers || defaultInternalTransfers).map((item) => ({
+        ...item,
+        currency: item.currency === "USD" ? "USD" : "ARS",
+        color: item.color === "negro" ? "negro" : "blanco",
+        direction: item.direction === "banco_a_efectivo" ? "banco_a_efectivo" : "efectivo_a_banco",
+        bank: item.bank || "",
+        description: item.description || "",
+        notes: item.notes || "",
+      }))
+    );
+    setPersonLedgerEntries(
+      keepAccessibleByCompany(data.personLedgerEntries || defaultPersonLedgerEntries).map((item) => ({
+        ...item,
+        kind: item.kind === "haber" ? "haber" : "debe",
+        color: item.color === "negro" ? "negro" : "blanco",
+        person: item.person || "",
         description: item.description || "",
         notes: item.notes || "",
       }))
@@ -11450,6 +11525,8 @@ Escribi CERRAR para confirmar:`
     bankStatementEntries,
     capitalEntries,
     cashHoldings,
+    internalTransfers,
+    personLedgerEntries,
     ivaVepPayments,
     calendarRowConfig,
     creditCards,
@@ -12036,6 +12113,52 @@ Escribi CERRAR para confirmar:`
 
   const removeCashHolding = (entryId: number) => {
     setCashHoldings((prev) => prev.filter((item) => item.id !== entryId));
+  };
+
+  const addInternalTransfer = () => {
+    setInternalTransfers((prev) => [
+      {
+        id: newId(),
+        company: budget.company,
+        date: todayIso(),
+        direction: "efectivo_a_banco",
+        currency: "ARS",
+        color: "blanco",
+        amount: 0,
+        bank: "",
+        description: "",
+        notes: "",
+      },
+      ...prev,
+    ]);
+  };
+
+  const removeInternalTransfer = (entryId: number) => {
+    setInternalTransfers((prev) => prev.filter((item) => item.id !== entryId));
+  };
+
+  // Cuenta corriente con la gente. El DEBE es "puso plata"; el HABER, "se le devolvio". Arranca en
+  // DEBE porque es el caso normal: el movimiento nace cuando alguien pone la plata.
+  const addPersonLedgerEntry = (kind: "debe" | "haber" = "debe") => {
+    setPersonLedgerEntries((prev) => [
+      {
+        id: newId(),
+        company: budget.company,
+        person: "",
+        date: todayIso(),
+        kind,
+        amount: 0,
+        color: "blanco",
+        paymentMethod: kind === "haber" ? "efectivo" : undefined,
+        description: "",
+        notes: "",
+      },
+      ...prev,
+    ]);
+  };
+
+  const removePersonLedgerEntry = (entryId: number) => {
+    setPersonLedgerEntries((prev) => prev.filter((item) => item.id !== entryId));
   };
 
   const addIvaVepPayment = () => {
@@ -12899,8 +13022,37 @@ Escribi CERRAR para confirmar:`
           kind: h.kind === "egreso" ? ("egreso" as const) : ("ingreso" as const),
           amount: Number(h.amount || 0),
         })),
+      // La billetera de efectivo se DERIVA del sistema (regla de Nicolas, 2026-08-28): los cobros
+      // hechos en efectivo la suben y los gastos pagados de la caja la bajan. Quien filtra que es
+      // "efectivo" y que ya vino por el banco es domain/reservaSources.ts, no esta pantalla.
+      jobPayments: visibleApprovedJobs
+        .filter((j) => inScope(String(j.company)))
+        .flatMap((j) => (j.payments || []).filter((p) => despuesDelCierre(String(j.company), p.paymentDate || ""))),
+      costEntries: costEntries
+        .filter(
+          (e) => canAccessCompany(e.company) && inScope(String(e.company)) && despuesDelCierre(String(e.company), e.date)
+        )
+        .map((e) => ({
+          date: e.date,
+          amount: Number(e.amount || 0),
+          administration: e.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+          source: e.source,
+          bankEntryId: e.bankEntryId ?? null,
+          paymentMethod: e.paymentMethod,
+        })),
+      internalTransfers: visibleInternalTransfers
+        .filter((t) => inScope(String(t.company)) && despuesDelCierre(String(t.company), t.date))
+        .map((t) => ({
+          date: t.date,
+          direction: t.direction,
+          currency: t.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+          color: t.color === "negro" ? ("negro" as const) : ("blanco" as const),
+          amount: Number(t.amount || 0),
+        })),
+      personLedgerEntries: visiblePersonLedgerEntries
+        .filter((e) => inScope(String(e.company)) && despuesDelCierre(String(e.company), e.date)),
     });
-  }, [reservaBankAccounts, reservaUntil, visiblePettyCashFunds, visiblePettyCashExpenses, visibleCashHoldings, visibleApprovedJobs, balanceCompanyScope, fiscalClosings, COMPANY_OPTIONS]);
+  }, [reservaBankAccounts, reservaUntil, visiblePettyCashFunds, visiblePettyCashExpenses, visibleCashHoldings, visibleApprovedJobs, costEntries, visibleInternalTransfers, visiblePersonLedgerEntries, balanceCompanyScope, fiscalClosings, COMPANY_OPTIONS]);
 
   // PLATA DISPONIBLE (tablero superior): la reserva calculada POR empresa (no sigue el selector del
   // balance), para ver de un vistazo cuánta plata hay en cada banco de cada empresa y cuánto en negro,
@@ -13030,6 +13182,33 @@ Escribi CERRAR para confirmar:`
             kind: h.kind === "egreso" ? ("egreso" as const) : ("ingreso" as const),
             amount: Number(h.amount || 0),
           })),
+        // Efectivo derivado del sistema: cobros en efectivo de los trabajos (suben la caja), gastos
+        // pagados de la caja (la bajan) y los pases efectivo <-> banco. Sin esto el efectivo daba
+        // siempre cero aunque hubiera plata en la mano (Nicolas, 2026-08-28).
+        jobPayments: visibleApprovedJobs
+          .filter((j) => j.company === company)
+          .flatMap((j) => (j.payments || []).filter((p) => despuesDelCierre(String(company), p.paymentDate || ""))),
+        costEntries: costEntries
+          .filter((e) => e.company === company && canAccessCompany(e.company) && despuesDelCierre(String(company), e.date))
+          .map((e) => ({
+            date: e.date,
+            amount: Number(e.amount || 0),
+            administration: e.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+            source: e.source,
+            bankEntryId: e.bankEntryId ?? null,
+            paymentMethod: e.paymentMethod,
+          })),
+        internalTransfers: visibleInternalTransfers
+          .filter((t) => t.company === company && despuesDelCierre(String(company), t.date))
+          .map((t) => ({
+            date: t.date,
+            direction: t.direction,
+            currency: t.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+            color: t.color === "negro" ? ("negro" as const) : ("blanco" as const),
+            amount: Number(t.amount || 0),
+          })),
+        personLedgerEntries: visiblePersonLedgerEntries
+          .filter((e) => e.company === company && despuesDelCierre(String(company), e.date)),
         extraMovements: usdPaymentsToMovements(
           visibleApprovedJobs
             .filter((j) => j.company === company)
@@ -13113,6 +13292,8 @@ Escribi CERRAR para confirmar:`
     visiblePettyCashFunds,
     visiblePettyCashExpenses,
     visibleCashHoldings,
+    visibleInternalTransfers,
+    visiblePersonLedgerEntries,
     visibleApprovedJobs,
     visibleDebtPlans,
     issuedInvoices,
@@ -13211,6 +13392,14 @@ Escribi CERRAR para confirmar:`
         .filter((item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope)
         .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id),
     [visibleCashHoldings, balanceCompanyScope]
+  );
+
+  const scopedInternalTransfers = useMemo(
+    () =>
+      visibleInternalTransfers
+        .filter((item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope)
+        .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id),
+    [visibleInternalTransfers, balanceCompanyScope]
   );
 
   const scopedIvaVepPayments = useMemo(
@@ -14410,6 +14599,31 @@ Escribi CERRAR para confirmar:`
   // Deuda con la gente: lo que puso de su bolsillo un empleado, un socio o un tercero y todavia no se
   // le devolvio. Se quiere saldar rapido, asi que ademas sube a la barra de plata disponible.
   const personDebts = useMemo(() => computePersonDebts(purchaseLedgerInvoices), [purchaseLedgerInvoices]);
+
+  // CUENTA CORRIENTE CON LA GENTE (solapa Movimientos internos). Junta en un solo saldo por persona
+  // lo que antes vivia en tres lugares sin hablarse: las facturas que puso alguien de su bolsillo
+  // (Compras), la caja chica que se excedio (Caja chica) y lo que se carga a mano (el imprevisto y
+  // los reintegros). La regla esta en domain/personLedger.ts.
+  const personLedgerSummary = useMemo(
+    () =>
+      buildPersonLedger({
+        invoices: purchaseLedgerInvoices,
+        pettyCashFunds: personLedgerFunds,
+        entries: visiblePersonLedgerEntries.map((entry) => ({
+          id: entry.id,
+          company: String(entry.company),
+          person: entry.person,
+          date: entry.date,
+          kind: entry.kind === "haber" ? ("haber" as const) : ("debe" as const),
+          amount: Number(entry.amount || 0),
+          color: entry.color === "negro" ? ("negro" as const) : ("blanco" as const),
+          paymentMethod: entry.paymentMethod,
+          description: entry.description,
+        })),
+        companyScope: internalCompanyScope,
+      }),
+    [purchaseLedgerInvoices, personLedgerFunds, visiblePersonLedgerEntries, internalCompanyScope]
+  );
 
   // Nombres de la gente que puede haber puesto plata de su bolsillo: los empleados y socios del
   // sistema. Es solo una lista de sugerencias -- el campo admite cualquier nombre (un tercero).
@@ -16529,7 +16743,6 @@ Escribi CERRAR para confirmar:`
       {activeTab === "calendarioAnual" && renderCalendarioAnual()}
       {activeTab === "cashflow" && (
         <CashflowTab
-          personDebts={personDebts}
           purchaseLedger={purchaseLedger}
           cashFlowSummary={cashFlowSummary}
           billingBalance={billingBalance}
@@ -16561,14 +16774,6 @@ Escribi CERRAR para confirmar:`
           reservaUntil={reservaUntil}
           contributionsSummary={contributionsSummary}
           loanLines={loanLines}
-          capitalEntries={scopedCapitalEntries}
-          setCapitalEntries={setCapitalEntries}
-          addCapitalEntry={addCapitalEntry}
-          removeCapitalEntry={removeCapitalEntry}
-          cashHoldings={scopedCashHoldings}
-          setCashHoldings={setCashHoldings}
-          addCashHolding={addCashHolding}
-          removeCashHolding={removeCashHolding}
           vatPositionByCompany={vatPositionByCompany}
           ivaVepPayments={scopedIvaVepPayments}
           addIvaVepPayment={addIvaVepPayment}
@@ -16800,7 +17005,6 @@ Escribi CERRAR para confirmar:`
           removeSupplier={removeSupplier}
           updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field, value)}
           paymentsReconciliation={paymentsReconciliation}
-          intercompanyAccount={intercompanyAccount}
           costRows={costRows}
           companyScope={costsCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
@@ -16888,6 +17092,35 @@ Escribi CERRAR para confirmar:`
               updateCreditCardConsumption={updateCreditCardConsumption}
             />
           }
+        />
+      )}
+
+      {activeTab === "movimientosInternos" && (
+        <MovimientosInternosTab
+          companyScope={internalCompanyScope}
+          setCompanyScope={setInternalCompanyScope}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          getCompanyMeta={getCompanyMeta}
+          updateArrayItem={updateArrayItem}
+          internalTransfers={visibleInternalTransfers}
+          setInternalTransfers={setInternalTransfers}
+          addInternalTransfer={addInternalTransfer}
+          removeInternalTransfer={removeInternalTransfer}
+          cashHoldings={visibleCashHoldings}
+          setCashHoldings={setCashHoldings}
+          addCashHolding={addCashHolding}
+          removeCashHolding={removeCashHolding}
+          capitalEntries={visibleCapitalEntries}
+          setCapitalEntries={setCapitalEntries}
+          addCapitalEntry={addCapitalEntry}
+          removeCapitalEntry={removeCapitalEntry}
+          calendarLoans={calendarLoans}
+          personLedger={personLedgerSummary}
+          personLedgerEntries={visiblePersonLedgerEntries}
+          setPersonLedgerEntries={setPersonLedgerEntries}
+          addPersonLedgerEntry={addPersonLedgerEntry}
+          removePersonLedgerEntry={removePersonLedgerEntry}
+          intercompanyAccount={intercompanyAccount}
         />
       )}
 

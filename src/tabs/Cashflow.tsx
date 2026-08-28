@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, ColorTagToggle, moneyToneColor } from "../ui/primitives";
+import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, moneyToneColor } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
@@ -8,8 +8,8 @@ import {
 } from "../ui/planilla";
 import { money, formatDateDisplay } from "../lib/format";
 import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
-import type { CapitalEntry, CapitalSummary } from "../domain/contributions";
-import { sameLender, type LoanLine } from "../domain/loanLines";
+import type { CapitalSummary } from "../domain/contributions";
+import type { LoanLine } from "../domain/loanLines";
 import { totalDeMoneda, ultimoCierre } from "../domain/cierreEjercicio";
 import type { CierreEjercicio } from "../domain/cierreEjercicio";
 import { DEFAULT_FISCAL_START_MONTH, currentFiscalStartYear, fiscalYearLabel } from "../domain/fiscalYear";
@@ -131,7 +131,6 @@ const MONTH_OPTIONS = [
 
 type CashflowTabProps = {
   // Deudas que se administran en Compras y que aca se ven en modo lectura, junto al desendeudamiento.
-  personDebts: any;
   purchaseLedger: any;
   cashFlowSummary: any;
   billingBalance: any;
@@ -162,17 +161,11 @@ type CashflowTabProps = {
   reservaSummary: any;
   reservaBankAccounts: { company: string; bank: string; currency?: "ARS" | "USD"; date: string; balance: number }[];
   reservaUntil?: string;
+  // Resumen de aportes y préstamos: la reserva lo muestra como "de dónde salió la plata". El
+  // registro (y su carga) vive en la solapa Movimientos internos.
   contributionsSummary: CapitalSummary;
-  capitalEntries: CapitalEntry[];
   // Préstamos que entraron por el Calendario anual, una línea por prestamista (ver domain/loanLines).
   loanLines?: LoanLine[];
-  setCapitalEntries: React.Dispatch<React.SetStateAction<CapitalEntry[]>>;
-  addCapitalEntry: () => void;
-  removeCapitalEntry: (entryId: number) => void;
-  cashHoldings: CashHolding[];
-  setCashHoldings: React.Dispatch<React.SetStateAction<CashHolding[]>>;
-  addCashHolding: () => void;
-  removeCashHolding: (entryId: number) => void;
   vatPositionByCompany: {
     company: string;
     short: string;
@@ -205,7 +198,6 @@ type CashflowTabProps = {
 };
 
 export function CashflowTab({
-  personDebts,
   purchaseLedger,
   cashFlowSummary,
   activeAssetsMonthlyDepreciation,
@@ -218,15 +210,7 @@ export function CashflowTab({
   reservaBankAccounts,
   reservaUntil,
   contributionsSummary,
-  capitalEntries,
   loanLines = [],
-  setCapitalEntries,
-  addCapitalEntry,
-  removeCapitalEntry,
-  cashHoldings,
-  setCashHoldings,
-  addCashHolding,
-  removeCashHolding,
   vatPositionByCompany,
   ivaVepPayments,
   addIvaVepPayment,
@@ -261,8 +245,6 @@ export function CashflowTab({
   puedeCerrar,
 }: CashflowTabProps) {
   const anchosDeudas = usePlanillaWidths("cashflow.deudas", { label: 280, col: 116, colCompact: 88 });
-  const anchosCapital = usePlanillaWidths("cashflow.capital", { label: 260, col: 120, colCompact: 92 });
-  const anchosEfectivo = usePlanillaWidths("cashflow.efectivo", { label: 260, col: 120, colCompact: 92 });
 
   return (
         <div style={styles.column}>
@@ -640,7 +622,9 @@ export function CashflowTab({
               estado de resultados</strong>, solo balance y cash flow. El saldo de banco es el{" "}
               <strong>último saldo conciliado de cada cuenta</strong> (dato firme aunque falten meses
               intermedios sin cargar). Pesos y dólares nunca se suman. Los dólares salen de los cobros
-              en U$S cargados en los trabajos aprobados.
+              en U$S cargados en los trabajos aprobados. El <strong>efectivo se deriva del sistema</strong>:
+              lo suben los cobros hechos en efectivo y la caja chica, lo bajan los gastos pagados de la
+              caja, y los depósitos se asientan en <strong>Movimientos internos</strong>.
               {reservaUntil ? (
                 <>
                   {" "}
@@ -756,419 +740,6 @@ export function CashflowTab({
                 </>
               );
             })()}
-          </Panel>
-
-          <Panel
-            title="Deudas y aportes · registro"
-            span="full"
-            actions={<ButtonLike onClick={addCapitalEntry}>Agregar movimiento</ButtonLike>}
-          >
-            <div style={styles.noticeBox}>
-              Registro de la plata que entró para funcionar (socios, banco, la otra empresa).{" "}
-              <strong>No toca resultados</strong> y no mueve la reserva (esa plata ya está en el banco);
-              acá solo se asienta para verla. <strong>Aporte</strong> = capital, no vuelve;{" "}
-              <strong>préstamo</strong> = se devuelve. Los dólares son un valor congelado de referencia,
-              no se suman con los pesos. Lo que se clasifica como <strong>PRÉSTAMO en el Calendario
-              anual</strong> arma solo su línea acá, con el nombre del prestamista; si ya lo habías
-              asentado a mano, no se cuenta dos veces.
-            </div>
-            <div style={styles.metricGrid}>
-              <MiniMetric label="Aportes (capital)" value={money(contributionsSummary.aportes.total)} tone="in" />
-              <MiniMetric
-                label="Préstamos pendientes"
-                value={money(
-                  contributionsSummary.prestamosPendientes.total +
-                    loanLines.reduce((acc, l) => acc + l.sinAsentar, 0)
-                )}
-                tone="out"
-              />
-              <MiniMetric
-                label="Total recibido"
-                value={money(
-                  contributionsSummary.totalRecibido +
-                    loanLines.reduce((acc, l) => acc + l.sinAsentar, 0)
-                )}
-                tone="in"
-              />
-              {contributionsSummary.usdReference !== 0 && (
-                <MiniMetric
-                  label="USD congelado (ref.)"
-                  value={`US$ ${contributionsSummary.usdReference.toLocaleString("es-AR", {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  })}`}
-                />
-              )}
-            </div>
-            {(() => {
-              // Una línea por prestamista: lo asentado a mano + lo que entró por el Calendario anual
-              // (sección PRÉSTAMOS). El calendario arma la línea solo, con el nombre del prestamista;
-              // si ese mismo préstamo ya estaba cargado a mano, no se suma dos veces.
-              type Fila = { origin: string; total: number; prestamo: number; delBanco: number };
-              const filas: Fila[] = contributionsSummary.byOrigin.map((o) => ({
-                origin: o.origin,
-                total: o.total,
-                prestamo: o.prestamoPendiente,
-                delBanco: 0,
-              }));
-              loanLines.forEach((l) => {
-                if (l.sinAsentar === 0 && l.asentado === 0) return;
-                const fila = filas.find((f) => sameLender(f.origin, l.lender));
-                if (fila) {
-                  fila.total += l.sinAsentar;
-                  fila.prestamo += l.sinAsentar;
-                  fila.delBanco += l.recibido;
-                } else {
-                  filas.push({
-                    origin: l.lender,
-                    total: l.sinAsentar,
-                    prestamo: l.sinAsentar,
-                    delBanco: l.recibido,
-                  });
-                }
-              });
-              if (filas.length === 0) return null;
-              filas.sort((a, b) => b.total - a.total);
-              return (
-                <>
-                  <div style={balanceSection}>Quién puso cuánto</div>
-                  <div style={{ marginBottom: 12 }}>
-                    {filas.map((o) => (
-                      <StatRow
-                        key={o.origin}
-                        label={
-                          o.delBanco > 0 ? (
-                            <span>
-                              {o.origin}{" "}
-                              <span
-                                style={{ fontSize: 11, color: "#7c3aed" }}
-                                title={`Entró ${money(o.delBanco)} clasificado como préstamo en el Calendario anual`}
-                              >
-                                · del calendario
-                              </span>
-                            </span>
-                          ) : (
-                            o.origin
-                          )
-                        }
-                        value={`${money(o.total)}${
-                          o.prestamo !== 0 ? ` (préstamo ${money(o.prestamo)})` : ""
-                        }`}
-                        tone={o.total < 0 ? "out" : "in"}
-                      />
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
-            {capitalEntries.length === 0 ? (
-              <div style={styles.empty}>
-                No hay aportes ni préstamos cargados. Usá "Agregar movimiento" para asentar el primero.
-              </div>
-            ) : (
-              <div style={{ ...planillaWrap, ...anchosCapital.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Origen
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosCapital.startResize(ev, "label")}
-                        onDoubleClick={anchosCapital.resetLabel}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Monto $
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosCapital.startResize(ev, "col")}
-                        onDoubleClick={anchosCapital.resetCol}
-                      />
-                    </th>
-                    <th style={thColumna}>Fecha</th>
-                    <th style={thFlexible}>Tipo · movimiento · color · empresa · U$S · notas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {capitalEntries.map((item) => (
-                    <tr
-                      key={item.id}
-                      onContextMenu={(ev) => {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        if (window.confirm(`¿Quitar "${item.origin}" de aportes y préstamos?`)) removeCapitalEntry(item.id);
-                      }}
-                      title="Click derecho: quitar el movimiento"
-                    >
-                      <td
-                        style={{
-                          ...tdNombre, fontWeight: 400, padding: 0,
-                          boxShadow: `inset 4px 0 0 ${item.direction === "recibido" ? "#16a34a" : "#dc2626"}`,
-                        }}
-                      >
-                        <input
-                          style={{ ...inputCelda, padding: "1px 8px" }}
-                          {...focoCelda}
-                          value={item.origin}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "origin", e.target.value)}
-                        />
-                      </td>
-                      <td style={{ ...tdDato, padding: 0 }}>
-                        <AmountInput
-                          style={{
-                            ...inputCeldaDerecha,
-                            color: item.direction === "recibido" ? "#166534" : "#b91c1c",
-                            fontWeight: 700,
-                          }}
-                          {...focoCelda}
-                          value={item.amount}
-                          onChange={(n) => updateArrayItem(setCapitalEntries, item.id, "amount", n)}
-                        />
-                      </td>
-                      <td style={{ ...tdDato, padding: 0 }}>
-                        <input
-                          style={{ ...inputCelda, padding: "1px 6px" }}
-                          {...focoCelda}
-                          type="date"
-                          value={item.date}
-                          onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "date", e.target.value)}
-                        />
-                      </td>
-                      <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
-                          <select
-                            style={{ ...inputCelda, width: "auto" }}
-                            value={item.kind}
-                            onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "kind", e.target.value)}
-                          >
-                            <option value="aporte">Aporte</option>
-                            <option value="prestamo">Préstamo</option>
-                          </select>
-                          <select
-                            style={{ ...inputCelda, width: "auto" }}
-                            value={item.direction}
-                            onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "direction", e.target.value)}
-                          >
-                            <option value="recibido">Recibido</option>
-                            <option value="devuelto">Devuelto</option>
-                          </select>
-                          <ColorTagToggle
-                            value={item.color}
-                            onSet={(v) => updateArrayItem(setCapitalEntries, item.id, "color", v)}
-                            size={16}
-                          />
-                          <select
-                            style={{ ...inputCelda, width: "auto" }}
-                            value={item.company}
-                            onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "company", e.target.value)}
-                          >
-                            {COMPANY_OPTIONS.map((company) => (
-                              <option key={company.value} value={company.value}>
-                                {company.short}
-                              </option>
-                            ))}
-                          </select>
-                          <span style={{ color: "#94a3b8" }}>U$S</span>
-                          <input
-                            style={{ ...inputCelda, width: 72, textAlign: "right" }}
-                            {...focoCelda}
-                            type="number"
-                            placeholder="opcional"
-                            value={item.usdValue ?? ""}
-                            onChange={(e) =>
-                              updateArrayItem(
-                                setCapitalEntries,
-                                item.id,
-                                "usdValue",
-                                e.target.value === "" ? (undefined as any) : Number(e.target.value)
-                              )
-                            }
-                          />
-                          <input
-                            style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                            {...focoCelda}
-                            value={item.notes}
-                            placeholder="notas"
-                            onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "notes", e.target.value)}
-                          />
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            )}
-          </Panel>
-
-          <Panel
-            title="Efectivo fuera del banco · caja de seguridad"
-            span="full"
-            actions={<ButtonLike onClick={addCashHolding}>Agregar movimiento</ButtonLike>}
-          >
-            <div style={styles.noticeBox}>
-              Efectivo que <strong>no</strong> está en el banco ni en caja chica (caja de seguridad,
-              plata en mano). Se asienta como ingreso/egreso y alimenta la{" "}
-              <strong>billetera de efectivo</strong> de la reserva de arriba, con su color. El{" "}
-              <strong>color (blanco/negro) depende del origen</strong> de esa plata: no se asume nada.
-              Pesos y dólares nunca se suman. Respeta el corte por período elegido.
-            </div>
-            {(() => {
-              const net = (currency: "ARS" | "USD", color: "blanco" | "negro") =>
-                cashHoldings
-                  .filter((h) => (h.currency || "ARS") === currency && (h.color || "blanco") === color)
-                  .reduce((acc, h) => acc + (h.kind === "egreso" ? -1 : 1) * Number(h.amount || 0), 0);
-              const arsB = net("ARS", "blanco");
-              const arsN = net("ARS", "negro");
-              const usdB = net("USD", "blanco");
-              const usdN = net("USD", "negro");
-              return (
-                <div style={styles.metricGrid}>
-                  <MiniMetric label="Efectivo $ blanco" value={money(arsB)} />
-                  <MiniMetric label="Efectivo $ negro" value={money(arsN)} />
-                  {(usdB !== 0 || usdN !== 0) && (
-                    <>
-                      <MiniMetric label="Efectivo U$S blanco" value={money(usdB, "USD")} />
-                      <MiniMetric label="Efectivo U$S negro" value={money(usdN, "USD")} />
-                    </>
-                  )}
-                </div>
-              );
-            })()}
-            {cashHoldings.length === 0 ? (
-              <div style={styles.empty}>
-                No hay efectivo fuera del banco cargado. Usá "Agregar movimiento" para asentar el primero.
-              </div>
-            ) : (
-              <div style={{ ...planillaWrap, ...anchosEfectivo.vars }}>
-              <table style={planillaTable}>
-                <colgroup>
-                  <col style={colLabel} />
-                  <col style={colDato} />
-                  <col style={colDato} />
-                  <col style={colFlexible} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th style={thEsquina}>
-                      Descripción
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosEfectivo.startResize(ev, "label")}
-                        onDoubleClick={anchosEfectivo.resetLabel}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Monto
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosEfectivo.startResize(ev, "col")}
-                        onDoubleClick={anchosEfectivo.resetCol}
-                      />
-                    </th>
-                    <th style={thColumna}>Fecha</th>
-                    <th style={thFlexible}>Moneda · movimiento · color · empresa · notas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cashHoldings.map((item) => (
-                    <tr
-                      key={item.id}
-                      onContextMenu={(ev) => {
-                        ev.preventDefault();
-                        ev.stopPropagation();
-                        if (window.confirm(`¿Quitar "${item.description}" del efectivo fuera del banco?`)) {
-                          removeCashHolding(item.id);
-                        }
-                      }}
-                      title="Click derecho: quitar el movimiento"
-                    >
-                      <td
-                        style={{
-                          ...tdNombre, fontWeight: 400, padding: 0,
-                          boxShadow: `inset 4px 0 0 ${item.kind === "ingreso" ? "#16a34a" : "#dc2626"}`,
-                        }}
-                      >
-                        <input
-                          style={{ ...inputCelda, padding: "1px 8px" }}
-                          {...focoCelda}
-                          value={item.description}
-                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "description", e.target.value)}
-                        />
-                      </td>
-                      <td style={{ ...tdDato, padding: 0 }}>
-                        <AmountInput
-                          style={{
-                            ...inputCeldaDerecha,
-                            color: item.kind === "ingreso" ? "#166534" : "#b91c1c",
-                            fontWeight: 700,
-                          }}
-                          {...focoCelda}
-                          value={item.amount}
-                          onChange={(n) => updateArrayItem(setCashHoldings, item.id, "amount", n)}
-                        />
-                      </td>
-                      <td style={{ ...tdDato, padding: 0 }}>
-                        <input
-                          style={{ ...inputCelda, padding: "1px 6px" }}
-                          {...focoCelda}
-                          type="date"
-                          value={item.date}
-                          onChange={(e) => updateArrayItem(setCashHoldings, item.id, "date", e.target.value)}
-                        />
-                      </td>
-                      <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
-                        <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
-                          <select
-                            style={{ ...inputCelda, width: "auto" }}
-                            value={item.currency}
-                            onChange={(e) => updateArrayItem(setCashHoldings, item.id, "currency", e.target.value)}
-                          >
-                            <option value="ARS">$ Pesos</option>
-                            <option value="USD">U$S Dólares</option>
-                          </select>
-                          <select
-                            style={{ ...inputCelda, width: "auto" }}
-                            value={item.kind}
-                            onChange={(e) => updateArrayItem(setCashHoldings, item.id, "kind", e.target.value)}
-                          >
-                            <option value="ingreso">Ingreso</option>
-                            <option value="egreso">Egreso</option>
-                          </select>
-                          <ColorTagToggle
-                            value={item.color}
-                            onSet={(v) => updateArrayItem(setCashHoldings, item.id, "color", v)}
-                            size={16}
-                          />
-                          <select
-                            style={{ ...inputCelda, width: "auto" }}
-                            value={item.company}
-                            onChange={(e) => updateArrayItem(setCashHoldings, item.id, "company", e.target.value)}
-                          >
-                            {COMPANY_OPTIONS.map((company) => (
-                              <option key={company.value} value={company.value}>
-                                {company.short}
-                              </option>
-                            ))}
-                          </select>
-                          <input
-                            style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                            {...focoCelda}
-                            value={item.notes}
-                            placeholder="notas"
-                            onChange={(e) => updateArrayItem(setCashHoldings, item.id, "notes", e.target.value)}
-                          />
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            )}
           </Panel>
 
           <Panel title="Posicion de IVA (desde el ultimo VEP)" span="wide">
@@ -1468,33 +1039,6 @@ export function CashflowTab({
               </tbody>
             </table>
             </div>
-          </Panel>
-
-          {/* Las dos deudas que se administran en Compras, acá en modo lectura: son plata que hay que
-              sacar, así que tienen que estar a la vista junto al desendeudamiento. Se editan allá. */}
-          <Panel title="Deuda con la gente (lo que pusieron de su bolsillo)" span="full">
-            <div style={styles.sectionNote}>
-              Facturas que puso un empleado, un socio o un tercero y todavía no se le reintegraron. Se
-              salda desde <strong>Compras</strong>.{" "}
-              <strong style={{ color: Number(personDebts?.total || 0) > 1 ? "#b45309" : "#16a34a" }}>
-                Total a devolver: {money(Number(personDebts?.total || 0))}
-              </strong>
-              .
-            </div>
-            {(personDebts?.debts || []).length === 0 ? (
-              <div style={styles.empty}>No hay facturas puestas por alguien sin reintegrar. Al día.</div>
-            ) : (
-              <div style={styles.metricGrid}>
-                {(personDebts.debts || []).map((deuda: any) => (
-                  <MiniMetric
-                    key={`deuda-persona-${deuda.person}`}
-                    label={`${deuda.person} · ${deuda.count} ${deuda.count === 1 ? "factura" : "facturas"}`}
-                    value={money(deuda.total)}
-                    tone="out"
-                  />
-                ))}
-              </div>
-            )}
           </Panel>
 
           <Panel title="Cuenta corriente con proveedores" span="full">

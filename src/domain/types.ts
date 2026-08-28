@@ -35,6 +35,7 @@ export type TabKey =
   | "costos"
   | "bancos"
   | "tarjetas"
+  | "movimientosInternos"
   | "documentos"
   | "manual";
 
@@ -645,6 +646,53 @@ export type CashHolding = {
   color: "blanco" | "negro";
   kind: "ingreso" | "egreso";
   amount: number;
+  notes: string;
+};
+
+// MOVIMIENTO INTERNO: la plata cambia de bolsillo dentro de la misma empresa. Deposito la caja en el
+// banco, o saco del cajero para pagar en efectivo. NO es ingreso ni egreso: el total de la empresa no
+// cambia, cambia donde esta. Existe para que el deposito no se cuente dos veces: el extracto ya trae
+// el credito en el banco, y sin este movimiento el efectivo nunca bajaria.
+// Ver domain/reservaSources.ts (internalTransfersToMovements) para como pega en la billetera.
+export type InternalTransfer = {
+  id: number;
+  company: CompanyName;
+  date: string; // "yyyy-mm-dd"
+  direction: "efectivo_a_banco" | "banco_a_efectivo";
+  currency: "ARS" | "USD";
+  // Color de la plata que se mueve. Un deposito de efectivo NEGRO baja la caja negra; en el banco la
+  // plata es blanca, pero esa pata no se emite (la trae el extracto), asi que el color de aca es
+  // siempre el del EFECTIVO.
+  color: "blanco" | "negro";
+  amount: number;
+  bank: string; // que cuenta (texto libre): de donde salio o a donde entro
+  description: string;
+  notes: string;
+};
+
+// MOVIMIENTO DE LA CUENTA CORRIENTE CON LA GENTE, cargado a mano.
+//
+// La deuda con una persona nace sola desde dos lados (una factura de compra que puso de su bolsillo,
+// o una caja chica que se excedio), pero eso no alcanza: tambien hay que poder asentar el imprevisto
+// o el gasto que no se tuvo en cuenta, que no cuelga de ninguna factura. Y sobre todo hay que poder
+// DEVOLVERLE la plata, entera o en partes. Eso es lo que se carga aca.
+//
+//   kind "debe"  = la persona puso plata -> la empresa le debe.
+//   kind "haber" = se le devolvio.
+//
+// Ver domain/personLedger.ts para como se arma la cuenta, y domain/reservaSources.ts para cuando el
+// reintegro baja la caja de efectivo (solo si se le pago en efectivo).
+export type PersonLedgerEntry = {
+  id: number;
+  company: CompanyName;
+  person: string;
+  date: string; // "yyyy-mm-dd"
+  kind: "debe" | "haber";
+  amount: number;
+  color: "blanco" | "negro";
+  // Solo tiene sentido en los "haber": como se le devolvio. Decide si sale de la caja o del banco.
+  paymentMethod?: PaymentMethod;
+  description: string;
   notes: string;
 };
 

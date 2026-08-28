@@ -206,6 +206,11 @@ export function CajaChicaTab({
             actions={<ButtonLike onClick={addPettyCashFund}>Agregar caja chica</ButtonLike>}
           >
             <div style={styles.sectionHeader}>Rendición por responsable</div>
+            <div style={styles.sectionNote}>
+              Lo que un responsable gastó de más sobre su fondo lo puso de su bolsillo: entra solo a la{" "}
+              <strong>cuenta corriente con la gente</strong> (Movimientos internos), donde se le
+              devuelve. Si más adelante se le asigna otro fondo, esa deuda se descuenta ahí.
+            </div>
             {responsibleRendicion.length === 0 ? (
               <div style={styles.empty}>Todavia no hay responsables con cajas asignadas.</div>
             ) : (
