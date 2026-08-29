@@ -1313,6 +1313,26 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
   const today = todayIso();
   const hi = (iso: string): React.CSSProperties =>
     iso === today ? { boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" } : {};
+  // ALTO DEL BLOQUE. Se mide contra la ventana en vez de clavar un numero: asi el calendario llega
+  // siempre hasta el fondo de la pantalla, se abra donde se abra y en el monitor que sea.
+  const [altoBloque, setAltoBloque] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const medir = () => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const arriba = el.getBoundingClientRect().top;
+      // 12px de aire abajo. El minimo evita que quede ridiculo si se mide en un momento raro.
+      setAltoBloque(Math.max(420, Math.round(window.innerHeight - arriba - 12)));
+    };
+    medir();
+    window.addEventListener("resize", medir);
+    window.addEventListener("scroll", medir, { passive: true });
+    return () => {
+      window.removeEventListener("resize", medir);
+      window.removeEventListener("scroll", medir);
+    };
+  }, []);
+
   // Al abrir (o cambiar de vista) posicionamos el scroll horizontal en la columna de hoy.
   const todayCellRef = useRef<HTMLTableCellElement | null>(null);
   useEffect(() => {
@@ -1572,11 +1592,10 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
             border: "1px solid #e2e8f0",
             borderRadius: 8,
             borderTop: `3px solid ${selectedColor || "#cbd5e1"}`,
-            // El bloque mide UNA PANTALLA y el scroll es de el, no de la pagina. Es la unica forma de
-            // que los totales, la plata disponible y la fila de fechas queden inmovilizados mientras
-            // se baja (position:sticky se pega al contenedor que scrollea; si el que scrollea es la
-            // pagina, el bloque entero se va para arriba y se los lleva puestos).
-            maxHeight: "calc(100vh - 150px)",
+            // Llega hasta el fondo de la pantalla (medido, no a ojo). El scroll es del bloque y no de
+            // la pagina: es la unica forma de que la fecha, los bancos, el efectivo y los netos
+            // queden inmovilizados mientras se baja.
+            maxHeight: altoBloque ? `${altoBloque}px` : "calc(100vh - 120px)",
             ["--cal-label-w" as any]: `${labelW}px`,
             ["--cal-day-w" as any]: `${dayWEfectivo}px`,
           } as React.CSSProperties}
