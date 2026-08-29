@@ -69,6 +69,8 @@ type AddForm = {
   notes: string;
 };
 
+import { CalendarMark, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
+
 export function CalendarioAnualTab({
   entries,
   companyScope,
@@ -98,6 +100,8 @@ export function CalendarioAnualTab({
   flags,
   onToggleFlag,
   onSetFlagNote,
+  marks,
+  onSetMark,
   billeteraDiaria,
 }: {
   entries: Entry[];
@@ -118,6 +122,9 @@ export function CalendarioAnualTab({
   }>;
   onToggleFlag?: (key: string, date: string, label: string, note: string) => void;
   onSetFlagNote?: (id: number, note: string) => void;
+  // Marcadores de color: el significado de cada color vive en domain/calendarMarks.ts.
+  marks?: CalendarMark[];
+  onSetMark?: (key: string, date: string, label: string, color: string) => void;
   companyScope: string;
   setCompanyScope: (v: string) => void;
   fiscalStartYear: number;
@@ -785,18 +792,58 @@ export function CalendarioAnualTab({
   const flagSet = useMemo(() => new Set((flags || []).map((f) => f.key)), [flags]);
   const [flagPanel, setFlagPanel] = useState<null | { x: number; y: number }>(null);
   // Recuadro rojo: tiene que encontrarse de lejos, por eso va inset (no corre el layout) y grueso.
-  const estiloMarcada = (marcada: boolean): React.CSSProperties =>
-    marcada
-      ? {
-          // outline (no border ni box-shadow): se dibuja ENCIMA y no lo tapa el borderCollapse de la
-          // tabla, ademas de no correr el layout. Con offset negativo queda adentro de la celda.
-          outline: "2px solid #dc2626",
-          outlineOffset: "-2px",
-          background: "#fee2e2",
-          position: "relative",
-          zIndex: 1,
-        }
-      : {};
+  const markMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (marks || []).forEach((x) => m.set(x.key, x.color));
+    return m;
+  }, [marks]);
+
+  // MOVER UN MONTO DE CASILLERO. Dos pasos: "Mover a" agarra los movimientos de la celda y la deja
+  // marcada con borde punteado, y despues "Mover aqui" en la celda destino los reubica. Se ve todo
+  // el tiempo que se esta moviendo, para no equivocarse de casillero.
+  const [movingFrom, setMovingFrom] = useState<
+    { key: string; label: string; iso: string; ids: string[] } | null
+  >(null);
+
+  // Un destino valido es un renglon de concepto de verdad. Los totales, la plata disponible y los
+  // renglones de cobranza (que se arman solos desde los trabajos) no reciben movimientos.
+  const puedeRecibir = (sectionKey: string, itemKey: string) =>
+    !!itemKey && sectionKey !== "total" && sectionKey !== "billetera" && !itemKey.startsWith("cob:");
+
+  // El FONDO de la celda es de la empresa (BGA azul / De Raiz mostaza), asi que ni la banderita ni
+  // los marcadores lo tocan: los dos hablan con el BORDE. outline se dibuja encima y no lo come el
+  // borderCollapse de la tabla, ademas de no correr el layout.
+  const estiloCelda = (sectionKey: string, itemKey: string, iso: string): React.CSSProperties => {
+    const k = flagKey(sectionKey, itemKey, iso);
+    if (movingFrom && movingFrom.key === k)
+      return { outline: "3px dashed #0f172a", outlineOffset: "-3px", position: "relative", zIndex: 2 };
+    if (flagSet.has(k))
+      return { outline: "2px solid #dc2626", outlineOffset: "-2px", position: "relative", zIndex: 1 };
+    const hex = markHex(markMap.get(k) || "");
+    if (hex) return { outline: `3px solid ${hex}`, outlineOffset: "-3px", position: "relative", zIndex: 1 };
+    return {};
+  };
+
+  // La bandera y el punto de color. Si la celda tiene las dos cosas se ven las dos: el borde lo gana
+  // la bandera (es lo urgente) pero el color sigue estando a la vista en el punto.
+  const marcasDeCelda = (sectionKey: string, itemKey: string, iso: string) => {
+    const k = flagKey(sectionKey, itemKey, iso);
+    const color = markMap.get(k) || "";
+    const hex = markHex(color);
+    const marcada = flagSet.has(k);
+    if (!marcada && !hex) return null;
+    return (
+      <>
+        {marcada && <span title="Marcado para revisar"><BanderaRoja /></span>}
+        {hex && (
+          <span
+            title={markLabel(color)}
+            style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: hex, marginRight: 3, verticalAlign: "middle" }}
+          />
+        )}
+      </>
+    );
+  };
 
   const [cellMenu, setCellMenu] = useState<CellMenu | null>(null);
   const openCellMenu = (
@@ -1220,15 +1267,14 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
       {visibleDayCols.map((c) => {
         const v = drow.get(c.iso) || 0;
         const empDet = v ? fondoEmpresa(label, c.iso) : { style: undefined, detalle: "" };
-        const marcadaDet = menu ? flagSet.has(flagKey(menu.sectionKey, menu.itemKey, c.iso)) : false;
         return (
           <td
             key={`${key}-${c.iso}`}
             onContextMenu={menu ? (ev) => openCellMenu(ev, menu.label, c.iso, menu.sectionKey, menu.itemKey, menu.match) : undefined}
             title={empDet.detalle || undefined}
-            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...(empDet.style || {}), ...hi(c.iso), ...estiloMarcada(marcadaDet) }}
+            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...(empDet.style || {}), ...hi(c.iso), ...estiloCelda(menu?.sectionKey || "", menu?.itemKey || "", c.iso) }}
           >
-            {marcadaDet && <span title="Marcado para revisar"><BanderaRoja /></span>}
+            {marcasDeCelda(menu?.sectionKey || "", menu?.itemKey || "", c.iso)}
             {v ? money(v) : "·"}
           </td>
         );
@@ -1348,7 +1394,61 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           arriba aparece el contador de todo lo que está marcado. Lo que aún no está clasificado cae en <strong>“Sin clasificar”</strong>: ahí, con
           <strong> botón derecho → Vincular</strong>, la plata que entró se engancha a un <strong>trabajo</strong> y
           la que salió a un <strong>proveedor</strong> (y a la factura de compra que cancela).
+          Para <strong>corregir algo mal cargado</strong>: botón derecho sobre el número →
+          <strong> Mover a…</strong>, y después botón derecho en el casillero correcto →
+          <strong> Mover aquí</strong>.
         </div>
+
+        {/* LEYENDA. El fondo dice DE QUE EMPRESA es y el borde dice QUE PASA con ese monto: son dos
+            informaciones distintas y por eso no pueden usar el mismo recurso visual. */}
+        <div
+          style={{
+            display: "flex", flexWrap: "wrap", alignItems: "center", gap: 14,
+            padding: "7px 10px", marginBottom: 10, borderRadius: 8,
+            border: "1px solid #e2e8f0", background: "#fff", fontSize: 11, color: "#475569",
+          }}
+        >
+          <span style={{ fontWeight: 800, color: "#0f172a" }}>Fondo = empresa</span>
+          {companyOptions.map((c) => (
+            <span key={c.value} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 16, height: 12, borderRadius: 3, background: c.soft || "#f1f5f9", border: "1px solid #cbd5e1", display: "inline-block" }} />
+              {c.short || c.value}
+            </span>
+          ))}
+          <span style={{ width: 1, height: 16, background: "#e2e8f0" }} />
+          <span style={{ fontWeight: 800, color: "#0f172a" }}>Borde = qué pasa con el monto</span>
+          {CALENDAR_MARK_COLORS.map((c) => (
+            <span key={c.id} style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <span style={{ width: 16, height: 12, borderRadius: 3, border: `3px solid ${c.hex}`, display: "inline-block" }} />
+              {c.label}
+            </span>
+          ))}
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 16, height: 12, borderRadius: 3, border: "2px solid #dc2626", display: "inline-block" }} />
+            <BanderaRoja /> Revisar esto
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 16, height: 12, borderRadius: 3, border: "3px dashed #0f172a", display: "inline-block" }} />
+            Lo que estás moviendo
+          </span>
+        </div>
+
+        {movingFrom && (
+          <div
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+              padding: "7px 10px", marginBottom: 10, borderRadius: 8,
+              border: "2px dashed #0f172a", background: "#f8fafc", fontSize: 12, color: "#0f172a",
+            }}
+          >
+            <span>
+              Estás moviendo <strong>{movingFrom.ids.length === 1 ? "1 movimiento" : `${movingFrom.ids.length} movimientos`}</strong>{" "}
+              de <strong>{movingFrom.label}</strong>. Botón derecho en el casillero correcto →{" "}
+              <strong>Mover aquí</strong>.
+            </span>
+            <button style={btnSecondary} onClick={() => setMovingFrom(null)}>Cancelar</button>
+          </div>
+        )}
         <div
           ref={wrapRef}
           style={{
@@ -1497,7 +1597,6 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               </td>
                               {visibleDayCols.map((c) => {
                                 const v = emp.byDay[c.iso]?.[linea.campo] || 0;
-                                const marcada = flagSet.has(flagKey("billetera", kp, c.iso));
                                 return (
                                   <td
                                     key={`${kp}-${c.iso}`}
@@ -1508,13 +1607,13 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                       background: linea.bg,
                                       color: v < 0 ? "#dc2626" : linea.color,
                                       ...hi(c.iso),
-                                      ...estiloMarcada(marcada),
+                                      ...estiloCelda("billetera", kp, c.iso),
                                     }}
                                     onContextMenu={(ev) =>
                                       openCellMenu(ev, `${emp.short} · ${linea.sub}`, c.iso, "billetera", kp, () => false)
                                     }
                                   >
-                                    {marcada && <BanderaRoja />}
+                                    {marcasDeCelda("billetera", kp, c.iso)}
                                     {v ? money(v) : "\u00b7"}
                                   </td>
                                 );
@@ -1533,14 +1632,13 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                           <tr>
                             <td style={{ ...labelSticky(top, row.bg), fontWeight: 800, color: row.isOut ? "#991b1b" : "#065f46" }}>{row.lbl}</td>
                             {visibleDayCols.map((c) => {
-                              const marcada = flagSet.has(flagKey("total", row.kp, c.iso));
                               return (
                                 <td
                                   key={`${row.kp}-${c.iso}`}
-                                  style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: row.bg, ...hi(c.iso), ...estiloMarcada(marcada) }}
+                                  style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: row.bg, ...hi(c.iso), ...estiloCelda("total", row.kp, c.iso) }}
                                   onContextMenu={(ev) => openCellMenu(ev, row.lbl, c.iso, "total", row.kp, () => false)}
                                 >
-                                  {marcada && <BanderaRoja />}
+                                  {marcasDeCelda("total", row.kp, c.iso)}
                                   {bnCell(row.b, row.n, c.iso, row.isOut)}
                                 </td>
                               );
@@ -1659,7 +1757,6 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               const empCob = tinte
                                 ? { style: { background: tinte } as React.CSSProperties, detalle: "" }
                                 : fondoEmpresa(title, c.iso);
-                              const marcadaCob = flagSet.has(flagKey(section.key, cobKey, c.iso));
                               return (
                               <td
                                 key={`cob-${title}-${c.iso}`}
@@ -1667,9 +1764,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                   openCellMenu(ev, title, c.iso, section.key, cobKey, (e) => isCobranzaEntry(e) && sameTitle(e, title))
                                 }
                                 title={empCob.detalle || undefined}
-                                style={{ ...tdCell, ...(empCob.style || {}), ...hi(c.iso), ...estiloMarcada(marcadaCob) }}
+                                style={{ ...tdCell, ...(empCob.style || {}), ...hi(c.iso), ...estiloCelda(section.key, cobKey, c.iso) }}
                               >
-                                {marcadaCob && <span title="Marcado para revisar"><BanderaRoja /></span>}
+                                {marcasDeCelda(section.key, cobKey, c.iso)}
                                 {bnCell(drowB, drowN, c.iso, false)}
                               </td>
                               );
@@ -1697,7 +1794,6 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               {visibleDayCols.map((c) => {
                                 const v = drow?.get(c.iso) || 0;
                                 const emp = v ? fondoEmpresa(it.key, c.iso) : { style: undefined, detalle: "" };
-                                const marcada = flagSet.has(flagKey(section.key, it.key, c.iso));
                                 return (
                                   <td
                                     key={`${it.key}-${c.iso}`}
@@ -1710,9 +1806,9 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                         ? `${emp.detalle} · Click: cargar · Click derecho: editar / borrar`
                                         : "Click: cargar en este día · Click derecho: editar / borrar"
                                     }
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...(emp.style || {}), ...hi(c.iso), ...estiloMarcada(marcada) }}
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso) }}
                                   >
-                                    {marcada && <span title="Marcado para revisar"><BanderaRoja /></span>}
+                                    {marcasDeCelda(section.key, it.key, c.iso)}
                                     {v ? money(v) : "+"}
                                   </td>
                                 );
@@ -2366,6 +2462,114 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     }}
                   >
                     {marcada ? "Quitar la marca de revisar" : "Marcar para revisar"}
+                  </button>
+                </>
+              );
+            })()}
+            {onSetMark && (() => {
+              const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
+              const actual = markMap.get(k) || "";
+              return (
+                <>
+                  <QuickMenuSep />
+                  <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px" }}>Marcar con un color</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "2px 8px 6px" }}>
+                    {CALENDAR_MARK_COLORS.map((c) => (
+                      <button
+                        key={c.id}
+                        title={c.label}
+                        onClick={() => { onSetMark(k, cellMenu.iso, cellMenu.label, c.id); close(); }}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
+                          fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 6,
+                          background: "#fff", color: c.hex,
+                          // El elegido se distingue por el borde grueso, igual que en la planilla.
+                          border: actual === c.id ? `3px solid ${c.hex}` : `1px solid ${c.hex}`,
+                        }}
+                      >
+                        <span style={{ width: 9, height: 9, borderRadius: 2, background: c.hex, display: "inline-block" }} />
+                        {c.label}
+                      </button>
+                    ))}
+                    {actual && (
+                      <button
+                        style={{ ...quickMenuItem, width: "auto", padding: "3px 7px", fontSize: 11 }}
+                        onClick={() => { onSetMark(k, cellMenu.iso, cellMenu.label, ""); close(); }}
+                      >
+                        Sacar el color
+                      </button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+            {onEditEntry && (() => {
+              const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
+              // Paso 2: ya hay algo agarrado y esta celda puede recibirlo.
+              if (movingFrom && movingFrom.key !== k) {
+                if (!puedeRecibir(cellMenu.sectionKey, cellMenu.itemKey)) {
+                  return (
+                    <>
+                      <QuickMenuSep />
+                      <div style={{ fontSize: 11, color: "#94a3b8", padding: "4px 8px" }}>
+                        Este renglón no recibe movimientos (es un total, la plata disponible o una
+                        cobranza, que se arma sola desde el trabajo).
+                      </div>
+                      <button style={quickMenuItem} onClick={() => { setMovingFrom(null); close(); }}>
+                        Cancelar el movimiento
+                      </button>
+                    </>
+                  );
+                }
+                return (
+                  <>
+                    <QuickMenuSep />
+                    <button
+                      style={{ ...quickMenuItem, fontWeight: 700, color: "#0f172a" }}
+                      onClick={() => {
+                        const fail = movingFrom.ids.filter(
+                          (id) => !onEditEntry(id, { conceptKey: cellMenu.itemKey, date: cellMenu.iso })
+                        ).length;
+                        if (fail) {
+                          window.alert(
+                            `${fail} de ${movingFrom.ids.length} movimientos se editan desde su solapa (compras, caja chica, comisiones o trabajos) y quedaron donde estaban.`
+                          );
+                        }
+                        setMovingFrom(null);
+                        close();
+                      }}
+                    >
+                      Mover aquí ({movingFrom.ids.length} de “{movingFrom.label}”)
+                    </button>
+                    <button style={quickMenuItem} onClick={() => { setMovingFrom(null); close(); }}>
+                      Cancelar el movimiento
+                    </button>
+                  </>
+                );
+              }
+              if (movingFrom && movingFrom.key === k) {
+                return (
+                  <>
+                    <QuickMenuSep />
+                    <button style={quickMenuItem} onClick={() => { setMovingFrom(null); close(); }}>
+                      Cancelar el movimiento
+                    </button>
+                  </>
+                );
+              }
+              // Paso 1: agarrar lo que hay en esta celda.
+              if (list.length === 0) return null;
+              return (
+                <>
+                  <QuickMenuSep />
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      setMovingFrom({ key: k, label: cellMenu.label, iso: cellMenu.iso, ids: list.map((e) => e.id) });
+                      close();
+                    }}
+                  >
+                    Mover a… ({list.length === 1 ? "este movimiento" : `${list.length} movimientos`})
                   </button>
                 </>
               );

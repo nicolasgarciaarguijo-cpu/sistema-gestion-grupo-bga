@@ -36,6 +36,7 @@ import {
   type LedgerPayment,
 } from "./domain/purchaseLedger";
 import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
+import { CalendarMark, setCalendarMark } from "./domain/calendarMarks";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { deriveConvenioHours } from "./domain/attendance";
 import {
@@ -1277,6 +1278,7 @@ const defaultInternalTransfers: InternalTransfer[] = [];
 const defaultPersonLedgerEntries: PersonLedgerEntry[] = [];
 
 const defaultCalendarFlags: CalendarFlag[] = [];
+const defaultCalendarMarks: CalendarMark[] = [];
 
 const defaultIvaVepPayments: IvaVepPayment[] = [];
 
@@ -1678,6 +1680,8 @@ type PersistedAppStateData = {
   calendarRowConfig: CalendarRowConfig;
   // Banderitas de revision del Calendario anual. Ver domain/types.ts CalendarFlag.
   calendarFlags: CalendarFlag[];
+  // Marcadores de color del Calendario anual. Ver domain/calendarMarks.ts.
+  calendarMarks: CalendarMark[];
   stockItems: StockItem[];
   costAnalysisGroups: CostAnalysisGroup[];
   costAnalysisEntries: CostAnalysisEntry[];
@@ -1776,7 +1780,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig", "calendarFlags"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig", "calendarFlags", "calendarMarks"] as const,
   },
   {
     key: "movimientos-internos",
@@ -2837,6 +2841,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // La solapa Movimientos internos filtra por su propia empresa: es su vista, no la del Balance.
   const [personLedgerEntries, setPersonLedgerEntries] = useState<PersonLedgerEntry[]>(defaultPersonLedgerEntries);
   const [calendarFlags, setCalendarFlags] = useState<CalendarFlag[]>(defaultCalendarFlags);
+  const [calendarMarks, setCalendarMarks] = useState<CalendarMark[]>(defaultCalendarMarks);
   const [internalCompanyScope, setInternalCompanyScope] = useState<CompanyScope | "__ALL__">("__ALL__");
   const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
@@ -3850,6 +3855,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     internalTransfers,
     personLedgerEntries,
     calendarFlags,
+    calendarMarks,
     ivaVepPayments,
     creditCards,
     creditCardStatements,
@@ -9104,6 +9110,7 @@ Escribi CERRAR para confirmar:`
     internalTransfers: internalTransfers.map((item) => ({ ...item, date: stampDate(item.date) })),
     personLedgerEntries: personLedgerEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
     calendarFlags: calendarFlags.map((item) => ({ ...item })),
+    calendarMarks: calendarMarks.map((item) => ({ ...item })),
     ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
     fiscalClosings: fiscalClosings.map((item) => ({ ...item })),
     calendarRowConfig: {
@@ -9372,6 +9379,7 @@ Escribi CERRAR para confirmar:`
       }))
     );
     setCalendarFlags((data.calendarFlags || defaultCalendarFlags).map((item) => ({ ...item })));
+    setCalendarMarks((data.calendarMarks || defaultCalendarMarks).map((item) => ({ ...item })));
     setPersonLedgerEntries(
       keepAccessibleByCompany(data.personLedgerEntries || defaultPersonLedgerEntries).map((item) => ({
         ...item,
@@ -11538,6 +11546,7 @@ Escribi CERRAR para confirmar:`
     internalTransfers,
     personLedgerEntries,
     calendarFlags,
+    calendarMarks,
     ivaVepPayments,
     calendarRowConfig,
     creditCards,
@@ -16367,6 +16376,19 @@ Escribi CERRAR para confirmar:`
 
   // La nota se escribe DESPUES, sobre la lista de marcadas. Antes se pedia con window.prompt al
   // marcar, y si el navegador tenia los dialogos bloqueados devolvia null y no se marcaba nada.
+  // Marcador de color de una celda. La logica (poner / cambiar / sacar) vive en domain para poder
+  // testearla: aca solo se le pasa quien lo hizo y cuando.
+  const setCalendarCellMark = (key: string, date: string, label: string, color: string) => {
+    setCalendarMarks((prev) =>
+      setCalendarMark(prev, {
+        key, date, label, color,
+        id: newId(),
+        createdBy: supabaseProfile?.full_name || "Usuario",
+        createdAt: new Date().toISOString(),
+      })
+    );
+  };
+
   const setCalendarFlagNote = (id: number, note: string) => {
     setCalendarFlags((prev) => prev.map((f) => (f.id === id ? { ...f, note } : f)));
   };
@@ -16377,6 +16399,8 @@ Escribi CERRAR para confirmar:`
           flags={calendarFlags}
           onToggleFlag={toggleCalendarFlag}
           onSetFlagNote={setCalendarFlagNote}
+          marks={calendarMarks}
+          onSetMark={setCalendarCellMark}
           billeteraDiaria={billeteraDiariaPorEmpresa}
           entries={annualCashFlowEntries}
           companyScope={balanceCompanyScope}
