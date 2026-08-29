@@ -39,6 +39,7 @@ const base = {
   bnaCompra: 1,
   money: (n: number) => String(n),
   rowConfig: DEFAULT_CALENDAR_ROW_CONFIG,
+  jobs: [{ id: 7, budgetNumber: "3199", client: "RICARDO GRANILLO", company: "BGA", active: true }],
 };
 
 const render = (extra: any) => {
@@ -170,5 +171,65 @@ describe("la celda marcada se ve", () => {
     // que queda al final no se ve. Este era el bug: la opcion existia y estaba cortada abajo.
     const menu = soltar!.closest("div[style*='fixed']")!;
     expect(Array.from(menu.querySelectorAll("button")).indexOf(soltar!)).toBe(0);
+  });
+
+  // LA PLANILLA Y EL TRABAJO SON EL MISMO DATO. Si se carga una cobranza eligiendo el trabajo, tiene
+  // que escribirse COMO PAGO DEL TRABAJO y no como un movimiento suelto del calendario: si se
+  // hicieran las dos cosas, el mismo peso quedaria contado dos veces.
+  it("una cobranza con trabajo elegido se carga como pago del trabajo, no como movimiento suelto", () => {
+    const pagos: any[] = [];
+    const sueltos: any[] = [];
+    const host = render({
+      companyScope: "BGA",
+      onAddJobPayment: (ppto: string, pay: any) => { pagos.push({ ppto, pay }); return true; },
+      onAddMovement: (m: any) => { sueltos.push(m); },
+    });
+
+    const boton = Array.from(host.querySelectorAll("button")).find((b) =>
+      (b.textContent || "").includes("cargar cobranza")
+    )!;
+    expect(boton).toBeTruthy();
+    act(() => { boton.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    const selects = Array.from(document.querySelectorAll("select"));
+    const selTrabajo = selects.find((sel) =>
+      Array.from(sel.options).some((o) => o.textContent?.includes("3199"))
+    )!;
+    expect(selTrabajo).toBeTruthy();
+    const setSel = (el: HTMLSelectElement, v: string) => {
+      act(() => {
+        const setter = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, "value")!.set!;
+        setter.call(el, v);
+        el.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+    };
+    setSel(selTrabajo, "3199");
+
+    const selComo = Array.from(document.querySelectorAll("select")).find((sel) =>
+      Array.from(sel.options).some((o) => o.value === "efectivo")
+    )!;
+    expect(selComo).toBeTruthy();
+    setSel(selComo, "efectivo");
+
+    const inputMonto = Array.from(document.querySelectorAll("input")).find((i) => i.type === "number")!;
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(inputMonto, "50000");
+      inputMonto.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const guardar = Array.from(document.querySelectorAll("button")).find((b) =>
+      (b.textContent || "").includes("Guardar en el sistema")
+    )!;
+    expect(guardar).toBeTruthy();
+    expect((guardar as HTMLButtonElement).disabled).toBe(false);
+    act(() => { guardar.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(pagos).toHaveLength(1);
+    expect(pagos[0].ppto).toBe("3199");
+    expect(pagos[0].pay.amount).toBe(50000);
+    expect(pagos[0].pay.transactionType).toBe("efectivo");
+    // Y NO se creo ademas un movimiento suelto: seria el mismo peso contado dos veces.
+    expect(sueltos).toHaveLength(0);
   });
 });

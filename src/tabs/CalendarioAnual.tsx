@@ -62,6 +62,10 @@ type AddForm = {
   itemKey: string;
   ppto: string;
   cliente: string;
+  // Trabajo elegido de la lista. Si esta, la cobranza se carga COMO PAGO DEL TRABAJO.
+  jobPpto: string;
+  // Lo mismo que pide el trabajo: sin esto la cobranza en efectivo no llega a la billetera.
+  transactionType: "efectivo" | "transferencia" | "cheque" | "otros";
   customLabel: string;
   amount: number;
   administration: "blanco" | "negro";
@@ -81,6 +85,7 @@ export function CalendarioAnualTab({
   companyOptions,
   fiscalStartMonth = 11,
   onAddMovement,
+  onAddJobPayment,
   onAssignConcept,
   bnaCompra,
   money,
@@ -167,6 +172,15 @@ export function CalendarioAnualTab({
     costKind?: "fijo" | "variable";
   }) => void;
   onAssignConcept: (bankIds: number[], conceptKey: string) => void;
+  // Cargar una cobranza COMO PAGO del trabajo aprobado: el trabajo es el dueño del dato y la
+  // planilla lo muestra por el reflejo automatico. Devuelve false si no encontro el trabajo.
+  onAddJobPayment?: (
+    budgetNumber: string,
+    pay: {
+      date: string; amount: number; administration: "blanco" | "negro";
+      transactionType: "efectivo" | "transferencia" | "cheque" | "otros"; notes: string;
+    }
+  ) => boolean;
   // Editar / borrar el movimiento que está DETRÁS de un número (click derecho). Devuelven false si ese
   // movimiento vive en otra solapa (compras, caja chica, comisiones) y hay que editarlo allá.
   onEditEntry?: (
@@ -670,6 +684,8 @@ export function CalendarioAnualTab({
       itemKey,
       ppto: "",
       cliente: "",
+      jobPpto: "",
+      transactionType: "transferencia",
       customLabel: presetLabel,
       amount: 0,
       administration: "blanco",
@@ -905,6 +921,10 @@ export function CalendarioAnualTab({
     }
     setAddForm({
       editId: e.id,
+      // Editando NO se cambia de dueño: un movimiento ya cargado se corrige donde está. Elegir un
+      // trabajo acá lo convertiría en un pago nuevo y quedaría contado dos veces.
+      jobPpto: "",
+      transactionType: "transferencia",
       date: e.date,
       company: e.company,
       sectionKey,
@@ -1175,6 +1195,21 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
         : false;
       if (!ok) {
         window.alert("Este movimiento se edita en la solapa de donde salió (compras, caja chica, comisiones o trabajos).");
+        return;
+      }
+      setAddForm(null);
+      return;
+    }
+    if (isCob && addForm.jobPpto && onAddJobPayment) {
+      const ok = onAddJobPayment(addForm.jobPpto, {
+        date: addForm.date,
+        amount: Number(addForm.amount),
+        administration: addForm.administration,
+        transactionType: addForm.transactionType,
+        notes: addForm.notes,
+      });
+      if (!ok) {
+        window.alert("No encontré ese trabajo aprobado. Cargala sin trabajo o revisá el presupuesto.");
         return;
       }
       setAddForm(null);
@@ -2920,11 +2955,48 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 </label>
                 {isCob ? (
                   <>
-                    <label style={lblStyle}>N° presupuesto
-                      <input style={styles.input} value={addForm.ppto} placeholder="Ej: 3199" onChange={(e) => setAddForm({ ...addForm, ppto: e.target.value })} />
+                    <label style={lblStyle}>Trabajo
+                      <select
+                        style={styles.input}
+                        value={addForm.jobPpto}
+                        onChange={(e) => setAddForm({ ...addForm, jobPpto: e.target.value })}
+                      >
+                        <option value="">— Sin trabajo (cobranza suelta) —</option>
+                        {jobs
+                          .filter((j) => j.active !== false && (addForm.company ? j.company === addForm.company : true))
+                          .map((j) => (
+                            <option key={`${j.budgetNumber}-${j.client}`} value={String(j.budgetNumber)}>
+                              {j.budgetNumber} · {j.client}
+                            </option>
+                          ))}
+                      </select>
                     </label>
-                    <label style={lblStyle}>Cliente
-                      <input style={styles.input} value={addForm.cliente} onChange={(e) => setAddForm({ ...addForm, cliente: e.target.value })} />
+                    {addForm.jobPpto ? (
+                      <div style={{ ...styles.noticeBox, gridColumn: "1 / -1", margin: 0, fontSize: 12 }}>
+                        Se carga como <strong>pago del trabajo {addForm.jobPpto}</strong>: aparece en Trabajos
+                        aprobados y vuelve sola a esta planilla. Es el mismo cobro, no dos.
+                      </div>
+                    ) : (
+                      <>
+                        <label style={lblStyle}>N° presupuesto (suelto)
+                          <input style={styles.input} value={addForm.ppto} placeholder="Ej: 3199" onChange={(e) => setAddForm({ ...addForm, ppto: e.target.value })} />
+                        </label>
+                        <label style={lblStyle}>Cliente
+                          <input style={styles.input} value={addForm.cliente} onChange={(e) => setAddForm({ ...addForm, cliente: e.target.value })} />
+                        </label>
+                      </>
+                    )}
+                    <label style={lblStyle}>Cómo entró
+                      <select
+                        style={styles.input}
+                        value={addForm.transactionType}
+                        onChange={(e) => setAddForm({ ...addForm, transactionType: e.target.value as any })}
+                      >
+                        <option value="transferencia">Transferencia</option>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="otros">Otros</option>
+                      </select>
                     </label>
                   </>
                 ) : (

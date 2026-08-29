@@ -11677,6 +11677,44 @@ Escribi CERRAR para confirmar:`
     setFinancialItems((prev) => [item, ...prev]);
   };
 
+  // COBRAR DESDE LA PLANILLA. Pedido de Nicolas (2026-08-29): "si cargo desde la planilla tambien se
+  // carga la informacion en el trabajo aprobado y viceversa, pidiendome la misma informacion".
+  //
+  // La vuelta trabajo -> planilla ya andaba (buildAutoFinancialItemsForJob refleja cada pago). La que
+  // faltaba es esta: una cobranza cargada en el calendario tiene que ser EL PAGO DEL TRABAJO, no un
+  // registro paralelo. Por eso se escribe en el trabajo y el reflejo automatico la devuelve a la
+  // planilla: un solo numero, cargado desde donde a uno le quede mas comodo.
+  const addPaymentFromCalendar = (
+    budgetNumber: string,
+    pay: {
+      date: string;
+      amount: number;
+      administration: "blanco" | "negro";
+      transactionType: "efectivo" | "transferencia" | "cheque" | "otros";
+      notes: string;
+    }
+  ): boolean => {
+    const job = approvedJobs.find((j) => String(j.budgetNumber) === String(budgetNumber));
+    if (!job) return false;
+    const nuevo: Payment = {
+      id: newId(),
+      paymentNumber: "",
+      paymentDate: pay.date,
+      transactionType: pay.transactionType,
+      administration: pay.administration,
+      currency: "ARS",
+      amount: Number(pay.amount) || 0,
+    };
+    setApprovedJobs((prev) =>
+      prev.map((j) =>
+        String(j.budgetNumber) === String(budgetNumber)
+          ? { ...j, payments: [...(j.payments || []), nuevo] }
+          : j
+      )
+    );
+    return true;
+  };
+
   // Edición desde el CALENDARIO (click derecho sobre el número). Cada número de la planilla sale de un
   // movimiento del banco (id "bank-<id>") o de una carga manual (id "financial-<id>"): esos dos se
   // pueden editar y borrar desde ahí. Los que vienen de otra solapa (compras, caja chica, comisiones,
@@ -16410,6 +16448,7 @@ Escribi CERRAR para confirmar:`
           fiscalYearOptions={balanceFiscalYearOptions}
           companyOptions={COMPANY_OPTIONS}
           onAddMovement={addCalendarMovement}
+          onAddJobPayment={addPaymentFromCalendar}
           onAssignConcept={assignBankConcept}
           bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}
           money={money}
