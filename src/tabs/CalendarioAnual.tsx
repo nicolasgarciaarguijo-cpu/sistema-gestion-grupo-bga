@@ -621,7 +621,7 @@ export function CalendarioAnualTab({
   // tengan movimiento este mes— como alerta; más las cobranzas con movimiento en el mes visible.
   const cobranzaRows = useMemo(() => {
     const budgetOf = (key: string) => key.split("·")[0].trim();
-    const rows: Array<{ title: string; drowB: Map<string, number>; drowN: Map<string, number>; falta?: string }> = [];
+    const rows: Array<{ title: string; drowB: Map<string, number>; drowN: Map<string, number>; falta?: string; company?: string }> = [];
     const usedKeys = new Set<string>();
     const mergeByBudget = (src: Map<string, Map<string, number>>, budget: string) => {
       const merged = new Map<string, number>();
@@ -641,6 +641,7 @@ export function CalendarioAnualTab({
           drowB: mergeByBudget(agg.cobranzaDetailB, String(job.budgetNumber)),
           drowN: mergeByBudget(agg.cobranzaDetailN, String(job.budgetNumber)),
           falta: job.falta || "",
+          company: job.company,
         });
       });
     const hasMove = (m?: Map<string, number>) => !!m && visibleDayCols.some((c) => (m.get(c.iso) || 0) !== 0);
@@ -1629,31 +1630,53 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                       ))}
                     </tr>
                     {!isCol && (isCob
-                      ? cobranzaRows.map(({ title, drowB, drowN, falta }) => (
-                          <tr key={`cob-${title}`} style={{ background: falta ? "#fff7ed" : "#f8fafc" }}>
+                      ? cobranzaRows.map(({ title, drowB, drowN, falta, company }) => {
+                          // El trabajo es de UNA empresa, asi que se pinta la fila entera con su
+                          // color. Si la fila no vino de un trabajo (cobranza suelta), se cae al
+                          // tinte por dia segun quien puso la plata.
+                          const tinte = company ? tinteDeEmpresa(company) : undefined;
+                          const fondo = tinte || "#f8fafc";
+                          // itemKey propio por trabajo: antes iba "" y TODAS las filas de la seccion
+                          // compartian la misma clave de bandera (se pisaban entre si).
+                          const cobKey = `cob:${title}`;
+                          return (
+                          <tr key={`cob-${title}`} style={{ background: fondo }}>
                             <td
                               onContextMenu={(ev) =>
-                                openRowMenu(ev, "cobranza", title, section.key, "", (e) => isCobranzaEntry(e) && sameTitle(e, title))
+                                openRowMenu(ev, "cobranza", title, section.key, cobKey, (e) => isCobranzaEntry(e) && sameTitle(e, title))
                               }
                               title={falta ? `${title} — falta ${falta}` : title}
-                              style={{ ...tdStickyLabel, background: falta ? "#fff7ed" : "#f8fafc", paddingLeft: 38, fontWeight: 400, color: "#475569" }}
+                              style={{
+                                ...tdStickyLabel, background: fondo, paddingLeft: 38, fontWeight: 400, color: "#475569",
+                                // "falta cobrar" ya no se come el fondo: queda como barra a la izquierda.
+                                boxShadow: falta ? "inset 3px 0 0 #f59e0b" : undefined,
+                              }}
                             >
                               {title}
                               {falta ? <span style={alertPill} title={`Falta para cerrar: ${falta}`}>⚠ falta {falta}</span> : null}
                             </td>
-                            {visibleDayCols.map((c) => (
+                            {visibleDayCols.map((c) => {
+                              const empCob = tinte
+                                ? { style: { background: tinte } as React.CSSProperties, detalle: "" }
+                                : fondoEmpresa(title, c.iso);
+                              const marcadaCob = flagSet.has(flagKey(section.key, cobKey, c.iso));
+                              return (
                               <td
                                 key={`cob-${title}-${c.iso}`}
                                 onContextMenu={(ev) =>
-                                  openCellMenu(ev, title, c.iso, section.key, "", (e) => isCobranzaEntry(e) && sameTitle(e, title))
+                                  openCellMenu(ev, title, c.iso, section.key, cobKey, (e) => isCobranzaEntry(e) && sameTitle(e, title))
                                 }
-                                style={{ ...tdCell, ...hi(c.iso) }}
+                                title={empCob.detalle || undefined}
+                                style={{ ...tdCell, ...(empCob.style || {}), ...hi(c.iso), ...estiloMarcada(marcadaCob) }}
                               >
+                                {marcadaCob && <span title="Marcado para revisar"><BanderaRoja /></span>}
                                 {bnCell(drowB, drowN, c.iso, false)}
                               </td>
-                            ))}
+                              );
+                            })}
                           </tr>
-                        ))
+                          );
+                        })
                       : section.items.filter((it) => !hiddenRows.has(it.key)).map((it) => {
                           const itLabel = labelOf(it.key, it.label);
                           const drow = agg.byConcept.get(it.key);
@@ -1787,7 +1810,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               {!onlySection && agg.unclDetail.size > 0 && (
                 <>
                   <tr>
-                    <td style={{ ...tdStickyLabel, background: "#fef9c3", fontWeight: 800, color: "#854d0e" }}>
+                    <td style={{ ...tdStickyLabel, background: "#e2e8f0", fontWeight: 800, color: "#b91c1c", boxShadow: "inset 4px 0 0 #dc2626" }}>
                       <span style={{ cursor: "pointer" }} onClick={() => toggle("uncl")}>
                         {expanded.has("uncl") ? "▾ " : "▸ "}SIN CLASIFICAR · falta ubicar (D)
                       </span>
@@ -1804,7 +1827,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     {visibleDayCols.map((c) => {
                       const v = agg.unclByDate.get(c.iso) || 0;
                       return (
-                        <td key={`unclh-${c.iso}`} style={{ ...tdCell, background: "#fef9c3", fontWeight: 700, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}>
+                        <td key={`unclh-${c.iso}`} style={{ ...tdCell, background: "#e2e8f0", fontWeight: 700, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#e2e8f0", ...hi(c.iso) }}>
                           {v ? money(Math.abs(v)) : "·"}
                         </td>
                       );
@@ -1814,13 +1837,13 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     Array.from(agg.unclDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => {
                       const ids = agg.unclBankIds.get(title) || [];
                       return (
-                        <tr key={`uncl-${title}`} style={{ background: "#fffbeb" }}>
+                        <tr key={`uncl-${title}`} style={{ background: "#f1f5f9" }}>
                           <td
                             onContextMenu={(ev) =>
                               openRowMenu(ev, "uncl", title, "", "", (e) => sameTitle(e, title) && !e.conceptKey && !isCobranzaEntry(e))
                             }
                             title={title}
-                            style={{ ...tdStickyLabel, background: "#fffbeb", paddingLeft: 24 }}
+                            style={{ ...tdStickyLabel, background: "#f1f5f9", paddingLeft: 24 }}
                           >
                             <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0, overflow: "hidden" }}>
                               {(() => {
