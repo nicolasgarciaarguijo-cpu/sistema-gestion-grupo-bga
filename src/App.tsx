@@ -17311,6 +17311,7 @@ Escribi CERRAR para confirmar:`
           discardStatementDraft={discardCostStatementDraft}
           bankStatementSummary={bankStatementSummary}
           monthBankStatementEntries={monthBankStatementEntries}
+          allBankStatementEntries={visibleBankStatementEntries}
           operationalMonth={operationalMonth}
           monthLabel={monthLabel}
           shiftOperationalMonth={shiftOperationalMonth}

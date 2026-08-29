@@ -30,6 +30,7 @@ import { bankEntryMissingInfo } from "../domain/bankAssignment";
 import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
 import { money, todayIso } from "../lib/format";
 import { modoDelBanco } from "../domain/calendarFeeds";
+import { verificarExtractos } from "../domain/verificacionExtracto";
 import type { CostGroup, CostKind, Supplier, CompanyName } from "../domain/types";
 import type { CostStatementDraftRow } from "./Costos";
 
@@ -57,6 +58,8 @@ type BancosTabProps = {
   // Movimientos bancarios (el banco real). Se navega por mes con shiftOperationalMonth.
   bankStatementSummary: any;
   monthBankStatementEntries: any[];
+  // TODOS los movimientos cargados (sin filtro de mes): el resumen completo por cuenta.
+  allBankStatementEntries: any[];
   operationalMonth: string;
   monthLabel: (month: string) => string;
   shiftOperationalMonth: (delta: number) => void;
@@ -101,6 +104,7 @@ export function BancosTab({
   discardStatementDraft,
   bankStatementSummary,
   monthBankStatementEntries,
+  allBankStatementEntries,
   operationalMonth,
   monthLabel,
   shiftOperationalMonth,
@@ -739,6 +743,8 @@ export function BancosTab({
       </Panel>
 
       {/* TARJETAS: debajo del banco, en la misma solapa. */}
+      <VerificacionDeResumenes entries={allBankStatementEntries} />
+
       {tarjetasSlot}
 
       {ctxMenu &&
@@ -811,5 +817,126 @@ export function BancosTab({
           return null;
         })()}
     </>
+  );
+}
+
+// ---- VERIFICACION DE RESUMENES ----------------------------------------------------------------
+// El banco constata, no carga (Nicolas, 2026-08-29). Este bloque es ese trabajo: ver CADA resumen
+// entero -- no el mes que toque -- y responder si esta completo. La prueba es la cadena de saldos:
+// el saldo de cada linea tiene que ser el de la anterior mas o menos el movimiento. Donde no da,
+// falta un movimiento, sobra uno, o hay un monto mal tipeado.
+//
+// No se edita nada desde acá a proposito: es una pantalla de control.
+function VerificacionDeResumenes({ entries }: { entries: any[] }) {
+  const cuentas = React.useMemo(() => verificarExtractos(entries || []), [entries]);
+  const [abierta, setAbierta] = React.useState<string | null>(null);
+  const [soloProblemas, setSoloProblemas] = React.useState(false);
+
+  if (cuentas.length === 0) return null;
+  const conProblemas = cuentas.filter((c) => c.rupturas > 0).length;
+
+  return (
+    <Panel
+      title="Resúmenes cargados · verificación"
+      span="full"
+      actions={
+        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+          <input type="checkbox" checked={soloProblemas} onChange={(e) => setSoloProblemas(e.target.checked)} />
+          Ver solo los renglones donde no cierra
+        </label>
+      }
+    >
+      <div style={styles.noticeBox}>
+        El extracto <strong>ya no carga nada</strong>: constata. Acá está cada resumen <strong>entero</strong>,
+        cuenta por cuenta y sin filtro de mes. La verificación es la <strong>cadena de saldos</strong>: el saldo
+        de cada línea tiene que ser el de la anterior más o menos el movimiento. Si en algún renglón no da, ahí
+        falta un movimiento, sobra uno, o un monto está mal tipeado.
+        {conProblemas > 0 ? (
+          <> <strong style={{ color: "#b91c1c" }}>Hay {conProblemas} cuenta(s) donde la cadena no cierra.</strong></>
+        ) : (
+          <> <strong style={{ color: "#166534" }}>Todas las cuentas cierran.</strong></>
+        )}
+      </div>
+
+      {cuentas.map((c) => {
+        const cierra = c.rupturas === 0;
+        const abierto = abierta === c.clave;
+        const lineas = soloProblemas ? c.lineas.filter((l) => l.rompe) : c.lineas;
+        return (
+          <div key={c.clave} style={{ border: "1px solid #e2e8f0", borderRadius: 10, marginBottom: 10, overflow: "hidden" }}>
+            <button
+              onClick={() => setAbierta(abierto ? null : c.clave)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                gap: 10, padding: "10px 12px", cursor: "pointer", textAlign: "left",
+                background: cierra ? "#f8fafc" : "#fef2f2",
+                border: "none", borderLeft: `4px solid ${cierra ? "#16a34a" : "#dc2626"}`,
+              }}
+            >
+              <span style={{ fontWeight: 800 }}>
+                {abierto ? "▾ " : "▸ "}{c.bank} · {c.company}
+                {c.currency === "USD" ? " · U$S" : ""}
+              </span>
+              <span style={{ display: "flex", gap: 14, alignItems: "center", fontSize: 12, color: "#475569", flexWrap: "wrap" }}>
+                <span>{c.lineas.length} movimientos</span>
+                <span>{c.desde} → {c.hasta}</span>
+                <span>Saldo final <b>{money(c.saldoFinal, c.currency)}</b></span>
+                {c.sinClasificar > 0 && (
+                  <span style={{ color: "#b45309" }}>{c.sinClasificar} sin renglón</span>
+                )}
+                <b style={{ color: cierra ? "#166534" : "#b91c1c" }}>
+                  {cierra ? "✓ cierra" : `✕ no cierra en ${c.rupturas}`}
+                </b>
+              </span>
+            </button>
+
+            {abierto && (
+              <div style={{ ...planillaWrap, maxHeight: "60vh", borderRadius: 0, borderLeft: "none", borderRight: "none" }}>
+                <table className="planilla" style={planillaTable}>
+                  <thead>
+                    <tr>
+                      <th style={thColumna}>Fecha</th>
+                      <th style={thFlexible}>Concepto</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Entró</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Salió</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Saldo</th>
+                      <th style={{ ...thColumna, textAlign: "right" }}>Debería ser</th>
+                      <th style={thColumna}>Renglón</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lineas.length === 0 ? (
+                      <tr><td colSpan={7} style={{ ...tdFlexible, color: "#94a3b8" }}>Todo cierra en esta cuenta.</td></tr>
+                    ) : (
+                      lineas.map((l) => (
+                        <tr key={l.id} style={l.rompe ? { background: "#fee2e2" } : undefined}>
+                          <td style={tdDato}>{l.date}</td>
+                          <td style={tdFlexible} title={l.concept}>{l.concept}</td>
+                          <td style={{ ...tdDato, textAlign: "right", color: moneyToneColor("in") }}>
+                            {l.movementType === "credito" ? money(Math.abs(l.amount), c.currency) : "·"}
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right", color: moneyToneColor("out") }}>
+                            {l.movementType === "debito" ? money(Math.abs(l.amount), c.currency) : "·"}
+                          </td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(l.balance, c.currency)}</td>
+                          <td style={{ ...tdDato, textAlign: "right", color: l.rompe ? "#b91c1c" : "#cbd5e1", fontWeight: l.rompe ? 800 : 400 }}>
+                            {l.rompe && l.saldoEsperado !== undefined
+                              ? `${money(l.saldoEsperado, c.currency)} (${l.desvio > 0 ? "+" : ""}${money(l.desvio, c.currency)})`
+                              : "·"}
+                          </td>
+                          <td style={{ ...tdDato, color: l.conceptKey ? "#475569" : "#b45309" }}>
+                            {l.conceptKey || "sin asignar"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </Panel>
   );
 }

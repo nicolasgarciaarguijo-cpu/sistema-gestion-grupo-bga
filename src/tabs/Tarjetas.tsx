@@ -22,6 +22,7 @@ import type {
   CreditCardStatement,
 } from "../domain/types";
 import type { CardCostSummary } from "../domain/cardCosts";
+import { verificarResumenesDeTarjeta } from "../domain/verificacionExtracto";
 
 type TarjetasTabProps = {
   companyScope: string;
@@ -723,6 +724,8 @@ export function TarjetasTab({
           </QuickMenu>
         );
       })()}
+
+      <VerificacionDeTarjetas cards={cards} statements={statements} consumptions={consumptions} />
     </>
   );
 }
@@ -737,3 +740,89 @@ const pillFalta: React.CSSProperties = {
   display: "inline-block", background: "#fef3c7", color: "#92400e", fontWeight: 800,
   fontSize: 10, borderRadius: 999, padding: "1px 7px", verticalAlign: "middle",
 };
+
+// ---- VERIFICACION DE RESUMENES DE TARJETA ------------------------------------------------------
+// La tarjeta no tiene cadena de saldos: tiene un TOTAL por cierre. La pregunta que contesta este
+// bloque es "¿los consumos que cargamos suman ese total?". Lo que falte itemizar es justamente lo
+// que no se puede clasificar como costo, asi que no sirve ni para cotizar ni para los marcadores.
+//
+// No se edita nada desde acá a proposito: es una pantalla de control.
+function VerificacionDeTarjetas({
+  cards,
+  statements,
+  consumptions,
+}: {
+  cards: CreditCard[];
+  statements: CreditCardStatement[];
+  consumptions: CreditCardConsumption[];
+}) {
+  const verificados = React.useMemo(
+    () => verificarResumenesDeTarjeta(statements as any, consumptions as any),
+    [statements, consumptions]
+  );
+  if (verificados.length === 0) return null;
+  const nombreDeTarjeta = (cardId: number) => {
+    const c = cards.find((x) => x.id === cardId);
+    if (!c) return "Tarjeta";
+    return `${c.name || c.bank || "Tarjeta"}${c.lastDigits ? " ···" + c.lastDigits : ""}`.trim();
+  };
+  const abiertos = verificados.filter((v) => !v.cierra).length;
+
+  return (
+    <Panel title="Resúmenes de tarjeta · verificación" span="full">
+      <div style={styles.noticeBox}>
+        Cada resumen cerrado, con lo que <strong>falta itemizar</strong>. El resumen cierra cuando los
+        consumos cargados suman el total del cierre. Lo que falta es consumo sin identificar: no se
+        puede clasificar como costo, así que no entra ni en la cotización ni en los marcadores.
+        {abiertos > 0 ? (
+          <> <strong style={{ color: "#b45309" }}>Hay {abiertos} resumen(es) sin itemizar del todo.</strong></>
+        ) : (
+          <> <strong style={{ color: "#166534" }}>Están todos itemizados.</strong></>
+        )}
+      </div>
+      <div style={planillaWrap}>
+        <table className="planilla" style={planillaTable}>
+          <thead>
+            <tr>
+              <th style={thEsquina}>Tarjeta · cierre</th>
+              <th style={{ ...thColumna, textAlign: "right" }}>Total resumen</th>
+              <th style={{ ...thColumna, textAlign: "right" }}>Itemizado</th>
+              <th style={{ ...thColumna, textAlign: "right" }}>Falta</th>
+              <th style={thColumna}>Consumos</th>
+              <th style={thFlexible}>Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {verificados.map((v) => (
+              <tr key={v.id} style={v.cierra ? undefined : { background: "#fff7ed" }}>
+                <td style={tdNombre}>
+                  <strong>{nombreDeTarjeta(v.cardId)}</strong> · {formatDateDisplay(v.closingDate)}
+                </td>
+                <td style={{ ...tdDato, textAlign: "right" }}>
+                  {money(v.totalArs)}
+                  {v.totalUsd !== 0 ? ` · ${money(v.totalUsd, "USD")}` : ""}
+                </td>
+                <td style={{ ...tdDato, textAlign: "right" }}>
+                  {money(v.itemizadoArs)}
+                  {v.itemizadoUsd !== 0 ? ` · ${money(v.itemizadoUsd, "USD")}` : ""}
+                </td>
+                <td style={{ ...tdDato, textAlign: "right", fontWeight: 800, color: v.cierra ? "#166534" : "#b45309" }}>
+                  {v.cierra
+                    ? "—"
+                    : `${money(v.faltaArs)}${v.faltaUsd !== 0 ? ` · ${money(v.faltaUsd, "USD")}` : ""}`}
+                </td>
+                <td style={tdDato}>
+                  {v.consumos}
+                  {v.sinGrupo > 0 ? ` (${v.sinGrupo} sin rubro)` : ""}
+                </td>
+                <td style={{ ...tdFlexible, color: v.cierra ? "#166534" : "#b45309", fontWeight: 700 }}>
+                  {v.cierra ? "✓ itemizado completo" : "faltan consumos por cargar"}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Panel>
+  );
+}
