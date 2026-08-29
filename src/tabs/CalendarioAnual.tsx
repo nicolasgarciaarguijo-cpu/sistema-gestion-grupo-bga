@@ -2447,67 +2447,6 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
             <QuickMenuTitle>
               {cellMenu.label} · {dayLabel}
             </QuickMenuTitle>
-            {onToggleFlag && (() => {
-              const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
-              const marcada = flagSet.has(k);
-              const flag = (flags || []).find((f) => f.key === k);
-              return (
-                <>
-                  {marcada && flag && (
-                    <div style={{ fontSize: 11, color: "#b91c1c", padding: "2px 8px" }}>
-                      Marcado por {flag.createdBy}
-                      {flag.note ? `: ${flag.note}` : ""}
-                    </div>
-                  )}
-                  <button
-                    style={quickMenuItem}
-                    onClick={() => {
-                      onToggleFlag(k, cellMenu.iso, cellMenu.label, "");
-                      close();
-                    }}
-                  >
-                    {marcada ? "Quitar la marca de revisar" : "Marcar para revisar"}
-                  </button>
-                </>
-              );
-            })()}
-            {onSetMark && (() => {
-              const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
-              const actual = markMap.get(k) || "";
-              return (
-                <>
-                  <QuickMenuSep />
-                  <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px" }}>Marcar con un color</div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "2px 8px 6px" }}>
-                    {CALENDAR_MARK_COLORS.map((c) => (
-                      <button
-                        key={c.id}
-                        title={c.label}
-                        onClick={() => { onSetMark(k, cellMenu.iso, cellMenu.label, c.id); close(); }}
-                        style={{
-                          display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
-                          fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 6,
-                          background: "#fff", color: c.hex,
-                          // El elegido se distingue por el borde grueso, igual que en la planilla.
-                          border: actual === c.id ? `3px solid ${c.hex}` : `1px solid ${c.hex}`,
-                        }}
-                      >
-                        <span style={{ width: 9, height: 9, borderRadius: 2, background: c.hex, display: "inline-block" }} />
-                        {c.label}
-                      </button>
-                    ))}
-                    {actual && (
-                      <button
-                        style={{ ...quickMenuItem, width: "auto", padding: "3px 7px", fontSize: 11 }}
-                        onClick={() => { onSetMark(k, cellMenu.iso, cellMenu.label, ""); close(); }}
-                      >
-                        Sacar el color
-                      </button>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
             {onEditEntry && (() => {
               const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
               // Paso 2: ya hay algo agarrado y esta celda puede recibirlo.
@@ -2587,6 +2526,67 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   >
                     Mover a… ({list.length === 1 ? "este movimiento" : `${list.length} movimientos`})
                   </button>
+                </>
+              );
+            })()}
+            {onToggleFlag && (() => {
+              const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
+              const marcada = flagSet.has(k);
+              const flag = (flags || []).find((f) => f.key === k);
+              return (
+                <>
+                  {marcada && flag && (
+                    <div style={{ fontSize: 11, color: "#b91c1c", padding: "2px 8px" }}>
+                      Marcado por {flag.createdBy}
+                      {flag.note ? `: ${flag.note}` : ""}
+                    </div>
+                  )}
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      onToggleFlag(k, cellMenu.iso, cellMenu.label, "");
+                      close();
+                    }}
+                  >
+                    {marcada ? "Quitar la marca de revisar" : "Marcar para revisar"}
+                  </button>
+                </>
+              );
+            })()}
+            {onSetMark && (() => {
+              const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
+              const actual = markMap.get(k) || "";
+              return (
+                <>
+                  <QuickMenuSep />
+                  <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px" }}>Marcar con un color</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "2px 8px 6px" }}>
+                    {CALENDAR_MARK_COLORS.map((c) => (
+                      <button
+                        key={c.id}
+                        title={c.label}
+                        onClick={() => { onSetMark(k, cellMenu.iso, cellMenu.label, c.id); close(); }}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 5, cursor: "pointer",
+                          fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 6,
+                          background: "#fff", color: c.hex,
+                          // El elegido se distingue por el borde grueso, igual que en la planilla.
+                          border: actual === c.id ? `3px solid ${c.hex}` : `1px solid ${c.hex}`,
+                        }}
+                      >
+                        <span style={{ width: 9, height: 9, borderRadius: 2, background: c.hex, display: "inline-block" }} />
+                        {c.label}
+                      </button>
+                    ))}
+                    {actual && (
+                      <button
+                        style={{ ...quickMenuItem, width: "auto", padding: "3px 7px", fontSize: 11 }}
+                        onClick={() => { onSetMark(k, cellMenu.iso, cellMenu.label, ""); close(); }}
+                      >
+                        Sacar el color
+                      </button>
+                    )}
+                  </div>
                 </>
               );
             })()}

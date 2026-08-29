@@ -133,4 +133,42 @@ describe("la celda marcada se ve", () => {
     expect(movidos).toHaveLength(1);
     expect(movidos[0].patch.conceptKey).toBe(item.key);
   });
+
+  // EL CASO REAL: mover a OTRO RENGLON (no a otro dia del mismo). Es para lo que sirve la funcion:
+  // algo quedo clasificado en el renglon equivocado.
+  it("se puede mover a un renglón distinto", () => {
+    const movidos: any[] = [];
+    const host = render({ onEditEntry: (id: string, patch: any) => { movidos.push({ id, patch }); return true; } });
+    const clickDerecho = (el: Element) => {
+      act(() => { el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })); });
+    };
+    const botonQueDice = (txt: string) =>
+      Array.from(document.querySelectorAll("button")).find((b) => (b.textContent || "").includes(txt));
+
+    const filaOrigen = Array.from(host.querySelectorAll("tr")).find((tr) =>
+      (tr.querySelector("td")?.textContent || "").includes(item.label)
+    )!;
+    const celdaOrigen = Array.from(filaOrigen.querySelectorAll("td")).find((td) =>
+      (td.textContent || "").includes("100000")
+    )!;
+    clickDerecho(celdaOrigen);
+    act(() => { botonQueDice("Mover a")!.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    // Otro renglón cualquiera de la misma sección.
+    const otroItem = seccion.items[1] || seccion.items[0];
+    const filaDestino = Array.from(host.querySelectorAll("tr")).find((tr) =>
+      (tr.querySelector("td")?.textContent || "").includes(otroItem.label) && tr !== filaOrigen
+    )!;
+    expect(filaDestino).toBeTruthy();
+    const celdaDestino = Array.from(filaDestino.querySelectorAll("td"))[5];
+    clickDerecho(celdaDestino);
+    // eslint-disable-next-line no-console
+    console.log("MENU EN DESTINO:", Array.from(document.querySelectorAll("button")).slice(-4).map((b) => (b.textContent || "").slice(0, 45)).join(" | "));
+    const soltar = botonQueDice("Mover aquí");
+    expect(soltar).toBeTruthy();
+    // Y tiene que ser lo PRIMERO del menu: el menu tiene alto maximo con scroll interno, asi que lo
+    // que queda al final no se ve. Este era el bug: la opcion existia y estaba cortada abajo.
+    const menu = soltar!.closest("div[style*='fixed']")!;
+    expect(Array.from(menu.querySelectorAll("button")).indexOf(soltar!)).toBe(0);
+  });
 });

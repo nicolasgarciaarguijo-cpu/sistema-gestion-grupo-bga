@@ -284,7 +284,9 @@ export function QuickMenu({
         boxShadow: "0 8px 28px rgba(0,0,0,0.20)",
         padding: 6,
         minWidth: 210,
-        maxHeight: 320,
+        // 320px fijos cortaban el menu por la mitad y lo de abajo quedaba invisible detras de un
+        // scroll interno que nadie usa. Con 70vh entra todo en una pantalla normal.
+        maxHeight: "70vh",
         overflowY: "auto",
       }}
     >
