@@ -818,7 +818,7 @@ export function CalendarioAnualTab({
     if (movingFrom && movingFrom.key === k)
       return { outline: "3px dashed #0f172a", outlineOffset: "-3px", position: "relative", zIndex: 2 };
     if (flagSet.has(k))
-      return { outline: "2px solid #dc2626", outlineOffset: "-2px", position: "relative", zIndex: 1 };
+      return { outline: "3px solid #dc2626", outlineOffset: "-3px", position: "relative", zIndex: 1 };
     const hex = markHex(markMap.get(k) || "");
     if (hex) return { outline: `3px solid ${hex}`, outlineOffset: "-3px", position: "relative", zIndex: 1 };
     return {};
@@ -833,15 +833,20 @@ export function CalendarioAnualTab({
     const marcada = flagSet.has(k);
     if (!marcada && !hex) return null;
     return (
-      <>
-        {marcada && <span title="Marcado para revisar"><BanderaRoja /></span>}
+      <span
+        style={{
+          position: "absolute", top: 1, left: 1, lineHeight: 0, pointerEvents: "none",
+          display: "flex", alignItems: "center", gap: 1,
+        }}
+      >
+        {marcada && <span title="Marcado para revisar" style={{ lineHeight: 0 }}><BanderaRoja /></span>}
         {hex && (
           <span
             title={markLabel(color)}
-            style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: hex, marginRight: 3, verticalAlign: "middle" }}
+            style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: hex, border: "1px solid #fff" }}
           />
         )}
-      </>
+      </span>
     );
   };
 
@@ -2557,8 +2562,19 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   </>
                 );
               }
-              // Paso 1: agarrar lo que hay en esta celda.
-              if (list.length === 0) return null;
+              // Paso 1: agarrar lo que hay en esta celda. Si no se puede, hay que DECIRLO: un menu
+              // que no muestra nada se lee como que la funcion no anda.
+              if (list.length === 0) {
+                return (
+                  <>
+                    <QuickMenuSep />
+                    <div style={{ fontSize: 11, color: "#94a3b8", padding: "4px 8px" }}>
+                      Para mover algo, botón derecho sobre un <strong>casillero con plata</strong> de un
+                      renglón (este día está vacío, o es un total, que se calcula solo).
+                    </div>
+                  </>
+                );
+              }
               return (
                 <>
                   <QuickMenuSep />
