@@ -439,3 +439,41 @@ describe("serieDiariaDeBilletera", () => {
     expect(s.map((d) => d.efectivoBlanco)).toEqual([300000, 300000, 250000, 250000]);
   });
 });
+
+describe("serieDiariaDeBilletera: el banco se abre por cuenta", () => {
+  it("devuelve cada cuenta por separado y el total como suma", () => {
+    const serie = serieDiariaDeBilletera(
+      {
+        bankBalanceEntries: [
+          { company: "BGA", bank: "Santander", currency: "ARS", date: "2026-08-20", balance: 1000 },
+          { company: "BGA", bank: "Patagonia", currency: "ARS", date: "2026-08-20", balance: 2500 },
+          { company: "BGA", bank: "Santander", currency: "ARS", date: "2026-08-25", balance: 1800 },
+        ],
+      } as any,
+      ["2026-08-22", "2026-08-26"]
+    );
+    // Al 22 manda el saldo del 20 de cada cuenta.
+    expect(serie[0].bancos).toEqual([
+      { bank: "Patagonia", saldo: 2500 },
+      { bank: "Santander", saldo: 1000 },
+    ]);
+    expect(serie[0].banco).toBe(3500);
+    // Al 26 Santander ya movio; Patagonia sigue con el ultimo saldo que tiene.
+    expect(serie[1].banco).toBe(4300);
+    expect(serie[1].bancos.find((b) => b.bank === "Santander")!.saldo).toBe(1800);
+  });
+
+  it("una cuenta en dolares no entra al saldo en pesos", () => {
+    const serie = serieDiariaDeBilletera(
+      {
+        bankBalanceEntries: [
+          { company: "BGA", bank: "Santander", currency: "ARS", date: "2026-08-20", balance: 1000 },
+          { company: "BGA", bank: "Santander", currency: "USD", date: "2026-08-20", balance: 500 },
+        ],
+      } as any,
+      ["2026-08-22"]
+    );
+    expect(serie[0].banco).toBe(1000);
+    expect(serie[0].bancos).toHaveLength(1);
+  });
+});

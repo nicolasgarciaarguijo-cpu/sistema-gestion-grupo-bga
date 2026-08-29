@@ -96,7 +96,9 @@ const chip: React.CSSProperties = {
 // Billetera: los tres números GRANDES (banco / efectivo blanco / efectivo negro).
 const bigGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
+  // Auto-fit: BGA tiene DOS bancos (Santander y Patagonia) y cada uno va en su bloque, asi que la
+  // cantidad de bloques cambia por empresa. Con columnas fijas el cuarto bloque se caia solo abajo.
+  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
   gap: 8,
   marginTop: 8,
 };
@@ -161,10 +163,19 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
 
                 {/* LA BILLETERA: los números grandes */}
                 <div style={bigGrid}>
-                  <div style={bigStat}>
-                    <div style={bigLabel}>🏦 Banco</div>
-                    <div style={{ ...bigValue, ...negativa(c.bancoArs) }}>{money(c.bancoArs)}</div>
-                  </div>
+                  {arsBanks.length > 0 ? (
+                    arsBanks.map((b) => (
+                      <div key={b.bank} style={bigStat}>
+                        <div style={bigLabel} title={b.bank}>🏦 {b.bank}</div>
+                        <div style={{ ...bigValue, ...negativa(b.balance) }}>{money(b.balance)}</div>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={bigStat}>
+                      <div style={bigLabel}>🏦 Banco</div>
+                      <div style={{ ...bigValue, ...negativa(c.bancoArs) }}>{money(c.bancoArs)}</div>
+                    </div>
+                  )}
                   <div style={bigStat}>
                     <div style={bigLabel}>💵 Efectivo blanco</div>
                     <div style={bigValue}>{money(c.efectivoBlancoArs)}</div>
@@ -175,14 +186,9 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                   </div>
                 </div>
 
-                {(arsBanks.length > 0 || usdBanks.length > 0) && (
+                {/* Los pesos de cada banco ya van arriba en grande: acá solo quedan los dólares. */}
+                {usdBanks.length > 0 && (
                   <div style={banksRow}>
-                    {arsBanks.map((b) => (
-                      <span key={b.bank} style={chip}>
-                        {b.bank}:{" "}
-                        <b style={{ color: b.balance < 0 ? "#fca5a5" : "#f1f5f9" }}>{money(b.balance)}</b>
-                      </span>
-                    ))}
                     {usdBanks.map((b) => (
                       <span key={`${b.bank}-usd`} style={{ ...chip, color: "#5eead4" }}>
                         {b.bank} U$S: <b>{money(b.balance, "USD")}</b>

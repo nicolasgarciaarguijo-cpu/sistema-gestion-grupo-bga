@@ -437,7 +437,11 @@ export function buildReservaFromSources(input: ReservaSourcesInput): ReservaSumm
 // El EFECTIVO si se acumula: es la suma de los movimientos de caja hasta ese dia, por color.
 export type SaldoDelDia = {
   iso: string;
+  // Total en banco: la SUMA de las cuentas. Se sigue devolviendo para lo que mira el total.
   banco: number;
+  // Y el saldo CUENTA POR CUENTA. BGA opera con Santander y Patagonia: mostrarlos sumados esconde
+  // de cual de los dos hay plata, que es justo lo que hace falta para decidir un pago.
+  bancos: Array<{ bank: string; saldo: number }>;
   efectivoBlanco: number;
   efectivoNegro: number;
 };
@@ -475,9 +479,14 @@ export function serieDiariaDeBilletera(
       blanco += d.blanco;
       negro += d.negro;
     }
+    // Solo pesos: el saldo en dolares se sigue por separado y nunca se suma con el peso.
+    const cuentas = bancoEntries.length
+      ? latestBankBalancesByAccount(bancoEntries, iso).filter((c) => c.currency !== "USD")
+      : [];
     return {
       iso,
-      banco: bancoEntries.length ? sumLatestBankBalances(bancoEntries, iso) : 0,
+      banco: cuentas.reduce((acc, c) => acc + c.balance, 0),
+      bancos: cuentas.map((c) => ({ bank: c.bank || "Banco", saldo: c.balance })),
       efectivoBlanco: Math.round(blanco * 100) / 100,
       efectivoNegro: Math.round(negro * 100) / 100,
     };

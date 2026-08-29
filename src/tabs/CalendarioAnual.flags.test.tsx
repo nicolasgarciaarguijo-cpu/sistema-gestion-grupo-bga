@@ -276,4 +276,38 @@ describe("la celda marcada se ve", () => {
     // Lo importante: la sección propia sigue viva.
     expect(guardados[0].sections).toEqual([{ key: "propia:obra", label: "OBRA", dir: "out" }]);
   });
+
+  // BGA opera con DOS bancos. Sumados no se sabe de cual hay plata, que es lo que hace falta para
+  // decidir un pago: va una fila por cuenta.
+  it("cada banco tiene su propia fila, y los totales ya no están inmovilizados", () => {
+    const dia = {
+      banco: 3500,
+      bancos: [{ bank: "Santander", saldo: 1000 }, { bank: "Patagonia", saldo: 2500 }],
+      efectivoBlanco: 700,
+      efectivoNegro: 300,
+    };
+    const host = render({
+      billeteraDiaria: [
+        { company: "BGA", short: "BGA", color: "#14213d", soft: "#dbe7f7", byDay: { [iso]: dia } },
+      ],
+    });
+    const etiquetas = Array.from(host.querySelectorAll("td")).map((td) => (td.textContent || "").trim());
+    expect(etiquetas).toContain("BGA · Santander");
+    expect(etiquetas).toContain("BGA · Patagonia");
+    expect(etiquetas).toContain("BGA · Efectivo blanco");
+
+    // Cada fila muestra el saldo DE SU cuenta, no el total.
+    const filaSantander = Array.from(host.querySelectorAll("tr")).find((tr) =>
+      (tr.querySelector("td")?.textContent || "").includes("Santander")
+    )!;
+    expect(filaSantander.textContent).toContain("1000");
+    expect(filaSantander.textContent).not.toContain("3500");
+
+    // Los totales quedaron fuera del encabezado fijo (van en el cuerpo, debajo de los netos).
+    const thead = host.querySelector("thead")!;
+    const tbody = host.querySelector("tbody")!;
+    expect(thead.textContent).toContain("NETO DÍA");
+    expect(thead.textContent).not.toContain("TOTAL INGRESOS");
+    expect(tbody.textContent).toContain("TOTAL INGRESOS");
+  });
 });

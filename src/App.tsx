@@ -13202,9 +13202,9 @@ Escribi CERRAR para confirmar:`
         },
         dias
       );
-      const byDay: Record<string, { banco: number; efectivoBlanco: number; efectivoNegro: number }> = {};
+      const byDay: Record<string, { banco: number; bancos: Array<{ bank: string; saldo: number }>; efectivoBlanco: number; efectivoNegro: number }> = {};
       serie.forEach((d) => {
-        byDay[d.iso] = { banco: d.banco, efectivoBlanco: d.efectivoBlanco, efectivoNegro: d.efectivoNegro };
+        byDay[d.iso] = { banco: d.banco, bancos: d.bancos, efectivoBlanco: d.efectivoBlanco, efectivoNegro: d.efectivoNegro };
       });
       return {
         company: String(company),

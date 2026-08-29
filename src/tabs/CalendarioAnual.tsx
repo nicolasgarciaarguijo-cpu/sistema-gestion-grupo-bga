@@ -126,7 +126,7 @@ export function CalendarioAnualTab({
     short: string;
     color: string;
     soft: string;
-    byDay: Record<string, { banco: number; efectivoBlanco: number; efectivoNegro: number }>;
+    byDay: Record<string, { banco: number; bancos: Array<{ bank: string; saldo: number }>; efectivoBlanco: number; efectivoNegro: number }>;
   }>;
   onToggleFlag?: (key: string, date: string, label: string, note: string) => void;
   onSetFlagNote?: (id: number, note: string) => void;
@@ -1676,15 +1676,29 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                         pago. Mismo dato que el tablero del encabezado, pero dia por dia. */}
                     {(billeteraDiaria || [])
                       .filter((emp) => companyScope === "__ALL__" || emp.company === companyScope)
-                      .flatMap((emp) =>
-                        ([
-                          { sub: "Banco", campo: "banco" as const, bg: emp.soft, color: "#0f172a" },
+                      .flatMap((emp) => {
+                        // Los bancos de la empresa, en filas separadas. Se juntan de todos los dias
+                        // porque una cuenta puede aparecer recien a mitad del ejercicio.
+                        const cuentas = Array.from(
+                          new Set(
+                            visibleDayCols.flatMap((c) => (emp.byDay[c.iso]?.bancos || []).map((b) => b.bank))
+                          )
+                        ).sort((a, b) => a.localeCompare(b));
+                        const filasBanco = (cuentas.length ? cuentas : ["Banco"]).map((cuenta) => ({
+                          sub: cuenta,
+                          campo: "banco" as const,
+                          cuenta,
+                          bg: emp.soft,
+                          color: "#0f172a",
+                        }));
+                        return ([
+                          ...filasBanco,
                           { sub: "Efectivo blanco", campo: "efectivoBlanco" as const, bg: emp.soft, color: "#0f172a" },
                           // El NEGRO va en oscuro a proposito, como en el tablero de arriba.
                           { sub: "Efectivo negro", campo: "efectivoNegro" as const, bg: "#1f2937", color: "#fde68a" },
                         ]).map((linea) => {
                           const top = nextTop();
-                          const kp = `bil-${emp.company}-${linea.campo}`;
+                          const kp = `bil-${emp.company}-${linea.campo}-${(linea as any).cuenta || ""}`;
                           return (
                             <tr key={kp}>
                               <td
@@ -1699,7 +1713,11 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                                 {emp.short} · {linea.sub}
                               </td>
                               {visibleDayCols.map((c) => {
-                                const v = emp.byDay[c.iso]?.[linea.campo] || 0;
+                                const cuenta = (linea as any).cuenta as string | undefined;
+                                const dia = emp.byDay[c.iso];
+                                const v = cuenta
+                                  ? dia?.bancos?.find((b) => b.bank === cuenta)?.saldo || 0
+                                  : dia?.[linea.campo] || 0;
                                 return (
                                   <td
                                     key={`${kp}-${c.iso}`}
@@ -1723,58 +1741,8 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                               })}
                             </tr>
                           );
-                        })
-                      )}
-                    {([
-                      { lbl: "TOTAL INGRESOS", b: agg.incB, n: agg.incN, compB: agg.compIncB, compN: agg.compIncN, isOut: false, bg: "#ecfdf5", kp: "ti" },
-                      { lbl: "TOTAL EGRESOS", b: agg.egrB, n: agg.egrN, compB: agg.compEgrB, compN: agg.compEgrN, isOut: true, bg: "#fef2f2", kp: "te" },
-                    ] as const).map((row) => {
-                      const top = nextTop();
-                      return (
-                        <React.Fragment key={row.kp}>
-                          <tr>
-                            <td style={{ ...labelSticky(top, row.bg), fontWeight: 800, color: row.isOut ? "#991b1b" : "#065f46" }}>{row.lbl}</td>
-                            {visibleDayCols.map((c) => {
-                              return (
-                                <td
-                                  key={`${row.kp}-${c.iso}`}
-                                  style={{ ...tdCell, ...rowSticky(top), fontWeight: 700, background: row.bg, ...hi(c.iso), ...estiloCelda("total", row.kp, c.iso) }}
-                                  onContextMenu={(ev) => openCellMenu(ev, row.lbl, c.iso, "total", row.kp, () => false)}
-                                >
-                                  {marcasDeCelda("total", row.kp, c.iso)}
-                                  {bnCell(row.b, row.n, c.iso, row.isOut)}
-                                </td>
-                              );
-                            })}
-                          </tr>
-                          {/* Desglose por empresa (con su color) cuando se ven todas — el "×4" a la vista */}
-                          {showByCompany &&
-                            Array.from(new Set(Array.from(row.compB.keys()).concat(Array.from(row.compN.keys()))))
-                              .sort((a, b) => a.localeCompare(b))
-                              .map((company) => {
-                                const meta = companyMeta.get(company);
-                                const bMap = row.compB.get(company);
-                                const nMap = row.compN.get(company);
-                                if (!bMap && !nMap) return null;
-                                if (![...visibleDayCols].some((c) => (bMap?.get(c.iso) || 0) !== 0 || (nMap?.get(c.iso) || 0) !== 0)) return null;
-                                const topC = nextTop();
-                                return (
-                                  <tr key={`${row.kp}-${company}`}>
-                                    <td style={{ ...labelSticky(topC, row.bg), paddingLeft: 30, fontWeight: 700, fontSize: 11 }}>
-                                      <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />
-                                      {meta?.short || company}
-                                    </td>
-                                    {visibleDayCols.map((c) => (
-                                      <td key={`${row.kp}-${company}-${c.iso}`} style={{ ...tdCell, ...rowSticky(topC), fontSize: 11, background: row.bg, ...hi(c.iso) }}>
-                                        {bnCell(bMap, nMap, c.iso, row.isOut)}
-                                      </td>
-                                    ))}
-                                  </tr>
-                                );
-                              })}
-                        </React.Fragment>
-                      );
-                    })}
+                        });
+                      })}
                     {([
                       { lbl: "NETO DÍA · BLANCO", inc: agg.incB, egr: agg.egrB, bg: "#e2e8f0", kp: "ndb" },
                       { lbl: "NETO DÍA · NEGRO", inc: agg.incN, egr: agg.egrN, bg: "#cbd5e1", kp: "ndn" },
@@ -1799,6 +1767,59 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               })()}
             </thead>
             <tbody>
+              {/* TOTALES. Van DEBAJO de los netos y NO se inmovilizan (Nicolas, 2026-08-29): lo que
+                  queda fijo arriba es la fecha, los bancos, el efectivo y los netos. Los totales se
+                  miran cuando uno llega hasta ellos, no todo el tiempo. */}
+              <>
+                    {([
+                      { lbl: "TOTAL INGRESOS", b: agg.incB, n: agg.incN, compB: agg.compIncB, compN: agg.compIncN, isOut: false, bg: "#ecfdf5", kp: "ti" },
+                      { lbl: "TOTAL EGRESOS", b: agg.egrB, n: agg.egrN, compB: agg.compEgrB, compN: agg.compEgrN, isOut: true, bg: "#fef2f2", kp: "te" },
+                    ] as const).map((row) => {
+                      return (
+                        <React.Fragment key={row.kp}>
+                          <tr>
+                            <td style={{ ...tdStickyLabel, background: row.bg, fontWeight: 800, color: row.isOut ? "#991b1b" : "#065f46" }}>{row.lbl}</td>
+                            {visibleDayCols.map((c) => {
+                              return (
+                                <td
+                                  key={`${row.kp}-${c.iso}`}
+                                  style={{ ...tdCell, fontWeight: 700, background: row.bg, ...hi(c.iso), ...estiloCelda("total", row.kp, c.iso) }}
+                                  onContextMenu={(ev) => openCellMenu(ev, row.lbl, c.iso, "total", row.kp, () => false)}
+                                >
+                                  {marcasDeCelda("total", row.kp, c.iso)}
+                                  {bnCell(row.b, row.n, c.iso, row.isOut)}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                          {/* Desglose por empresa (con su color) cuando se ven todas — el "×4" a la vista */}
+                          {showByCompany &&
+                            Array.from(new Set(Array.from(row.compB.keys()).concat(Array.from(row.compN.keys()))))
+                              .sort((a, b) => a.localeCompare(b))
+                              .map((company) => {
+                                const meta = companyMeta.get(company);
+                                const bMap = row.compB.get(company);
+                                const nMap = row.compN.get(company);
+                                if (!bMap && !nMap) return null;
+                                if (![...visibleDayCols].some((c) => (bMap?.get(c.iso) || 0) !== 0 || (nMap?.get(c.iso) || 0) !== 0)) return null;
+                                return (
+                                  <tr key={`${row.kp}-${company}`}>
+                                    <td style={{ ...tdStickyLabel, background: row.bg, paddingLeft: 30, fontWeight: 700, fontSize: 11 }}>
+                                      <span style={{ display: "inline-block", width: 9, height: 9, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />
+                                      {meta?.short || company}
+                                    </td>
+                                    {visibleDayCols.map((c) => (
+                                      <td key={`${row.kp}-${company}-${c.iso}`} style={{ ...tdCell, fontSize: 11, background: row.bg, ...hi(c.iso) }}>
+                                        {bnCell(bMap, nMap, c.iso, row.isOut)}
+                                      </td>
+                                    ))}
+                                  </tr>
+                                );
+                              })}
+                        </React.Fragment>
+                      );
+                    })}
+              </>
               {sections.map((section) => {
                 const isOut = section.dir === "out";
                 const isCob = section.dynamic === "cobranzas";
