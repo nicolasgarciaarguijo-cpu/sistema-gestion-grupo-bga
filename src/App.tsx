@@ -38,6 +38,7 @@ import {
 import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
 import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./domain/calendarMarks";
 import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
+import { alimentaElCalendario, MARCA_SOLO_CONSTATA } from "./domain/bankFeed";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { deriveConvenioHours } from "./domain/attendance";
 import {
@@ -12294,6 +12295,7 @@ Escribi CERRAR para confirmar:`
         balance: 0,
         notes: "",
         extractedAutomatically: false,
+        ...MARCA_SOLO_CONSTATA,
       },
       ...prev,
     ]);
@@ -13531,6 +13533,7 @@ Escribi CERRAR para confirmar:`
     const out: CalendarLoan[] = [];
     visibleBankStatementEntries.forEach((b) => {
       // Solo lo que ENTRO: un debito en un renglon de prestamo es una devolucion, no deuda nueva.
+      if (!alimentaElCalendario(b)) return;
       if (b.movementType !== "credito" || !b.conceptKey) return;
       const label = labelOfConcept(b.conceptKey);
       if (!label) return;
@@ -13896,6 +13899,9 @@ Escribi CERRAR para confirmar:`
               ? `${item.assignedParty} · (D) falta ppto`
               : bankRawTitle
           : bankRawTitle;
+      // El banco constata, no carga: lo importado desde la decision de Nicolas no arma renglon.
+      // Sigue contando para el SALDO bancario, que es lo unico que el extracto sigue mandando.
+      if (!alimentaElCalendario(item)) return;
       entries.push({
         id: `bank-${item.id}`,
         date: item.date,
@@ -15478,6 +15484,8 @@ Escribi CERRAR para confirmar:`
       currency: bankMirrorCurrency,
       notes: "Importado del extracto (espejo)",
       extractedAutomatically: true,
+      // El banco constata, no carga: lo que entra de ahora en mas no arma renglones del calendario.
+      ...MARCA_SOLO_CONSTATA,
     }));
     setBankStatementEntries((prev) => [...entries, ...prev]);
     const dups = bankMirrorPreview.length - nuevos.length;
