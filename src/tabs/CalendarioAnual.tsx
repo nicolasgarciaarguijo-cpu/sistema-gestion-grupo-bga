@@ -774,13 +774,41 @@ export function CalendarioAnualTab({
 
   // Año completo: mover el selector o las flechas lleva la planilla hasta ese mes. La columna
   // "Concepto" es sticky, asi que el scroll es solo la suma de los dias anteriores.
+  // Volver a HOY es un pedido EXPLICITO (el boton "Hoy"), nunca algo que pase solo: cuando pasaba
+  // solo, apretar la flecha movia la planilla al mes y el centrado la traia de vuelta, asi que no
+  // se podia avanzar. Este flag distingue "me movi con las flechas" de "pedi ir a hoy".
+  const centrarEnHoy = useRef(false);
   useEffect(() => {
     if (monthMode) return;
     const el = wrapRef.current;
     if (!el) return;
+    const hoyIdx = dayCols.findIndex((c) => c.iso === todayIso());
+    if (centrarEnHoy.current && hoyIdx >= 0) {
+      centrarEnHoy.current = false;
+      const anchoDias = Math.max(0, el.clientWidth - labelW);
+      el.scrollTo({ left: Math.max(0, hoyIdx * dayWEfectivo - anchoDias / 2), behavior: "smooth" });
+      return;
+    }
     const diasAntes = dayCols.filter((c) => c.monthIdx < idx).length;
     el.scrollTo({ left: diasAntes * dayWEfectivo, behavior: "smooth" });
-  }, [idx, monthMode, dayCols, dayWEfectivo]);
+  }, [idx, monthMode, dayCols, dayWEfectivo, labelW]);
+
+  const irAHoy = () => {
+    const hoyIdx = dayCols.findIndex((c) => c.iso === todayIso());
+    if (hoyIdx < 0) return;
+    const mesDeHoy = dayCols[hoyIdx].monthIdx;
+    centrarEnHoy.current = true;
+    if (mesDeHoy !== idx) {
+      setMonthIdx(mesDeHoy);
+      return;
+    }
+    // Ya estamos en ese mes: el efecto no se vuelve a disparar, asi que scrolleamos derecho.
+    const el = wrapRef.current;
+    if (!el || monthMode) return;
+    centrarEnHoy.current = false;
+    const anchoDias = Math.max(0, el.clientWidth - labelW);
+    el.scrollTo({ left: Math.max(0, hoyIdx * dayWEfectivo - anchoDias / 2), behavior: "smooth" });
+  };
 
   const startResize = (ev: React.MouseEvent, which: "label" | "day") => {
     ev.preventDefault();
@@ -1334,12 +1362,10 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
   }, []);
 
   // Al abrir (o cambiar de vista) posicionamos el scroll horizontal en la columna de hoy.
+  // El scroll horizontal lo maneja UN solo efecto (el de mas arriba, que lleva al mes elegido y
+  // centra hoy si el mes es el de hoy). Antes habia ademas un scrollIntoView con monthIdx entre sus
+  // dependencias, que peleaba con las flechas y devolvia la planilla a hoy.
   const todayCellRef = useRef<HTMLTableCellElement | null>(null);
-  useEffect(() => {
-    if (todayCellRef.current) {
-      todayCellRef.current.scrollIntoView({ inline: "center", block: "nearest" });
-    }
-  }, [monthMode, monthIdx, companyScope, fiscalStartYear, today]);
 
   const cell = (m: Map<string, number> | undefined, iso: string) => (m ? m.get(iso) || 0 : 0);
   // Una fila dinámica (cliente/trabajo) solo se muestra si tiene MOVIMIENTO en el período visible.
@@ -1457,6 +1483,13 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 disabled={idx >= months.length - 1}
               >
                 ›
+              </button>
+              <button
+                style={btnSecondary}
+                title="Llevar la planilla al día de hoy"
+                onClick={irAHoy}
+              >
+                Hoy
               </button>
             </div>
             <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
