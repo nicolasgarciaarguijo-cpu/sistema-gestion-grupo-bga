@@ -625,7 +625,7 @@ export function CalendarioAnualTab({
       const job = jobsInScope.find((j) => String(j.budgetNumber) === ppto) || jobs.find((j) => String(j.budgetNumber) === ppto);
       if (!onAssignToJob) return;
       if (!job) {
-        window.alert("Ese trabajo no existe. Elegí uno de la lista (empieza por el número de presupuesto).");
+        avisar("Ese trabajo no existe. Elegí uno de la lista (empieza por el número de presupuesto).");
         return;
       }
       onAssignToJob(bankIds, job.budgetNumber, job.client);
@@ -645,7 +645,7 @@ export function CalendarioAnualTab({
           (id) => !onEditEntry(id, { conceptKey: linkForm.conceptKey, date: dia })
         ).length;
         if (fallaron) {
-          window.alert(
+          avisar(
             `${fallaron} de ${linkForm.entryIds.length} movimientos se editan en su solapa (compras, caja chica, comisiones o trabajos) y quedaron como estaban.`
           );
         }
@@ -1021,7 +1021,7 @@ export function CalendarioAnualTab({
         (r) => r.sectionKey === sectionKey && r.label.trim().toLowerCase() === nombre.toLowerCase()
       );
       if (yaEsta) {
-        window.alert(`Ya hay un renglón "${nombre}" en esta sección.`);
+        avisar(`Ya hay un renglón "${nombre}" en esta sección.`);
         return;
       }
       guardarConfig({ extra: [...(rowConfig.extra || []), { sectionKey, label: nombre }] });
@@ -1056,11 +1056,11 @@ export function CalendarioAnualTab({
         if (!nombre) return;
         const key = sectionKeyFromLabel(nombre);
         if (key === "propia:") {
-          window.alert("Ponele un nombre con letras o números.");
+          avisar("Ponele un nombre con letras o números.");
           return;
         }
         if (sectionByKey.has(key)) {
-          window.alert(`Ya hay una sección "${nombre}".`);
+          avisar(`Ya hay una sección "${nombre}".`);
           return;
         }
         guardarConfig({
@@ -1157,7 +1157,7 @@ export function CalendarioAnualTab({
     if (!onEditEntry || list.length === 0) return;
     const fail = list.filter((e) => !onEditEntry(e.id, build(e))).length;
     if (fail) {
-      window.alert(
+      avisar(
         `${fail} de ${list.length} movimientos de este renglón se editan en su solapa (compras, caja chica, comisiones o trabajos) y quedaron como estaban.`
       );
     }
@@ -1172,6 +1172,14 @@ export function CalendarioAnualTab({
     opcion?: { label: string; valores: Array<{ v: string; label: string }>; actual: string };
     onOk: (valor: string, opcion: string) => void;
   }>(null);
+  // Los window.confirm / window.alert tienen el MISMO problema que tenia window.prompt: si el
+  // navegador bloquea los dialogos, confirm() devuelve false y la accion no pasa nunca, sin decir
+  // nada. En un borrado eso se lee como "el boton no anda". Van por un cuadro nuestro.
+  const [dialogo, setDialogo] = useState<null | { titulo: string; detalle?: string; onOk?: () => void }>(null);
+  const avisar = (titulo: string, detalle?: string) => setDialogo({ titulo, detalle });
+  const confirmar = (titulo: string, detalle: string | undefined, onOk: () => void) =>
+    setDialogo({ titulo, detalle, onOk });
+
   const pedirTexto = (
     titulo: string,
     actual: string,
@@ -1200,13 +1208,22 @@ export function CalendarioAnualTab({
   };
   const removeEntry = (e: Entry) => {
     if (!onDeleteEntry) return;
-    const ok = window.confirm(
-      `¿Borrar este movimiento?
-${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
+    // Si el renglón es el reflejo de un pago del trabajo, borrarlo acá borra EL PAGO. Hay que
+    // decirlo antes: el vínculo va en los dos sentidos y eso incluye borrar.
+    const ppto = (e.title || "").split("·")[0].trim();
+    const esDelTrabajo = e.id.startsWith("financial-") && isCobranzaEntry(e);
+    confirmar(
+      "¿Borrar este movimiento?",
+      `${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})` +
+        (esDelTrabajo
+          ? `
+
+Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra el pago en Trabajos aprobados.`
+          : ""),
+      () => {
+        if (!onDeleteEntry(e.id)) avisar(`Este movimiento se borra desde ${sourceLabel(e)}.`);
+      }
     );
-    if (ok && !onDeleteEntry(e.id)) {
-      window.alert(`Este movimiento se borra desde ${sourceLabel(e)}.`);
-    }
     setCellMenu(null);
   };
 
@@ -1253,7 +1270,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           })
         : false;
       if (!ok) {
-        window.alert("Este movimiento se edita en la solapa de donde salió (compras, caja chica, comisiones o trabajos).");
+        avisar("Este movimiento se edita en la solapa de donde salió (compras, caja chica, comisiones o trabajos).");
         return;
       }
       setAddForm(null);
@@ -1268,7 +1285,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
         notes: addForm.notes,
       });
       if (!ok) {
-        window.alert("No encontré ese trabajo aprobado. Cargala sin trabajo o revisá el presupuesto.");
+        avisar("No encontré ese trabajo aprobado. Cargala sin trabajo o revisá el presupuesto.");
         return;
       }
       setAddForm(null);
@@ -2337,13 +2354,14 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                     onClick={() => {
                       const conPlata = movimientosDeSeccion(rowMenu.sectionKey);
                       if (conPlata > 0) {
-                        window.alert(
+                        avisar(
                           `Esta sección tiene ${conPlata} movimiento(s) cargados. Movelos o borralos antes de sacarla, así no se esconde plata.`
                         );
-                      } else if (
-                        window.confirm(`¿Borrar la sección "${rowMenu.label}" y sus renglones? Está vacía.`)
-                      ) {
-                        removeSection(rowMenu.sectionKey);
+                      } else {
+                        const sk = rowMenu.sectionKey;
+                        confirmar(`¿Borrar la sección "${rowMenu.label}"?`, "Está vacía: no se pierde plata.", () =>
+                          removeSection(sk)
+                        );
                       }
                       close();
                     }}
@@ -2389,19 +2407,18 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 <button
                   style={{ ...quickMenuItem, color: "#b91c1c" }}
                   onClick={() => {
-                    const pregunta =
-                      list.length > 0
-                        ? `¿Borrar el renglón "${rowMenu.label}" y sus ${list.length} movimientos?`
-                        : `¿Borrar el renglón "${rowMenu.label}"? Está vacío.`;
-                    if (window.confirm(pregunta)) {
-                      const fail = onDeleteEntry
-                        ? list.filter((e) => !onDeleteEntry(e.id)).length
-                        : list.length;
-                      if (fail) {
-                        window.alert(`${fail} movimientos se borran desde su solapa y quedaron como estaban.`);
+                    const sk = rowMenu.sectionKey;
+                    const etiqueta = rowMenu.label;
+                    const movs = [...list];
+                    confirmar(
+                      `¿Borrar el renglón "${etiqueta}"?`,
+                      movs.length > 0 ? `Se borran también sus ${movs.length} movimiento(s).` : "Está vacío.",
+                      () => {
+                        const fail = onDeleteEntry ? movs.filter((e) => !onDeleteEntry(e.id)).length : movs.length;
+                        if (fail) avisar(`${fail} movimientos se borran desde su solapa y quedaron como estaban.`);
+                        removeExtraRow(sk, etiqueta);
                       }
-                      removeExtraRow(rowMenu.sectionKey, rowMenu.label);
-                    }
+                    );
                     close();
                   }}
                 >
@@ -2530,7 +2547,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   }
                   onClick={() => {
                     if (listAll.length) {
-                      window.alert(
+                      avisar(
                         `Este renglón tiene ${listAll.length} movimientos cargados. Movelos o borralos antes de quitarlo, así no se esconde plata.`
                       );
                     } else {
@@ -2565,6 +2582,38 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           </QuickMenu>
         );
       })()}
+
+      {dialogo && (
+        <div style={overlayStyle} onClick={() => setDialogo(null)}>
+          <div style={{ ...modalStyle, maxWidth: 430 }} onClick={(ev) => ev.stopPropagation()}>
+            <div style={{ fontWeight: 800, marginBottom: dialogo.detalle ? 8 : 14 }}>{dialogo.titulo}</div>
+            {dialogo.detalle && (
+              <div style={{ fontSize: 13, color: "#475569", whiteSpace: "pre-line", marginBottom: 14 }}>
+                {dialogo.detalle}
+              </div>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              {dialogo.onOk ? (
+                <>
+                  <button style={btnSecondary} onClick={() => setDialogo(null)}>Cancelar</button>
+                  <button
+                    style={{ ...btnPrimary, background: "#b91c1c", borderColor: "#b91c1c" }}
+                    onClick={() => {
+                      const fn = dialogo.onOk!;
+                      setDialogo(null);
+                      fn();
+                    }}
+                  >
+                    Sí, borrar
+                  </button>
+                </>
+              ) : (
+                <button style={btnPrimary} onClick={() => setDialogo(null)}>Entendido</button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {textPrompt && (
         <div style={overlayStyle} onClick={() => setTextPrompt(null)}>
@@ -2661,7 +2710,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                           (id) => !onEditEntry(id, { conceptKey: cellMenu.itemKey, date: cellMenu.iso })
                         ).length;
                         if (fail) {
-                          window.alert(
+                          avisar(
                             `${fail} de ${movingFrom.ids.length} movimientos se editan desde su solapa (compras, caja chica, comisiones o trabajos) y quedaron donde estaban.`
                           );
                         }

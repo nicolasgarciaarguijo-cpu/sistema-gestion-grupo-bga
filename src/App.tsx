@@ -37,6 +37,7 @@ import {
 } from "./domain/purchaseLedger";
 import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
 import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./domain/calendarMarks";
+import { esReflejoDeTrabajo, borrarOrigenDelReflejo } from "./domain/jobMirror";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { deriveConvenioHours } from "./domain/attendance";
 import {
@@ -11806,7 +11807,16 @@ Escribi CERRAR para confirmar:`
     if (entryId.startsWith("financial-")) {
       const id = Number(entryId.slice("financial-".length));
       if (!id) return false;
-      setFinancialItems((prev) => prev.filter((item) => item.id !== id));
+      const item = financialItems.find((f) => f.id === id);
+      // Si el renglón es el REFLEJO de un pago o una factura del trabajo, borrarlo de la planilla no
+      // alcanza: el trabajo lo vuelve a generar y reaparece solo. Hay que borrar el original, que es
+      // el pago del trabajo. Es la contracara de cargar desde la planilla: el vinculo va en los dos
+      // sentidos, tambien para borrar (Nicolas, 2026-08-29).
+      if (esReflejoDeTrabajo(item)) {
+        setApprovedJobs((prev) => borrarOrigenDelReflejo(prev, item!));
+        return true;
+      }
+      setFinancialItems((prev) => prev.filter((f) => f.id !== id));
       return true;
     }
     return false;
