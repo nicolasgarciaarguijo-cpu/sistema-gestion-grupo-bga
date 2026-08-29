@@ -38,7 +38,6 @@ import {
 import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
 import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./domain/calendarMarks";
 import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
-import { alimentaElCalendario, MARCA_SOLO_CONSTATA } from "./domain/bankFeed";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { deriveConvenioHours } from "./domain/attendance";
 import {
@@ -1280,6 +1279,10 @@ const defaultInternalTransfers: InternalTransfer[] = [];
 const defaultPersonLedgerEntries: PersonLedgerEntry[] = [];
 
 const defaultCalendarFlags: CalendarFlag[] = [];
+// Ultimo dia en que el extracto bancario ALIMENTA el calendario. Desde el dia siguiente el banco
+// solo constata y la plata que pasa por la cuenta entra por la carga manual (el interruptor es
+// simetrico: ver domain/calendarFeeds.ts). Decision de Nicolas del 2026-08-29.
+const BANCO_CARGA_HASTA = "2026-08-29";
 const defaultCalendarMarks: CalendarMark[] = [];
 const defaultCalendarNotes: CalendarNote[] = [];
 
@@ -2984,13 +2987,11 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // calendario mientras se pone el sistema al dia; por default, hasta el cierre del ejercicio en
   // curso. Pasada esa fecha la carga es manual dia a dia y el banco pasa a verificar. Se puede correr
   // la fecha si la puesta al dia se estira ("a menos que se avise").
-  const [bankLoadsUntil, setBankLoadsUntil] = useState<string>(
-    () =>
-      fiscalYearBounds(
-        DEFAULT_FISCAL_START_MONTH,
-        currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date())
-      ).endIso
-  );
+  // 2026-08-29: Nicolas corto la puesta al dia antes de tiempo — "el banco solo constata. Todo lo
+  // anterior queda, pero nunca mas vuelve a cargar nada el banco". La fecha de corte pasa a ser esa,
+  // en vez del cierre del ejercicio. NO es retroactivo a proposito: los movimientos hasta el 28/08
+  // siguen siendo el cash flow de los meses ya cargados; cortarlos hacia atras vaciaria la planilla.
+  const [bankLoadsUntil, setBankLoadsUntil] = useState<string>(BANCO_CARGA_HASTA);
   const [manualAllocationPct, setManualAllocationPct] = useState(18.75);
   const [deviationPct, setDeviationPct] = useState(5);
   const [markupPct, setMarkupPct] = useState(30);
@@ -9497,7 +9498,11 @@ Escribi CERRAR para confirmar:`
     });
     setScaleRows((data.scaleRows || seededScaleRows).map((item) => ({ ...item })));
     setAllocationMode(data.allocationMode || "auto");
-    if (typeof data.bankLoadsUntil === "string") setBankLoadsUntil(data.bankLoadsUntil);
+    if (typeof data.bankLoadsUntil === "string") {
+      // Lo guardado puede traer el cierre del ejercicio (31/10/2026), que era el corte viejo. La
+      // decision del 29/08 lo adelanta, asi que nunca se toma una fecha posterior a esa.
+      setBankLoadsUntil(data.bankLoadsUntil > BANCO_CARGA_HASTA ? BANCO_CARGA_HASTA : data.bankLoadsUntil);
+    }
     setManualAllocationPct(data.manualAllocationPct ?? 18.75);
     setDeviationPct(data.deviationPct ?? 5);
     setMarkupPct(data.markupPct ?? 30);
@@ -12295,7 +12300,6 @@ Escribi CERRAR para confirmar:`
         balance: 0,
         notes: "",
         extractedAutomatically: false,
-        ...MARCA_SOLO_CONSTATA,
       },
       ...prev,
     ]);
@@ -13533,7 +13537,6 @@ Escribi CERRAR para confirmar:`
     const out: CalendarLoan[] = [];
     visibleBankStatementEntries.forEach((b) => {
       // Solo lo que ENTRO: un debito en un renglon de prestamo es una devolucion, no deuda nueva.
-      if (!alimentaElCalendario(b)) return;
       if (b.movementType !== "credito" || !b.conceptKey) return;
       const label = labelOfConcept(b.conceptKey);
       if (!label) return;
@@ -13899,9 +13902,6 @@ Escribi CERRAR para confirmar:`
               ? `${item.assignedParty} · (D) falta ppto`
               : bankRawTitle
           : bankRawTitle;
-      // El banco constata, no carga: lo importado desde la decision de Nicolas no arma renglon.
-      // Sigue contando para el SALDO bancario, que es lo unico que el extracto sigue mandando.
-      if (!alimentaElCalendario(item)) return;
       entries.push({
         id: `bank-${item.id}`,
         date: item.date,
@@ -15484,8 +15484,6 @@ Escribi CERRAR para confirmar:`
       currency: bankMirrorCurrency,
       notes: "Importado del extracto (espejo)",
       extractedAutomatically: true,
-      // El banco constata, no carga: lo que entra de ahora en mas no arma renglones del calendario.
-      ...MARCA_SOLO_CONSTATA,
     }));
     setBankStatementEntries((prev) => [...entries, ...prev]);
     const dups = bankMirrorPreview.length - nuevos.length;

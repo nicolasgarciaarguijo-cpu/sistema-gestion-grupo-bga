@@ -758,12 +758,6 @@ export type BankStatementEntry = {
   // Renglón del Calendario anual (chart of accounts) al que se asigna este movimiento del extracto.
   // Con esto el banco ALIMENTA el calendario; sin asignar, cae en "Sin clasificar".
   conceptKey?: string;
-  // El banco CONSTATA, no carga (Nicolas, 2026-08-29). Todo extracto importado desde esa decision
-  // queda marcado y NO se convierte en un renglon del Calendario: solo sirve para verificar que el
-  // saldo cierre y que lo que dice el sistema exista en el banco. Lo ya cargado no tiene la marca y
-  // sigue alimentando, porque esos movimientos SON el cash flow de los meses ya cerrados: cortarlos
-  // retroactivamente vaciaria la planilla. Ver domain/bankFeed.ts.
-  soloConstata?: boolean;
   attachmentName?: string;
   extractedAutomatically: boolean;
 };
