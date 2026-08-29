@@ -36,7 +36,7 @@ import {
   type LedgerPayment,
 } from "./domain/purchaseLedger";
 import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
-import { CalendarMark, setCalendarMark } from "./domain/calendarMarks";
+import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./domain/calendarMarks";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { deriveConvenioHours } from "./domain/attendance";
 import {
@@ -1279,6 +1279,7 @@ const defaultPersonLedgerEntries: PersonLedgerEntry[] = [];
 
 const defaultCalendarFlags: CalendarFlag[] = [];
 const defaultCalendarMarks: CalendarMark[] = [];
+const defaultCalendarNotes: CalendarNote[] = [];
 
 const defaultIvaVepPayments: IvaVepPayment[] = [];
 
@@ -1682,6 +1683,8 @@ type PersistedAppStateData = {
   calendarFlags: CalendarFlag[];
   // Marcadores de color del Calendario anual. Ver domain/calendarMarks.ts.
   calendarMarks: CalendarMark[];
+  // Notas escritas sobre una celda. NO entran en ningun calculo.
+  calendarNotes: CalendarNote[];
   stockItems: StockItem[];
   costAnalysisGroups: CostAnalysisGroup[];
   costAnalysisEntries: CostAnalysisEntry[];
@@ -1780,7 +1783,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig", "calendarFlags", "calendarMarks"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig", "calendarFlags", "calendarMarks", "calendarNotes"] as const,
   },
   {
     key: "movimientos-internos",
@@ -2842,6 +2845,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [personLedgerEntries, setPersonLedgerEntries] = useState<PersonLedgerEntry[]>(defaultPersonLedgerEntries);
   const [calendarFlags, setCalendarFlags] = useState<CalendarFlag[]>(defaultCalendarFlags);
   const [calendarMarks, setCalendarMarks] = useState<CalendarMark[]>(defaultCalendarMarks);
+  const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>(defaultCalendarNotes);
   const [internalCompanyScope, setInternalCompanyScope] = useState<CompanyScope | "__ALL__">("__ALL__");
   const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
@@ -3856,6 +3860,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     personLedgerEntries,
     calendarFlags,
     calendarMarks,
+    calendarNotes,
     ivaVepPayments,
     creditCards,
     creditCardStatements,
@@ -9111,6 +9116,7 @@ Escribi CERRAR para confirmar:`
     personLedgerEntries: personLedgerEntries.map((item) => ({ ...item, date: stampDate(item.date) })),
     calendarFlags: calendarFlags.map((item) => ({ ...item })),
     calendarMarks: calendarMarks.map((item) => ({ ...item })),
+    calendarNotes: calendarNotes.map((item) => ({ ...item })),
     ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
     fiscalClosings: fiscalClosings.map((item) => ({ ...item })),
     calendarRowConfig: {
@@ -9380,6 +9386,7 @@ Escribi CERRAR para confirmar:`
     );
     setCalendarFlags((data.calendarFlags || defaultCalendarFlags).map((item) => ({ ...item })));
     setCalendarMarks((data.calendarMarks || defaultCalendarMarks).map((item) => ({ ...item })));
+    setCalendarNotes((data.calendarNotes || defaultCalendarNotes).map((item) => ({ ...item })));
     setPersonLedgerEntries(
       keepAccessibleByCompany(data.personLedgerEntries || defaultPersonLedgerEntries).map((item) => ({
         ...item,
@@ -11547,6 +11554,7 @@ Escribi CERRAR para confirmar:`
     personLedgerEntries,
     calendarFlags,
     calendarMarks,
+    calendarNotes,
     ivaVepPayments,
     calendarRowConfig,
     creditCards,
@@ -16427,6 +16435,18 @@ Escribi CERRAR para confirmar:`
     );
   };
 
+  // Nota escrita sobre una celda. Es informacion para el que lee la planilla: no toca ningun total.
+  const setCalendarCellNote = (key: string, date: string, label: string, text: string) => {
+    setCalendarNotes((prev) =>
+      setCalendarNote(prev, {
+        key, date, label, text,
+        id: newId(),
+        createdBy: supabaseProfile?.full_name || "Usuario",
+        createdAt: new Date().toISOString(),
+      })
+    );
+  };
+
   const setCalendarFlagNote = (id: number, note: string) => {
     setCalendarFlags((prev) => prev.map((f) => (f.id === id ? { ...f, note } : f)));
   };
@@ -16439,6 +16459,8 @@ Escribi CERRAR para confirmar:`
           onSetFlagNote={setCalendarFlagNote}
           marks={calendarMarks}
           onSetMark={setCalendarCellMark}
+          notes={calendarNotes}
+          onSetNote={setCalendarCellNote}
           billeteraDiaria={billeteraDiariaPorEmpresa}
           entries={annualCashFlowEntries}
           companyScope={balanceCompanyScope}

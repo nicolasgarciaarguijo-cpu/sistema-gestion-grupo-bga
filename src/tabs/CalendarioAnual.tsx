@@ -73,7 +73,8 @@ type AddForm = {
   notes: string;
 };
 
-import { CalendarMark, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
+import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
+import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
 
 export function CalendarioAnualTab({
   entries,
@@ -107,6 +108,8 @@ export function CalendarioAnualTab({
   onSetFlagNote,
   marks,
   onSetMark,
+  notes,
+  onSetNote,
   billeteraDiaria,
 }: {
   entries: Entry[];
@@ -130,6 +133,9 @@ export function CalendarioAnualTab({
   // Marcadores de color: el significado de cada color vive en domain/calendarMarks.ts.
   marks?: CalendarMark[];
   onSetMark?: (key: string, date: string, label: string, color: string) => void;
+  // Notas escritas sobre una celda. Son informacion para el que lee: no entran en ningun calculo.
+  notes?: CalendarNote[];
+  onSetNote?: (key: string, date: string, label: string, text: string) => void;
   companyScope: string;
   setCompanyScope: (v: string) => void;
   fiscalStartYear: number;
@@ -242,6 +248,20 @@ export function CalendarioAnualTab({
     });
     return cols;
   }, [months]);
+
+  // Feriados argentinos de los años que toca el ejercicio (arranca en noviembre: son dos).
+  const feriados = useMemo(
+    () => mapaDeFeriados(Array.from(new Set(months.map((m) => m.year)))),
+    [months]
+  );
+  // Que pasa con un dia: feriado, fin de semana, o dia habil. Marron para los dos primeros, como
+  // pidio Nicolas, para no cargar un pago un dia en que el banco no opera.
+  const diaNoHabil = (iso: string): { color: string; texto: string } | null => {
+    const fer = feriados.get(iso);
+    if (fer) return { color: "#7c4a21", texto: fer };
+    if (esFinDeSemana(iso)) return { color: "#a98467", texto: "Fin de semana" };
+    return null;
+  };
 
   // Columnas a MOSTRAR: un mes (liviano) o todo el año. La agregación se hace sobre el año completo
   // (dayCols); acá solo cambia lo que se pinta.
@@ -808,6 +828,12 @@ export function CalendarioAnualTab({
   const flagSet = useMemo(() => new Set((flags || []).map((f) => f.key)), [flags]);
   const [flagPanel, setFlagPanel] = useState<null | { x: number; y: number }>(null);
   // Recuadro rojo: tiene que encontrarse de lejos, por eso va inset (no corre el layout) y grueso.
+  const noteMap = useMemo(() => {
+    const m = new Map<string, string>();
+    (notes || []).forEach((n) => m.set(n.key, n.text));
+    return m;
+  }, [notes]);
+
   const markMap = useMemo(() => {
     const m = new Map<string, string>();
     (marks || []).forEach((x) => m.set(x.key, x.color));
@@ -829,6 +855,9 @@ export function CalendarioAnualTab({
   // El FONDO de la celda es de la empresa (BGA azul / De Raiz mostaza), asi que ni la banderita ni
   // los marcadores lo tocan: los dos hablan con el BORDE. outline se dibuja encima y no lo come el
   // borderCollapse de la tabla, ademas de no correr el layout.
+  const notaDeCelda = (sectionKey: string, itemKey: string, iso: string) =>
+    noteMap.get(flagKey(sectionKey, itemKey, iso)) || "";
+
   const estiloCelda = (sectionKey: string, itemKey: string, iso: string): React.CSSProperties => {
     const k = flagKey(sectionKey, itemKey, iso);
     if (movingFrom && movingFrom.key === k)
@@ -847,7 +876,8 @@ export function CalendarioAnualTab({
     const color = markMap.get(k) || "";
     const hex = markHex(color);
     const marcada = flagSet.has(k);
-    if (!marcada && !hex) return null;
+    const nota = noteMap.get(k) || "";
+    if (!marcada && !hex && !nota) return null;
     return (
       <span
         style={{
@@ -860,6 +890,13 @@ export function CalendarioAnualTab({
           <span
             title={markLabel(color)}
             style={{ display: "inline-block", width: 7, height: 7, borderRadius: 2, background: hex, border: "1px solid #fff" }}
+          />
+        )}
+        {nota && (
+          // Esquinita: hay algo escrito acá. El texto se lee en el tooltip y en el menú.
+          <span
+            title={nota}
+            style={{ display: "inline-block", width: 0, height: 0, borderTop: "7px solid #7c4a21", borderRight: "7px solid transparent" }}
           />
         )}
       </span>
@@ -949,57 +986,19 @@ export function CalendarioAnualTab({
     const labels = { ...rowLabels };
     if (label) labels[itemKey] = label;
     else delete labels[itemKey];
-    onRowConfigChange({ labels, hidden: [...(rowConfig.hidden || [])], extra: [...(rowConfig.extra || [])] });
+    guardarConfig({ labels });
   };
   const setRowHidden = (itemKey: string, hidden: boolean) => {
     if (!onRowConfigChange) return;
     const next = new Set(rowConfig.hidden || []);
     if (hidden) next.add(itemKey);
     else next.delete(itemKey);
-    onRowConfigChange({ labels: { ...rowLabels }, hidden: Array.from(next), extra: [...(rowConfig.extra || [])] });
+    guardarConfig({ hidden: Array.from(next) });
   };
   // ---- Renglones PROPIOS: existen aunque esten vacios ------------------------------------------
-  // Antes un renglón propio solo existía mientras tuviera plata cargada, así que "+ renglón" en
-  // realidad no creaba nada: te pedía un movimiento. Ahora el renglón se declara en rowConfig.extra
-  // (estado del sistema, lo ve todo el mundo) y se muestra vacío, listo para cargarle.
-  const addExtraRow = (sectionKey: string) => {
-    if (!onRowConfigChange) return;
-    const nombre = ask("Nombre del renglón nuevo:", "");
-    if (!nombre) return;
-    const yaEsta = (rowConfig.extra || []).some(
-      (r) => r.sectionKey === sectionKey && r.label.trim().toLowerCase() === nombre.toLowerCase()
-    );
-    if (yaEsta) {
-      window.alert(`Ya hay un renglón "${nombre}" en esta sección.`);
-      return;
-    }
-    onRowConfigChange({
-      labels: { ...rowLabels },
-      hidden: [...(rowConfig.hidden || [])],
-      extra: [...(rowConfig.extra || []), { sectionKey, label: nombre }],
-    });
-  };
-  const renameExtraRow = (sectionKey: string, anterior: string, nuevo: string) => {
-    if (!onRowConfigChange) return;
-    onRowConfigChange({
-      labels: { ...rowLabels },
-      hidden: [...(rowConfig.hidden || [])],
-      extra: (rowConfig.extra || []).map((r) =>
-        r.sectionKey === sectionKey && r.label === anterior ? { ...r, label: nuevo } : r
-      ),
-    });
-  };
-  const removeExtraRow = (sectionKey: string, label: string) => {
-    if (!onRowConfigChange) return;
-    onRowConfigChange({
-      labels: { ...rowLabels },
-      hidden: [...(rowConfig.hidden || [])],
-      extra: (rowConfig.extra || []).filter(
-        (r) => !(r.sectionKey === sectionKey && r.label === label)
-      ),
-    });
-  };
-  // ---- SECCIONES propias: los títulos grandes que no están en la estructura fija ----------------
+  // TODO cambio de configuracion pasa por acá. Antes cada funcion armaba el objeto a mano y se
+  // olvidaba de `sections`: agregar un renglón, ocultarlo o renombrarlo BORRABA todas las secciones
+  // propias del usuario. Con un solo lugar que arma la config completa, eso no puede volver a pasar.
   const guardarConfig = (cambio: Partial<CalendarRowConfig>) => {
     if (!onRowConfigChange) return;
     onRowConfigChange({
@@ -1010,26 +1009,76 @@ export function CalendarioAnualTab({
       ...cambio,
     });
   };
+
+  // Antes un renglón propio solo existía mientras tuviera plata cargada, así que "+ renglón" en
+  // realidad no creaba nada: te pedía un movimiento. Ahora el renglón se declara en rowConfig.extra
+  // (estado del sistema, lo ve todo el mundo) y se muestra vacío, listo para cargarle.
+  const addExtraRow = (sectionKey: string) => {
+    if (!onRowConfigChange) return;
+    pedirTexto("Nombre del renglón nuevo", "", (nombre) => {
+      if (!nombre) return;
+      const yaEsta = (rowConfig.extra || []).some(
+        (r) => r.sectionKey === sectionKey && r.label.trim().toLowerCase() === nombre.toLowerCase()
+      );
+      if (yaEsta) {
+        window.alert(`Ya hay un renglón "${nombre}" en esta sección.`);
+        return;
+      }
+      guardarConfig({ extra: [...(rowConfig.extra || []), { sectionKey, label: nombre }] });
+    });
+  };
+  const renameExtraRow = (sectionKey: string, anterior: string, nuevo: string) => {
+    if (!onRowConfigChange) return;
+    guardarConfig({
+      extra: (rowConfig.extra || []).map((r) =>
+        r.sectionKey === sectionKey && r.label === anterior ? { ...r, label: nuevo } : r
+      ),
+    });
+  };
+  const removeExtraRow = (sectionKey: string, label: string) => {
+    if (!onRowConfigChange) return;
+    guardarConfig({
+      extra: (rowConfig.extra || []).filter(
+        (r) => !(r.sectionKey === sectionKey && r.label === label)
+      ),
+    });
+  };
+  // ---- SECCIONES propias: los títulos grandes que no están en la estructura fija ----------------
   const addSection = () => {
     if (!onRowConfigChange) return;
-    const nombre = ask("Nombre de la sección nueva:", "");
-    if (!nombre) return;
-    const key = sectionKeyFromLabel(nombre);
-    if (key === "propia:") {
-      window.alert("Ponele un nombre con letras o números.");
-      return;
-    }
-    if (sectionByKey.has(key)) {
-      window.alert(`Ya hay una sección "${nombre}".`);
-      return;
-    }
-    // La dirección define si la plata suma como ingreso o como egreso: hay que preguntarla.
-    const esIngreso = window.confirm(
-      `"${nombre}"\n\n¿La plata de esta sección ENTRA?\n\nAceptar = INGRESO   ·   Cancelar = EGRESO`
+    // La dirección define si la plata suma como ingreso o como egreso, así que se elige en el mismo
+    // cuadro. Antes era un window.confirm con "Aceptar = INGRESO / Cancelar = EGRESO": confuso, y
+    // encima no aparece si el navegador tiene los diálogos bloqueados.
+    pedirTexto(
+      "Nombre de la sección nueva",
+      "",
+      (nombre, dir) => {
+        if (!nombre) return;
+        const key = sectionKeyFromLabel(nombre);
+        if (key === "propia:") {
+          window.alert("Ponele un nombre con letras o números.");
+          return;
+        }
+        if (sectionByKey.has(key)) {
+          window.alert(`Ya hay una sección "${nombre}".`);
+          return;
+        }
+        guardarConfig({
+          sections: [
+            ...(rowConfig.sections || []),
+            { key, label: nombre, dir: dir === "in" ? "in" : "out" },
+          ],
+        });
+      },
+      {
+        label: "La plata de esta sección…",
+        actual: "out",
+        valores: [
+          { v: "out", label: "Sale (egreso)" },
+          { v: "in", label: "Entra (ingreso)" },
+        ],
+      }
     );
-    guardarConfig({
-      sections: [...(rowConfig.sections || []), { key, label: nombre, dir: esIngreso ? "in" : "out" }],
-    });
   };
   const renameSection = (sectionKey: string, nuevo: string) => {
     guardarConfig({
@@ -1113,12 +1162,22 @@ export function CalendarioAnualTab({
       );
     }
   };
-  const ask = (question: string, current: string) => {
-    const v = window.prompt(question, current);
-    if (v === null) return null;
-    const clean = v.trim();
-    return clean || null;
-  };
+  // ask() usaba window.prompt y dejaba de andar SIN AVISAR: si el navegador tiene los dialogos
+  // bloqueados (Chrome los bloquea apenas se tilda "impedir que esta pagina cree mas dialogos")
+  // prompt() devuelve null y la funcion salia sin hacer nada. Es lo mismo que rompia la banderita.
+  // Ahora es un cuadro nuestro, que ademas se puede ver y usar siempre.
+  const [textPrompt, setTextPrompt] = useState<null | {
+    titulo: string;
+    valor: string;
+    opcion?: { label: string; valores: Array<{ v: string; label: string }>; actual: string };
+    onOk: (valor: string, opcion: string) => void;
+  }>(null);
+  const pedirTexto = (
+    titulo: string,
+    actual: string,
+    onOk: (valor: string, opcion: string) => void,
+    opcion?: { label: string; valores: Array<{ v: string; label: string }>; actual: string }
+  ) => setTextPrompt({ titulo, valor: actual, onOk, opcion });
   // Día donde cae "Cargar acá…" desde el nombre del renglón: hoy si está a la vista, si no el primero.
   const defaultLoadDay = () =>
     visibleDayCols.find((c) => c.iso === todayIso())?.iso || visibleDayCols[0]?.iso || "";
@@ -1492,13 +1551,15 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
         <div
           ref={wrapRef}
           style={{
-            overflowX: "auto",
+            overflow: "auto",
             border: "1px solid #e2e8f0",
             borderRadius: 8,
             borderTop: `3px solid ${selectedColor || "#cbd5e1"}`,
-            // SIN alto maximo a proposito: el bloque mide lo que mida el calendario y quien scrollea
-            // es la pagina. Antes tenia un maxHeight y habia que bajar DENTRO del bloque para llegar
-            // a los ultimos renglones, que es justo lo que no se quiere.
+            // El bloque mide UNA PANTALLA y el scroll es de el, no de la pagina. Es la unica forma de
+            // que los totales, la plata disponible y la fila de fechas queden inmovilizados mientras
+            // se baja (position:sticky se pega al contenedor que scrollea; si el que scrollea es la
+            // pagina, el bloque entero se va para arriba y se los lleva puestos).
+            maxHeight: "calc(100vh - 150px)",
             ["--cal-label-w" as any]: `${labelW}px`,
             ["--cal-day-w" as any]: `${dayWEfectivo}px`,
           } as React.CSSProperties}
@@ -1550,10 +1611,12 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   <th
                     key={`d-${c.iso}`}
                     ref={c.iso === today ? todayCellRef : undefined}
-                    title={c.iso === today ? "Hoy" : undefined}
+                    title={[c.iso === today ? "Hoy" : "", diaNoHabil(c.iso)?.texto || ""].filter(Boolean).join(" · ") || undefined}
                     style={
                       c.iso === today
                         ? { ...thDay, top: monthRowH, background: "#f59e0b", color: "#fff", fontWeight: 800 }
+                        : diaNoHabil(c.iso)
+                        ? { ...thDay, top: monthRowH, background: diaNoHabil(c.iso)!.color, color: "#fff", fontWeight: 700 }
                         : { ...thDay, top: monthRowH }
                     }
                   >
@@ -2204,7 +2267,7 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           <button
             style={quickMenuItem}
             onClick={() => {
-              if (onRowConfigChange) onRowConfigChange({ labels: { ...rowLabels }, hidden: [], extra: [...(rowConfig.extra || [])] });
+              guardarConfig({ hidden: [] });
               setHiddenMenu(null);
             }}
           >
@@ -2238,8 +2301,10 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   <button
                     style={quickMenuItem}
                     onClick={() => {
-                      const nuevo = ask("Nombre de la sección:", rowMenu.label);
-                      if (nuevo) renameSection(rowMenu.sectionKey, nuevo);
+                      const sk = rowMenu.sectionKey;
+                      pedirTexto("Nombre de la sección", rowMenu.label, (nuevo) => {
+                        if (nuevo) renameSection(sk, nuevo);
+                      });
                       close();
                     }}
                   >
@@ -2277,18 +2342,23 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 <button
                   style={quickMenuItem}
                   onClick={() => {
-                    const nuevo = ask("Nombre del renglón:", rowMenu.label);
-                    if (nuevo && nuevo !== rowMenu.label) {
+                    const sk = rowMenu.sectionKey;
+                    const anterior = rowMenu.label;
+                    const matchRow = rowMenu.match;
+                    const hayPlata = list.length > 0;
+                    pedirTexto("Nombre del renglón", anterior, (nuevo) => {
+                    if (nuevo && nuevo !== anterior) {
                       // El nombre ES la identidad del renglón: hay que renombrarlo en la configuración
                       // Y mover los movimientos que ya tenía al conceptKey nuevo.
-                      renameExtraRow(rowMenu.sectionKey, rowMenu.label, nuevo);
-                      if (list.length > 0) {
-                        patchRow(rowMenu.match, () => ({
-                          conceptKey: `custom:${rowMenu.sectionKey}:${nuevo}`,
+                      renameExtraRow(sk, anterior, nuevo);
+                      if (hayPlata) {
+                        patchRow(matchRow, () => ({
+                          conceptKey: `custom:${sk}:${nuevo}`,
                           title: nuevo,
                         }));
                       }
                     }
+                    });
                     close();
                   }}
                 >
@@ -2394,8 +2464,10 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
               <button
                 style={quickMenuItem}
                 onClick={() => {
-                  const nuevo = ask("Texto del renglón:", rowMenu.label);
-                  if (nuevo) patchRow(rowMenu.match, () => ({ concept: nuevo }));
+                  const matchTexto = rowMenu.match;
+                  pedirTexto("Texto del renglón", rowMenu.label, (nuevo) => {
+                    if (nuevo) patchRow(matchTexto, () => ({ concept: nuevo }));
+                  });
                   close();
                 }}
               >
@@ -2407,8 +2479,10 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                 <button
                   style={quickMenuItem}
                   onClick={() => {
-                    const nuevo = ask("Nombre del renglón:", rowMenu.label);
-                    if (nuevo) setRowLabel(rowMenu.itemKey, nuevo);
+                    const ik = rowMenu.itemKey;
+                    pedirTexto("Nombre del renglón", rowMenu.label, (nuevo) => {
+                      if (nuevo) setRowLabel(ik, nuevo);
+                    });
                     close();
                   }}
                 >
@@ -2470,6 +2544,62 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
           </QuickMenu>
         );
       })()}
+
+      {textPrompt && (
+        <div style={overlayStyle} onClick={() => setTextPrompt(null)}>
+          <div
+            style={{ ...modalStyle, maxWidth: 420 }}
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 10 }}>{textPrompt.titulo}</div>
+            <input
+              autoFocus
+              style={styles.input}
+              value={textPrompt.valor}
+              onChange={(ev) => setTextPrompt({ ...textPrompt, valor: ev.target.value })}
+              onKeyDown={(ev) => {
+                if (ev.key === "Enter") {
+                  textPrompt.onOk(textPrompt.valor.trim(), textPrompt.opcion?.actual || "");
+                  setTextPrompt(null);
+                }
+                if (ev.key === "Escape") setTextPrompt(null);
+              }}
+            />
+            {textPrompt.opcion && (
+              <label style={{ display: "block", marginTop: 10, fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                {textPrompt.opcion.label}
+                <select
+                  style={styles.input}
+                  value={textPrompt.opcion.actual}
+                  onChange={(ev) =>
+                    setTextPrompt({
+                      ...textPrompt,
+                      opcion: { ...textPrompt.opcion!, actual: ev.target.value },
+                    })
+                  }
+                >
+                  {textPrompt.opcion.valores.map((o) => (
+                    <option key={o.v} value={o.v}>{o.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+              <button style={btnSecondary} onClick={() => setTextPrompt(null)}>Cancelar</button>
+              <button
+                style={btnPrimary}
+                disabled={!textPrompt.valor.trim()}
+                onClick={() => {
+                  textPrompt.onOk(textPrompt.valor.trim(), textPrompt.opcion?.actual || "");
+                  setTextPrompt(null);
+                }}
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {cellMenu && (() => {
         const list = entriesOfCell(cellMenu);
@@ -2585,6 +2715,39 @@ ${e.title} — ${money(Math.abs(Number(e.amount) || 0))} (${e.date})`
                   >
                     {marcada ? "Quitar la marca de revisar" : "Marcar para revisar"}
                   </button>
+                </>
+              );
+            })()}
+            {onSetNote && (() => {
+              const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
+              const actual = noteMap.get(k) || "";
+              return (
+                <>
+                  <QuickMenuSep />
+                  <div style={{ fontSize: 11, color: "#64748b", padding: "2px 8px" }}>
+                    Nota de este casillero <em>(no cambia ningún número)</em>
+                  </div>
+                  <div style={{ padding: "2px 8px 6px" }}>
+                    <textarea
+                      defaultValue={actual}
+                      placeholder="Escribí acá lo que haga falta aclarar…"
+                      rows={2}
+                      style={{
+                        width: "100%", fontSize: 11, padding: "3px 5px", borderRadius: 4,
+                        border: "1px solid #cbd5e1", background: "#fff", color: "inherit",
+                        fontFamily: "inherit", resize: "vertical", boxSizing: "border-box",
+                      }}
+                      onBlur={(ev) => onSetNote(k, cellMenu.iso, cellMenu.label, ev.target.value)}
+                      onKeyDown={(ev) => {
+                        // Enter guarda; Shift+Enter hace un renglón nuevo.
+                        if (ev.key === "Enter" && !ev.shiftKey) {
+                          ev.preventDefault();
+                          (ev.target as HTMLTextAreaElement).blur();
+                          close();
+                        }
+                      }}
+                    />
+                  </div>
                 </>
               );
             })()}

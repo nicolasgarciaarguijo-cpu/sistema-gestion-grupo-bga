@@ -232,4 +232,48 @@ describe("la celda marcada se ve", () => {
     // Y NO se creo ademas un movimiento suelto: seria el mismo peso contado dos veces.
     expect(sueltos).toHaveLength(0);
   });
+
+  // AGREGAR UN RENGLON NO PUEDE BORRAR LAS SECCIONES. Cada funcion armaba la config a mano y se
+  // olvidaba de `sections`: agregar un renglon te borraba todas las secciones propias.
+  it("agregar un renglón conserva las secciones propias", () => {
+    const guardados: any[] = [];
+    const config = {
+      labels: {},
+      hidden: [],
+      extra: [],
+      sections: [{ key: "propia:obra", label: "OBRA", dir: "out" as const }],
+    };
+    const host = render({
+      rowConfig: config,
+      onRowConfigChange: (c: any) => guardados.push(c),
+    });
+
+    const mas = Array.from(host.querySelectorAll("button")).find((b) =>
+      (b.textContent || "").includes("+ renglón")
+    )!;
+    expect(mas).toBeTruthy();
+    act(() => { mas.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    // Ya no es un window.prompt: es un cuadro nuestro. Se busca DENTRO del cuadro, que es el que
+    // tiene el botón Guardar (la planilla tiene sus propios inputs por todos lados).
+    const guardar = Array.from(document.querySelectorAll("button")).find(
+      (b) => (b.textContent || "").trim() === "Guardar"
+    )!;
+    expect(guardar).toBeTruthy();
+    let cuadro: HTMLElement = guardar.parentElement!;
+    while (cuadro && !cuadro.querySelector("input")) cuadro = cuadro.parentElement!;
+    const input = cuadro.querySelector("input")!;
+    expect(input).toBeTruthy();
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+      setter.call(input, "Fletes especiales");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    act(() => { guardar.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+
+    expect(guardados).toHaveLength(1);
+    expect(guardados[0].extra).toEqual([{ sectionKey: expect.any(String), label: "Fletes especiales" }]);
+    // Lo importante: la sección propia sigue viva.
+    expect(guardados[0].sections).toEqual([{ key: "propia:obra", label: "OBRA", dir: "out" }]);
+  });
 });

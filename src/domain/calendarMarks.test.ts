@@ -1,4 +1,4 @@
-import { setCalendarMark, markHex, markLabel, CalendarMark } from "./calendarMarks";
+import { setCalendarMark, setCalendarNote, markHex, markLabel, CalendarMark } from "./calendarMarks";
 
 const base = { key: "egresos|alquiler|2026-08-29", date: "2026-08-29", label: "Alquiler", createdBy: "Nico", createdAt: "2026-08-29T10:00:00Z", id: 1 };
 
@@ -41,5 +41,34 @@ describe("setCalendarMark", () => {
     expect(markHex("naranja")).toBe("#ea580c");
     expect(markLabel("magenta")).toBe("Pago estimado");
     expect(markHex("fucsia")).toBeUndefined();
+  });
+});
+
+
+describe("setCalendarNote", () => {
+  const b = { key: "egresos|alquiler|2026-08-29", date: "2026-08-29", label: "Alquiler", createdBy: "Nico", createdAt: "x", id: 1 };
+
+  it("escribe una nota en una celda", () => {
+    const r = setCalendarNote([], { ...b, text: "  lo pagó Gustavo  " });
+    expect(r).toHaveLength(1);
+    expect(r[0].text).toBe("lo pagó Gustavo");
+  });
+
+  it("volver a escribir reemplaza, no acumula", () => {
+    const uno = setCalendarNote([], { ...b, text: "primera" });
+    const dos = setCalendarNote(uno, { ...b, text: "segunda", id: 2 });
+    expect(dos).toHaveLength(1);
+    expect(dos[0].text).toBe("segunda");
+  });
+
+  it("texto vacío borra la nota", () => {
+    const uno = setCalendarNote([], { ...b, text: "algo" });
+    expect(setCalendarNote(uno, { ...b, text: "   ", id: 2 })).toEqual([]);
+  });
+
+  it("no toca las notas de otras celdas", () => {
+    const otra = setCalendarNote([], { ...b, key: "egresos|sueldos|2026-08-29", text: "otra" });
+    const r = setCalendarNote(otra, { ...b, text: "esta", id: 2 });
+    expect(r).toHaveLength(2);
   });
 });

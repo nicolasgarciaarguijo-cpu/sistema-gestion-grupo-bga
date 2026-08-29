@@ -55,3 +55,31 @@ export function setCalendarMark(
     ...resto,
   ];
 }
+
+
+// ---- NOTAS DE CELDA ---------------------------------------------------------------------------
+// Pedido de Nicolas (2026-08-29): "poder seleccionar una celda para escribir y dejar informacion
+// escrita SIN QUE ESTO MODIFIQUE EL CALCULO". Por eso la nota no vive con los movimientos: es una
+// anotacion sobre la coordenada de la celda y no entra en ninguna suma.
+
+export type CalendarNote = {
+  id: number;
+  // sectionKey|itemKey|fecha — la misma coordenada que usan las banderitas y los marcadores.
+  key: string;
+  date: string;
+  label: string;
+  text: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+/** Escribe, reemplaza o borra la nota de una celda. Texto vacio = borrar. */
+export function setCalendarNote(
+  notas: CalendarNote[],
+  input: { key: string; date: string; label: string; text: string; createdBy: string; createdAt: string; id: number }
+): CalendarNote[] {
+  const resto = notas.filter((n) => n.key !== input.key);
+  const texto = input.text.trim();
+  if (!texto) return resto;
+  return [{ ...input, text: texto }, ...resto];
+}
