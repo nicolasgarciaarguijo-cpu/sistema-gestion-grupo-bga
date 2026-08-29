@@ -38,3 +38,41 @@ export function borrarOrigenDelReflejo<
         }
   );
 }
+
+
+/**
+ * Cambia el pago del trabajo que ese reflejo esta mostrando.
+ *
+ * Solo COBRANZAS: una factura necesita subtotal e IVA, y el formulario del calendario no los pide.
+ * Editar una factura desde la planilla seria inventarle esos numeros, asi que se sigue editando en
+ * Trabajos aprobados. Devuelve null si no se puede aplicar (el que llama avisa donde se edita).
+ */
+export function editarOrigenDelReflejo<
+  J extends { id?: number; payments?: Array<{ id: number; amount: number; paymentDate: string; administration?: "blanco" | "negro" }> }
+>(
+  jobs: J[],
+  item: MirrorSource,
+  patch: { amount?: number; date?: string; administration?: "blanco" | "negro" }
+): J[] | null {
+  if (!esReflejoDeTrabajo(item)) return null;
+  if (item.preset !== "cobranza") return null;
+  const job = jobs.find((j) => j.id === item.sourceJobId);
+  if (!job || !(job.payments || []).some((p) => p.id === item.sourceRefId)) return null;
+  return jobs.map((j) =>
+    j.id !== item.sourceJobId
+      ? j
+      : {
+          ...j,
+          payments: (j.payments || []).map((p) =>
+            p.id !== item.sourceRefId
+              ? p
+              : {
+                  ...p,
+                  ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
+                  ...(patch.date ? { paymentDate: patch.date } : {}),
+                  ...(patch.administration ? { administration: patch.administration } : {}),
+                }
+          ),
+        }
+  );
+}

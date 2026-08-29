@@ -37,7 +37,7 @@ import {
 } from "./domain/purchaseLedger";
 import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
 import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./domain/calendarMarks";
-import { esReflejoDeTrabajo, borrarOrigenDelReflejo } from "./domain/jobMirror";
+import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { deriveConvenioHours } from "./domain/attendance";
 import {
@@ -11771,6 +11771,22 @@ Escribi CERRAR para confirmar:`
     if (entryId.startsWith("financial-")) {
       const id = Number(entryId.slice("financial-".length));
       if (!id) return false;
+      // Si el renglón es el REFLEJO de un pago del trabajo, editarlo acá tiene que editar EL PAGO.
+      // Antes se editaba el reflejo y se lo marcaba "editado a mano": la planilla quedaba mostrando
+      // un número que ya no coincidía con el trabajo, y eso rompe justo lo que la planilla promete
+      // (lo que pasa en la planilla es lo que pasa en el sistema). Una FACTURA no entra: necesita
+      // subtotal e IVA, que el formulario del calendario no pide, y se sigue editando en el trabajo.
+      const espejo = financialItems.find((f) => f.id === id);
+      if (esReflejoDeTrabajo(espejo)) {
+        const siguiente = editarOrigenDelReflejo(approvedJobs, espejo!, {
+          amount: patch.amount,
+          date: patch.date,
+          administration: patch.administration,
+        });
+        if (!siguiente) return false;
+        setApprovedJobs(siguiente);
+        return true;
+      }
       setFinancialItems((prev) =>
         prev.map((item) =>
           item.id === id
