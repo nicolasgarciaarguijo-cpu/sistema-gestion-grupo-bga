@@ -310,4 +310,33 @@ describe("la celda marcada se ve", () => {
     expect(thead.textContent).not.toContain("TOTAL INGRESOS");
     expect(tbody.textContent).toContain("TOTAL INGRESOS");
   });
+
+  // LA FACTURA SE VE PERO NO SUMA. La plata se mueve con el cobro y con el pago; si la factura
+  // sumara, cada peso quedaria contado dos veces. Este test es el que impide que eso vuelva.
+  it("las facturas figuran en la planilla y NO cambian los totales", () => {
+    const factura = {
+      id: "financial-99", date: iso, amount: 250000, type: "facturacion", status: "realizado",
+      company: "BGA", administration: "blanco", conceptKey: "__facturacion__",
+      title: "Venta · CONTRACT RENT", currency: "ARS",
+    } as any;
+
+    const sinFactura = render({});
+    const conFactura = render({ entries: [entrada, factura] });
+
+    // Se ve: el bloque y el renglón de la factura.
+    expect(conFactura.textContent).toContain("FACTURACIÓN");
+    expect(conFactura.textContent).toContain("Venta · CONTRACT RENT");
+    expect(sinFactura.textContent).not.toContain("FACTURACIÓN");
+
+    // Y no suma: la fila de TOTAL EGRESOS tiene que decir exactamente lo mismo en los dos casos.
+    const totalDe = (host: HTMLElement, etiqueta: string) => {
+      const fila = Array.from(host.querySelectorAll("tr")).find((tr) =>
+        (tr.querySelector("td")?.textContent || "").includes(etiqueta)
+      );
+      return fila ? (fila.textContent || "").replace(etiqueta, "") : "";
+    };
+    expect(totalDe(conFactura, "TOTAL EGRESOS")).toBe(totalDe(sinFactura, "TOTAL EGRESOS"));
+    expect(totalDe(conFactura, "TOTAL INGRESOS")).toBe(totalDe(sinFactura, "TOTAL INGRESOS"));
+    expect(totalDe(conFactura, "NETO DÍA · BLANCO")).toBe(totalDe(sinFactura, "NETO DÍA · BLANCO"));
+  });
 });

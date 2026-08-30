@@ -13817,16 +13817,23 @@ Escribi CERRAR para confirmar:`
       const cobranzaTitle = item.jobCode
         ? `${item.jobCode} · ${item.client || item.title || "Cliente"}`
         : `${item.client || item.title || "Cliente"} · (D) falta ppto`;
+      // FACTURA DE VENTA: se VE en el bloque de Facturación y NO suma. La factura es registro; la
+      // plata entra con el cobro. Si sumara, cada peso se contaria dos veces.
+      const esFacturaDeVenta = item.type === "facturacion" && !item.conceptKey;
       entries.push({
         id: `financial-${item.id}`,
         date: item.date,
         company: item.company,
-        title: isCobranza ? cobranzaTitle : item.title || item.jobCode || "Movimiento financiero",
+        title: esFacturaDeVenta
+          ? `Venta · ${item.client || item.jobCode || item.title || "cliente"}`
+          : isCobranza
+          ? cobranzaTitle
+          : item.title || item.jobCode || "Movimiento financiero",
         kind: item.type,
         amount: Number(item.amount || 0),
         statusLabel: item.status,
         subcat: isCobranza ? item.incomeCategory || "trabajo" : undefined,
-        conceptKey: item.conceptKey || undefined,
+        conceptKey: esFacturaDeVenta ? "__facturacion__" : item.conceptKey || undefined,
         administration: item.administration === "negro" ? "negro" : "blanco",
         costKind: item.costKind || undefined,
       });
@@ -13880,10 +13887,13 @@ Escribi CERRAR para confirmar:`
         id: `purchase-invoice-${item.id}`,
         date: item.invoiceDate,
         company: item.company,
-        title: item.supplier || "Factura de compra",
+        title: `Compra · ${item.supplier || "proveedor"}`,
         kind: "compra",
         amount: Number(item.total || 0),
-        statusLabel: item.receiptKind || "Factura",
+        // Se VE en el bloque de Facturación y NO suma: la factura es registro, la plata sale con el
+        // pago. "debito" hace que el bloque la lea como compra.
+        statusLabel: "debito",
+        conceptKey: "__facturacion__",
       });
     });
 

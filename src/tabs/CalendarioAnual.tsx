@@ -355,6 +355,11 @@ export function CalendarioAnualTab({
     // Movimientos internos (entre cuentas propias / pasaje de moneda): NO cuentan como ingreso/egreso.
     const internoDetail = new Map<string, Map<string, number>>();
     const internoByDate = new Map<string, number>();
+    // FACTURACION: se MUESTRA pero no suma. La factura es registro, no plata (la plata se mueve con
+    // el cobro y con el pago). Si sumara, cada peso quedaria contado dos veces: una al facturar y
+    // otra al cobrar. Mismo tratamiento que la cuenta corriente interna.
+    const facturaDetail = new Map<string, Map<string, number>>();
+    const facturaByDate = new Map<string, number>();
     // Cuando scope=Todas: desglose de los grandes totales POR EMPRESA (el "×4" a la vista, con color).
     const compIncB = new Map<string, Map<string, number>>();
     const compIncN = new Map<string, Map<string, number>>();
@@ -435,6 +440,13 @@ export function CalendarioAnualTab({
       }
       // CUENTA CORRIENTE (movimiento interno): neutral, no suma a ingresos/egresos. Es plata que pasa de
       // un bolsillo propio a otro (entre cuentas, entre las dos empresas, pasaje $↔U$S). Se muestra aparte.
+      if (e.conceptKey === "__facturacion__") {
+        const signed = e.statusLabel === "debito" ? -amt : amt;
+        addDeep(facturaDetail, title, e.date, signed);
+        marcarEmpresa(detailCompany, title, e.date, e.company, signed);
+        add(facturaByDate, e.date, signed);
+        return;
+      }
       if (e.conceptKey === "__interno__") {
         const signed = e.statusLabel === "debito" ? -amt : amt;
         addDeep(internoDetail, title, e.date, signed);
@@ -496,7 +508,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate };
+    return { byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate, facturaDetail, facturaByDate };
   }, [entries, companyScope, dayCols, sectionByKey]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
@@ -2257,6 +2269,53 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
               {/* ===== CUENTA CORRIENTE: los movimientos internos (entre cuentas propias, entre las dos
                    empresas, pasajes $↔U$S). NO son ingreso ni egreso: es plata que se mueve de un
                    bolsillo propio a otro. Se muestran acá con su saldo del día. ===== */}
+              {/* ===== FACTURACION. Se ve, no suma. La factura es REGISTRO: la plata se mueve con el
+                   cobro y con el pago. Si sumara, cada peso se contaria dos veces. ===== */}
+              {!onlySection && agg.facturaDetail.size > 0 && (
+                <>
+                  <tr>
+                    <td style={{ ...tdStickyLabel, background: "#eef2ff", fontWeight: 800, color: "#3730a3" }}>
+                      🧾 FACTURACIÓN <span style={{ fontWeight: 400 }}>· registro, no mueve plata</span>
+                    </td>
+                    {visibleDayCols.map((c) => {
+                      const v = agg.facturaByDate.get(c.iso) || 0;
+                      return (
+                        <td key={`facth-${c.iso}`} style={{ ...tdCell, background: "#eef2ff", fontWeight: 700, color: v ? "#3730a3" : "#c7d2fe", ...hi(c.iso) }}>
+                          {v ? money(Math.abs(v)) : "·"}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {Array.from(agg.facturaDetail.entries()).filter(([, drow]) => activeInView(drow)).sort((a, b) => a[0].localeCompare(b[0])).map(([title, drow]) => (
+                    <tr key={`fact-${title}`} style={{ background: "#f8fafc" }}>
+                      <td
+                        onContextMenu={(ev) =>
+                          openRowMenu(ev, "texto", title, "", "", (e) => e.conceptKey === "__facturacion__" && sameTitle(e, title))
+                        }
+                        title={title}
+                        style={{ ...tdStickyLabel, background: "#f8fafc", paddingLeft: 24, fontWeight: 400, color: "#4338ca" }}
+                      >
+                        🧾 {title}
+                      </td>
+                      {visibleDayCols.map((c) => {
+                        const v = drow.get(c.iso) || 0;
+                        return (
+                          <td
+                            key={`fact-${title}-${c.iso}`}
+                            onContextMenu={(ev) =>
+                              openCellMenu(ev, title, c.iso, "", "", (e) => e.conceptKey === "__facturacion__" && sameTitle(e, title))
+                            }
+                            style={{ ...tdCell, color: v ? "#4338ca" : "#e2e8f0", ...hi(c.iso) }}
+                          >
+                            {v ? money(Math.abs(v)) : "·"}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </>
+              )}
+
               {!onlySection && agg.internoDetail.size > 0 && (
                 <>
                   <tr>
