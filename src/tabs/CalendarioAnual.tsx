@@ -66,6 +66,12 @@ type AddForm = {
   jobPpto: string;
   // Lo mismo que pide el trabajo: sin esto la cobranza en efectivo no llega a la billetera.
   transactionType: "efectivo" | "transferencia" | "cheque" | "otros";
+  // EGRESOS: adonde va lo que se carga. "" = queda como movimiento del calendario.
+  destinoEgreso: "" | "gasto" | "comision";
+  // Lo que pide la solapa Costos y la planilla no preguntaba. El medio decide si el pago tiene que
+  // figurar en el extracto, asi que sin el no se puede escribir un gasto sin inventarlo.
+  paymentMethod: PaymentMethod | "";
+  grupoCosto: string;
   customLabel: string;
   amount: number;
   administration: "blanco" | "negro";
@@ -76,6 +82,7 @@ type AddForm = {
 import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
 import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
 import { permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
+import { PAYMENT_METHOD_OPTIONS, type PaymentMethod } from "../domain/types";
 
 export function CalendarioAnualTab({
   entries,
@@ -88,6 +95,9 @@ export function CalendarioAnualTab({
   fiscalStartMonth = 11,
   onAddMovement,
   onAddJobPayment,
+  costGroupNames = [],
+  onAddCostEntry,
+  onAddCommission,
   onAssignConcept,
   bnaCompra,
   money,
@@ -181,6 +191,16 @@ export function CalendarioAnualTab({
   onAssignConcept: (bankIds: number[], conceptKey: string) => void;
   // Cargar una cobranza COMO PAGO del trabajo aprobado: el trabajo es el dueño del dato y la
   // planilla lo muestra por el reflejo automatico. Devuelve false si no encontro el trabajo.
+  // Crear un GASTO (solapa Costos) o una COMISION de un trabajo directo desde la planilla.
+  costGroupNames?: string[];
+  onAddCostEntry?: (g: {
+    company: string; date: string; amount: number; administration: "blanco" | "negro";
+    description: string; notes: string; conceptKey: string; group: string; paymentMethod: PaymentMethod;
+  }) => boolean;
+  onAddCommission?: (
+    budgetNumber: string,
+    pago: { date: string; amount: number; administration: "blanco" | "negro"; note: string }
+  ) => boolean;
   onAddJobPayment?: (
     budgetNumber: string,
     pay: {
@@ -707,6 +727,9 @@ export function CalendarioAnualTab({
       cliente: "",
       jobPpto: "",
       transactionType: "transferencia",
+      destinoEgreso: "",
+      paymentMethod: "",
+      grupoCosto: "",
       customLabel: presetLabel,
       amount: 0,
       administration: "blanco",
@@ -991,6 +1014,9 @@ export function CalendarioAnualTab({
       // trabajo acá lo convertiría en un pago nuevo y quedaría contado dos veces.
       jobPpto: "",
       transactionType: "transferencia",
+      destinoEgreso: "",
+      paymentMethod: "",
+      grupoCosto: "",
       date: e.date,
       company: e.company,
       sectionKey,
@@ -1303,6 +1329,43 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         : false;
       if (!ok) {
         avisar("Este movimiento se edita en la solapa de donde salió (compras, caja chica, comisiones o trabajos).");
+        return;
+      }
+      setAddForm(null);
+      return;
+    }
+    // EGRESOS que van a una solapa. Se escriben ALLA (la solapa es la dueña del dato) y vuelven a la
+    // planilla por su propio camino: no se crea ademas un movimiento suelto, que seria contar dos veces.
+    if (!isCob && addForm.destinoEgreso === "comision" && addForm.jobPpto && onAddCommission) {
+      if (!onAddCommission(addForm.jobPpto, {
+        date: addForm.date,
+        amount: Number(addForm.amount),
+        administration: addForm.administration,
+        note: addForm.notes,
+      })) {
+        avisar("No encontré ese trabajo aprobado.");
+        return;
+      }
+      setAddForm(null);
+      return;
+    }
+    if (!isCob && addForm.destinoEgreso === "gasto" && onAddCostEntry) {
+      if (!addForm.paymentMethod || !addForm.grupoCosto) {
+        avisar("Un gasto necesita cómo se pagó y a qué grupo va.", "Son los mismos datos que pide la solapa Costos: sin ellos el gasto quedaría a medias.");
+        return;
+      }
+      if (!onAddCostEntry({
+        company: addForm.company,
+        date: addForm.date,
+        amount: Number(addForm.amount),
+        administration: addForm.administration,
+        description: itemLabel,
+        notes: addForm.notes,
+        conceptKey,
+        group: addForm.grupoCosto,
+        paymentMethod: addForm.paymentMethod,
+      })) {
+        avisar("No pude cargar el gasto.");
         return;
       }
       setAddForm(null);
@@ -3330,7 +3393,70 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     <option value="negro">Negro</option>
                   </select>
                 </label>
-                {section?.dir === "out" && (
+                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && (
+                  <label style={lblStyle}>Qué estás cargando
+                    <select
+                      style={styles.input}
+                      value={addForm.destinoEgreso}
+                      onChange={(e) => setAddForm({ ...addForm, destinoEgreso: e.target.value as any })}
+                    >
+                      <option value="">Movimiento del calendario</option>
+                      {onAddCostEntry && <option value="gasto">Gasto (se carga en Costos)</option>}
+                      {onAddCommission && <option value="comision">Comisión de un trabajo</option>}
+                    </select>
+                  </label>
+                )}
+                {section?.dir === "out" && addForm.destinoEgreso === "comision" && (
+                  <label style={lblStyle}>Trabajo
+                    <select
+                      style={styles.input}
+                      value={addForm.jobPpto}
+                      onChange={(e) => setAddForm({ ...addForm, jobPpto: e.target.value })}
+                    >
+                      <option value="">— Elegí el trabajo —</option>
+                      {jobs
+                        .filter((j) => j.active !== false && (addForm.company ? j.company === addForm.company : true))
+                        .map((j) => (
+                          <option key={`c-${j.budgetNumber}-${j.client}`} value={String(j.budgetNumber)}>
+                            {j.budgetNumber} · {j.client}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
+                {section?.dir === "out" && addForm.destinoEgreso === "gasto" && (
+                  <>
+                    <label style={lblStyle}>Cómo se pagó
+                      <select
+                        style={styles.input}
+                        value={addForm.paymentMethod}
+                        onChange={(e) => setAddForm({ ...addForm, paymentMethod: e.target.value as any })}
+                      >
+                        <option value="">— Elegí —</option>
+                        {PAYMENT_METHOD_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label style={lblStyle}>Grupo de costo
+                      <select
+                        style={styles.input}
+                        value={addForm.grupoCosto}
+                        onChange={(e) => setAddForm({ ...addForm, grupoCosto: e.target.value })}
+                      >
+                        <option value="">— Elegí —</option>
+                        {costGroupNames.map((g) => (
+                          <option key={g} value={g}>{g}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div style={{ ...styles.noticeBox, gridColumn: "1 / -1", margin: 0, fontSize: 12 }}>
+                      Se carga como <strong>gasto en Costos</strong> y vuelve solo a esta planilla. Es el
+                      mismo gasto, no dos.
+                    </div>
+                  </>
+                )}
+                {section?.dir === "out" && !addForm.destinoEgreso && (
                   <label style={lblStyle}>Categoría (para marcadores)
                     <select style={styles.input} value={addForm.costKind} onChange={(e) => setAddForm({ ...addForm, costKind: e.target.value as "" | "fijo" | "variable" })}>
                       <option value="">— Sin categoría —</option>

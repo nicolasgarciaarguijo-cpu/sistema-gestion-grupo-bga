@@ -6,9 +6,19 @@ describe("permisoDeRenglon", () => {
     expect(permisoDeRenglon("financial-9")).toMatchObject({ editable: true, borrable: true });
   });
 
-  it("comisiones y caja chica también: la planilla pide los mismos campos", () => {
+  it("comisiones y gastos de Costos: la planilla pide los mismos campos", () => {
     expect(permisoDeRenglon("comm-3")).toMatchObject({ editable: true, borrable: true });
-    expect(permisoDeRenglon("petty-cash-44")).toMatchObject({ editable: true, borrable: true });
+    expect(permisoDeRenglon("cost-77")).toMatchObject({ editable: true, borrable: true });
+  });
+
+  it("el gasto de caja chica NO se opera acá: no vive en la planilla, lo que entra es el fondo", () => {
+    const p = permisoDeRenglon("petty-cash-44");
+    expect(p).toMatchObject({ editable: false, borrable: false });
+    expect(p.motivo).toContain("rinde");
+  });
+
+  it("la asignación del fondo tampoco: se parte en varios renglones", () => {
+    expect(permisoDeRenglon("petty-fund-9-blanco")).toMatchObject({ editable: false, borrable: false });
   });
 
   it("una factura de compra se borra pero no se edita: le faltan subtotal e IVA", () => {

@@ -221,6 +221,7 @@ import type {
   InternalTransfer,
   PersonLedgerEntry,
   CalendarFlag,
+  PaymentMethod,
   IvaVepPayment,
   BankStatementEntry,
   StockItem,
@@ -11730,6 +11731,56 @@ Escribi CERRAR para confirmar:`
     return true;
   };
 
+  // CREAR DESDE LA PLANILLA. La solapa es la dueña del dato: se escribe alla y vuelve al calendario
+  // por su propio camino. Por eso NO se crea ademas un movimiento suelto -- seria contar dos veces.
+  const addCommissionFromCalendar = (
+    budgetNumber: string,
+    pago: { date: string; amount: number; administration: "blanco" | "negro"; note: string }
+  ): boolean => {
+    const job = approvedJobs.find((j) => String(j.budgetNumber) === String(budgetNumber));
+    if (!job) return false;
+    const nuevo: CommissionPayment = {
+      id: newId(),
+      paymentDate: pago.date,
+      amount: Number(pago.amount) || 0,
+      note: pago.note || "",
+      administration: pago.administration,
+    };
+    setApprovedJobs((prev) =>
+      prev.map((j) =>
+        String(j.budgetNumber) === String(budgetNumber)
+          ? { ...j, commissionPayments: [...(j.commissionPayments || []), nuevo] }
+          : j
+      )
+    );
+    return true;
+  };
+
+  const addCostEntryFromCalendar = (g: {
+    company: string; date: string; amount: number; administration: "blanco" | "negro";
+    description: string; notes: string; conceptKey: string; group: string; paymentMethod: PaymentMethod;
+  }): boolean => {
+    if (!g.company || !g.date || !g.group || !g.paymentMethod) return false;
+    setCostEntries((prev) => [
+      {
+        id: newId(),
+        company: g.company as CompanyName,
+        date: g.date,
+        group: g.group,
+        description: g.description || "",
+        amount: Number(g.amount) || 0,
+        administration: g.administration,
+        source: "manual",
+        supplier: "",
+        notes: g.notes || "",
+        paymentMethod: g.paymentMethod,
+        conceptKey: g.conceptKey || undefined,
+      },
+      ...prev,
+    ]);
+    return true;
+  };
+
   // Edición desde el CALENDARIO (click derecho sobre el número). Cada número de la planilla sale de un
   // movimiento del banco (id "bank-<id>") o de una carga manual (id "financial-<id>"): esos dos se
   // pueden editar y borrar desde ahí. Los que vienen de otra solapa (compras, caja chica, comisiones,
@@ -11802,11 +11853,12 @@ Escribi CERRAR para confirmar:`
       return tocado;
     }
 
-    // GASTO DE CAJA CHICA. Monto, día, circuito y descripción: la planilla los pide todos.
-    if (entryId.startsWith("petty-cash-")) {
-      const id = Number(entryId.slice("petty-cash-".length));
-      if (!id || !pettyCashExpenses.some((g) => g.id === id)) return false;
-      setPettyCashExpenses((prev) =>
+    // GASTO de la solapa Costos: la fuente principal de los egresos del calendario. El medio de pago
+    // y el grupo de costo NO se tocan (no se preguntan acá), asi que quedan como estaban.
+    if (entryId.startsWith("cost-")) {
+      const id = Number(entryId.slice("cost-".length));
+      if (!id || !costEntries.some((g) => g.id === id)) return false;
+      setCostEntries((prev) =>
         prev.map((g) =>
           g.id !== id
             ? g
@@ -11816,8 +11868,7 @@ Escribi CERRAR para confirmar:`
                 ...(patch.date ? { date: patch.date } : {}),
                 ...(patch.company ? { company: patch.company as CompanyName } : {}),
                 ...(patch.administration ? { administration: patch.administration } : {}),
-                ...(patch.title !== undefined ? { description: patch.title } : {}),
-                ...(patch.concept !== undefined ? { description: patch.concept } : {}),
+                ...(patch.conceptKey !== undefined ? { conceptKey: patch.conceptKey || undefined } : {}),
                 ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
               }
         )
@@ -11884,10 +11935,10 @@ Escribi CERRAR para confirmar:`
       );
       return tocado;
     }
-    if (entryId.startsWith("petty-cash-")) {
-      const id = Number(entryId.slice("petty-cash-".length));
-      if (!id || !pettyCashExpenses.some((g) => g.id === id)) return false;
-      setPettyCashExpenses((prev) => prev.filter((g) => g.id !== id));
+    if (entryId.startsWith("cost-")) {
+      const id = Number(entryId.slice("cost-".length));
+      if (!id || !costEntries.some((g) => g.id === id)) return false;
+      setCostEntries((prev) => prev.filter((g) => g.id !== id));
       return true;
     }
     // La factura de compra se BORRA desde la planilla (es un movimiento entero), pero no se edita:
@@ -16581,6 +16632,9 @@ Escribi CERRAR para confirmar:`
           companyOptions={COMPANY_OPTIONS}
           onAddMovement={addCalendarMovement}
           onAddJobPayment={addPaymentFromCalendar}
+          onAddCommission={addCommissionFromCalendar}
+          onAddCostEntry={addCostEntryFromCalendar}
+          costGroupNames={costGroups.map((g) => g.name)}
           onAssignConcept={assignBankConcept}
           bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}
           money={money}

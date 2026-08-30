@@ -28,8 +28,35 @@ const PREFIJOS: Array<{ prefijo: string; permiso: PermisoDeRenglon }> = [
   // Comision pagada de un trabajo: monto, dia y circuito. Es exactamente lo que el calendario pide.
   { prefijo: "comm-", permiso: { editable: true, borrable: true } },
 
-  // Gasto de caja chica: monto, dia, circuito y descripcion. Tambien entra entero.
-  { prefijo: "petty-cash-", permiso: { editable: true, borrable: true } },
+  // GASTO de la solapa Costos: monto, dia, circuito, renglon y notas. Es la fuente principal de los
+  // egresos del calendario. El medio de pago y el grupo de costo no se tocan al editar, asi que no
+  // hace falta preguntarlos: se quedan como estaban.
+  { prefijo: "cost-", permiso: { editable: true, borrable: true } },
+
+  // GASTO DE CAJA CHICA: no se opera desde la planilla porque NO VIVE en la planilla. Lo que entra
+  // al calendario es la ASIGNACION del fondo (la plata ya se considera gastada cuando se entrega);
+  // el gasto suelto es el rinde de esa plata. Si el gasto tambien sumara, se gastaria dos veces.
+  {
+    prefijo: "petty-cash-",
+    permiso: {
+      editable: false,
+      borrable: false,
+      motivo: "el gasto del fondo es el rinde y no suma en la planilla: lo que entra acá es la asignación del fondo",
+      donde: "Caja chica",
+    },
+  },
+
+  // ASIGNACION del fondo: una asignacion se parte en varios renglones (blanco, negro, devolucion),
+  // asi que editar uno solo es ambiguo, y ademas hace falta el responsable y el reparto blanco/negro.
+  {
+    prefijo: "petty-fund-",
+    permiso: {
+      editable: false,
+      borrable: false,
+      motivo: "la asignación de un fondo se reparte en varios renglones y necesita responsable y el corte blanco/negro",
+      donde: "Caja chica",
+    },
+  },
 
   // OJO: "purchase-invoice-" tiene que ir ANTES que "purchase-", si no lo captura el otro.
   {
