@@ -11774,6 +11774,57 @@ Escribi CERRAR para confirmar:`
       );
       return true;
     }
+    // COMISIÓN pagada de un trabajo. La planilla pide monto, día y circuito, que es exactamente lo
+    // que tiene un pago de comisión: se puede editar entera desde acá.
+    if (entryId.startsWith("comm-")) {
+      const id = Number(entryId.slice("comm-".length));
+      if (!id) return false;
+      let tocado = false;
+      setApprovedJobs((prev) =>
+        prev.map((j) => {
+          if (!(j.commissionPayments || []).some((cp) => cp.id === id)) return j;
+          tocado = true;
+          return {
+            ...j,
+            commissionPayments: (j.commissionPayments || []).map((cp) =>
+              cp.id !== id
+                ? cp
+                : {
+                    ...cp,
+                    ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
+                    ...(patch.date ? { paymentDate: patch.date } : {}),
+                    ...(patch.administration ? { administration: patch.administration } : {}),
+                  }
+            ),
+          };
+        })
+      );
+      return tocado;
+    }
+
+    // GASTO DE CAJA CHICA. Monto, día, circuito y descripción: la planilla los pide todos.
+    if (entryId.startsWith("petty-cash-")) {
+      const id = Number(entryId.slice("petty-cash-".length));
+      if (!id || !pettyCashExpenses.some((g) => g.id === id)) return false;
+      setPettyCashExpenses((prev) =>
+        prev.map((g) =>
+          g.id !== id
+            ? g
+            : {
+                ...g,
+                ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
+                ...(patch.date ? { date: patch.date } : {}),
+                ...(patch.company ? { company: patch.company as CompanyName } : {}),
+                ...(patch.administration ? { administration: patch.administration } : {}),
+                ...(patch.title !== undefined ? { description: patch.title } : {}),
+                ...(patch.concept !== undefined ? { description: patch.concept } : {}),
+                ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+              }
+        )
+      );
+      return true;
+    }
+
     if (entryId.startsWith("financial-")) {
       const id = Number(entryId.slice("financial-".length));
       if (!id) return false;
@@ -11820,6 +11871,33 @@ Escribi CERRAR para confirmar:`
   };
 
   const deleteCalendarEntry = (entryId: string): boolean => {
+    if (entryId.startsWith("comm-")) {
+      const id = Number(entryId.slice("comm-".length));
+      if (!id) return false;
+      let tocado = false;
+      setApprovedJobs((prev) =>
+        prev.map((j) => {
+          if (!(j.commissionPayments || []).some((cp) => cp.id === id)) return j;
+          tocado = true;
+          return { ...j, commissionPayments: (j.commissionPayments || []).filter((cp) => cp.id !== id) };
+        })
+      );
+      return tocado;
+    }
+    if (entryId.startsWith("petty-cash-")) {
+      const id = Number(entryId.slice("petty-cash-".length));
+      if (!id || !pettyCashExpenses.some((g) => g.id === id)) return false;
+      setPettyCashExpenses((prev) => prev.filter((g) => g.id !== id));
+      return true;
+    }
+    // La factura de compra se BORRA desde la planilla (es un movimiento entero), pero no se edita:
+    // necesita subtotal e IVA discriminado y el calendario solo pregunta el total.
+    if (entryId.startsWith("purchase-invoice-")) {
+      const id = Number(entryId.slice("purchase-invoice-".length));
+      if (!id || !purchaseInvoices.some((f) => f.id === id)) return false;
+      setPurchaseInvoices((prev) => prev.filter((f) => f.id !== id));
+      return true;
+    }
     if (entryId.startsWith("bank-")) {
       const id = Number(entryId.slice(5));
       if (!id) return false;

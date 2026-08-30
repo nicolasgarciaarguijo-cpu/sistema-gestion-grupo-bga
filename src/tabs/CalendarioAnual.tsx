@@ -75,6 +75,7 @@ type AddForm = {
 
 import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
 import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
+import { permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
 
 export function CalendarioAnualTab({
   entries,
@@ -1218,7 +1219,10 @@ export function CalendarioAnualTab({
   const defaultLoadDay = () =>
     visibleDayCols.find((c) => c.iso === todayIso())?.iso || visibleDayCols[0]?.iso || "";
 
-  const editable = (e: Entry) => e.id.startsWith("bank-") || e.id.startsWith("financial-");
+  // Que se puede hacer con cada renglon, y por que no cuando no se puede. Vive en dominio: la regla
+  // es "el que pide menos campos que la solapa no escribe" y no se decide a ojo en la UI.
+  const editable = (e: Entry) => permisoDeRenglon(e.id).editable;
+  const borrable = (e: Entry) => permisoDeRenglon(e.id).borrable;
   // De dónde sale un movimiento que NO se puede editar acá (para decirlo en el menú).
   const sourceLabel = (e: Entry) =>
     e.id.startsWith("purchase-invoice-") ? "Compras (factura)"
@@ -1249,7 +1253,7 @@ export function CalendarioAnualTab({
 Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra el pago en Trabajos aprobados.`
           : ""),
       () => {
-        if (!onDeleteEntry(e.id)) avisar(`Este movimiento se borra desde ${sourceLabel(e)}.`);
+        if (!onDeleteEntry(e.id)) avisar(porQueNoSePuede(e.id, "borrar"));
       }
     );
     setCellMenu(null);
@@ -2967,7 +2971,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     <QuickMenuSep />
                   </>
                 )}
-                {editable(picked) ? (
+                {editable(picked) && (
                   <>
                     <button style={quickMenuItem} onClick={() => openEdit(picked)}>
                       Editar… <span style={{ color: "#94a3b8", fontSize: 11 }}>(monto, día, renglón)</span>
@@ -2975,14 +2979,26 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     <button style={quickMenuItem} onClick={() => toggleAdmin(picked)}>
                       Cambiar a {picked.administration === "negro" ? "BLANCO (B)" : "NEGRO (N)"}
                     </button>
+                  </>
+                )}
+                {borrable(picked) && (
+                  <>
                     <QuickMenuSep />
                     <button style={{ ...quickMenuItem, color: "#b91c1c" }} onClick={() => removeEntry(picked)}>
                       Borrar movimiento
                     </button>
                   </>
-                ) : (
-                  <div style={{ fontSize: 12, color: "#b45309", padding: "4px 8px" }}>
-                    Se edita en {sourceLabel(picked)}.
+                )}
+                {/* Cuando algo NO se puede, se dice POR QUE y donde se hace. Un menu que simplemente
+                    no muestra la opcion se lee como que el sistema esta roto. */}
+                {(!editable(picked) || !borrable(picked)) && (
+                  <div style={{ fontSize: 11, color: "#b45309", padding: "4px 8px", lineHeight: 1.4 }}>
+                    {!editable(picked) && porQueNoSePuede(picked.id, "editar")}
+                    {!editable(picked) && !borrable(picked) ? " " : ""}
+                    {editable(picked) && !borrable(picked) && porQueNoSePuede(picked.id, "borrar")}
+                    {" ("}
+                    {sourceLabel(picked)}
+                    {")"}
                   </div>
                 )}
               </>
