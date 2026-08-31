@@ -42,9 +42,12 @@ const MES = [
 ];
 const pad = (n: number) => String(n).padStart(2, "0");
 
-function fiscalMonths(startMonth: number, startYear: number) {
+// Meses del ejercicio, pero pudiendo estirarse para atras y para adelante: `desde`/`hasta` son
+// offsets en meses contra el arranque del ejercicio (0..11 = el ejercicio). Asi el calendario puede
+// seguir para los dos lados sin cambiar de año a mano.
+function fiscalMonths(startMonth: number, startYear: number, desde = 0, hasta = 11) {
   const out: Array<{ year: number; month: number; days: number; label: string }> = [];
-  for (let i = 0; i < 12; i += 1) {
+  for (let i = desde; i <= hasta; i += 1) {
     const d = new Date(startYear, startMonth - 1 + i, 1);
     const year = d.getFullYear();
     const month = d.getMonth() + 1;
@@ -237,14 +240,29 @@ export function CalendarioAnualTab({
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [addForm, setAddForm] = useState<null | AddForm>(null);
-  const [monthMode, setMonthMode] = useState(true); // un mes por vez (liviano); off = año completo
-  // Arranca en el mes de HOY si cae dentro del año fiscal (así se ve de una lo que pasa hoy).
-  const [monthIdx, setMonthIdx] = useState(() => {
+  // Año completo por defecto: es donde vive el scroll sin fin (en la vista de un mes no hay para
+  // donde seguir). El tilde "Año completo" sigue estando para volver a un mes por vez.
+  const [monthMode, setMonthMode] = useState(false);
+  // EN QUE MES ESTAMOS PARADOS, en offsets contra el arranque del ejercicio. Puede ser negativo o
+  // pasar de 11: el calendario no termina en el ejercicio, sigue para los dos lados. De acá sale la
+  // ventana de meses que se dibuja.
+  const [mesActual, setMesActual] = useState(() => {
     const [ty, tm] = todayIso().split("-").map(Number);
     const ms = fiscalMonths(fiscalStartMonth || 11, fiscalStartYear);
     const i = ms.findIndex((m) => m.year === ty && m.month === tm);
     return i >= 0 ? i : 0;
   });
+  // Cambiar de ejercicio lleva la planilla al arranque de ese ejercicio. OJO: este efecto NO puede
+  // correr al abrir -- si corre, pisa el mes de hoy con el que se inicializo y el calendario abre en
+  // noviembre en vez de en el dia de hoy.
+  const ejercicioMontado = useRef(false);
+  useEffect(() => {
+    if (!ejercicioMontado.current) {
+      ejercicioMontado.current = true;
+      return;
+    }
+    setMesActual(0);
+  }, [fiscalStartYear, fiscalStartMonth]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set()); // secciones minimizadas (solo total)
   const toggleCollapse = (k: string) =>
     setCollapsed((prev) => {
@@ -261,7 +279,27 @@ export function CalendarioAnualTab({
       return next;
     });
 
-  const months = useMemo(() => fiscalMonths(fiscalStartMonth || 11, fiscalStartYear), [fiscalStartMonth, fiscalStartYear]);
+  // SCROLL SIN FIN, con VENTANA DESLIZANTE. El calendario se puede correr para los dos lados sin
+  // limite, pero nunca hay mas de 12 meses dibujados: al entrar meses de un lado, salen del otro.
+  //
+  // La ventana no es un capricho: cada mes son ~30 columnas POR CADA renglon de la planilla. Dejar
+  // crecer el rango sin soltar el otro extremo llega a decenas de miles de celdas y el navegador se
+  // arrastra (de hecho, la primera version reventaba por memoria). Asi el peso es SIEMPRE el mismo
+  // que el de un ejercicio, se corra uno hasta donde se corra.
+  // La ventana se deriva del mes en el que uno esta parado: dos meses para atras y tres para
+  // adelante. Seis meses son ~180 columnas; el ejercicio entero eran 365 y encima crecia. Uno ve
+  // unos 25 dias a la vez, asi que seis meses cargados sobran y el scroll no se entera del corte.
+  const MESES_ATRAS = 2;
+  const MESES_ADELANTE = 3;
+  const rango = useMemo(
+    () => ({ desde: mesActual - MESES_ATRAS, hasta: mesActual + MESES_ADELANTE }),
+    [mesActual]
+  );
+
+  const months = useMemo(
+    () => fiscalMonths(fiscalStartMonth || 11, fiscalStartYear, rango.desde, rango.hasta),
+    [fiscalStartMonth, fiscalStartYear, rango]
+  );
   const dayCols = useMemo(() => {
     const cols: Array<{ iso: string; day: number; monthIdx: number }> = [];
     months.forEach((m, monthIdx) => {
@@ -286,7 +324,8 @@ export function CalendarioAnualTab({
 
   // Columnas a MOSTRAR: un mes (liviano) o todo el año. La agregación se hace sobre el año completo
   // (dayCols); acá solo cambia lo que se pinta.
-  const idx = Math.min(Math.max(0, monthIdx), months.length - 1);
+  // Donde cae el mes en el que estamos parado dentro de la ventana que se dibuja.
+  const idx = Math.min(Math.max(0, mesActual - rango.desde), months.length - 1);
   const visibleMonths = monthMode ? [months[idx]] : months;
   const visibleDayCols = useMemo(
     () => (monthMode ? dayCols.filter((c) => c.monthIdx === idx) : dayCols),
@@ -830,20 +869,60 @@ export function CalendarioAnualTab({
   }, [idx, monthMode, dayCols, dayWEfectivo, labelW]);
 
   const irAHoy = () => {
-    const hoyIdx = dayCols.findIndex((c) => c.iso === todayIso());
-    if (hoyIdx < 0) return;
-    const mesDeHoy = dayCols[hoyIdx].monthIdx;
+    // El mes de hoy puede estar fuera de la ventana dibujada: se calcula contra el ejercicio, no
+    // contra lo que hay en pantalla.
+    const [ty, tm] = todayIso().split("-").map(Number);
+    const inicio = fiscalMonths(fiscalStartMonth || 11, fiscalStartYear, 0, 0)[0];
+    const mesDeHoy = (ty - inicio.year) * 12 + (tm - inicio.month);
     centrarEnHoy.current = true;
-    if (mesDeHoy !== idx) {
-      setMonthIdx(mesDeHoy);
+    if (mesDeHoy !== mesActual) {
+      compensarScroll.current = 0;
+      setMesActual(mesDeHoy);
       return;
     }
+    const hoyIdx = dayCols.findIndex((c) => c.iso === todayIso());
+    if (hoyIdx < 0) return;
     // Ya estamos en ese mes: el efecto no se vuelve a disparar, asi que scrolleamos derecho.
     const el = wrapRef.current;
     if (!el || monthMode) return;
     centrarEnHoy.current = false;
     const anchoDias = Math.max(0, el.clientWidth - labelW);
     el.scrollTo({ left: Math.max(0, hoyIdx * dayWEfectivo - anchoDias / 2), behavior: "smooth" });
+  };
+
+  // Al estirar hacia ATRAS entran columnas a la izquierda y todo se corre: si no se compensa el
+  // scroll, la planilla salta sola. Se guarda cuanto hay que compensar y se aplica ya dibujado.
+  const compensarScroll = useRef(0);
+  useLayoutEffect(() => {
+    if (!compensarScroll.current) return;
+    const el = wrapRef.current;
+    if (el) el.scrollLeft += compensarScroll.current;
+    compensarScroll.current = 0;
+  }, [rango]);
+
+  const diasDeMeses = (desde: number, hasta: number) =>
+    fiscalMonths(fiscalStartMonth || 11, fiscalStartYear, desde, hasta).reduce((a, m) => a + m.days, 0);
+
+  // Correr la ventana un mes. Al moverse entra un mes de un lado y sale del otro, asi que hay que
+  // compensar el scroll con los DIAS que entraron (o salieron) por la IZQUIERDA: lo que cambia a la
+  // derecha no mueve nada de lo que ya se esta mirando.
+  const moverMes = (delta: number) => {
+    if (delta === 0) return;
+    const nuevoDesde = mesActual + delta - MESES_ATRAS;
+    compensarScroll.current =
+      delta < 0
+        ? diasDeMeses(nuevoDesde, rango.desde - 1) * dayWEfectivo
+        : -diasDeMeses(rango.desde, nuevoDesde - 1) * dayWEfectivo;
+    setMesActual((v) => v + delta);
+  };
+
+  // Scroll sin fin: al acercarse a una punta, la ventana se corre sola.
+  const onScrollPlanilla = () => {
+    const el = wrapRef.current;
+    if (!el || monthMode) return;
+    const margen = 300;
+    if (el.scrollLeft < margen) moverMes(-1);
+    else if (el.scrollWidth - el.clientWidth - el.scrollLeft < margen) moverMes(1);
   };
 
   const startResize = (ev: React.MouseEvent, which: "label" | "day") => {
@@ -1420,26 +1499,6 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
   const today = todayIso();
   const hi = (iso: string): React.CSSProperties =>
     iso === today ? { boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" } : {};
-  // ALTO DEL BLOQUE. Se mide contra la ventana en vez de clavar un numero: asi el calendario llega
-  // siempre hasta el fondo de la pantalla, se abra donde se abra y en el monitor que sea.
-  const [altoBloque, setAltoBloque] = useState<number | null>(null);
-  useLayoutEffect(() => {
-    const medir = () => {
-      const el = wrapRef.current;
-      if (!el) return;
-      const arriba = el.getBoundingClientRect().top;
-      // 12px de aire abajo. El minimo evita que quede ridiculo si se mide en un momento raro.
-      setAltoBloque(Math.max(420, Math.round(window.innerHeight - arriba - 12)));
-    };
-    medir();
-    window.addEventListener("resize", medir);
-    window.addEventListener("scroll", medir, { passive: true });
-    return () => {
-      window.removeEventListener("resize", medir);
-      window.removeEventListener("scroll", medir);
-    };
-  }, []);
-
   // Al abrir (o cambiar de vista) posicionamos el scroll horizontal en la columna de hoy.
   // El scroll horizontal lo maneja UN solo efecto (el de mas arriba, que lleva al mes elegido y
   // centra hoy si el mes es el de hoy). Antes habia ademas un scrollIntoView con monthIdx entre sus
@@ -1549,8 +1608,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
               <button
                 style={btnSecondary}
                 title={monthMode ? "Mes anterior" : "Llevar la planilla al mes anterior"}
-                onClick={() => setMonthIdx((v) => Math.max(0, v - 1))}
-                disabled={idx <= 0}
+                onClick={() => moverMes(-1)}
               >
                 ‹
               </button>
@@ -1558,8 +1616,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
               <button
                 style={btnSecondary}
                 title={monthMode ? "Mes siguiente" : "Llevar la planilla al mes siguiente"}
-                onClick={() => setMonthIdx((v) => Math.min(months.length - 1, v + 1))}
-                disabled={idx >= months.length - 1}
+                onClick={() => moverMes(1)}
               >
                 ›
               </button>
@@ -1699,15 +1756,16 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         )}
         <div
           ref={wrapRef}
+          onScroll={onScrollPlanilla}
           style={{
-            overflow: "auto",
+            // Solo scroll HORIZONTAL: el bloque se estira para abajo todo lo que haga falta y quien
+            // baja es la pagina. Pedido de Nicolas (2026-08-31): "no quiero tener que bajar en el
+            // bloque". Consecuencia asumida: los totales y la fila de fechas dejan de quedar
+            // clavados arriba, porque position:sticky se pega al contenedor que scrollea.
+            overflowX: "auto",
             border: "1px solid #e2e8f0",
             borderRadius: 8,
             borderTop: `3px solid ${selectedColor || "#cbd5e1"}`,
-            // Llega hasta el fondo de la pantalla (medido, no a ojo). El scroll es del bloque y no de
-            // la pagina: es la unica forma de que la fecha, los bancos, el efectivo y los netos
-            // queden inmovilizados mientras se baja.
-            maxHeight: altoBloque ? `${altoBloque}px` : "calc(100vh - 120px)",
             ["--cal-label-w" as any]: `${labelW}px`,
             ["--cal-day-w" as any]: `${dayWEfectivo}px`,
           } as React.CSSProperties}

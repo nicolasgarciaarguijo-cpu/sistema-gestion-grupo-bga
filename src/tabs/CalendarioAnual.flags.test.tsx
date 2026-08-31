@@ -9,6 +9,8 @@ import { CALENDAR_SECTIONS, DEFAULT_CALENDAR_ROW_CONFIG } from "../domain/calend
 
 // jsdom no implementa scrollIntoView y el calendario lo usa para centrarse en el dia de hoy.
 (Element.prototype as any).scrollIntoView = () => {};
+// jsdom tampoco implementa scrollTo, y el calendario lo usa para llevar la planilla al mes elegido.
+(Element.prototype as any).scrollTo = () => {};
 
 const hoy = new Date();
 // El ejercicio arranca en NOVIEMBRE: si hoy es antes de noviembre, el año fiscal que contiene a hoy
@@ -42,12 +44,24 @@ const base = {
   jobs: [{ id: 7, budgetNumber: "3199", client: "RICARDO GRANILLO", company: "BGA", active: true }],
 };
 
+// Los tests montan la planilla ENTERA (un año de columnas por cada renglon): si no se desmonta,
+// diez tests dejan diez copias vivas y el proceso se queda sin memoria.
+const montados: Array<{ host: HTMLElement; root: ReturnType<typeof createRoot> }> = [];
 const render = (extra: any) => {
   const host = document.createElement("div");
   document.body.appendChild(host);
-  act(() => { createRoot(host).render(<CalendarioAnualTab {...(base as any)} {...extra} />); });
+  const root = createRoot(host);
+  act(() => { root.render(<CalendarioAnualTab {...(base as any)} {...extra} />); });
+  montados.push({ host, root });
   return host;
 };
+afterEach(() => {
+  while (montados.length) {
+    const m = montados.pop()!;
+    act(() => { m.root.unmount(); });
+    m.host.remove();
+  }
+});
 
 describe("la celda marcada se ve", () => {
   it("el renglón se dibuja (si no, el resto de los tests no probaría nada)", () => {
