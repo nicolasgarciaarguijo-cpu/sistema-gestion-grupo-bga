@@ -157,3 +157,34 @@ describe("deriveConvenioHours (precarga desde entrada/salida)", () => {
     });
   });
 });
+
+describe("feriados y fines de semana se marcan solos", () => {
+  it("un mes sin nada cargado ya trae sus fines de semana y feriados", () => {
+    // Agosto 2026: el 17 (San Martin) cae lunes y es feriado.
+    const dias = computeMonthAttendance([], "2026-08");
+    expect(dias.get("2026-08-17")?.offKind).toBe("feriado");
+    expect(dias.get("2026-08-29")?.offKind).toBe("fin_de_semana"); // sabado
+    expect(dias.get("2026-08-30")?.offKind).toBe("fin_de_semana"); // domingo
+    expect(dias.get("2026-08-28")).toBeUndefined(); // viernes habil sin cargar: no se toca
+  });
+
+  it("lo cargado a mano gana sobre lo automatico", () => {
+    // Un sabado que SI se trabajo se carga presente y no queda como fin de semana.
+    const dias = computeMonthAttendance(
+      [{ date: "2026-08-29", status: "presente", normalHours: 0, extra50Hours: 5, extra100Hours: 0, attachmentName: "", notes: "" } as any],
+      "2026-08"
+    );
+    expect(dias.get("2026-08-29")?.level).toBe("green");
+  });
+
+  it("no cuentan como ausencia ni se mezclan con vacaciones", () => {
+    const r = summarizeMonthAttendance(
+      [{ date: "2026-08-03", status: "vacaciones", normalHours: 0, extra50Hours: 0, extra100Hours: 0, attachmentName: "", notes: "" } as any],
+      "2026-08"
+    );
+    expect(r.absent).toBe(0);
+    expect(r.vacations).toBe(1);
+    expect(r.feriados).toBe(1);          // el 17
+    expect(r.finesDeSemana).toBe(10);    // agosto 2026 tiene 10 dias de fin de semana
+  });
+});

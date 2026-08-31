@@ -1616,6 +1616,8 @@ export function PersonalTab(props: PersonalTabProps) {
                                       <option value="ausente_injustificado">Ausente s/ justificar</option>
                                       <option value="ausente_justificado">Ausente justificado</option>
                                       <option value="vacaciones">Vacaciones</option>
+                                      <option value="feriado">Feriado</option>
+                                      <option value="fin_de_semana">Fin de semana</option>
                                     </select>
 
                                     {status === "presente" && (

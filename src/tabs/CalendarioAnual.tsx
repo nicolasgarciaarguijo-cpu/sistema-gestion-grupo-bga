@@ -319,11 +319,19 @@ export function CalendarioAnualTab({
   // que ese dia no se opera, no un color de empresa ni de ingreso/egreso: por eso va solo en el
   // ENCABEZADO del dia y no toca el fondo de las celdas, que sigue diciendo de que empresa es cada
   // monto. El feriado va mas fuerte que el fin de semana porque es el que uno no tiene memorizado.
-  const diaNoHabil = (iso: string): { color: string; texto: string } | null => {
+  const diaNoHabil = (iso: string): { color: string; tinte: string; texto: string } | null => {
     const fer = feriados.get(iso);
-    if (fer) return { color: "#b91c1c", texto: fer };
-    if (esFinDeSemana(iso)) return { color: "#ef4444", texto: "Fin de semana" };
+    if (fer) return { color: "#b91c1c", tinte: "#fee2e2", texto: fer };
+    if (esFinDeSemana(iso)) return { color: "#ef4444", tinte: "#fef2f2", texto: "Fin de semana" };
     return null;
+  };
+
+  // El sombreado rojo de la COLUMNA. Va como fondo POR DEFECTO de la celda: si el dia tiene plata de
+  // una empresa, el tinte de la empresa se pone despues y gana. Asi el rojo se ve en toda la columna
+  // (que en un dia no laborable esta casi siempre vacia) sin tapar de quien es cada monto.
+  const fondoNoHabil = (iso: string): React.CSSProperties => {
+    const d = diaNoHabil(iso);
+    return d ? { background: d.tinte } : {};
   };
 
   // Columnas a MOSTRAR: un mes (liviano) o todo el año. La agregación se hace sobre el año completo
@@ -1576,7 +1584,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
             key={`${key}-${c.iso}`}
             onContextMenu={menu ? (ev) => openCellMenu(ev, menu.label, c.iso, menu.sectionKey, menu.itemKey, menu.match) : undefined}
             title={empDet.detalle || undefined}
-            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...(empDet.style || {}), ...hi(c.iso), ...estiloCelda(menu?.sectionKey || "", menu?.itemKey || "", c.iso) }}
+            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...fondoNoHabil(c.iso), ...(empDet.style || {}), ...hi(c.iso), ...estiloCelda(menu?.sectionKey || "", menu?.itemKey || "", c.iso) }}
           >
             {marcasDeCelda(menu?.sectionKey || "", menu?.itemKey || "", c.iso)}
             {v ? money(v) : "·"}
@@ -2108,7 +2116,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                   openCellMenu(ev, title, c.iso, section.key, cobKey, (e) => isCobranzaEntry(e) && sameTitle(e, title))
                                 }
                                 title={empCob.detalle || undefined}
-                                style={{ ...tdCell, ...(empCob.style || {}), ...hi(c.iso), ...estiloCelda(section.key, cobKey, c.iso) }}
+                                style={{ ...tdCell, ...fondoNoHabil(c.iso), ...(empCob.style || {}), ...hi(c.iso), ...estiloCelda(section.key, cobKey, c.iso) }}
                               >
                                 {marcasDeCelda(section.key, cobKey, c.iso)}
                                 {bnCell(drowB, drowN, c.iso, false)}
@@ -2150,7 +2158,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                         ? `${emp.detalle} · Click: cargar · Click derecho: editar / borrar`
                                         : "Click: cargar en este día · Click derecho: editar / borrar"
                                     }
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso) }}
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...fondoNoHabil(c.iso), ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso) }}
                                   >
                                     {marcasDeCelda(section.key, it.key, c.iso)}
                                     {v ? money(v) : "+"}

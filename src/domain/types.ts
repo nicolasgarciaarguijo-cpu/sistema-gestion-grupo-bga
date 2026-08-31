@@ -1131,7 +1131,12 @@ export type AttendanceStatus =
   | "presente"
   | "ausente_injustificado"
   | "ausente_justificado"
-  | "vacaciones";
+  | "vacaciones"
+  // Dias que NO son laborables: no se espera que nadie fiche, asi que no son ausencia ni cuentan
+  // para el presentismo. Se cargan solos desde el calendario argentino (ver domain/feriadosArgentina)
+  // y se pueden corregir a mano: un sabado que SI se trabaja se pone "presente" y liquida como extra.
+  | "feriado"
+  | "fin_de_semana";
 
 export type AttendanceRecord = {
   date: string;

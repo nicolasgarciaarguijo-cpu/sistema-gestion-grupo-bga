@@ -9,6 +9,7 @@
 // El horario es global (igual para todos). Si mas adelante hay turnos por empleado, se parametriza.
 
 import type { AttendanceRecord } from "./types";
+import { mapaDeFeriados, esFinDeSemana } from "./feriadosArgentina";
 
 export const WORKSHOP_SCHEDULE = {
   entry: "07:30",
@@ -27,6 +28,9 @@ export type AttendanceLevel =
 
 export type DayAttendance = {
   level: AttendanceLevel;
+  // Por que el dia no cuenta (solo cuando level === "off"). Sin esto, vacaciones, feriados y fines
+  // de semana caian todos en la misma bolsa y el resumen del mes mentia.
+  offKind?: "vacaciones" | "feriado" | "fin_de_semana";
   lateMinutes: number; // minutos de tardanza (0 si en horario / sin dato)
   tolerated: boolean; // llego dentro de los 5 min y se le conto una tolerancia del mes
   label: string; // texto corto para tooltip / resumen
@@ -83,7 +87,20 @@ export const computeMonthAttendance = (
       continue;
     }
     if (r.status === "vacaciones") {
-      out.set(r.date, { level: "off", lateMinutes: 0, tolerated: false, label: "Vacaciones" });
+      out.set(r.date, { level: "off", offKind: "vacaciones", lateMinutes: 0, tolerated: false, label: "Vacaciones" });
+      continue;
+    }
+    // Feriado y fin de semana NO son ausencia: nadie tenia que fichar. No cuentan para el
+    // presentismo ni para nada. Si igual se trabajo, el dia se carga como "presente" y las horas se
+    // liquidan como extra segun la franja (ver deriveConvenioHours).
+    if (r.status === "feriado" || r.status === "fin_de_semana") {
+      out.set(r.date, {
+        level: "off",
+        offKind: r.status === "feriado" ? "feriado" : "fin_de_semana",
+        lateMinutes: 0,
+        tolerated: false,
+        label: r.status === "feriado" ? "Feriado" : "Fin de semana",
+      });
       continue;
     }
     if (r.status !== "presente") continue; // sin_cargar: no marca nada
@@ -134,6 +151,25 @@ export const computeMonthAttendance = (
       tolerated: false,
       label: `Tarde ${r.checkIn} (+${late}')`,
     });
+  }
+
+  // Y los dias que NO son laborables se marcan solos, sin que nadie los cargue: salen del calendario
+  // argentino (feriados calculados por año) y del fin de semana. Solo se completan los dias que no
+  // tienen nada cargado -- lo que se haya cargado a mano manda siempre.
+  const [y, m] = month.split("-").map(Number);
+  if (y && m) {
+    const feriados = mapaDeFeriados([y]);
+    const ultimo = new Date(y, m, 0).getDate();
+    for (let d = 1; d <= ultimo; d += 1) {
+      const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      if (out.has(iso)) continue;
+      const fer = feriados.get(iso);
+      if (fer) {
+        out.set(iso, { level: "off", offKind: "feriado", lateMinutes: 0, tolerated: false, label: fer });
+      } else if (esFinDeSemana(iso)) {
+        out.set(iso, { level: "off", offKind: "fin_de_semana", lateMinutes: 0, tolerated: false, label: "Fin de semana" });
+      }
+    }
   }
   return out;
 };
@@ -260,6 +296,8 @@ export type MonthAttendanceSummary = {
   toleratedLates: number;
   absent: number;
   vacations: number;
+  feriados: number;
+  finesDeSemana: number;
 };
 
 export const summarizeMonthAttendance = (
@@ -274,6 +312,8 @@ export const summarizeMonthAttendance = (
     toleratedLates: 0,
     absent: 0,
     vacations: 0,
+    feriados: 0,
+    finesDeSemana: 0,
   };
   days.forEach((d) => {
     if (d.level === "green") {
@@ -286,7 +326,9 @@ export const summarizeMonthAttendance = (
     } else if (d.level === "red") {
       summary.absent += 1;
     } else if (d.level === "off") {
-      summary.vacations += 1;
+      if (d.offKind === "feriado") summary.feriados += 1;
+      else if (d.offKind === "fin_de_semana") summary.finesDeSemana += 1;
+      else summary.vacations += 1;
     }
   });
   return summary;
