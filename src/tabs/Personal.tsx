@@ -1853,7 +1853,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                               />
                             </Field>
-                            <Field label="Presentismo %">
+                            <Field label="Presentismo % (cuánto representa)">
                               <input
                                 style={styles.input}
                                 type="number"
@@ -1867,6 +1867,59 @@ export function PersonalTab(props: PersonalTabProps) {
                                   )
                                 }
                               />
+                            </Field>
+                            {/* CUANTO COBRA del presentismo este mes. Sale de la asistencia (1 tarde
+                                75%, 2 tardes 50%, 3 lo pierde; 1 ausente 50%, 2 lo pierde) y se puede
+                                fijar a mano con los botones. Criterio de Nicolas, 2026-08-31. */}
+                            <Field label="Presentismo que cobra">
+                              {(() => {
+                                const actual =
+                                  payroll.presentismoAsistenciaPct === null ||
+                                  payroll.presentismoAsistenciaPct === undefined
+                                    ? null
+                                    : Number(payroll.presentismoAsistenciaPct);
+                                const setPct = (v: number | null) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "presentismoAsistenciaPct" as any,
+                                    v as any
+                                  );
+                                return (
+                                  <div>
+                                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                      {[25, 50, 75, 100].map((v) => (
+                                        <button
+                                          key={v}
+                                          onClick={() => setPct(v)}
+                                          style={{
+                                            flex: "1 1 0", minWidth: 52, cursor: "pointer",
+                                            padding: "6px 4px", borderRadius: 8, fontWeight: 800,
+                                            fontSize: 13,
+                                            background: actual === v ? "#0f172a" : "#fff",
+                                            color: actual === v ? "#fff" : "#334155",
+                                            border: `2px solid ${actual === v ? "#0f172a" : "#cbd5e1"}`,
+                                          }}
+                                        >
+                                          {v}%
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <button
+                                      onClick={() => setPct(null)}
+                                      style={{
+                                        marginTop: 6, width: "100%", cursor: "pointer", fontSize: 11,
+                                        padding: "4px", borderRadius: 6, border: "1px dashed #cbd5e1",
+                                        background: actual === null ? "#f1f5f9" : "#fff",
+                                        color: "#475569", fontWeight: actual === null ? 800 : 400,
+                                      }}
+                                      title="Vuelve a lo que diga la asistencia del mes"
+                                    >
+                                      {actual === null ? "✓ Según la asistencia" : "Volver a la asistencia"}
+                                    </button>
+                                  </div>
+                                );
+                              })()}
                             </Field>
                             <Field label="Anticipos">
                               <AmountInput

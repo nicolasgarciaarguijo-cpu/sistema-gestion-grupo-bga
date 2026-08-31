@@ -140,10 +140,19 @@ export function computePayrollSummary({
   const seniorityBonus =
     (grossNormal + grossHoliday + extra50 + extra100 + night50 + night) *
     ((config.seniorityPctPerYear * seniorityYears) / 100);
+  // PRESENTISMO. Dos cosas distintas: cuanto REPRESENTA (10%) y cuanto COBRA este mes segun su
+  // asistencia. La segunda sale de las tardes y ausencias (criterio de Nicolas, 2026-08-31:
+  // 1 tarde 75%, 2 tardes 50%, 3 lo pierde; 1 ausente 50%, 2 lo pierde) o se pone a mano.
+  //
+  // Reemplaza a la regla vieja de "cualquier hora de ausencia injustificada -> 0": esa castigaba de
+  // golpe y no distinguia una llegada tarde de una falta.
   const presentismoPct =
     payroll.presentismoPctOverride === null ? 0 : payroll.presentismoPctOverride;
-  const presentismo =
-    payroll.unjustifiedAbsenceHours > 0 ? 0 : grossNormal * (presentismoPct / 100);
+  const asistenciaPct =
+    payroll.presentismoAsistenciaPct === null || payroll.presentismoAsistenciaPct === undefined
+      ? 100
+      : Math.min(100, Math.max(0, Number(payroll.presentismoAsistenciaPct)));
+  const presentismo = grossNormal * (presentismoPct / 100) * (asistenciaPct / 100);
   const nonRem = nonRemHourly * Math.max(payableHours, 0) * hourWeight;
   // Premio BLANCO: remunerativo. Entra al bruto despues de antiguedad/presentismo (no los multiplica),
   // y por estar en grossRem paga descuentos de ley y genera cargas patronales y SAC.

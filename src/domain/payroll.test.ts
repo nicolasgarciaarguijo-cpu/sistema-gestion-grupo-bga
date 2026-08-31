@@ -62,9 +62,26 @@ describe("computePayrollSummary", () => {
     expect(run({}, { seniorityYears: 5 }).seniorityBonus).toBeCloseTo(10000); // 5% de 200000
   });
 
-  it("presentismo se pierde con ausencia injustificada", () => {
+  // PRESENTISMO (criterio de Nicolas, 2026-08-31): son DOS cosas. Cuanto REPRESENTA (10%) y cuanto
+  // COBRA este mes segun su asistencia. Reemplaza a la regla vieja de "cualquier hora de ausencia
+  // injustificada lo borra", que castigaba igual una llegada tarde que una falta.
+  it("presentismo entero cuando la asistencia esta limpia", () => {
     expect(run({ presentismoPctOverride: 10 }).presentismo).toBeCloseTo(20000);
-    expect(run({ presentismoPctOverride: 10, unjustifiedAbsenceHours: 1 }).presentismo).toBe(0);
+    expect(run({ presentismoPctOverride: 10, presentismoAsistenciaPct: 100 }).presentismo).toBeCloseTo(20000);
+  });
+
+  it("la asistencia lo recorta por partes, no de golpe", () => {
+    // 1 tarde -> 75%, 2 tardes o 1 ausente -> 50%, 3 tardes o 2 ausentes -> 0.
+    expect(run({ presentismoPctOverride: 10, presentismoAsistenciaPct: 75 }).presentismo).toBeCloseTo(15000);
+    expect(run({ presentismoPctOverride: 10, presentismoAsistenciaPct: 50 }).presentismo).toBeCloseTo(10000);
+    expect(run({ presentismoPctOverride: 10, presentismoAsistenciaPct: 0 }).presentismo).toBe(0);
+  });
+
+  it("las horas de ausencia injustificada ya no borran el presentismo por si solas", () => {
+    // Ahora lo decide el porcentaje de asistencia, que es lo que se ve y se puede corregir a mano.
+    expect(
+      run({ presentismoPctOverride: 10, unjustifiedAbsenceHours: 1, presentismoAsistenciaPct: 50 }).presentismo
+    ).toBeCloseTo(10000);
   });
 
   it("anticipos se restan del neto", () => {

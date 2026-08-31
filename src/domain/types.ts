@@ -1167,7 +1167,11 @@ export type EmployeePayroll = {
   // premio BLANCO: entra al bruto remunerativo (paga jubilacion/obra social/sindicato + cargas
   // patronales). Opcional: si falta (datos viejos) = 0, sin cambios.
   whiteBonus?: number;
+  // Cuanto REPRESENTA el presentismo (10% por defecto). Es la definicion del concepto.
   presentismoPctOverride: number | null;
+  // Cuanto de ese presentismo COBRA este mes, 0..100. Sale de la asistencia (tardes y ausencias,
+  // ver domain/presentismo.ts) salvo que se ponga a mano. null/ausente = lo decide la asistencia.
+  presentismoAsistenciaPct?: number | null;
   employerExtraPct: number;
   manualOverride: boolean;
   savedAt: string;

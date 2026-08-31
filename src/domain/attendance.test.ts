@@ -129,9 +129,21 @@ describe("deriveConvenioHours (precarga desde entrada/salida)", () => {
       normalHours: 6.5, extra50Hours: 0, extra100Hours: 0, night50Hours: 0,
     });
   });
-  it("sábado 07:30-15:00 -> 5.5 normales + 1.5h al 100% (descuenta almuerzo)", () => {
+  // SABADO (criterio de Nicolas, 2026-08-31): no hay horas normales. Hasta las 13 va al 50% y de ahi
+  // en adelante al 100%.
+  it("sábado 07:30-15:00 -> 5.5h al 50% + 1.5h al 100% (descuenta almuerzo), sin horas normales", () => {
     expect(deriveConvenioHours("2026-08-08", "07:30", "15:00")).toEqual({
-      normalHours: 5.5, extra50Hours: 0, extra100Hours: 1.5, night50Hours: 0,
+      normalHours: 0, extra50Hours: 5.5, extra100Hours: 1.5, night50Hours: 0,
+    });
+  });
+  it("sábado 07:00-13:00 -> las 6 horas al 50%", () => {
+    expect(deriveConvenioHours("2026-08-08", "07:00", "13:00")).toEqual({
+      normalHours: 0, extra50Hours: 6, extra100Hours: 0, night50Hours: 0,
+    });
+  });
+  it("sábado 13:00-20:00 -> todo al 100% (el almuerzo igual no computa)", () => {
+    expect(deriveConvenioHours("2026-08-08", "13:00", "20:00")).toEqual({
+      normalHours: 0, extra50Hours: 0, extra100Hours: 6.5, night50Hours: 0,
     });
   });
   it("domingo 08:00-12:00 -> 4h al 100%", () => {

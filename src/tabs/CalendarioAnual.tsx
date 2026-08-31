@@ -315,10 +315,14 @@ export function CalendarioAnualTab({
   );
   // Que pasa con un dia: feriado, fin de semana, o dia habil. Marron para los dos primeros, como
   // pidio Nicolas, para no cargar un pago un dia en que el banco no opera.
+  // ROJO (Nicolas, 2026-08-31): "para saber que no son dias habiles para nosotros". Es un aviso de
+  // que ese dia no se opera, no un color de empresa ni de ingreso/egreso: por eso va solo en el
+  // ENCABEZADO del dia y no toca el fondo de las celdas, que sigue diciendo de que empresa es cada
+  // monto. El feriado va mas fuerte que el fin de semana porque es el que uno no tiene memorizado.
   const diaNoHabil = (iso: string): { color: string; texto: string } | null => {
     const fer = feriados.get(iso);
-    if (fer) return { color: "#7c4a21", texto: fer };
-    if (esFinDeSemana(iso)) return { color: "#a98467", texto: "Fin de semana" };
+    if (fer) return { color: "#b91c1c", texto: fer };
+    if (esFinDeSemana(iso)) return { color: "#ef4444", texto: "Fin de semana" };
     return null;
   };
 
@@ -1735,6 +1739,16 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             <span style={{ width: 16, height: 12, borderRadius: 3, border: "3px dashed #0f172a", display: "inline-block" }} />
             Lo que estás moviendo
+          </span>
+          <span style={{ width: 1, height: 16, background: "#e2e8f0" }} />
+          <span style={{ fontWeight: 800, color: "#0f172a" }}>Días</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 16, height: 12, borderRadius: 3, background: "#ef4444", display: "inline-block" }} />
+            Sábado o domingo
+          </span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ width: 16, height: 12, borderRadius: 3, background: "#b91c1c", display: "inline-block" }} />
+            Feriado
           </span>
         </div>
 

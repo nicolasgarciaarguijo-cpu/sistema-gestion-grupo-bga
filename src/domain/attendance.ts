@@ -156,6 +156,10 @@ export type ConvenioHours = {
   night50Hours: number;
 };
 
+// SABADO: de 07:00 a 13:00 se paga al 50% y de las 13:00 en adelante al 100%. El corte es de PAGO,
+// distinto del horario de entrada (07:30) que usa el semaforo de puntualidad: son dos ejes.
+export const SABADO_INICIO_50 = 7 * 60; // 07:00
+export const SABADO_CORTE_100 = 13 * 60; // 13:00
 const NIGHT_START = 21 * 60; // 21:00
 const NIGHT_END = 6 * 60; // 06:00
 export const LUNCH_START = 13 * 60 + 30; // 13:30
@@ -187,14 +191,20 @@ const categorizeMinutes = (dow: number, s: number, e: number): ConvenioHours => 
     return { normalHours: 0, extra50Hours: 0, extra100Hours: e - s - night, night50Hours: night };
   }
   if (dow === 6) {
-    // Sábado: normal 07:30-13:00; después de 13:00 = 100%; antes de 07:30 = extra 50.
-    const ws = timeToMinutes(WORKSHOP_SCHEDULE.entry)!; // 450
-    const we = timeToMinutes(WORKSHOP_SCHEDULE.exitSaturday)!; // 780
-    const normal = overlap(s, e, ws, we);
-    const after = overlap(s, e, we, 100000);
-    const before = overlap(s, e, 0, ws);
-    const nightExtra = Math.min(night, after + before);
-    return { normalHours: normal, extra50Hours: before, extra100Hours: after - nightExtra, night50Hours: nightExtra };
+    // SABADO (criterio de Nicolas, 2026-08-31): el sabado NO tiene horas normales. De 07:00 a 13:00
+    // es extra al 50%, y de las 13:00 hasta las 00:00 es al 100%. Antes de las 07:00 se paga tambien
+    // al 50% (sigue siendo sabado); la franja nocturna se informa aparte, igual que el domingo.
+    const we = SABADO_CORTE_100; // 13:00
+    const hasta13 = overlap(s, e, 0, we);
+    const desde13 = overlap(s, e, we, 100000);
+    const nocturnaDesde13 = Math.min(night, desde13);
+    const nocturnaHasta13 = Math.min(Math.max(0, night - nocturnaDesde13), hasta13);
+    return {
+      normalHours: 0,
+      extra50Hours: hasta13 - nocturnaHasta13,
+      extra100Hours: desde13 - nocturnaDesde13,
+      night50Hours: nocturnaDesde13 + nocturnaHasta13,
+    };
   }
   // Día hábil (L-V): normal 07:30-17:00; el resto es extra (nocturno -> nocturna 50, resto -> extra 50).
   const ws = timeToMinutes(WORKSHOP_SCHEDULE.entry)!; // 450
