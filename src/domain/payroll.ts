@@ -248,6 +248,18 @@ export function computePayrollSummary({
     nonRemHourly,
     grossNormal,
     grossHoliday,
+    // Los importes de cada tipo de hora y el detalle de descuentos salen ACA y no se recalculan en el
+    // recibo: el recibo los repetia por su cuenta, que es como se termina imprimiendo un numero que
+    // no coincide con el que liquido.
+    extra50,
+    extra100,
+    night50,
+    night,
+    jubilacion,
+    ley19032,
+    obraSocial,
+    sindicato,
+    seguro,
     grossRem,
     totalGross,
     nonRem,

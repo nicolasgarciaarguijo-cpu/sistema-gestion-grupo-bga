@@ -8904,7 +8904,7 @@ Escribi CERRAR para confirmar:`
       lastMatch((b) => /\biva\b/i.test(`${b.concept} ${b.notes}`));
     const sussDeposit = sussE ? { date: String(sussE.date), amount: Number(sussE.amount || 0) } : null;
     const ivaVep = ivaE ? { date: String(ivaE.date), amount: Number(ivaE.amount || 0) } : null;
-    setReciboData({ employee, monthKey: payrollMonth, summary, company, logo, sussDeposit, ivaVep });
+    setReciboData({ employee, monthKey: payrollMonth, summary, company, logo, sussDeposit, ivaVep, hours: getCurrentPayroll(employee) } as any);
     void guardarReciboEnCarpeta(
       employee,
       payrollMonth,
@@ -8918,6 +8918,7 @@ Escribi CERRAR para confirmar:`
         logo={logo}
         sussDeposit={sussDeposit}
         ivaVep={ivaVep}
+        hours={getCurrentPayroll(employee)}
       />
     );
     window.setTimeout(() => exportPrint("recibo-blanco"), 0);
@@ -18317,6 +18318,7 @@ Escribi CERRAR para confirmar:`
               logo={reciboData.logo}
               sussDeposit={reciboData.sussDeposit}
               ivaVep={reciboData.ivaVep}
+              hours={(reciboData as any).hours}
             />
           </div>,
           document.body

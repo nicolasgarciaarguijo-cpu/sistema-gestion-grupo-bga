@@ -1,6 +1,7 @@
 import React from "react";
 import { money, formatDateDisplay } from "../lib/format";
 import { numeroALetras, paymentDateForPeriod } from "../domain/recibo";
+import { componerRecibo } from "../domain/reciboComposicion";
 
 type Deposito = { date: string; amount: number } | null | undefined;
 
@@ -34,7 +35,7 @@ type ReciboEmployee = {
 type ReciboCompany = { name: string; taxId: string; domicilio?: string; bankName?: string };
 
 export function ReciboBlancoDocument({
-  employee, company, summary, config, monthKey, logo, sussDeposit, ivaVep,
+  employee, company, summary, config, monthKey, logo, sussDeposit, ivaVep, hours,
 }: {
   employee: ReciboEmployee;
   company: ReciboCompany;
@@ -44,32 +45,54 @@ export function ReciboBlancoDocument({
   logo?: string;
   sussDeposit?: Deposito;
   ivaVep?: Deposito;
+  // Horas del mes, para la columna UNIDAD (el recibo real la muestra con 5 decimales).
+  hours?: { normalHours?: number; extra50Hours?: number; extra100Hours?: number; night50Hours?: number; holidayHours?: number };
 }) {
   const s = summary || {};
   const grossRem = Number(s.grossRem || 0);
-  const jubilacion = grossRem * 0.11;
-  const ley19032 = grossRem * 0.03;
-  const obraSocial = grossRem * 0.03;
-  const sindicato = grossRem * (Number(config.unionPct || 0) / 100);
-  const seguro = grossRem * (Number(config.insurancePct || 0) / 100);
+  // Los descuentos salen de la liquidacion, no se recalculan aca: si se recalculan, el dia que cambie
+  // una alicuota el recibo imprime un numero distinto del que se liquido.
+  const jubilacion = Number(s.jubilacion || 0);
+  const ley19032 = Number(s.ley19032 || 0);
+  const obraSocial = Number(s.obraSocial || 0);
+  const sindicato = Number(s.sindicato || 0);
+  const seguro = Number(s.seguro || 0);
   const contribSubtotal = Number(s.employerJubilacion || 0) + Number(s.employerObraSocial || 0) + Number(s.employerArt || 0) + Number(s.employerLifeInsurance || 0);
   const costoTotal = Number(s.totalGross || 0) + contribSubtotal;
+  const h = hours || {};
+  // Cantidad con 5 decimales, como la columna UNIDAD del recibo del usuario.
+  const u = (n: number) => (n ? Number(n).toFixed(5).replace(".", ",") : "");
 
+  // Grilla de conceptos con su CODIGO, igual que el recibo real.
   const haberes = ([
-    ["Sueldo / jornal (horas trabajadas)", "", Number(s.grossNormal || 0)],
-    ["Horas feriado", "", Number(s.grossHoliday || 0)],
-    ["Antigüedad", "", Number(s.seniorityBonus || 0)],
-    ["Presentismo", "", Number(s.presentismo || 0)],
-    ["Adicional remunerativo", "", Number(s.whiteBonus || 0)],
-    ["No remunerativo", "", Number(s.nonRem || 0)],
-  ] as Array<[string, string, number]>).filter((r) => r[2] !== 0);
-  const descuentos: Array<[string, string, number]> = [
-    ["Jubilación", "11%", jubilacion],
-    ["Ley 19.032 (INSSJP)", "3%", ley19032],
-    ["Obra social", "3%", obraSocial],
-    ["Aporte sindical", `${config.unionPct}%`, sindicato],
-    ["Seguro de vida y sepelio", `${config.insurancePct}%`, seguro],
+    ["0017", "HORAS TRABAJADAS", u(Number(h.normalHours || 0)), Number(s.grossNormal || 0)],
+    ["0018", "HORAS EXTRAS 50%", u(Number(h.extra50Hours || 0)), Number(s.extra50 || 0)],
+    ["0021", "HORAS EXTRAS 100%", u(Number(h.extra100Hours || 0)), Number(s.extra100 || 0)],
+    ["0022", "HORAS NOCTURNAS 50%", u(Number(h.night50Hours || 0)), Number(s.night50 || 0)],
+    ["0043", "HS FERIADO", u(Number(h.holidayHours || 0)), Number(s.grossHoliday || 0)],
+    ["0180", "ANTIGÜEDAD", u(Number(employee.seniorityYears || 0)), Number(s.seniorityBonus || 0)],
+    ["0190", "PRESENTISMO", u(Number(s.presentismoPct || 10)), Number(s.presentismo || 0)],
+    ["0200", "ADICIONAL REMUNERATIVO", "", Number(s.whiteBonus || 0)],
+    ["0250", "ASIG. SNR", "", Number(s.nonRem || 0)],
+  ] as Array<[string, string, string, number]>).filter((r) => r[3] !== 0);
+  const descuentos: Array<[string, string, string, number]> = [
+    ["0300", "JUBILACION", "11,000000", jubilacion],
+    ["0302", "LEY 19032", "3,0000000", ley19032],
+    ["0310", "OBRA SOCIAL", "3,0000000", obraSocial],
+    ["0322", "APORTE SINDICAL", u(Number(config.unionPct || 0)), sindicato],
+    ["0324", "SEG VIDA Y SEPELIO", u(Number(config.insurancePct || 0)), seguro],
   ];
+
+  // El bloque de abajo: cuanto cuesta cada concepto y quien lo paga. Ver domain/reciboComposicion.ts,
+  // verificado contra el recibo real de De Raiz.
+  const comp = componerRecibo({
+    jubilacion, ley19032, obraSocial, sindicato, seguroVidaSepelio: seguro,
+    contribJubilacion: Number(s.employerJubilacion || 0),
+    contribObraSocial: Number(s.employerObraSocial || 0),
+    art: Number(s.employerArt || 0),
+    scvo: Number(s.employerLifeInsurance || 0),
+    neto: Number(s.net || 0),
+  });
 
   return (
     <div style={{ fontFamily: "Arial, sans-serif", color: "#111", width: "100%" }}>
@@ -110,15 +133,23 @@ export function ReciboBlancoDocument({
 
       <table style={{ ...box, marginTop: 8 }}>
         <thead>
-          <tr><td style={lbl} colSpan={3}>HABERES</td></tr>
+          <tr>
+            <td style={lbl}>CÓDIGO</td><td style={lbl}>CONCEPTO</td>
+            <td style={lbl}>UNIDAD</td><td style={{ ...lbl, textAlign: "right" }}>MONTO</td>
+          </tr>
         </thead>
         <tbody>
-          {haberes.map(([c, u, v], i) => (
-            <tr key={`h-${i}`}><td style={cell}>{c}</td><td style={cell}>{u}</td><td style={right}>{money(v)}</td></tr>
+          {haberes.map(([cod, con, uni, v], i) => (
+            <tr key={`h-${i}`}>
+              <td style={cell}>{cod}</td><td style={cell}>{con}</td>
+              <td style={cell}>{uni}</td><td style={right}>{money(v)}</td>
+            </tr>
           ))}
-          <tr><td style={lbl} colSpan={2}>Descuentos</td><td style={lbl}></td></tr>
-          {descuentos.map(([c, u, v], i) => (
-            <tr key={`d-${i}`}><td style={cell}>{c}</td><td style={cell}>{u}</td><td style={{ ...right, color: "#b00" }}>- {money(v)}</td></tr>
+          {descuentos.map(([cod, con, uni, v], i) => (
+            <tr key={`d-${i}`}>
+              <td style={cell}>{cod}</td><td style={cell}>{con}</td>
+              <td style={cell}>{uni}</td><td style={{ ...right, color: "#b00" }}>- {money(v)}</td>
+            </tr>
           ))}
         </tbody>
       </table>
@@ -147,6 +178,55 @@ export function ReciboBlancoDocument({
           <tr><td style={cell}>ART</td><td style={cell}>—</td><td style={right}>{money(Number(s.employerArt || 0))}</td></tr>
           <tr><td style={cell}>Seguro de vida (fijo)</td><td style={cell}>fijo</td><td style={right}>{money(Number(s.employerLifeInsurance || 0))}</td></tr>
           <tr><td style={lbl} colSpan={2}>Subtotal contribuciones</td><td style={{ ...right, fontWeight: 800 }}>{money(contribSubtotal)}</td></tr>
+        </tbody>
+      </table>
+
+      {/* DETALLE DE LA COMPOSICION SALARIAL. Agrupa distinto que la grilla de arriba: muestra el
+          costo TOTAL de cada concepto y quien pone cada parte. Ver domain/reciboComposicion.ts. */}
+      <table style={{ ...box, marginTop: 8 }}>
+        <thead>
+          <tr>
+            <td style={lbl} colSpan={2}>DETALLE DE LA COMPOSICIÓN SALARIAL</td>
+            <td style={{ ...lbl, textAlign: "right" }}>Empleador</td>
+            <td style={{ ...lbl, textAlign: "right" }}>Trabajador</td>
+            <td style={{ ...lbl, textAlign: "right" }}>Total</td>
+          </tr>
+        </thead>
+        <tbody>
+          {comp.lineas.map((l) => (
+            <tr key={l.clave}>
+              <td style={cell} colSpan={2}>{l.label}</td>
+              <td style={right}>{l.empleador ? money(l.empleador) : "—"}</td>
+              <td style={right}>{l.trabajador ? money(l.trabajador) : "—"}</td>
+              <td style={{ ...right, fontWeight: 700 }}>{money(l.total)}</td>
+            </tr>
+          ))}
+          <tr>
+            <td style={lbl} colSpan={2}>Totales</td>
+            <td style={{ ...right, fontWeight: 800 }}>{money(comp.totalEmpleador)}</td>
+            <td style={{ ...right, fontWeight: 800 }}>{money(comp.totalTrabajador)}</td>
+            <td style={{ ...right, fontWeight: 800 }}>{money(comp.totalEmpleador + comp.totalTrabajador)}</td>
+          </tr>
+          <tr>
+            <td style={lbl} colSpan={4}>COSTO TOTAL EMPLEADOR</td>
+            <td style={{ ...right, fontWeight: 800 }}>{money(comp.costoTotalEmpleador)}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      {/* Como se reparte ese costo total. Es la torta del recibo, en texto: se imprime en blanco y
+          negro y una torta gris no se lee. */}
+      <table style={{ ...box, marginTop: 8 }}>
+        <thead><tr><td style={lbl} colSpan={2}>CÓMO SE REPARTE EL COSTO TOTAL</td></tr></thead>
+        <tbody>
+          {comp.reparto
+            .filter((x) => x.pct > 0)
+            .map((x) => (
+              <tr key={x.label}>
+                <td style={cell}>{x.label}</td>
+                <td style={right}>{x.pct.toFixed(2).replace(".", ",")}%</td>
+              </tr>
+            ))}
         </tbody>
       </table>
 
