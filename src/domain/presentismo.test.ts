@@ -1,4 +1,4 @@
-import { porcentajePorAsistencia, calcularPresentismo, PRESENTISMO_PCT_DEL_NETO } from "./presentismo";
+import { porcentajePorAsistencia, calcularPresentismo, PRESENTISMO_PCT_DEL_BRUTO } from "./presentismo";
 
 describe("porcentajePorAsistencia", () => {
   it("asistencia perfecta cobra todo", () => {
@@ -32,9 +32,9 @@ describe("porcentajePorAsistencia", () => {
 });
 
 describe("calcularPresentismo", () => {
-  it("el presentismo es el 10% del neto", () => {
-    expect(PRESENTISMO_PCT_DEL_NETO).toBe(10);
-    const p = calcularPresentismo({ netoBase: 1000000, tardes: 0, ausentes: 0 });
+  it("el presentismo es el 10% del bruto", () => {
+    expect(PRESENTISMO_PCT_DEL_BRUTO).toBe(10);
+    const p = calcularPresentismo({ brutoBase: 1000000, tardes: 0, ausentes: 0 });
     expect(p.base).toBe(100000);
     expect(p.pct).toBe(100);
     expect(p.monto).toBe(100000);
@@ -42,14 +42,14 @@ describe("calcularPresentismo", () => {
   });
 
   it("descuenta segun la asistencia y dice por qué", () => {
-    const p = calcularPresentismo({ netoBase: 1000000, tardes: 2, ausentes: 0 });
+    const p = calcularPresentismo({ brutoBase: 1000000, tardes: 2, ausentes: 0 });
     expect(p.pct).toBe(50);
     expect(p.monto).toBe(50000);
     expect(p.motivo).toContain("2 tardes");
   });
 
   it("el porcentaje puesto a mano gana, y se avisa qué habría dado la asistencia", () => {
-    const p = calcularPresentismo({ netoBase: 1000000, tardes: 3, ausentes: 0, override: 75 });
+    const p = calcularPresentismo({ brutoBase: 1000000, tardes: 3, ausentes: 0, override: 75 });
     expect(p.pct).toBe(75);
     expect(p.monto).toBe(75000);
     expect(p.aMano).toBe(true);
@@ -57,18 +57,18 @@ describe("calcularPresentismo", () => {
   });
 
   it("un override de 0 es válido y no se confunde con 'sin override'", () => {
-    const p = calcularPresentismo({ netoBase: 1000000, tardes: 0, ausentes: 0, override: 0 });
+    const p = calcularPresentismo({ brutoBase: 1000000, tardes: 0, ausentes: 0, override: 0 });
     expect(p.pct).toBe(0);
     expect(p.aMano).toBe(true);
   });
 
   it("el override se recorta a 0..100", () => {
-    expect(calcularPresentismo({ netoBase: 1000, tardes: 0, ausentes: 0, override: 150 }).pct).toBe(100);
-    expect(calcularPresentismo({ netoBase: 1000, tardes: 0, ausentes: 0, override: -20 }).pct).toBe(0);
+    expect(calcularPresentismo({ brutoBase: 1000, tardes: 0, ausentes: 0, override: 150 }).pct).toBe(100);
+    expect(calcularPresentismo({ brutoBase: 1000, tardes: 0, ausentes: 0, override: -20 }).pct).toBe(0);
   });
 
   it("sin override (null/undefined) manda la asistencia", () => {
-    expect(calcularPresentismo({ netoBase: 1000, tardes: 1, ausentes: 0, override: null }).aMano).toBe(false);
-    expect(calcularPresentismo({ netoBase: 1000, tardes: 1, ausentes: 0 }).pct).toBe(75);
+    expect(calcularPresentismo({ brutoBase: 1000, tardes: 1, ausentes: 0, override: null }).aMano).toBe(false);
+    expect(calcularPresentismo({ brutoBase: 1000, tardes: 1, ausentes: 0 }).pct).toBe(75);
   });
 });

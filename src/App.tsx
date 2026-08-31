@@ -38,8 +38,9 @@ import {
 import { buildPersonLedger, carryPettyCashDebt } from "./domain/personLedger";
 import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./domain/calendarMarks";
 import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
+import { porcentajePorAsistencia } from "./domain/presentismo";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
-import { deriveConvenioHours } from "./domain/attendance";
+import { deriveConvenioHours, summarizeMonthAttendance } from "./domain/attendance";
 import {
   buildCierreResumenHtml,
   buildCierreBancoHtml,
@@ -14838,8 +14839,22 @@ Escribi CERRAR para confirmar:`
       isPartner: !!isFueraConvenio && isPartnerCategory(category),
     });
 
+  // Cuanto del presentismo le corresponde a este empleado ESTE mes segun su asistencia. Es el valor
+  // por defecto: si alguien lo fijo a mano con los botones (25/50/75/100), manda ese.
+  const presentismoPorAsistencia = (employee: Employee, month: string) => {
+    const r = summarizeMonthAttendance(employee.attendance || [], month);
+    return porcentajePorAsistencia(r.late, r.absent);
+  };
+
   const getEmployeePayrollSummary = (employee: Employee) => {
-    const payroll = getCurrentPayroll(employee);
+    const payrollGuardado = getCurrentPayroll(employee);
+    // El presentismo se resuelve acá y no en domain/payroll.ts porque depende de la ASISTENCIA del
+    // mes, que payroll no conoce: payroll recibe el porcentaje ya resuelto.
+    const payroll =
+      payrollGuardado.presentismoAsistenciaPct === null ||
+      payrollGuardado.presentismoAsistenciaPct === undefined
+        ? { ...payrollGuardado, presentismoAsistenciaPct: presentismoPorAsistencia(employee, payrollMonth) }
+        : payrollGuardado;
     return getPayrollSummaryForScenario({
       company: employee.company,
       category: employee.category,
