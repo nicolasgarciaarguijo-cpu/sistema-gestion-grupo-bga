@@ -1177,6 +1177,9 @@ export type EmployeePayroll = {
   // Cuanto de ese presentismo COBRA este mes, 0..100. Sale de la asistencia (tardes y ausencias,
   // ver domain/presentismo.ts) salvo que se ponga a mano. null/ausente = lo decide la asistencia.
   presentismoAsistenciaPct?: number | null;
+  // Mes en que se liquida el SAC (aguinaldo). En ese mes NO se aplica la detraccion de la ley 27.430
+  // sobre la base de la contribucion jubilatoria.
+  liquidaSAC?: boolean;
   employerExtraPct: number;
   manualOverride: boolean;
   savedAt: string;
@@ -1254,7 +1257,13 @@ export type EmployeeBaseConfig = {
   employerJubilacionPct?: number; // jubilación patronal (bundle SIPA), ej. 18
   employerObraSocialPct?: number; // obra social patronal, ej. 6
   employerArtPct?: number; // ART, por actividad, ej. 11.38
+  // FONDO FIDUCIARIO de la ART: suma FIJA por empleado que se paga ademas del porcentaje (ej. 1765).
+  // Sin esto el ART del recibo no cierra: el % solo deja afuera esta cuota.
+  employerArtFondoFiduciario?: number;
   employerLifeInsuranceFixed?: number; // seguro de vida obligatorio, monto fijo mensual (ej. 424.62)
+  // DETRACCION ley 27.430: importe fijo POR EMPLEADO que se resta de la base antes de calcular la
+  // contribucion jubilatoria (ej. 7003.68). No se aplica en la liquidacion del SAC.
+  detraccionLey27430?: number;
   unionPct: number;
   insurancePct: number;
   aguinaldoAnnualMonths: number;

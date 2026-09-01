@@ -65,6 +65,10 @@ export type PayrollConfig = {
   employerJubilacionPct?: number;
   employerObraSocialPct?: number;
   employerArtPct?: number;
+  // Cuota FIJA por empleado del fondo fiduciario de la ART, ademas del porcentaje.
+  employerArtFondoFiduciario?: number;
+  // Importe fijo por empleado que se detrae de la base de la contribucion jubilatoria (ley 27.430).
+  detraccionLey27430?: number;
   employerLifeInsuranceFixed?: number;
   aguinaldoAnnualMonths: number;
   normalHoursDefault: number;
@@ -192,9 +196,20 @@ export function computePayrollSummary({
       Number(config.employerObraSocialPct || 0) +
       Number(config.employerArtPct || 0)
     : Number(payroll.employerExtraPct || 0);
-  const employerJubilacion = grossRem * (Number(config.employerJubilacionPct || 0) / 100);
+  // Las tres contribuciones NO van sobre la misma base, y eso importa:
+  //
+  //  - JUBILACION: sobre el remunerativo MENOS la detraccion de la ley 27.430 (importe fijo por
+  //    empleado). No se detrae cuando se liquida SAC.
+  //  - OBRA SOCIAL: sobre el remunerativo, sin detraccion.
+  //  - ART: sobre el BRUTO (remunerativo + no remunerativo), y ademas lleva la cuota FIJA del fondo
+  //    fiduciario. Con el porcentaje solo, el ART del recibo no cierra.
+  const detraccion = payroll.liquidaSAC ? 0 : Number(config.detraccionLey27430 || 0);
+  const baseJubilacion = Math.max(0, grossRem - detraccion);
+  const employerJubilacion = baseJubilacion * (Number(config.employerJubilacionPct || 0) / 100);
   const employerObraSocial = grossRem * (Number(config.employerObraSocialPct || 0) / 100);
-  const employerArt = grossRem * (Number(config.employerArtPct || 0) / 100);
+  const employerArt =
+    totalGross * (Number(config.employerArtPct || 0) / 100) +
+    Number(config.employerArtFondoFiduciario || 0);
   const employerLifeInsurance = hasEmployerBreakdown ? Number(config.employerLifeInsuranceFixed || 0) : 0;
   const employerContrib = grossRem * (employerContribPct / 100);
   const employerInsurance = hasEmployerBreakdown

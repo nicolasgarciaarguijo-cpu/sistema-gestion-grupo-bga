@@ -1132,7 +1132,13 @@ const defaultBaseConfig: EmployeeBaseConfig = {
   employerJubilacionPct: 18,
   employerObraSocialPct: 6,
   employerArtPct: 11.38,
+  // El ART lleva ademas una cuota FIJA por empleado (fondo fiduciario) y se calcula sobre el BRUTO,
+  // no sobre el remunerativo. Con el porcentaje solo, faltaban $1.765 por empleado.
+  employerArtFondoFiduciario: 1765,
   employerLifeInsuranceFixed: 424.62,
+  // Ley 27.430: importe fijo por empleado que se DETRAE de la base de la contribucion jubilatoria.
+  // No se detrae en el mes en que se liquida el SAC.
+  detraccionLey27430: 7003.68,
   unionPct: 3,
   insurancePct: 1.5,
   aguinaldoAnnualMonths: 1,

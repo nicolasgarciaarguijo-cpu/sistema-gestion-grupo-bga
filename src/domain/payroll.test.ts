@@ -296,3 +296,109 @@ describe("socio / socio gerente", () => {
     expect(conFlag.partnerFlat).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------------------------
+// EL RECIBO DE VERDAD. Reproduce entero el recibo de De Raiz (CARMONA BUSTAMANTE, 07/2026) que paso
+// Nicolas. Es el test mas valioso de la liquidacion: si algun concepto se desvia, este se cae.
+describe("recibo real De Raíz · Carmona 07/2026", () => {
+  const cfg: PayrollConfig = {
+    seniorityPctPerYear: 1,
+    unionPct: 3,
+    insurancePct: 1.5,
+    employerInsurancePct: 0,
+    aguinaldoAnnualMonths: 1,
+    normalHoursDefault: 198,
+    employerJubilacionPct: 18,
+    employerObraSocialPct: 6,
+    employerArtPct: 11.38,
+    employerArtFondoFiduciario: 1765,
+    employerLifeInsuranceFixed: 424.62,
+    detraccionLey27430: 7003.68,
+  };
+  const r = computePayrollSummary({
+    seniorityYears: 8,
+    hourlyNetManual: 0,
+    hourlyGrossManual: 7959.06,
+    payroll: {
+      ...basePayroll,
+      month: "2026-07",
+      normalHours: 198,
+      holidayHours: 9,
+      extra50Hours: 4,
+      extra100Hours: 2,
+      presentismoPctOverride: 10,
+      presentismoAsistenciaPct: 100,
+    },
+    // ASIG. SNR del recibo: 207 unidades (198 normales + 9 de feriado) x 302,44.
+    scale: { baseHourly: 7959.06, vht: 7959.06, nonRemHourly: 302.44 },
+    config: cfg,
+  } as any);
+
+  it("las horas dan los importes del recibo", () => {
+    expect(r.grossNormal).toBeCloseTo(1575893.88, 2);   // 0017 · 198 h
+    expect(r.extra50).toBeCloseTo(47754.36, 2);         // 0018 · 4 h al 50%
+    expect(r.extra100).toBeCloseTo(31836.24, 2);        // 0021 · 2 h al 100%
+    expect(r.grossHoliday).toBeCloseTo(71631.54, 2);    // 0043 · 9 h feriado a valor simple
+  });
+
+  it("antigüedad: 1% por año sobre horas trabajadas + extras + feriado", () => {
+    expect(r.seniorityBonus).toBeCloseTo(138169.28, 2); // 0180 · 8 años
+  });
+
+  it("presentismo: 10% de las HORAS TRABAJADAS, sin extras ni feriado ni antigüedad", () => {
+    expect(r.presentismo).toBeCloseTo(157589.39, 2);    // 0190
+  });
+
+  it("remunerativo y descuentos dan los del recibo", () => {
+    expect(r.grossRem).toBeCloseTo(2022874.69, 2);
+    expect(r.jubilacion).toBeCloseTo(222516.22, 2);
+    expect(r.ley19032).toBeCloseTo(60686.24, 2);
+    expect(r.obraSocial).toBeCloseTo(60686.24, 2);
+    expect(r.sindicato).toBeCloseTo(60686.24, 2);
+    expect(r.seguro).toBeCloseTo(30343.12, 2);
+    expect(r.descuentos).toBeCloseTo(434918.06, 2);
+  });
+
+  it("contribución jubilatoria: 18% sobre el remunerativo MENOS la detracción de la ley 27.430", () => {
+    expect(r.employerJubilacion).toBeCloseTo(362856.79, 1);
+  });
+
+  it("obra social patronal: 6% sobre el remunerativo, sin detracción", () => {
+    expect(r.employerObraSocial).toBeCloseTo(121372.48, 2);
+  });
+
+  it("el no remunerativo y el bruto dan los del recibo", () => {
+    expect(r.nonRem).toBeCloseTo(62605.08, 2);       // 0250 · ASIG. SNR
+    expect(r.totalGross).toBeCloseTo(2085479.77, 2); // SUELDO BRUTO
+  });
+
+  it("ART: % sobre el BRUTO más la cuota fija del fondo fiduciario", () => {
+    // Sin la cuota fija ($1.765 del fondo fiduciario) falta justo eso; sobre el remunerativo en vez
+    // del bruto, falta mucho mas. Las dos cosas juntas dan el numero del recibo.
+    expect(r.employerArt).toBeCloseTo(239092.6, 1);
+  });
+
+  it("el neto y el costo total empleador dan los del recibo", () => {
+    expect(r.net).toBeCloseTo(1650561.71, 0); // recibo: 1.650.562,00 (diferencia de redondeo 0,29)
+    const contribuciones =
+      r.employerJubilacion + r.employerObraSocial + r.employerArt + r.employerLifeInsurance;
+    expect(contribuciones).toBeCloseTo(723746.49, 0);          // SUB TOTAL CONTRIBUCIONES
+    expect(r.totalGross + contribuciones).toBeCloseTo(2809226.26, 0); // COSTO TOTAL EMPLEADOR
+  });
+
+  it("en el mes del SAC no se detrae la ley 27.430", () => {
+    const conSac = computePayrollSummary({
+      seniorityYears: 8, hourlyNetManual: 0, hourlyGrossManual: 7959.06,
+      payroll: {
+        ...basePayroll, month: "2026-07", normalHours: 198, holidayHours: 9,
+        extra50Hours: 4, extra100Hours: 2, presentismoPctOverride: 10,
+        presentismoAsistenciaPct: 100, liquidaSAC: true,
+      },
+      scale: { baseHourly: 7959.06, vht: 7959.06, nonRemHourly: 0 },
+      config: cfg,
+    } as any);
+    // 18% del remunerativo entero, sin restarle nada.
+    expect(conSac.employerJubilacion).toBeCloseTo(2022874.69 * 0.18, 1);
+    expect(conSac.employerJubilacion).toBeGreaterThan(r.employerJubilacion);
+  });
+});
