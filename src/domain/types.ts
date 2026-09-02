@@ -36,6 +36,7 @@ export type TabKey =
   | "bancos"
   | "tarjetas"
   | "movimientosInternos"
+  | "seguros"
   | "documentos"
   | "manual";
 
@@ -849,6 +850,25 @@ export type CostAnalysisEntry = {
   notes: string;
 };
 
+// --- Seguros (solapa Seguros) ---
+// Todo lo asegurado de las empresas: ART, seguros de caucion, polizas de vehiculo, etc. Cada seguro
+// se solicita, tiene un costo mensual y una vigencia (desde/hasta), y puede guardar su poliza (archivo).
+export type Seguro = {
+  id: number;
+  company: CompanyName;
+  tipo: string; // ART, Caucion, Vehiculo, Vida, Integral de comercio, ... (texto con sugerencias)
+  descripcion: string; // detalle / bien asegurado (ej. "Fiat Fiorino AB123CD")
+  aseguradora: string;
+  numeroPoliza: string;
+  costoMensual: number;
+  vigenciaDesde: string; // ISO yyyy-mm-dd ("" si no aplica)
+  vigenciaHasta: string; // ISO yyyy-mm-dd ("" si no aplica)
+  estado: "activo" | "baja"; // dado de alta / dado de baja
+  polizaUrl: string; // link a la poliza guardada en Storage ("" si no hay)
+  polizaName: string; // nombre del archivo de la poliza
+  notas: string;
+};
+
 // --- Costos fijos y variables (solapa Costos) ---
 // La clasificacion fijo/variable vive en el GRUPO, no en el item: cada gasto hereda el tipo
 // de su grupo. Los grupos fijos son los mismos "grandes grupos" que Marcadores ya usa.
@@ -1152,6 +1172,10 @@ export type AttendanceRecord = {
   // precarga de horas del convenio (ver deriveConvenioHours).
   checkIn?: string;
   checkOut?: string;
+  // Candado: la precarga automatica de horas desde el reloj NO toca un dia bloqueado. Se pone solo
+  // al editar el dia a mano (la carga manual le gana a la automatica) y se puede fijar/soltar con el
+  // candado del calendario. Opcional: los registros viejos no lo tienen (se lee como false).
+  locked?: boolean;
   attachmentName: string;
   notes: string;
 };
@@ -1202,6 +1226,12 @@ export type Employee = {
   employmentType?: "convenio" | "temporal" | "fuera_convenio";
   // Sueldo acordado (mensual) del empleado temporal, por acuerdo entre partes.
   agreedSalary?: number;
+  // Temporal: forma del acuerdo. "mensual" (default) = agreedSalary fijo por mes; "diario" = se paga
+  // agreedDailyRate x dias trabajados del mes (a veces el acuerdo es por dia). Opcional/compat.
+  temporalAgreementMode?: "mensual" | "diario";
+  // Tarifa acordada POR DIA (temporal en modo "diario"). El mensual sale de multiplicar por los dias
+  // efectivamente trabajados (asistencia: dias con status "presente" o con fichada de entrada).
+  agreedDailyRate?: number;
   // Fuera de convenio: sueldo bruto acordado repartido por administracion. Cada uno funciona en su
   // circuito (blanco/negro). Fijo por defecto; el mes puede variar con los adicionales blanco/negro.
   agreedWhite?: number;

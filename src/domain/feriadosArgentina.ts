@@ -89,3 +89,18 @@ export function esFinDeSemana(isoDate: string): boolean {
   const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
   return dow === 0 || dow === 6;
 }
+
+// Cache por año de las fechas de feriado (Set de iso), para no recalcular en loops (liquidación).
+const feriadoSetCache = new Map<number, Set<string>>();
+
+/** true si la fecha ISO (yyyy-mm-dd) es feriado nacional (incluye puentes cargados). */
+export function esFeriado(isoDate: string): boolean {
+  const year = Number((isoDate || "").slice(0, 4));
+  if (!year) return false;
+  let set = feriadoSetCache.get(year);
+  if (!set) {
+    set = new Set(feriadosDelAnio(year).map((f) => f.iso));
+    feriadoSetCache.set(year, set);
+  }
+  return set.has(isoDate.slice(0, 10));
+}

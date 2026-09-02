@@ -30,6 +30,9 @@ export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   // Modulo nuevo (2026-07-14): no necesita entrada en el splitter SQL porque no hay datos
   // legacy en app_state_modules que partir; el frontend escribe v2 directo.
   costos: ["costEntries", "costGroups"],
+  // Seguros: cada seguro lleva su empresa; se aísla por empresa como los demás. Módulo nuevo
+  // (2026-09-01): no necesita entrada en el splitter SQL (no hay datos legacy que partir).
+  seguros: ["seguros"],
   // Cada factura emitida es de la empresa que la emitio.
   "facturas-emitidas": ["issuedInvoices"],
   "historial-crm": ["savedBudgets"],

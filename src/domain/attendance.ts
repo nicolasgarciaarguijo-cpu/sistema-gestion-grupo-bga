@@ -9,7 +9,7 @@
 // El horario es global (igual para todos). Si mas adelante hay turnos por empleado, se parametriza.
 
 import type { AttendanceRecord } from "./types";
-import { mapaDeFeriados, esFinDeSemana } from "./feriadosArgentina";
+import { mapaDeFeriados, esFinDeSemana, esFeriado } from "./feriadosArgentina";
 
 export const WORKSHOP_SCHEDULE = {
   entry: "07:30",
@@ -219,11 +219,12 @@ const overlap = (s: number, e: number, ws: number, we: number) => Math.max(0, Ma
 
 // Clasifica UN tramo contiguo [s,e) (en minutos) en las 4 categorías, en MINUTOS. Sin lógica de
 // almuerzo (eso se resuelve afuera partiendo el intervalo). dow = día de la semana (0=Dom..6=Sáb).
-const categorizeMinutes = (dow: number, s: number, e: number): ConvenioHours => {
+// isFeriado: si es feriado, el día entero se paga al 100% (LCT art. 166), como el domingo.
+const categorizeMinutes = (dow: number, s: number, e: number, isFeriado = false): ConvenioHours => {
   if (e <= s) return { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
   const night = nightMinutesIn(s, e);
-  if (dow === 0) {
-    // Domingo: todo al 100%; la parte nocturna se separa como nocturna 50 (informativa).
+  if (dow === 0 || isFeriado) {
+    // Domingo o feriado: todo al 100%; la parte nocturna se separa como nocturna 50 (informativa).
     return { normalHours: 0, extra50Hours: 0, extra100Hours: e - s - night, night50Hours: night };
   }
   if (dow === 6) {
@@ -257,7 +258,10 @@ const categorizeMinutes = (dow: number, s: number, e: number): ConvenioHours => 
 export const deriveConvenioHours = (
   dateKey: string,
   checkIn?: string,
-  checkOut?: string
+  checkOut?: string,
+  // Feriado: fuerza el día al 100%. Si se omite, se detecta solo con el calendario nacional
+  // (esFeriado). Un caller puede pasar true para un feriado de empresa que no está en el calendario.
+  feriado?: boolean
 ): ConvenioHours => {
   const zero: ConvenioHours = { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
   const inMin = timeToMinutes(checkIn);
@@ -267,6 +271,7 @@ export const deriveConvenioHours = (
   if (outMin <= inMin) return zero;
 
   const dow = dayOfWeek(dateKey);
+  const isFeriado = feriado ?? esFeriado(dateKey);
   // Tramos trabajados sacando el almuerzo (13:30-14:00): antes y después del hueco.
   const segments: Array<[number, number]> = [
     [inMin, Math.min(outMin, LUNCH_START)],
@@ -274,7 +279,7 @@ export const deriveConvenioHours = (
   ];
   const acc = { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
   for (const [s, e] of segments) {
-    const part = categorizeMinutes(dow, s, e);
+    const part = categorizeMinutes(dow, s, e, isFeriado);
     acc.normalHours += part.normalHours;
     acc.extra50Hours += part.extra50Hours;
     acc.extra100Hours += part.extra100Hours;

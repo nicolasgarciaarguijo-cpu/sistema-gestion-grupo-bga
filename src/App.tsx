@@ -167,6 +167,7 @@ import { FacturacionTab } from "./tabs/Facturacion";
 import { HistorialTab } from "./tabs/Historial";
 import { MarcadoresTab } from "./tabs/Marcadores";
 import { CostosTab } from "./tabs/Costos";
+import { SegurosTab } from "./tabs/Seguros";
 import type { CostStatementDraftRow } from "./tabs/Costos";
 import { AccesoTab } from "./tabs/Acceso";
 import { PresupuestoTab } from "./tabs/Presupuesto";
@@ -231,6 +232,7 @@ import type {
   CostAnalysisEntry,
   CostGroup,
   CostEntry,
+  Seguro,
   CostRule,
   CostKind,
   CreditCard,
@@ -450,6 +452,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "facturacion", label: "FACTURACIÓN Y COBRANZAS" },
   { key: "costos", label: "PAGO A PROVEEDORES" },
   { key: "bancos", label: "BANCOS Y TARJETAS" },
+  { key: "seguros", label: "SEGUROS" },
   { key: "compras", label: "COMPRAS" },
   { key: "cajaChica", label: "CAJA CHICA" },
   { key: "emitirFacturas", label: "EMITIR FACTURAS" },
@@ -475,6 +478,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "facturacion",
   "costos",
   "bancos",
+  "seguros",
   "compras",
   "cajaChica",
   "emitirFacturas",
@@ -562,6 +566,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   asistencia: "ASI",
   costos: "PRV",
   bancos: "BCO",
+  seguros: "SEG",
   tarjetas: "TAR",
   documentos: "DOC",
   manual: "MAN",
@@ -1703,6 +1708,7 @@ type PersistedAppStateData = {
   costAnalysisEntries: CostAnalysisEntry[];
   costGroups: CostGroup[];
   costEntries: CostEntry[];
+  seguros: Seguro[];
   costRules: CostRule[];
   creditCards: CreditCard[];
   creditCardStatements: CreditCardStatement[];
@@ -1752,6 +1758,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "costos",
     label: "Costos fijos y variables",
     fields: ["costGroups", "costEntries", "suppliers", "costRules"] as const,
+  },
+  {
+    key: "seguros",
+    label: "Seguros",
+    fields: ["seguros"] as const,
   },
   {
     key: "facturas-emitidas",
@@ -1877,6 +1888,7 @@ const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> 
   // Costos agrega compras/caja chica/personal, asi que necesita esos modulos para calcular.
   // Costos: incluye Pago a proveedores, Bancos y Tarjetas (todo en la misma solapa).
   costos: ["mensuales", "costos", "compras", "caja-chica", "personal", "tarjetas"],
+  seguros: ["seguros"],
   documentos: ["documentos"],
   marcadores: ["marcadores", "stock-costos", "personal", "costos"],
 };
@@ -2783,6 +2795,22 @@ const getNextStockCode = (
   return `${prefix}-${String(maxSeq + 1).padStart(3, "0")}`;
 };
 
+// Dias efectivamente trabajados en un mes (status "presente" o con fichada de entrada). Misma regla
+// que ya usa el recibo negro para prorratear.
+const countDaysWorkedInMonth = (employee: Employee, monthKey: string): number =>
+  (employee.attendance || []).filter(
+    (a) => a.date?.startsWith(monthKey) && (a.status === "presente" || !!a.checkIn)
+  ).length;
+
+// Monto MENSUAL acordado en negro del temporal. Si el acuerdo es por dia, se multiplica la tarifa
+// diaria por los dias trabajados del mes; si es mensual, es el sueldo acordado fijo. Todo lo demas
+// del sistema (recibo, resumen por empresa, resultados, costos, calendario de haberes) usa este
+// mismo numero, asi el temporal por dia queda consistente en todos lados.
+const effectiveAgreedSalary = (employee: Employee, monthKey: string): number =>
+  employee.employmentType === "temporal" && employee.temporalAgreementMode === "diario"
+    ? Number(employee.agreedDailyRate || 0) * countDaysWorkedInMonth(employee, monthKey)
+    : Number(employee.agreedSalary || 0);
+
 export default function App() {
   const [supabaseSession, setSupabaseSession] = useState<any>(null);
   const [supabaseProfile, setSupabaseProfile] = useState<any>(null);
@@ -2869,6 +2897,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [costGroups, setCostGroups] = useState<CostGroup[]>(defaultCostGroups);
   const [costEntries, setCostEntries] = useState<CostEntry[]>(defaultCostEntries);
   const [costRules, setCostRules] = useState<CostRule[]>([]);
+  // --- Seguros ---
+  const [seguros, setSeguros] = useState<Seguro[]>([]);
+  const [segurosCompanyScope, setSegurosCompanyScope] = useState<string>("__ALL__");
+  const [polizaBusyId, setPolizaBusyId] = useState<number | null>(null);
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
   const [calendarRowConfig, setCalendarRowConfig] = useState<CalendarRowConfig>(DEFAULT_CALENDAR_ROW_CONFIG);
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
@@ -8937,19 +8969,24 @@ Escribi CERRAR para confirmar:`
     const daysWorked = (employee.attendance || []).filter(
       (a) => a.date?.startsWith(monthKey) && (a.status === "presente" || !!a.checkIn)
     ).length;
+    // Temporal por dia: el monto ya sale de tarifa x dias trabajados (effectiveAgreedSalary), asi que
+    // NO se prorratea de nuevo. Temporal mensual: el acordado es del mes y se prorratea por dias.
+    const temporalDiario =
+      employee.employmentType === "temporal" && employee.temporalAgreementMode === "diario";
     const totalBlack =
       employee.employmentType === "fuera_convenio"
         ? Number(employee.agreedBlack || 0)
         : employee.employmentType === "temporal"
-        ? Number(employee.agreedSalary || 0)
+        ? effectiveAgreedSalary(employee, monthKey)
         : Number(getCurrentPayroll(employee)?.cashBonus || 0);
-    // Socio / socio gerente: el acordado va entero, sin prorratear por dias trabajados.
+    // Socio / socio gerente y temporal por dia: el monto va entero, sin prorratear por dias trabajados.
     const negroAmount = reciboNegroAmount({
       totalBlack,
       workingDays,
       daysWorked,
       sinProrrateo:
-        employee.employmentType === "fuera_convenio" && isPartnerCategory(employee.category),
+        temporalDiario ||
+        (employee.employmentType === "fuera_convenio" && isPartnerCategory(employee.category)),
     });
     setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, workingDays, daysWorked, negroAmount } });
     void guardarReciboEnCarpeta(
@@ -9142,6 +9179,7 @@ Escribi CERRAR para confirmar:`
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
     costGroups: costGroups.map((item) => ({ ...item })),
     costEntries: costEntries.map((item) => ({ ...item })),
+    seguros: seguros.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
     creditCardStatements: creditCardStatements.map((item) => ({ ...item })),
@@ -9438,6 +9476,9 @@ Escribi CERRAR para confirmar:`
     );
     setCostEntries(
       keepAccessibleByCompany(data.costEntries || defaultCostEntries).map((item) => ({ ...item }))
+    );
+    setSeguros(
+      keepAccessibleByCompany(data.seguros || []).map((item) => ({ ...item }))
     );
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -14012,7 +14053,7 @@ Escribi CERRAR para confirmar:`
         const negro = monthlyBlackPay({
           cashBonus: Number(pr.cashBonus || 0),
           isTemporal: emp.employmentType === "temporal",
-          agreedSalary: Number(emp.agreedSalary || 0),
+          agreedSalary: effectiveAgreedSalary(emp, pr.month),
           isFueraConvenio: emp.employmentType === "fuera_convenio",
           agreedBlack: Number(emp.agreedBlack || 0),
         });
@@ -14282,23 +14323,40 @@ Escribi CERRAR para confirmar:`
   // asistencia "no engancha" (visto 2026-08-21: 56 dias con entrada y salida, solo 10 con horas).
   // Solo toca los que estan en cero -nunca pisa lo que se cargo a mano- y va por el mismo camino que
   // editar la salida, para que se recalcule tambien la liquidacion del mes.
-  const precargarHorasDesdeFichadas = (month: string, company: "all" | CompanyName) => {
+  // Precarga masiva de horas del convenio desde las fichadas del reloj.
+  // month = null -> TODOS los meses (arregla el caso "solo cargaba el mes abierto").
+  // NO toca: dias bloqueados (candado / editados a mano), dias con horas ya cargadas, ni meses
+  // liquidados a mano (payroll.savedAt). Es idempotente: al segundo pase no encuentra nada nuevo.
+  const precargarHorasDesdeFichadas = (
+    month: string | null,
+    company: "all" | CompanyName
+  ) => {
     const objetivos: Array<{ id: number; date: string; checkOut: string }> = [];
     visibleEmployees.forEach((employee) => {
       if (company !== "all" && employee.company !== company) return;
+      const mesesCerrados = new Set(
+        (employee.payrolls || [])
+          .filter((p) => p.savedAt)
+          .map((p) => p.month)
+      );
       (employee.attendance || []).forEach((item) => {
-        if (!item.date || !item.date.startsWith(`${month}-`)) return;
+        if (!item.date) return;
+        if (month && !item.date.startsWith(`${month}-`)) return;
         if (!item.checkIn || !item.checkOut) return;
+        if ((item as any).locked) return; // bloqueado: la carga manual gana
+        if (mesesCerrados.has(item.date.slice(0, 7))) return; // mes ya liquidado a mano
         const horas =
           Number(item.normalHours || 0) +
           Number(item.extra50Hours || 0) +
           Number(item.extra100Hours || 0) +
           Number((item as any).night50Hours || 0);
-        if (horas > 0) return; // ya tiene horas: es edicion del usuario, no se toca
+        if (horas > 0) return; // ya tiene horas: no se toca
         objetivos.push({ id: employee.id, date: item.date, checkOut: item.checkOut });
       });
     });
-    objetivos.forEach((o) => updateAttendanceRecord(o.id, o.date, "checkOut", o.checkOut));
+    objetivos.forEach((o) =>
+      updateAttendanceRecord(o.id, o.date, "checkOut", o.checkOut, { fromAutofill: true })
+    );
     return objetivos.length;
   };
 
@@ -14306,8 +14364,13 @@ Escribi CERRAR para confirmar:`
     employeeId: number,
     date: string,
     field: keyof AttendanceRecord,
-    value: string | number
+    value: string | number | boolean,
+    opts?: { fromAutofill?: boolean }
   ) => {
+    const fromAutofill = opts?.fromAutofill === true;
+    // La carga manual le gana a la automatica: toda edicion a mano (menos togglear el candado)
+    // bloquea el dia para que la precarga desde el reloj no lo vuelva a pisar.
+    const shouldLock = !fromAutofill && field !== "locked";
     setEmployees((prev) =>
       prev.map((employee) => {
         if (employee.id !== employeeId) return employee;
@@ -14414,7 +14477,13 @@ Escribi CERRAR para confirmar:`
           field === "checkIn" || field === "checkOut"
             ? nextAttendance.map((item) => {
                 if (item.date !== date || !item.checkIn || !item.checkOut) return item;
-                const derived = deriveConvenioHours(item.date, item.checkIn, item.checkOut);
+                // Feriado nacional (por fecha) o marcado a mano => todo el día al 100%.
+                const derived = deriveConvenioHours(
+                  item.date,
+                  item.checkIn,
+                  item.checkOut,
+                  item.status === "feriado" ? true : undefined
+                );
                 return {
                   ...item,
                   status: item.status === "sin_cargar" ? ("presente" as AttendanceStatus) : item.status,
@@ -14425,7 +14494,13 @@ Escribi CERRAR para confirmar:`
                 };
               })
             : nextAttendance;
-        const monthPayrollFromAttendance = recalcMonthPayroll(attendanceWithHours);
+        // Edicion a mano => se bloquea el dia (la carga manual le gana a la precarga del reloj).
+        const attendanceFinal = shouldLock
+          ? attendanceWithHours.map((item) =>
+              item.date === date ? { ...item, locked: true } : item
+            )
+          : attendanceWithHours;
+        const monthPayrollFromAttendance = recalcMonthPayroll(attendanceFinal);
         const existsPayroll = employee.payrolls.some((item) => item.month === month);
         const nextPayrolls = existsPayroll
           ? employee.payrolls.map((item) =>
@@ -14433,7 +14508,8 @@ Escribi CERRAR para confirmar:`
                 ? {
                     ...item,
                     ...monthPayrollFromAttendance,
-                    manualOverride: false,
+                    // La precarga automatica NO cierra ni reabre la liquidacion manual del mes.
+                    manualOverride: fromAutofill ? item.manualOverride : false,
                   }
                 : item
             )
@@ -14445,7 +14521,7 @@ Escribi CERRAR para confirmar:`
                 manualOverride: false,
               },
             ];
-        return { ...employee, attendance: attendanceWithHours, payrolls: nextPayrolls };
+        return { ...employee, attendance: attendanceFinal, payrolls: nextPayrolls };
       })
     );
   };
@@ -14870,7 +14946,7 @@ Escribi CERRAR para confirmar:`
       hourlyGrossManual: employee.hourlyGrossManual,
       payroll,
       isTemporal: employee.employmentType === "temporal",
-      agreedSalary: Number(employee.agreedSalary || 0),
+      agreedSalary: effectiveAgreedSalary(employee, payrollMonth),
       isFueraConvenio: employee.employmentType === "fuera_convenio",
       agreedWhite: Number(employee.agreedWhite || 0),
       agreedBlack: Number(employee.agreedBlack || 0),
@@ -14908,7 +14984,7 @@ Escribi CERRAR para confirmar:`
           hourlyGrossManual: emp.hourlyGrossManual,
           payroll: pr,
           isTemporal: emp.employmentType === "temporal",
-          agreedSalary: Number(emp.agreedSalary || 0),
+          agreedSalary: effectiveAgreedSalary(emp, pr.month),
           isFueraConvenio: emp.employmentType === "fuera_convenio",
           agreedWhite: Number(emp.agreedWhite || 0),
           agreedBlack: Number(emp.agreedBlack || 0),
@@ -15398,6 +15474,66 @@ Escribi CERRAR para confirmar:`
     }
   };
 
+  // --- Seguros: handlers ---
+  const addSeguro = () => {
+    setSeguros((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        company: segurosCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : segurosCompanyScope,
+        tipo: "",
+        descripcion: "",
+        aseguradora: "",
+        numeroPoliza: "",
+        costoMensual: 0,
+        vigenciaDesde: "",
+        vigenciaHasta: "",
+        estado: "activo",
+        polizaUrl: "",
+        polizaName: "",
+        notas: "",
+      },
+    ]);
+  };
+
+  const removeSeguro = (id: number) => {
+    setSeguros((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const updateSeguro = (id: number, field: keyof Seguro, value: any) => {
+    setSeguros((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
+  };
+
+  // Sube la poliza (PDF o imagen) a Storage y guarda la URL publica en el seguro.
+  const handlePolizaFile = async (id: number, file: File | null) => {
+    if (!file) return;
+    setPolizaBusyId(id);
+    try {
+      const ext = (file.name.split(".").pop() || "bin").toLowerCase();
+      const path = `polizas/${newId()}-${Math.floor(Math.random() * 1e6)}.${ext}`;
+      const { error } = await supabase.storage
+        .from("budget-images")
+        .upload(path, file, { contentType: file.type || undefined, upsert: false });
+      if (error) throw error;
+      const { data } = supabase.storage.from("budget-images").getPublicUrl(path);
+      setSeguros((prev) =>
+        prev.map((s) =>
+          s.id === id ? { ...s, polizaUrl: data.publicUrl, polizaName: file.name } : s
+        )
+      );
+    } catch (err) {
+      window.alert(
+        "No se pudo subir la póliza: " + (err instanceof Error ? err.message : String(err))
+      );
+    } finally {
+      setPolizaBusyId(null);
+    }
+  };
+
+  const openPoliza = (seguro: Seguro) => {
+    if (seguro.polizaUrl) window.open(seguro.polizaUrl, "_blank", "noopener,noreferrer");
+  };
+
   // Panel de reglas de clasificación: editar/activar/borrar. "Resolver ambigüedad" = fijar el grupo y
   // desmarcar `ambiguous` para que vuelva a sugerir.
   const updateCostRule = (id: number, field: keyof CostRule, value: any) => {
@@ -15801,7 +15937,7 @@ Escribi CERRAR para confirmar:`
           hourlyGrossManual: emp.hourlyGrossManual,
           payroll: pr,
           isTemporal: emp.employmentType === "temporal",
-          agreedSalary: Number(emp.agreedSalary || 0),
+          agreedSalary: effectiveAgreedSalary(emp, pr.month),
           isFueraConvenio: emp.employmentType === "fuera_convenio",
           agreedWhite: Number(emp.agreedWhite || 0),
           agreedBlack: Number(emp.agreedBlack || 0),
@@ -16243,6 +16379,47 @@ Escribi CERRAR para confirmar:`
           Examenes: share("Examenes"),
           Capacitaciones: share("Capacitaciones"),
         };
+        // Desglose de SALARIOS blanco por concepto. Todos salen de la propia liquidacion, asi que la
+        // suma cierra al centavo con salariosWhite. La linea "acordadoYOtros" absorbe el sueldo
+        // acordado de fuera de convenio / socios (que no sale por hora) para que nada quede afuera.
+        const salNormal = sum((s) => (s as any).grossNormal);
+        const salFeriado = sum((s) => (s as any).grossHoliday);
+        const salExtra50 = sum((s) => (s as any).extra50);
+        const salExtra100 = sum((s) => (s as any).extra100);
+        const salNocturnas = sum((s) => Number((s as any).night50 || 0) + Number((s as any).night || 0));
+        const salAntiguedad = sum((s) => (s as any).seniorityBonus);
+        const salPresentismo = sum((s) => (s as any).presentismo);
+        const salPremios = sum((s) => (s as any).whiteBonus);
+        const salNoRem = sum((s) => (s as any).nonRem);
+        const salAguinaldo = sum((s) => (s as any).monthlySACBaseProration);
+        const salConocidos =
+          salNormal + salFeriado + salExtra50 + salExtra100 + salNocturnas +
+          salAntiguedad + salPresentismo + salPremios + salNoRem + salAguinaldo;
+        const salAcordadoYOtros = salariosWhite - salConocidos;
+        const salariosDetalle = {
+          normal: salNormal,
+          feriado: salFeriado,
+          extra50: salExtra50,
+          extra100: salExtra100,
+          nocturnas: salNocturnas,
+          antiguedad: salAntiguedad,
+          presentismo: salPresentismo,
+          premios: salPremios,
+          noRem: salNoRem,
+          aguinaldo: salAguinaldo,
+          acordadoYOtros: salAcordadoYOtros,
+        };
+        // Desglose de CARGAS SOCIALES: suma exacta a cargasSociales (employerChargesMonthly).
+        const cargasDetalle = {
+          contribuciones: sum((s) => (s as any).employerContrib),
+          seguro: sum((s) => (s as any).employerInsurance),
+          aguinaldo: sum((s) => (s as any).monthlySACChargesProration),
+        };
+        // Desglose del NEGRO: premio/acuerdo del mes + prorrateo del aguinaldo negro.
+        const negroDetalle = {
+          premio: sum((s) => (s as any).blackMonthly),
+          aguinaldo: sum((s) => (s as any).blackSACProration),
+        };
         return {
           company: company.value,
           label: company.short,
@@ -16253,7 +16430,10 @@ Escribi CERRAR para confirmar:`
           salariosWhite,
           salariosBlack: totalBlack,
           salarios: salariosWhite + totalBlack,
+          salariosDetalle,
           cargasSociales,
+          cargasDetalle,
+          negroDetalle,
           provisiones,
           provisionesPorTipo,
           // Impacto total real de la empresa = blanco + negro (antes solo mostraba el blanco).
@@ -17451,6 +17631,22 @@ Escribi CERRAR para confirmar:`
         />
       )}
 
+      {activeTab === "seguros" && (
+        <SegurosTab
+          seguros={seguros}
+          hoyIso={todayIso()}
+          companyScope={segurosCompanyScope}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          getCompanyMeta={getCompanyMeta}
+          onScopeChange={setSegurosCompanyScope}
+          addSeguro={addSeguro}
+          removeSeguro={removeSeguro}
+          updateSeguro={updateSeguro}
+          onPolizaFile={handlePolizaFile}
+          onOpenPoliza={openPoliza}
+          polizaBusyId={polizaBusyId}
+        />
+      )}
 
       {activeTab === "bancos" && (
         <BancosTab

@@ -14,6 +14,7 @@ import {
   type AttendanceLevel,
   type DayAttendance,
 } from "../domain/attendance";
+import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 import type { CompanyName, Employee } from "../domain/types";
 
 const MONTHS = [
@@ -203,7 +204,8 @@ export function AsistenciaTab({
   companyOptions: Array<{ value: CompanyName; short?: string }>;
   getCompanyMeta: (company: CompanyName) => { short: string; primary: string };
   // Llena las horas del convenio de los dias que vinieron del reloj con las horas en cero.
-  onPrecargarHoras?: (month: string, company: "all" | CompanyName) => number;
+  // month = null -> todos los meses.
+  onPrecargarHoras?: (month: string | null, company: "all" | CompanyName) => number;
 }) {
   const [month, setMonth] = useState(initialMonth || "");
   const [companyFilter, setCompanyFilter] = useState<"all" | CompanyName>("all");
@@ -228,6 +230,28 @@ export function AsistenciaTab({
     });
     return n;
   }, [shownEmployees, month]);
+
+  // Lo mismo pero en TODOS los meses (no solo el abierto): dias del reloj con entrada y salida,
+  // sin horas y sin candado. Es lo que llena el boton de precarga.
+  const sinHorasTotal = useMemo(() => {
+    let n = 0;
+    shownEmployees.forEach((e) => {
+      (e.attendance || []).forEach((a: any) => {
+        if (!a?.date || !a.checkIn || !a.checkOut || a.locked) return;
+        const horas =
+          Number(a.normalHours || 0) + Number(a.extra50Hours || 0) +
+          Number(a.extra100Hours || 0) + Number(a.night50Hours || 0);
+        if (horas === 0) n += 1;
+      });
+    });
+    return n;
+  }, [shownEmployees]);
+
+  // Feriados nacionales del ano en pantalla (y el previo, por el borde dic/ene) para pintarlos en rojo.
+  const feriados = useMemo(() => {
+    const y = Number((month || "").slice(0, 4)) || new Date().getFullYear();
+    return mapaDeFeriados([y - 1, y, y + 1]);
+  }, [month]);
 
   // Semaforo del mes por empleado, calculado una vez.
   const perEmployeeMonth = useMemo(
@@ -263,6 +287,9 @@ export function AsistenciaTab({
     if (!cell) return <div key={`blank-${idx}`} style={cellBlank} />;
     const sched = scheduleForDate(cell.key);
     const nonWorking = sched === null;
+    // Findes (sabado y domingo) y feriados: fondo rojo (dias no laborables).
+    const feriadoNombre = feriados.get(cell.key);
+    const esRojo = esFinDeSemana(cell.key) || feriadoNombre !== undefined;
     // Chips de empleados con dato ese dia (present/late/ausente/vacaciones). Los "sin dato" no se listan.
     const chips: Array<{ name: string; d: DayAttendance }> = [];
     for (const row of perEmployeeMonth) {
@@ -295,12 +322,21 @@ export function AsistenciaTab({
         </span>
       ) : null;
     return (
-      <div key={cell.key} style={{ ...cellBase, ...(nonWorking ? cellOff : {}) }}>
+      <div
+        key={cell.key}
+        style={{ ...cellBase, ...(nonWorking ? cellOff : {}), ...(esRojo ? cellRed : {}) }}
+        title={feriadoNombre || (esFinDeSemana(cell.key) ? "Fin de semana" : undefined)}
+      >
         <div style={cellHead}>
           <strong>{cell.day}</strong>
           {sched && <span style={cellSched}>{sched.entry}</span>}
           {nonWorking && <span style={{ ...cellSched, color: "#94a3b8" }}>—</span>}
         </div>
+        {feriadoNombre && (
+          <div style={{ fontSize: 10, fontWeight: 800, color: "#b91c1c", marginTop: 1 }}>
+            {feriadoNombre}
+          </div>
+        )}
         {chips.length > 0 && (
           <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
             {contador("green", enHorario.length, enHorario.map((c) => c.name).join(", "))}
@@ -335,24 +371,25 @@ export function AsistenciaTab({
   return (
     <div style={styles.column}>
       <SyncReloj companyOptions={companyOptions} getCompanyMeta={getCompanyMeta} />
-      {sinHoras > 0 && onPrecargarHoras && (
+      {sinHorasTotal > 0 && onPrecargarHoras && (
         <div style={{ ...styles.noticeBox, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderLeft: "4px solid #f59e0b" }}>
           <span style={{ flex: 1, minWidth: 260 }}>
-            Hay <strong>{sinHoras} día(s)</strong> de {monthLabel(month)} que vinieron del reloj con
-            entrada y salida pero <strong>sin horas</strong>: así la liquidación no los ve. Se calculan
-            con las reglas del convenio y después los podés corregir a mano.
+            Hay <strong>{sinHorasTotal} día(s)</strong> que vinieron del reloj con entrada y salida
+            pero <strong>sin horas</strong> (en todos los meses){sinHoras > 0 ? `, ${sinHoras} en ${monthLabel(month)}` : ""}:
+            así la liquidación no los ve. Se calculan con las reglas del convenio y después los podés
+            corregir a mano (lo que edites queda bloqueado y la precarga no lo vuelve a tocar).
           </span>
           <ButtonLike
             onClick={() => {
-              const n = onPrecargarHoras(month, companyFilter);
+              const n = onPrecargarHoras(null, companyFilter);
               window.alert(
                 n > 0
                   ? `Listo: se calcularon las horas de ${n} día(s). Revisalos en la ficha de cada empleado.`
-                  : "No quedaba ningún día para calcular."
+                  : "No quedaba ningún día para calcular (los editados o bloqueados no se tocan)."
               );
             }}
           >
-            Calcular horas de {sinHoras} día(s)
+            Calcular horas de {sinHorasTotal} día(s)
           </ButtonLike>
         </div>
       )}
@@ -604,6 +641,8 @@ const cellBase: React.CSSProperties = {
   background: "#fff",
 };
 const cellOff: React.CSSProperties = { background: "#f8fafc", borderStyle: "dashed" };
+// Findes y feriados: fondo rojo suave (dias no laborables).
+const cellRed: React.CSSProperties = { background: "#fee2e2", borderColor: "#fecaca" };
 const cellBlank: React.CSSProperties = { minHeight: 84, borderRadius: 8, background: "transparent" };
 const cellHead: React.CSSProperties = {
   display: "flex",

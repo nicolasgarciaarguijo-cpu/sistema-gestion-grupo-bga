@@ -27,6 +27,7 @@ import { isPartnerCategory } from "../domain/payroll";
 import type { CompanyName } from "../domain/types";
 import { computeMonthAttendance, deriveConvenioHours } from "../domain/attendance";
 import type { DayAttendance } from "../domain/attendance";
+import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
 type PersonalTabProps = {
   employees: any[];
@@ -280,6 +281,47 @@ export function PersonalTab(props: PersonalTabProps) {
                 const tiposConCosto = PERSONAL_PROVISION_KINDS.filter(
                   (kind) => Number(porTipo[kind] || 0) > 0
                 );
+                // Desglose por concepto: solo se muestran los que tienen monto, para no llenar de ceros.
+                const salDet = row.salariosDetalle || {};
+                const salLineas = (
+                  [
+                    ["normal", "Normal"],
+                    ["feriado", "Feriado"],
+                    ["extra50", "Extra 50%"],
+                    ["extra100", "Extra 100%"],
+                    ["nocturnas", "Nocturnas"],
+                    ["antiguedad", "Antigüedad"],
+                    ["presentismo", "Presentismo"],
+                    ["premios", "Premio blanco"],
+                    ["noRem", "No remunerativo"],
+                    ["aguinaldo", "Aguinaldo (base)"],
+                    ["acordadoYOtros", "Sueldo acordado / otros"],
+                  ] as Array<[string, string]>
+                ).filter(([k]) => Math.abs(Number(salDet[k] || 0)) >= 0.005);
+                const negroDet = row.negroDetalle || {};
+                const negroLineas = (
+                  [
+                    ["premio", "Premio / acuerdo"],
+                    ["aguinaldo", "Aguinaldo negro"],
+                  ] as Array<[string, string]>
+                ).filter(([k]) => Number(negroDet[k] || 0) > 0.005);
+                const cargasDet = row.cargasDetalle || {};
+                const cargasLineas = (
+                  [
+                    ["contribuciones", "Contribuciones patronales"],
+                    ["seguro", "Seguro"],
+                    ["aguinaldo", "Cargas del aguinaldo"],
+                  ] as Array<[string, string]>
+                ).filter(([k]) => Number(cargasDet[k] || 0) > 0.005);
+                const subLinea = (key: string, label: string, val: number, color?: string) => (
+                  <div
+                    key={key}
+                    style={{ display: "flex", justifyContent: "space-between", gap: 10, paddingLeft: 22 }}
+                  >
+                    <span style={{ ...styles.muted, fontSize: 11 }}>{label}</span>
+                    <span style={{ fontSize: 11, color }}>{money(val)}</span>
+                  </div>
+                );
                 return (
                   <div key={row.company} style={{ ...styles.metric, borderColor: meta.primary, background: meta.soft }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
@@ -293,14 +335,19 @@ export function PersonalTab(props: PersonalTabProps) {
 
                     <LineaResumen label="Salarios" value={money(row.salarios)} fuerte separador />
                     <LineaResumen label="Blanco" value={money(row.salariosWhite)} sangria />
+                    {salLineas.map(([k, label]) => subLinea(`${row.company}-sal-${k}`, label, Number(salDet[k] || 0)))}
                     <LineaResumen
                       label="Negro"
                       value={money(row.salariosBlack)}
                       sangria
                       color={MONEY_OUT_COLOR}
                     />
+                    {negroLineas.map(([k, label]) =>
+                      subLinea(`${row.company}-neg-${k}`, label, Number(negroDet[k] || 0), MONEY_OUT_COLOR)
+                    )}
 
                     <LineaResumen label="Cargas sociales" value={money(row.cargasSociales)} fuerte separador />
+                    {cargasLineas.map(([k, label]) => subLinea(`${row.company}-car-${k}`, label, Number(cargasDet[k] || 0)))}
 
                     <LineaResumen
                       label="Exámenes, EPP y capacitaciones"
@@ -592,6 +639,112 @@ export function PersonalTab(props: PersonalTabProps) {
                 <div style={styles.muted}>
                   Carga rapida: empresa, legajo, nombre, categoria base y horas nominales. La
                   ficha completa se edita luego desde el boton Abrir.
+                </div>
+                <TwoCol>
+                  <Field label="Empresa">
+                    <select
+                      style={styles.input}
+                      value={newEmployeeDraft.company}
+                      onChange={(e) =>
+                        setNewEmployeeDraft((d: any) => ({ ...d, company: e.target.value }))
+                      }
+                    >
+                      {COMPANY_OPTIONS.map((c: any) => (
+                        <option key={c.value} value={c.value}>
+                          {c.short || c.value}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Tipo de empleado">
+                    <select
+                      style={styles.input}
+                      value={newEmployeeDraft.employmentType}
+                      onChange={(e) =>
+                        setNewEmployeeDraft((d: any) => ({ ...d, employmentType: e.target.value }))
+                      }
+                    >
+                      <option value="convenio">Convenio (blanco, por escala)</option>
+                      <option value="temporal">Temporal (negro, por acuerdo)</option>
+                      <option value="fuera_convenio">Fuera de convenio (socio/administrativo)</option>
+                    </select>
+                  </Field>
+                </TwoCol>
+                <TwoCol>
+                  <Field label="Nombre y apellido">
+                    <input
+                      style={styles.input}
+                      value={newEmployeeDraft.name}
+                      placeholder="Ej. Juan Pérez"
+                      onChange={(e) =>
+                        setNewEmployeeDraft((d: any) => ({ ...d, name: e.target.value }))
+                      }
+                    />
+                  </Field>
+                  <Field label="Legajo (opcional)">
+                    <input
+                      style={styles.input}
+                      value={newEmployeeDraft.legajo}
+                      placeholder="Se asigna solo si lo dejás vacío"
+                      onChange={(e) =>
+                        setNewEmployeeDraft((d: any) => ({ ...d, legajo: e.target.value }))
+                      }
+                    />
+                  </Field>
+                </TwoCol>
+                <TwoCol>
+                  {newEmployeeDraft.employmentType === "convenio" ? (
+                    <Field label="Categoría (escala)">
+                      <input
+                        style={styles.input}
+                        list="categorias-alta"
+                        value={newEmployeeDraft.category}
+                        placeholder="Categoría del convenio"
+                        onChange={(e) =>
+                          setNewEmployeeDraft((d: any) => ({ ...d, category: e.target.value }))
+                        }
+                      />
+                      <datalist id="categorias-alta">
+                        {(CATEGORY_OPTIONS || []).map((c: any) => (
+                          <option key={c} value={c} />
+                        ))}
+                      </datalist>
+                    </Field>
+                  ) : (
+                    <Field label="Categoría">
+                      <div style={{ ...styles.muted, fontSize: 12, paddingTop: 8 }}>
+                        {newEmployeeDraft.employmentType === "temporal"
+                          ? "Temporal: la categoría es \"Temporal\" (se acuerda el monto en la ficha)."
+                          : "Fuera de convenio: la categoría se escribe libre en la ficha."}
+                      </div>
+                    </Field>
+                  )}
+                  <Field label="Horas nominales / mes">
+                    <input
+                      type="number"
+                      style={styles.input}
+                      value={newEmployeeDraft.nominalHours}
+                      onChange={(e) =>
+                        setNewEmployeeDraft((d: any) => ({
+                          ...d,
+                          nominalHours: Number(e.target.value || 0),
+                        }))
+                      }
+                    />
+                  </Field>
+                </TwoCol>
+                <div style={{ marginTop: 8 }}>
+                  <ButtonLike
+                    onClick={addEmployee}
+                    disabled={!String(newEmployeeDraft.name || "").trim()}
+                  >
+                    Agregar empleado
+                  </ButtonLike>
+                  {!String(newEmployeeDraft.name || "").trim() && (
+                    <span style={{ ...styles.muted, fontSize: 12, marginLeft: 8 }}>
+                      Cargá al menos el nombre.
+                    </span>
+                  )}
                 </div>
           </Panel>
           </div>
@@ -1026,6 +1179,10 @@ export function PersonalTab(props: PersonalTabProps) {
                   selectedEmployee.attendance || [],
                   payrollMonth
                 );
+                // Feriados del ano en pantalla, para pintar findes y feriados con fondo rojo.
+                const feriadosMap = mapaDeFeriados([
+                  Number((payrollMonth || "").slice(0, 4)) || new Date().getFullYear(),
+                ]);
                 const semColorFor = (level?: string) =>
                   level === "green"
                     ? "#16a34a"
@@ -1040,12 +1197,18 @@ export function PersonalTab(props: PersonalTabProps) {
                 // y salida (util para los dias traidos del reloj). Reaplica checkOut -> dispara la precarga.
                 const precargarMesDesdeFichadas = () => {
                   (selectedEmployee.attendance || [])
-                    .filter(
-                      (r: any) =>
-                        r.date.startsWith(`${payrollMonth}-`) && r.checkIn && r.checkOut
-                    )
+                    .filter((r: any) => {
+                      if (!r.date.startsWith(`${payrollMonth}-`) || !r.checkIn || !r.checkOut) return false;
+                      if (r.locked) return false; // bloqueado: la carga manual gana
+                      const horas =
+                        Number(r.normalHours || 0) + Number(r.extra50Hours || 0) +
+                        Number(r.extra100Hours || 0) + Number(r.night50Hours || 0);
+                      return horas === 0; // solo los que no tienen horas todavia
+                    })
                     .forEach((r: any) =>
-                      updateAttendanceRecord(selectedEmployee.id, r.date, "checkOut", r.checkOut)
+                      updateAttendanceRecord(selectedEmployee.id, r.date, "checkOut", r.checkOut, {
+                        fromAutofill: true,
+                      })
                     );
                 };
 
@@ -1135,20 +1298,62 @@ export function PersonalTab(props: PersonalTabProps) {
                             />
                           </Field>
                           {selectedEmployee.employmentType === "temporal" ? (
-                            <Field label="Sueldo acordado (temporal, negro)">
-                              <AmountInput
-                                style={styles.input}
-                                value={selectedEmployee.agreedSalary ?? 0}
-                                onChange={(n) =>
-                                  updateEmployeeField(
-                                    selectedEmployee.id,
-                                    "agreedSalary",
-                                    n
-                                  )
-                                }
-                                placeholder="Monto acordado"
-                              />
-                            </Field>
+                            <>
+                              <Field label="Forma del acuerdo (temporal, negro)">
+                                <select
+                                  style={styles.input}
+                                  value={selectedEmployee.temporalAgreementMode || "mensual"}
+                                  onChange={(e) =>
+                                    updateEmployeeField(
+                                      selectedEmployee.id,
+                                      "temporalAgreementMode",
+                                      e.target.value
+                                    )
+                                  }
+                                >
+                                  <option value="mensual">Sueldo mensual fijo</option>
+                                  <option value="diario">Acuerdo por día</option>
+                                </select>
+                              </Field>
+                              {(selectedEmployee.temporalAgreementMode || "mensual") === "diario" ? (
+                                <Field label="Tarifa por día ($, negro)">
+                                  <AmountInput
+                                    style={styles.input}
+                                    value={selectedEmployee.agreedDailyRate ?? 0}
+                                    onChange={(n) =>
+                                      updateEmployeeField(selectedEmployee.id, "agreedDailyRate", n)
+                                    }
+                                    placeholder="Monto por día"
+                                  />
+                                  {(() => {
+                                    const dias = (selectedEmployee.attendance || []).filter(
+                                      (a: any) =>
+                                        a.date?.startsWith(payrollMonth) &&
+                                        (a.status === "presente" || !!a.checkIn)
+                                    ).length;
+                                    const tarifa = Number(selectedEmployee.agreedDailyRate || 0);
+                                    return (
+                                      <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                                        {dias} día(s) trabajado(s) este mes × {money(tarifa)} ={" "}
+                                        <strong>{money(tarifa * dias)}</strong>. Los días salen de la
+                                        asistencia (presente o con fichada).
+                                      </div>
+                                    );
+                                  })()}
+                                </Field>
+                              ) : (
+                                <Field label="Sueldo acordado (temporal, negro)">
+                                  <AmountInput
+                                    style={styles.input}
+                                    value={selectedEmployee.agreedSalary ?? 0}
+                                    onChange={(n) =>
+                                      updateEmployeeField(selectedEmployee.id, "agreedSalary", n)
+                                    }
+                                    placeholder="Monto acordado"
+                                  />
+                                </Field>
+                              )}
+                            </>
                           ) : selectedEmployee.employmentType === "fuera_convenio" ? (
                             <>
                               <Field label="Categoria (texto libre)">
@@ -1525,6 +1730,10 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                                 const record = getAttendanceRecord(selectedEmployee, day.key);
                                 const status = record?.status || "sin_cargar";
+                                const feriadoNombre = feriadosMap.get(day.key);
+                                // Findes y feriados: fondo rojo suave (dias no laborables).
+                                const esRojo = esFinDeSemana(day.key) || feriadoNombre !== undefined;
+                                const isLocked = record?.locked === true;
                                 const statusStyle =
                                   status === "presente"
                                     ? styles.statusGreen
@@ -1534,6 +1743,8 @@ export function PersonalTab(props: PersonalTabProps) {
                                     ? styles.statusYellow
                                     : status === "vacaciones"
                                     ? styles.statusBlue
+                                    : status === "feriado" || status === "fin_de_semana"
+                                    ? styles.statusRed
                                     : styles.statusGray;
                                 const sem = monthSemaphore.get(day.key);
                                 const semColor = semColorFor(sem?.level);
@@ -1576,7 +1787,11 @@ export function PersonalTab(props: PersonalTabProps) {
                                 return (
                                   <div
                                     key={day.key}
-                                    style={{ ...styles.attendanceCard, borderLeft: `4px solid ${semColor}` }}
+                                    style={{
+                                      ...styles.attendanceCard,
+                                      borderLeft: `4px solid ${semColor}`,
+                                      ...(esRojo ? { background: "#fee2e2" } : {}),
+                                    }}
                                   >
                                     <div
                                       style={{
@@ -1592,18 +1807,52 @@ export function PersonalTab(props: PersonalTabProps) {
                                           {day.weekday}
                                         </span>
                                       </div>
-                                      <span
-                                        title={sem?.label || status.replaceAll("_", " ")}
-                                        style={{
-                                          width: 11,
-                                          height: 11,
-                                          borderRadius: "50%",
-                                          background: semColor,
-                                          flexShrink: 0,
-                                          marginTop: 3,
-                                        }}
-                                      />
+                                      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                                        {/* Candado: fija el dia para que la precarga del reloj no lo pise. */}
+                                        <button
+                                          type="button"
+                                          title={
+                                            isLocked
+                                              ? "Bloqueado: la precarga del reloj no lo toca. Click para desbloquear."
+                                              : "Sin bloquear: la precarga del reloj puede recalcular las horas. Click para bloquear."
+                                          }
+                                          onClick={() =>
+                                            updateAttendanceRecord(
+                                              selectedEmployee.id,
+                                              day.key,
+                                              "locked",
+                                              !isLocked
+                                            )
+                                          }
+                                          style={{
+                                            border: "none",
+                                            background: "transparent",
+                                            cursor: "pointer",
+                                            fontSize: 13,
+                                            lineHeight: 1,
+                                            padding: 0,
+                                            opacity: isLocked ? 1 : 0.35,
+                                          }}
+                                        >
+                                          {isLocked ? "🔒" : "🔓"}
+                                        </button>
+                                        <span
+                                          title={sem?.label || status.replaceAll("_", " ")}
+                                          style={{
+                                            width: 11,
+                                            height: 11,
+                                            borderRadius: "50%",
+                                            background: semColor,
+                                            flexShrink: 0,
+                                          }}
+                                        />
+                                      </div>
                                     </div>
+                                    {feriadoNombre && (
+                                      <div style={{ fontSize: 10, fontWeight: 800, color: "#b91c1c", marginBottom: 3 }}>
+                                        {feriadoNombre}
+                                      </div>
+                                    )}
                                     <select
                                       style={{ ...styles.input, padding: "4px 6px", fontSize: 12 }}
                                       value={status}

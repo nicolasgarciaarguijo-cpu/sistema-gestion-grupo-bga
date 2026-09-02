@@ -156,6 +156,24 @@ describe("deriveConvenioHours (precarga desde entrada/salida)", () => {
       normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0,
     });
   });
+
+  it("feriado nacional en dia habil trabajado -> TODO al 100% (Ano Nuevo, jueves)", () => {
+    // 2026-01-01 es jueves habil, pero es feriado: no hay horas normales, todo va al 100%.
+    expect(deriveConvenioHours("2026-01-01", "07:30", "13:00")).toEqual({
+      normalHours: 0, extra50Hours: 0, extra100Hours: 5.5, night50Hours: 0,
+    });
+  });
+  it("dia habil NO feriado mismo horario -> horas normales (contraste)", () => {
+    // 2026-01-02 es viernes habil normal: 07:30-13:00 son horas normales.
+    expect(deriveConvenioHours("2026-01-02", "07:30", "13:00")).toEqual({
+      normalHours: 5.5, extra50Hours: 0, extra100Hours: 0, night50Hours: 0,
+    });
+  });
+  it("override manual feriado=true fuerza el 100% aunque la fecha no sea feriado nacional", () => {
+    expect(deriveConvenioHours("2026-08-03", "07:30", "13:00", true)).toEqual({
+      normalHours: 0, extra50Hours: 0, extra100Hours: 5.5, night50Hours: 0,
+    });
+  });
 });
 
 describe("feriados y fines de semana se marcan solos", () => {
