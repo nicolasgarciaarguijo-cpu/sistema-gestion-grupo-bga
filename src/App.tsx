@@ -168,6 +168,7 @@ import { HistorialTab } from "./tabs/Historial";
 import { MarcadoresTab } from "./tabs/Marcadores";
 import { CostosTab } from "./tabs/Costos";
 import { SegurosTab } from "./tabs/Seguros";
+import { InversionesTab } from "./tabs/Inversiones";
 import type { CostStatementDraftRow } from "./tabs/Costos";
 import { AccesoTab } from "./tabs/Acceso";
 import { PresupuestoTab } from "./tabs/Presupuesto";
@@ -233,6 +234,7 @@ import type {
   CostGroup,
   CostEntry,
   Seguro,
+  Inversion,
   CostRule,
   CostKind,
   CreditCard,
@@ -453,6 +455,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "costos", label: "PAGO A PROVEEDORES" },
   { key: "bancos", label: "BANCOS Y TARJETAS" },
   { key: "seguros", label: "SEGUROS" },
+  { key: "inversiones", label: "INVERSIONES" },
   { key: "compras", label: "COMPRAS" },
   { key: "cajaChica", label: "CAJA CHICA" },
   { key: "emitirFacturas", label: "EMITIR FACTURAS" },
@@ -479,6 +482,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "costos",
   "bancos",
   "seguros",
+  "inversiones",
   "compras",
   "cajaChica",
   "emitirFacturas",
@@ -567,6 +571,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   costos: "PRV",
   bancos: "BCO",
   seguros: "SEG",
+  inversiones: "INV",
   tarjetas: "TAR",
   documentos: "DOC",
   manual: "MAN",
@@ -1709,6 +1714,7 @@ type PersistedAppStateData = {
   costGroups: CostGroup[];
   costEntries: CostEntry[];
   seguros: Seguro[];
+  inversiones: Inversion[];
   costRules: CostRule[];
   creditCards: CreditCard[];
   creditCardStatements: CreditCardStatement[];
@@ -1763,6 +1769,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "seguros",
     label: "Seguros",
     fields: ["seguros"] as const,
+  },
+  {
+    key: "inversiones",
+    label: "Inversiones",
+    fields: ["inversiones"] as const,
   },
   {
     key: "facturas-emitidas",
@@ -1889,6 +1900,7 @@ const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> 
   // Costos: incluye Pago a proveedores, Bancos y Tarjetas (todo en la misma solapa).
   costos: ["mensuales", "costos", "compras", "caja-chica", "personal", "tarjetas"],
   seguros: ["seguros"],
+  inversiones: ["inversiones"],
   documentos: ["documentos"],
   marcadores: ["marcadores", "stock-costos", "personal", "costos"],
 };
@@ -2901,6 +2913,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [seguros, setSeguros] = useState<Seguro[]>([]);
   const [segurosCompanyScope, setSegurosCompanyScope] = useState<string>("__ALL__");
   const [polizaBusyId, setPolizaBusyId] = useState<number | null>(null);
+  // --- Inversiones ---
+  const [inversiones, setInversiones] = useState<Inversion[]>([]);
+  const [inversionesCompanyScope, setInversionesCompanyScope] = useState<string>("__ALL__");
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
   const [calendarRowConfig, setCalendarRowConfig] = useState<CalendarRowConfig>(DEFAULT_CALENDAR_ROW_CONFIG);
   const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
@@ -9180,6 +9195,7 @@ Escribi CERRAR para confirmar:`
     costGroups: costGroups.map((item) => ({ ...item })),
     costEntries: costEntries.map((item) => ({ ...item })),
     seguros: seguros.map((item) => ({ ...item })),
+    inversiones: inversiones.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
     creditCardStatements: creditCardStatements.map((item) => ({ ...item })),
@@ -9479,6 +9495,9 @@ Escribi CERRAR para confirmar:`
     );
     setSeguros(
       keepAccessibleByCompany(data.seguros || []).map((item) => ({ ...item }))
+    );
+    setInversiones(
+      keepAccessibleByCompany(data.inversiones || []).map((item) => ({ ...item }))
     );
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -15534,6 +15553,35 @@ Escribi CERRAR para confirmar:`
     if (seguro.polizaUrl) window.open(seguro.polizaUrl, "_blank", "noopener,noreferrer");
   };
 
+  // --- Inversiones: handlers ---
+  const addInversion = () => {
+    setInversiones((prev) => [
+      ...prev,
+      {
+        id: newId(),
+        company:
+          inversionesCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : inversionesCompanyScope,
+        tipo: "",
+        descripcion: "",
+        moneda: "ARS",
+        montoInvertido: 0,
+        valorActual: 0,
+        fechaInicio: todayIso(),
+        fechaFin: "",
+        estado: "activa",
+        notas: "",
+      },
+    ]);
+  };
+
+  const removeInversion = (id: number) => {
+    setInversiones((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const updateInversion = (id: number, field: keyof Inversion, value: any) => {
+    setInversiones((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
+  };
+
   // Panel de reglas de clasificación: editar/activar/borrar. "Resolver ambigüedad" = fijar el grupo y
   // desmarcar `ambiguous` para que vuelva a sugerir.
   const updateCostRule = (id: number, field: keyof CostRule, value: any) => {
@@ -17645,6 +17693,19 @@ Escribi CERRAR para confirmar:`
           onPolizaFile={handlePolizaFile}
           onOpenPoliza={openPoliza}
           polizaBusyId={polizaBusyId}
+        />
+      )}
+
+      {activeTab === "inversiones" && (
+        <InversionesTab
+          inversiones={inversiones}
+          companyScope={inversionesCompanyScope}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          getCompanyMeta={getCompanyMeta}
+          onScopeChange={setInversionesCompanyScope}
+          addInversion={addInversion}
+          removeInversion={removeInversion}
+          updateInversion={updateInversion}
         />
       )}
 

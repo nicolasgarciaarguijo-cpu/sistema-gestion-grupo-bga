@@ -37,6 +37,7 @@ export type TabKey =
   | "tarjetas"
   | "movimientosInternos"
   | "seguros"
+  | "inversiones"
   | "documentos"
   | "manual";
 
@@ -848,6 +849,24 @@ export type CostAnalysisEntry = {
   unitCost: number;
   active: boolean;
   notes: string;
+};
+
+// --- Inversiones (solapa Inversiones) ---
+// Donde ponemos plata a trabajar: plazo fijo, FCI, acciones, cripto, bonos, inmuebles, maquinaria, etc.
+// Cada inversion lleva el capital invertido y su valuacion actual; el crecimiento sale de la diferencia.
+// La moneda importa (no se suman pesos con dolares): cada inversion es ARS o USD.
+export type Inversion = {
+  id: number;
+  company: CompanyName;
+  tipo: string; // Plazo fijo, FCI, Acciones, Cripto, Bonos, Inmueble, Maquinaria, Dolares, ...
+  descripcion: string; // detalle (ej. "Plazo fijo Patagonia 30 dias")
+  moneda: "ARS" | "USD";
+  montoInvertido: number; // capital puesto
+  valorActual: number; // valuacion actual (se actualiza a mano)
+  fechaInicio: string; // ISO yyyy-mm-dd
+  fechaFin: string; // ISO ("" si sigue abierta)
+  estado: "activa" | "cerrada";
+  notas: string;
 };
 
 // --- Seguros (solapa Seguros) ---
