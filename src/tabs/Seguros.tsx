@@ -14,11 +14,14 @@ import {
   seguroVigencia,
   resumenSegurosPorEmpresa,
 } from "../domain/seguros";
+import { esArtSeguro, segurosPrevisionMensual } from "../domain/segurosCalendar";
+import { monthKeyLabel } from "../domain/costs";
 import type { CompanyName, Seguro } from "../domain/types";
 
 type SegurosTabProps = {
   seguros: Seguro[];
   hoyIso: string;
+  months: string[]; // meses "yyyy-mm" del año fiscal, para la previsión en la planilla
   companyScope: string;
   COMPANY_OPTIONS: any[];
   getCompanyMeta: (company: CompanyName) => any;
@@ -41,6 +44,7 @@ const VIG_COLOR: Record<string, string> = {
 export function SegurosTab({
   seguros,
   hoyIso,
+  months,
   companyScope,
   COMPANY_OPTIONS,
   getCompanyMeta,
@@ -93,8 +97,65 @@ export function SegurosTab({
         </div>
         <div style={styles.sectionNote}>
           Cada seguro guarda su póliza y su vigencia. El semáforo avisa 30 días antes del vencimiento.
-          Próximo paso: que los pagos mensuales figuren en el Calendario anual (la planilla).
         </div>
+      </Panel>
+
+      <Panel title="Previsión en la planilla (Calendario anual) — año fiscal" span="full">
+        {(() => {
+          const previsiones = segurosPrevisionMensual(
+            seguros.filter((s) => companyScope === "__ALL__" || s.company === companyScope),
+            months
+          );
+          const porMes: Record<string, number> = {};
+          months.forEach((m) => (porMes[m] = 0));
+          previsiones.forEach((p) => {
+            const mk = p.date.slice(0, 7);
+            porMes[mk] = (porMes[mk] || 0) + p.amount;
+          });
+          const total = months.reduce((acc, m) => acc + (porMes[m] || 0), 0);
+          if (total === 0) {
+            return (
+              <div style={styles.sectionNote}>
+                Todavía no hay seguros que generen previsión. Cargá un seguro con costo mensual, día de
+                débito y la vigencia, y tildá "→ Planilla" (la ART queda destildada: su costo ya está en
+                la nómina).
+              </div>
+            );
+          }
+          return (
+            <>
+              <div style={styles.sectionNote}>
+                Esto es lo que los seguros van a debitar mes a mes: una <strong>previsión</strong> (lo que
+                se viene), no plata ya gastada. Cuando caiga el débito real del banco se concilia contra
+                esto, así no se cuenta dos veces. Total del ejercicio: <strong>{money(total)}</strong>.
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Concepto</th>
+                      {months.map((m) => (
+                        <th key={m} style={{ textAlign: "right" }}>
+                          {monthKeyLabel(m)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td style={{ fontWeight: 800 }}>Previsión de seguros</td>
+                      {months.map((m) => (
+                        <td key={m} style={{ textAlign: "right" }}>
+                          {(porMes[m] || 0) > 0 ? money(porMes[m]) : "-"}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          );
+        })()}
       </Panel>
 
       <Panel
@@ -114,6 +175,9 @@ export function SegurosTab({
                 <th style={{ textAlign: "right" }}>Costo mensual</th>
                 <th>Vigencia desde</th>
                 <th>Vigencia hasta</th>
+                <th>Día déb.</th>
+                <th>Admin.</th>
+                <th title="Genera la previsión mensual en el Calendario anual">→ Planilla</th>
                 <th>Estado</th>
                 <th>Póliza</th>
                 <th />
@@ -122,7 +186,7 @@ export function SegurosTab({
             <tbody>
               {visibles.length === 0 && (
                 <tr>
-                  <td colSpan={11} style={{ color: "#64748b" }}>
+                  <td colSpan={14} style={{ color: "#64748b" }}>
                     Todavía no cargaste seguros. Agregá el primero (ART, caución, vehículo…).
                   </td>
                 </tr>
@@ -202,6 +266,38 @@ export function SegurosTab({
                       <div style={{ fontSize: 10, fontWeight: 800, color: VIG_COLOR[vig], marginTop: 1 }}>
                         {ETIQUETA_VIGENCIA[vig]}
                       </div>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        min={1}
+                        max={31}
+                        style={{ ...styles.input, width: 56, textAlign: "right" }}
+                        value={s.diaDebito ?? 10}
+                        onChange={(e) => updateSeguro(s.id, "diaDebito", Number(e.target.value || 1))}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        style={styles.input}
+                        value={s.administration || "blanco"}
+                        onChange={(e) => updateSeguro(s.id, "administration", e.target.value)}
+                      >
+                        <option value="blanco">Blanco</option>
+                        <option value="negro">Negro</option>
+                      </select>
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={s.alimentaPlanilla ?? !esArtSeguro(s.tipo)}
+                        title={
+                          esArtSeguro(s.tipo)
+                            ? "ART: su costo ya está en la nómina. Dejalo destildado para no contarlo dos veces."
+                            : "Si está tildado, genera la previsión mensual en el Calendario anual."
+                        }
+                        onChange={(e) => updateSeguro(s.id, "alimentaPlanilla", e.target.checked)}
+                      />
                     </td>
                     <td>
                       <select

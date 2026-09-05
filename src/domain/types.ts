@@ -886,6 +886,20 @@ export type Seguro = {
   polizaUrl: string; // link a la poliza guardada en Storage ("" si no hay)
   polizaName: string; // nombre del archivo de la poliza
   notas: string;
+  // --- Vinculacion con el Calendario anual (planilla) ---
+  // Dia del mes (1-31) en que se debita el seguro: la prevision mensual aparece ese dia en la planilla.
+  diaDebito?: number;
+  // Administracion del pago (blanco/negro) para separar en la planilla.
+  administration?: "blanco" | "negro";
+  // Rendicion del monto: "numerica" = costoMensual fijo; "porcentual" = porcentaje % sobre montoBase.
+  rendicion?: "numerica" | "porcentual";
+  porcentaje?: number; // solo si rendicion === "porcentual"
+  montoBase?: number; // base sobre la que se aplica el %
+  // Si la prevision de este seguro alimenta la planilla. La ART va en false: su costo YA esta en la
+  // nomina (cargas sociales); si tambien lo cargamos aca, se cuenta dos veces.
+  alimentaPlanilla?: boolean;
+  // Renglon del Calendario anual (chart of accounts) al que se imputa. Si falta, se mapea por tipo.
+  conceptKey?: string;
 };
 
 // --- Costos fijos y variables (solapa Costos) ---

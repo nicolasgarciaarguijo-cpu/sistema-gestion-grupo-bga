@@ -15511,6 +15511,9 @@ Escribi CERRAR para confirmar:`
         polizaUrl: "",
         polizaName: "",
         notas: "",
+        diaDebito: 10,
+        administration: "blanco",
+        rendicion: "numerica",
       },
     ]);
   };
@@ -17683,6 +17686,7 @@ Escribi CERRAR para confirmar:`
         <SegurosTab
           seguros={seguros}
           hoyIso={todayIso()}
+          months={fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear)}
           companyScope={segurosCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
