@@ -154,6 +154,7 @@ import { PlataDisponible } from "./ui/PlataDisponible";
 import { ChangeReport } from "./ui/ChangeReport";
 import { CashflowTab } from "./tabs/Cashflow";
 import { CalendarioAnualTab } from "./tabs/CalendarioAnual";
+import { segurosPrevisionMensual } from "./domain/segurosCalendar";
 import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocuments";
 import { workingDaysInMonth, reciboNegroAmount, paymentDateForPeriod } from "./domain/recibo";
 import { ComprasTab } from "./tabs/Compras";
@@ -14988,6 +14989,20 @@ Escribi CERRAR para confirmar:`
     [costsFiscalStartYear]
   );
 
+  // SEGUROS -> PLANILLA. Cada seguro activo que alimenta la planilla deja su PREVISION mensual en el
+  // renglon de Seguros del Calendario anual: lo que se viene, mes a mes, dentro de su vigencia.
+  // OJO: no es plata gastada y por eso NO entra por annualCashFlowEntries (no suma al neto). Va por
+  // un carril aparte, y cuando cae el debito real del banco se concilia contra ella. Si sumara,
+  // el mismo seguro se pagaria dos veces en la planilla.
+  const segurosPrevisiones = useMemo(
+    () =>
+      segurosPrevisionMensual(
+        seguros.filter((s) => canAccessCompany(s.company)),
+        fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear)
+      ),
+    [seguros, balanceFiscalStartYear]
+  );
+
   // Nomina por (empresa, mes): mismo calculo que usa el estado de resultados, para que los
   // numeros de Costos y los del balance no se contradigan.
   const costsPayrollRows = useMemo(() => {
@@ -16887,6 +16902,7 @@ Escribi CERRAR para confirmar:`
           onSetNote={setCalendarCellNote}
           billeteraDiaria={billeteraDiariaPorEmpresa}
           entries={annualCashFlowEntries}
+          previsiones={segurosPrevisiones}
           companyScope={balanceCompanyScope}
           setCompanyScope={setBalanceCompanyScope}
           fiscalStartYear={balanceFiscalStartYear}

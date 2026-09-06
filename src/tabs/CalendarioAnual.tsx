@@ -85,6 +85,7 @@ type AddForm = {
 import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
 import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
 import { permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
+import { estadoDePrevision, previsionPorConceptoYDia, previsionPorConceptoYMes } from "../domain/segurosCalendar";
 import { PAYMENT_METHOD_OPTIONS, type PaymentMethod } from "../domain/types";
 
 export function CalendarioAnualTab({
@@ -125,8 +126,20 @@ export function CalendarioAnualTab({
   notes,
   onSetNote,
   billeteraDiaria,
+  previsiones = [],
 }: {
   entries: Entry[];
+  // PREVISION (hoy: los seguros). Lo que se VIENE, mes a mes: no es plata gastada, asi que entra por
+  // este carril aparte y NUNCA suma al neto -- el neto lo mueve el debito real del banco. Se dibuja
+  // como "≈" en el renglon, y cuando cae el debito del mes la prevision se da por conciliada.
+  previsiones?: Array<{
+    conceptKey: string;
+    company: string;
+    date: string;
+    amount: number;
+    tipo?: string;
+    descripcion?: string;
+  }>;
   // Ver SOLO una seccion de la planilla (ej. "cobranzas" para el reflejo en Facturacion y cobranzas).
   // Es el MISMO componente con los mismos datos y los mismos handlers: por eso las dos vistas quedan
   // vinculadas sin esfuerzo -- lo que se edita en una aparece en la otra.
@@ -561,6 +574,43 @@ export function CalendarioAnualTab({
     });
     return { byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate, facturaDetail, facturaByDate };
   }, [entries, companyScope, dayCols, sectionByKey]);
+
+  // CARRIL DE PREVISION (hoy lo alimenta la solapa Seguros). Va aparte de `agg` a proposito: aca no
+  // se suma un peso al neto, solo se dice que se ESPERA en cada renglon y si el debito del mes ya lo
+  // cubrio. La comparacion es por MES: el dia de debito es una estimacion (puede caer el 10 o el 12),
+  // asi que cotejar por dia daria pendientes falsos.
+  const prev = useMemo(() => {
+    const firstIso = dayCols[0]?.iso || "";
+    const lastIso = dayCols[dayCols.length - 1]?.iso || "";
+    const enVista = (previsiones || []).filter(
+      (p) =>
+        !!p.conceptKey &&
+        (companyScope === "__ALL__" || p.company === companyScope) &&
+        !!p.date && p.date >= firstIso && p.date <= lastIso
+    );
+    const porDia = previsionPorConceptoYDia(enVista);
+    const porMes = previsionPorConceptoYMes(enVista);
+    // Lo que de verdad cayo en cada renglon, mes a mes: es contra esto que se concilia la prevision.
+    const realPorMes = new Map<string, Map<string, number>>();
+    agg.byConcept.forEach((porFecha, conceptKey) => {
+      porFecha.forEach((monto, iso) => {
+        if (!realPorMes.has(conceptKey)) realPorMes.set(conceptKey, new Map());
+        const m = realPorMes.get(conceptKey)!;
+        const mes = iso.slice(0, 7);
+        m.set(mes, (m.get(mes) || 0) + monto);
+      });
+    });
+    // Que seguros componen cada celda prevista, para decirlo en el tooltip.
+    const detalle = new Map<string, string>();
+    enVista.forEach((p) => {
+      const k = `${p.conceptKey}|${p.date}`;
+      const texto = [p.tipo, p.descripcion].filter(Boolean).join(" · ");
+      if (!texto) return;
+      const previo = detalle.get(k);
+      detalle.set(k, previo ? `${previo} + ${texto}` : texto);
+    });
+    return { porDia, porMes, realPorMes, detalle };
+  }, [previsiones, companyScope, dayCols, agg]);
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
   const companyMeta = useMemo(() => {
@@ -2146,6 +2196,25 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                               {visibleDayCols.map((c) => {
                                 const v = drow?.get(c.iso) || 0;
                                 const emp = v ? fondoEmpresa(it.key, c.iso) : { style: undefined, detalle: "" };
+                                // PREVISION del renglon (seguros): "≈ $X" mientras el debito del mes no
+                                // haya caido. Cuando cae, manda el numero real y la prevision queda
+                                // conciliada (✓). Nunca se muestran los dos: seria el mismo gasto dos veces.
+                                const mesDeLaCelda = c.iso.slice(0, 7);
+                                const previstoMes = prev.porMes.get(it.key)?.get(mesDeLaCelda) || 0;
+                                const realMes = prev.realPorMes.get(it.key)?.get(mesDeLaCelda) || 0;
+                                const estadoPrev = previstoMes > 0 ? estadoDePrevision(previstoMes, realMes) : null;
+                                const previstoDia = prev.porDia.get(it.key)?.get(c.iso) || 0;
+                                const mostrarPrev = !v && previstoDia > 0 && estadoPrev === "pendiente";
+                                const quePrev = prev.detalle.get(`${it.key}|${c.iso}`) || "";
+                                const tituloPrev = mostrarPrev
+                                  ? `Previsión ${money(previstoDia)}${quePrev ? " · " + quePrev : ""} — lo que se viene, todavía sin débito. No suma al neto.`
+                                  : v && estadoPrev === "conciliado"
+                                    ? `✓ cubre la previsión del mes (${money(previstoMes)})`
+                                    : v && estadoPrev === "parcial"
+                                      ? `Se preveía ${money(previstoMes)} y en el mes cayó ${money(realMes)}`
+                                      : v && estadoPrev === "excedido"
+                                        ? `Se preveía ${money(previstoMes)} y en el mes cayó ${money(realMes)}`
+                                        : "";
                                 return (
                                   <td
                                     key={`${it.key}-${c.iso}`}
@@ -2154,14 +2223,15 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                       openCellMenu(ev, itLabel, c.iso, section.key, it.key, (e) => e.conceptKey === it.key)
                                     }
                                     title={
-                                      emp.detalle
-                                        ? `${emp.detalle} · Click: cargar · Click derecho: editar / borrar`
-                                        : "Click: cargar en este día · Click derecho: editar / borrar"
+                                      [tituloPrev, emp.detalle, "Click: cargar en este día · Click derecho: editar / borrar"]
+                                        .filter(Boolean)
+                                        .join(" · ")
                                     }
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...fondoNoHabil(c.iso), ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso) }}
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...fondoNoHabil(c.iso), ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso), ...(mostrarPrev ? previstaCell : null) }}
                                   >
                                     {marcasDeCelda(section.key, it.key, c.iso)}
-                                    {v ? money(v) : "+"}
+                                    {v ? money(v) : mostrarPrev ? `≈ ${money(previstoDia)}` : "+"}
+                                    {v && estadoPrev === "conciliado" ? <span style={prevOkChip} title={tituloPrev}>✓</span> : null}
                                   </td>
                                 );
                               })}
@@ -3690,6 +3760,15 @@ const usdPill: React.CSSProperties = {
 };
 const costChip: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 9, borderRadius: 4, padding: "0px 4px", marginLeft: 5, verticalAlign: "middle",
+};
+// Celda con PREVISION y sin debito todavia: se ve que se viene, pero en gris y en cursiva para que
+// nunca se confunda con plata que ya se movio (la prevision no suma al neto).
+const previstaCell: React.CSSProperties = {
+  color: "#94a3b8", fontStyle: "italic", fontWeight: 500,
+};
+// El debito del mes ya cubrio lo previsto.
+const prevOkChip: React.CSSProperties = {
+  color: "#16a34a", fontWeight: 800, fontSize: 9, marginLeft: 3, verticalAlign: "middle",
 };
 const bnPill: React.CSSProperties = {
   display: "inline-block", fontWeight: 800, fontSize: 8, borderRadius: 3, padding: "0px 3px", marginRight: 3, verticalAlign: "middle",

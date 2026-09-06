@@ -108,3 +108,54 @@ export function segurosPrevisionMensual(seguros: Seguro[], monthKeys: string[]):
   });
   return out;
 }
+
+// ---- CONCILIACION: la prevision contra la plata de verdad ------------------------------------
+//
+// La prevision NO suma al neto del calendario: el neto lo mueve el debito real del banco. Entonces,
+// para que la planilla no muestre el mismo seguro dos veces, hay que decir en cada renglon si lo que
+// se preveia YA cayo. La comparacion es POR MES y POR RENGLON: el dia de debito es una estimacion
+// (puede caer el 10 o el 12), asi que el mes es la unidad honesta para cotejar.
+export type EstadoPrevision = "pendiente" | "conciliado" | "parcial" | "excedido";
+
+/**
+ * Estado de un renglon en un mes: ¿cayo el debito que se preveia?
+ *
+ * Tolerancia $1, el mismo criterio que usa el cotejo de prestamos (domain/loanLines): los centavos de
+ * redondeo no son una diferencia real.
+ */
+export function estadoDePrevision(previsto: number, real: number, tolerancia = 1): EstadoPrevision {
+  const p = Number(previsto || 0);
+  const r = Number(real || 0);
+  if (!(r > 0)) return "pendiente";
+  if (Math.abs(r - p) <= tolerancia) return "conciliado";
+  return r < p ? "parcial" : "excedido";
+}
+
+// Agrupa previsiones en renglon -> clave de tiempo -> monto. `claveDeTiempo` decide si se agrupa por
+// dia (para dibujar la celda) o por mes (para conciliar).
+export type PrevisionAgrupable = { conceptKey: string; date: string; amount: number };
+
+function agrupar(
+  previsiones: PrevisionAgrupable[],
+  claveDeTiempo: (date: string) => string
+): Map<string, Map<string, number>> {
+  const out = new Map<string, Map<string, number>>();
+  previsiones.forEach((p) => {
+    if (!p.conceptKey || !p.date) return;
+    const k = claveDeTiempo(p.date);
+    if (!out.has(p.conceptKey)) out.set(p.conceptKey, new Map());
+    const porTiempo = out.get(p.conceptKey)!;
+    porTiempo.set(k, (porTiempo.get(k) || 0) + Number(p.amount || 0));
+  });
+  return out;
+}
+
+/** renglon -> dia ISO -> monto previsto. Es donde se dibuja el "≈" en la planilla. */
+export function previsionPorConceptoYDia(previsiones: PrevisionAgrupable[]) {
+  return agrupar(previsiones, (d) => d);
+}
+
+/** renglon -> "yyyy-mm" -> monto previsto. Es contra esto que se concilia el debito real. */
+export function previsionPorConceptoYMes(previsiones: PrevisionAgrupable[]) {
+  return agrupar(previsiones, (d) => d.slice(0, 7));
+}

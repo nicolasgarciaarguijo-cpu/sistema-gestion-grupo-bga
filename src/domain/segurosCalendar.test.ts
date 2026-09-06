@@ -4,6 +4,9 @@ import {
   seguroGeneraPrevision,
   mesEnVigencia,
   segurosPrevisionMensual,
+  estadoDePrevision,
+  previsionPorConceptoYDia,
+  previsionPorConceptoYMes,
 } from "./segurosCalendar";
 import type { Seguro } from "./types";
 
@@ -115,5 +118,30 @@ describe("segurosPrevisionMensual", () => {
     const art = seg({ id: 2, tipo: "ART", costoMensual: 9999, alimentaPlanilla: false });
     const baja = seg({ id: 3, costoMensual: 500, estado: "baja" });
     expect(segurosPrevisionMensual([art, baja], meses)).toHaveLength(0);
+  });
+});
+
+describe("conciliación de la previsión contra la plata real", () => {
+  it("sin débito todavía, la previsión queda pendiente", () => {
+    expect(estadoDePrevision(5000, 0)).toBe("pendiente");
+  });
+
+  it("el débito por el mismo monto la concilia (tolerancia $1 por redondeo)", () => {
+    expect(estadoDePrevision(5000, 5000)).toBe("conciliado");
+    expect(estadoDePrevision(5000, 5000.4)).toBe("conciliado");
+  });
+
+  it("distingue si pagó de menos o de más", () => {
+    expect(estadoDePrevision(5000, 3000)).toBe("parcial");
+    expect(estadoDePrevision(5000, 7000)).toBe("excedido");
+  });
+
+  it("agrupa por renglón y por día, y por renglón y por mes", () => {
+    const s1 = seg({ id: 1, costoMensual: 1000, diaDebito: 10, vigenciaDesde: "2026-01-01", vigenciaHasta: "2026-02-28" });
+    const s2 = seg({ id: 2, costoMensual: 500, diaDebito: 10, vigenciaDesde: "2026-01-01", vigenciaHasta: "2026-01-31" });
+    const previsiones = segurosPrevisionMensual([s1, s2], ["2026-01", "2026-02"]);
+    // Los dos son de vehículo: caen en el mismo renglón y el mismo día, así que se suman.
+    expect(previsionPorConceptoYDia(previsiones).get("seg_vehiculo")!.get("2026-01-10")).toBe(1500);
+    expect(previsionPorConceptoYMes(previsiones).get("seg_vehiculo")!.get("2026-02")).toBe(1000);
   });
 });

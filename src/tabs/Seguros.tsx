@@ -2,8 +2,12 @@
 //
 // Cada seguro se solicita, tiene un costo mensual y una vigencia (desde/hasta), guarda su poliza
 // (archivo) y muestra su estado (vigente / por vencer / vencido). El resumen por empresa suma el
-// costo mensual y cuenta las vigencias. La vinculacion con el Calendario anual (que los pagos figuren
-// en la planilla) es el proximo paso ("de a poco").
+// costo mensual y cuenta las vigencias.
+//
+// VINCULACION CON LA PLANILLA: cada seguro tildado en "→ Planilla" deja su PREVISION mensual en su
+// renglon del Calendario anual (columna "Renglón"; si esta en automatico se deduce del tipo). La
+// prevision no suma al neto: es lo que se viene. Cuando cae el debito real del banco en ese renglon,
+// la prevision del mes se da por conciliada y en la planilla manda el numero real.
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, FileDropButton } from "../ui/primitives";
@@ -15,6 +19,7 @@ import {
   resumenSegurosPorEmpresa,
 } from "../domain/seguros";
 import { esArtSeguro, segurosPrevisionMensual } from "../domain/segurosCalendar";
+import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
 import { monthKeyLabel } from "../domain/costs";
 import type { CompanyName, Seguro } from "../domain/types";
 
@@ -33,6 +38,12 @@ type SegurosTabProps = {
   onOpenPoliza: (seguro: Seguro) => void;
   polizaBusyId: number | null;
 };
+
+// Renglones de la seccion SEGUROS del Calendario anual. El seguro cae en el renglon que se elija
+// aca; si no se elige ninguno, se mapea por el texto del tipo (conceptKeyForSeguro). Los que no
+// coinciden con ningun tipo conocido (Berkley, Afianzadora, Amazon Prime, cauciones 2 y 3) solo
+// llegan a la planilla eligiendolos a mano: sin renglon, la prevision no se dibuja en ningun lado.
+const RENGLONES_SEGUROS = CALENDAR_SECTIONS.find((sec) => sec.key === "seguros")?.items || [];
 
 const VIG_COLOR: Record<string, string> = {
   vigente: "#16a34a",
@@ -129,6 +140,24 @@ export function SegurosTab({
                 se viene), no plata ya gastada. Cuando caiga el débito real del banco se concilia contra
                 esto, así no se cuenta dos veces. Total del ejercicio: <strong>{money(total)}</strong>.
               </div>
+              {(() => {
+                // Sin renglón, la previsión no se dibuja en ningún lado de la planilla. Mejor decirlo
+                // acá que dejar al usuario buscando un número que nunca va a aparecer.
+                const sinRenglon = Array.from(
+                  new Set(
+                    previsiones
+                      .filter((pv) => !pv.conceptKey)
+                      .map((pv) => [pv.tipo, pv.descripcion].filter(Boolean).join(" · ") || "seguro sin detalle")
+                  )
+                );
+                if (sinRenglon.length === 0) return null;
+                return (
+                  <div style={{ ...styles.sectionNote, color: "#b45309", fontWeight: 600 }}>
+                    ⚠ {sinRenglon.length} seguro(s) no llegan a la planilla porque no tienen renglón:{" "}
+                    {sinRenglon.join(", ")}. Elegíselo en la columna <strong>Renglón</strong> de la tabla de abajo.
+                  </div>
+                );
+              })()}
               <div style={{ overflowX: "auto" }}>
                 <table style={styles.table}>
                   <thead>
@@ -178,6 +207,7 @@ export function SegurosTab({
                 <th>Día déb.</th>
                 <th>Admin.</th>
                 <th title="Genera la previsión mensual en el Calendario anual">→ Planilla</th>
+                <th title="Renglón de la planilla donde aparece la previsión">Renglón</th>
                 <th>Estado</th>
                 <th>Póliza</th>
                 <th />
@@ -298,6 +328,21 @@ export function SegurosTab({
                         }
                         onChange={(e) => updateSeguro(s.id, "alimentaPlanilla", e.target.checked)}
                       />
+                    </td>
+                    <td>
+                      <select
+                        style={styles.input}
+                        value={s.conceptKey || ""}
+                        title="En qué renglón de la planilla se imputa. Automático = se deduce del tipo."
+                        onChange={(e) => updateSeguro(s.id, "conceptKey", e.target.value)}
+                      >
+                        <option value="">Automático (por tipo)</option>
+                        {RENGLONES_SEGUROS.map((r) => (
+                          <option key={r.key} value={r.key}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td>
                       <select
