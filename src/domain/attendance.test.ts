@@ -5,6 +5,7 @@ import {
   dayOfWeek,
   deriveConvenioHours,
   WORKSHOP_SCHEDULE,
+  seVeEnElDia,
 } from "./attendance";
 import type { AttendanceRecord } from "./types";
 
@@ -204,5 +205,30 @@ describe("feriados y fines de semana se marcan solos", () => {
     expect(r.vacations).toBe(1);
     expect(r.feriados).toBe(1);          // el 17
     expect(r.finesDeSemana).toBe(10);    // agosto 2026 tiene 10 dias de fin de semana
+  });
+});
+
+describe("quién se lista en la celda del día", () => {
+  const dia = (level: any, offKind?: any) => ({ level, offKind, lateMinutes: 0, tolerated: false, label: "" });
+
+  it("el que vino se lista siempre, aunque sea día no laborable", () => {
+    expect(seVeEnElDia(dia("green"), false)).toBe(true);
+    expect(seVeEnElDia(dia("green"), true)).toBe(true);
+    expect(seVeEnElDia(dia("yellow"), true)).toBe(true);
+  });
+
+  it("vacaciones se lista; feriado y fin de semana no listan a nadie", () => {
+    expect(seVeEnElDia(dia("off", "vacaciones"), false)).toBe(true);
+    expect(seVeEnElDia(dia("off", "feriado"), true)).toBe(false);
+    expect(seVeEnElDia(dia("off", "fin_de_semana"), true)).toBe(false);
+  });
+
+  it("el ausente se lista solo en día laborable", () => {
+    expect(seVeEnElDia(dia("red"), false)).toBe(true);
+    expect(seVeEnElDia(dia("red"), true)).toBe(false);
+  });
+
+  it("el día sin dato no se lista", () => {
+    expect(seVeEnElDia(dia("none"), false)).toBe(false);
   });
 });

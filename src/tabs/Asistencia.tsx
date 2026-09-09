@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { styles } from "../ui/styles";
 import { Panel, ButtonLike } from "../ui/primitives";
 import {
@@ -10,6 +10,7 @@ import {
   computeMonthAttendance,
   summarizeMonthAttendance,
   scheduleForDate,
+  seVeEnElDia,
   WORKSHOP_SCHEDULE,
   type AttendanceLevel,
   type DayAttendance,
@@ -215,6 +216,31 @@ export function AsistenciaTab({
     [employees, companyFilter]
   );
 
+  // Ultimo mes con al menos una fichada (en cualquier empleado mostrado). El reloj suele ir unos dias
+  // atras del dia de hoy, asi que el mes en curso puede estar vacio aunque el reloj este cargando bien.
+  const lastMonthWithData = useMemo(() => {
+    let max = "";
+    shownEmployees.forEach((e) => {
+      (e.attendance || []).forEach((a: any) => {
+        const mk = String(a?.date || "").slice(0, 7);
+        if (mk && mk > max) max = mk;
+      });
+    });
+    return max;
+  }, [shownEmployees]);
+
+  // Si el usuario NO cambio de mes a mano y el mes abierto no tiene ninguna fichada pero SI hay datos
+  // en un mes anterior, saltamos al ultimo mes con datos. Evita abrir en un mes vacio (p.ej. el mes en
+  // curso, antes de que el reloj lo haya sincronizado) y creer que "no cargo".
+  const userPickedMonth = useRef(false);
+  useEffect(() => {
+    if (userPickedMonth.current || !lastMonthWithData || !month) return;
+    const hayEnMesActual = shownEmployees.some((e) =>
+      (e.attendance || []).some((a: any) => String(a?.date || "").startsWith(`${month}-`))
+    );
+    if (!hayEnMesActual && lastMonthWithData < month) setMonth(lastMonthWithData);
+  }, [lastMonthWithData, month, shownEmployees]);
+
   // Dias que vinieron del reloj con entrada y salida pero SIN horas: la liquidacion no los ve.
   const sinHoras = useMemo(() => {
     let n = 0;
@@ -290,24 +316,24 @@ export function AsistenciaTab({
     // Findes (sabado y domingo) y feriados: fondo rojo (dias no laborables).
     const feriadoNombre = feriados.get(cell.key);
     const esRojo = esFinDeSemana(cell.key) || feriadoNombre !== undefined;
-    // Chips de empleados con dato ese dia (present/late/ausente/vacaciones). Los "sin dato" no se listan.
-    const chips: Array<{ name: string; d: DayAttendance }> = [];
+    // La gente del dia, con su nombre y su color. Quien entra y quien no lo decide `seVeEnElDia`
+    // (domain/attendance): el que vino se lista siempre -- aunque sea sabado o feriado --, vacaciones
+    // tambien, y la nomina entera de un dia no laborable NO se lista (no faltaron, no habia que venir).
+    const gente: Array<{ name: string; d: DayAttendance }> = [];
     for (const row of perEmployeeMonth) {
       const d = row.days.get(cell.key);
-      if (d) chips.push({ name: row.employee.name || row.employee.legajo || "?", d });
+      if (d && seVeEnElDia(d, esRojo)) {
+        gente.push({ name: row.employee.name || row.employee.legajo || "?", d });
+      }
     }
-    // Antes se apilaba el nombre de CADA empleado, uno debajo del otro y truncado: con doce personas
-    // el dia era un muro de texto ilegible. Ahora manda el conteo por estado (que es lo que se lee de
-    // un vistazo) y debajo van SOLO las excepciones -- los que llegaron tarde, faltaron o estan de
-    // vacaciones. A los que llegaron en horario no hace falta leerlos: se ven en el contador verde.
-    const porNivel = (nivel: AttendanceLevel) => chips.filter((c) => c.d.level === nivel);
-    const enHorario = porNivel("green");
-    const excepciones = chips.filter((c) => c.d.level !== "green" && c.d.level !== "none");
-    const contador = (nivel: AttendanceLevel, cant: number, titulo: string) =>
-      cant > 0 ? (
+    const delNivel = (nivel: AttendanceLevel) => gente.filter((g) => g.d.level === nivel);
+    const contador = (nivel: AttendanceLevel, titulo: string) => {
+      const suyos = delNivel(nivel);
+      const cant = suyos.length;
+      return cant > 0 ? (
         <span
           key={nivel}
-          title={titulo}
+          title={`${titulo}: ${suyos.map((g) => g.name).join(", ")}`}
           style={{
             display: "inline-flex",
             alignItems: "center",
@@ -321,6 +347,7 @@ export function AsistenciaTab({
           {cant}
         </span>
       ) : null;
+    };
     return (
       <div
         key={cell.key}
@@ -337,33 +364,42 @@ export function AsistenciaTab({
             {feriadoNombre}
           </div>
         )}
-        {chips.length > 0 && (
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 3, flexWrap: "wrap" }}>
-            {contador("green", enHorario.length, enHorario.map((c) => c.name).join(", "))}
-            {contador("yellow", porNivel("yellow").length, porNivel("yellow").map((c) => c.name).join(", "))}
-            {contador("red", porNivel("red").length, porNivel("red").map((c) => c.name).join(", "))}
-            {contador("off", porNivel("off").length, porNivel("off").map((c) => c.name).join(", "))}
-          </div>
+        {esFinDeSemana(cell.key) && !feriadoNombre && (
+          <div style={{ fontSize: 10, fontWeight: 700, color: "#b91c1c", marginTop: 1 }}>Fin de semana</div>
         )}
-        <div style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 3 }}>
-          {excepciones.map((c, i) => (
-            <span
-              key={`${cell.key}-${i}`}
-              title={c.d.label}
-              style={{
-                fontSize: 11,
-                fontWeight: 600,
-                color: LEVEL_COLOR[c.d.level],
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-              }}
-            >
-              {c.name}
-              {c.d.tolerated ? " ·" : ""}
-            </span>
-          ))}
-        </div>
+        {gente.length > 0 && (
+          <>
+            {/* Arriba el conteo por estado (el vistazo) y debajo los nombres con su color (el detalle
+                que pidio Nicolas). En un dia no laborable esto queda vacio salvo que alguien haya
+                venido: ahi se ve el o los que vinieron, que es justamente lo que importa. */}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4, flexWrap: "wrap" }}>
+              {contador("green", "En horario")}
+              {contador("yellow", "Tarde")}
+              {contador("red", "Ausentes")}
+              {contador("off", "Vacaciones")}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", marginTop: 3 }}>
+              {gente.map((g, i) => (
+                <span
+                  key={`${cell.key}-${i}`}
+                  title={`${g.name} — ${g.d.label}`}
+                  style={{
+                    fontSize: 11,
+                    lineHeight: 1.35,
+                    fontWeight: 600,
+                    color: LEVEL_COLOR[g.d.level],
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {g.name}
+                  {g.d.tolerated ? " ·" : ""}
+                </span>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -398,11 +434,23 @@ export function AsistenciaTab({
         span="full"
         actions={
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <ButtonLike secondary onClick={() => setMonth(shiftMonth(month, -1))}>
+            <ButtonLike
+              secondary
+              onClick={() => {
+                userPickedMonth.current = true;
+                setMonth(shiftMonth(month, -1));
+              }}
+            >
               ‹ Mes
             </ButtonLike>
             <strong style={{ minWidth: 130, textAlign: "center" }}>{monthLabel(month)}</strong>
-            <ButtonLike secondary onClick={() => setMonth(shiftMonth(month, 1))}>
+            <ButtonLike
+              secondary
+              onClick={() => {
+                userPickedMonth.current = true;
+                setMonth(shiftMonth(month, 1));
+              }}
+            >
               Mes ›
             </ButtonLike>
           </div>
@@ -429,6 +477,7 @@ export function AsistenciaTab({
             <Legend color={LEVEL_COLOR.yellow} text="Tarde" />
             <Legend color={LEVEL_COLOR.red} text="Ausente" />
             <Legend color={LEVEL_COLOR.off} text="Vacaciones" />
+            <Legend color="#ef4444" text="Finde / feriado (no laborable)" />
             <span style={{ color: "#64748b" }}>· = llegó con tolerancia</span>
           </div>
         </div>

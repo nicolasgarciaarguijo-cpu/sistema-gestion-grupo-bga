@@ -175,6 +175,25 @@ export const computeMonthAttendance = (
 };
 
 // ---------------------------------------------------------------------------------------------
+// QUIEN SE LISTA EN LA CELDA DEL DIA (calendario de la solapa Asistencia).
+//
+// Pedido de Nicolas (2026-09-09): quiere ver los NOMBRES con su color, no solo el numero. Pero el
+// dia no laborable marca a TODA la nomina como "off" (nadie tenia que fichar), asi que listar eso
+// era un muro con las doce personas que no estaban -- justo lo que no sirve. El criterio:
+//   - vino a trabajar (verde o amarillo): SIEMPRE se lista, aunque sea sabado o feriado. Que alguien
+//     haya venido un dia no laborable es, si algo, MAS importante de ver.
+//   - vacaciones: se lista. Es un estado de la persona, no del almanaque.
+//   - feriado / fin de semana: NO se lista a nadie. No es que faltaron: no habia que venir.
+//   - ausente: se lista solo si el dia era laborable. En un dia no laborable no hay ausencia posible.
+export const seVeEnElDia = (dia: DayAttendance, diaNoLaborable: boolean): boolean => {
+  if (dia.level === "none") return false;
+  if (dia.level === "green" || dia.level === "yellow") return true;
+  if (dia.level === "off") return dia.offKind === "vacaciones";
+  // red = ausente
+  return !diaNoLaborable;
+};
+
+// ---------------------------------------------------------------------------------------------
 // PRECARGA de horas del convenio a partir de la entrada/salida (CCT 335/75 muebles, ver marco legal).
 // Es una SUGERENCIA editable: el sistema estima, el usuario revisa y ajusta (almuerzo, casos raros).
 //
