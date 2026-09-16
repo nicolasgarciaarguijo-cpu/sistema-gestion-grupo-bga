@@ -641,6 +641,9 @@ export function AprobadosTab({
                   >
                     {verMateriales ? "Ocultar materiales" : "Resumen de materiales"}
                   </ButtonLike>
+                  <ButtonLike onClick={() => onMaterialsSummary(selectedApprovedJob)}>
+                    Exportar materiales (PDF)
+                  </ButtonLike>
                   <ButtonLike onClick={() => onClientSummary(selectedApprovedJob)}>
                     Resumen para el cliente
                   </ButtonLike>
@@ -1024,28 +1027,27 @@ export function AprobadosTab({
                   );
 
                   return (
-                    <Panel
-                      span="full"
-                      title="Resumen de materiales cotizados"
-                      nested
-                      actions={
-                        !resumen.vacio ? (
-                          <ButtonLike onClick={() => onMaterialsSummary(selectedApprovedJob)}>
-                            Exportar PDF
-                          </ButtonLike>
-                        ) : undefined
-                      }
-                    >
+                    <Panel span="full" title="Resumen de materiales cotizados" nested>
                       {resumen.vacio ? (
                         <div style={styles.empty}>
                           El presupuesto de este trabajo no tiene materiales cargados.
                         </div>
                       ) : (
                         <>
-                          <div style={{ ...styles.muted, marginBottom: 10 }}>
-                            Lo que se cotizo, subpresupuesto por subpresupuesto: solo cantidad y descripcion
-                            (sin precios). Si el bloque se cotizo por varias unidades, la cantidad ya viene
-                            multiplicada.
+                          <div
+                            style={{
+                              display: "flex", alignItems: "center", gap: 12,
+                              flexWrap: "wrap", marginBottom: 10,
+                            }}
+                          >
+                            <div style={{ ...styles.muted, flex: "1 1 320px", margin: 0 }}>
+                              Lo que se cotizo, subpresupuesto por subpresupuesto: solo cantidad y
+                              descripcion (sin precios). Si el bloque se cotizo por varias unidades, la
+                              cantidad ya viene multiplicada.
+                            </div>
+                            <ButtonLike onClick={() => onMaterialsSummary(selectedApprovedJob)}>
+                              Exportar PDF
+                            </ButtonLike>
                           </div>
                           {resumen.bloques.map((bloque, i) => (
                             <div key={`${bloque.titulo}-${i}`} style={{ marginBottom: 14 }}>
