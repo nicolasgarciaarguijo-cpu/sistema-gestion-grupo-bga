@@ -4,6 +4,7 @@ import type { SavedBudget, RemitoDraft, Payment, Invoice } from "../domain/types
 import { money } from "../lib/format";
 import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency } from "../domain/planos";
 import { describirTrabajo } from "../domain/jobDescription";
+import { resumirMaterialesDelTrabajo } from "../domain/jobMaterials";
 
 const esc = (s: unknown): string =>
   String(s ?? "")
@@ -43,7 +44,9 @@ td.num,th.num{text-align:right}
 .card .k{font-size:11px;color:#64748b;text-transform:uppercase;font-weight:700}
 .card .v{font-size:18px;font-weight:700;margin-top:2px}
 footer{color:#94a3b8;font-size:12px;text-align:center;margin-top:24px}
-@media print{body{padding:0}}
+.blk{break-inside:avoid;page-break-inside:avoid}
+.noprint{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:8px;padding:8px 10px;color:#475569;font-size:13px}
+@media print{body{padding:0}.noprint{display:none}}
 `;
 
 const page = (title: string, body: string): string =>
@@ -544,6 +547,69 @@ export function buildJobClientSummaryHtml(job: any): string {
       ${saldoRow}
     </tbody></table>`;
   return page(`Resumen trabajo ${job.budgetNumber} - ${job.client}`, body);
+}
+
+// ---- Resumen de materiales de un trabajo (para pasarlo al taller / al proveedor) ----
+
+// Numero de cantidad en es-AR, sin decimales inutiles ("12", "3,5"). No es plata: sin simbolo.
+const cant = (n: number): string =>
+  new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(Number.isFinite(n) ? n : 0);
+
+export const jobMaterialsFileName = (job: any): string =>
+  safeName(`Materiales ${job.budgetNumber || "sin numero"} - ${job.client || "sin cliente"}`) + ".html";
+
+// Lo cotizado subpresupuesto por subpresupuesto, SOLO cantidad y descripcion (sin precios): es la
+// lista que se pasa para fabricar o para pedir, no un presupuesto. Se abre lista para imprimir, asi
+// "Guardar como PDF" del navegador la deja en un archivo que se puede mandar.
+export function buildJobMaterialsHtml(job: any): string {
+  const resumen = resumirMaterialesDelTrabajo(job);
+
+  const tabla = (filas: typeof resumen.consolidado, porUnidad: boolean): string => `
+    <table><thead><tr><th>Descripci&oacute;n</th><th class="num">Cantidad</th><th>Unidad</th></tr></thead>
+      <tbody>${filas
+        .map(
+          (f) => `<tr>
+        <td>${esc(f.descripcion)}${f.tipo === "insumo" ? ' <span class="sub">(insumo)</span>' : ""}</td>
+        <td class="num">${cant(f.cantidad)}${
+            porUnidad ? ` <span class="sub">(${cant(f.cantidadPorUnidad)} c/u)</span>` : ""
+          }</td>
+        <td>${esc(f.unidad || "-")}</td></tr>`
+        )
+        .join("")}</tbody></table>`;
+
+  const bloques = resumen.bloques
+    .map(
+      (b) => `<div class="blk">
+      <h2>${esc(b.titulo)}${b.unidades > 1 ? ` &times;${b.unidades}` : ""}${
+        b.moneda === "USD" ? " (U$S)" : ""
+      }</h2>
+      ${b.notas ? `<p class="sub">${esc(b.notas)}</p>` : ""}
+      ${tabla(b.filas, b.unidades > 1)}</div>`
+    )
+    .join("");
+
+  const total =
+    resumen.bloques.length > 1
+      ? `<div class="blk"><h2>Total del trabajo</h2>
+      <p class="sub">El mismo material sumado entre todos los subpresupuestos.</p>
+      ${tabla(resumen.consolidado, false)}</div>`
+      : "";
+
+  const body = `
+    <h1>Materiales cotizados &middot; trabajo N&deg; ${esc(job.budgetNumber)}</h1>
+    <p class="sub">${esc(job.client)} &middot; ${esc(job.project || "-")} &middot; ${esc(job.company)}${
+    job.deliveryDate ? " &middot; entrega " + esc(job.deliveryDate) : ""
+  }</p>
+    <p class="noprint">Para guardarlo como PDF: Ctrl+P (Cmd+P en Mac) y elegi "Guardar como PDF".</p>
+    ${
+      resumen.vacio
+        ? `<p class="sub">El presupuesto de este trabajo no tiene materiales cargados.</p>`
+        : `<p class="sub">Cantidades y descripci&oacute;n de lo cotizado, subpresupuesto por subpresupuesto. Sin precios.</p>
+    ${bloques}
+    ${total}`
+    }
+    <script>window.addEventListener("load", function () { window.print(); });</script>`;
+  return page(`Materiales ${job.budgetNumber || ""} - ${job.client || ""}`.trim(), body);
 }
 
 // ---- Facturas (una por comprobante) ----

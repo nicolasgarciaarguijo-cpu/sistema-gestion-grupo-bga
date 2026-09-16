@@ -111,6 +111,8 @@ type AprobadosTabProps = {
   uploadApprovedJobFile: (jobId: number, section: string, itemId: number, file: File | null) => void;
   exportPaymentReceipt: (job: any, payment: any) => void;
   onClientSummary: (job: any) => void;
+  // Abre el resumen de materiales en una pestana nueva, listo para "Guardar como PDF".
+  onMaterialsSummary: (job: any) => void;
 };
 
 // Bloques que Nicolas pidio ocultar POR EL MOMENTO (2026-08-27). Se dejan en el codigo, no se
@@ -165,6 +167,7 @@ export function AprobadosTab({
   uploadApprovedJobFile,
   exportPaymentReceipt,
   onClientSummary,
+  onMaterialsSummary,
 }: AprobadosTabProps) {
   // Menú contextual (click derecho) del cliente: resumen económico (falta facturar/cobrar/comisión).
   const [ctxMenu, setCtxMenu] = React.useState<null | { x: number; y: number; job: any }>(null);
@@ -1021,7 +1024,18 @@ export function AprobadosTab({
                   );
 
                   return (
-                    <Panel span="full" title="Resumen de materiales cotizados" nested>
+                    <Panel
+                      span="full"
+                      title="Resumen de materiales cotizados"
+                      nested
+                      actions={
+                        !resumen.vacio ? (
+                          <ButtonLike onClick={() => onMaterialsSummary(selectedApprovedJob)}>
+                            Exportar PDF
+                          </ButtonLike>
+                        ) : undefined
+                      }
+                    >
                       {resumen.vacio ? (
                         <div style={styles.empty}>
                           El presupuesto de este trabajo no tiene materiales cargados.

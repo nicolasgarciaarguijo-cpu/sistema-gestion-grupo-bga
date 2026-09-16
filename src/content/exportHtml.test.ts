@@ -1,4 +1,9 @@
-import { buildMarcadoresHtml, buildClientBudgetHtml, buildJobClientSummaryHtml } from "./exportHtml";
+import {
+  buildMarcadoresHtml,
+  buildClientBudgetHtml,
+  buildJobClientSummaryHtml,
+  buildJobMaterialsHtml,
+} from "./exportHtml";
 
 // El resumen de marcadores existe para comparar meses: si las cuentas cambian, la evolucion miente.
 describe("buildMarcadoresHtml", () => {
@@ -194,5 +199,66 @@ describe("buildJobClientSummaryHtml · retenciones", () => {
     expect(html).toContain("Pagos recibidos en d&oacute;lares");
     expect(html).toContain("Total cobrado U$S");
     expect(html).toContain("Sin pagos registrados.");
+  });
+});
+
+// El resumen de materiales se imprime para pasarselo al taller o al proveedor: lleva cantidades y
+// descripcion, NUNCA precios.
+describe("buildJobMaterialsHtml", () => {
+  const job = {
+    budgetNumber: "0001-00000123",
+    client: "CLIENTE SA",
+    project: "PROYECTO X",
+    company: "De raiz s.r.l",
+    deliveryDate: "2026-10-01",
+    snapshot: {
+      subBudgets: [
+        {
+          title: "Mesa",
+          notes: "roble",
+          materials: [{ description: "Tabla roble", qty: 4, unit: "m2", unitPrice: 123456 }],
+          basicSupplies: [],
+        },
+        {
+          title: "Puerta",
+          quantity: 3,
+          materials: [{ description: "Bisagra", qty: 2, unit: "u", unitPrice: 7777 }],
+          basicSupplies: [],
+        },
+      ],
+      materials: [],
+      basicSupplies: [],
+    },
+  };
+
+  it("lista cada subpresupuesto con su cantidad y descripcion", () => {
+    const html = buildJobMaterialsHtml(job);
+    expect(html).toContain("Tabla roble");
+    expect(html).toContain("Mesa");
+    expect(html).toContain("Puerta &times;3");
+    expect(html).toContain("0001-00000123");
+    expect(html).toContain("CLIENTE SA");
+  });
+
+  it("no muestra precios", () => {
+    const html = buildJobMaterialsHtml(job);
+    expect(html).not.toContain("123.456");
+    expect(html).not.toContain("7.777");
+    expect(html).not.toMatch(/\$\s*\d/);
+  });
+
+  it("la cantidad ya viene escalada por las unidades del bloque", () => {
+    const html = buildJobMaterialsHtml(job);
+    expect(html).toContain(">6 <span"); // 2 por unidad x 3 unidades
+    expect(html).toContain("(2 c/u)");
+  });
+
+  it("se abre listo para imprimir (guardar como PDF)", () => {
+    expect(buildJobMaterialsHtml(job)).toContain("window.print()");
+  });
+
+  it("trabajo sin materiales: avisa en vez de salir en blanco", () => {
+    const html = buildJobMaterialsHtml({ budgetNumber: "1", client: "X", snapshot: {} });
+    expect(html).toContain("no tiene materiales cargados");
   });
 });

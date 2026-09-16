@@ -305,6 +305,7 @@ import {
   jobFolderName,
   buildJobHtml,
   buildJobClientSummaryHtml,
+  buildJobMaterialsHtml,
   buildJobsSummaryHtml,
   invoiceFileName,
   buildInvoiceHtml,
@@ -7250,6 +7251,24 @@ Escribi CERRAR para confirmar:`
     } catch (err: any) {
       console.error("[aprobados] resumen cliente:", err);
       setStorageMessage("No pude generar el resumen: " + (err?.message || String(err)));
+    }
+  };
+
+  // Materiales cotizados del trabajo, listos para imprimir / guardar como PDF y pasarselos al taller
+  // o al proveedor. Misma mecanica que el resumen para el cliente (HTML en una pestana nueva).
+  const openJobMaterialsSummary = (job: any) => {
+    try {
+      const html = buildJobMaterialsHtml(job);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const win = window.open(url, "_blank");
+      if (!win) {
+        setStorageMessage("Habilita las ventanas emergentes para exportar el resumen de materiales.");
+      }
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err: any) {
+      console.error("[aprobados] resumen de materiales:", err);
+      setStorageMessage("No pude generar el resumen de materiales: " + (err?.message || String(err)));
     }
   };
 
@@ -18002,6 +18021,7 @@ Escribi CERRAR para confirmar:`
           uploadApprovedJobFile={uploadApprovedJobFile}
           exportPaymentReceipt={exportPaymentReceipt}
           onClientSummary={openJobClientSummary}
+          onMaterialsSummary={openJobMaterialsSummary}
         />
       )}
 
