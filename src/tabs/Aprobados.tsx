@@ -1,6 +1,7 @@
 import React from "react";
 import { styles } from "../ui/styles";
 import { describirTrabajo } from "../domain/jobDescription";
+import { resumirMaterialesDelTrabajo } from "../domain/jobMaterials";
 import {
   Panel,
   SemaforoResumen,
@@ -45,6 +46,10 @@ const PLANO_TONE_LEVEL: Record<PlanoTone, SemaphoreLevel> = {
   yellow: "amarillo",
   green: "verde",
 };
+// Cantidad de material: numero es-AR sin decimales inutiles ("12", "3,5"). No es plata: sin simbolo.
+const cantidadTexto = (n: number): string =>
+  new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(Number.isFinite(n) ? n : 0);
+
 const planoDaysText = (days: number | null): string =>
   days === null
     ? "sin fecha de inicio"
@@ -166,6 +171,10 @@ export function AprobadosTab({
   const anchosAprobados = usePlanillaWidths("aprobados.principal", { label: 300, col: 118, colCompact: 90 });
   const anchosPlanos = usePlanillaWidths("aprobados.planos", { label: 280, col: 120, colCompact: 92 });
   const anchosLinea = usePlanillaWidths("aprobados.linea", { label: 300, col: 150, colCompact: 110 });
+  const anchosMateriales = usePlanillaWidths("aprobados.materiales", { label: 360, col: 120, colCompact: 90 });
+  // Resumen de materiales cotizados (solo cantidad y descripcion, por subpresupuesto). Se abre y se
+  // cierra con el boton del detalle; arranca cerrado para no alargar la ficha del trabajo.
+  const [verMateriales, setVerMateriales] = React.useState(false);
   // Un trabajo está TERMINADO cuando ya se cobró todo y la comisión está paga.
   const isJobDone = (job: any) =>
     Number(job.remainingToPay || 0) <= 1 && Number(job.commissionPending || 0) <= 1;
@@ -623,6 +632,12 @@ export function AprobadosTab({
               green={selectedApprovedJob.executionStatus === "finalizado"}
               actions={
                 <>
+                  <ButtonLike
+                    onClick={() => setVerMateriales((prev) => !prev)}
+                    secondary={verMateriales}
+                  >
+                    {verMateriales ? "Ocultar materiales" : "Resumen de materiales"}
+                  </ButtonLike>
                   <ButtonLike onClick={() => onClientSummary(selectedApprovedJob)}>
                     Resumen para el cliente
                   </ButtonLike>
@@ -944,6 +959,115 @@ export function AprobadosTab({
                   <SummaryRow label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} strong tone="out" />
                 </Panel>
               </div>
+
+              {verMateriales &&
+                (() => {
+                  const resumen = resumirMaterialesDelTrabajo(selectedApprovedJob);
+                  // Tabla de un bloque (o del consolidado): SOLO descripcion, cantidad y unidad.
+                  const tablaDeFilas = (filas: typeof resumen.consolidado, mostrarPorUnidad: boolean) => (
+                    <div style={{ ...planillaWrap, ...anchosMateriales.vars }}>
+                      <table className="planilla" style={planillaTable}>
+                        <colgroup>
+                          <col style={colLabel} />
+                          <col style={colDato} />
+                          <col style={colFlexible} />
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th style={thEsquina}>
+                              Descripcion
+                              <PlanillaManija
+                                onMouseDown={(ev) => anchosMateriales.startResize(ev, "label")}
+                                onDoubleClick={anchosMateriales.resetLabel}
+                              />
+                            </th>
+                            <th style={thColumna}>
+                              Cantidad
+                              <PlanillaManija
+                                onMouseDown={(ev) => anchosMateriales.startResize(ev, "col")}
+                                onDoubleClick={anchosMateriales.resetCol}
+                              />
+                            </th>
+                            <th style={thFlexible}>Unidad</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filas.map((fila, idx) => (
+                            <tr key={`${fila.descripcion}-${fila.unidad}-${idx}`}>
+                              <td style={{ ...tdNombre, fontWeight: 400 }} title={fila.descripcion}>
+                                {fila.descripcion}
+                                {fila.tipo === "insumo" && (
+                                  <span style={{ color: "#94a3b8", fontSize: 11.5 }} title="Insumo basico">
+                                    {" "}
+                                    · insumo
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ ...tdDato, fontWeight: 700 }}>
+                                {cantidadTexto(fila.cantidad)}
+                                {mostrarPorUnidad && (
+                                  <span style={{ color: "#94a3b8", fontWeight: 400, fontSize: 11.5 }}>
+                                    {" "}
+                                    ({cantidadTexto(fila.cantidadPorUnidad)} c/u)
+                                  </span>
+                                )}
+                              </td>
+                              <td style={{ ...tdFlexible, color: "#64748b" }}>{fila.unidad || "-"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+
+                  return (
+                    <Panel span="full" title="Resumen de materiales cotizados" nested>
+                      {resumen.vacio ? (
+                        <div style={styles.empty}>
+                          El presupuesto de este trabajo no tiene materiales cargados.
+                        </div>
+                      ) : (
+                        <>
+                          <div style={{ ...styles.muted, marginBottom: 10 }}>
+                            Lo que se cotizo, subpresupuesto por subpresupuesto: solo cantidad y descripcion
+                            (sin precios). Si el bloque se cotizo por varias unidades, la cantidad ya viene
+                            multiplicada.
+                          </div>
+                          {resumen.bloques.map((bloque, i) => (
+                            <div key={`${bloque.titulo}-${i}`} style={{ marginBottom: 14 }}>
+                              <div
+                                style={{
+                                  display: "flex", alignItems: "baseline", gap: 8,
+                                  flexWrap: "wrap", marginBottom: 4,
+                                }}
+                              >
+                                <strong>{bloque.titulo}</strong>
+                                {bloque.unidades > 1 && <strong>x{bloque.unidades}</strong>}
+                                {bloque.moneda === "USD" && <span style={{ color: "#0f766e" }}>(U$S)</span>}
+                                <span style={styles.muted}>{bloque.filas.length} item(s)</span>
+                                {bloque.notas && (
+                                  <span style={{ fontSize: 12, color: "#64748b" }}>— {bloque.notas}</span>
+                                )}
+                              </div>
+                              {tablaDeFilas(bloque.filas, bloque.unidades > 1)}
+                            </div>
+                          ))}
+                          {resumen.bloques.length > 1 && (
+                            <div style={{ marginTop: 16 }}>
+                              <div style={{ marginBottom: 4 }}>
+                                <strong>Total del trabajo</strong>{" "}
+                                <span style={styles.muted}>
+                                  (mismo material sumado entre subpresupuestos · {resumen.consolidado.length} item(s))
+                                </span>
+                              </div>
+                              {tablaDeFilas(resumen.consolidado, false)}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </Panel>
+                  );
+                })()}
 
               <Panel span="full" title="Planos y archivos de referencia" nested>
                 {(() => {
