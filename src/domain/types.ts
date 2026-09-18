@@ -1286,6 +1286,15 @@ export type Employee = {
   skills: string;
   notes: string;
   payrolls: EmployeePayroll[];
+  // Baja del empleado. Si `terminationDate` tiene fecha (yyyy-mm-dd), sale de la nomina y pasa a la
+  // seccion "Bajas": el registro no se borra (queda su ficha, asistencia, recibos y liquidaciones).
+  // `terminationReason` es uno de los motivos de `src/domain/employeeStatus.ts`.
+  terminationDate?: string;
+  terminationReason?: string;
+  terminationNotes?: string;
+  // Quien y cuando cargo la baja (auditoria del legajo historico).
+  terminatedAt?: string;
+  terminatedBy?: string;
   // Marcas de tiempo para el semaforo ("desde cuando"): fecha de carga (alta del registro) y
   // fecha de ultima modificacion. Opcionales: los registros viejos las reciben al guardar.
   createdAt?: string;

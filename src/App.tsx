@@ -74,6 +74,11 @@ import {
   findClientByName,
 } from "./domain/clients";
 import { buildPersonalReminders } from "./domain/personalReminders";
+import {
+  isEmployeeActive,
+  isEmployeeTerminated,
+  wasEmployedInMonth,
+} from "./domain/employeeStatus";
 import { matchStockForMaterial, applyStockMovement } from "./domain/stockMatch";
 import { computeBillingTotals } from "./domain/billingTotals";
 import { computeIncomeStatement } from "./domain/incomeStatement";
@@ -4430,9 +4435,24 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     [companyAssets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
-  const visibleEmployees = useMemo(
+  const accessibleEmployees = useMemo(
     () => employees.filter((item) => canAccessCompany(item.company)),
     [employees, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  // La nomina son los ACTIVOS. El que esta dado de baja no se borra: sale de aca (y de todo lo que
+  // se calcula hacia adelante) y aparece en la seccion "Bajas" con su ficha intacta.
+  const visibleEmployees = useMemo(
+    () => accessibleEmployees.filter(isEmployeeActive),
+    [accessibleEmployees]
+  );
+
+  const formerEmployees = useMemo(
+    () =>
+      accessibleEmployees
+        .filter(isEmployeeTerminated)
+        .sort((a, b) => String(b.terminationDate || "").localeCompare(String(a.terminationDate || ""))),
+    [accessibleEmployees]
   );
 
   const totalBasicSupplies = useMemo(
@@ -4620,7 +4640,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
       state: "vencido" | "vence_pronto";
     }> = [];
 
-    employees.forEach((employee) => {
+    employees.filter(isEmployeeActive).forEach((employee) => {
       employee.provisionItems.forEach((item) => {
         if (!item.dueDate) return;
         const daysLeft = Math.ceil(
@@ -8385,7 +8405,7 @@ Escribi CERRAR para confirmar:`
     : null;
 
   const selectedEmployee = selectedEmployeeId
-    ? visibleEmployees.find((item) => item.id === selectedEmployeeId) || null
+    ? accessibleEmployees.find((item) => item.id === selectedEmployeeId) || null
     : null;
 
   useEffect(() => {
@@ -14274,6 +14294,53 @@ Escribi CERRAR para confirmar:`
 
   const removeEmployee = (employeeId: number) => {
     setEmployees((prev) => prev.filter((item) => item.id !== employeeId));
+    setSelectedEmployeeId((prev) => (prev === employeeId ? null : prev));
+  };
+
+  // Baja del empleado: NO se borra nada. Se le pone fecha y motivo, sale de la nomina y pasa a
+  // "Bajas" con su ficha, su asistencia y sus liquidaciones intactas.
+  const terminateEmployee = (
+    employeeId: number,
+    data: { date: string; reason: string; notes: string }
+  ) => {
+    const date = String(data.date || "").trim() || todayIso();
+    setEmployees((prev) =>
+      prev.map((item) =>
+        item.id === employeeId
+          ? {
+              ...item,
+              terminationDate: date,
+              terminationReason: data.reason || "otro",
+              terminationNotes: String(data.notes || "").trim(),
+              terminatedAt: new Date().toISOString(),
+              terminatedBy:
+                supabaseProfile?.full_name || supabaseSession?.user?.email || "Usuario",
+              updatedAt: todayIso(),
+            }
+          : item
+      )
+    );
+    setSelectedEmployeeId((prev) => (prev === employeeId ? null : prev));
+  };
+
+  // Reincorporacion: vuelve a la nomina y se le limpian los datos de la baja (queda el historial
+  // de asistencia y liquidaciones, que nunca se toco).
+  const reinstateEmployee = (employeeId: number) => {
+    setEmployees((prev) =>
+      prev.map((item) =>
+        item.id === employeeId
+          ? {
+              ...item,
+              terminationDate: "",
+              terminationReason: "",
+              terminationNotes: "",
+              terminatedAt: "",
+              terminatedBy: "",
+              updatedAt: todayIso(),
+            }
+          : item
+      )
+    );
   };
 
   const ensureEmployeePayroll = (employee: Employee, month: string): EmployeePayroll => {
@@ -16163,7 +16230,7 @@ Escribi CERRAR para confirmar:`
       }
     >();
 
-    employees.forEach((employee) => {
+    employees.filter((employee) => wasEmployedInMonth(employee, payrollMonth)).forEach((employee) => {
       const salary = getEmployeePayrollSummary(employee);
       const payroll = getCurrentPayroll(employee);
       const key = `${employee.company}__${employee.category}`;
@@ -16443,7 +16510,10 @@ Escribi CERRAR para confirmar:`
   const totalCompanyPayroll = useMemo(
     () =>
       COMPANY_OPTIONS.map((company) => {
-        const emps = employees.filter((employee) => employee.company === company.value);
+        const emps = employees.filter(
+          (employee) =>
+            employee.company === company.value && wasEmployedInMonth(employee, payrollMonth)
+        );
         const summaries = emps.map((employee) => getEmployeePayrollSummary(employee));
         const sum = (pick: (s: (typeof summaries)[number]) => number) =>
           summaries.reduce((acc, s) => acc + Number(pick(s) || 0), 0);
@@ -18149,6 +18219,7 @@ Escribi CERRAR para confirmar:`
         <PersonalTab
           employees={employees}
           visibleEmployees={visibleEmployees}
+          formerEmployees={formerEmployees}
           selectedEmployee={selectedEmployee}
           selectedEmployeeId={selectedEmployeeId}
           employeeBaseConfig={employeeBaseConfig}
@@ -18205,6 +18276,8 @@ Escribi CERRAR para confirmar:`
           handleEmployeeProvisionUpload={handleEmployeeProvisionUpload}
           handleScalePdfUpload={handleScalePdfUpload}
           removeEmployee={removeEmployee}
+          terminateEmployee={terminateEmployee}
+          reinstateEmployee={reinstateEmployee}
           removeEmployeeDocument={removeEmployeeDocument}
           removeEmployeeProvisionItem={removeEmployeeProvisionItem}
           saveEmployeePayrollMonth={saveEmployeePayrollMonth}
@@ -19132,7 +19205,8 @@ Escribi CERRAR para confirmar:`
             {employees
               .filter(
                 (employee) =>
-                  personalReportCompany === "General" || employee.company === personalReportCompany
+                  isEmployeeActive(employee) &&
+                  (personalReportCompany === "General" || employee.company === personalReportCompany)
               )
               .map((employee) => {
               const summary = getEmployeePayrollSummary(employee);

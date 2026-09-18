@@ -24,6 +24,11 @@ import {
 import { money, pct, localMonthKey, formatDateDisplay } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import { isPartnerCategory } from "../domain/payroll";
+import {
+  TERMINATION_REASON_OPTIONS,
+  employedYears,
+  terminationReasonLabel,
+} from "../domain/employeeStatus";
 import type { CompanyName } from "../domain/types";
 import { computeMonthAttendance, deriveConvenioHours } from "../domain/attendance";
 import type { DayAttendance } from "../domain/attendance";
@@ -32,6 +37,7 @@ import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 type PersonalTabProps = {
   employees: any[];
   visibleEmployees: any[];
+  formerEmployees: any[];
   selectedEmployee: any;
   selectedEmployeeId: any;
   employeeBaseConfig: any;
@@ -87,6 +93,8 @@ type PersonalTabProps = {
   handleEmployeeProvisionUpload: any;
   handleScalePdfUpload: any;
   removeEmployee: any;
+  terminateEmployee: any;
+  reinstateEmployee: any;
   removeEmployeeDocument: any;
   removeEmployeeProvisionItem: any;
   saveEmployeePayrollMonth: any;
@@ -153,7 +161,7 @@ function LineaResumen({
 
 export function PersonalTab(props: PersonalTabProps) {
   const {
-    employees, visibleEmployees, selectedEmployee, selectedEmployeeId,
+    employees, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
     employeeBaseConfig, payrollMonth, newEmployeeDraft,
     employeeProvisionModal, employeeDocumentModal, stockPersonalItems, personalReminders, scaleRows,
     isEmployeeSetupModalOpen, uploadMessage, COMPANY_OPTIONS, CATEGORY_OPTIONS,
@@ -169,7 +177,8 @@ export function PersonalTab(props: PersonalTabProps) {
     createEmployeeProvisionFromModal, exportPersonalReport, exportReciboBlanco, exportReciboNegro,
     companyReciboLogos, setCompanyReciboLogo, handleAttendanceAttachment,
     handleEmployeeDocumentUpload, handleEmployeeProvisionUpload, handleScalePdfUpload,
-    removeEmployee, removeEmployeeDocument, removeEmployeeProvisionItem,
+    removeEmployee, terminateEmployee, reinstateEmployee,
+    removeEmployeeDocument, removeEmployeeProvisionItem,
     saveEmployeePayrollMonth, syncLaborMarkersFromPersonal, updateAttendanceRecord,
     updateEmployeeDocument, updateEmployeeField, updateEmployeePayrollManual,
     updateEmployeeProvisionItem,
@@ -202,6 +211,16 @@ export function PersonalTab(props: PersonalTabProps) {
   const nfHours = (n: number) => Math.round(n).toLocaleString("es-AR");
   const anchosNomina = usePlanillaWidths("personal.nomina", { label: 280, col: 116, colCompact: 88 });
   const [menuNomina, setMenuNomina] = useState<null | { x: number; y: number; id: number }>(null);
+  const [menuBajas, setMenuBajas] = useState<null | { x: number; y: number; id: number }>(null);
+  const anchosBajas = usePlanillaWidths("personal.bajas", { label: 280, col: 116, colCompact: 88 });
+  // Borrador de la baja: se pide fecha y motivo antes de sacar a nadie de la nomina.
+  const [bajaDraft, setBajaDraft] = useState<null | {
+    id: number;
+    name: string;
+    date: string;
+    reason: string;
+    notes: string;
+  }>(null);
   const anchosRecordatorios = usePlanillaWidths("personal.recordatorios", { label: 260, col: 130, colCompact: 100 });
   const anchosCategorias = usePlanillaWidths("personal.categorias", { label: 260, col: 116, colCompact: 88 });
   const anchosEscalas = usePlanillaWidths("personal.escalas", { label: 220, col: 116, colCompact: 88 });
@@ -223,6 +242,86 @@ export function PersonalTab(props: PersonalTabProps) {
 
   return (
         <div style={styles.personalStack}>
+          {/* Alta de la baja: fecha y motivo. Sin fecha no hay baja (es la que define de que mes en
+              adelante deja de pesar en la nomina). */}
+          {bajaDraft && (
+            <div
+              style={styles.modalBackdrop}
+              onClick={() => setBajaDraft(null)}
+            >
+              <div
+                style={styles.employeeSetupModal}
+                onClick={(ev) => ev.stopPropagation()}
+              >
+                <Panel title={`Dar de baja a ${bajaDraft.name}`} span="full">
+                  <div style={styles.muted}>
+                    No se borra nada: el empleado sale de la nómina y pasa a la sección
+                    “Bajas” con su ficha, su asistencia y sus liquidaciones. Hasta el mes de la
+                    baja inclusive sigue contando en el costo de ese mes.
+                  </div>
+                  <TwoCol>
+                    <Field label="Fecha de baja">
+                      <input
+                        type="date"
+                        style={styles.input}
+                        value={bajaDraft.date}
+                        onChange={(e) =>
+                          setBajaDraft((d) => (d ? { ...d, date: e.target.value } : d))
+                        }
+                      />
+                    </Field>
+                    <Field label="Motivo">
+                      <select
+                        style={styles.input}
+                        value={bajaDraft.reason}
+                        onChange={(e) =>
+                          setBajaDraft((d) => (d ? { ...d, reason: e.target.value } : d))
+                        }
+                      >
+                        {TERMINATION_REASON_OPTIONS.map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </TwoCol>
+                  <Field label="Observaciones (opcional)">
+                    <input
+                      style={styles.input}
+                      value={bajaDraft.notes}
+                      placeholder="Preaviso, liquidación final, telegrama, etc."
+                      onChange={(e) =>
+                        setBajaDraft((d) => (d ? { ...d, notes: e.target.value } : d))
+                      }
+                    />
+                  </Field>
+                  <div style={{ ...styles.inlineActions, marginTop: 12 }}>
+                    <ButtonLike
+                      onClick={() => {
+                        terminateEmployee(bajaDraft.id, {
+                          date: bajaDraft.date,
+                          reason: bajaDraft.reason,
+                          notes: bajaDraft.notes,
+                        });
+                        setBajaDraft(null);
+                      }}
+                      disabled={!bajaDraft.date}
+                    >
+                      Confirmar baja
+                    </ButtonLike>
+                    <ButtonLike onClick={() => setBajaDraft(null)}>Cancelar</ButtonLike>
+                  </div>
+                  {!bajaDraft.date && (
+                    <div style={{ ...styles.muted, fontSize: 12, marginTop: 6 }}>
+                      Cargá la fecha de baja.
+                    </div>
+                  )}
+                </Panel>
+              </div>
+            </div>
+          )}
+
           {!selectedEmployee && (
           <div style={{ order: 1, gridColumn: "1 / -1" }}>
           {(() => {
@@ -623,14 +722,36 @@ export function PersonalTab(props: PersonalTabProps) {
                     Recibo negro
                   </button>
                   <QuickMenuSep />
+                  {/* Baja: el empleado NO se borra. Sale de la nomina y pasa a "Bajas" con su ficha,
+                      su asistencia y sus liquidaciones. Se puede reincorporar cuando haga falta. */}
                   <button
-                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    style={{ ...quickMenuItem, color: "#b45309" }}
                     onClick={() => {
-                      if (window.confirm(`¿Quitar a ${emp.name} de la nomina?`)) removeEmployee(emp.id);
+                      setBajaDraft({
+                        id: emp.id,
+                        name: emp.name || "Empleado",
+                        date: new Date().toISOString().slice(0, 10),
+                        reason: "renuncia",
+                        notes: "",
+                      });
                       cerrar();
                     }}
                   >
-                    Quitar de la nómina
+                    Dar de baja…
+                  </button>
+                  <button
+                    style={{ ...quickMenuItem, color: "#b91c1c" }}
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          `¿Borrar el registro de ${emp.name}? Se pierden ficha, asistencia y liquidaciones. Si dejó de trabajar, usá "Dar de baja".`
+                        )
+                      )
+                        removeEmployee(emp.id);
+                      cerrar();
+                    }}
+                  >
+                    Borrar registro (no deja historial)
                   </button>
                 </QuickMenu>
               );
@@ -943,7 +1064,11 @@ export function PersonalTab(props: PersonalTabProps) {
               </div>
 
               <div style={{ ...styles.metricGrid, marginTop: 12 }}>
-                <MiniMetric label="Empleados totales" value={String(employees.length)} />
+                <MiniMetric
+                  label="Empleados en nómina"
+                  value={String(employees.filter((e: any) => !e.terminationDate).length)}
+                />
+                <MiniMetric label="Bajas" value={String(formerEmployees.length)} />
                 <MiniMetric
                   label="Categorias activas"
                   value={String(companyCategoryCostRows.length)}
@@ -1104,6 +1229,175 @@ export function PersonalTab(props: PersonalTabProps) {
             </Panel>
           </div>
 
+          {/* BAJAS. El que deja de trabajar no se borra: sale de la nomina y queda aca, con su ficha,
+              su asistencia, sus recibos y sus liquidaciones. Se puede reincorporar. */}
+          {!selectedEmployee && formerEmployees.length > 0 && (
+          <div style={{ order: 6, gridColumn: "1 / -1" }}>
+            <Panel title={`Bajas (${formerEmployees.length})`} span="full">
+              <div style={styles.muted}>
+                Gente que ya no esta en la nomina. No suman sueldo, ni cargas, ni provisiones de los
+                meses posteriores a la baja: hasta el mes de la baja siguen contando, para que la
+                liquidacion de ese mes no cambie. Click derecho para abrir la ficha, imprimir recibos
+                o reincorporar.
+              </div>
+              <div style={{ ...planillaWrap, ...anchosBajas.vars, marginTop: 12 }}>
+              <table className="planilla" style={planillaTable}>
+                <colgroup>
+                  <col style={colLabel} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colDato} />
+                  <col style={colFlexible} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={thEsquina}>
+                      Empleado
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosBajas.startResize(ev, "label")}
+                        onDoubleClick={anchosBajas.resetLabel}
+                      />
+                    </th>
+                    <th style={thColumna}>
+                      Empresa
+                      <PlanillaManija
+                        onMouseDown={(ev) => anchosBajas.startResize(ev, "col")}
+                        onDoubleClick={anchosBajas.resetCol}
+                      />
+                    </th>
+                    <th style={thColumna}>Categoría</th>
+                    <th style={thColumna}>Ingreso</th>
+                    <th style={thColumna}>Baja</th>
+                    <th style={thColumna}>Antigüedad</th>
+                    <th style={thFlexible}>Motivo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {formerEmployees.map((emp: any) => {
+                    const meta = getCompanyMeta(emp.company);
+                    const anios = employedYears(emp);
+                    return (
+                      <tr
+                        key={emp.id}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          ev.stopPropagation();
+                          setMenuBajas({ x: ev.clientX, y: ev.clientY, id: emp.id });
+                        }}
+                        title="Click derecho: ficha, recibos o reincorporar"
+                      >
+                        <td
+                          style={{
+                            ...tdNombre,
+                            fontWeight: 400,
+                            boxShadow: `inset 4px 0 0 ${meta.primary}`,
+                          }}
+                          title={`${emp.name} · legajo ${emp.legajo}`}
+                        >
+                          <span style={{ display: "inline-flex", flexDirection: "column", minWidth: 0 }}>
+                            <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                              {emp.name}
+                            </span>
+                            <span style={{ ...styles.muted, fontSize: 11 }}>legajo {emp.legajo}</span>
+                          </span>
+                        </td>
+                        <td style={{ ...tdDato, color: meta.primary, fontWeight: 600, fontSize: 11 }}>
+                          {meta.short || emp.company}
+                        </td>
+                        <td style={{ ...tdDato, color: "#64748b", fontSize: 11 }}>{emp.category}</td>
+                        <td style={{ ...tdDato, color: "#64748b", fontSize: 11 }}>
+                          {emp.hireDate ? formatDateDisplay(emp.hireDate) : "—"}
+                        </td>
+                        <td style={{ ...tdDato, fontWeight: 600 }}>
+                          {emp.terminationDate ? formatDateDisplay(emp.terminationDate) : "—"}
+                        </td>
+                        <td style={{ ...tdDato, color: "#64748b", fontSize: 11 }}>
+                          {anios === null ? "—" : `${anios} ${anios === 1 ? "año" : "años"}`}
+                        </td>
+                        <td style={{ ...tdFlexible, color: "#64748b" }}>
+                          <strong style={{ color: "#0f172a" }}>
+                            {terminationReasonLabel(emp.terminationReason)}
+                          </strong>
+                          {emp.terminationNotes ? ` · ${emp.terminationNotes}` : ""}
+                          {emp.terminatedBy ? (
+                            <span style={{ color: "#94a3b8" }}>{` · cargó ${emp.terminatedBy}`}</span>
+                          ) : null}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+              {menuBajas && (() => {
+                const emp = formerEmployees.find((x: any) => x.id === menuBajas.id);
+                const cerrar = () => setMenuBajas(null);
+                if (!emp) return null;
+                return (
+                  <QuickMenu x={menuBajas.x} y={menuBajas.y} onClose={cerrar}>
+                    <QuickMenuTitle>{emp.name || "empleado"} · legajo {emp.legajo}</QuickMenuTitle>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        setSelectedEmployeeId(selectedEmployeeId === emp.id ? null : emp.id);
+                        cerrar();
+                      }}
+                    >
+                      Abrir ficha
+                    </button>
+                    <QuickMenuSep />
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        exportReciboBlanco(emp);
+                        cerrar();
+                      }}
+                    >
+                      Recibo blanco
+                    </button>
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        exportReciboNegro(emp);
+                        cerrar();
+                      }}
+                    >
+                      Recibo negro
+                    </button>
+                    <QuickMenuSep />
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        if (window.confirm(`¿Reincorporar a ${emp.name} a la nómina?`))
+                          reinstateEmployee(emp.id);
+                        cerrar();
+                      }}
+                    >
+                      Reincorporar a la nómina
+                    </button>
+                    <button
+                      style={{ ...quickMenuItem, color: "#b91c1c" }}
+                      onClick={() => {
+                        if (
+                          window.confirm(
+                            `¿Borrar definitivamente el registro de ${emp.name}? Se pierden ficha, asistencia y liquidaciones.`
+                          )
+                        )
+                          removeEmployee(emp.id);
+                        cerrar();
+                      }}
+                    >
+                      Borrar registro definitivo
+                    </button>
+                  </QuickMenu>
+                );
+              })()}
+            </Panel>
+          </div>
+          )}
+
           {selectedEmployee && (
             <div style={{ order: 3, gridColumn: "1 / -1" }}>
             <Panel
@@ -1214,6 +1508,41 @@ export function PersonalTab(props: PersonalTabProps) {
 
                 return (
                   <>
+                    {/* Si la ficha es de alguien dado de baja, que se vea de entrada: la ficha se lee
+                        igual (asistencia, recibos, liquidaciones) pero ya no está en la nómina. */}
+                    {selectedEmployee.terminationDate && (
+                      <div
+                        style={{
+                          ...styles.semaphoreBanner,
+                          background: "#fef3c7",
+                          borderColor: "#b45309",
+                          color: "#7c2d12",
+                          marginBottom: 10,
+                        }}
+                      >
+                        <strong>
+                          Dado de baja el {formatDateDisplay(selectedEmployee.terminationDate)}
+                        </strong>
+                        <span>
+                          {terminationReasonLabel(selectedEmployee.terminationReason)}
+                          {selectedEmployee.terminationNotes
+                            ? ` · ${selectedEmployee.terminationNotes}`
+                            : ""}
+                        </span>
+                        <ButtonLike
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                `¿Reincorporar a ${selectedEmployee.name} a la nómina?`
+                              )
+                            )
+                              reinstateEmployee(selectedEmployee.id);
+                          }}
+                        >
+                          Reincorporar
+                        </ButtonLike>
+                      </div>
+                    )}
                     <div style={{ ...styles.semaphoreBanner, background: meta.soft, borderColor: meta.primary, color: meta.primary }}>
                       <span style={{ ...styles.statusPill, ...semaphoreStyle }}>{semaphore.label}</span>
                       <span
