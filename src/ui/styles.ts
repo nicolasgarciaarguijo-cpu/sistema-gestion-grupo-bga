@@ -284,33 +284,40 @@ export const styles: Record<string, CSSProperties> = {
     gap: 14,
     alignItems: "start",
   },
-  budgetMainTop: {
+  // La columna principal es UN solo apilado (materiales -> insumos -> mano de obra -> costos fijos).
+  // Antes iba partida en dos filas de la grilla y el panel lateral las cruzaba: al crecer el lateral
+  // (subpresupuestos, imagenes) crecian las filas y los bloques de abajo se despegaban de Materiales.
+  // Con una sola fila por columna, cada columna crece por su cuenta y los bloques no se mueven.
+  budgetMain: {
     display: "flex",
     flexDirection: "column",
     gap: 14,
     gridColumn: "1",
     gridRow: "1",
   },
+  budgetMainTop: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 14,
+  },
   budgetMainBottom: {
     display: "flex",
     flexDirection: "column",
     gap: 14,
-    gridColumn: "1",
-    gridRow: "2",
   },
   budgetAside: {
     display: "flex",
     flexDirection: "column",
     gap: 14,
     gridColumn: "2",
-    gridRow: "1 / span 2",
+    gridRow: "1",
   },
   budgetHistorySection: {
     display: "flex",
     flexDirection: "column",
     gap: 14,
     gridColumn: "1 / -1",
-    gridRow: "3",
+    gridRow: "2",
   },
   grid2: {
     display: "grid",

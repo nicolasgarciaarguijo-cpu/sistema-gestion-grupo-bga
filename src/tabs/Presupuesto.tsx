@@ -298,6 +298,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
   const [menuDescuentos, setMenuDescuentos] = React.useState<null | { x: number; y: number; id: number }>(null);
   return (
         <div style={styles.budgetLayout}>
+          <div style={styles.budgetMain}>
           <div style={styles.budgetMainTop}>
             <Panel title="Datos del presupuesto">
               <TwoCol>
@@ -1579,6 +1580,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               })()}
               <div style={styles.rightStrong}>Total costos fijos: {money(totalFixedCosts)}</div>
             </Panel>
+          </div>
           </div>
 
           <div style={styles.budgetAside}>
