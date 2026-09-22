@@ -7,6 +7,7 @@ import {
 } from "../ui/planilla";
 import { supabase } from "../lib/supabase";
 import {
+  classifyFichada,
   computeMonthAttendance,
   summarizeMonthAttendance,
   scheduleForDate,
@@ -241,37 +242,52 @@ export function AsistenciaTab({
     if (!hayEnMesActual && lastMonthWithData < month) setMonth(lastMonthWithData);
   }, [lastMonthWithData, month, shownEmployees]);
 
-  // Dias que vinieron del reloj con entrada y salida pero SIN horas: la liquidacion no los ve.
-  const sinHoras = useMemo(() => {
-    let n = 0;
+  // Diagnostico de las fichadas del reloj. Las horas del convenio ahora se calculan SOLAS al llegar
+  // la fichada, asi que lo que queda sin horas es lo que NO se puede calcular:
+  //   - sin salida: fichó al entrar y no al salir (lo mas comun);
+  //   - revisar: entrada y salida casi iguales (la "salida" es otra lectura de la misma rafaga).
+  // Esos dias hay que arreglarlos a mano, y hasta que no se arreglen la liquidacion no los ve.
+  // `pendientes` deberia dar siempre 0 (son dias calculables que por algo quedaron sin calcular);
+  // si aparece alguno, queda el boton para forzarlo.
+  const diagFichadas = useMemo(() => {
+    const incompletas: Array<{
+      employee: Employee;
+      date: string;
+      checkIn: string;
+      checkOut: string;
+      estado: string;
+    }> = [];
+    let incompletasTotal = 0;
+    let pendientes = 0;
     shownEmployees.forEach((e) => {
       (e.attendance || []).forEach((a: any) => {
-        if (!a?.date || !String(a.date).startsWith(`${month}-`)) return;
-        if (!a.checkIn || !a.checkOut) return;
+        if (!a?.date || a.locked) return;
         const horas =
           Number(a.normalHours || 0) + Number(a.extra50Hours || 0) +
           Number(a.extra100Hours || 0) + Number(a.night50Hours || 0);
-        if (horas === 0) n += 1;
+        if (horas > 0) return;
+        if (a.status === "vacaciones" || a.status === "ausente_justificado" || a.status === "ausente_injustificado")
+          return;
+        const estado = classifyFichada(a.checkIn, a.checkOut);
+        if (estado === "sin_fichada") return; // dia sin marcas: no es una fichada rota
+        if (estado === "ok") {
+          pendientes += 1;
+          return;
+        }
+        incompletasTotal += 1;
+        if (String(a.date).startsWith(`${month}-`))
+          incompletas.push({
+            employee: e,
+            date: String(a.date),
+            checkIn: String(a.checkIn || ""),
+            checkOut: String(a.checkOut || ""),
+            estado,
+          });
       });
     });
-    return n;
+    incompletas.sort((x, y) => x.date.localeCompare(y.date));
+    return { incompletas, incompletasTotal, pendientes };
   }, [shownEmployees, month]);
-
-  // Lo mismo pero en TODOS los meses (no solo el abierto): dias del reloj con entrada y salida,
-  // sin horas y sin candado. Es lo que llena el boton de precarga.
-  const sinHorasTotal = useMemo(() => {
-    let n = 0;
-    shownEmployees.forEach((e) => {
-      (e.attendance || []).forEach((a: any) => {
-        if (!a?.date || !a.checkIn || !a.checkOut || a.locked) return;
-        const horas =
-          Number(a.normalHours || 0) + Number(a.extra50Hours || 0) +
-          Number(a.extra100Hours || 0) + Number(a.night50Hours || 0);
-        if (horas === 0) n += 1;
-      });
-    });
-    return n;
-  }, [shownEmployees]);
 
   // Feriados nacionales del ano en pantalla (y el previo, por el borde dic/ene) para pintarlos en rojo.
   const feriados = useMemo(() => {
@@ -407,26 +423,61 @@ export function AsistenciaTab({
   return (
     <div style={styles.column}>
       <SyncReloj companyOptions={companyOptions} getCompanyMeta={getCompanyMeta} />
-      {sinHorasTotal > 0 && onPrecargarHoras && (
+      {diagFichadas.pendientes > 0 && onPrecargarHoras && (
         <div style={{ ...styles.noticeBox, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderLeft: "4px solid #f59e0b" }}>
           <span style={{ flex: 1, minWidth: 260 }}>
-            Hay <strong>{sinHorasTotal} día(s)</strong> que vinieron del reloj con entrada y salida
-            pero <strong>sin horas</strong> (en todos los meses){sinHoras > 0 ? `, ${sinHoras} en ${monthLabel(month)}` : ""}:
-            así la liquidación no los ve. Se calculan con las reglas del convenio y después los podés
-            corregir a mano (lo que edites queda bloqueado y la precarga no lo vuelve a tocar).
+            Quedaron <strong>{diagFichadas.pendientes} día(s)</strong> con entrada y salida y sin horas.
+            Normalmente se calculan solos al llegar la fichada; si ves esto, forzalo con el botón.
           </span>
           <ButtonLike
             onClick={() => {
               const n = onPrecargarHoras(null, companyFilter);
               window.alert(
                 n > 0
-                  ? `Listo: se calcularon las horas de ${n} día(s). Revisalos en la ficha de cada empleado.`
+                  ? `Listo: se calcularon las horas de ${n} día(s).`
                   : "No quedaba ningún día para calcular (los editados o bloqueados no se tocan)."
               );
             }}
           >
-            Calcular horas de {sinHorasTotal} día(s)
+            Calcular horas
           </ButtonLike>
+        </div>
+      )}
+      {diagFichadas.incompletasTotal > 0 && (
+        <div style={{ ...styles.noticeBox, borderLeft: "4px solid #dc2626" }}>
+          <div>
+            <strong>Fichadas incompletas: {diagFichadas.incompletasTotal} día(s)</strong> (en todos los
+            meses){diagFichadas.incompletas.length > 0
+              ? `, ${diagFichadas.incompletas.length} en ${monthLabel(month)}`
+              : ""}. Son días en los que la persona fichó al entrar pero <strong>no al salir</strong> (o
+            volvió a pasar la cara al toque, y la "salida" es esa misma lectura). Sin salida no hay
+            jornada que calcular: esos días <strong>no entran en la liquidación</strong> hasta que les
+            cargues la salida a mano en la ficha del empleado (Presentismo y ausencias). Al cargarla,
+            las horas se calculan solas.
+          </div>
+          {diagFichadas.incompletas.length > 0 && (
+            <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+              {diagFichadas.incompletas.slice(0, 12).map((d) => {
+                const meta = getCompanyMeta(d.employee.company);
+                return (
+                  <li key={`${d.employee.id}-${d.date}`} style={{ fontSize: 12 }}>
+                    <strong style={{ color: meta.primary }}>{d.employee.name}</strong>
+                    {" · "}
+                    {d.date.slice(8, 10)}/{d.date.slice(5, 7)}
+                    {" · "}
+                    {d.estado === "sin_salida"
+                      ? `entró ${d.checkIn}, sin salida`
+                      : `entrada ${d.checkIn} y "salida" ${d.checkOut}: falta la salida real`}
+                  </li>
+                );
+              })}
+              {diagFichadas.incompletas.length > 12 && (
+                <li style={{ fontSize: 12, color: "#64748b" }}>
+                  y {diagFichadas.incompletas.length - 12} más en {monthLabel(month)}…
+                </li>
+              )}
+            </ul>
+          )}
         </div>
       )}
       <Panel

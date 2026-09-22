@@ -271,6 +271,33 @@ const categorizeMinutes = (dow: number, s: number, e: number, isFeriado = false)
   return { normalHours: normal, extra50Hours: overtime - nightExtra, extra100Hours: 0, night50Hours: nightExtra };
 };
 
+// Jornada minima para creerle a la fichada. El reloj dispara RAFAGAS (varias lecturas seguidas al
+// pasar la cara) y la regla del extractor es "entrada = primera lectura del dia, salida = ultima":
+// si la persona fichó SOLO al entrar, la "salida" termina siendo otra lectura de esa misma rafaga y
+// el dia queda con entrada y salida casi iguales. Eso no es una jornada: es una salida que falta.
+export const MIN_JORNADA_MINUTOS = 10;
+
+export type FichadaEstado =
+  | "ok" // entrada y salida creibles: se pueden calcular las horas
+  | "sin_fichada" // el dia no tiene ninguna marca
+  | "sin_entrada" // hay salida pero no entrada
+  | "sin_salida" // fichó al entrar y no al salir (lo mas comun en el taller)
+  | "revisar"; // entrada y salida a menos de MIN_JORNADA_MINUTOS: la salida es de la misma rafaga
+
+// Estado de la fichada de un dia. Es la unica regla que decide si un dia se puede liquidar solo o
+// si hay que arreglarlo a mano, y la usan tanto el calculo de horas como los avisos de la solapa.
+export const classifyFichada = (checkIn?: string, checkOut?: string): FichadaEstado => {
+  const inMin = timeToMinutes(checkIn);
+  const outMin = timeToMinutes(checkOut);
+  if (inMin == null && outMin == null) return "sin_fichada";
+  if (inMin == null) return "sin_entrada";
+  if (outMin == null) return "sin_salida";
+  // Salida ANTERIOR a la entrada = cruzo la medianoche (turno de noche cargado a mano). Salida IGUAL
+  // a la entrada no es un turno de 24 horas: es la misma marca repetida.
+  const span = outMin > inMin ? outMin - inMin : outMin < inMin ? outMin + 1440 - inMin : 0;
+  return span < MIN_JORNADA_MINUTOS ? "revisar" : "ok";
+};
+
 // Deriva las 4 categorías de horas del convenio para un día, a partir de checkIn/checkOut.
 // Descuenta el almuerzo (13:30-14:00) partiendo el tiempo trabajado en dos tramos. Devuelve todo en 0
 // si falta algún dato o el rango no es válido.
@@ -283,11 +310,13 @@ export const deriveConvenioHours = (
   feriado?: boolean
 ): ConvenioHours => {
   const zero: ConvenioHours = { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
-  const inMin = timeToMinutes(checkIn);
-  let outMin = timeToMinutes(checkOut);
-  if (inMin == null || outMin == null) return zero;
-  if (outMin <= inMin) outMin += 1440; // cruzó medianoche
-  if (outMin <= inMin) return zero;
+  // Sin salida creible no hay jornada. ANTES, con salida == entrada se asumia "cruzo la medianoche"
+  // y el dia se pagaba como 24 HORAS trabajadas: una sola fichada del reloj podia meter una jornada
+  // entera de extras en la liquidacion.
+  if (classifyFichada(checkIn, checkOut) !== "ok") return zero;
+  const inMin = timeToMinutes(checkIn)!;
+  let outMin = timeToMinutes(checkOut)!;
+  if (outMin < inMin) outMin += 1440; // cruzó medianoche
 
   const dow = dayOfWeek(dateKey);
   const isFeriado = feriado ?? esFeriado(dateKey);

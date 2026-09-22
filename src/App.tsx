@@ -40,7 +40,7 @@ import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./
 import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
 import { porcentajePorAsistencia } from "./domain/presentismo";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
-import { deriveConvenioHours, summarizeMonthAttendance } from "./domain/attendance";
+import { classifyFichada, deriveConvenioHours, summarizeMonthAttendance } from "./domain/attendance";
 import {
   buildCierreResumenHtml,
   buildCierreBancoHtml,
@@ -3168,6 +3168,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // inicial EXITOSA del estado remoto. Si la carga falla (base caida/lenta) o aun no
   // ocurrio, el autosave NO sube nada -> nunca pisa los datos buenos con estado vacio.
   const supabaseHydratedOkRef = useRef(false);
+  // Dias (empleado|fecha) a los que ya se les calcularon las horas solas en esta sesion. Evita que
+  // un dia raro quede reintentandose una y otra vez.
+  const autoHorasHechasRef = useRef<Set<string>>(new Set());
+  const [supabaseHydratedTick, setSupabaseHydratedTick] = useState(0);
   // Guard anti-pérdida por CONTENIDO: ultima cantidad de items vista. Si un guardado queda
   // vacio habiendo tenido datos, se bloquea (no se pisan los datos buenos con estado vacio).
   const lastNonEmptyContentCountRef = useRef(0);
@@ -3605,7 +3609,12 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         const remoteRecord = await readSupabasePersistedAppStateRecord();
         applyIncomingSupabaseSnapshot(remoteRecord, "poll");
         // Carga remota OK: recien ahora habilitamos la escritura a Supabase.
-        supabaseHydratedOkRef.current = true;
+        if (!supabaseHydratedOkRef.current) {
+          supabaseHydratedOkRef.current = true;
+          // Aviso (una sola vez) para lo que tiene que correr recien con el estado remoto puesto,
+          // como el calculo automatico de las horas de las fichadas.
+          setSupabaseHydratedTick(1);
+        }
       } catch (error) {
         console.log("COLLAB SYNC ERROR:", error);
       }
@@ -14433,7 +14442,7 @@ Escribi CERRAR para confirmar:`
   // month = null -> TODOS los meses (arregla el caso "solo cargaba el mes abierto").
   // NO toca: dias bloqueados (candado / editados a mano), dias con horas ya cargadas, ni meses
   // liquidados a mano (payroll.savedAt). Es idempotente: al segundo pase no encuentra nada nuevo.
-  const precargarHorasDesdeFichadas = (
+  const listarDiasParaPrecargar = (
     month: string | null,
     company: "all" | CompanyName
   ) => {
@@ -14451,18 +14460,45 @@ Escribi CERRAR para confirmar:`
         if (!item.checkIn || !item.checkOut) return;
         if ((item as any).locked) return; // bloqueado: la carga manual gana
         if (mesesCerrados.has(item.date.slice(0, 7))) return; // mes ya liquidado a mano
+        // El dia marcado como ausencia o vacaciones no se rellena con horas aunque tenga fichada.
+        if (
+          item.status === "vacaciones" ||
+          item.status === "ausente_justificado" ||
+          item.status === "ausente_injustificado"
+        )
+          return;
         const horas =
           Number(item.normalHours || 0) +
           Number(item.extra50Hours || 0) +
           Number(item.extra100Hours || 0) +
           Number((item as any).night50Hours || 0);
         if (horas > 0) return; // ya tiene horas: no se toca
+        // Sin salida creible no hay nada que calcular (el que fichó solo al entrar queda para
+        // arreglar a mano). Si no se filtrara aca, el dia volveria a entrar en la lista para siempre.
+        const derived = deriveConvenioHours(
+          item.date,
+          item.checkIn,
+          item.checkOut,
+          item.status === "feriado" ? true : undefined
+        );
+        const totalDerivado =
+          derived.normalHours + derived.extra50Hours + derived.extra100Hours + derived.night50Hours;
+        if (totalDerivado <= 0) return;
         objetivos.push({ id: employee.id, date: item.date, checkOut: item.checkOut });
       });
     });
-    objetivos.forEach((o) =>
-      updateAttendanceRecord(o.id, o.date, "checkOut", o.checkOut, { fromAutofill: true })
-    );
+    return objetivos;
+  };
+
+  const precargarHorasDesdeFichadas = (
+    month: string | null,
+    company: "all" | CompanyName
+  ) => {
+    const objetivos = listarDiasParaPrecargar(month, company);
+    objetivos.forEach((o) => {
+      autoHorasHechasRef.current.add(`${o.id}|${o.date}`);
+      updateAttendanceRecord(o.id, o.date, "checkOut", o.checkOut, { fromAutofill: true });
+    });
     return objetivos.length;
   };
 
@@ -14631,6 +14667,26 @@ Escribi CERRAR para confirmar:`
       })
     );
   };
+
+  // Las horas del convenio se calculan SOLAS. El reloj (sync Dahua) escribe entrada y salida
+  // directo en Supabase con las horas en cero: si nadie apretaba el boton "calcular horas", la
+  // liquidacion no veia esos dias (habia 106 dias de septiembre asi). Ahora, apenas el estado
+  // remoto llega, se completan los dias que se pueden calcular.
+  // No pisa nada: saltea los dias bloqueados (editados a mano), los que ya tienen horas, los meses
+  // con liquidacion guardada y los que no tienen una salida creible. Y cada dia se intenta UNA sola
+  // vez por sesion (autoHorasHechasRef), asi ni un dato raro puede dejarlo reintentando en loop.
+  useEffect(() => {
+    if (!supabaseHydratedOkRef.current) return;
+    const nuevos = listarDiasParaPrecargar(null, "all").filter(
+      (o) => !autoHorasHechasRef.current.has(`${o.id}|${o.date}`)
+    );
+    if (nuevos.length === 0) return;
+    nuevos.forEach((o) => {
+      autoHorasHechasRef.current.add(`${o.id}|${o.date}`);
+      updateAttendanceRecord(o.id, o.date, "checkOut", o.checkOut, { fromAutofill: true });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [employees, supabaseHydratedTick]);
 
   const updateEmployeeDocument = (
     employeeId: number,

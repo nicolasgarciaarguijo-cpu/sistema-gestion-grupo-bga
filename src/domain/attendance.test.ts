@@ -3,6 +3,7 @@ import {
   summarizeMonthAttendance,
   scheduleForDate,
   dayOfWeek,
+  classifyFichada,
   deriveConvenioHours,
   WORKSHOP_SCHEDULE,
   seVeEnElDia,
@@ -230,5 +231,47 @@ describe("quién se lista en la celda del día", () => {
 
   it("el día sin dato no se lista", () => {
     expect(seVeEnElDia(dia("none"), false)).toBe(false);
+  });
+});
+
+// Regresion del reloj: la gente ficha al entrar y no al salir, y el extractor toma "primera lectura
+// = entrada, ultima = salida". Con una sola rafaga las dos horas quedan iguales, y eso ANTES se
+// tomaba como "cruzo la medianoche" => 24 horas trabajadas en la liquidacion.
+describe("classifyFichada / fichadas incompletas del reloj", () => {
+  it("entrada y salida iguales = falta la salida, NO una jornada de 24 horas", () => {
+    expect(classifyFichada("07:21", "07:21")).toBe("revisar");
+    expect(deriveConvenioHours("2026-09-18", "07:21", "07:21")).toEqual({
+      normalHours: 0,
+      extra50Hours: 0,
+      extra100Hours: 0,
+      night50Hours: 0,
+    });
+  });
+
+  it("la rafaga de un par de minutos tampoco es jornada", () => {
+    expect(classifyFichada("07:08", "07:12")).toBe("revisar");
+    expect(deriveConvenioHours("2026-09-17", "07:08", "07:12")).toEqual({
+      normalHours: 0,
+      extra50Hours: 0,
+      extra100Hours: 0,
+      night50Hours: 0,
+    });
+  });
+
+  it("distingue el dia sin marcas, el que solo fichó la entrada y el que solo fichó la salida", () => {
+    expect(classifyFichada(undefined, undefined)).toBe("sin_fichada");
+    expect(classifyFichada("07:30", undefined)).toBe("sin_salida");
+    expect(classifyFichada("", "17:00")).toBe("sin_entrada");
+  });
+
+  it("la jornada normal sigue siendo ok y se calcula igual", () => {
+    expect(classifyFichada("07:30", "17:00")).toBe("ok");
+    expect(deriveConvenioHours("2026-08-03", "07:30", "17:00").normalHours).toBe(9);
+  });
+
+  it("el turno que cruza la medianoche se sigue respetando", () => {
+    expect(classifyFichada("22:00", "06:00")).toBe("ok");
+    const h = deriveConvenioHours("2026-08-03", "22:00", "06:00");
+    expect(h.normalHours + h.extra50Hours + h.extra100Hours + h.night50Hours).toBeCloseTo(8, 2);
   });
 });
