@@ -20,7 +20,12 @@ ERP web multiempresa y multiusuario en tiempo real para Grupo BGA.
 - **Color = semántica de empresa:** AZUL = BGA, MARRÓN = De Raíz, GRIS = ambas (General).
   No alterar esos colores al tocar estética; solo mejorar contraste de textos neutros.
 - **Verificación:** después de cada cambio en `App.tsx`, correr `npx tsc --noEmit` (debe dar 0 errores).
-  El build completo de webpack es lento; en sandbox no siempre termina. `tsc` es la verificación rápida.
+  `tsc` es la verificación rápida, pero **NO alcanza para pushear**: Vercel y el CI corren
+  `react-scripts build` con `CI=true`, y ahí **todo warning de ESLint es un error** (incluido un
+  `eslint-disable-next-line` de una regla que esta config no tiene, p.ej. `react-hooks/exhaustive-deps`).
+  Pasó el 2026-09-23: dos deploys seguidos quedaron en ERROR por eso y producción se quedó atrás sin
+  que se notara. **Antes de `git push`, correr `CI=true npx react-scripts build`** (tarda unos minutos)
+  y, si el push ya salió, chequear el estado del deploy en Vercel.
   Si tocás lógica con tests (`src/lib/format.ts`, `src/domain/scale.ts`), correr también los tests.
 - **Commits:** incrementales, uno por cambio lógico, mensajes claros. Rama actual: `main`.
   Remoto `origin` configurado → `github.com/nicolasgarciaarguijo-cpu/sistema-gestion-grupo-bga`

@@ -14689,7 +14689,8 @@ Escribi CERRAR para confirmar:`
       autoHorasHechasRef.current.add(`${o.id}|${o.date}`);
       updateAttendanceRecord(o.id, o.date, "checkOut", o.checkOut, { fromAutofill: true });
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Depende a proposito solo de los empleados y del aviso de hidratacion: es lo unico que puede
+    // traer fichadas nuevas.
   }, [employees, supabaseHydratedTick]);
 
   const updateEmployeeDocument = (
