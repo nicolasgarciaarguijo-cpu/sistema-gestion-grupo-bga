@@ -22,6 +22,7 @@ import { mergeModuleSlice } from "./domain/mergeItems";
 import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
+import { ordenarSubpresupuestos } from "./domain/budgetSections";
 import { computePayrollSummary, isPartnerCategory, monthlyBlackPay } from "./domain/payroll";
 import {
   pagoAlimentaCalendario,
@@ -4860,8 +4861,11 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     budgetIncreases.some((item) => item.description.trim() || Number(item.pct || 0)) ||
     budgetDiscounts.some((item) => item.description.trim() || Number(item.amount || 0));
 
+  // Los subpresupuestos se muestran SIEMPRE en orden alfabetico (pedido de Nicolas): de aca sale la
+  // lista para la vista previa, el PDF del cliente, los totales y el trabajo aprobado. El bloque que
+  // se esta editando entra en el orden como uno mas, por su titulo.
   const workingBudgetSections = useMemo(
-    () => [
+    () => ordenarSubpresupuestos([
       ...subBudgets,
       ...(currentWorkingHasContent
         ? [
@@ -4882,7 +4886,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
             } as BudgetSection,
           ]
         : []),
-    ],
+    ]),
     [
       subBudgets,
       currentWorkingHasContent,
@@ -9086,7 +9090,7 @@ Escribi CERRAR para confirmar:`
       updateLabel: snapshot.budget.updateLabel || "",
     });
     setSubBudgets(
-      (snapshot.subBudgets || []).map((item) => ({
+      ordenarSubpresupuestos(snapshot.subBudgets || []).map((item) => ({
         ...item,
         quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
         materials: item.materials.map((row) => ({ ...row })),
@@ -9413,7 +9417,7 @@ Escribi CERRAR para confirmar:`
       }))
     );
     setSubBudgets(
-      (data.subBudgets || []).map((item) => ({
+      ordenarSubpresupuestos(data.subBudgets || []).map((item) => ({
         ...item,
         quantity: Number(item.quantity) > 0 ? Number(item.quantity) : 1,
         materials: item.materials.map((row) => ({ ...row })),
@@ -10928,7 +10932,7 @@ Escribi CERRAR para confirmar:`
 
     // El contenido editable (materiales, mano de obra, insumos, costos fijos, etc.) NO se
     // resetea al guardar un bloque: queda igual en pantalla para ajustar y guardar el siguiente.
-    setSubBudgets((prev) => [...prev, nextSection]);
+    setSubBudgets((prev) => ordenarSubpresupuestos([...prev, nextSection]));
     setStorageMessage(
       `${nextSection.title} guardado. El contenido quedo en pantalla para que ajustes y guardes el siguiente bloque.`
     );

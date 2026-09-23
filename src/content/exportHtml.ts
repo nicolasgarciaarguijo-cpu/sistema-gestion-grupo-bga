@@ -5,6 +5,7 @@ import { money } from "../lib/format";
 import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency } from "../domain/planos";
 import { describirTrabajo } from "../domain/jobDescription";
 import { resumirMaterialesDelTrabajo } from "../domain/jobMaterials";
+import { ordenarSubpresupuestos } from "../domain/budgetSections";
 
 const esc = (s: unknown): string =>
   String(s ?? "")
@@ -162,7 +163,8 @@ export function buildClientBudgetHtml(
 ): string {
   const snap: any = b.snapshot || {};
   const bd: any = snap.budget || {};
-  const sections: any[] = snap.subBudgets || [];
+  // Orden alfabetico, igual que en pantalla: el cliente lee la misma lista que el presupuestador.
+  const sections: any[] = ordenarSubpresupuestos(snap.subBudgets || []);
   const totals: any = snap.totals || {};
   // El `preview` de una imagen es base64 (autocontenido) o una URL publica del bucket budget-images.
   // Se usa tal cual (igual que la impresion al cliente); solo se neutraliza la comilla doble del atributo.

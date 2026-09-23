@@ -7,6 +7,7 @@
 // El dato ya existia pero enterrado en el snapshot del presupuesto y no se mostraba en ningun lado
 // despues de aprobar. Aca se junta en una sola forma para que las dos pantallas digan lo MISMO: si
 // manana cambia de donde sale la descripcion, se toca solo esta funcion.
+import { ordenarSubpresupuestos } from "./budgetSections";
 
 export type BloqueDelTrabajo = {
   titulo: string;
@@ -35,7 +36,7 @@ const texto = (v: unknown): string => String(v ?? "").trim();
 export function describirTrabajo(job: any): DescripcionDelTrabajo {
   const snap = job?.snapshot || {};
   const bud = snap.budget || {};
-  const subs: any[] = Array.isArray(snap.subBudgets) ? snap.subBudgets : [];
+  const subs: any[] = ordenarSubpresupuestos(Array.isArray(snap.subBudgets) ? snap.subBudgets : []);
 
   const bloques: BloqueDelTrabajo[] = subs
     .map((s, i) => ({

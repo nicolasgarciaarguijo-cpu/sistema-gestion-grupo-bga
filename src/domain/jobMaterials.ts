@@ -8,6 +8,7 @@
 // despues de aprobar no se muestra en ningun lado. Aca se junta en una sola forma, igual que hace
 // domain/jobDescription con la descripcion del trabajo: si manana cambia de donde sale, se toca solo
 // esta funcion.
+import { ordenarSubpresupuestos } from "./budgetSections";
 
 export type TipoDeMaterial = "material" | "insumo";
 
@@ -95,7 +96,7 @@ const firmaDeBloque = (filas: FilaDeMaterial[]): string =>
 
 export function resumirMaterialesDelTrabajo(job: any): ResumenDeMateriales {
   const snap = job?.snapshot || {};
-  const subs: any[] = Array.isArray(snap.subBudgets) ? snap.subBudgets : [];
+  const subs: any[] = ordenarSubpresupuestos(Array.isArray(snap.subBudgets) ? snap.subBudgets : []);
 
   const bloques: BloqueDeMateriales[] = subs
     .map((sub, i) => {
