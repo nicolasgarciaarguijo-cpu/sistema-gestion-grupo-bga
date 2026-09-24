@@ -5,6 +5,7 @@ import {
   getJobBillingSemaphore,
   getInvoicingSemaphore,
   getBudgetSemaphore,
+  isBudgetExpired,
   getStockSemaphore,
   getClientSemaphore,
 } from "./semaphores";
@@ -102,4 +103,18 @@ describe("getClientSemaphore", () => {
   it("sin CUIT ni contacto = rojo", () => expect(getClientSemaphore({}).level).toBe("rojo"));
   it("solo uno = amarillo", () => expect(getClientSemaphore({ clientTaxId: "20-1-3" }).level).toBe("amarillo"));
   it("completos = verde", () => expect(getClientSemaphore({ clientTaxId: "20-1-3", contactPhone: "11" }).level).toBe("verde"));
+});
+
+describe("isBudgetExpired", () => {
+  const withValidity = (date: string, status = "borrador") => ({
+    status,
+    date,
+    snapshot: { budget: { validity: "15 dias" } },
+  });
+  it("paso la validez y sin respuesta = vencido", () =>
+    expect(isBudgetExpired(withValidity("2020-01-01"))).toBe(true));
+  it("aprobado nunca vence", () =>
+    expect(isBudgetExpired(withValidity("2020-01-01", "aprobado"))).toBe(false));
+  it("dentro de la validez = vigente", () =>
+    expect(isBudgetExpired(withValidity(new Date().toISOString().slice(0, 10)))).toBe(false));
 });

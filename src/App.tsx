@@ -22,6 +22,11 @@ import { mergeModuleSlice } from "./domain/mergeItems";
 import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
+import {
+  refreshSectionPrices,
+  computeSectionTotals,
+  type PriceChange,
+} from "./domain/budgetPriceRefresh";
 import { ordenarSubpresupuestos } from "./domain/budgetSections";
 import { computePayrollSummary, isPartnerCategory, monthlyBlackPay } from "./domain/payroll";
 import {
@@ -138,6 +143,7 @@ import {
   getJobSemaphore,
   getJobBillingSemaphore,
   getBudgetSemaphore,
+  isBudgetExpired,
   getStockSemaphore,
   getClientSemaphore,
 } from "./domain/semaphores";
@@ -11493,6 +11499,84 @@ Escribi CERRAR para confirmar:`
     setLabor(activeLaborMarkersForBudget.map(mapLaborMarkerToBudgetRow));
   };
 
+  // El presupuesto que se esta editando ya paso su validez (y sigue sin respuesta del cliente).
+  const editingBudgetExpired = useMemo(() => {
+    if (!editingBudgetId) return false;
+    const saved = savedBudgets.find((item) => item.id === editingBudgetId);
+    return !!saved && isBudgetExpired(saved);
+  }, [editingBudgetId, savedBudgets]);
+
+  // "Actualizar presupuesto" (presupuesto vencido): trae los precios de HOY del Stock y de los
+  // Marcadores (materiales, insumos, mano de obra y costos fijos) al bloque actual y a todos los
+  // subpresupuestos, sin tocar cantidades, horas ni parametros. Solo aplica aumentos. Deja la fecha
+  // en hoy para que la validez corra de nuevo y se pueda volver a presentar. Se guarda con "Actualizar".
+  const refreshExpiredBudgetPrices = (): { changes: PriceChange[]; decreasesKept: number } => {
+    const sources = {
+      stockItems: stockSearchOptions,
+      supplyMarkers: activeSupplyMarkersForBudget,
+      laborMarkers: activeLaborMarkersForBudget,
+      fixedCosts: [
+        ...activeFixedMarkersForBudget.map((item) => ({
+          id: item.id,
+          description: `${item.group} - ${item.description}`,
+          amount: item.amount,
+        })),
+        ...derivedCostAnalysisFixedCostsForBudget.map((item) => ({
+          description: item.description,
+          amount: item.amount,
+        })),
+      ],
+      company: budget.company,
+    };
+    const sectionParams = {
+      laborDeviationPct,
+      nominalLaborHoursPerEmployee,
+      allocationMode,
+      manualAllocationPct,
+      deviationPct,
+      markupPct,
+      commissionPct,
+      vatPct,
+    };
+
+    const changes: PriceChange[] = [];
+    let decreasesKept = 0;
+
+    const nextSubBudgets = subBudgets.map((section) => {
+      const result = refreshSectionPrices(section, sources, section.title || "Bloque");
+      changes.push(...result.changes);
+      decreasesKept += result.decreasesKept;
+      if (result.changes.length === 0) return section;
+      return { ...result.rows, totals: computeSectionTotals(result.rows, sectionParams) };
+    });
+
+    const working = refreshSectionPrices(
+      { materials, basicSupplies, labor, fixedCosts },
+      sources,
+      subBudgetTitle.trim() || "Bloque actual"
+    );
+    changes.push(...working.changes);
+    decreasesKept += working.decreasesKept;
+
+    if (nextSubBudgets.some((section, index) => section !== subBudgets[index])) {
+      setSubBudgets(nextSubBudgets);
+    }
+    if (working.changes.length > 0) {
+      setMaterials(working.rows.materials);
+      setBasicSupplies(working.rows.basicSupplies);
+      setLabor(working.rows.labor);
+      setFixedCosts(working.rows.fixedCosts);
+    }
+    setBudget((prev) => ({ ...prev, date: todayIso() }));
+
+    setStorageMessage(
+      changes.length > 0
+        ? `Presupuesto actualizado: ${changes.length} precio(s) subieron y se corrigieron. Revisalo y apreta "Actualizar" para guardarlo.`
+        : `Presupuesto actualizado: los precios no tuvieron aumentos, solo se renovo la fecha. Apreta "Actualizar" para guardarlo.`
+    );
+    return { changes, decreasesKept };
+  };
+
   const addLabor = () =>
     setLabor((prev) => [
       ...prev,
@@ -17770,6 +17854,8 @@ Escribi CERRAR para confirmar:`
           restoreBasicSuppliesFromMarkers={restoreBasicSuppliesFromMarkers}
           restoreFixedCostsFromMarkers={restoreFixedCostsFromMarkers}
           restoreLaborFromMarkers={restoreLaborFromMarkers}
+          editingBudgetExpired={editingBudgetExpired}
+          refreshExpiredBudgetPrices={refreshExpiredBudgetPrices}
           exportPrint={exportPrint}
           uploadBudgetImage={uploadBudgetImage}
           effectiveIsAdmin={effectiveIsAdmin}

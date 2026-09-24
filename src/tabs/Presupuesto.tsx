@@ -12,6 +12,7 @@ import {
 } from "../ui/planilla";
 import { WORK_TYPE_OPTIONS } from "../domain/types";
 import type { CompanyName, WorkTypeName } from "../domain/types";
+import type { PriceChange } from "../domain/budgetPriceRefresh";
 
 // Buscador de clientes del CRM: reemplaza al <datalist> nativo (que en varios navegadores no abre al
 // clickear, solo al tipear). Este SIEMPRE abre al enfocar, filtra por nombre y se elige con un clic.
@@ -235,6 +236,8 @@ type PresupuestoTabProps = {
   restoreBasicSuppliesFromMarkers: any;
   restoreFixedCostsFromMarkers: any;
   restoreLaborFromMarkers: any;
+  editingBudgetExpired: boolean;
+  refreshExpiredBudgetPrices: () => { changes: PriceChange[]; decreasesKept: number };
   exportPrint: any;
   uploadBudgetImage: any;
 };
@@ -267,7 +270,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
     loadBudgetFromSnapshot, loadSubBudgetIntoEditor, removeSubBudget,
     saveCurrentAsSubBudget, clearCurrentBlock, restoreAllBudgetBlocksFromMarkers,
     restoreBasicSuppliesFromMarkers, restoreFixedCostsFromMarkers,
-    restoreLaborFromMarkers, exportPrint, uploadBudgetImage,
+    restoreLaborFromMarkers, editingBudgetExpired, refreshExpiredBudgetPrices,
+    exportPrint, uploadBudgetImage,
     effectiveIsAdmin, allowedCompaniesForSession, canAccessCompany,
     budgetEstimatedDeliveryDate, approvedJobs, occupancyPct, allocationPctUsed,
     totalLaborDeviationAmount, deviationAmount, markupAmount, fixedCostsApplied,
@@ -296,7 +300,72 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
   const [menuAumentos, setMenuAumentos] = React.useState<null | { x: number; y: number; id: number }>(null);
   const anchosDescuentos = usePlanillaWidths("ppto.descuentos", { label: 240, col: 130, colCompact: 100 });
   const [menuDescuentos, setMenuDescuentos] = React.useState<null | { x: number; y: number; id: number }>(null);
+  // Resultado del ultimo "Actualizar presupuesto" (se limpia al salir de la edicion).
+  const [refreshReport, setRefreshReport] = React.useState<null | {
+    changes: PriceChange[];
+    decreasesKept: number;
+  }>(null);
+  React.useEffect(() => setRefreshReport(null), [editingBudgetId]);
+  const showRefreshBanner = !!editingBudgetId && (editingBudgetExpired || !!refreshReport);
   return (
+    <>
+      {showRefreshBanner && (
+        <div style={{ ...styles.noticeBox, marginBottom: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <div>
+              {refreshReport ? (
+                <strong>
+                  {refreshReport.changes.length > 0
+                    ? `Se corrigieron ${refreshReport.changes.length} precio(s) con aumento.`
+                    : "No hubo aumentos: los precios cotizados siguen al dia."}
+                </strong>
+              ) : (
+                <strong>Este presupuesto esta vencido.</strong>
+              )}{" "}
+              {refreshReport
+                ? `La fecha quedo en hoy. Revisalo y apreta "Actualizar" arriba para guardarlo y volver a presentarlo.${
+                    refreshReport.decreasesKept > 0
+                      ? ` (${refreshReport.decreasesKept} precio(s) hoy estan mas bajos: se dejaron como estaban.)`
+                      : ""
+                  }`
+                : "Actualizalo para traer los precios de hoy de materiales, marcadores y mano de obra, sin cambiar cantidades, horas ni markup."}
+            </div>
+            <ButtonLike onClick={() => setRefreshReport(refreshExpiredBudgetPrices())}>
+              {refreshReport ? "Volver a actualizar" : "Actualizar presupuesto"}
+            </ButtonLike>
+          </div>
+          {refreshReport && refreshReport.changes.length > 0 && (
+            <div style={{ ...planillaWrap, marginTop: 10 }}>
+              <table className="planilla" style={planillaTable}>
+                <thead>
+                  <tr>
+                    <th style={thEsquina}>Item</th>
+                    <th style={thColumna}>Tipo</th>
+                    <th style={thColumna}>Bloque</th>
+                    <th style={thColumna}>Antes</th>
+                    <th style={thColumna}>Ahora</th>
+                    <th style={thColumna}>Aumento</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {refreshReport.changes.map((change, index) => (
+                    <tr key={index}>
+                      <td style={tdNombre}>{change.description || "-"}</td>
+                      <td style={tdDato}>{change.kind}</td>
+                      <td style={tdDato}>{change.block}</td>
+                      <td style={tdDato}>{money(change.before)}</td>
+                      <td style={tdDato}>{money(change.after)}</td>
+                      <td style={tdDato}>
+                        {change.before > 0 ? pct(((change.after - change.before) / change.before) * 100) : "-"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
         <div style={styles.budgetLayout}>
           <div style={styles.budgetMain}>
           <div style={styles.budgetMainTop}>
@@ -2349,5 +2418,6 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
             {renderBudgetHistoryBlock()}
           </div>
         </div>
+    </>
   );
 }

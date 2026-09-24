@@ -80,6 +80,33 @@ const getJobSemaphore = (job: {
   return { level: "amarillo", label: since ? `pendiente (desde ${since})` : "pendiente" };
 };
 
+// Fecha en que vence un presupuesto: su fecha + los dias de validez (el numero que haya en el texto
+// "validez", ej. "15 dias"). "" si no tiene validez o fecha.
+const getBudgetDueDate = (budget: {
+  date?: string;
+  snapshot?: { budget?: { validity?: string } };
+}): string => {
+  const validityDays = Number(/(\d+)/.exec(budget.snapshot?.budget?.validity || "")?.[1] || 0);
+  if (!(validityDays > 0) || !budget.date) return "";
+  const [y, m, d] = budget.date.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const venc = new Date(y, m - 1, d + validityDays);
+  return `${venc.getFullYear()}-${String(venc.getMonth() + 1).padStart(2, "0")}-${String(
+    venc.getDate()
+  ).padStart(2, "0")}`;
+};
+
+// Vencido = sigue sin respuesta (ni aprobado ni no aprobado) y ya paso su validez.
+const isBudgetExpired = (budget: {
+  status?: string;
+  date?: string;
+  snapshot?: { budget?: { validity?: string } };
+}): boolean => {
+  if (budget.status === "aprobado" || budget.status === "no_aprobado") return false;
+  const left = daysUntilDate(getBudgetDueDate(budget));
+  return left !== null && left < 0;
+};
+
 // Semaforo de un presupuesto del historial: aprobado=verde, no aprobado=rojo, y si sigue
 // en borrador/pendiente, vencido (paso la validez) = rojo, vigente = amarillo.
 const getBudgetSemaphore = (budget: {
@@ -89,19 +116,8 @@ const getBudgetSemaphore = (budget: {
 }): { level: SemaphoreLevel; label: string } => {
   if (budget.status === "aprobado") return { level: "verde", label: "aprobado" };
   if (budget.status === "no_aprobado") return { level: "rojo", label: "no aprobado" };
-  const validityDays = Number(/(\d+)/.exec(budget.snapshot?.budget?.validity || "")?.[1] || 0);
-  if (validityDays > 0 && budget.date) {
-    const [y, m, d] = budget.date.slice(0, 10).split("-").map(Number);
-    if (y && m && d) {
-      const venc = new Date(y, m - 1, d + validityDays);
-      const vencStr = `${venc.getFullYear()}-${String(venc.getMonth() + 1).padStart(2, "0")}-${String(
-        venc.getDate()
-      ).padStart(2, "0")}`;
-      const left = daysUntilDate(vencStr);
-      if (left !== null && left < 0)
-        return { level: "rojo", label: `vencido ${agingPhrase(vencStr)}`.trim() };
-    }
-  }
+  if (isBudgetExpired(budget))
+    return { level: "rojo", label: `vencido ${agingPhrase(getBudgetDueDate(budget))}`.trim() };
   return { level: "amarillo", label: "vigente" };
 };
 
@@ -197,6 +213,7 @@ export {
   getJobBillingSemaphore,
   getInvoicingSemaphore,
   getBudgetSemaphore,
+  isBudgetExpired,
   getStockSemaphore,
   getClientSemaphore,
 };
