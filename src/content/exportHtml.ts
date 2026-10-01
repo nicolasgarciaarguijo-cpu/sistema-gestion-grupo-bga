@@ -521,7 +521,8 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
 
   // ---- Anticipo pactado, partido por circuito. Es el mismo "Anticipo a cobrar" del sistema
   // (% anticipo x neto + IVA facturado): la parte facturada (% facturado) + el IVA va al blanco, el
-  // resto del anticipo al negro. Cada tarjeta sale solo si hay monto.
+  // resto del anticipo al negro. Cada tarjeta sale solo si hay monto. Al cliente NUNCA se le dice
+  // blanco/negro: el blanco figura como "transferible" y el negro como "efectivo".
   const advancePct = Number(job.anticipoPctResolved || 0);
   const billedPct = Math.max(0, Math.min(100, Number(job.billedPct ?? 100)));
   const advanceNet = Number(job.soldNetPrice || 0) * (advancePct / 100);
@@ -531,13 +532,13 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
     advanceWhite > 0.5 || advanceBlack > 0.5
       ? `<div class="grid">${
           advanceWhite > 0.5
-            ? `<div class="card"><div class="k">Anticipo en blanco (c/IVA)</div><div class="v">${money(
+            ? `<div class="card"><div class="k">Anticipo transferible (c/IVA)</div><div class="v">${money(
                 advanceWhite
               )}</div></div>`
             : ""
         }${
           advanceBlack > 0.5
-            ? `<div class="card"><div class="k">Anticipo negro</div><div class="v">${money(
+            ? `<div class="card"><div class="k">Anticipo en efectivo</div><div class="v">${money(
                 advanceBlack
               )}</div></div>`
             : ""
@@ -574,7 +575,7 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
     const net = Number(a.amount || 0);
     const white = (a.administration || "blanco") === "blanco";
     const vat = white ? net * (Number(a.vatRate ?? addVatDefault) / 100) : 0;
-    return { cur, net, vat, total: net + vat };
+    return { cur, net, vat, total: net + vat, forma: white ? "Transferible" : "Efectivo" };
   };
   const addTotals = (cur: "ARS" | "USD") =>
     additionals
@@ -584,11 +585,12 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
         (acc: any, l: any) => ({ net: acc.net + l.net, vat: acc.vat + l.vat, total: acc.total + l.total }),
         { net: 0, vat: 0, total: 0 }
       );
+  // la fila de total lleva una celda vacia bajo la columna "Forma de pago"
   const hasAddArs = additionals.some((a: any) => a.currency !== "USD");
   const hasAddUsd = additionals.some((a: any) => a.currency === "USD");
   const addTotRow = (cur: "ARS" | "USD") => {
     const t = addTotals(cur);
-    return `<tr class="tot"><td colspan="2">Total adicionales${cur === "USD" ? " U$S" : ""}</td>
+    return `<tr class="tot"><td colspan="3">Total adicionales${cur === "USD" ? " U$S" : ""}</td>
         <td class="num">${money(t.net, cur)}</td><td class="num">${money(t.vat, cur)}</td><td class="num">${money(
       t.total,
       cur
@@ -596,13 +598,14 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
   };
   const additionalsBlock = additionals.length
     ? `<h2>Adicionales</h2>
-    <table><thead><tr><th>Fecha</th><th>Detalle</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+    <table><thead><tr><th>Fecha</th><th>Detalle</th><th>Forma de pago</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
       <tbody>${additionals
         .map((a: any) => {
           const l = addLine(a);
           return `<tr>
         <td>${esc(a.date || "-")}</td>
         <td>${esc(a.description || "Adicional")}${l.cur === "USD" ? " (U$S)" : ""}</td>
+        <td>${l.forma}</td>
         <td class="num">${money(l.net, l.cur)}</td>
         <td class="num">${l.vat > 0 ? money(l.vat, l.cur) : "-"}</td>
         <td class="num">${money(l.total, l.cur)}</td></tr>`;

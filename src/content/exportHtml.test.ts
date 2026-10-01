@@ -296,6 +296,9 @@ describe("buildJobClientSummaryHtml · adicionales, dolares y cuenta bancaria", 
     expect(html).toContain("121.000,00");
     expect(html).toContain("MARMOL EXTRA (U$S)");
     expect(html).toContain("Total adicionales U$S");
+    expect(html).toContain("Transferible"); // ZOCALOS (blanco)
+    expect(html).toContain("Efectivo"); // MARMOL EXTRA (negro)
+    expect(html.toLowerCase()).not.toMatch(/blanco|negro/);
     expect(html).toContain("Composici&oacute;n del valor");
   });
 
@@ -343,16 +346,16 @@ describe("buildJobClientSummaryHtml · anticipo blanco / negro", () => {
 
   it("parte el anticipo: 50% de 1.000.000 = 500.000 -> 150.000 + IVA 63.000 blanco, 350.000 negro", () => {
     const html = buildJobClientSummaryHtml(job);
-    expect(html).toContain("Anticipo en blanco (c/IVA)");
+    expect(html).toContain("Anticipo transferible (c/IVA)");
     expect(html).toContain("213.000,00");
-    expect(html).toContain("Anticipo negro");
+    expect(html).toContain("Anticipo en efectivo");
     expect(html).toContain("350.000,00");
   });
 
   it("todo facturado: no hay anticipo negro", () => {
     const html = buildJobClientSummaryHtml({ ...job, billedPct: 100 });
-    expect(html).toContain("Anticipo en blanco");
-    expect(html).not.toContain("Anticipo negro");
+    expect(html).toContain("Anticipo transferible");
+    expect(html).not.toContain("Anticipo en efectivo");
   });
 
   it("sin anticipo pactado no salen las tarjetas", () => {
