@@ -405,7 +405,17 @@ function bloqueQueSeHizo(job: any): string {
     ${d.notas ? `<p class="sub">Nota: ${esc(d.notas)}</p>` : ""}`;
 }
 
-export function buildJobClientSummaryHtml(job: any): string {
+// Datos de la cuenta de la empresa del trabajo, para el pie "Datos para transferencia".
+export type ClientSummaryBanking = {
+  holder?: string;
+  bankName?: string;
+  bankAlias?: string;
+  bankCbu?: string;
+  bankAccount?: string;
+  taxId?: string;
+};
+
+export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanking): string {
   const invoices = job.invoices || [];
   const payments = job.payments || [];
   const retentions = job.retentions || [];
@@ -509,6 +519,172 @@ export function buildJobClientSummaryHtml(job: any): string {
         )}</td></tr>`
       : `<tr class="tot"><td>Saldo pendiente</td><td class="num">${money(Math.max(0, saldo))}</td></tr>`;
 
+  // ---- Anticipo pactado, partido por circuito. Es el mismo "Anticipo a cobrar" del sistema
+  // (% anticipo x neto + IVA facturado): la parte facturada (% facturado) + el IVA va al blanco, el
+  // resto del anticipo al negro. Cada tarjeta sale solo si hay monto.
+  const advancePct = Number(job.anticipoPctResolved || 0);
+  const billedPct = Math.max(0, Math.min(100, Number(job.billedPct ?? 100)));
+  const advanceNet = Number(job.soldNetPrice || 0) * (advancePct / 100);
+  const advanceWhite = advancePct > 0 ? advanceNet * (billedPct / 100) + Number(job.invoiceVatAmount || 0) : 0;
+  const advanceBlack = advancePct > 0 ? advanceNet * (1 - billedPct / 100) : 0;
+  const advanceCards =
+    advanceWhite > 0.5 || advanceBlack > 0.5
+      ? `<div class="grid">${
+          advanceWhite > 0.5
+            ? `<div class="card"><div class="k">Anticipo en blanco (c/IVA)</div><div class="v">${money(
+                advanceWhite
+              )}</div></div>`
+            : ""
+        }${
+          advanceBlack > 0.5
+            ? `<div class="card"><div class="k">Anticipo negro</div><div class="v">${money(
+                advanceBlack
+              )}</div></div>`
+            : ""
+        }</div>`
+      : "";
+
+  // ---- Composicion del valor del trabajo (pesos): neto + IVA facturado + adicionales - descuentos.
+  const soldNet = Number(job.soldNetPrice || 0);
+  const invoiceVat = Number(job.invoiceVatAmount || 0);
+  const addArsNet = Number(job.additionalsWhiteNet || 0) + Number(job.additionalsBlackNet || 0);
+  const addArsVat = Number(job.additionalsVat || 0);
+  const discountsTotal = Number(job.discountsTotal || 0);
+  const valorRows = [
+    `<tr><td>Precio del trabajo (neto)</td><td class="num">${money(soldNet)}</td></tr>`,
+    invoiceVat > 0.5
+      ? `<tr><td>IVA sobre lo facturado</td><td class="num">${money(invoiceVat)}</td></tr>`
+      : "",
+    addArsNet + addArsVat > 0.5
+      ? `<tr><td>Adicionales${addArsVat > 0.5 ? " (con IVA)" : ""}</td><td class="num">${money(
+          addArsNet + addArsVat
+        )}</td></tr>`
+      : "",
+    discountsTotal > 0.5
+      ? `<tr><td>Descuentos</td><td class="num">- ${money(discountsTotal)}</td></tr>`
+      : "",
+    `<tr class="tot"><td>Valor del trabajo</td><td class="num">${money(valueToCollect)}</td></tr>`,
+  ].join("");
+
+  // ---- Adicionales: cada uno en SU moneda. El total en $ y el total en U$S van separados.
+  const additionals = (job.additionals || []).slice().sort((a: any, b: any) => byDate(a, b, "date"));
+  const addVatDefault = Number(job.snapshot?.params?.vatPct ?? 21);
+  const addLine = (a: any) => {
+    const cur: "ARS" | "USD" = a.currency === "USD" ? "USD" : "ARS";
+    const net = Number(a.amount || 0);
+    const white = (a.administration || "blanco") === "blanco";
+    const vat = white ? net * (Number(a.vatRate ?? addVatDefault) / 100) : 0;
+    return { cur, net, vat, total: net + vat };
+  };
+  const addTotals = (cur: "ARS" | "USD") =>
+    additionals
+      .map(addLine)
+      .filter((l: any) => l.cur === cur)
+      .reduce(
+        (acc: any, l: any) => ({ net: acc.net + l.net, vat: acc.vat + l.vat, total: acc.total + l.total }),
+        { net: 0, vat: 0, total: 0 }
+      );
+  const hasAddArs = additionals.some((a: any) => a.currency !== "USD");
+  const hasAddUsd = additionals.some((a: any) => a.currency === "USD");
+  const addTotRow = (cur: "ARS" | "USD") => {
+    const t = addTotals(cur);
+    return `<tr class="tot"><td colspan="2">Total adicionales${cur === "USD" ? " U$S" : ""}</td>
+        <td class="num">${money(t.net, cur)}</td><td class="num">${money(t.vat, cur)}</td><td class="num">${money(
+      t.total,
+      cur
+    )}</td></tr>`;
+  };
+  const additionalsBlock = additionals.length
+    ? `<h2>Adicionales</h2>
+    <table><thead><tr><th>Fecha</th><th>Detalle</th><th class="num">Neto</th><th class="num">IVA</th><th class="num">Total</th></tr></thead>
+      <tbody>${additionals
+        .map((a: any) => {
+          const l = addLine(a);
+          return `<tr>
+        <td>${esc(a.date || "-")}</td>
+        <td>${esc(a.description || "Adicional")}${l.cur === "USD" ? " (U$S)" : ""}</td>
+        <td class="num">${money(l.net, l.cur)}</td>
+        <td class="num">${l.vat > 0 ? money(l.vat, l.cur) : "-"}</td>
+        <td class="num">${money(l.total, l.cur)}</td></tr>`;
+        })
+        .join("")}
+        ${hasAddArs ? addTotRow("ARS") : ""}
+        ${hasAddUsd ? addTotRow("USD") : ""}
+      </tbody></table>`
+    : "";
+
+  const discounts = job.discounts || [];
+  const discountsBlock = discounts.length
+    ? `<h2>Descuentos</h2>
+    <table><thead><tr><th>Fecha</th><th>Detalle</th><th class="num">Monto</th></tr></thead>
+      <tbody>${discounts
+        .slice()
+        .sort((a: any, b: any) => byDate(a, b, "date"))
+        .map(
+          (d: any) => `<tr>
+        <td>${esc(d.date || "-")}</td>
+        <td>${esc(d.description || "Descuento")}</td>
+        <td class="num">- ${money(d.amount)}</td></tr>`
+        )
+        .join("")}
+        <tr class="tot"><td colspan="2">Total descuentos</td><td class="num">- ${money(discountsTotal)}</td></tr>
+      </tbody></table>`
+    : "";
+
+  // ---- Parte en dolares: nunca se mezcla con los pesos; tiene su propio cierre.
+  const soldUsd = Number(job.soldNetPriceUsd || 0);
+  const addUsd = hasAddUsd ? addTotals("USD").total : 0;
+  const valueUsd = soldUsd + addUsd;
+  const hasUsd = valueUsd > 0 || usdTotal > 0;
+  const saldoUsd = valueUsd - usdTotal;
+  const usdCards = hasUsd
+    ? `<div class="grid">
+      <div class="card"><div class="k">Valor del trabajo U$S</div><div class="v">${money(valueUsd, "USD")}</div></div>
+      <div class="card"><div class="k">Cobrado U$S</div><div class="v">${money(usdTotal, "USD")}</div></div>
+      <div class="card"><div class="k">Saldo pendiente U$S</div><div class="v">${money(
+        Math.max(0, saldoUsd),
+        "USD"
+      )}</div></div>
+    </div>`
+    : "";
+  const usdSaldoRow =
+    saldoUsd < -0.5
+      ? `<tr class="tot"><td>Saldo a favor del cliente U$S</td><td class="num">${money(
+          Math.abs(saldoUsd),
+          "USD"
+        )}</td></tr>`
+      : `<tr class="tot"><td>Saldo pendiente U$S</td><td class="num">${money(
+          Math.max(0, saldoUsd),
+          "USD"
+        )}</td></tr>`;
+  const usdCierre = hasUsd
+    ? `<h2>C&oacute;mo cierra el saldo en d&oacute;lares</h2>
+    <table><tbody>
+      ${soldUsd > 0 ? `<tr><td>Precio del trabajo U$S (neto)</td><td class="num">${money(soldUsd, "USD")}</td></tr>` : ""}
+      ${addUsd > 0 ? `<tr><td>Adicionales U$S</td><td class="num">${money(addUsd, "USD")}</td></tr>` : ""}
+      <tr><td>Pagos recibidos U$S</td><td class="num">- ${money(usdTotal, "USD")}</td></tr>
+      ${usdSaldoRow}
+    </tbody></table>`
+    : "";
+
+  // ---- Cuenta bancaria de la empresa del trabajo, al pie.
+  const bankLines: [string, string][] = banking
+    ? ([
+        ["Titular", banking.holder],
+        ["CUIT", banking.taxId],
+        ["Banco", banking.bankName],
+        ["Cuenta", banking.bankAccount],
+        ["CBU", banking.bankCbu],
+        ["Alias", banking.bankAlias],
+      ].filter(([, v]) => !!v) as [string, string][])
+    : [];
+  const bankBlock = bankLines.length
+    ? `<h2>Datos para transferencia</h2>
+    <table><tbody>${bankLines
+      .map(([k, v]) => `<tr><td>${esc(k)}</td><td><b>${esc(v)}</b></td></tr>`)
+      .join("")}</tbody></table>`
+    : "";
+
   const body = `
     <h1>Resumen del trabajo N&deg; ${esc(job.budgetNumber)}</h1>
     <p class="sub">${esc(job.client)} &middot; ${esc(job.project || "-")} &middot; ${esc(job.company)}${
@@ -523,7 +699,13 @@ export function buildJobClientSummaryHtml(job: any): string {
         job.remainingToPay
       )}</div></div>
     </div>
+    ${advanceCards}
+    ${usdCards}
     ${bloqueQueSeHizo(job)}
+    <h2>Composici&oacute;n del valor</h2>
+    <table><tbody>${valorRows}</tbody></table>
+    ${additionalsBlock}
+    ${discountsBlock}
     <h2>Facturas emitidas</h2>
     <table><thead><tr><th>Fecha</th><th>Comprobante</th><th class="num">Total</th></tr></thead>
       <tbody>${invRows}</tbody></table>
@@ -547,7 +729,9 @@ export function buildJobClientSummaryHtml(job: any): string {
       <tr><td>Retenciones</td><td class="num">- ${money(retentionsTotal)}</td></tr>
       ${otrasRow}
       ${saldoRow}
-    </tbody></table>`;
+    </tbody></table>
+    ${usdCierre}
+    ${bankBlock}`;
   return page(`Resumen trabajo ${job.budgetNumber} - ${job.client}`, body);
 }
 

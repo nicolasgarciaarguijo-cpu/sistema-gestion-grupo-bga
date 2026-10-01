@@ -7297,7 +7297,15 @@ Escribi CERRAR para confirmar:`
   // nueva (imprimible o "guardar como PDF"). No toca la carpeta ni guarda nada.
   const openJobClientSummary = (job: any) => {
     try {
-      const html = buildJobClientSummaryHtml(job);
+      const meta = getCompanyMeta(job.company);
+      const html = buildJobClientSummaryHtml(job, {
+        holder: job.company,
+        taxId: meta.taxId,
+        bankName: meta.bankName,
+        bankAccount: meta.bankAccount,
+        bankCbu: meta.bankCbu,
+        bankAlias: meta.bankAlias,
+      });
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = window.URL.createObjectURL(blob);
       const win = window.open(url, "_blank");

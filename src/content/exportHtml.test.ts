@@ -262,3 +262,101 @@ describe("buildJobMaterialsHtml", () => {
     expect(html).toContain("no tiene materiales cargados");
   });
 });
+
+// El resumen al cliente tiene que mostrar TODO el trabajo: de donde sale el valor, los adicionales en
+// su moneda, la parte en dolares con su propio saldo, y la cuenta de la empresa del trabajo al pie.
+describe("buildJobClientSummaryHtml · adicionales, dolares y cuenta bancaria", () => {
+  const base = {
+    budgetNumber: "4001",
+    client: "CLIENTE",
+    project: "COCINA",
+    company: "De raiz s.r.l",
+    soldNetPrice: 1000000,
+    invoiceVatAmount: 0,
+    additionalsWhiteNet: 100000,
+    additionalsBlackNet: 0,
+    additionalsVat: 21000,
+    discountsTotal: 0,
+    valueToCollect: 1121000,
+    collectedTotal: 0,
+    remainingToPay: 1121000,
+    invoices: [],
+    payments: [{ paymentDate: "2026-09-01", amount: 500, currency: "USD" }],
+    retentions: [],
+    soldNetPriceUsd: 2000,
+    additionals: [
+      { id: 1, date: "2026-09-02", description: "ZOCALOS", amount: 100000, administration: "blanco", vatRate: 21, notes: "" },
+      { id: 2, date: "2026-09-03", description: "MARMOL EXTRA", amount: 1000, administration: "negro", currency: "USD", notes: "" },
+    ],
+  };
+
+  it("lista los adicionales cada uno en su moneda, con totales separados", () => {
+    const html = buildJobClientSummaryHtml(base);
+    expect(html).toContain("ZOCALOS");
+    expect(html).toContain("121.000,00");
+    expect(html).toContain("MARMOL EXTRA (U$S)");
+    expect(html).toContain("Total adicionales U$S");
+    expect(html).toContain("Composici&oacute;n del valor");
+  });
+
+  it("la parte en dolares tiene su propio cierre: vendido + adicionales - cobrado", () => {
+    const html = buildJobClientSummaryHtml(base);
+    expect(html).toContain("Valor del trabajo U$S");
+    expect(html).toContain("C&oacute;mo cierra el saldo en d&oacute;lares");
+    // 2.000 + 1.000 - 500 = 2.500
+    expect(html).toMatch(/Saldo pendiente U\$S<\/td><td class="num">U\$S.2\.500,00/);
+  });
+
+  it("al pie va la cuenta de la empresa que se le pasa", () => {
+    const html = buildJobClientSummaryHtml(base, {
+      holder: "De raiz s.r.l",
+      bankName: "Banco Patagonia",
+      bankCbu: "0340041800419997078004",
+      bankAlias: "DERAIZSRL",
+    });
+    expect(html).toContain("Datos para transferencia");
+    expect(html).toContain("0340041800419997078004");
+    expect(html).toContain("DERAIZSRL");
+  });
+
+  it("sin dolares ni banco no aparecen esos bloques", () => {
+    const html = buildJobClientSummaryHtml({ ...base, soldNetPriceUsd: 0, payments: [], additionals: [] });
+    expect(html).not.toContain("U$S");
+    expect(html).not.toContain("Datos para transferencia");
+  });
+});
+
+// Arriba del resumen va el anticipo pactado partido en blanco (con IVA facturado) y negro.
+describe("buildJobClientSummaryHtml · anticipo blanco / negro", () => {
+  const job = {
+    budgetNumber: "4002",
+    client: "C",
+    company: "BGA",
+    soldNetPrice: 1000000,
+    billedPct: 30,
+    anticipoPctResolved: 50,
+    invoiceVatAmount: 63000,
+    valueToCollect: 1063000,
+    collectedTotal: 0,
+    remainingToPay: 1063000,
+  };
+
+  it("parte el anticipo: 50% de 1.000.000 = 500.000 -> 150.000 + IVA 63.000 blanco, 350.000 negro", () => {
+    const html = buildJobClientSummaryHtml(job);
+    expect(html).toContain("Anticipo en blanco (c/IVA)");
+    expect(html).toContain("213.000,00");
+    expect(html).toContain("Anticipo negro");
+    expect(html).toContain("350.000,00");
+  });
+
+  it("todo facturado: no hay anticipo negro", () => {
+    const html = buildJobClientSummaryHtml({ ...job, billedPct: 100 });
+    expect(html).toContain("Anticipo en blanco");
+    expect(html).not.toContain("Anticipo negro");
+  });
+
+  it("sin anticipo pactado no salen las tarjetas", () => {
+    const html = buildJobClientSummaryHtml({ ...job, anticipoPctResolved: 0 });
+    expect(html).not.toContain("Anticipo");
+  });
+});
