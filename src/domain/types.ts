@@ -442,6 +442,9 @@ export type AdditionalItem = {
   // Alicuota de IVA del adicional blanco (%). Ausente = usa el vatPct del presupuesto (o 21%). En los
   // adicionales negros no aplica.
   vatRate?: number;
+  // Moneda del adicional. Ausente = pesos (compat). Un adicional en U$S NUNCA se suma a los totales en
+  // pesos: va al track en dolares del trabajo (vendido/saldo U$S), separado por blanco/negro.
+  currency?: "ARS" | "USD";
   notes: string;
 };
 

@@ -941,13 +941,34 @@ export function AprobadosTab({
                   />
                   <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
                   {(Number(selectedApprovedJob.soldNetPriceUsd || 0) > 0 ||
-                    Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0) && (
+                    Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0 ||
+                    Number(selectedApprovedJob.additionalsUsdTotal || 0) > 0) && (
                     <>
                       <SummaryRow
                         label="Vendido U$S"
                         value={money(selectedApprovedJob.soldNetPriceUsd || 0, "USD")}
                         strong
                       />
+                      {(selectedApprovedJob.additionalsUsdWhiteNet || 0) > 0 && (
+                        <SummaryRow
+                          label="Adicionales blanco U$S (neto)"
+                          value={money(selectedApprovedJob.additionalsUsdWhiteNet || 0, "USD")}
+                          color="blanco"
+                        />
+                      )}
+                      {(selectedApprovedJob.additionalsUsdVat || 0) > 0 && (
+                        <SummaryRow
+                          label="IVA adicionales U$S"
+                          value={money(selectedApprovedJob.additionalsUsdVat || 0, "USD")}
+                        />
+                      )}
+                      {(selectedApprovedJob.additionalsUsdBlackNet || 0) > 0 && (
+                        <SummaryRow
+                          label="Adicionales negro U$S"
+                          value={money(selectedApprovedJob.additionalsUsdBlackNet || 0, "USD")}
+                          color="negro"
+                        />
+                      )}
                       <SummaryRow
                         label="Cobrado U$S"
                         value={money(selectedApprovedJob.paymentsUsdTotal || 0, "USD")}
@@ -1671,14 +1692,26 @@ export function AprobadosTab({
                               onChange={(e) => updateAdditional(selectedApprovedJob.id, item.id, "date", e.target.value)}
                             />
                           </Field>
-                          <Field label="Monto neto ($)">
-                            <AmountInput
+                          <Field label="Moneda">
+                            <select
                               style={styles.input}
-                              value={item.amount}
-                              onChange={(n) => updateAdditional(selectedApprovedJob.id, item.id, "amount", n)}
-                            />
+                              value={item.currency === "USD" ? "USD" : "ARS"}
+                              onChange={(e) =>
+                                updateAdditional(selectedApprovedJob.id, item.id, "currency", e.target.value)
+                              }
+                            >
+                              <option value="ARS">$ Pesos</option>
+                              <option value="USD">U$S Dolares</option>
+                            </select>
                           </Field>
                         </TwoCol>
+                        <Field label={item.currency === "USD" ? "Monto neto (U$S)" : "Monto neto ($)"}>
+                          <AmountInput
+                            style={styles.input}
+                            value={item.amount}
+                            onChange={(n) => updateAdditional(selectedApprovedJob.id, item.id, "amount", n)}
+                          />
+                        </Field>
                         <TwoCol>
                           <Field label="Administracion">
                             <select
@@ -1722,6 +1755,7 @@ export function AprobadosTab({
                           const sub = Number(item.amount || 0);
                           const isWhite = (item.administration || "blanco") === "blanco";
                           const iva = isWhite ? sub * (Number(item.vatRate ?? 21) / 100) : 0;
+                          const cur = item.currency === "USD" ? "USD" : "ARS";
                           return (
                             <div
                               style={{
@@ -1735,11 +1769,11 @@ export function AprobadosTab({
                                 borderRadius: 8,
                               }}
                             >
-                              <span>Subtotal: <strong>{money(sub)}</strong></span>
+                              <span>Subtotal: <strong>{money(sub, cur)}</strong></span>
                               <span>
-                                IVA{isWhite ? ` ${item.vatRate ?? 21}%` : ""}: <strong>{money(iva)}</strong>
+                                IVA{isWhite ? ` ${item.vatRate ?? 21}%` : ""}: <strong>{money(iva, cur)}</strong>
                               </span>
-                              <span>Total: <strong>{money(sub + iva)}</strong></span>
+                              <span>Total: <strong>{money(sub + iva, cur)}</strong></span>
                               {!isWhite && <span style={{ color: "#94a3b8" }}>(negro, sin IVA)</span>}
                             </div>
                           );
@@ -1765,6 +1799,12 @@ export function AprobadosTab({
                         (selectedApprovedJob.additionalsWhiteNet || 0) +
                         (selectedApprovedJob.additionalsBlackNet || 0);
                       const iva = selectedApprovedJob.additionalsVat || 0;
+                      const subUsd =
+                        (selectedApprovedJob.additionalsUsdWhiteNet || 0) +
+                        (selectedApprovedJob.additionalsUsdBlackNet || 0);
+                      const ivaUsd = selectedApprovedJob.additionalsUsdVat || 0;
+                      const hasArs = selectedApprovedJob.additionals.some((a: any) => a.currency !== "USD");
+                      const hasUsd = subUsd > 0 || selectedApprovedJob.additionals.some((a: any) => a.currency === "USD");
                       return (
                         <div
                           style={{
@@ -1778,9 +1818,20 @@ export function AprobadosTab({
                             fontWeight: 700,
                           }}
                         >
-                          <span>Subtotal adicionales: {money(sub)}</span>
-                          <span>IVA: {money(iva)}</span>
-                          <span>Total c/IVA: {money(sub + iva)}</span>
+                          {hasArs && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 20, width: "100%" }}>
+                              <span>Subtotal adicionales: {money(sub)}</span>
+                              <span>IVA: {money(iva)}</span>
+                              <span>Total c/IVA: {money(sub + iva)}</span>
+                            </div>
+                          )}
+                          {hasUsd && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 20, width: "100%" }}>
+                              <span>Subtotal adicionales U$S: {money(subUsd, "USD")}</span>
+                              <span>IVA: {money(ivaUsd, "USD")}</span>
+                              <span>Total c/IVA: {money(subUsd + ivaUsd, "USD")}</span>
+                            </div>
+                          )}
                         </div>
                       );
                     })()}

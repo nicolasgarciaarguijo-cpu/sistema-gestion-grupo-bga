@@ -5006,19 +5006,30 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         const addVatDefaultPct = Number(job.snapshot?.params?.vatPct ?? INVOICE_VAT_PCT);
         const isWhiteAdditional = (item: { administration?: string }) =>
           (item.administration || "blanco") === "blanco";
-        const additionalsWhiteNet = (job.additionals || [])
-          .filter(isWhiteAdditional)
-          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
-        const additionalsBlackNet = (job.additionals || [])
-          .filter((item) => item.administration === "negro")
-          .reduce((acc, item) => acc + Number(item.amount || 0), 0);
-        const additionalsVat = (job.additionals || [])
-          .filter(isWhiteAdditional)
-          .reduce(
-            (acc, item) =>
-              acc + Number(item.amount || 0) * (Number(item.vatRate ?? addVatDefaultPct) / 100),
-            0
-          );
+        // Los adicionales en U$S van aparte (nunca se mezclan con los pesos): mismo corte blanco/negro.
+        const additionalsArs = (job.additionals || []).filter((item) => item.currency !== "USD");
+        const additionalsUsd = (job.additionals || []).filter((item) => item.currency === "USD");
+        const sumAdditionals = (items: AdditionalItem[]) =>
+          items.reduce((acc, item) => acc + Number(item.amount || 0), 0);
+        const sumAdditionalsVat = (items: AdditionalItem[]) =>
+          items
+            .filter(isWhiteAdditional)
+            .reduce(
+              (acc, item) =>
+                acc + Number(item.amount || 0) * (Number(item.vatRate ?? addVatDefaultPct) / 100),
+              0
+            );
+        const additionalsWhiteNet = sumAdditionals(additionalsArs.filter(isWhiteAdditional));
+        const additionalsBlackNet = sumAdditionals(
+          additionalsArs.filter((item) => item.administration === "negro")
+        );
+        const additionalsVat = sumAdditionalsVat(additionalsArs);
+        const additionalsUsdWhiteNet = sumAdditionals(additionalsUsd.filter(isWhiteAdditional));
+        const additionalsUsdBlackNet = sumAdditionals(
+          additionalsUsd.filter((item) => item.administration === "negro")
+        );
+        const additionalsUsdVat = sumAdditionalsVat(additionalsUsd);
+        const additionalsUsdTotal = additionalsUsdWhiteNet + additionalsUsdBlackNet + additionalsUsdVat;
         const additionalsTotal = additionalsWhiteNet + additionalsBlackNet; // neto total (compat)
         const discountsTotal = (job.discounts || []).reduce(
           (acc, item) => acc + Number(item.amount || 0),
@@ -5090,6 +5101,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           additionalsWhiteNet,
           additionalsBlackNet,
           additionalsVat,
+          additionalsUsdWhiteNet,
+          additionalsUsdBlackNet,
+          additionalsUsdVat,
+          additionalsUsdTotal,
           discountsTotal,
           commissionPaidTotal,
           commissionPending: Math.max(0, Number(job.commissionAmount || 0) - commissionPaidTotal),
@@ -5098,7 +5113,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           // Track en USD (bloques dolarizados del presupuesto). Neto y saldo se siguen aparte del
           // circuito en pesos; el cobrado en USD es paymentsUsdTotal (pagos cargados en U$S).
           soldNetPriceUsd: Number(job.soldNetPriceUsd || 0),
-          remainingToPayUsd: Math.max(0, Number(job.soldNetPriceUsd || 0) - paymentsUsdTotal),
+          remainingToPayUsd: Math.max(
+            0,
+            Number(job.soldNetPriceUsd || 0) + additionalsUsdTotal - paymentsUsdTotal
+          ),
           // Bruto corregido: IVA solo sobre lo facturado (no sobre el neto completo).
           soldGrossPrice: Number((job.soldNetPrice + invoiceVatAmount).toFixed(2)),
           anticipoPctResolved,
