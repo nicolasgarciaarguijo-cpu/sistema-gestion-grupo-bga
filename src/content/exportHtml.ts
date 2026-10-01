@@ -604,7 +604,12 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
           const l = addLine(a);
           return `<tr>
         <td>${esc(a.date || "-")}</td>
-        <td>${esc(a.description || "Adicional")}${l.cur === "USD" ? " (U$S)" : ""}</td>
+        <td><b>${esc(a.description || "Adicional")}${l.cur === "USD" ? " (U$S)" : ""}</b>${
+          // Las notas explican al cliente QUE se le cobra: van debajo, respetando los saltos de linea.
+          String(a.notes || "").trim()
+            ? `<div style="color:#475569;font-size:13px;margin-top:2px">${esc(String(a.notes).trim()).replace(/\r?\n/g, "<br>")}</div>`
+            : ""
+        }</td>
         <td>${l.forma}</td>
         <td class="num">${money(l.net, l.cur)}</td>
         <td class="num">${l.vat > 0 ? money(l.vat, l.cur) : "-"}</td>

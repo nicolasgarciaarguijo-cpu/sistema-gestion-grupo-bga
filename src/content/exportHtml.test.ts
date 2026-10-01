@@ -363,3 +363,31 @@ describe("buildJobClientSummaryHtml · anticipo blanco / negro", () => {
     expect(html).not.toContain("Anticipo");
   });
 });
+
+// El cliente tiene que ver QUE se le cobra en cada adicional: la descripcion y las notas.
+describe("buildJobClientSummaryHtml · notas de los adicionales", () => {
+  const job = {
+    budgetNumber: "4003",
+    client: "C",
+    company: "BGA",
+    soldNetPrice: 100,
+    valueToCollect: 100,
+    collectedTotal: 0,
+    remainingToPay: 100,
+    additionals: [
+      { id: 1, date: "2026-10-01", description: "ZOCALOS", amount: 1000, notes: "Zocalo laqueado blanco\n12 metros lineales" },
+      { id: 2, date: "2026-10-02", description: "CERRADURA", amount: 500, notes: "" },
+    ],
+  };
+
+  it("muestra las notas debajo de la descripcion, con sus saltos de linea", () => {
+    const html = buildJobClientSummaryHtml(job);
+    expect(html).toContain("<b>ZOCALOS</b>");
+    expect(html).toContain("Zocalo laqueado blanco<br>12 metros lineales");
+  });
+
+  it("un adicional sin notas no deja un renglon vacio", () => {
+    const html = buildJobClientSummaryHtml(job);
+    expect(html).toContain("<b>CERRADURA</b></td>");
+  });
+});
