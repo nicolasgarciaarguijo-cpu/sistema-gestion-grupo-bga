@@ -190,9 +190,9 @@ export function PersonalTab(props: PersonalTabProps) {
   const [showOldScales, setShowOldScales] = useState(false);
   // Mes del bloque "Liquidacion mensual". Arranca en el mes ANTERIOR: es el que se liquida.
   const [liqMonth, setLiqMonth] = useState<string>(() => shiftMonthKey(localMonthKey(), -1));
-  // Empleados DESTILDADOS del PDF. Se guarda lo excluido (y no lo elegido) para que un empleado nuevo
-  // aparezca tildado sin tener que acordarse de sumarlo.
-  const [liqExcluidos, setLiqExcluidos] = useState<Set<number>>(() => new Set());
+  // Empleados TILDADOS para el PDF. Arranca vacio: se eligen solo los que se quieren exportar, y el
+  // "mes guardado" se les pide solo a ellos (pedido de Nicolas: no tener que guardar a todos).
+  const [liqElegidos, setLiqElegidos] = useState<Set<number>>(() => new Set());
   const scaleMonthsSorted = Array.from(
     new Set((scaleRows as any[]).map((r) => r.month).filter(Boolean))
   ).sort() as string[];
@@ -893,23 +893,23 @@ export function PersonalTab(props: PersonalTabProps) {
             );
             const guardado = (e: any) =>
               (e.payrolls || []).find((p: any) => p.month === liqMonth)?.savedAt || "";
-            const elegidos = nomina.filter((e) => !liqExcluidos.has(e.id));
+            const elegidos = nomina.filter((e) => liqElegidos.has(e.id));
             const faltan = elegidos.filter((e) => !guardado(e));
             const listo = elegidos.length > 0 && faltan.length === 0;
             const porEmpresa = Array.from(new Set(nomina.map((e) => e.company)));
             const toggle = (id: number) =>
-              setLiqExcluidos((prev) => {
+              setLiqElegidos((prev) => {
                 const next = new Set(prev);
                 if (next.has(id)) next.delete(id);
                 else next.add(id);
                 return next;
               });
             const setEmpresa = (company: string, incluir: boolean) =>
-              setLiqExcluidos((prev) => {
+              setLiqElegidos((prev) => {
                 const next = new Set(prev);
                 nomina
                   .filter((e) => e.company === company)
-                  .forEach((e) => (incluir ? next.delete(e.id) : next.add(e.id)));
+                  .forEach((e) => (incluir ? next.add(e.id) : next.delete(e.id)));
                 return next;
               });
             const empresaCorta = (company: string) =>
@@ -939,7 +939,7 @@ export function PersonalTab(props: PersonalTabProps) {
                       }}
                     >
                       {elegidos.length === 0
-                        ? "Ningún empleado elegido"
+                        ? "Tildá los empleados que querés exportar"
                         : listo
                         ? `Mes guardado · ${elegidos.length} empleado${elegidos.length === 1 ? "" : "s"} en el PDF`
                         : `${elegidos.length - faltan.length} de ${elegidos.length} elegidos con el mes guardado`}
@@ -949,7 +949,7 @@ export function PersonalTab(props: PersonalTabProps) {
                     El PDF trae toda la nómina separada por empresa: horas normales, feriado, extras 50 y
                     100, nocturnas 50 y 100, ausencias, vacaciones, presentismo y anticipos. Se habilita
                     cuando todos los elegidos tienen {monthLabel(liqMonth)} guardado (botón "Guardar mes" en
-                    la ficha). Destildá a los que no querés que aparezcan.
+                    la ficha). Tildá solo los que querés exportar: a los demás no hace falta guardarlos.
                   </div>
                   <div
                     style={{
@@ -1000,7 +1000,7 @@ export function PersonalTab(props: PersonalTabProps) {
                               >
                                 <input
                                   type="checkbox"
-                                  checked={!liqExcluidos.has(e.id)}
+                                  checked={liqElegidos.has(e.id)}
                                   onChange={() => toggle(e.id)}
                                 />
                                 <span style={{ flex: 1 }}>{e.name}</span>
@@ -1019,7 +1019,7 @@ export function PersonalTab(props: PersonalTabProps) {
                   </div>
                   {!listo && faltan.length > 0 && (
                     <div style={{ marginTop: 8, fontSize: 13 }}>
-                      <strong>Falta guardar el mes:</strong>{" "}
+                      <strong>De los tildados, falta guardar el mes:</strong>{" "}
                       {porEmpresa
                         .map((c) => {
                           const n = faltan.filter((e) => e.company === c).map((e) => e.name);
