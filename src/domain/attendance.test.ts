@@ -5,6 +5,7 @@ import {
   dayOfWeek,
   classifyFichada,
   deriveConvenioHours,
+  dayHoursTotal,
   WORKSHOP_SCHEDULE,
   seVeEnElDia,
 } from "./attendance";
@@ -113,68 +114,100 @@ describe("summarizeMonthAttendance", () => {
 describe("deriveConvenioHours (precarga desde entrada/salida)", () => {
   it("día hábil 07:30-17:00 -> 9h normales (descuenta 30' de almuerzo), sin extra", () => {
     expect(deriveConvenioHours("2026-08-03", "07:30", "17:00")).toEqual({
-      normalHours: 9, extra50Hours: 0, extra100Hours: 0, night50Hours: 0,
+      normalHours: 9, extra50Hours: 0, extra100Hours: 0, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
   it("día hábil con extra diurno 07:30-19:00 -> 9h normales + 2h extra 50", () => {
     expect(deriveConvenioHours("2026-08-03", "07:30", "19:00")).toEqual({
-      normalHours: 9, extra50Hours: 2, extra100Hours: 0, night50Hours: 0,
+      normalHours: 9, extra50Hours: 2, extra100Hours: 0, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
   it("día hábil con nocturnidad 07:30-22:00 -> 9h + 4h extra 50 + 1h nocturna 50", () => {
     expect(deriveConvenioHours("2026-08-03", "07:30", "22:00")).toEqual({
-      normalHours: 9, extra50Hours: 4, extra100Hours: 0, night50Hours: 1,
+      normalHours: 9, extra50Hours: 4, extra100Hours: 0, night50Hours: 1, holidayHours: 0, night100Hours: 0,
     });
   });
   it("almuerzo no computa: 07:30-14:30 -> 6.5h (7h menos 30' de almuerzo)", () => {
     expect(deriveConvenioHours("2026-08-03", "07:30", "14:30")).toEqual({
-      normalHours: 6.5, extra50Hours: 0, extra100Hours: 0, night50Hours: 0,
+      normalHours: 6.5, extra50Hours: 0, extra100Hours: 0, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
   // SABADO (criterio de Nicolas, 2026-08-31): no hay horas normales. Hasta las 13 va al 50% y de ahi
   // en adelante al 100%.
   it("sábado 07:30-15:00 -> 5.5h al 50% + 1.5h al 100% (descuenta almuerzo), sin horas normales", () => {
     expect(deriveConvenioHours("2026-08-08", "07:30", "15:00")).toEqual({
-      normalHours: 0, extra50Hours: 5.5, extra100Hours: 1.5, night50Hours: 0,
+      normalHours: 0, extra50Hours: 5.5, extra100Hours: 1.5, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
   it("sábado 07:00-13:00 -> las 6 horas al 50%", () => {
     expect(deriveConvenioHours("2026-08-08", "07:00", "13:00")).toEqual({
-      normalHours: 0, extra50Hours: 6, extra100Hours: 0, night50Hours: 0,
+      normalHours: 0, extra50Hours: 6, extra100Hours: 0, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
   it("sábado 13:00-20:00 -> todo al 100% (el almuerzo igual no computa)", () => {
     expect(deriveConvenioHours("2026-08-08", "13:00", "20:00")).toEqual({
-      normalHours: 0, extra50Hours: 0, extra100Hours: 6.5, night50Hours: 0,
+      normalHours: 0, extra50Hours: 0, extra100Hours: 6.5, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
   it("domingo 08:00-12:00 -> 4h al 100%", () => {
     expect(deriveConvenioHours("2026-08-09", "08:00", "12:00")).toEqual({
-      normalHours: 0, extra50Hours: 0, extra100Hours: 4, night50Hours: 0,
+      normalHours: 0, extra50Hours: 0, extra100Hours: 4, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
   it("sin salida -> todo en cero (no precarga)", () => {
     expect(deriveConvenioHours("2026-08-03", "07:30", undefined)).toEqual({
-      normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0,
+      normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
 
-  it("feriado nacional en dia habil trabajado -> TODO al 100% (Ano Nuevo, jueves)", () => {
+  it("feriado nacional en dia habil trabajado -> TODO al 100%, asentado como horas de feriado (Ano Nuevo, jueves)", () => {
     // 2026-01-01 es jueves habil, pero es feriado: no hay horas normales, todo va al 100%.
     expect(deriveConvenioHours("2026-01-01", "07:30", "13:00")).toEqual({
-      normalHours: 0, extra50Hours: 0, extra100Hours: 5.5, night50Hours: 0,
+      normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0, holidayHours: 5.5, night100Hours: 0,
     });
   });
   it("dia habil NO feriado mismo horario -> horas normales (contraste)", () => {
     // 2026-01-02 es viernes habil normal: 07:30-13:00 son horas normales.
     expect(deriveConvenioHours("2026-01-02", "07:30", "13:00")).toEqual({
-      normalHours: 5.5, extra50Hours: 0, extra100Hours: 0, night50Hours: 0,
+      normalHours: 5.5, extra50Hours: 0, extra100Hours: 0, night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
   it("override manual feriado=true fuerza el 100% aunque la fecha no sea feriado nacional", () => {
     expect(deriveConvenioHours("2026-08-03", "07:30", "13:00", true)).toEqual({
-      normalHours: 0, extra50Hours: 0, extra100Hours: 5.5, night50Hours: 0,
+      normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0, holidayHours: 5.5, night100Hours: 0,
     });
+  });
+});
+
+// Criterio de Nicolas (2026-10-02): el feriado trabajado va en su propio renglon (al 100%), el sabado
+// NO es feriado (hasta las 13 es extra al 50%) y la noche de un tramo al 100% es nocturna al 100%.
+describe("deriveConvenioHours · feriados y nocturnas al 100%", () => {
+  it("sábado 13:00-23:00 -> 13 a 21 extra 100 (menos almuerzo) y 21 a 23 nocturna al 100%", () => {
+    expect(deriveConvenioHours("2026-08-08", "13:00", "23:00")).toEqual({
+      normalHours: 0, extra50Hours: 0, extra100Hours: 7.5, night50Hours: 0, holidayHours: 0, night100Hours: 2,
+    });
+  });
+  it("sábado de madrugada 05:00-13:00 -> la noche antes de las 6 es nocturna al 50%, no al 100%", () => {
+    expect(deriveConvenioHours("2026-08-08", "05:00", "13:00")).toEqual({
+      normalHours: 0, extra50Hours: 7, extra100Hours: 0, night50Hours: 1, holidayHours: 0, night100Hours: 0,
+    });
+  });
+  it("domingo 18:00-23:00 -> 3h extra 100 y 2h nocturnas al 100%", () => {
+    expect(deriveConvenioHours("2026-08-09", "18:00", "23:00")).toEqual({
+      normalHours: 0, extra50Hours: 0, extra100Hours: 3, night50Hours: 0, holidayHours: 0, night100Hours: 2,
+    });
+  });
+  it("feriado con noche 18:00-23:00 -> 3h de feriado y 2h nocturnas al 100%", () => {
+    // 2026-08-17 (lunes) es feriado (San Martin)
+    expect(deriveConvenioHours("2026-08-17", "18:00", "23:00")).toEqual({
+      normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0, holidayHours: 3, night100Hours: 2,
+    });
+  });
+  it("dayHoursTotal suma todas las categorias, incluidas las nuevas", () => {
+    expect(
+      dayHoursTotal({ normalHours: 1, extra50Hours: 1, extra100Hours: 1, night50Hours: 1, holidayHours: 1, night100Hours: 1 })
+    ).toBe(6);
+    expect(dayHoursTotal({ holidayHours: 5.5 })).toBe(5.5);
   });
 });
 
@@ -244,7 +277,7 @@ describe("classifyFichada / fichadas incompletas del reloj", () => {
       normalHours: 0,
       extra50Hours: 0,
       extra100Hours: 0,
-      night50Hours: 0,
+      night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
 
@@ -254,7 +287,7 @@ describe("classifyFichada / fichadas incompletas del reloj", () => {
       normalHours: 0,
       extra50Hours: 0,
       extra100Hours: 0,
-      night50Hours: 0,
+      night50Hours: 0, holidayHours: 0, night100Hours: 0,
     });
   });
 

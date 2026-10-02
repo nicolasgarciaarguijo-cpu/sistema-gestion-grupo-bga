@@ -30,12 +30,13 @@ import {
   terminationReasonLabel,
 } from "../domain/employeeStatus";
 import type { CompanyName } from "../domain/types";
-import { computeMonthAttendance, deriveConvenioHours } from "../domain/attendance";
+import { computeMonthAttendance, dayHoursTotal, deriveConvenioHours } from "../domain/attendance";
 import type { DayAttendance } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
 type PersonalTabProps = {
   employees: any[];
+  onPayrollMonthReport: () => void;
   visibleEmployees: any[];
   formerEmployees: any[];
   selectedEmployee: any;
@@ -161,7 +162,7 @@ function LineaResumen({
 
 export function PersonalTab(props: PersonalTabProps) {
   const {
-    employees, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
+    employees, onPayrollMonthReport, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
     employeeBaseConfig, payrollMonth, newEmployeeDraft,
     employeeProvisionModal, employeeDocumentModal, stockPersonalItems, personalReminders, scaleRows,
     isEmployeeSetupModalOpen, uploadMessage, COMPANY_OPTIONS, CATEGORY_OPTIONS,
@@ -493,7 +494,15 @@ export function PersonalTab(props: PersonalTabProps) {
 
           {!selectedEmployee && (
           <div style={{ order: 3, gridColumn: "1 / -1" }}>
-          <Panel title="Empleados" span="full">
+          <Panel
+            title="Empleados"
+            span="full"
+            actions={
+              <ButtonLike onClick={onPayrollMonthReport}>
+                Exportar liquidación {monthLabel(payrollMonth)} (PDF)
+              </ButtonLike>
+            }
+          >
             <div style={{ ...planillaWrap, ...anchosNomina.vars }}>
             <table className="planilla" style={planillaTable}>
               {/* Antes la ultima columna metia asistencia, documentacion, las cuatro provisiones,
@@ -611,7 +620,14 @@ export function PersonalTab(props: PersonalTabProps) {
                         })()}
                       </td>
                       <td style={{ ...tdDato, textAlign: "right" }}>
-                        {Number((payroll.normalHours + payroll.extra50Hours + payroll.extra100Hours).toFixed(2))}
+                        {Number(
+                          (
+                            payroll.normalHours +
+                            payroll.extra50Hours +
+                            payroll.extra100Hours +
+                            Number(payroll.holidayWorkedHours || 0)
+                          ).toFixed(2)
+                        )}
                       </td>
                       <td style={{ ...tdDato, textAlign: "right" }}>
                         {money(
@@ -1494,10 +1510,7 @@ export function PersonalTab(props: PersonalTabProps) {
                     .filter((r: any) => {
                       if (!r.date.startsWith(`${payrollMonth}-`) || !r.checkIn || !r.checkOut) return false;
                       if (r.locked) return false; // bloqueado: la carga manual gana
-                      const horas =
-                        Number(r.normalHours || 0) + Number(r.extra50Hours || 0) +
-                        Number(r.extra100Hours || 0) + Number(r.night50Hours || 0);
-                      return horas === 0; // solo los que no tienen horas todavia
+                      return dayHoursTotal(r) === 0; // solo los que no tienen horas todavia
                     })
                     .forEach((r: any) =>
                       updateAttendanceRecord(selectedEmployee.id, r.date, "checkOut", r.checkOut, {
@@ -2269,7 +2282,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                         <div
                                           style={{
                                             display: "grid",
-                                            gridTemplateColumns: "repeat(4, 1fr)",
+                                            gridTemplateColumns: "repeat(3, 1fr)",
                                             gap: 4,
                                             marginTop: 6,
                                           }}
@@ -2277,7 +2290,9 @@ export function PersonalTab(props: PersonalTabProps) {
                                           {hourInput("NORM", "normalHours", record?.normalHours ?? 0)}
                                           {hourInput("50%", "extra50Hours", record?.extra50Hours ?? 0)}
                                           {hourInput("100%", "extra100Hours", record?.extra100Hours ?? 0)}
-                                          {hourInput("NOC", "night50Hours", record?.night50Hours ?? 0)}
+                                          {hourInput("FERIADO", "holidayHours", record?.holidayHours ?? 0)}
+                                          {hourInput("NOC 50", "night50Hours", record?.night50Hours ?? 0)}
+                                          {hourInput("NOC 100", "night100Hours", record?.night100Hours ?? 0)}
                                         </div>
                                       </>
                                     )}
@@ -2317,7 +2332,16 @@ export function PersonalTab(props: PersonalTabProps) {
                       </div>
 
                       <div style={styles.personalPayrollPane}>
-                        <Panel title="Liquidacion del mes" span="full" nested>
+                        <Panel
+                          title="Liquidacion del mes"
+                          span="full"
+                          nested
+                          actions={
+                            <ButtonLike onClick={onPayrollMonthReport} secondary>
+                              Exportar liquidación de todos (PDF)
+                            </ButtonLike>
+                          }
+                        >
                           <div style={styles.liquidationColumn}>
                             <Field label="Horas normales (desde calendario)">
                               <input
@@ -2340,6 +2364,22 @@ export function PersonalTab(props: PersonalTabProps) {
                                 style={styles.inputReadOnly}
                                 type="number"
                                 value={payroll.extra100Hours}
+                                readOnly
+                              />
+                            </Field>
+                            <Field label="Hs feriado trabajadas al 100% (desde calendario)">
+                              <input
+                                style={styles.inputReadOnly}
+                                type="number"
+                                value={Number(payroll.holidayWorkedHours || 0)}
+                                readOnly
+                              />
+                            </Field>
+                            <Field label="Hs nocturnas al 100% (desde calendario)">
+                              <input
+                                style={styles.inputReadOnly}
+                                type="number"
+                                value={Number(payroll.night100Hours || 0)}
                                 readOnly
                               />
                             </Field>
@@ -2373,7 +2413,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                               />
                             </Field>
-                            <Field label="Horas feriado">
+                            <Field label="Horas feriado pago NO trabajado">
                               <input
                                 style={styles.input}
                                 type="number"

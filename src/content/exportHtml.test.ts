@@ -3,6 +3,7 @@ import {
   buildClientBudgetHtml,
   buildJobClientSummaryHtml,
   buildJobMaterialsHtml,
+  buildPayrollMonthHtml,
 } from "./exportHtml";
 
 // El resumen de marcadores existe para comparar meses: si las cuentas cambian, la evolucion miente.
@@ -389,5 +390,54 @@ describe("buildJobClientSummaryHtml · notas de los adicionales", () => {
   it("un adicional sin notas no deja un renglon vacio", () => {
     const html = buildJobClientSummaryHtml(job);
     expect(html).toContain("<b>CERRADURA</b></td>");
+  });
+});
+
+// La liquidacion del mes que se exporta para controlar / pasar al contador.
+describe("buildPayrollMonthHtml", () => {
+  const base = {
+    company: "De raiz s.r.l",
+    legajo: "6",
+    name: "ADALBERTO SORIA",
+    category: "Oficial Multiple I",
+    normalHours: 150,
+    holidayWorkedHours: 8,
+    holidayPaidHours: 0,
+    extra50Hours: 12.5,
+    extra100Hours: 4,
+    night50Hours: 1,
+    night100Hours: 2,
+    justifiedAbsenceDays: 1,
+    unjustifiedAbsenceDays: 0,
+    vacationDays: 0,
+    presentismoCobraPct: 75,
+    presentismoRepresentaPct: 10,
+    anticipos: 50000,
+  };
+
+  it("muestra nombre, categoria y cada concepto del mes", () => {
+    const html = buildPayrollMonthHtml("2026-09", [base]);
+    expect(html).toContain("ADALBERTO SORIA");
+    expect(html).toContain("Oficial Multiple I");
+    expect(html).toContain("12,5"); // extra 50
+    expect(html).toContain("Noct. 100%");
+    expect(html).toContain("1 d&iacute;a"); // ausencia justificada
+    expect(html).toContain("75%"); // presentismo que cobra
+    expect(html).toContain("50.000,00"); // anticipos
+  });
+
+  it("agrupa por empresa con su total", () => {
+    const html = buildPayrollMonthHtml("2026-09", [
+      base,
+      { ...base, name: "OTRO", company: "BGA estudio de diseño y produccion industrial s.r.l", anticipos: 0 },
+    ]);
+    expect(html).toContain("<h2>De raiz s.r.l</h2>");
+    expect(html).toContain("BGA estudio");
+    expect(html).toContain("Total (1 empleado)");
+  });
+
+  it("al que no le corresponde presentismo lo dice, en vez de un 0%", () => {
+    const html = buildPayrollMonthHtml("2026-09", [{ ...base, presentismoCobraPct: null }]);
+    expect(html).toContain("No corresponde");
   });
 });

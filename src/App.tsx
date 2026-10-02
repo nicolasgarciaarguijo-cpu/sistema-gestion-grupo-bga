@@ -46,7 +46,8 @@ import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./
 import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
 import { porcentajePorAsistencia } from "./domain/presentismo";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
-import { classifyFichada, deriveConvenioHours, summarizeMonthAttendance } from "./domain/attendance";
+import { classifyFichada, dayHoursTotal, deriveConvenioHours, summarizeMonthAttendance } from "./domain/attendance";
+import { esFeriado } from "./domain/feriadosArgentina";
 import {
   buildCierreResumenHtml,
   buildCierreBancoHtml,
@@ -318,6 +319,7 @@ import {
   buildJobHtml,
   buildJobClientSummaryHtml,
   buildJobMaterialsHtml,
+  buildPayrollMonthHtml,
   buildJobsSummaryHtml,
   invoiceFileName,
   buildInvoiceHtml,
@@ -14581,12 +14583,6 @@ Escribi CERRAR para confirmar:`
           item.status === "ausente_injustificado"
         )
           return;
-        const horas =
-          Number(item.normalHours || 0) +
-          Number(item.extra50Hours || 0) +
-          Number(item.extra100Hours || 0) +
-          Number((item as any).night50Hours || 0);
-        if (horas > 0) return; // ya tiene horas: no se toca
         // Sin salida creible no hay nada que calcular (el que fichó solo al entrar queda para
         // arreglar a mano). Si no se filtrara aca, el dia volveria a entrar en la lista para siempre.
         const derived = deriveConvenioHours(
@@ -14595,9 +14591,29 @@ Escribi CERRAR para confirmar:`
           item.checkOut,
           item.status === "feriado" ? true : undefined
         );
-        const totalDerivado =
-          derived.normalHours + derived.extra50Hours + derived.extra100Hours + derived.night50Hours;
-        if (totalDerivado <= 0) return;
+        if (dayHoursTotal(derived) <= 0) return;
+        if (dayHoursTotal(item) > 0) {
+          // Solo findes y feriados (donde cambio el reparto) del mes en curso y el anterior: los meses
+          // viejos ya se pagaron y no se les mueven los numeros.
+          const dow = new Date(`${item.date}T12:00:00`).getDay();
+          const esFindeOFeriado = dow === 0 || dow === 6 || item.status === "feriado" || esFeriado(item.date);
+          const hoy = new Date();
+          const mesActual = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, "0")}`;
+          const mesAnterior = (() => {
+            const d = new Date(hoy.getFullYear(), hoy.getMonth() - 1, 1);
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+          })();
+          const mes = item.date.slice(0, 7);
+          if (!esFindeOFeriado || (mes !== mesActual && mes !== mesAnterior)) return;
+          // Ya tiene horas de la precarga (no tiene candado, asi que no las cargo nadie a mano). Se
+          // vuelve a calcular SOLO si el reparto guardado no coincide con la regla vigente: es lo que
+          // asienta los feriados trabajados y las nocturnas al 100% en los dias precargados antes del
+          // 2026-10-02 (que tenian todo en "extra 100" / "nocturna 50"). Un dia ya correcto no se toca.
+          const igual = (["normalHours", "extra50Hours", "extra100Hours", "night50Hours", "holidayHours", "night100Hours"] as const).every(
+            (k) => Math.abs(Number((item as any)[k] || 0) - Number(derived[k] || 0)) < 0.01
+          );
+          if (igual) return;
+        }
         objetivos.push({ id: employee.id, date: item.date, checkOut: item.checkOut });
       });
     });
@@ -14652,6 +14668,15 @@ Escribi CERRAR para confirmar:`
             (acc, item) => acc + Number(item.night50Hours || 0),
             0
           );
+          // Feriado trabajado (al 100%, renglon propio) y nocturnas al 100%.
+          const holidayWorkedHours = monthAttendance.reduce(
+            (acc, item) => acc + Number(item.holidayHours || 0),
+            0
+          );
+          const night100Hours = monthAttendance.reduce(
+            (acc, item) => acc + Number(item.night100Hours || 0),
+            0
+          );
           const justifiedAbsenceHours =
             monthAttendance.filter((item) => item.status === "ausente_justificado").length *
             standardDayHours;
@@ -14665,6 +14690,8 @@ Escribi CERRAR para confirmar:`
             extra50Hours,
             extra100Hours,
             night50Hours,
+            holidayWorkedHours,
+            night100Hours,
             justifiedAbsenceHours,
             unjustifiedAbsenceHours,
             vacationsDays,
@@ -14681,7 +14708,9 @@ Escribi CERRAR para confirmar:`
                     ...((
                       field === "normalHours" ||
                       field === "extra50Hours" ||
-                      field === "extra100Hours"
+                      field === "extra100Hours" ||
+                      field === "holidayHours" ||
+                      field === "night100Hours"
                     ) &&
                     Number(value || 0) > 0 &&
                     item.status === "sin_cargar"
@@ -14689,13 +14718,18 @@ Escribi CERRAR para confirmar:`
                       : {}),
                     ...(field === "status" &&
                     value === "presente" &&
-                    Number(item.normalHours || 0) === 0 &&
-                    Number(item.extra50Hours || 0) === 0 &&
-                    Number(item.extra100Hours || 0) === 0
+                    dayHoursTotal(item) === 0
                       ? { normalHours: standardDayHours }
                       : {}),
                     ...(field === "status" && value !== "presente"
-                      ? { normalHours: 0, extra50Hours: 0, extra100Hours: 0 }
+                      ? {
+                          normalHours: 0,
+                          extra50Hours: 0,
+                          extra100Hours: 0,
+                          night50Hours: 0,
+                          holidayHours: 0,
+                          night100Hours: 0,
+                        }
                       : {}),
                   }
                 : item
@@ -14747,6 +14781,8 @@ Escribi CERRAR para confirmar:`
                   extra50Hours: derived.extra50Hours,
                   extra100Hours: derived.extra100Hours,
                   night50Hours: derived.night50Hours,
+                  holidayHours: derived.holidayHours,
+                  night100Hours: derived.night100Hours,
                 };
               })
             : nextAttendance;
@@ -15229,6 +15265,54 @@ Escribi CERRAR para confirmar:`
       agreedBlack: Number(employee.agreedBlack || 0),
       computeWhiteCharges: !!employee.computeWhiteCharges,
     });
+  };
+
+  // PDF de la liquidacion del mes (mes elegido en Personal): un renglon por empleado de la nomina
+  // visible, agrupado por empresa. Horas desde la liquidacion del mes (que sale del calendario);
+  // ausencias y vacaciones en DIAS, contadas de los estados del calendario.
+  const openPayrollMonthReport = () => {
+    try {
+      const rows = visibleEmployees.map((employee) => {
+        const payroll = getCurrentPayroll(employee);
+        const delMes = (employee.attendance || []).filter((a) => a.date?.startsWith(`${payrollMonth}-`));
+        const contar = (status: string) => delMes.filter((a) => a.status === status).length;
+        const representa = Number(payroll.presentismoPctOverride ?? 0);
+        const conPresentismo =
+          (employee.employmentType || "convenio") === "convenio" && representa > 0;
+        const cobra =
+          payroll.presentismoAsistenciaPct === null || payroll.presentismoAsistenciaPct === undefined
+            ? presentismoPorAsistencia(employee, payrollMonth)
+            : Number(payroll.presentismoAsistenciaPct);
+        return {
+          company: employee.company,
+          legajo: employee.legajo,
+          name: employee.name,
+          category: employee.category,
+          normalHours: Number(payroll.normalHours || 0),
+          holidayWorkedHours: Number(payroll.holidayWorkedHours || 0),
+          holidayPaidHours: Number(payroll.holidayHours || 0),
+          extra50Hours: Number(payroll.extra50Hours || 0),
+          extra100Hours: Number(payroll.extra100Hours || 0),
+          night50Hours: Number(payroll.night50Hours || 0),
+          night100Hours: Number(payroll.night100Hours || 0),
+          justifiedAbsenceDays: contar("ausente_justificado"),
+          unjustifiedAbsenceDays: contar("ausente_injustificado"),
+          vacationDays: contar("vacaciones"),
+          presentismoCobraPct: conPresentismo ? cobra : null,
+          presentismoRepresentaPct: representa,
+          anticipos: Number(payroll.anticipos || 0),
+        };
+      });
+      const html = buildPayrollMonthHtml(payrollMonth, rows);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const win = window.open(url, "_blank");
+      if (!win) setStorageMessage("Habilita las ventanas emergentes para ver la liquidacion del mes.");
+      window.setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+    } catch (err: any) {
+      console.error("[personal] liquidacion del mes:", err);
+      setStorageMessage("No pude generar la liquidacion: " + (err?.message || String(err)));
+    }
   };
 
   // Estado de resultados del periodo (base percibido, operativo) por empresa+periodo. Ingresos = cobros
@@ -18391,6 +18475,7 @@ Escribi CERRAR para confirmar:`
       {activeTab === "personal" && (
         <PersonalTab
           employees={employees}
+          onPayrollMonthReport={openPayrollMonthReport}
           visibleEmployees={visibleEmployees}
           formerEmployees={formerEmployees}
           selectedEmployee={selectedEmployee}

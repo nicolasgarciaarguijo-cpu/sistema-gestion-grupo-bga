@@ -46,7 +46,15 @@ export function ReciboBlancoDocument({
   sussDeposit?: Deposito;
   ivaVep?: Deposito;
   // Horas del mes, para la columna UNIDAD (el recibo real la muestra con 5 decimales).
-  hours?: { normalHours?: number; extra50Hours?: number; extra100Hours?: number; night50Hours?: number; holidayHours?: number };
+  hours?: {
+    normalHours?: number;
+    extra50Hours?: number;
+    extra100Hours?: number;
+    night50Hours?: number;
+    holidayHours?: number;
+    holidayWorkedHours?: number;
+    night100Hours?: number;
+  };
 }) {
   const s = summary || {};
   const grossRem = Number(s.grossRem || 0);
@@ -69,7 +77,9 @@ export function ReciboBlancoDocument({
     ["0018", "HORAS EXTRAS 50%", u(Number(h.extra50Hours || 0)), Number(s.extra50 || 0)],
     ["0021", "HORAS EXTRAS 100%", u(Number(h.extra100Hours || 0)), Number(s.extra100 || 0)],
     ["0022", "HORAS NOCTURNAS 50%", u(Number(h.night50Hours || 0)), Number(s.night50 || 0)],
+    ["0023", "HORAS NOCTURNAS 100%", u(Number(h.night100Hours || 0)), Number(s.night100 || 0)],
     ["0043", "HS FERIADO", u(Number(h.holidayHours || 0)), Number(s.grossHoliday || 0)],
+    ["0044", "HS FERIADO TRABAJADO 100%", u(Number(h.holidayWorkedHours || 0)), Number(s.holidayWorked || 0)],
     ["0180", "ANTIGÜEDAD", u(Number(employee.seniorityYears || 0)), Number(s.seniorityBonus || 0)],
     ["0190", "PRESENTISMO", u(Number(s.presentismoPct || 10)), Number(s.presentismo || 0)],
     ["0200", "ADICIONAL REMUNERATIVO", "", Number(s.whiteBonus || 0)],

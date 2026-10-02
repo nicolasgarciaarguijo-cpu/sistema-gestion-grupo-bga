@@ -201,15 +201,41 @@ export const seVeEnElDia = (dia: DayAttendance, diaNoLaborable: boolean): boolea
 //   - Jornada normal: L-V 07:30-17:00, Sáb 07:30-13:00 (WORKSHOP_SCHEDULE). Domingo: todo al 100%.
 //   - Normales   = tiempo trabajado DENTRO de la ventana de jornada.
 //   - Extra 50%  = tiempo fuera de jornada en día hábil (y sábado antes de las 07:30).
-//   - Extra 100% = sábado después de 13:00, domingos y feriados.
-//   - Nocturnas 50% = franja 21:00-06:00 del tiempo extra (se separa de extra 50 para no duplicar).
+//   - Extra 100% = sábado después de 13:00 y domingos.
+//   - Feriado    = horas trabajadas en un feriado: se pagan al 100% pero van en su PROPIO renglón
+//                  (holidayHours), para que el feriado trabajado quede asentado y no se mezcle con
+//                  las extras. El sábado NO es feriado: hasta las 13 es extra al 50%.
+//   - Nocturnas 50%  = franja 21:00-06:00 del tiempo extra al 50% (día hábil, sábado antes de las 13).
+//   - Nocturnas 100% = franja 21:00-06:00 de un tramo al 100% (sábado desde las 13, domingo, feriado).
+//   Criterio de Nicolás, 2026-10-02.
 //   - Almuerzo 13:30-14:00 (30 min) NO computa: se descuenta del tiempo trabajado antes de clasificar.
 export type ConvenioHours = {
   normalHours: number;
   extra50Hours: number;
   extra100Hours: number;
   night50Hours: number;
+  holidayHours: number;
+  night100Hours: number;
 };
+
+const ZERO_HOURS: ConvenioHours = {
+  normalHours: 0,
+  extra50Hours: 0,
+  extra100Hours: 0,
+  night50Hours: 0,
+  holidayHours: 0,
+  night100Hours: 0,
+};
+
+// Total de horas cargadas en un dia (todas las categorias). Es lo que decide si un dia "ya tiene
+// horas": si alguna categoria nueva quedara afuera de esta suma, la precarga volveria a pisar el dia.
+export const dayHoursTotal = (r: Partial<Record<keyof ConvenioHours, number | undefined>>): number =>
+  Number(r.normalHours || 0) +
+  Number(r.extra50Hours || 0) +
+  Number(r.extra100Hours || 0) +
+  Number(r.night50Hours || 0) +
+  Number(r.holidayHours || 0) +
+  Number(r.night100Hours || 0);
 
 // SABADO: de 07:00 a 13:00 se paga al 50% y de las 13:00 en adelante al 100%. El corte es de PAGO,
 // distinto del horario de entrada (07:30) que usa el semaforo de puntualidad: son dos ejes.
@@ -225,7 +251,9 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 // nocturna (>=21:00 o <06:00), evaluando cada día que toca el intervalo.
 const nightMinutesIn = (start: number, end: number): number => {
   let night = 0;
-  for (let base = Math.floor(start / 1440) * 1440; base < end; base += 1440) {
+  // Arranca un dia ANTES: la franja 21:00-06:00 que empieza la noche anterior tambien cubre la
+  // madrugada del dia (00:00-06:00). Sin esto, entrar a las 05:00 no contaba esa hora como nocturna.
+  for (let base = Math.floor(start / 1440) * 1440 - 1440; base < end; base += 1440) {
     const nA = base + NIGHT_START; // 21:00 de ese día
     const nB = base + 1440 + NIGHT_END; // 06:00 del día siguiente
     night += Math.max(0, Math.min(end, nB) - Math.max(start, nA));
@@ -238,28 +266,33 @@ const overlap = (s: number, e: number, ws: number, we: number) => Math.max(0, Ma
 
 // Clasifica UN tramo contiguo [s,e) (en minutos) en las 4 categorías, en MINUTOS. Sin lógica de
 // almuerzo (eso se resuelve afuera partiendo el intervalo). dow = día de la semana (0=Dom..6=Sáb).
-// isFeriado: si es feriado, el día entero se paga al 100% (LCT art. 166), como el domingo.
+// isFeriado: si es feriado, el día entero se paga al 100% (LCT art. 166), en su propio renglón.
 const categorizeMinutes = (dow: number, s: number, e: number, isFeriado = false): ConvenioHours => {
-  if (e <= s) return { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
+  if (e <= s) return { ...ZERO_HOURS };
   const night = nightMinutesIn(s, e);
-  if (dow === 0 || isFeriado) {
-    // Domingo o feriado: todo al 100%; la parte nocturna se separa como nocturna 50 (informativa).
-    return { normalHours: 0, extra50Hours: 0, extra100Hours: e - s - night, night50Hours: night };
+  if (isFeriado) {
+    // Feriado: todo al 100%, asentado como hora de feriado; la parte nocturna es nocturna al 100%.
+    return { ...ZERO_HOURS, holidayHours: e - s - night, night100Hours: night };
+  }
+  if (dow === 0) {
+    // Domingo: todo al 100%; la parte nocturna es nocturna al 100%.
+    return { ...ZERO_HOURS, extra100Hours: e - s - night, night100Hours: night };
   }
   if (dow === 6) {
-    // SABADO (criterio de Nicolas, 2026-08-31): el sabado NO tiene horas normales. De 07:00 a 13:00
-    // es extra al 50%, y de las 13:00 hasta las 00:00 es al 100%. Antes de las 07:00 se paga tambien
-    // al 50% (sigue siendo sabado); la franja nocturna se informa aparte, igual que el domingo.
+    // SABADO (criterio de Nicolas, 2026-08-31 y 2026-10-02): el sabado NO tiene horas normales y NO
+    // es feriado. Hasta las 13:00 es extra al 50% (la noche de esa franja, nocturna al 50%); desde
+    // las 13:00 es al 100% (la noche de esa franja, desde las 21, nocturna al 100%).
     const we = SABADO_CORTE_100; // 13:00
     const hasta13 = overlap(s, e, 0, we);
     const desde13 = overlap(s, e, we, 100000);
     const nocturnaDesde13 = Math.min(night, desde13);
     const nocturnaHasta13 = Math.min(Math.max(0, night - nocturnaDesde13), hasta13);
     return {
-      normalHours: 0,
+      ...ZERO_HOURS,
       extra50Hours: hasta13 - nocturnaHasta13,
       extra100Hours: desde13 - nocturnaDesde13,
-      night50Hours: nocturnaDesde13 + nocturnaHasta13,
+      night50Hours: nocturnaHasta13,
+      night100Hours: nocturnaDesde13,
     };
   }
   // Día hábil (L-V): normal 07:30-17:00; el resto es extra (nocturno -> nocturna 50, resto -> extra 50).
@@ -268,7 +301,7 @@ const categorizeMinutes = (dow: number, s: number, e: number, isFeriado = false)
   const normal = overlap(s, e, ws, we);
   const overtime = e - s - normal;
   const nightExtra = Math.min(night, overtime);
-  return { normalHours: normal, extra50Hours: overtime - nightExtra, extra100Hours: 0, night50Hours: nightExtra };
+  return { ...ZERO_HOURS, normalHours: normal, extra50Hours: overtime - nightExtra, night50Hours: nightExtra };
 };
 
 // Jornada minima para creerle a la fichada. El reloj dispara RAFAGAS (varias lecturas seguidas al
@@ -309,7 +342,7 @@ export const deriveConvenioHours = (
   // (esFeriado). Un caller puede pasar true para un feriado de empresa que no está en el calendario.
   feriado?: boolean
 ): ConvenioHours => {
-  const zero: ConvenioHours = { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
+  const zero: ConvenioHours = { ...ZERO_HOURS };
   // Sin salida creible no hay jornada. ANTES, con salida == entrada se asumia "cruzo la medianoche"
   // y el dia se pagaba como 24 HORAS trabajadas: una sola fichada del reloj podia meter una jornada
   // entera de extras en la liquidacion.
@@ -325,19 +358,23 @@ export const deriveConvenioHours = (
     [inMin, Math.min(outMin, LUNCH_START)],
     [Math.max(inMin, LUNCH_END), outMin],
   ];
-  const acc = { normalHours: 0, extra50Hours: 0, extra100Hours: 0, night50Hours: 0 };
+  const acc: ConvenioHours = { ...ZERO_HOURS };
   for (const [s, e] of segments) {
     const part = categorizeMinutes(dow, s, e, isFeriado);
     acc.normalHours += part.normalHours;
     acc.extra50Hours += part.extra50Hours;
     acc.extra100Hours += part.extra100Hours;
     acc.night50Hours += part.night50Hours;
+    acc.holidayHours += part.holidayHours;
+    acc.night100Hours += part.night100Hours;
   }
   return {
     normalHours: round2(acc.normalHours / 60),
     extra50Hours: round2(acc.extra50Hours / 60),
     extra100Hours: round2(acc.extra100Hours / 60),
     night50Hours: round2(acc.night50Hours / 60),
+    holidayHours: round2(acc.holidayHours / 60),
+    night100Hours: round2(acc.night100Hours / 60),
   };
 };
 

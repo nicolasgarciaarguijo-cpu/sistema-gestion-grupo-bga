@@ -1410,3 +1410,106 @@ export function buildMarcadoresHtml(input: {
   return page(`Marcadores ${input.companyLabel} ${input.monthKey}`, body);
 }
 
+
+// ---- Liquidacion del mes del personal (PDF para el contador / para controlar) ----
+
+// Un renglon por empleado. Las HORAS salen de la liquidacion del mes (que se arma desde el calendario
+// de presentismo); los DIAS de ausencia y vacaciones, de los estados del calendario. El presentismo es
+// el porcentaje que COBRA este mes (0..100) o null si no le corresponde (temporal, socio, sin
+// presentismo configurado).
+export type PayrollReportRow = {
+  company: string;
+  legajo: string;
+  name: string;
+  category: string;
+  normalHours: number;
+  holidayWorkedHours: number;
+  holidayPaidHours: number; // feriado pago NO trabajado (carga manual)
+  extra50Hours: number;
+  extra100Hours: number;
+  night50Hours: number;
+  night100Hours: number;
+  justifiedAbsenceDays: number;
+  unjustifiedAbsenceDays: number;
+  vacationDays: number;
+  presentismoCobraPct: number | null;
+  presentismoRepresentaPct: number;
+  anticipos: number;
+};
+
+const horas = (n: number): string => {
+  const v = Number(n || 0);
+  return v ? new Intl.NumberFormat("es-AR", { maximumFractionDigits: 2 }).format(v) : "-";
+};
+
+export function buildPayrollMonthHtml(monthKey: string, rows: PayrollReportRow[]): string {
+  const companies = Array.from(new Set(rows.map((r) => r.company)));
+  const header = `<tr>
+      <th>Empleado</th><th>Categor&iacute;a</th>
+      <th class="num">Normales</th><th class="num">Feriado</th>
+      <th class="num">Extra 50%</th><th class="num">Extra 100%</th>
+      <th class="num">Noct. 50%</th><th class="num">Noct. 100%</th>
+      <th class="num">Aus. just.</th><th class="num">Aus. injust.</th><th class="num">Vacaciones</th>
+      <th class="num">Presentismo</th><th class="num">Anticipos</th></tr>`;
+  const presentismo = (r: PayrollReportRow) =>
+    r.presentismoCobraPct === null
+      ? "No corresponde"
+      : `${r.presentismoCobraPct}%<div class="mini">del ${r.presentismoRepresentaPct}%</div>`;
+  const dias = (n: number) => (n ? `${n} d&iacute;a${n === 1 ? "" : "s"}` : "-");
+  const row = (r: PayrollReportRow) => `<tr>
+      <td><b>${esc(r.name)}</b><div class="mini">Legajo ${esc(r.legajo || "-")}</div></td>
+      <td>${esc(r.category || "-")}</td>
+      <td class="num">${horas(r.normalHours)}</td>
+      <td class="num">${horas(r.holidayWorkedHours)}${
+        r.holidayPaidHours ? `<div class="mini">+${horas(r.holidayPaidHours)} pago no trab.</div>` : ""
+      }</td>
+      <td class="num">${horas(r.extra50Hours)}</td>
+      <td class="num">${horas(r.extra100Hours)}</td>
+      <td class="num">${horas(r.night50Hours)}</td>
+      <td class="num">${horas(r.night100Hours)}</td>
+      <td class="num">${dias(r.justifiedAbsenceDays)}</td>
+      <td class="num">${dias(r.unjustifiedAbsenceDays)}</td>
+      <td class="num">${dias(r.vacationDays)}</td>
+      <td class="num">${presentismo(r)}</td>
+      <td class="num">${r.anticipos ? money(r.anticipos) : "-"}</td></tr>`;
+  const sum = (list: PayrollReportRow[], k: keyof PayrollReportRow) =>
+    list.reduce((a, r) => a + Number(r[k] || 0), 0);
+  const totalRow = (list: PayrollReportRow[]) => `<tr class="tot">
+      <td colspan="2">Total (${list.length} empleado${list.length === 1 ? "" : "s"})</td>
+      <td class="num">${horas(sum(list, "normalHours"))}</td>
+      <td class="num">${horas(sum(list, "holidayWorkedHours"))}</td>
+      <td class="num">${horas(sum(list, "extra50Hours"))}</td>
+      <td class="num">${horas(sum(list, "extra100Hours"))}</td>
+      <td class="num">${horas(sum(list, "night50Hours"))}</td>
+      <td class="num">${horas(sum(list, "night100Hours"))}</td>
+      <td class="num">${dias(sum(list, "justifiedAbsenceDays"))}</td>
+      <td class="num">${dias(sum(list, "unjustifiedAbsenceDays"))}</td>
+      <td class="num">${dias(sum(list, "vacationDays"))}</td>
+      <td></td>
+      <td class="num">${money(sum(list, "anticipos"))}</td></tr>`;
+  const sections = companies
+    .map((company) => {
+      const list = rows
+        .filter((r) => r.company === company)
+        .sort((a, b) => a.name.localeCompare(b.name, "es"));
+      return `<div class="blk"><h2>${esc(company)}</h2>
+    <table><thead>${header}</thead><tbody>${list.map(row).join("")}${totalRow(list)}</tbody></table></div>`;
+    })
+    .join("");
+  const body = `
+    <style>
+      body{max-width:none;padding:16px}
+      table{font-size:11.5px}
+      th{font-size:10px;padding:5px 6px;vertical-align:bottom}
+      td{padding:5px 6px;vertical-align:top}
+      .mini{color:#64748b;font-size:10px;font-weight:400}
+      @page{size:A4 landscape;margin:10mm}
+    </style>
+    <h1>Liquidaci&oacute;n del mes &middot; ${monthLabelEs(monthKey)}</h1>
+    <p class="sub">Horas, ausencias, vacaciones, presentismo y anticipos de cada empleado. Las horas salen
+    del calendario de presentismo de cada ficha.</p>
+    <p class="noprint">Para guardarlo como PDF: Ctrl+P (Cmd+P en Mac) y eleg&iacute; "Guardar como PDF".</p>
+    ${rows.length ? sections : `<p class="sub">No hay empleados para mostrar.</p>`}
+    <script>window.addEventListener("load", function () { window.print(); });</script>`;
+  return page(`Liquidacion ${monthKey}`, body);
+}

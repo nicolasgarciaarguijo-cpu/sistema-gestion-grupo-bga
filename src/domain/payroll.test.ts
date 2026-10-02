@@ -54,6 +54,25 @@ describe("computePayrollSummary", () => {
     expect(r.net).toBeCloseTo(160000);
   });
 
+  // Criterio de Nicolas (2026-10-02): el feriado trabajado va al 100% en su propio concepto y la
+  // noche de un tramo al 100% es nocturna al 100% (doble + recargo nocturno del 13,33%).
+  it("feriado trabajado se paga al doble, en su propio concepto", () => {
+    const r = run({ holidayWorkedHours: 8 });
+    expect(r.holidayWorked).toBeCloseTo(16000);
+    expect(r.grossRem).toBeCloseTo(200000 + 16000);
+    expect(r.extra100).toBe(0);
+  });
+
+  it("nocturna al 100% = doble + 13,33% de recargo nocturno", () => {
+    const r = run({ night100Hours: 3 });
+    expect(r.night100).toBeCloseTo(1000 * 2 * 1.133333333 * 3);
+    expect(r.grossRem).toBeCloseTo(200000 + 1000 * 2 * 1.133333333 * 3);
+  });
+
+  it("sin las horas nuevas (datos viejos) el sueldo no cambia", () => {
+    expect(run().grossRem).toBe(200000);
+  });
+
   it("hora extra al 50% multiplica x1.5", () => {
     expect(run({ extra50Hours: 10 }).grossRem).toBeCloseTo(200000 + 15000);
   });

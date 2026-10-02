@@ -1203,6 +1203,10 @@ export type AttendanceRecord = {
   // Horas nocturnas al 50% (franja 21:00-06:00 del tiempo extra). Opcional: registros viejos no la
   // tienen (se lee como 0). Se precarga desde checkIn/checkOut y alimenta night50Hours de la liquidacion.
   night50Hours?: number;
+  // Horas trabajadas en un FERIADO (al 100%, en su propio renglon) y horas nocturnas al 100% (noche de
+  // un tramo al 100%: sabado desde las 13, domingo, feriado). Opcionales: registros viejos = 0.
+  holidayHours?: number;
+  night100Hours?: number;
   // Horario exacto del dia (HH:MM). Fuente: fichaje del reloj Dahua o carga manual. Opcionales: los
   // registros viejos no los tienen. Alimentan el semaforo de asistencia (en horario / tarde) y la
   // precarga de horas del convenio (ver deriveConvenioHours).
@@ -1224,6 +1228,10 @@ export type EmployeePayroll = {
   extra100Hours: number;
   night50Hours: number;
   nightHours: number;
+  // Feriado TRABAJADO (al 100%) y nocturnas al 100%, sumados desde el calendario. Distinto de
+  // holidayHours, que es el feriado pago NO trabajado (al 1x). Opcionales: datos viejos = 0.
+  holidayWorkedHours?: number;
+  night100Hours?: number;
   unjustifiedAbsenceHours: number;
   justifiedAbsenceHours: number;
   vacationsDays: number;

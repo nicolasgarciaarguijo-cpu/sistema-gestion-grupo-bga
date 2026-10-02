@@ -8,6 +8,7 @@ import {
 import { supabase } from "../lib/supabase";
 import {
   classifyFichada,
+  dayHoursTotal,
   computeMonthAttendance,
   summarizeMonthAttendance,
   scheduleForDate,
@@ -262,10 +263,7 @@ export function AsistenciaTab({
     shownEmployees.forEach((e) => {
       (e.attendance || []).forEach((a: any) => {
         if (!a?.date || a.locked) return;
-        const horas =
-          Number(a.normalHours || 0) + Number(a.extra50Hours || 0) +
-          Number(a.extra100Hours || 0) + Number(a.night50Hours || 0);
-        if (horas > 0) return;
+        if (dayHoursTotal(a) > 0) return;
         if (a.status === "vacaciones" || a.status === "ausente_justificado" || a.status === "ausente_injustificado")
           return;
         const estado = classifyFichada(a.checkIn, a.checkOut);

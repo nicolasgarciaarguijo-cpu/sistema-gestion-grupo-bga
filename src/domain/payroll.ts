@@ -141,8 +141,12 @@ export function computePayrollSummary({
   const extra100 = baseHourly * 2 * payroll.extra100Hours * hourWeight;
   const night50 = baseHourly * 1.5 * 1.133333333 * payroll.night50Hours * hourWeight;
   const night = baseHourly * 1.133333333 * payroll.nightHours * hourWeight;
+  // Feriado trabajado: al 100% (doble), en su propio concepto. Nocturna al 100%: doble + recargo
+  // nocturno (la noche de un tramo al 100%). Criterio de Nicolas, 2026-10-02.
+  const holidayWorked = baseHourly * 2 * Number(payroll.holidayWorkedHours || 0) * hourWeight;
+  const night100 = baseHourly * 2 * 1.133333333 * Number(payroll.night100Hours || 0) * hourWeight;
   const seniorityBonus =
-    (grossNormal + grossHoliday + extra50 + extra100 + night50 + night) *
+    (grossNormal + grossHoliday + extra50 + extra100 + night50 + night + holidayWorked + night100) *
     ((config.seniorityPctPerYear * seniorityYears) / 100);
   // PRESENTISMO. Dos cosas distintas: cuanto REPRESENTA (10%) y cuanto COBRA este mes segun su
   // asistencia. La segunda sale de las tardes y ausencias (criterio de Nicolas, 2026-08-31:
@@ -167,7 +171,7 @@ export function computePayrollSummary({
   const chargedAgreedWhite = isFueraConvenio && computeWhiteCharges ? Number(agreedWhite || 0) : 0;
   const flatAgreedWhite = isFueraConvenio && !computeWhiteCharges ? Number(agreedWhite || 0) : 0;
   const grossRem =
-    grossNormal + grossHoliday + extra50 + extra100 + night50 + night + seniorityBonus + presentismo + whiteBonus + chargedAgreedWhite;
+    grossNormal + grossHoliday + extra50 + extra100 + night50 + night + holidayWorked + night100 + seniorityBonus + presentismo + whiteBonus + chargedAgreedWhite;
   const totalGross = grossRem + nonRem;
   const jubilacion = grossRem * 0.11;
   const ley19032 = grossRem * 0.03;
@@ -270,6 +274,8 @@ export function computePayrollSummary({
     extra100,
     night50,
     night,
+    holidayWorked,
+    night100,
     jubilacion,
     ley19032,
     obraSocial,
