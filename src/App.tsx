@@ -15270,9 +15270,11 @@ Escribi CERRAR para confirmar:`
   // PDF de la liquidacion de un mes (bloque "Liquidacion mensual" de Personal): un renglon por
   // empleado de la nomina visible, agrupado por empresa. Horas desde la liquidacion del mes (que sale
   // del calendario); ausencias y vacaciones en DIAS, contadas de los estados del calendario.
-  const openPayrollMonthReport = (month: string) => {
+  // `employeeIds`: los empleados tildados en el bloque (si no se pasa, toda la nomina visible).
+  const openPayrollMonthReport = (month: string, employeeIds?: number[]) => {
     try {
-      const rows = visibleEmployees.map((employee) => {
+      const elegidos = employeeIds ? new Set(employeeIds) : null;
+      const rows = visibleEmployees.filter((e) => !elegidos || elegidos.has(e.id)).map((employee) => {
         const payroll = ensureEmployeePayroll(employee, month);
         const delMes = (employee.attendance || []).filter((a) => a.date?.startsWith(`${month}-`));
         const contar = (status: string) => delMes.filter((a) => a.status === status).length;

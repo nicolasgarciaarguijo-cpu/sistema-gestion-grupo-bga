@@ -36,7 +36,7 @@ import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
 type PersonalTabProps = {
   employees: any[];
-  onPayrollMonthReport: (month: string) => void;
+  onPayrollMonthReport: (month: string, employeeIds?: number[]) => void;
   visibleEmployees: any[];
   formerEmployees: any[];
   selectedEmployee: any;
@@ -190,6 +190,9 @@ export function PersonalTab(props: PersonalTabProps) {
   const [showOldScales, setShowOldScales] = useState(false);
   // Mes del bloque "Liquidacion mensual". Arranca en el mes ANTERIOR: es el que se liquida.
   const [liqMonth, setLiqMonth] = useState<string>(() => shiftMonthKey(localMonthKey(), -1));
+  // Empleados DESTILDADOS del PDF. Se guarda lo excluido (y no lo elegido) para que un empleado nuevo
+  // aparezca tildado sin tener que acordarse de sumarlo.
+  const [liqExcluidos, setLiqExcluidos] = useState<Set<number>>(() => new Set());
   const scaleMonthsSorted = Array.from(
     new Set((scaleRows as any[]).map((r) => r.month).filter(Boolean))
   ).sort() as string[];
@@ -890,9 +893,27 @@ export function PersonalTab(props: PersonalTabProps) {
             );
             const guardado = (e: any) =>
               (e.payrolls || []).find((p: any) => p.month === liqMonth)?.savedAt || "";
-            const faltan = nomina.filter((e) => !guardado(e));
-            const listo = nomina.length > 0 && faltan.length === 0;
+            const elegidos = nomina.filter((e) => !liqExcluidos.has(e.id));
+            const faltan = elegidos.filter((e) => !guardado(e));
+            const listo = elegidos.length > 0 && faltan.length === 0;
             const porEmpresa = Array.from(new Set(nomina.map((e) => e.company)));
+            const toggle = (id: number) =>
+              setLiqExcluidos((prev) => {
+                const next = new Set(prev);
+                if (next.has(id)) next.delete(id);
+                else next.add(id);
+                return next;
+              });
+            const setEmpresa = (company: string, incluir: boolean) =>
+              setLiqExcluidos((prev) => {
+                const next = new Set(prev);
+                nomina
+                  .filter((e) => e.company === company)
+                  .forEach((e) => (incluir ? next.delete(e.id) : next.add(e.id)));
+                return next;
+              });
+            const empresaCorta = (company: string) =>
+              (COMPANY_OPTIONS as any[]).find((c) => c.value === company)?.short || company;
             return (
               <div style={{ order: 3, gridColumn: "1 / -1" }}>
                 <Panel title="Liquidacion mensual" span="full">
@@ -906,7 +927,7 @@ export function PersonalTab(props: PersonalTabProps) {
                       />
                     </Field>
                     <ButtonLike
-                      onClick={() => onPayrollMonthReport(liqMonth)}
+                      onClick={() => onPayrollMonthReport(liqMonth, elegidos.map((e) => e.id))}
                       disabled={!listo}
                     >
                       Exportar liquidación {monthLabel(liqMonth)} (PDF)
@@ -917,15 +938,84 @@ export function PersonalTab(props: PersonalTabProps) {
                         ...(listo ? styles.statusGreen : styles.statusYellow),
                       }}
                     >
-                      {listo
-                        ? `Mes guardado · ${nomina.length} empleados`
-                        : `${nomina.length - faltan.length} de ${nomina.length} con el mes guardado`}
+                      {elegidos.length === 0
+                        ? "Ningún empleado elegido"
+                        : listo
+                        ? `Mes guardado · ${elegidos.length} empleado${elegidos.length === 1 ? "" : "s"} en el PDF`
+                        : `${elegidos.length - faltan.length} de ${elegidos.length} elegidos con el mes guardado`}
                     </span>
                   </div>
                   <div style={{ ...styles.muted, marginTop: 8 }}>
                     El PDF trae toda la nómina separada por empresa: horas normales, feriado, extras 50 y
                     100, nocturnas 50 y 100, ausencias, vacaciones, presentismo y anticipos. Se habilita
-                    cuando todos tienen {monthLabel(liqMonth)} guardado (botón "Guardar mes" en la ficha).
+                    cuando todos los elegidos tienen {monthLabel(liqMonth)} guardado (botón "Guardar mes" en
+                    la ficha). Destildá a los que no querés que aparezcan.
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                      gap: 12,
+                      marginTop: 10,
+                    }}
+                  >
+                    {porEmpresa.map((company) => {
+                      const deEmpresa = nomina.filter((e) => e.company === company);
+                      return (
+                        <div
+                          key={company}
+                          style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 10px" }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              alignItems: "center",
+                              marginBottom: 4,
+                            }}
+                          >
+                            <strong>{empresaCorta(company)}</strong>
+                            <span style={{ display: "flex", gap: 6 }}>
+                              <button style={styles.smallBtn} onClick={() => setEmpresa(company, true)}>
+                                Todos
+                              </button>
+                              <button style={styles.smallBtn} onClick={() => setEmpresa(company, false)}>
+                                Ninguno
+                              </button>
+                            </span>
+                          </div>
+                          {deEmpresa.map((e) => {
+                            const ok = !!guardado(e);
+                            return (
+                              <label
+                                key={e.id}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                  padding: "3px 0",
+                                  fontSize: 13,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={!liqExcluidos.has(e.id)}
+                                  onChange={() => toggle(e.id)}
+                                />
+                                <span style={{ flex: 1 }}>{e.name}</span>
+                                <span
+                                  title={ok ? "Mes guardado" : "Falta guardar el mes"}
+                                  style={{ fontSize: 11, fontWeight: 700, color: ok ? "#166534" : "#92400e" }}
+                                >
+                                  {ok ? "guardado" : "sin guardar"}
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      );
+                    })}
                   </div>
                   {!listo && faltan.length > 0 && (
                     <div style={{ marginTop: 8, fontSize: 13 }}>
