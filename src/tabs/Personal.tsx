@@ -36,7 +36,7 @@ import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
 type PersonalTabProps = {
   employees: any[];
-  onPayrollMonthReport: () => void;
+  onPayrollMonthReport: (month: string) => void;
   visibleEmployees: any[];
   formerEmployees: any[];
   selectedEmployee: any;
@@ -188,6 +188,8 @@ export function PersonalTab(props: PersonalTabProps) {
   // sea de un mes anterior por como venga la escala del sindicato) y todas las siguientes. Las viejas
   // se ocultan salvo que se pida verlas.
   const [showOldScales, setShowOldScales] = useState(false);
+  // Mes del bloque "Liquidacion mensual". Arranca en el mes ANTERIOR: es el que se liquida.
+  const [liqMonth, setLiqMonth] = useState<string>(() => shiftMonthKey(localMonthKey(), -1));
   const scaleMonthsSorted = Array.from(
     new Set((scaleRows as any[]).map((r) => r.month).filter(Boolean))
   ).sort() as string[];
@@ -494,15 +496,7 @@ export function PersonalTab(props: PersonalTabProps) {
 
           {!selectedEmployee && (
           <div style={{ order: 3, gridColumn: "1 / -1" }}>
-          <Panel
-            title="Empleados"
-            span="full"
-            actions={
-              <ButtonLike onClick={onPayrollMonthReport}>
-                Exportar liquidación {monthLabel(payrollMonth)} (PDF)
-              </ButtonLike>
-            }
-          >
+          <Panel title="Empleados" span="full">
             <div style={{ ...planillaWrap, ...anchosNomina.vars }}>
             <table className="planilla" style={planillaTable}>
               {/* Antes la ultima columna metia asistencia, documentacion, las cuatro provisiones,
@@ -886,6 +880,69 @@ export function PersonalTab(props: PersonalTabProps) {
           </Panel>
           </div>
           )}
+
+          {!selectedEmployee && (() => {
+            // LIQUIDACION MENSUAL: se elige el mes y, cuando TODA la nomina lo tiene guardado, se
+            // exporta el PDF con la situacion de todos, separado por empresa. Mientras falte guardar
+            // alguno, el boton queda apagado y se dice quien falta (asi no sale un PDF a medio cargar).
+            const nomina = (visibleEmployees as any[]).slice().sort((a, b) =>
+              String(a.name || "").localeCompare(String(b.name || ""), "es")
+            );
+            const guardado = (e: any) =>
+              (e.payrolls || []).find((p: any) => p.month === liqMonth)?.savedAt || "";
+            const faltan = nomina.filter((e) => !guardado(e));
+            const listo = nomina.length > 0 && faltan.length === 0;
+            const porEmpresa = Array.from(new Set(nomina.map((e) => e.company)));
+            return (
+              <div style={{ order: 3, gridColumn: "1 / -1" }}>
+                <Panel title="Liquidacion mensual" span="full">
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+                    <Field label="Mes a liquidar">
+                      <input
+                        style={styles.input}
+                        type="month"
+                        value={liqMonth}
+                        onChange={(e) => e.target.value && setLiqMonth(e.target.value)}
+                      />
+                    </Field>
+                    <ButtonLike
+                      onClick={() => onPayrollMonthReport(liqMonth)}
+                      disabled={!listo}
+                    >
+                      Exportar liquidación {monthLabel(liqMonth)} (PDF)
+                    </ButtonLike>
+                    <span
+                      style={{
+                        ...styles.statusPill,
+                        ...(listo ? styles.statusGreen : styles.statusYellow),
+                      }}
+                    >
+                      {listo
+                        ? `Mes guardado · ${nomina.length} empleados`
+                        : `${nomina.length - faltan.length} de ${nomina.length} con el mes guardado`}
+                    </span>
+                  </div>
+                  <div style={{ ...styles.muted, marginTop: 8 }}>
+                    El PDF trae toda la nómina separada por empresa: horas normales, feriado, extras 50 y
+                    100, nocturnas 50 y 100, ausencias, vacaciones, presentismo y anticipos. Se habilita
+                    cuando todos tienen {monthLabel(liqMonth)} guardado (botón "Guardar mes" en la ficha).
+                  </div>
+                  {!listo && faltan.length > 0 && (
+                    <div style={{ marginTop: 8, fontSize: 13 }}>
+                      <strong>Falta guardar el mes:</strong>{" "}
+                      {porEmpresa
+                        .map((c) => {
+                          const n = faltan.filter((e) => e.company === c).map((e) => e.name);
+                          return n.length ? `${n.join(", ")}` : "";
+                        })
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </div>
+                  )}
+                </Panel>
+              </div>
+            );
+          })()}
 
           <div style={{ order: 4, gridColumn: "1 / -1" }}>
               <Panel title="Escalas salariales" span="full">
@@ -2332,16 +2389,7 @@ export function PersonalTab(props: PersonalTabProps) {
                       </div>
 
                       <div style={styles.personalPayrollPane}>
-                        <Panel
-                          title="Liquidacion del mes"
-                          span="full"
-                          nested
-                          actions={
-                            <ButtonLike onClick={onPayrollMonthReport} secondary>
-                              Exportar liquidación de todos (PDF)
-                            </ButtonLike>
-                          }
-                        >
+                        <Panel title="Liquidacion del mes" span="full" nested>
                           <div style={styles.liquidationColumn}>
                             <Field label="Horas normales (desde calendario)">
                               <input

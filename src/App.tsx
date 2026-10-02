@@ -15267,21 +15267,21 @@ Escribi CERRAR para confirmar:`
     });
   };
 
-  // PDF de la liquidacion del mes (mes elegido en Personal): un renglon por empleado de la nomina
-  // visible, agrupado por empresa. Horas desde la liquidacion del mes (que sale del calendario);
-  // ausencias y vacaciones en DIAS, contadas de los estados del calendario.
-  const openPayrollMonthReport = () => {
+  // PDF de la liquidacion de un mes (bloque "Liquidacion mensual" de Personal): un renglon por
+  // empleado de la nomina visible, agrupado por empresa. Horas desde la liquidacion del mes (que sale
+  // del calendario); ausencias y vacaciones en DIAS, contadas de los estados del calendario.
+  const openPayrollMonthReport = (month: string) => {
     try {
       const rows = visibleEmployees.map((employee) => {
-        const payroll = getCurrentPayroll(employee);
-        const delMes = (employee.attendance || []).filter((a) => a.date?.startsWith(`${payrollMonth}-`));
+        const payroll = ensureEmployeePayroll(employee, month);
+        const delMes = (employee.attendance || []).filter((a) => a.date?.startsWith(`${month}-`));
         const contar = (status: string) => delMes.filter((a) => a.status === status).length;
         const representa = Number(payroll.presentismoPctOverride ?? 0);
         const conPresentismo =
           (employee.employmentType || "convenio") === "convenio" && representa > 0;
         const cobra =
           payroll.presentismoAsistenciaPct === null || payroll.presentismoAsistenciaPct === undefined
-            ? presentismoPorAsistencia(employee, payrollMonth)
+            ? presentismoPorAsistencia(employee, month)
             : Number(payroll.presentismoAsistenciaPct);
         return {
           company: employee.company,
@@ -15303,7 +15303,7 @@ Escribi CERRAR para confirmar:`
           anticipos: Number(payroll.anticipos || 0),
         };
       });
-      const html = buildPayrollMonthHtml(payrollMonth, rows);
+      const html = buildPayrollMonthHtml(month, rows);
       const blob = new Blob([html], { type: "text/html;charset=utf-8" });
       const url = window.URL.createObjectURL(blob);
       const win = window.open(url, "_blank");
