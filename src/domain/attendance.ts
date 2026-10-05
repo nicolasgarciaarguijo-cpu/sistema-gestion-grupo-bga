@@ -1,10 +1,9 @@
 // Semaforo de asistencia. Regla de negocio del taller (ver memoria horario-laboral-asistencia):
 //   - Horario: L-V 07:30 a 17:00, Sabados 07:30 a 13:00, Domingo no laborable.
 //   - Verde  = presente y en horario (ficho <= 07:30).
-//   - Tolerancia: 5 min de gracia, PERO maximo 2 veces al mes. Fichar 07:31-07:35 sigue verde solo
-//     las primeras 2 veces del mes; de la 3.a en adelante -> amarillo.
-//   - Amarillo = presente pero tarde (ficho > 07:35, o dentro de los 5 min con las 2 tolerancias ya
-//     usadas ese mes).
+//   - Tolerancia: 5 min de gracia, SIEMPRE. Fichar 07:31-07:35 es presente en horario (verde), sin
+//     limite por mes (criterio de Nicolas, 2026-10-02; antes valia solo 2 veces al mes).
+//   - Amarillo = presente pero tarde (ficho despues de las 07:35).
 //   - Rojo = ausente (justificado o injustificado).
 // El horario es global (igual para todos). Si mas adelante hay turnos por empleado, se parametriza.
 
@@ -16,7 +15,6 @@ export const WORKSHOP_SCHEDULE = {
   exitWeekday: "17:00",
   exitSaturday: "13:00",
   toleranceMinutes: 5,
-  toleranceMaxPerMonth: 2,
 };
 
 export type AttendanceLevel =
@@ -64,8 +62,8 @@ export const timeToMinutes = (hhmm?: string): number | null => {
   return h * 60 + min;
 };
 
-// Semaforo de un MES para un empleado. Procesa los dias en orden cronologico para poder aplicar la
-// regla de "2 tolerancias por mes". Devuelve un mapa fecha -> estado del dia. `month` = "YYYY-MM".
+// Semaforo de un MES para un empleado, con el margen de 5 minutos de entrada (sin tope mensual).
+// Devuelve un mapa fecha -> estado del dia. `month` = "YYYY-MM".
 export const computeMonthAttendance = (
   attendance: AttendanceRecord[],
   month: string
@@ -74,7 +72,6 @@ export const computeMonthAttendance = (
   const rows = attendance
     .filter((r) => r.date.startsWith(`${month}-`))
     .sort((a, b) => a.date.localeCompare(b.date));
-  let tolerancesUsed = 0;
 
   for (const r of rows) {
     if (r.status === "ausente_injustificado" || r.status === "ausente_justificado") {
@@ -127,22 +124,13 @@ export const computeMonthAttendance = (
       continue;
     }
     if (late <= WORKSHOP_SCHEDULE.toleranceMinutes) {
-      if (tolerancesUsed < WORKSHOP_SCHEDULE.toleranceMaxPerMonth) {
-        tolerancesUsed += 1;
-        out.set(r.date, {
-          level: "green",
-          lateMinutes: late,
-          tolerated: true,
-          label: `Tolerancia ${tolerancesUsed}/${WORKSHOP_SCHEDULE.toleranceMaxPerMonth} (${r.checkIn}, +${late}')`,
-        });
-      } else {
-        out.set(r.date, {
-          level: "yellow",
-          lateMinutes: late,
-          tolerated: false,
-          label: `Tarde ${r.checkIn} (+${late}', sin tolerancias)`,
-        });
-      }
+      // Dentro del margen de 5 minutos: presente en horario, todas las veces que pase.
+      out.set(r.date, {
+        level: "green",
+        lateMinutes: late,
+        tolerated: true,
+        label: `En horario (${r.checkIn}, dentro de los ${WORKSHOP_SCHEDULE.toleranceMinutes}')`,
+      });
       continue;
     }
     out.set(r.date, {

@@ -31,6 +31,7 @@ import {
 } from "../domain/employeeStatus";
 import type { CompanyName } from "../domain/types";
 import { computeMonthAttendance, dayHoursTotal, deriveConvenioHours } from "../domain/attendance";
+import { reglasDeLiquidacion } from "../domain/reglasLiquidacion";
 import type { DayAttendance } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
@@ -156,6 +157,36 @@ function LineaResumen({
     >
       <span style={{ ...styles.muted, fontWeight: fuerte ? 700 : 400 }}>{label}</span>
       <span style={{ fontWeight: fuerte ? 700 : 400, color }}>{value}</span>
+    </div>
+  );
+}
+
+// Reglas de liquidacion a la vista. El texto sale de domain/reglasLiquidacion, que se arma con las
+// mismas constantes del calculo: lo que se lee es lo que se liquida.
+function ReglasLiquidacion({ config }: { config: any }) {
+  const secciones = reglasDeLiquidacion({
+    seniorityPctPerYear: config?.seniorityPctPerYear,
+    unionPct: config?.unionPct,
+    insurancePct: config?.insurancePct,
+  });
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+        gap: 12,
+      }}
+    >
+      {secciones.map((s) => (
+        <div key={s.titulo} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px" }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>{s.titulo}</div>
+          <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, lineHeight: 1.5, color: "#334155" }}>
+            {s.reglas.map((r) => (
+              <li key={r}>{r}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
@@ -1033,6 +1064,14 @@ export function PersonalTab(props: PersonalTabProps) {
               </div>
             );
           })()}
+
+          {!selectedEmployee && (
+            <div style={{ order: 3, gridColumn: "1 / -1" }}>
+              <Panel title="Reglas de liquidacion" span="full">
+                <ReglasLiquidacion config={employeeBaseConfig} />
+              </Panel>
+            </div>
+          )}
 
           <div style={{ order: 4, gridColumn: "1 / -1" }}>
               <Panel title="Escalas salariales" span="full">
@@ -2480,6 +2519,14 @@ export function PersonalTab(props: PersonalTabProps) {
 
                       <div style={styles.personalPayrollPane}>
                         <Panel title="Liquidacion del mes" span="full" nested>
+                          <details style={{ ...styles.noticeBox, marginBottom: 10 }}>
+                            <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+                              Ver las reglas de liquidación
+                            </summary>
+                            <div style={{ marginTop: 8 }}>
+                              <ReglasLiquidacion config={employeeBaseConfig} />
+                            </div>
+                          </details>
                           <div style={styles.liquidationColumn}>
                             <Field label="Horas normales (desde calendario)">
                               <input

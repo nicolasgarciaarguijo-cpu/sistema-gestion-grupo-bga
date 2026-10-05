@@ -50,19 +50,26 @@ describe("computeMonthAttendance", () => {
     expect(d?.lateMinutes).toBe(10);
   });
 
-  it("dentro de los 5 min: primeras 2 veces verde (tolerado), la 3.a amarillo", () => {
+  // Criterio de Nicolas (2026-10-02): 07:31-07:35 es presente en horario SIEMPRE, sin tope mensual.
+  it("dentro de los 5 min: verde todas las veces, sin limite por mes", () => {
     const map = computeMonthAttendance(
       [
         rec("2026-08-03", { checkIn: "07:33" }),
         rec("2026-08-04", { checkIn: "07:34" }),
         rec("2026-08-05", { checkIn: "07:32" }),
+        rec("2026-08-06", { checkIn: "07:35" }),
       ],
       "2026-08"
     );
     expect(map.get("2026-08-03")?.level).toBe("green");
     expect(map.get("2026-08-03")?.tolerated).toBe(true);
-    expect(map.get("2026-08-04")?.level).toBe("green");
-    expect(map.get("2026-08-05")?.level).toBe("yellow"); // ya gasto las 2 tolerancias
+    expect(map.get("2026-08-05")?.level).toBe("green");
+    expect(map.get("2026-08-06")?.level).toBe("green"); // 07:35 justo: sigue en horario
+  });
+
+  it("07:36 ya es tarde", () => {
+    const map = computeMonthAttendance([rec("2026-08-03", { checkIn: "07:36" })], "2026-08");
+    expect(map.get("2026-08-03")?.level).toBe("yellow");
   });
 
   it("ausente -> rojo", () => {
@@ -85,7 +92,6 @@ describe("computeMonthAttendance", () => {
 
   it("respeta la config de tolerancia", () => {
     expect(WORKSHOP_SCHEDULE.toleranceMinutes).toBe(5);
-    expect(WORKSHOP_SCHEDULE.toleranceMaxPerMonth).toBe(2);
   });
 });
 
@@ -94,18 +100,18 @@ describe("summarizeMonthAttendance", () => {
     const s = summarizeMonthAttendance(
       [
         rec("2026-08-03", { checkIn: "07:20" }), // en horario
-        rec("2026-08-04", { checkIn: "07:33" }), // tolerado 1
-        rec("2026-08-05", { checkIn: "07:34" }), // tolerado 2
-        rec("2026-08-06", { checkIn: "07:33" }), // amarillo (sin tolerancias)
+        rec("2026-08-04", { checkIn: "07:33" }), // dentro de los 5 min
+        rec("2026-08-05", { checkIn: "07:34" }), // dentro de los 5 min
+        rec("2026-08-06", { checkIn: "07:33" }), // dentro de los 5 min (ya no hay tope)
         rec("2026-08-07", { checkIn: "08:10" }), // amarillo
         rec("2026-08-10", { status: "ausente_injustificado" }), // rojo
       ],
       "2026-08"
     );
     expect(s.present).toBe(5);
-    expect(s.onTime).toBe(3); // 1 en horario + 2 tolerados siguen "en horario" (verde)
-    expect(s.toleratedLates).toBe(2);
-    expect(s.late).toBe(2);
+    expect(s.onTime).toBe(4); // 1 en horario + 3 dentro de los 5 min (verde)
+    expect(s.toleratedLates).toBe(3);
+    expect(s.late).toBe(1);
     expect(s.absent).toBe(1);
   });
 });

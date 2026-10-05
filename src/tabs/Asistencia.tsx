@@ -539,8 +539,8 @@ export function AsistenciaTab({
             {WORKSHOP_SCHEDULE.toleranceMinutes} min
           </summary>
           <div style={{ marginTop: 6 }}>
-            Máx {WORKSHOP_SCHEDULE.toleranceMaxPerMonth} tolerancias por mes (la 3.ª ya cuenta como
-            tarde). Los horarios exactos se cargan y se editan en la ficha de cada empleado, bloque
+            Fichar hasta {WORKSHOP_SCHEDULE.toleranceMinutes} minutos después de la entrada cuenta
+            como presente en horario, todas las veces. Los horarios exactos se cargan y se editan en la ficha de cada empleado, bloque
             Presentismo. Cuando conectemos el reloj Dahua, se completa solo.
           </div>
         </details>
@@ -604,7 +604,7 @@ export function AsistenciaTab({
                   <th style={{ ...thColumna, textAlign: "right" }}>En horario</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Tarde</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Ausentes</th>
-                  <th style={thFlexible}>Tolerancias usadas</th>
+                  <th style={thFlexible}>Dentro de los {WORKSHOP_SCHEDULE.toleranceMinutes} min</th>
                 </tr>
               </thead>
               <tbody>
@@ -626,7 +626,6 @@ export function AsistenciaTab({
                     </tr>
                     {grupo.items.map((row: any) => {
                       const usadas = row.summary.toleratedLates;
-                      const tope = WORKSHOP_SCHEDULE.toleranceMaxPerMonth;
                       return (
                         <tr key={row.employee.id}>
                           <td
@@ -656,36 +655,10 @@ export function AsistenciaTab({
                             {row.summary.absent || "·"}
                           </td>
                           <td style={tdFlexible}>
-                            {/* Se ve cuanto queda de tolerancia antes de que la proxima llegada tarde
-                                cuente como tarde de verdad. */}
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  width: 54,
-                                  height: 6,
-                                  borderRadius: 999,
-                                  background: "#e2e8f0",
-                                  overflow: "hidden",
-                                }}
-                              >
-                                <span
-                                  style={{
-                                    display: "block",
-                                    height: "100%",
-                                    width: `${Math.min(100, (usadas / Math.max(tope, 1)) * 100)}%`,
-                                    background: usadas >= tope ? LEVEL_COLOR.red : LEVEL_COLOR.yellow,
-                                  }}
-                                />
-                              </span>
-                              <span style={{ color: usadas >= tope ? LEVEL_COLOR.red : "#64748b", fontWeight: 600 }}>
-                                {usadas}/{tope}
-                              </span>
-                              {usadas >= tope && (
-                                <span style={{ color: LEVEL_COLOR.red, fontSize: 11 }}>
-                                  la próxima ya cuenta como tarde
-                                </span>
-                              )}
+                            {/* Llegadas entre 07:31 y 07:35: cuentan como en horario, sin tope. Se
+                                muestran igual para ver quien llega siempre al limite. */}
+                            <span style={{ color: usadas > 0 ? "#64748b" : "#cbd5e1", fontWeight: 600 }}>
+                              {usadas > 0 ? `${usadas} vez${usadas === 1 ? "" : "es"}` : "·"}
                             </span>
                           </td>
                         </tr>

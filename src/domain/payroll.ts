@@ -104,6 +104,12 @@ export type PayrollSummaryInput = {
   isPartner?: boolean;
 };
 
+// Multiplicadores de la hora (los usa el calculo Y el bloque "Reglas de liquidacion" de Personal,
+// asi el texto que se lee nunca dice otra cosa que lo que se liquida).
+export const MULT_EXTRA_50 = 1.5;
+export const MULT_EXTRA_100 = 2;
+export const RECARGO_NOCTURNO = 1.133333333; // +13,33% de la hora nocturna
+
 export function computePayrollSummary({
   seniorityYears,
   hourlyNetManual,
@@ -137,14 +143,14 @@ export function computePayrollSummary({
   const hourWeight = partnerFlat ? 0 : 1;
   const grossNormal = baseHourly * payroll.normalHours * hourWeight;
   const grossHoliday = baseHourly * payroll.holidayHours * hourWeight;
-  const extra50 = baseHourly * 1.5 * payroll.extra50Hours * hourWeight;
-  const extra100 = baseHourly * 2 * payroll.extra100Hours * hourWeight;
-  const night50 = baseHourly * 1.5 * 1.133333333 * payroll.night50Hours * hourWeight;
-  const night = baseHourly * 1.133333333 * payroll.nightHours * hourWeight;
+  const extra50 = baseHourly * MULT_EXTRA_50 * payroll.extra50Hours * hourWeight;
+  const extra100 = baseHourly * MULT_EXTRA_100 * payroll.extra100Hours * hourWeight;
+  const night50 = baseHourly * MULT_EXTRA_50 * RECARGO_NOCTURNO * payroll.night50Hours * hourWeight;
+  const night = baseHourly * RECARGO_NOCTURNO * payroll.nightHours * hourWeight;
   // Feriado trabajado: al 100% (doble), en su propio concepto. Nocturna al 100%: doble + recargo
   // nocturno (la noche de un tramo al 100%). Criterio de Nicolas, 2026-10-02.
-  const holidayWorked = baseHourly * 2 * Number(payroll.holidayWorkedHours || 0) * hourWeight;
-  const night100 = baseHourly * 2 * 1.133333333 * Number(payroll.night100Hours || 0) * hourWeight;
+  const holidayWorked = baseHourly * MULT_EXTRA_100 * Number(payroll.holidayWorkedHours || 0) * hourWeight;
+  const night100 = baseHourly * MULT_EXTRA_100 * RECARGO_NOCTURNO * Number(payroll.night100Hours || 0) * hourWeight;
   const seniorityBonus =
     (grossNormal + grossHoliday + extra50 + extra100 + night50 + night + holidayWorked + night100) *
     ((config.seniorityPctPerYear * seniorityYears) / 100);
