@@ -49,6 +49,20 @@ import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { classifyFichada, dayHoursTotal, deriveConvenioHours, summarizeMonthAttendance } from "./domain/attendance";
 import { esFeriado } from "./domain/feriadosArgentina";
 import {
+  previsionesDeVencimientos,
+  realPorRenglonMes,
+  type Vencimiento,
+} from "./domain/vencimientos";
+import {
+  agendaInamovibles,
+  alertasActivas,
+  type ItemInamovible,
+  type VencimientoMarca,
+} from "./domain/agendaInamovibles";
+import { allSectionsWith } from "./domain/calendarStructure";
+import { PagosInamovibles } from "./tabs/PagosInamovibles";
+import { AlertasInamovibles } from "./ui/AlertasInamovibles";
+import {
   buildCierreResumenHtml,
   buildCierreBancoHtml,
   buildCierreCostosHtml,
@@ -1731,6 +1745,10 @@ type PersistedAppStateData = {
   costEntries: CostEntry[];
   seguros: Seguro[];
   inversiones: Inversion[];
+  // Vencimientos cargados a mano (pagos inamovibles que no salen de otra solapa). Ver domain/vencimientos.
+  vencimientos: Vencimiento[];
+  // Marcas de "pagado" de los pagos inamovibles que no tienen su propio pagado (cuotas, sueldos, seguros).
+  vencimientoMarcas: VencimientoMarca[];
   costRules: CostRule[];
   creditCards: CreditCard[];
   creditCardStatements: CreditCardStatement[];
@@ -1790,6 +1808,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "inversiones",
     label: "Inversiones",
     fields: ["inversiones"] as const,
+  },
+  {
+    key: "vencimientos",
+    label: "Vencimientos (pagos inamovibles)",
+    fields: ["vencimientos", "vencimientoMarcas"] as const,
   },
   {
     key: "facturas-emitidas",
@@ -2931,6 +2954,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [polizaBusyId, setPolizaBusyId] = useState<number | null>(null);
   // --- Inversiones ---
   const [inversiones, setInversiones] = useState<Inversion[]>([]);
+  const [vencimientos, setVencimientos] = useState<Vencimiento[]>([]);
+  const [vencimientoMarcas, setVencimientoMarcas] = useState<VencimientoMarca[]>([]);
   const [inversionesCompanyScope, setInversionesCompanyScope] = useState<string>("__ALL__");
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
   const [calendarRowConfig, setCalendarRowConfig] = useState<CalendarRowConfig>(DEFAULT_CALENDAR_ROW_CONFIG);
@@ -9283,6 +9308,8 @@ Escribi CERRAR para confirmar:`
     costEntries: costEntries.map((item) => ({ ...item })),
     seguros: seguros.map((item) => ({ ...item })),
     inversiones: inversiones.map((item) => ({ ...item })),
+    vencimientos: vencimientos.map((item) => ({ ...item, ocurrencias: { ...(item.ocurrencias || {}) } })),
+    vencimientoMarcas: vencimientoMarcas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
     creditCardStatements: creditCardStatements.map((item) => ({ ...item })),
@@ -9585,6 +9612,15 @@ Escribi CERRAR para confirmar:`
     );
     setInversiones(
       keepAccessibleByCompany(data.inversiones || []).map((item) => ({ ...item }))
+    );
+    setVencimientos(
+      keepAccessibleByCompany(data.vencimientos || []).map((item) => ({
+        ...item,
+        ocurrencias: { ...(item.ocurrencias || {}) },
+      }))
+    );
+    setVencimientoMarcas(
+      keepAccessibleByCompany(data.vencimientoMarcas || []).map((item) => ({ ...item }))
     );
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -15346,6 +15382,171 @@ Escribi CERRAR para confirmar:`
     [seguros, balanceFiscalStartYear]
   );
 
+  // PAGOS INAMOVIBLES. La agenda junta lo que ya existe en el sistema (cuotas de deudas, resumenes de
+  // tarjeta, pagos programados del cash flow, seguros, sueldos) + los vencimientos cargados a mano. Se
+  // calcula de 90 dias atras (lo vencido impago sigue sonando) a 400 adelante (para navegar el año).
+  const hoyIso = todayIso();
+  const realPorRenglon = useMemo(
+    () =>
+      realPorRenglonMes(
+        // Plata REAL: lo pendiente del cash flow es una prevision, no cuenta como pagado.
+        annualCashFlowEntries.filter((e: any) => e.statusLabel !== "pendiente")
+      ),
+    [annualCashFlowEntries]
+  );
+  const agendaInamoviblesItems = useMemo<ItemInamovible[]>(() => {
+    const desdeD = new Date();
+    desdeD.setDate(desdeD.getDate() - 90);
+    const hastaD = new Date();
+    hastaD.setDate(hastaD.getDate() + 400);
+    const desde = `${desdeD.getFullYear()}-${String(desdeD.getMonth() + 1).padStart(2, "0")}-${String(desdeD.getDate()).padStart(2, "0")}`;
+    const hasta = `${hastaD.getFullYear()}-${String(hastaD.getMonth() + 1).padStart(2, "0")}-${String(hastaD.getDate()).padStart(2, "0")}`;
+    // Meses del rango, para los seguros y los sueldos.
+    const meses: string[] = [];
+    for (let d = new Date(desdeD.getFullYear(), desdeD.getMonth() - 1, 1); d <= hastaD; d.setMonth(d.getMonth() + 1)) {
+      meses.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
+    }
+    const tarjetaNombre = (cardId: number) => visibleCreditCards.find((c) => c.id === cardId)?.name || "";
+    // Sueldos: cada empresa con gente activa, el 4to dia habil del mes siguiente a cada periodo.
+    // Arranca en el periodo anterior al mes en curso (el que se paga ESTE mes): los sueldos de meses
+    // viejos ya se pagaron y no tienen que sonar como vencidos.
+    const mesActual = hoyIso.slice(0, 7);
+    const periodoEnCurso = (() => {
+      const d = new Date(Number(mesActual.slice(0, 4)), Number(mesActual.slice(5, 7)) - 2, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    })();
+    const empresasConGente = Array.from(new Set(visibleEmployees.map((e) => e.company)));
+    const sueldos = empresasConGente.flatMap((company) =>
+      meses
+        .filter((periodo) => periodo >= periodoEnCurso)
+        .map((periodo) => ({ company, periodo, fecha: paymentDateForPeriod(periodo), monto: 0 }))
+    );
+    return agendaInamovibles(
+      {
+        vencimientos: vencimientos.filter((v) => canAccessCompany(v.company)),
+        marcas: vencimientoMarcas,
+        debtPlans: visibleDebtPlans,
+        tarjetas: visibleCreditCardStatements.map((t) => ({
+          id: t.id,
+          company: t.company,
+          dueDate: t.dueDate,
+          totalArs: t.totalArs,
+          totalUsd: t.totalUsd,
+          paid: t.paid,
+          nombre: tarjetaNombre(t.cardId),
+        })),
+        pagosCashflow: visibleFinancialItems,
+        // Seguros desde el mes en curso: los debitos de meses viejos no tienen que sonar.
+        seguros: segurosPrevisionMensual(
+          seguros.filter((s) => canAccessCompany(s.company)),
+          meses.filter((m) => m >= mesActual)
+        ),
+        sueldos,
+        real: realPorRenglon,
+      },
+      desde,
+      hasta,
+      hoyIso
+    );
+  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso]);
+  const alertasInamovibles = useMemo(() => alertasActivas(agendaInamoviblesItems), [agendaInamoviblesItems]);
+  const canSeeInamovibles = effectiveIsAdmin || supabaseAllowedTabs.includes("calendarioAnual");
+
+  // Lo que baja a la planilla por el carril de previsiones (no suma al neto): los seguros y los
+  // vencimientos cargados a mano con fecha CONFIRMADA y renglon.
+  const previsionesPlanilla = useMemo(() => {
+    const meses = fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear);
+    const desde = `${meses[0]}-01`;
+    const hasta = `${meses[meses.length - 1]}-31`;
+    return [
+      ...segurosPrevisiones,
+      ...previsionesDeVencimientos(
+        vencimientos.filter((v) => canAccessCompany(v.company)),
+        desde,
+        hasta
+      ),
+    ];
+  }, [segurosPrevisiones, vencimientos, balanceFiscalStartYear]);
+
+  // Marcar pagado: si el origen tiene su propio "pagado", se usa ESE (queda vinculado en las dos
+  // solapas); si no, se guarda una marca.
+  const setInamoviblePagado = (item: ItemInamovible, pagado: boolean) => {
+    if (item.origen === "manual") {
+      setVencimientos((prev) =>
+        prev.map((v) =>
+          v.id === item.refId
+            ? {
+                ...v,
+                updatedAt: todayIso(),
+                ocurrencias: {
+                  ...(v.ocurrencias || {}),
+                  [item.ocurrenciaKey || ""]: {
+                    ...((v.ocurrencias || {})[item.ocurrenciaKey || ""] || {}),
+                    pagado,
+                    pagadoEl: pagado ? todayIso() : undefined,
+                  },
+                },
+              }
+            : v
+        )
+      );
+      return;
+    }
+    if (item.origen === "tarjeta") {
+      setCreditCardStatements((prev) => prev.map((t) => (t.id === item.refId ? { ...t, paid: pagado } : t)));
+      return;
+    }
+    if (item.origen === "cashflow") {
+      setFinancialItems((prev) =>
+        prev.map((f) => (f.id === item.refId ? { ...f, status: pagado ? "realizado" : "pendiente" } : f))
+      );
+      return;
+    }
+    setVencimientoMarcas((prev) => {
+      const resto = prev.filter((m) => m.clave !== item.clave);
+      return pagado
+        ? [...resto, { id: newId(), company: item.company, clave: item.clave, pagado: true, at: todayIso() }]
+        : resto;
+    });
+  };
+  const setOcurrenciaVencimiento = (
+    item: ItemInamovible,
+    cambio: { fecha?: string; monto?: number }
+  ) => {
+    setVencimientos((prev) =>
+      prev.map((v) => {
+        if (v.id !== item.refId) return v;
+        const k = item.ocurrenciaKey || "";
+        const dato = { ...((v.ocurrencias || {})[k] || {}) };
+        if ("fecha" in cambio) {
+          if (cambio.fecha) dato.fecha = cambio.fecha;
+          else delete dato.fecha;
+        }
+        if ("monto" in cambio) dato.monto = cambio.monto;
+        return { ...v, updatedAt: todayIso(), ocurrencias: { ...(v.ocurrencias || {}), [k]: dato } };
+      })
+    );
+  };
+  const saveVencimiento = (v: Vencimiento) => {
+    setVencimientos((prev) =>
+      v.id && prev.some((x) => x.id === v.id)
+        ? prev.map((x) => (x.id === v.id ? { ...v, updatedAt: todayIso() } : x))
+        : [...prev, { ...v, id: newId(), createdAt: todayIso(), updatedAt: todayIso() }]
+    );
+  };
+  const deleteVencimiento = (id: number) => setVencimientos((prev) => prev.filter((v) => v.id !== id));
+  const irAlOrigenInamovible = (item: ItemInamovible) => {
+    const destino: Partial<Record<ItemInamovible["origen"], TabKey>> = {
+      deuda: "cashflow",
+      tarjeta: "bancos",
+      cashflow: "facturacion",
+      seguro: "seguros",
+      sueldos: "personal",
+    };
+    const tab = destino[item.origen];
+    if (tab) setActiveTab(tab);
+  };
+
   // Nomina por (empresa, mes): mismo calculo que usa el estado de resultados, para que los
   // numeros de Costos y los del balance no se contradigan.
   const costsPayrollRows = useMemo(() => {
@@ -17248,7 +17449,7 @@ Escribi CERRAR para confirmar:`
           onSetNote={setCalendarCellNote}
           billeteraDiaria={billeteraDiariaPorEmpresa}
           entries={annualCashFlowEntries}
-          previsiones={segurosPrevisiones}
+          previsiones={previsionesPlanilla}
           companyScope={balanceCompanyScope}
           setCompanyScope={setBalanceCompanyScope}
           fiscalStartYear={balanceFiscalStartYear}
@@ -17386,6 +17587,13 @@ Escribi CERRAR para confirmar:`
             pettyCash={pettyCashHeader}
           />
           {canSeePlataDisponible && <PlataDisponible companies={plataDisponibleByCompany} />}
+          {canSeeInamovibles && (
+            <AlertasInamovibles
+              items={alertasInamovibles}
+              companyShort={(company) => COMPANY_OPTIONS.find((c) => c.value === company)?.short || company}
+              onOpen={() => setActiveTab("calendarioAnual")}
+            />
+          )}
         </div>
       )}
       <div style={{ ...styles.headerBar, borderTop: `8px solid ${workspaceTheme.primary}` }}>
@@ -17760,6 +17968,22 @@ Escribi CERRAR para confirmar:`
         />
       )}
 
+      {activeTab === "calendarioAnual" && (
+        <PagosInamovibles
+          items={agendaInamoviblesItems}
+          hoy={hoyIso}
+          vencimientos={vencimientos}
+          companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value))}
+          sections={allSectionsWith(calendarRowConfig)}
+          canEdit={canSeeInamovibles}
+          onSetPagado={setInamoviblePagado}
+          onConfirmarFecha={(item, fecha) => setOcurrenciaVencimiento(item, { fecha })}
+          onMontoOcurrencia={(item, monto) => setOcurrenciaVencimiento(item, { monto })}
+          onSaveVencimiento={saveVencimiento}
+          onDeleteVencimiento={deleteVencimiento}
+          onIrAlOrigen={irAlOrigenInamovible}
+        />
+      )}
       {activeTab === "calendarioAnual" && renderCalendarioAnual()}
       {activeTab === "cashflow" && (
         <CashflowTab
