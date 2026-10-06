@@ -18,7 +18,8 @@ import {
   type DayAttendance,
 } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
-import type { CompanyName, Employee } from "../domain/types";
+import type { AttendanceRecord, CompanyName, Employee } from "../domain/types";
+import { PlanillaFichajes } from "./PlanillaFichajes";
 
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -201,8 +202,11 @@ export function AsistenciaTab({
   companyOptions,
   getCompanyMeta,
   onPrecargarHoras,
+  onUpdateAttendance,
 }: {
   employees: Employee[];
+  // El mismo handler que usa el Presentismo de la ficha: la planilla de fichajes y la ficha son el mismo dato.
+  onUpdateAttendance?: (employeeId: number, date: string, field: keyof AttendanceRecord, value: string | number | boolean) => void;
   initialMonth: string;
   companyOptions: Array<{ value: CompanyName; short?: string }>;
   getCompanyMeta: (company: CompanyName) => { short: string; primary: string };
@@ -564,6 +568,16 @@ export function AsistenciaTab({
           </>
         )}
       </Panel>
+
+      {shownEmployees.length > 0 && onUpdateAttendance && (
+        <PlanillaFichajes
+          employees={shownEmployees}
+          month={month}
+          monthLabel={monthLabel(month)}
+          getCompanyMeta={getCompanyMeta}
+          onUpdateAttendance={onUpdateAttendance}
+        />
+      )}
 
       {shownEmployees.length > 0 && (
         <Panel

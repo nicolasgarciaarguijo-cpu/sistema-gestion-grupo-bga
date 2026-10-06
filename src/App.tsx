@@ -14829,7 +14829,20 @@ Escribi CERRAR para confirmar:`
         const attendanceWithHours =
           field === "checkIn" || field === "checkOut"
             ? nextAttendance.map((item) => {
-                if (item.date !== date || !item.checkIn || !item.checkOut) return item;
+                if (item.date !== date) return item;
+                // Si se borro la entrada o la salida, el dia ya no tiene jornada: sus horas se van a 0
+                // (antes quedaban las del calculo anterior y se liquidaban igual).
+                if (!item.checkIn || !item.checkOut) {
+                  return {
+                    ...item,
+                    normalHours: 0,
+                    extra50Hours: 0,
+                    extra100Hours: 0,
+                    night50Hours: 0,
+                    holidayHours: 0,
+                    night100Hours: 0,
+                  };
+                }
                 // Feriado nacional (por fecha) o marcado a mano => todo el día al 100%.
                 const derived = deriveConvenioHours(
                   item.date,
@@ -18950,6 +18963,7 @@ Escribi CERRAR para confirmar:`
           companyOptions={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
           onPrecargarHoras={precargarHorasDesdeFichadas}
+          onUpdateAttendance={updateAttendanceRecord}
         />
       )}
 
