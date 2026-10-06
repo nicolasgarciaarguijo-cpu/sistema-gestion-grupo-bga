@@ -416,6 +416,9 @@ export function CalendarioAnualTab({
     const conceptCostKind = new Map<string, { fijo: boolean; variable: boolean }>(); // itemKey -> tipos vistos
     // Renglones personalizados por sección: sección -> label -> date -> monto.
     const customRows = new Map<string, Map<string, Map<string, number>>>();
+    // Lo mismo partido por circuito (para HABERES: el sueldo blanco y el negro de cada empleado).
+    const customRowsB = new Map<string, Map<string, Map<string, number>>>();
+    const customRowsN = new Map<string, Map<string, Map<string, number>>>();
     // Movimientos internos (entre cuentas propias / pasaje de moneda): NO cuentan como ingreso/egreso.
     const internoDetail = new Map<string, Map<string, number>>();
     const internoByDate = new Map<string, number>();
@@ -531,6 +534,11 @@ export function CalendarioAnualTab({
         const secMap = customRows.get(sectionKey)!;
         if (!secMap.has(label)) secMap.set(label, new Map());
         add(secMap.get(label)!, e.date, amt);
+        const porCircuito = neg ? customRowsN : customRowsB;
+        if (!porCircuito.has(sectionKey)) porCircuito.set(sectionKey, new Map());
+        const secMapBN = porCircuito.get(sectionKey)!;
+        if (!secMapBN.has(label)) secMapBN.set(label, new Map());
+        add(secMapBN.get(label)!, e.date, amt);
         add(dir === "in" ? incomeByDate : egresoByDate, e.date, amt);
         if (dir === "in") add(neg ? incN : incB, e.date, amt);
         else add(neg ? egrN : egrB, e.date, amt);
@@ -572,7 +580,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, internoDetail, internoByDate, facturaDetail, facturaByDate };
+    return { byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, customRowsB, customRowsN, internoDetail, internoByDate, facturaDetail, facturaByDate };
   }, [entries, companyScope, dayCols, sectionByKey]);
 
   // CARRIL DE PREVISION (hoy lo alimenta la solapa Seguros). Va aparte de `agg` a proposito: aca no
@@ -2278,14 +2286,25 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                             return (
                               <td
                                 key={`hab-${emp.name}-${c.iso}`}
-                                onClick={() => openAdd("haberes", "__custom__", c.iso, emp.name, emp.company)}
+                                onClick={() => !v && openAdd("haberes", "__custom__", c.iso, emp.name, emp.company)}
                                 onContextMenu={(ev) =>
                                   openCellMenu(ev, emp.name, c.iso, "haberes", "__custom__", (e) => e.conceptKey === `custom:haberes:${emp.name}`)
                                 }
-                                title={`Click: cargar haber de ${emp.name} · Click derecho: editar / borrar`}
+                                title={
+                                  v
+                                    ? `${emp.name}: sueldo blanco (B) y negro (N). Click derecho: editar, pasar de blanco a negro, borrar o cargar otro pago`
+                                    : `Click: cargar un pago a ${emp.name} · Click derecho: más opciones`
+                                }
                                 style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? "#dc2626" : "#cbd5e1", ...hi(c.iso) }}
                               >
-                                {v ? money(v) : "+"}
+                                {v
+                                  ? bnCell(
+                                      agg.customRowsB.get("haberes")?.get(emp.name),
+                                      agg.customRowsN.get("haberes")?.get(emp.name),
+                                      c.iso,
+                                      true
+                                    )
+                                  : "+"}
                               </td>
                             );
                           })}
@@ -2899,7 +2918,9 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 <button
                   style={quickMenuItem}
                   onClick={() => {
-                    openAdd(rowMenu.sectionKey, rowMenu.itemKey, defaultLoadDay());
+                    // En HABERES el renglon es el empleado: el formulario ya viene con su nombre.
+                    const emp = rowMenu.kind === "haberes" ? employeesInScope.find((x) => x.name === rowMenu.label) : undefined;
+                    openAdd(rowMenu.sectionKey, rowMenu.itemKey, defaultLoadDay(), emp?.name || "", emp?.company || "");
                     close();
                   }}
                 >
@@ -3281,7 +3302,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 <button
                   style={quickMenuItem}
                   onClick={() => {
-                    openAdd(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
+                    const emp = cellMenu.sectionKey === "haberes" ? employeesInScope.find((x) => x.name === cellMenu.label) : undefined;
+                    openAdd(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso, emp?.name || "", emp?.company || "");
                     close();
                   }}
                 >
@@ -3574,6 +3596,37 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   </>
                 ) : (
                   <>
+                    {addForm.sectionKey === "haberes" ? (
+                      <>
+                        <label style={lblStyle}>Empleado
+                          <select
+                            style={styles.input}
+                            value={addForm.customLabel ? `${addForm.company}|${addForm.customLabel}` : ""}
+                            onChange={(e) => {
+                              const [company, ...resto] = e.target.value.split("|");
+                              setAddForm({ ...addForm, itemKey: "__custom__", customLabel: resto.join("|"), company: company || addForm.company });
+                            }}
+                          >
+                            <option value="">— Elegí el empleado —</option>
+                            {employees
+                              .slice()
+                              .sort((a, b) => a.name.localeCompare(b.name))
+                              .map((emp) => (
+                                <option key={`${emp.company}|${emp.name}`} value={`${emp.company}|${emp.name}`}>
+                                  {emp.name}
+                                  {companyOptions.length > 1 ? ` · ${companyMeta.get(emp.company)?.short || emp.company}` : ""}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                        <div style={{ fontSize: 12, color: "#64748b", gridColumn: "1 / -1" }}>
+                          El sueldo del mes (blanco y negro) entra solo desde Personal el 4.º día hábil. Cargá acá solo
+                          un pago aparte (anticipo, aguinaldo, extra). Para corregir el sueldo: click derecho sobre el
+                          número → Editar.
+                        </div>
+                      </>
+                    ) : (
+                    <>
                     <label style={lblStyle}>Renglón
                       <select style={styles.input} value={addForm.itemKey} onChange={(e) => setAddForm({ ...addForm, itemKey: e.target.value })}>
                         {(section?.items || []).filter((it) => !hiddenRows.has(it.key)).map((it) => (
@@ -3590,6 +3643,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         <input style={styles.input} value={addForm.customLabel} placeholder="Ej: Fletes especiales" autoFocus
                           onChange={(e) => setAddForm({ ...addForm, customLabel: e.target.value })} />
                       </label>
+                    )}
+                    </>
                     )}
                   </>
                 )}

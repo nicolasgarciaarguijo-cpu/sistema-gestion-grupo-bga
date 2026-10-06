@@ -1252,6 +1252,23 @@ export type EmployeePayroll = {
   manualOverride: boolean;
   savedAt: string;
   notes: string;
+  // HABERES EN EL CASH FLOW (ver domain/haberes.ts). Lo corregido a mano (desde la planilla o la ficha)
+  // le gana al recibo oficial y a la liquidacion. null/ausente = automatico.
+  haberesBlanco?: number | null;
+  haberesNegro?: number | null;
+  haberesFecha?: string; // ausente = 4to dia habil del mes siguiente
+  // Recibo oficial del estudio contable, leido del PDF (ver domain/reciboOficial.ts). Su NETO es el
+  // gasto real en blanco del mes.
+  reciboOficial?: {
+    fileName: string;
+    storagePath?: string;
+    neto?: number | null;
+    remunerativo?: number | null;
+    periodo?: string;
+    fechaPago?: string;
+    leidoEl: string;
+    coincide?: boolean; // el PDF traia a este empleado (por CUIL o nombre)
+  } | null;
 };
 
 export type Employee = {

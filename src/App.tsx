@@ -48,6 +48,8 @@ import { porcentajePorAsistencia } from "./domain/presentismo";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
 import { classifyFichada, dayHoursTotal, deriveConvenioHours, summarizeMonthAttendance } from "./domain/attendance";
 import { esFeriado } from "./domain/feriadosArgentina";
+import { haberesDelMes, idHaberBlanco, idHaberNegro, leerIdHaber, sacarHaberesDuplicados } from "./domain/haberes";
+import { leerReciboDeEmpleado } from "./domain/reciboOficial";
 import {
   previsionesDeVencimientos,
   realPorRenglonMes,
@@ -12071,6 +12073,26 @@ Escribi CERRAR para confirmar:`
       costKind?: "fijo" | "variable";
     }
   ): boolean => {
+    // HABERES (sueldo blanco o negro del mes de un empleado): lo que se corrige en la planilla se
+    // guarda en la liquidacion de ESE mes del empleado (Personal), asi las dos vistas son el mismo dato.
+    // Cambiar el circuito pasa el monto al otro lado: el de origen queda en 0 y el destino toma el monto.
+    const haber = leerIdHaber(entryId);
+    if (haber) {
+      if (!visibleEmployees.some((e) => e.id === haber.empId)) return false;
+      const campo = haber.admin === "blanco" ? "haberesBlanco" : "haberesNegro";
+      const otro = haber.admin === "blanco" ? "haberesNegro" : "haberesBlanco";
+      const cambio: Partial<EmployeePayroll> = {};
+      if (patch.date) cambio.haberesFecha = patch.date;
+      const monto = patch.amount !== undefined ? Math.max(0, Number(patch.amount) || 0) : undefined;
+      if (patch.administration && patch.administration !== haber.admin) {
+        cambio[campo] = 0;
+        if (monto !== undefined) cambio[otro] = monto;
+      } else if (monto !== undefined) {
+        cambio[campo] = monto;
+      }
+      setPayrollHaberes(haber.empId, haber.month, cambio);
+      return true;
+    }
     if (entryId.startsWith("bank-")) {
       const id = Number(entryId.slice(5));
       if (!id) return false;
@@ -12216,6 +12238,16 @@ Escribi CERRAR para confirmar:`
       const id = Number(entryId.slice("purchase-invoice-".length));
       if (!id || !purchaseInvoices.some((f) => f.id === id)) return false;
       setPurchaseInvoices((prev) => prev.filter((f) => f.id !== id));
+      return true;
+    }
+    // Borrar el haber de un mes = ese mes no se pago por ese circuito (queda en 0, a mano). Se vuelve
+    // a lo automatico desde la ficha del empleado.
+    const haberBorrado = leerIdHaber(entryId);
+    if (haberBorrado) {
+      if (!visibleEmployees.some((e) => e.id === haberBorrado.empId)) return false;
+      setPayrollHaberes(haberBorrado.empId, haberBorrado.month, {
+        [haberBorrado.admin === "blanco" ? "haberesBlanco" : "haberesNegro"]: 0,
+      });
       return true;
     }
     if (entryId.startsWith("bank-")) {
@@ -14265,21 +14297,29 @@ Escribi CERRAR para confirmar:`
     // se paga en efectivo y hasta ahora era invisible. Regla del usuario (2026-08-26): tiene que
     // figurar en Haberes, en el renglón del empleado, con la pill N. La fecha es la de pago del sueldo
     // (4to día hábil del mes siguiente, LCT art. 128), la misma que usa el recibo.
+    // El monto y la fecha salen de domain/haberes (lo corregido a mano desde la planilla le gana al
+    // acordado). El BLANCO se arma aparte (haberesBlancoEntries), porque necesita la liquidacion.
     visibleEmployees.forEach((emp) => {
       (emp.payrolls || []).forEach((pr) => {
         if (!pr?.month) return;
-        const fecha = paymentDateForPeriod(pr.month);
-        if (!fecha || !fecha.startsWith(String(analysisYear))) return;
-        const negro = monthlyBlackPay({
-          cashBonus: Number(pr.cashBonus || 0),
-          isTemporal: emp.employmentType === "temporal",
-          agreedSalary: effectiveAgreedSalary(emp, pr.month),
-          isFueraConvenio: emp.employmentType === "fuera_convenio",
-          agreedBlack: Number(emp.agreedBlack || 0),
+        const h = haberesDelMes({
+          fechaPorDefecto: paymentDateForPeriod(pr.month),
+          payroll: pr,
+          netoLiquidado: 0,
+          negroAcordado: monthlyBlackPay({
+            cashBonus: Number(pr.cashBonus || 0),
+            isTemporal: emp.employmentType === "temporal",
+            agreedSalary: effectiveAgreedSalary(emp, pr.month),
+            isFueraConvenio: emp.employmentType === "fuera_convenio",
+            agreedBlack: Number(emp.agreedBlack || 0),
+          }),
         });
+        const fecha = h.fecha;
+        if (!fecha || !fecha.startsWith(String(analysisYear))) return;
+        const negro = h.negro;
         if (!(negro > 0)) return;
         entries.push({
-          id: `payroll-black-${emp.id}-${pr.month}`,
+          id: idHaberNegro(emp.id, pr.month),
           date: fecha,
           company: emp.company,
           title: emp.name || "Empleado",
@@ -14355,19 +14395,6 @@ Escribi CERRAR para confirmar:`
     visiblePurchaseInvoices,
   ]);
 
-  const annualCashFlowByMonth = useMemo(() => {
-    return Array.from({ length: 12 }, (_, monthIndex) => {
-      const key = `${analysisYear}-${String(monthIndex + 1).padStart(2, "0")}`;
-      const items = annualCashFlowEntries.filter((item) => item.date.startsWith(key));
-      return {
-        key,
-        label: new Date(analysisYear, monthIndex, 1).toLocaleDateString("es-AR", {
-          month: "long",
-        }),
-        items,
-      };
-    });
-  }, [analysisYear, annualCashFlowEntries]);
 
   const getFinancialItemStyle = (item: FinancialCalendarItem) => {
     if (item.status === "realizado") return styles.financialDone;
@@ -15278,14 +15305,17 @@ Escribi CERRAR para confirmar:`
     return porcentajePorAsistencia(r.late, r.absent);
   };
 
-  const getEmployeePayrollSummary = (employee: Employee) => {
-    const payrollGuardado = getCurrentPayroll(employee);
+  const getEmployeePayrollSummary = (employee: Employee) => payrollSummaryFor(employee, payrollMonth);
+
+  // Liquidacion de un empleado para un MES cualquiera (la de la ficha es la del mes elegido).
+  const payrollSummaryFor = (employee: Employee, month: string) => {
+    const payrollGuardado = ensureEmployeePayroll(employee, month);
     // El presentismo se resuelve acá y no en domain/payroll.ts porque depende de la ASISTENCIA del
     // mes, que payroll no conoce: payroll recibe el porcentaje ya resuelto.
     const payroll =
       payrollGuardado.presentismoAsistenciaPct === null ||
       payrollGuardado.presentismoAsistenciaPct === undefined
-        ? { ...payrollGuardado, presentismoAsistenciaPct: presentismoPorAsistencia(employee, payrollMonth) }
+        ? { ...payrollGuardado, presentismoAsistenciaPct: presentismoPorAsistencia(employee, month) }
         : payrollGuardado;
     return getPayrollSummaryForScenario({
       company: employee.company,
@@ -15295,12 +15325,140 @@ Escribi CERRAR para confirmar:`
       hourlyGrossManual: employee.hourlyGrossManual,
       payroll,
       isTemporal: employee.employmentType === "temporal",
-      agreedSalary: effectiveAgreedSalary(employee, payrollMonth),
+      agreedSalary: effectiveAgreedSalary(employee, month),
       isFueraConvenio: employee.employmentType === "fuera_convenio",
       agreedWhite: Number(employee.agreedWhite || 0),
       agreedBlack: Number(employee.agreedBlack || 0),
       computeWhiteCharges: !!employee.computeWhiteCharges,
     });
+  };
+
+  // HABERES EN BLANCO -> PLANILLA. Desde que el banco dejo de cargar (29/08/2026) el sueldo blanco ya
+  // no entra por el debito del extracto: sale de aca, en el renglon del empleado, el 4to dia habil del
+  // mes siguiente. Monto: lo corregido a mano > el neto del recibo oficial > el neto liquidado. Solo
+  // para fechas de pago POSTERIORES al corte del banco: hasta ese dia el sueldo ya esta en la planilla
+  // por el debito del extracto, y sumarlo de nuevo seria pagarlo dos veces.
+  const haberesBlancoEntries = useMemo(() => {
+    const out: typeof annualCashFlowEntries = [];
+    visibleEmployees.forEach((emp) => {
+      if (emp.employmentType === "temporal") return; // el temporal cobra todo en negro
+      (emp.payrolls || []).forEach((pr) => {
+        if (!pr?.month) return;
+        const fechaPorDefecto = paymentDateForPeriod(pr.month);
+        const h = haberesDelMes({
+          fechaPorDefecto,
+          payroll: pr,
+          netoLiquidado:
+            pr.haberesBlanco === null || pr.haberesBlanco === undefined
+              ? Number(payrollSummaryFor(emp, pr.month).net || 0)
+              : 0,
+          negroAcordado: 0,
+        });
+        if (!h.fecha || !h.fecha.startsWith(String(analysisYear))) return;
+        if (movimientoBancarioAlimenta(h.fecha, bankLoadsUntil)) return;
+        if (!(h.blanco > 0)) return;
+        out.push({
+          id: idHaberBlanco(emp.id, pr.month),
+          date: h.fecha,
+          company: emp.company,
+          title: emp.name || "Empleado",
+          kind: "haberes-blanco",
+          amount: h.blanco,
+          statusLabel: "debito",
+          conceptKey: `custom:haberes:${emp.name}`,
+          administration: "blanco",
+        } as any);
+      });
+    });
+    return out;
+    // payrollSummaryFor depende de escalas y config: se recalcula cuando cambian los empleados o el corte.
+  }, [visibleEmployees, analysisYear, bankLoadsUntil, scaleRows, employeeBaseConfig]);
+
+  // TODO lo que va a la planilla: las fuentes de siempre + el sueldo blanco. Si un sueldo ya se cargo
+  // a mano en el renglon del empleado (mismo mes y circuito), el automatico se saca: se pagaria dos veces.
+  const cashFlowEntries = useMemo(
+    () => sacarHaberesDuplicados([...annualCashFlowEntries, ...haberesBlancoEntries]),
+    [annualCashFlowEntries, haberesBlancoEntries]
+  );
+
+  const annualCashFlowByMonth = useMemo(() => {
+    return Array.from({ length: 12 }, (_, monthIndex) => {
+      const key = `${analysisYear}-${String(monthIndex + 1).padStart(2, "0")}`;
+      const items = cashFlowEntries.filter((item) => item.date.startsWith(key));
+      return {
+        key,
+        label: new Date(analysisYear, monthIndex, 1).toLocaleDateString("es-AR", {
+          month: "long",
+        }),
+        items,
+      };
+    });
+  }, [analysisYear, cashFlowEntries]);
+
+  // Cambia datos de haberes / recibo oficial de un mes del empleado (crea el mes si no existe).
+  const setPayrollHaberes = (
+    employeeId: number,
+    month: string,
+    patch: Partial<Pick<EmployeePayroll, "haberesBlanco" | "haberesNegro" | "haberesFecha" | "reciboOficial">>
+  ) => {
+    setEmployees((prev) =>
+      prev.map((emp) => {
+        if (emp.id !== employeeId) return emp;
+        const existe = emp.payrolls.some((p) => p.month === month);
+        const payrolls = existe
+          ? emp.payrolls.map((p) => (p.month === month ? { ...p, ...patch } : p))
+          : [...emp.payrolls, { ...ensureEmployeePayroll(emp, month), ...patch }];
+        return { ...emp, payrolls, updatedAt: todayIso() };
+      })
+    );
+  };
+
+  // RECIBO OFICIAL: se sube el PDF del estudio en la ficha, el sistema lee el neto y lo asienta como
+  // el gasto real en blanco del mes. El PDF se guarda en el bucket de documentos (si se puede).
+  const cargarReciboOficial = async (employee: Employee, month: string, file: File | null) => {
+    if (!file) return;
+    try {
+      const texto = await extractPdfRawText(file);
+      const leido = leerReciboDeEmpleado(texto, { cuil: employee.cuil, name: employee.name });
+      let storagePath: string | undefined;
+      try {
+        const path = `recibos-oficiales/${employee.company}/${employee.legajo || employee.id}/${month}.pdf`
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^A-Za-z0-9/._-]/g, "_");
+        const { error } = await supabase.storage
+          .from("documentos")
+          .upload(path, file, { upsert: true, contentType: "application/pdf" });
+        if (!error) storagePath = path;
+      } catch {
+        // sin storage igual se asienta lo leido
+      }
+      setPayrollHaberes(employee.id, month, {
+        reciboOficial: {
+          fileName: file.name,
+          storagePath,
+          neto: leido.neto ?? null,
+          remunerativo: leido.remunerativo ?? null,
+          periodo: leido.periodo,
+          fechaPago: leido.fechaPago,
+          leidoEl: todayIso(),
+          coincide: leido.coincide,
+        },
+      });
+      if (leido.neto === undefined) {
+        setStorageMessage(
+          `Guardé el recibo ${file.name}, pero no pude leer el neto (el PDF puede ser una imagen o traer a otra persona). Cargalo a mano en la ficha.`
+        );
+      } else if (!leido.coincide) {
+        setStorageMessage(`Leí el recibo, pero no encontré a ${employee.name} por CUIL ni por nombre: revisá que sea el suyo.`);
+      } else if (leido.periodo && leido.periodo !== month) {
+        setStorageMessage(`Ojo: el recibo es del período ${leido.periodo} y lo cargaste en ${month}.`);
+      } else {
+        setStorageMessage(`Recibo de ${employee.name} leído: neto ${money(leido.neto)}.`);
+      }
+    } catch (err: any) {
+      setStorageMessage("No pude leer el recibo: " + (err?.message || String(err)));
+    }
   };
 
   // PDF de la liquidacion de un mes (bloque "Liquidacion mensual" de Personal): un renglon por
@@ -15390,9 +15548,9 @@ Escribi CERRAR para confirmar:`
     () =>
       realPorRenglonMes(
         // Plata REAL: lo pendiente del cash flow es una prevision, no cuenta como pagado.
-        annualCashFlowEntries.filter((e: any) => e.statusLabel !== "pendiente")
+        cashFlowEntries.filter((e: any) => e.statusLabel !== "pendiente")
       ),
-    [annualCashFlowEntries]
+    [cashFlowEntries]
   );
   const agendaInamoviblesItems = useMemo<ItemInamovible[]>(() => {
     const desdeD = new Date();
@@ -15419,7 +15577,16 @@ Escribi CERRAR para confirmar:`
     const sueldos = empresasConGente.flatMap((company) =>
       meses
         .filter((periodo) => periodo >= periodoEnCurso)
-        .map((periodo) => ({ company, periodo, fecha: paymentDateForPeriod(periodo), monto: 0 }))
+        .map((periodo) => {
+          // Monto: lo que la planilla tiene en Haberes de esa empresa para ese periodo (blanco + negro).
+          const sufijo = `-${periodo}`;
+          const delPeriodo = cashFlowEntries.filter(
+            (e) => e.company === company && e.id.startsWith("payroll-") && e.id.endsWith(sufijo)
+          );
+          const fecha = delPeriodo[0]?.date || paymentDateForPeriod(periodo);
+          const monto = delPeriodo.reduce((acc, e) => acc + Number(e.amount || 0), 0);
+          return { company, periodo, fecha, monto };
+        })
     );
     return agendaInamovibles(
       {
@@ -15448,7 +15615,7 @@ Escribi CERRAR para confirmar:`
       hasta,
       hoyIso
     );
-  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso]);
+  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, cashFlowEntries]);
   const alertasInamovibles = useMemo(() => alertasActivas(agendaInamoviblesItems), [agendaInamoviblesItems]);
   const canSeeInamovibles = effectiveIsAdmin || supabaseAllowedTabs.includes("calendarioAnual");
 
@@ -17448,7 +17615,7 @@ Escribi CERRAR para confirmar:`
           notes={calendarNotes}
           onSetNote={setCalendarCellNote}
           billeteraDiaria={billeteraDiariaPorEmpresa}
-          entries={annualCashFlowEntries}
+          entries={cashFlowEntries}
           previsiones={previsionesPlanilla}
           companyScope={balanceCompanyScope}
           setCompanyScope={setBalanceCompanyScope}
@@ -18009,7 +18176,7 @@ Escribi CERRAR para confirmar:`
           puedeCerrar={effectiveIsAdmin}
           activeAssetsMonthlyDepreciation={activeAssetsMonthlyDepreciation}
           analysisYear={analysisYear}
-          annualCashFlowEntries={annualCashFlowEntries}
+          annualCashFlowEntries={cashFlowEntries}
           bankStatementEntries={bankStatementEntries}
           annualDebtRows={annualDebtRows}
           bankStatementSummary={bankStatementSummary}
@@ -18702,6 +18869,8 @@ Escribi CERRAR para confirmar:`
         <PersonalTab
           employees={employees}
           onPayrollMonthReport={openPayrollMonthReport}
+          onCargarReciboOficial={cargarReciboOficial}
+          setPayrollHaberes={setPayrollHaberes}
           visibleEmployees={visibleEmployees}
           formerEmployees={formerEmployees}
           selectedEmployee={selectedEmployee}

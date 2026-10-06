@@ -25,6 +25,11 @@ const PREFIJOS: Array<{ prefijo: string; permiso: PermisoDeRenglon }> = [
   { prefijo: "bank-", permiso: { editable: true, borrable: true } },
   { prefijo: "financial-", permiso: { editable: true, borrable: true } },
 
+  // HABERES del mes (blanco o negro) de un empleado: monto, dia y circuito, que es lo que el
+  // calendario pide. Se guarda en la liquidacion de ese mes del empleado (Personal). Borrar = ese mes
+  // no se pago por ese circuito (queda en 0).
+  { prefijo: "payroll-", permiso: { editable: true, borrable: true } },
+
   // Comision pagada de un trabajo: monto, dia y circuito. Es exactamente lo que el calendario pide.
   { prefijo: "comm-", permiso: { editable: true, borrable: true } },
 

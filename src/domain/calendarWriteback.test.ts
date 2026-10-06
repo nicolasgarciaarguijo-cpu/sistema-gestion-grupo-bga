@@ -57,3 +57,10 @@ describe("porQueNoSePuede", () => {
     expect(porQueNoSePuede("bank-1", "editar")).toBe("No se puede editar desde la planilla.");
   });
 });
+
+describe("haberes desde la planilla", () => {
+  it("el sueldo blanco y el negro de un empleado se editan y se borran desde la planilla", () => {
+    expect(permisoDeRenglon("payroll-white-12-2026-09")).toMatchObject({ editable: true, borrable: true });
+    expect(permisoDeRenglon("payroll-black-12-2026-09")).toMatchObject({ editable: true, borrable: true });
+  });
+});
