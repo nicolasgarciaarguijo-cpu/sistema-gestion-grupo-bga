@@ -58,12 +58,14 @@ import {
 import {
   agendaInamovibles,
   alertasActivas,
+  pagosAReclamar,
   type ItemInamovible,
   type VencimientoMarca,
 } from "./domain/agendaInamovibles";
 import { allSectionsWith } from "./domain/calendarStructure";
 import { PagosInamovibles } from "./tabs/PagosInamovibles";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
+import { ReclamoPagosVencidos } from "./ui/ReclamoPagosVencidos";
 import {
   buildCierreResumenHtml,
   buildCierreBancoHtml,
@@ -15437,7 +15439,7 @@ Escribi CERRAR para confirmar:`
       try {
         const path = `recibos-oficiales/${employee.company}/${employee.legajo || employee.id}/${month}.pdf`
           .normalize("NFD")
-          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[̀-ͯ]/g, "")
           .replace(/[^A-Za-z0-9/._-]/g, "_");
         const { error } = await supabase.storage
           .from("documentos")
@@ -15630,6 +15632,66 @@ Escribi CERRAR para confirmar:`
     );
   }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, cashFlowEntries]);
   const alertasInamovibles = useMemo(() => alertasActivas(agendaInamoviblesItems), [agendaInamoviblesItems]);
+  const pagosVencidosAReclamar = useMemo(() => pagosAReclamar(agendaInamoviblesItems), [agendaInamoviblesItems]);
+
+  // Marca de un pago de la agenda (por clave): se fusiona con la que ya hubiera.
+  const upsertMarcaInamovible = (item: ItemInamovible, cambio: Partial<VencimientoMarca>) => {
+    setVencimientoMarcas((prev) => {
+      const previa = prev.find((m) => m.clave === item.clave);
+      const resto = prev.filter((m) => m.clave !== item.clave);
+      return [
+        ...resto,
+        {
+          id: previa?.id || newId(),
+          company: item.company,
+          clave: item.clave,
+          pagado: previa?.pagado || false,
+          ...previa,
+          ...cambio,
+          at: todayIso(),
+        },
+      ];
+    });
+  };
+
+  // RECLAMO: "ya se pago" -> se sube el comprobante y el pago queda cerrado. Si el origen tiene su
+  // propio pagado (tarjeta, pago del cash flow, vencimiento a mano), se marca tambien alla.
+  const comprobanteInamovible = async (item: ItemInamovible, file: File) => {
+    let storagePath: string | undefined;
+    try {
+      const ext = (file.name.split(".").pop() || "pdf").toLowerCase();
+      const path = `comprobantes-pagos/${item.company}/${item.fechaLimite}-${item.clave}.${ext}`
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^A-Za-z0-9/._-]/g, "_");
+      const { error } = await supabase.storage
+        .from("documentos")
+        .upload(path, file, { upsert: true, contentType: file.type || undefined });
+      if (!error) storagePath = path;
+    } catch {
+      // sin storage igual queda asentado el comprobante por su nombre
+    }
+    upsertMarcaInamovible(item, { pagado: true, comprobante: { fileName: file.name, storagePath, at: todayIso() } });
+    if (item.origen === "tarjeta" || item.origen === "cashflow" || item.origen === "manual") {
+      setInamoviblePagado(item, true);
+    }
+    setStorageMessage(`Comprobante de "${item.titulo}" guardado: el pago quedó cerrado.`);
+  };
+
+  // RECLAMO: reprogramar. Donde el origen tiene fecha propia, se cambia ALLA (vinculado): la fecha del
+  // vencimiento de esa vez, el vencimiento del resumen de tarjeta o el dia del pago del cash flow.
+  const reprogramarInamovible = (item: ItemInamovible, fecha: string) => {
+    if (item.origen === "manual") {
+      setOcurrenciaVencimiento(item, { fecha });
+    } else if (item.origen === "tarjeta") {
+      setCreditCardStatements((prev) => prev.map((t) => (t.id === item.refId ? { ...t, dueDate: fecha } : t)));
+    } else if (item.origen === "cashflow") {
+      setFinancialItems((prev) => prev.map((f) => (f.id === item.refId ? { ...f, date: fecha } : f)));
+    } else {
+      upsertMarcaInamovible(item, { reprogramadoA: fecha });
+    }
+    setStorageMessage(`"${item.titulo}" reprogramado para el ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}.`);
+  };
   const canSeeInamovibles = effectiveIsAdmin || supabaseAllowedTabs.includes("calendarioAnual");
 
   // Lo que baja a la planilla por el carril de previsiones (no suma al neto): los seguros y los
@@ -17630,6 +17692,7 @@ Escribi CERRAR para confirmar:`
           billeteraDiaria={billeteraDiariaPorEmpresa}
           entries={cashFlowEntries}
           previsiones={previsionesPlanilla}
+          programados={agendaInamoviblesItems.filter((i) => i.origen !== "sueldos" && i.origen !== "cashflow")}
           companyScope={balanceCompanyScope}
           setCompanyScope={setBalanceCompanyScope}
           fiscalStartYear={balanceFiscalStartYear}
@@ -17767,6 +17830,15 @@ Escribi CERRAR para confirmar:`
             pettyCash={pettyCashHeader}
           />
           {canSeePlataDisponible && <PlataDisponible companies={plataDisponibleByCompany} />}
+          {canSeeInamovibles && pagosVencidosAReclamar.length > 0 && (
+            <ReclamoPagosVencidos
+              items={pagosVencidosAReclamar}
+              hoy={hoyIso}
+              companyShort={(company) => COMPANY_OPTIONS.find((c) => c.value === company)?.short || company}
+              onComprobante={comprobanteInamovible}
+              onReprogramar={reprogramarInamovible}
+            />
+          )}
           {canSeeInamovibles && (
             <AlertasInamovibles
               items={alertasInamovibles}

@@ -127,11 +127,25 @@ export function CalendarioAnualTab({
   onSetNote,
   billeteraDiaria,
   previsiones = [],
+  programados = [],
 }: {
   entries: Entry[];
   // PREVISION (hoy: los seguros). Lo que se VIENE, mes a mes: no es plata gastada, asi que entra por
   // este carril aparte y NUNCA suma al neto -- el neto lo mueve el debito real del banco. Se dibuja
   // como "≈" en el renglon, y cuando cae el debito del mes la prevision se da por conciliada.
+  // PAGOS PROGRAMADOS (Nicolas, 2026-10-06): todo egreso futuro conocido, tambien en la planilla. Va en
+  // un bloque propio de PREVISION que NO suma al neto (el neto lo mueve el pago real cuando se carga).
+  programados?: Array<{
+    clave: string;
+    company: string;
+    titulo: string;
+    origen: string;
+    fechaLimite: string;
+    monto: number;
+    currency: "ARS" | "USD";
+    estado: string;
+    texto: string;
+  }>;
   previsiones?: Array<{
     conceptKey: string;
     company: string;
@@ -1838,11 +1852,13 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
           ref={wrapRef}
           onScroll={onScrollPlanilla}
           style={{
-            // Solo scroll HORIZONTAL: el bloque se estira para abajo todo lo que haga falta y quien
-            // baja es la pagina. Pedido de Nicolas (2026-08-31): "no quiero tener que bajar en el
-            // bloque". Consecuencia asumida: los totales y la fila de fechas dejan de quedar
-            // clavados arriba, porque position:sticky se pega al contenedor que scrollea.
-            overflowX: "auto",
+            // INMOVILIZAR PANELES (Nicolas, 2026-10-06): desde la fila de fechas hasta el neto negro
+            // quedan FIJOS arriba al bajar por la planilla, como en Excel. Para eso el bloque tiene
+            // que tener scroll propio (position:sticky se pega al contenedor que scrollea): ocupa el
+            // alto de la pantalla y adentro se baja por los renglones. Reemplaza el pedido del
+            // 2026-08-31 de "no bajar en el bloque", que dejaba esas filas sin fijar.
+            overflow: "auto",
+            maxHeight: "calc(100vh - 150px)",
             border: "1px solid #e2e8f0",
             borderRadius: 8,
             borderTop: `3px solid ${selectedColor || "#cbd5e1"}`,
@@ -2315,12 +2331,24 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         para poder cargarles) más los que ya tienen plata. Botón derecho: renombrar / borrar. */}
                     {!isCol &&
                       customRowsOfSection(section.key)
+                        // HABERES: el renglón de un empleado de Personal ya se dibuja arriba (con su
+                        // blanco y negro, que leen esta misma plata). Si se repitiera acá como renglón
+                        // propio, el empleado aparecería dos veces (Nicolas, 2026-10-06).
+                        .filter(
+                          (fila) =>
+                            !isHaberes ||
+                            !employeesInScope.some(
+                              (emp) => emp.name.trim().toLowerCase() === fila.label.trim().toLowerCase()
+                            )
+                        )
                         .map((fila) => {
                           const drow = agg.customRows.get(section.key)?.get(fila.label) || new Map<string, number>();
                           // Un renglón declarado se muestra SIEMPRE (aunque no tenga movimientos este
                           // mes): es el lugar donde el usuario quiere cargar. Uno suelto, solo si tiene.
                           if (!fila.declarado && !activeInView(drow)) return null;
-                          return detailRow(`✎ ${fila.label}`, drow, `cst-${section.key}-${fila.label}`, isOut, {
+                          // Renglón PROPIO (✎) = lo creó alguien en la planilla y no sale de ninguna
+                          // solapa. Lleva la D: hay que encontrarle su lugar en el sistema o quitarlo.
+                          return detailRow(`✎ ${fila.label} · (D) renglón propio, sin vínculo con ninguna solapa: decidir dónde va o quitarlo`, drow, `cst-${section.key}-${fila.label}`, isOut, {
                             label: fila.label,
                             sectionKey: section.key,
                             itemKey: "__custom__",
@@ -2342,6 +2370,81 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   </React.Fragment>
                 );
               })}
+
+              {/* PAGOS PROGRAMADOS · previsión. Lo que se viene a pagar (deudas, tarjetas, seguros,
+                  vencimientos). NO suma: es aviso, igual que el bloque de arriba de la planilla. */}
+              {!onlySection && (() => {
+                const firstIso = visibleDayCols[0]?.iso || "";
+                const lastIso = visibleDayCols[visibleDayCols.length - 1]?.iso || "";
+                const enVista = (programados || []).filter(
+                  (p) =>
+                    (companyScope === "__ALL__" || p.company === companyScope) &&
+                    p.fechaLimite >= firstIso &&
+                    p.fechaLimite <= lastIso
+                );
+                if (enVista.length === 0) return null;
+                const filas = new Map<string, typeof enVista>();
+                enVista.forEach((p) => {
+                  const k = `${p.company}|${p.titulo}`;
+                  filas.set(k, [...(filas.get(k) || []), p]);
+                });
+                const colorDe = (estado: string) =>
+                  estado === "pagado" ? "#16a34a" : estado === "vencido" || estado === "hoy" ? "#b91c1c" : estado === "proximo" ? "#b45309" : "#64748b";
+                const abierto = expanded.has("programados");
+                return (
+                  <>
+                    <tr>
+                      <td
+                        style={{ ...tdStickyLabel, background: "#ede9fe", fontWeight: 800, color: "#5b21b6", cursor: "pointer" }}
+                        onClick={() => toggle("programados")}
+                        title="Pagos que se vienen. Es previsión: no suma al neto. Se cargan y se resuelven en el bloque Pagos programados."
+                      >
+                        {abierto ? "▾ " : "▸ "}PAGOS PROGRAMADOS · previsión (no suma)
+                      </td>
+                      {visibleDayCols.map((c) => {
+                        const delDia = enVista.filter((p) => p.fechaLimite === c.iso && p.currency !== "USD" && p.estado !== "pagado");
+                        const total = delDia.reduce((a, p) => a + p.monto, 0);
+                        return (
+                          <td key={`prg-${c.iso}`} style={{ ...tdCell, background: "#ede9fe", fontStyle: "italic", color: "#5b21b6", ...hi(c.iso) }}>
+                            {total ? `≈ ${money(total)}` : delDia.length ? "≈" : ""}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                    {abierto &&
+                      Array.from(filas.entries())
+                        .sort((a, b) => a[0].localeCompare(b[0]))
+                        .map(([k, ps]) => {
+                          const meta = companyMeta.get(ps[0].company);
+                          return (
+                            <tr key={`prg-${k}`}>
+                              <td style={{ ...tdStickyLabel, paddingLeft: 24, fontWeight: 500, color: "#4c1d95", boxShadow: `inset 3px 0 0 ${meta?.color || "#a78bfa"}` }} title={`${ps[0].titulo} · ${ps[0].origen}`}>
+                                {ps[0].titulo}
+                              </td>
+                              {visibleDayCols.map((c) => {
+                                const p = ps.find((x) => x.fechaLimite === c.iso);
+                                return (
+                                  <td
+                                    key={`prg-${k}-${c.iso}`}
+                                    title={p ? `${p.titulo} · ${p.texto}` : undefined}
+                                    style={{
+                                      ...tdCell,
+                                      fontStyle: "italic",
+                                      color: p ? colorDe(p.estado) : "#e2e8f0",
+                                      textDecoration: p?.estado === "pagado" ? "line-through" : undefined,
+                                      ...hi(c.iso),
+                                    }}
+                                  >
+                                    {p ? `≈ ${p.monto > 0 ? money(p.monto, p.currency) : "?"}` : "·"}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                  </>
+                );
+              })()}
 
               {/* SIN CLASIFICAR */}
               {!onlySection && agg.unclDetail.size > 0 && (
@@ -2440,7 +2543,10 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                    bolsillo propio a otro. Se muestran acá con su saldo del día. ===== */}
               {/* ===== FACTURACION. Se ve, no suma. La factura es REGISTRO: la plata se mueve con el
                    cobro y con el pago. Si sumara, cada peso se contaria dos veces. ===== */}
-              {!onlySection && agg.facturaDetail.size > 0 && (
+              {/* FACTURACIÓN: fuera de la planilla (Nicolas, 2026-10-06): "la facturación no debería
+                  figurar en el cash flow, solo plata". La factura es registro; la plata entra con el
+                  cobro y sale con el pago. Se sigue viendo en Facturación y cobranzas y en Compras. */}
+              {false && !onlySection && agg.facturaDetail.size > 0 && (
                 <>
                   <tr>
                     <td style={{ ...tdStickyLabel, background: "#eef2ff", fontWeight: 800, color: "#3730a3" }}>

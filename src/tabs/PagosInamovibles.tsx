@@ -6,7 +6,7 @@ import { ORIGEN_LABEL, type ItemInamovible } from "../domain/agendaInamovibles";
 import { textoVentana, type Vencimiento, type VencimientoRecurrencia, type VencimientoTipo } from "../domain/vencimientos";
 import type { CalSection } from "../domain/calendarStructure";
 
-// PAGOS INAMOVIBLES: arriba de la planilla del Calendario anual. Muestra SOLO los pagos que no se
+// PAGOS PROGRAMADOS (antes "pagos inamovibles"): arriba de la planilla del Calendario anual. Muestra SOLO los pagos que no se
 // pueden fallar (no todo el cash flow), juntados de donde ya estan en el sistema mas los vencimientos
 // cargados a mano. Toda accion sobre un pago sale del click derecho (regla del sistema).
 
@@ -123,7 +123,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
 
   return (
     <Panel
-      title={`Pagos inamovibles${alertas.length ? ` · ${alertas.length} con aviso` : ""}`}
+      title={`Pagos programados${alertas.length ? ` · ${alertas.length} con aviso` : ""}`}
       span="full"
       actions={
         canEdit ? (
@@ -240,7 +240,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
               {lista.length === 0 ? (
                 <tr>
                   <td colSpan={4} style={{ padding: 8, color: "#94a3b8" }}>
-                    No hay pagos inamovibles en {MESES[mo - 1].toLowerCase()} ni avisos pendientes.
+                    No hay pagos programados en {MESES[mo - 1].toLowerCase()} ni avisos pendientes.
                   </td>
                 </tr>
               ) : (

@@ -1,4 +1,4 @@
-import { agendaInamovibles, alertasActivas, sumarMeses, type FuentesInamovibles } from "./agendaInamovibles";
+import { agendaInamovibles, alertasActivas, pagosAReclamar, sumarMeses, type FuentesInamovibles } from "./agendaInamovibles";
 import { realPorRenglonMes } from "./vencimientos";
 
 const vacio = (): FuentesInamovibles => ({
@@ -95,3 +95,40 @@ describe("agendaInamovibles · fuentes vinculadas", () => {
     expect(a.map((i) => i.origen)).toEqual(["sueldos", "tarjeta", "manual"]);
   });
 });
+
+// El reclamo bloqueante (Nicolas, 2026-10-06): un pago que vence sin cargarse exige comprobante o
+// reprogramacion.
+describe("reclamo de pagos vencidos", () => {
+  const deuda = () => {
+    const f = vacio();
+    f.debtPlans = [{ id: 7, company: "BGA", concept: "Echeq", nextInstallmentAmount: 100, remainingInstallments: 1, nextDueDate: "2026-10-10", active: true }];
+    return f;
+  };
+  it("vencido y sin pagar desde que rige el reclamo -> se reclama", () => {
+    const a = agendaInamovibles(deuda(), ...RANGO, "2026-10-12");
+    expect(pagosAReclamar(a, "2026-10-07").map((i) => i.clave)).toEqual(["deuda:7:2026-10-10"]);
+  });
+  it("lo vencido ANTES de que rija el reclamo no bloquea (solo avisa)", () => {
+    const a = agendaInamovibles(deuda(), ...RANGO, "2026-10-12");
+    expect(pagosAReclamar(a, "2026-10-11")).toHaveLength(0);
+    expect(alertasActivas(a)).toHaveLength(1);
+  });
+  it("reprogramar mueve la fecha limite y deja de reclamar", () => {
+    const f = deuda();
+    f.marcas = [{ id: 1, company: "BGA", clave: "deuda:7:2026-10-10", pagado: false, at: "", reprogramadoA: "2026-10-20" }];
+    const [i] = agendaInamovibles(f, ...RANGO, "2026-10-12");
+    expect(i.fechaLimite).toBe("2026-10-20");
+    expect(i.reprogramadoDe).toBe("2026-10-10");
+    expect(i.texto).toBe("Faltan 8 días");
+    expect(pagosAReclamar([i], "2026-10-07")).toHaveLength(0);
+  });
+  it("el comprobante lo da por pagado", () => {
+    const f = deuda();
+    f.marcas = [{ id: 1, company: "BGA", clave: "deuda:7:2026-10-10", pagado: false, at: "", comprobante: { fileName: "transferencia.pdf", at: "" } }];
+    const [i] = agendaInamovibles(f, ...RANGO, "2026-10-12");
+    expect(i.estado).toBe("pagado");
+    expect(i.pagadoComo).toBe("con comprobante");
+    expect(i.comprobante?.fileName).toBe("transferencia.pdf");
+  });
+});
+

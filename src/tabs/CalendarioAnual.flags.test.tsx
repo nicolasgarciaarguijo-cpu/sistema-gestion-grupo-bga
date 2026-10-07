@@ -327,7 +327,8 @@ describe("la celda marcada se ve", () => {
 
   // LA FACTURA SE VE PERO NO SUMA. La plata se mueve con el cobro y con el pago; si la factura
   // sumara, cada peso quedaria contado dos veces. Este test es el que impide que eso vuelva.
-  it("las facturas figuran en la planilla y NO cambian los totales", () => {
+  // Criterio de Nicolas (2026-10-06): "la facturacion no deberia figurar en el cash flow, solo plata".
+  it("las facturas NO figuran en la planilla y NO cambian los totales", () => {
     const factura = {
       id: "financial-99", date: iso, amount: 250000, type: "facturacion", status: "realizado",
       company: "BGA", administration: "blanco", conceptKey: "__facturacion__",
@@ -337,10 +338,9 @@ describe("la celda marcada se ve", () => {
     const sinFactura = render({});
     const conFactura = render({ entries: [entrada, factura] });
 
-    // Se ve: el bloque y el renglón de la factura.
-    expect(conFactura.textContent).toContain("FACTURACIÓN");
-    expect(conFactura.textContent).toContain("Venta · CONTRACT RENT");
-    expect(sinFactura.textContent).not.toContain("FACTURACIÓN");
+    // No se ve: ni el bloque ni el renglón de la factura (la factura es registro, no plata).
+    expect(conFactura.textContent).not.toContain("Venta · CONTRACT RENT");
+    expect(sinFactura.textContent).not.toContain("Venta · CONTRACT RENT");
 
     // Y no suma: la fila de TOTAL EGRESOS tiene que decir exactamente lo mismo en los dos casos.
     const totalDe = (host: HTMLElement, etiqueta: string) => {

@@ -25,7 +25,7 @@ export function AlertasInamovibles({
   return (
     <div
       onClick={onOpen}
-      title="Ver los pagos inamovibles en el Calendario anual"
+      title="Ver los pagos programados en el Calendario anual"
       style={{
         display: "flex",
         alignItems: "center",
@@ -40,7 +40,7 @@ export function AlertasInamovibles({
       }}
     >
       <strong style={{ color: urgentes ? "#991b1b" : "#92400e" }}>
-        ⚠ {items.length} pago{items.length === 1 ? "" : "s"} inamovible{items.length === 1 ? "" : "s"}
+        ⚠ {items.length} pago{items.length === 1 ? "" : "s"} programado{items.length === 1 ? "" : "s"}
       </strong>
       {orden.slice(0, 6).map((i) => (
         <span key={i.clave} style={{ color: "#334155" }}>

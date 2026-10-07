@@ -21,18 +21,23 @@ export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
   manual: "Vencimiento",
   deuda: "Cuota de deuda",
   tarjeta: "Tarjeta",
-  cashflow: "Pago programado",
+  cashflow: "Pendiente del cash flow",
   seguro: "Seguro",
   sueldos: "Sueldos",
 };
 
-// Marca de "pagado" para los origenes que no tienen la suya.
+// Marca sobre un pago de la agenda: "pagado" (para los origenes que no tienen el suyo), REPROGRAMADO a
+// otra fecha, o cerrado con un COMPROBANTE. Es lo que pide el reclamo bloqueante cuando un pago vence
+// sin cargarse (Nicolas, 2026-10-06): o se sube el comprobante, o se reprograma.
 export type VencimientoMarca = {
   id: number;
   company: string;
   clave: string; // ej. "deuda:12:2026-11-10", "sueldos:BGA:2026-10", "seguro:4:2026-10"
   pagado: boolean;
   at: string;
+  reprogramadoA?: string; // nueva fecha limite (yyyy-mm-dd)
+  comprobante?: { fileName: string; storagePath?: string; at: string };
+  nota?: string;
 };
 
 export type ItemInamovible = {
@@ -52,7 +57,9 @@ export type ItemInamovible = {
   conceptKey?: string;
   avisoDias: number;
   pagado: boolean;
-  pagadoComo: string; // "" | "a mano" | "cayó en el banco" | "en Tarjetas" | "realizado en el cash flow"
+  pagadoComo: string; // "" | "a mano" | "cayó en el banco" | "en Tarjetas" | "realizado en el cash flow" | "con comprobante"
+  comprobante?: { fileName: string; storagePath?: string };
+  reprogramadoDe?: string; // fecha original, si se reprogramo
   estado: "pagado" | "vencido" | "hoy" | "proximo" | "en_ventana" | "futuro";
   diasRestantes: number;
   alerta: boolean;
@@ -312,7 +319,40 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
       );
     });
 
-  return out.sort((a, b) => a.fechaLimite.localeCompare(b.fechaLimite) || a.titulo.localeCompare(b.titulo));
+  // Reprogramaciones y comprobantes: valen para CUALQUIER origen (van por clave). Reprogramar mueve la
+  // fecha limite (y con ella el aviso); el comprobante lo da por pagado.
+  const porClave = new Map(f.marcas.map((m) => [m.clave, m]));
+  const conMarcas = out.map((i) => {
+    const m = porClave.get(i.clave);
+    if (!m || (!m.reprogramadoA && !m.comprobante)) return i;
+    const { estado: _e, diasRestantes: _d, alerta: _a, texto: _t, ...base } = i;
+    const nueva = { ...base };
+    if (m.reprogramadoA && m.reprogramadoA !== i.fechaLimite) {
+      nueva.reprogramadoDe = i.fechaLimite;
+      nueva.fechaLimite = m.reprogramadoA;
+      if (nueva.ventanaDesde > m.reprogramadoA) nueva.ventanaDesde = m.reprogramadoA;
+    }
+    if (m.comprobante) {
+      nueva.pagado = true;
+      nueva.pagadoComo = "con comprobante";
+      nueva.comprobante = { fileName: m.comprobante.fileName, storagePath: m.comprobante.storagePath };
+    }
+    return conEstado(nueva, hoy);
+  });
+
+  return conMarcas.sort((a, b) => a.fechaLimite.localeCompare(b.fechaLimite) || a.titulo.localeCompare(b.titulo));
+}
+
+// Desde cuando el reclamo es BLOQUEANTE. Lo vencido antes de que existiera el reclamo sigue avisando en
+// la franja del encabezado, pero no traba el sistema (si no, el primer dia bloquearia por meses viejos).
+export const RECLAMO_DESDE = "2026-10-07";
+
+/**
+ * Los pagos que hay que resolver YA: vencidos (la fecha limite ya paso), sin pagar, y con fecha desde
+ * que rige el reclamo. Cada uno exige comprobante o reprogramacion.
+ */
+export function pagosAReclamar(items: ItemInamovible[], desde = RECLAMO_DESDE): ItemInamovible[] {
+  return items.filter((i) => i.estado === "vencido" && i.fechaLimite >= desde);
 }
 
 /** Lo que tiene que sonar hoy: impago y vencido, que vence hoy, o dentro de su aviso/ventana. */
