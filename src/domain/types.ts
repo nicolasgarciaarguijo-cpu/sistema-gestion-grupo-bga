@@ -1234,6 +1234,10 @@ export type AttendanceRecord = {
   // precarga de horas del convenio (ver deriveConvenioHours).
   checkIn?: string;
   checkOut?: string;
+  // TODAS las pasadas del dia por el reloj (HH:MM, en orden), como las lee el reloj. La entrada es la
+  // primera y la salida la ultima; las del medio quedan para abrir el dia y ver que paso (pedido de
+  // Nicolas, 2026-10-07). Lecturas a menos de 2 minutos son la misma pasada. Opcional: dato crudo.
+  fichadas?: string[];
   // Candado: la precarga automatica de horas desde el reloj NO toca un dia bloqueado. Se pone solo
   // al editar el dia a mano (la carga manual le gana a la automatica) y se puede fijar/soltar con el
   // candado del calendario. Opcional: los registros viejos no lo tienen (se lee como false).

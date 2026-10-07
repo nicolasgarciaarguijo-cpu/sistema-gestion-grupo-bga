@@ -11,7 +11,7 @@ const empleado: any = {
   legajo: "6",
   name: "ADALBERTO SORIA",
   attendance: [
-    { date: "2026-10-05", status: "presente", checkIn: "07:28", checkOut: "17:05", normalHours: 9, extra50Hours: 0, extra100Hours: 0, attachmentName: "", notes: "" },
+    { date: "2026-10-05", status: "presente", checkIn: "07:28", checkOut: "17:05", normalHours: 9, extra50Hours: 0, extra100Hours: 0, attachmentName: "", notes: "", fichadas: ["07:28", "12:10", "13:02", "17:05"] },
   ],
 };
 
@@ -54,6 +54,21 @@ describe("PlanillaFichajes", () => {
       salida.dispatchEvent(new Event("input", { bubbles: true }));
     });
     expect(onUpdate).toHaveBeenCalledWith(7, "2026-10-05", "checkOut", "18:30");
+    act(() => root.unmount());
+    div.remove();
+  });
+
+  it("la pill del dia dice cuantas pasadas hubo y el dia se abre con click derecho", () => {
+    const { div, root } = montar();
+    const celda = Array.from(div.querySelectorAll("td")).find((td) => (td.getAttribute("title") || "").includes("Lun 05"))!;
+    expect(celda.textContent).toContain("4"); // la pill
+    act(() => {
+      celda.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 5, clientY: 5 }));
+    });
+    const ver = Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.includes("Ver las 4 pasadas"))!;
+    act(() => ver.click());
+    expect(document.body.textContent).toContain("12:10");
+    expect(document.body.textContent).toContain("pasada intermedia");
     act(() => root.unmount());
     div.remove();
   });

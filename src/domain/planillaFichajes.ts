@@ -48,6 +48,8 @@ export type CeldaFichaje = {
   };
   bloqueado: boolean;
   notas: string;
+  // Todas las pasadas del dia por el reloj (la entrada es la primera y la salida la ultima).
+  pasadas: string[];
 };
 
 export type FilaFichajes = {
@@ -115,6 +117,7 @@ export function planillaDeFichajes(
         horas,
         bloqueado: !!rec?.locked,
         notas: rec?.notes || "",
+        pasadas: Array.isArray(rec?.fichadas) ? rec!.fichadas! : [],
       };
     });
     return {
@@ -144,7 +147,7 @@ export function hojasExcelFichajes(
   companyShort: (company: string) => string
 ): { fichajes: Array<Array<string | number>>; grilla: Array<Array<string | number>> } {
   const fichajes: Array<Array<string | number>> = [
-    ["Empresa", "Legajo", "Empleado", "Fecha", "Día", "Entrada", "Salida", "Estado", "Min. tarde", "Normales", "Extra 50%", "Extra 100%", "Feriado", "Noct. 50%", "Noct. 100%", "Total horas", "Editado a mano", "Notas"],
+    ["Empresa", "Legajo", "Empleado", "Fecha", "Día", "Entrada", "Salida", "Estado", "Min. tarde", "Normales", "Extra 50%", "Extra 100%", "Feriado", "Noct. 50%", "Noct. 100%", "Total horas", "Editado a mano", "Pasadas", "Todas las pasadas", "Notas"],
   ];
   filas.forEach((f) =>
     f.celdas.forEach((c) =>
@@ -166,6 +169,8 @@ export function hojasExcelFichajes(
         c.horas.noct100 || "",
         c.horas.total || "",
         c.bloqueado ? "sí" : "",
+        c.pasadas.length || "",
+        c.pasadas.join(" · "),
         c.notas,
       ])
     )

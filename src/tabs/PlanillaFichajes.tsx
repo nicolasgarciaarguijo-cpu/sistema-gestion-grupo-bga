@@ -62,6 +62,8 @@ export function PlanillaFichajes({
   );
   const [menu, setMenu] = useState<null | { x: number; y: number; employeeId: number; name: string; celda: CeldaFichaje }>(null);
   const [exportando, setExportando] = useState(false);
+  // El dia abierto: todas las pasadas por el reloj de esa persona ese dia.
+  const [diaAbierto, setDiaAbierto] = useState<null | { name: string; celda: CeldaFichaje }>(null);
 
   const exportar = async () => {
     setExportando(true);
@@ -177,6 +179,7 @@ export function PlanillaFichajes({
                           ESTADO_FICHAJE_LABEL[c.estado] + (c.detalle ? ` — ${c.detalle}` : ""),
                           c.horas.total ? `Horas: ${c.horas.total}` : "",
                           c.bloqueado ? "Editado a mano (candado)" : "",
+                          c.pasadas.length ? `${c.pasadas.length} pasada${c.pasadas.length === 1 ? "" : "s"} por el reloj: ${c.pasadas.join(" · ")}` : "",
                           c.notas,
                         ].filter(Boolean).join("\n")}
                         style={{
@@ -185,10 +188,35 @@ export function PlanillaFichajes({
                           borderBottom: "1px solid #fff",
                           borderRight: "1px solid #fff",
                           verticalAlign: "top",
+                          position: "relative",
                           outline: c.bloqueado ? "1px dashed #64748b" : undefined,
                           outlineOffset: -2,
                         }}
                       >
+                        {/* PILL de pasadas: cuantas veces paso por el reloj ese dia. Solo MARCA (se abre con
+                            click derecho). En ambar cuando son mas de 2: ahi conviene abrir el dia. */}
+                        {c.pasadas.length > 0 && (
+                          <span
+                            style={{
+                              position: "absolute",
+                              top: 1,
+                              right: 1,
+                              minWidth: 13,
+                              height: 13,
+                              lineHeight: "13px",
+                              padding: "0 3px",
+                              borderRadius: 999,
+                              fontSize: 9,
+                              fontWeight: 800,
+                              textAlign: "center",
+                              background: c.pasadas.length > 2 ? "#f59e0b" : "#e2e8f0",
+                              color: c.pasadas.length > 2 ? "#fff" : "#64748b",
+                              zIndex: 1,
+                            }}
+                          >
+                            {c.pasadas.length}
+                          </span>
+                        )}
                         {c.estado === "ausente" || c.estado === "vacaciones" ? (
                           <div style={{ fontSize: 10, fontWeight: 700, color: col.fg, textAlign: "center", padding: "10px 0" }}>
                             {c.estado === "ausente" ? "AUS" : "VAC"}
@@ -236,6 +264,20 @@ export function PlanillaFichajes({
           <QuickMenuTitle>
             {menu.name} · {menu.celda.dia}
           </QuickMenuTitle>
+          {menu.celda.pasadas.length > 0 && (
+            <>
+              <button
+                style={{ ...quickMenuItem, fontWeight: 700 }}
+                onClick={() => {
+                  setDiaAbierto({ name: menu.name, celda: menu.celda });
+                  setMenu(null);
+                }}
+              >
+                Ver las {menu.celda.pasadas.length} pasada{menu.celda.pasadas.length === 1 ? "" : "s"} del día…
+              </button>
+              <QuickMenuSep />
+            </>
+          )}
           {ESTADOS_A_MANO.map((e) => (
             <button
               key={e.status}
@@ -272,6 +314,45 @@ export function PlanillaFichajes({
             </button>
           )}
         </QuickMenu>
+      )}
+      {diaAbierto && (
+        <div
+          onClick={() => setDiaAbierto(null)}
+          style={{ position: "fixed", inset: 0, zIndex: 1200, background: "rgba(15,23,42,0.35)", display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: "#fff", borderRadius: 10, padding: 16, minWidth: 280, maxWidth: 380, boxShadow: "0 12px 40px rgba(0,0,0,0.25)" }}
+          >
+            <div style={{ fontWeight: 800 }}>{diaAbierto.name}</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+              {diaAbierto.celda.dia} · {diaAbierto.celda.pasadas.length} pasada{diaAbierto.celda.pasadas.length === 1 ? "" : "s"} por el reloj
+            </div>
+            <ol style={{ margin: 0, paddingLeft: 22, fontSize: 14, lineHeight: 1.8 }}>
+              {diaAbierto.celda.pasadas.map((h, i, arr) => (
+                <li key={`${h}-${i}`}>
+                  <strong>{h}</strong>
+                  <span style={{ color: "#64748b", fontSize: 12 }}>
+                    {i === 0 ? " · entrada" : i === arr.length - 1 ? " · salida" : " · pasada intermedia"}
+                  </span>
+                </li>
+              ))}
+            </ol>
+            {(diaAbierto.celda.checkIn !== diaAbierto.celda.pasadas[0] ||
+              (diaAbierto.celda.pasadas.length > 1 &&
+                diaAbierto.celda.checkOut !== diaAbierto.celda.pasadas[diaAbierto.celda.pasadas.length - 1])) && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "#b45309" }}>
+                La entrada/salida del día ({diaAbierto.celda.checkIn || "?"} - {diaAbierto.celda.checkOut || "?"}) se corrigió a mano
+                y no coincide con la primera y la última pasada.
+              </div>
+            )}
+            <div style={{ textAlign: "right", marginTop: 12 }}>
+              <ButtonLike secondary onClick={() => setDiaAbierto(null)}>
+                Cerrar
+              </ButtonLike>
+            </div>
+          </div>
+        </div>
       )}
     </Panel>
   );
