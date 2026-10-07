@@ -5,7 +5,13 @@ import { money } from "../lib/format";
 // qué empresa se tiene plata y de dónde gastar. Se apoya en la reserva (dominio) calculada POR
 // empresa (no depende del selector del balance). Es sensible (muestra negro) → App lo renderiza solo
 // para admins. El corte por acceso (qué empresas ve cada uno) ya viene resuelto en el array.
-export type PlataDisponibleBank = { bank: string; currency: "ARS" | "USD"; balance: number };
+export type PlataDisponibleBank = {
+  bank: string;
+  currency: "ARS" | "USD";
+  balance: number; // saldo que calcula el sistema con lo cargado
+  // CONTROL contra el ultimo resumen del banco (el extracto ya no carga: corrobora).
+  control?: { fecha: string; saldoExtracto: number; diferencia: number; cierra: boolean };
+};
 export type PlataDisponibleCompany = {
   company: string;
   short: string;
@@ -36,6 +42,8 @@ export type PlataDisponibleCompany = {
   // Saldo de las cuentas corrientes con proveedores: lo que le debemos a la gente que nos vende. Va
   // aca arriba para no olvidarse (regla del usuario 2026-08-26). Ver domain/purchaseLedger.ts.
   deudaProveedores: number;
+  // Plata en mano de cada persona (cajas por persona: caja chica, etc.).
+  cajas?: Array<{ persona: string; color: "blanco" | "negro"; saldo: number }>;
 };
 
 const wrap: React.CSSProperties = {
@@ -168,6 +176,18 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                       <div key={b.bank} style={bigStat}>
                         <div style={bigLabel} title={b.bank}>🏦 {b.bank}</div>
                         <div style={{ ...bigValue, ...negativa(b.balance) }}>{money(b.balance)}</div>
+                        {b.control && (
+                          <div
+                            style={{ fontSize: 10.5, marginTop: 2, color: b.control.cierra ? "#86efac" : "#fca5a5" }}
+                            title={`Último resumen del banco (${b.control.fecha}): ${money(b.control.saldoExtracto)}. El sistema da ${money(
+                              b.control.saldoExtracto - b.control.diferencia
+                            )} a esa fecha.`}
+                          >
+                            {b.control.cierra
+                              ? `✓ coincide con el extracto (${b.control.fecha.slice(8, 10)}/${b.control.fecha.slice(5, 7)})`
+                              : `≠ extracto ${b.control.fecha.slice(8, 10)}/${b.control.fecha.slice(5, 7)}: dif. ${money(b.control.diferencia)}`}
+                          </div>
+                        )}
                       </div>
                     ))
                   ) : (
@@ -185,6 +205,22 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                     <div style={{ ...bigValue, color: "#fde68a" }}>{money(c.efectivoNegroArs)}</div>
                   </div>
                 </div>
+
+                {/* CAJAS POR PERSONA: plata de la empresa que tiene alguien en mano. */}
+                {(c.cajas || []).length > 0 && (
+                  <div style={banksRow}>
+                    {(c.cajas || []).map((caja) => (
+                      <span
+                        key={`${caja.persona}-${caja.color}`}
+                        style={{ ...chip, color: caja.color === "negro" ? "#fde68a" : "#e2e8f0" }}
+                        title="Plata de la empresa en mano de esta persona (caja chica y pases a su caja)"
+                      >
+                        👤 {caja.persona}
+                        {caja.color === "negro" ? " (negro)" : ""}: <b>{money(caja.saldo)}</b>
+                      </span>
+                    ))}
+                  </div>
+                )}
 
                 {/* Los pesos de cada banco ya van arriba en grande: acá solo quedan los dólares. */}
                 {usdBanks.length > 0 && (

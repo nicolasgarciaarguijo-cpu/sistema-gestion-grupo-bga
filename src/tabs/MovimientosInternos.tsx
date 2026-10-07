@@ -84,6 +84,8 @@ function StatRow({
 }
 
 type MovimientosInternosTabProps = {
+  // Devoluciones de caja chica que volvieron a OTRA cuenta que la de origen: son pases entre cuentas.
+  devolucionesCruzadas?: Array<{ id: string; company: string; fecha: string; fondo: string; responsable: string; monto: number; color: string; origen: string; destino: string }>;
   companyScope: CompanyScope | "__ALL__";
   setCompanyScope: (scope: CompanyScope | "__ALL__") => void;
   COMPANY_OPTIONS: any[];
@@ -124,6 +126,7 @@ type MovimientosInternosTabProps = {
 };
 
 export function MovimientosInternosTab({
+  devolucionesCruzadas = [],
   companyScope,
   setCompanyScope,
   COMPANY_OPTIONS,
@@ -1068,6 +1071,43 @@ export function MovimientosInternosTab({
           ))}
         </datalist>
       </Panel>
+
+      {devolucionesCruzadas.filter((d) => companyScope === "__ALL__" || d.company === companyScope).length > 0 && (
+        <Panel title="Caja chica: devoluciones a otra cuenta" span="full">
+          <div style={{ ...styles.muted, marginBottom: 8 }}>
+            Lo que sobró de un fondo de caja chica volvió a una cuenta distinta de la que salió. No debería pasar,
+            pero si pasa es un pase entre cuentas y queda acá a la vista. Se corrige en Caja chica (click derecho sobre
+            el fondo, "A qué cuenta vuelve lo que sobra").
+          </div>
+          <table className="planilla" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+            <thead>
+              <tr style={{ background: "#f8fafc", color: "#475569", fontSize: 12 }}>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Fecha</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Fondo</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Salió de</th>
+                <th style={{ textAlign: "left", padding: "4px 8px" }}>Volvió a</th>
+                <th style={{ textAlign: "right", padding: "4px 8px" }}>Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {devolucionesCruzadas
+                .filter((d) => companyScope === "__ALL__" || d.company === companyScope)
+                .map((d) => (
+                  <tr key={d.id}>
+                    <td style={{ padding: "4px 8px" }}>{d.fecha.slice(8, 10)}/{d.fecha.slice(5, 7)}/{d.fecha.slice(0, 4)}</td>
+                    <td style={{ padding: "4px 8px" }}>
+                      {d.fondo} · {d.responsable} · {getCompanyMeta(d.company as any)?.short || d.company}
+                      {d.color === "negro" ? " (negro)" : ""}
+                    </td>
+                    <td style={{ padding: "4px 8px" }}>{d.origen}</td>
+                    <td style={{ padding: "4px 8px", color: "#b45309", fontWeight: 700 }}>{d.destino}</td>
+                    <td style={{ padding: "4px 8px", textAlign: "right" }}>{money(d.monto)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </Panel>
+      )}
 
       <Panel title="Cuenta corriente entre las empresas del grupo" span="full">
         <div style={styles.sectionNote}>

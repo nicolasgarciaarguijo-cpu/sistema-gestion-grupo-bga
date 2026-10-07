@@ -52,6 +52,8 @@ type CajaChicaTabProps = {
   onCancelTicketDraft: () => void;
   fundSemaphoreSummary: any;
   visiblePettyCashFunds: PettyCashFund[];
+  // Cuentas para elegir de donde sale el fondo y a donde vuelve lo que sobra (ver domain/cuentas.ts).
+  cuentas?: any[];
   pettyCashSummary: any;
   totalResponsibleDebt: number;
   responsibleRendicion: any[];
@@ -86,6 +88,7 @@ type CajaChicaTabProps = {
 };
 
 export function CajaChicaTab({
+  cuentas,
   pettyCashBalanceSummary,
   pettyOcrBusy,
   pettyOcrMsg,
@@ -470,6 +473,48 @@ export function CajaChicaTab({
                     >
                       Editar notas…
                     </button>
+                    {(cuentas || []).length > 0 && (() => {
+                      const opciones = (cuentas || []).filter(
+                        (c: any) => c.company === it.company && c.activa !== false && c.moneda === "ARS" && c.tipo !== "persona"
+                      );
+                      const icono = (c: any) => (c.tipo === "banco" ? "🏦 " : "💵 ");
+                      return (
+                        <>
+                          <QuickMenuSep />
+                          <QuickMenuTitle>De qué cuenta sale el fondo…</QuickMenuTitle>
+                          <select
+                            style={{ ...quickMenuItem, width: "100%", cursor: "pointer" }}
+                            value={(it as any).cuentaId || ""}
+                            onChange={(ev) => {
+                              updateArrayItem(setPettyCashFunds, it.id, "cuentaId" as any, ev.target.value || undefined);
+                              cerrar();
+                            }}
+                          >
+                            <option value="">Por defecto (efectivo de su color)</option>
+                            {opciones.map((c: any) => (
+                              <option key={c.id} value={c.id}>{icono(c)}{c.nombre}</option>
+                            ))}
+                          </select>
+                          <QuickMenuTitle>A qué cuenta vuelve lo que sobra…</QuickMenuTitle>
+                          <select
+                            style={{ ...quickMenuItem, width: "100%", cursor: "pointer" }}
+                            value={(it as any).cuentaDevolucionId || ""}
+                            onChange={(ev) => {
+                              updateArrayItem(setPettyCashFunds, it.id, "cuentaDevolucionId" as any, ev.target.value || undefined);
+                              cerrar();
+                            }}
+                          >
+                            <option value="">A la misma de donde salió</option>
+                            {opciones.map((c: any) => (
+                              <option key={c.id} value={c.id}>{icono(c)}{c.nombre}</option>
+                            ))}
+                          </select>
+                          <div style={{ padding: "4px 10px", fontSize: 11, color: "#64748b", maxWidth: 280 }}>
+                            Si vuelve a otra cuenta, es un pase entre cuentas y figura en Movimientos internos.
+                          </div>
+                        </>
+                      );
+                    })()}
                     <QuickMenuSep />
                     <button
                       style={quickMenuItem}

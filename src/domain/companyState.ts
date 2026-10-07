@@ -37,6 +37,8 @@ export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   // Vencimientos (pagos inamovibles cargados a mano): cada uno es de una empresa. Modulo nuevo
   // (2026-10-05) sin datos legacy: no necesita entrada en el splitter SQL.
   vencimientos: ["vencimientos", "vencimientoMarcas"],
+  // Cuentas (bancos / efectivo / cajas por persona): cada una es de una empresa (2026-10-07).
+  cuentas: ["cuentas"],
   // Cada factura emitida es de la empresa que la emitio.
   "facturas-emitidas": ["issuedInvoices"],
   "historial-crm": ["savedBudgets"],

@@ -1,4 +1,5 @@
 import React from "react";
+import { SelectorCuenta } from "./CuentasPanel";
 import { styles } from "../ui/styles";
 import { describirTrabajo } from "../domain/jobDescription";
 import { resumirMaterialesDelTrabajo } from "../domain/jobMaterials";
@@ -60,6 +61,8 @@ const planoDaysText = (days: number | null): string =>
     : `faltan ${days} d para fabricar`;
 
 type AprobadosTabProps = {
+  // Cuentas para elegir a donde entro cada cobro (ver domain/cuentas.ts).
+  cuentas?: any[];
   jobSemaphoreSummary: any;
   approvedJobsSummary: any[];
   companyApprovedSections: any[];
@@ -122,6 +125,7 @@ const MOSTRAR_PLANOS_PENDIENTES: boolean = false;
 const MOSTRAR_EVOLUCION_TRABAJOS: boolean = false;
 
 export function AprobadosTab({
+  cuentas,
   jobSemaphoreSummary,
   approvedJobsSummary,
   companyApprovedSections,
@@ -1536,6 +1540,16 @@ export function AprobadosTab({
                               <option value="otros">Otros</option>
                             </select>
                           </Field>
+                          {(cuentas || []).length > 0 && (
+                            <SelectorCuenta
+                              cuentas={cuentas || []}
+                              company={selectedApprovedJob.company}
+                              moneda={payment.currency === "USD" ? "USD" : "ARS"}
+                              label="A qué cuenta entró"
+                              value={(payment as any).cuentaId}
+                              onChange={(id) => updatePayment(selectedApprovedJob.id, payment.id, "cuentaId", id)}
+                            />
+                          )}
                           <Field label="Administracion">
                             <select
                               style={styles.input}

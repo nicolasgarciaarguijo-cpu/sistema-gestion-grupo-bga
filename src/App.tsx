@@ -67,6 +67,16 @@ import { PagosInamovibles } from "./tabs/PagosInamovibles";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
 import { ReclamoPagosVencidos } from "./ui/ReclamoPagosVencidos";
 import {
+  armarCuentas,
+  controlContraExtracto,
+  movimientosPorCuenta,
+  saldosDeCuentas,
+  saldosDiarios,
+  type Cuenta,
+} from "./domain/cuentas";
+import { plataDelSistema } from "./domain/plataDelSistema";
+import { CuentasPanel } from "./tabs/CuentasPanel";
+import {
   buildCierreResumenHtml,
   buildCierreBancoHtml,
   buildCierreCostosHtml,
@@ -1753,6 +1763,8 @@ type PersistedAppStateData = {
   vencimientos: Vencimiento[];
   // Marcas de "pagado" de los pagos inamovibles que no tienen su propio pagado (cuotas, sueldos, seguros).
   vencimientoMarcas: VencimientoMarca[];
+  // Cuentas (bancos, efectivo, cajas por persona) corregidas a mano: apertura, nombre, principal.
+  cuentas: Cuenta[];
   costRules: CostRule[];
   creditCards: CreditCard[];
   creditCardStatements: CreditCardStatement[];
@@ -1817,6 +1829,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "vencimientos",
     label: "Vencimientos (pagos inamovibles)",
     fields: ["vencimientos", "vencimientoMarcas"] as const,
+  },
+  {
+    key: "cuentas",
+    label: "Cuentas (bancos, efectivo y cajas por persona)",
+    fields: ["cuentas"] as const,
   },
   {
     key: "facturas-emitidas",
@@ -2960,6 +2977,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [inversiones, setInversiones] = useState<Inversion[]>([]);
   const [vencimientos, setVencimientos] = useState<Vencimiento[]>([]);
   const [vencimientoMarcas, setVencimientoMarcas] = useState<VencimientoMarca[]>([]);
+  const [cuentasGuardadas, setCuentasGuardadas] = useState<Cuenta[]>([]);
   const [inversionesCompanyScope, setInversionesCompanyScope] = useState<string>("__ALL__");
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
   const [calendarRowConfig, setCalendarRowConfig] = useState<CalendarRowConfig>(DEFAULT_CALENDAR_ROW_CONFIG);
@@ -9314,6 +9332,7 @@ Escribi CERRAR para confirmar:`
     inversiones: inversiones.map((item) => ({ ...item })),
     vencimientos: vencimientos.map((item) => ({ ...item, ocurrencias: { ...(item.ocurrencias || {}) } })),
     vencimientoMarcas: vencimientoMarcas.map((item) => ({ ...item })),
+    cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
     creditCardStatements: creditCardStatements.map((item) => ({ ...item })),
@@ -9626,6 +9645,7 @@ Escribi CERRAR para confirmar:`
     setVencimientoMarcas(
       keepAccessibleByCompany(data.vencimientoMarcas || []).map((item) => ({ ...item }))
     );
+    setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
       hidden: [...(data.calendarRowConfig?.hidden || [])],
@@ -11946,6 +11966,7 @@ Escribi CERRAR para confirmar:`
     incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
     conceptKey?: string;
     costKind?: "fijo" | "variable";
+    cuentaId?: string;
   }) => {
     const item: FinancialCalendarItem = {
       id: newId(),
@@ -11962,6 +11983,7 @@ Escribi CERRAR para confirmar:`
       incomeCategory: m.type === "cobranza" ? m.incomeCategory || "trabajo" : undefined,
       conceptKey: m.conceptKey || undefined,
       costKind: m.type === "pago" ? m.costKind : undefined,
+      cuentaId: m.cuentaId || undefined,
     };
     setFinancialItems((prev) => [item, ...prev]);
   };
@@ -11979,6 +12001,7 @@ Escribi CERRAR para confirmar:`
       date: string;
       amount: number;
       administration: "blanco" | "negro";
+      cuentaId?: string;
       transactionType: "efectivo" | "transferencia" | "cheque" | "otros";
       notes: string;
     }
@@ -11993,6 +12016,7 @@ Escribi CERRAR para confirmar:`
       administration: pay.administration,
       currency: "ARS",
       amount: Number(pay.amount) || 0,
+      cuentaId: pay.cuentaId || undefined,
     };
     setApprovedJobs((prev) =>
       prev.map((j) =>
@@ -12008,7 +12032,7 @@ Escribi CERRAR para confirmar:`
   // por su propio camino. Por eso NO se crea ademas un movimiento suelto -- seria contar dos veces.
   const addCommissionFromCalendar = (
     budgetNumber: string,
-    pago: { date: string; amount: number; administration: "blanco" | "negro"; note: string }
+    pago: { date: string; amount: number; administration: "blanco" | "negro"; note: string; cuentaId?: string }
   ): boolean => {
     const job = approvedJobs.find((j) => String(j.budgetNumber) === String(budgetNumber));
     if (!job) return false;
@@ -12016,6 +12040,7 @@ Escribi CERRAR para confirmar:`
       id: newId(),
       paymentDate: pago.date,
       amount: Number(pago.amount) || 0,
+      cuentaId: pago.cuentaId || undefined,
       note: pago.note || "",
       administration: pago.administration,
     };
@@ -12032,6 +12057,7 @@ Escribi CERRAR para confirmar:`
   const addCostEntryFromCalendar = (g: {
     company: string; date: string; amount: number; administration: "blanco" | "negro";
     description: string; notes: string; conceptKey: string; group: string; paymentMethod: PaymentMethod;
+    cuentaId?: string;
   }): boolean => {
     if (!g.company || !g.date || !g.group || !g.paymentMethod) return false;
     setCostEntries((prev) => [
@@ -12042,6 +12068,7 @@ Escribi CERRAR para confirmar:`
         group: g.group,
         description: g.description || "",
         amount: Number(g.amount) || 0,
+        cuentaId: g.cuentaId || undefined,
         administration: g.administration,
         source: "manual",
         supplier: "",
@@ -13786,7 +13813,7 @@ Escribi CERRAR para confirmar:`
         .filter((b) => b.currency === "USD")
         .reduce((acc, b) => acc + b.balance, 0);
       const arranque = arranqueDeEmpresa(String(company));
-      const reserva = buildReservaFromSources({
+      const reservaInputDeEmpresa: Parameters<typeof buildReservaFromSources>[0] = {
         openingBankArs,
         openingBankUsd,
         // Efectivo: arranca del cierre y solo cuenta lo posterior (ver arranqueDeEmpresa).
@@ -13853,7 +13880,24 @@ Escribi CERRAR para confirmar:`
               )
             )
         ),
+      };
+      const reserva = buildReservaFromSources(reservaInputDeEmpresa);
+      // EFECTIVO A LA FECHA DE CORTE del banco: es la APERTURA de las cuentas de efectivo (desde ahi el
+      // saldo sale de lo que se carga en el sistema, ver domain/cuentas.ts).
+      const reservaAlCorte = buildReservaFromSources({
+        ...reservaInputDeEmpresa,
+        until: bankLoadsUntil,
       });
+      const efAlCorte = (cur: "ARS" | "USD") =>
+        reservaAlCorte.wallets.find((w) => w.currency === cur && w.location === "efectivo");
+      const efectivoApertura = (["ARS", "USD"] as const).flatMap((moneda) =>
+        (["blanco", "negro"] as const).map((color) => ({
+          company: String(company),
+          moneda,
+          color,
+          saldo: efAlCorte(moneda)?.byColor[color].closing || 0,
+        }))
+      );
       const totArs = reserva.totals.find((t) => t.currency === "ARS");
       const totUsd = reserva.totals.find((t) => t.currency === "USD");
       // Billetera desglosada (los números GRANDES del tablero): banco vs efectivo blanco vs negro.
@@ -13918,9 +13962,11 @@ Escribi CERRAR para confirmar:`
         deudaConLaGente: deudaGente.total,
         deudaConLaGenteCount: deudaGente.debts.reduce((acc, d) => acc + d.count, 0),
         deudaProveedores: Number(deudaProveedoresPorEmpresa.get(String(company)) || 0),
+        efectivoApertura,
       };
     });
   }, [
+    bankLoadsUntil,
     COMPANY_OPTIONS,
     visibleBankStatementEntries,
     visiblePettyCashFunds,
@@ -15395,6 +15441,176 @@ Escribi CERRAR para confirmar:`
     () => sacarHaberesDuplicados([...annualCashFlowEntries, ...haberesBlancoEntries]),
     [annualCashFlowEntries, haberesBlancoEntries]
   );
+
+  // ===== CUENTAS: toda la plata cargada en el sistema mueve una cuenta (ver domain/cuentas.ts) =====
+  // Apertura de cada cuenta = su saldo a la fecha de corte del banco (29/08/2026): el banco segun el
+  // extracto, el efectivo segun la reserva. Desde ahi, lo que mueve las cuentas es lo CARGADO; el
+  // extracto queda como control.
+  const cuentasSistema = useMemo(() => {
+    const companies = plataDisponibleByCompany.map((p) => String(p.company));
+    const responsables = visiblePettyCashFunds.flatMap((f) => {
+      const colores: Array<"blanco" | "negro"> = [];
+      if (Number(f.assignedWhite || 0) > 0 || !(Number(f.assignedBlack || 0) > 0)) colores.push("blanco");
+      if (Number(f.assignedBlack || 0) > 0) colores.push("negro");
+      return colores.map((color) => ({ company: String(f.company), persona: f.responsible || "", color }));
+    });
+    return armarCuentas({
+      companies,
+      guardadas: cuentasGuardadas.filter((c) => canAccessCompany(c.company as CompanyName)),
+      fechaCorte: bankLoadsUntil,
+      bancosExtracto: latestBankBalancesByAccount(visibleBankStatementEntries, bankLoadsUntil).map((b) => ({
+        company: String(b.company),
+        bank: b.bank,
+        currency: b.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+        balance: b.balance,
+      })),
+      efectivoApertura: plataDisponibleByCompany.flatMap((p: any) => p.efectivoApertura || []),
+      personas: responsables,
+    });
+  }, [plataDisponibleByCompany, visiblePettyCashFunds, cuentasGuardadas, bankLoadsUntil, visibleBankStatementEntries]);
+
+  const plataMovidaSistema = useMemo(
+    () =>
+      plataDelSistema({
+        jobs: visibleApprovedJobs.map((j) => ({
+          company: String(j.company),
+          budgetNumber: j.budgetNumber,
+          client: j.client,
+          payments: j.payments || [],
+          commissionPayments: j.commissionPayments || [],
+        })) as any,
+        costEntries: costEntries.filter((e) => canAccessCompany(e.company)) as any,
+        financialItems: visibleFinancialItems as any,
+        haberes: cashFlowEntries.filter((e) => e.id.startsWith("payroll-")) as any,
+        pettyCashFunds: visiblePettyCashFunds as any,
+        pettyCashExpenses: visiblePettyCashExpenses as any,
+        internalTransfers: visibleInternalTransfers as any,
+        cashHoldings: visibleCashHoldings as any,
+        personLedgerEntries: visiblePersonLedgerEntries as any,
+        capitalEntries: visibleCapitalEntries as any,
+        ivaVepPayments: visibleIvaVepPayments as any,
+      }),
+    [visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments]
+  );
+  const movimientosDeCuentas = useMemo(
+    () => movimientosPorCuenta(plataMovidaSistema, cuentasSistema),
+    [plataMovidaSistema, cuentasSistema]
+  );
+  // Caja chica: lo que sobro de un fondo y volvio a OTRA cuenta que la de origen. Es un pase entre
+  // cuentas: se muestra en Movimientos internos (Nicolas, 2026-10-07: "no deberia pasar, pero podria").
+  const devolucionesCruzadas = useMemo(() => {
+    const nombre = (id: string) => cuentasSistema.find((c) => c.id === id)?.nombre || id;
+    return visiblePettyCashFunds.flatMap((f) =>
+      (["blanco", "negro"] as const).flatMap((color) => {
+        const salida = movimientosDeCuentas.find((m) => m.refId === `fondo-${f.id}-${color}` && m.amount < 0);
+        const vuelta = movimientosDeCuentas.find((m) => m.refId === `fondo-cierre-${f.id}-${color}` && m.amount > 0);
+        if (!salida || !vuelta || salida.cuentaId === vuelta.cuentaId) return [];
+        return [
+          {
+            id: `${f.id}-${color}`,
+            company: String(f.company),
+            fecha: vuelta.date,
+            fondo: f.description || "Caja chica",
+            responsable: f.responsible || "Sin responsable",
+            monto: vuelta.amount,
+            color,
+            origen: nombre(salida.cuentaId),
+            destino: nombre(vuelta.cuentaId),
+          },
+        ];
+      })
+    );
+  }, [visiblePettyCashFunds, movimientosDeCuentas, cuentasSistema]);
+  const saldosCuentasHoy = useMemo(
+    () => saldosDeCuentas(cuentasSistema, movimientosDeCuentas, todayIso()),
+    [cuentasSistema, movimientosDeCuentas]
+  );
+  // CONTROL: el ultimo saldo de cada resumen del banco contra lo que da el sistema a esa fecha.
+  const controlExtractoCuentas = useMemo(() => {
+    const ultimos = latestBankBalancesByAccount(visibleBankStatementEntries);
+    return controlContraExtracto(
+      cuentasSistema,
+      movimientosDeCuentas,
+      ultimos.map((b) => ({
+        company: String(b.company),
+        bank: b.bank,
+        currency: b.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+        date: b.date,
+        balance: b.balance,
+      }))
+    );
+  }, [cuentasSistema, movimientosDeCuentas, visibleBankStatementEntries]);
+
+  // PLATA DISPONIBLE del encabezado, desde las cuentas: bancos (con el control del extracto), efectivo
+  // blanco y negro, dolares y las cajas por persona. Lo demas (a cobrar, IVA, deudas) sigue igual.
+  const plataDisponibleConCuentas = useMemo(
+    () =>
+      plataDisponibleByCompany.map((p) => {
+        const deLaEmpresa = saldosCuentasHoy.filter((c) => c.company === String(p.company) && c.activa !== false);
+        const suma = (f: (c: (typeof deLaEmpresa)[number]) => boolean) =>
+          deLaEmpresa.filter(f).reduce((a, c) => a + c.saldo, 0);
+        const bancos = deLaEmpresa.filter((c) => c.tipo === "banco");
+        const banks = bancos.map((c) => {
+          const ctrl = controlExtractoCuentas.find((x) => x.cuentaId === c.id);
+          return {
+            bank: c.banco || c.nombre,
+            currency: c.moneda,
+            balance: c.saldo,
+            control: ctrl ? { fecha: ctrl.fecha, saldoExtracto: ctrl.saldoExtracto, diferencia: ctrl.diferencia, cierra: ctrl.cierra } : undefined,
+          };
+        });
+        const bancoArs = suma((c) => c.tipo === "banco" && c.moneda === "ARS");
+        const efectivoBlancoArs = suma((c) => c.tipo === "efectivo" && c.moneda === "ARS" && c.color === "blanco");
+        const efectivoNegroArs = suma((c) => c.tipo === "efectivo" && c.moneda === "ARS" && c.color === "negro");
+        const cajasArs = suma((c) => c.tipo === "persona" && c.moneda === "ARS");
+        const cajasNegroArs = suma((c) => c.tipo === "persona" && c.moneda === "ARS" && c.color === "negro");
+        const totalUsd = suma((c) => c.moneda === "USD");
+        const negroUsd = suma((c) => c.moneda === "USD" && c.color === "negro");
+        return {
+          ...p,
+          banks,
+          bancoArs,
+          efectivoBlancoArs,
+          efectivoNegroArs,
+          cajas: deLaEmpresa
+            .filter((c) => c.tipo === "persona" && Math.abs(c.saldo) > 0.5)
+            .map((c) => ({ persona: c.persona || c.nombre, color: c.color, saldo: c.saldo })),
+          totalArs: bancoArs + efectivoBlancoArs + efectivoNegroArs + cajasArs,
+          blancoArs: bancoArs + efectivoBlancoArs + (cajasArs - cajasNegroArs),
+          negroArs: efectivoNegroArs + cajasNegroArs,
+          totalUsd,
+          negroUsd,
+        };
+      }),
+    [plataDisponibleByCompany, saldosCuentasHoy, controlExtractoCuentas]
+  );
+
+  // La plata disponible DIA POR DIA de la planilla: hasta la fecha de corte, la de siempre (extracto y
+  // reserva); desde el corte, la de las cuentas (lo cargado en el sistema).
+  const billeteraDiariaConCuentas = useMemo(() => {
+    return billeteraDiariaPorEmpresa.map((emp: any) => {
+      const dias = Object.keys(emp.byDay).filter((iso) => iso > bankLoadsUntil).sort();
+      if (dias.length === 0) return emp;
+      const cuentasEmp = cuentasSistema.filter((c) => c.company === emp.company && c.moneda === "ARS");
+      const serie = saldosDiarios(cuentasEmp, movimientosDeCuentas.filter((m) => cuentasEmp.some((c) => c.id === m.cuentaId)), dias);
+      const byDay = { ...emp.byDay };
+      dias.forEach((iso) => {
+        const s = serie.get(iso);
+        if (!s) return;
+        const de = (f: (c: Cuenta) => boolean) => cuentasEmp.filter(f).reduce((a, c) => a + (s.get(c.id) || 0), 0);
+        const bancos = cuentasEmp
+          .filter((c) => c.tipo === "banco")
+          .map((c) => ({ bank: c.banco || c.nombre, saldo: s.get(c.id) || 0 }));
+        byDay[iso] = {
+          banco: bancos.reduce((a, b) => a + b.saldo, 0),
+          bancos,
+          efectivoBlanco: de((c) => c.tipo !== "banco" && c.color === "blanco"),
+          efectivoNegro: de((c) => c.tipo !== "banco" && c.color === "negro"),
+        };
+      });
+      return { ...emp, byDay };
+    });
+  }, [billeteraDiariaPorEmpresa, cuentasSistema, movimientosDeCuentas, bankLoadsUntil]);
 
   const annualCashFlowByMonth = useMemo(() => {
     return Array.from({ length: 12 }, (_, monthIndex) => {
@@ -17689,10 +17905,11 @@ Escribi CERRAR para confirmar:`
           onSetMark={setCalendarCellMark}
           notes={calendarNotes}
           onSetNote={setCalendarCellNote}
-          billeteraDiaria={billeteraDiariaPorEmpresa}
+          billeteraDiaria={billeteraDiariaConCuentas}
           entries={cashFlowEntries}
           previsiones={previsionesPlanilla}
           programados={agendaInamoviblesItems.filter((i) => i.origen !== "sueldos" && i.origen !== "cashflow")}
+          cuentas={cuentasSistema}
           companyScope={balanceCompanyScope}
           setCompanyScope={setBalanceCompanyScope}
           fiscalStartYear={balanceFiscalStartYear}
@@ -17829,7 +18046,7 @@ Escribi CERRAR para confirmar:`
             primary={workspaceTheme.primary}
             pettyCash={pettyCashHeader}
           />
-          {canSeePlataDisponible && <PlataDisponible companies={plataDisponibleByCompany} />}
+          {canSeePlataDisponible && <PlataDisponible companies={plataDisponibleConCuentas as any} />}
           {canSeeInamovibles && pagosVencidosAReclamar.length > 0 && (
             <ReclamoPagosVencidos
               items={pagosVencidosAReclamar}
@@ -18321,6 +18538,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "cajaChica" && (
         <CajaChicaTab
+          cuentas={cuentasSistema}
           pettyCashBalanceSummary={pettyCashBalanceSummary}
           pettyOcrBusy={pettyOcrBusy}
           pettyOcrMsg={pettyOcrMsg}
@@ -18482,6 +18700,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "costos" && (
         <CostosTab
+          cuentas={cuentasSistema}
           fiscalLabel={costsFiscalLabel}
           months={costsMonths}
           aggregation={costsAggregation}
@@ -18554,6 +18773,15 @@ Escribi CERRAR para confirmar:`
       )}
 
       {activeTab === "bancos" && (
+        <>
+        <CuentasPanel
+          saldos={saldosCuentasHoy}
+          control={controlExtractoCuentas}
+          companyOptions={COMPANY_OPTIONS.filter((c) => c.value !== "General" && canAccessCompany(c.value as CompanyName))}
+          onSave={(cuenta) =>
+            setCuentasGuardadas((prev) => [...prev.filter((c) => c.id !== cuenta.id), cuenta])
+          }
+        />
         <BancosTab
           bankLoadsUntil={bankLoadsUntil}
           onBankLoadsUntilChange={setBankLoadsUntil}
@@ -18622,10 +18850,12 @@ Escribi CERRAR para confirmar:`
             />
           }
         />
+        </>
       )}
 
       {activeTab === "movimientosInternos" && (
         <MovimientosInternosTab
+          devolucionesCruzadas={devolucionesCruzadas}
           companyScope={internalCompanyScope}
           setCompanyScope={setInternalCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
@@ -18781,6 +19011,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "aprobados" && (
         <AprobadosTab
+          cuentas={cuentasSistema}
           companyOptions={COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General")}
           jobSemaphoreSummary={jobSemaphoreSummary}
           canEmitFacturas={canEmitFacturas}

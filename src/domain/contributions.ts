@@ -26,6 +26,7 @@ export type CapitalEntry = {
   direction: CapitalDirection; // recibido (entró plata) | devuelto (se devolvió)
   color: CapitalColor;
   amount: number; // pesos
+  cuentaId?: string; // cuenta donde entro / de donde salio (ver domain/cuentas.ts)
   usdValue?: number; // monto congelado en USD (solo referencia, no se suma con pesos)
   notes: string;
 };

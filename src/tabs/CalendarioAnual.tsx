@@ -80,6 +80,8 @@ type AddForm = {
   administration: "blanco" | "negro";
   costKind: "" | "fijo" | "variable";
   notes: string;
+  // De donde sale / a donde entra la plata (ver domain/cuentas.ts). "" = la cuenta por defecto.
+  cuentaId?: string;
 };
 
 import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
@@ -87,6 +89,8 @@ import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
 import { permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
 import { estadoDePrevision, previsionPorConceptoYDia, previsionPorConceptoYMes } from "../domain/segurosCalendar";
 import { PAYMENT_METHOD_OPTIONS, type PaymentMethod } from "../domain/types";
+import type { Cuenta } from "../domain/cuentas";
+import { SelectorCuenta } from "./CuentasPanel";
 
 export function CalendarioAnualTab({
   entries,
@@ -128,6 +132,7 @@ export function CalendarioAnualTab({
   billeteraDiaria,
   previsiones = [],
   programados = [],
+  cuentas = [],
 }: {
   entries: Entry[];
   // PREVISION (hoy: los seguros). Lo que se VIENE, mes a mes: no es plata gastada, asi que entra por
@@ -135,6 +140,8 @@ export function CalendarioAnualTab({
   // como "≈" en el renglon, y cuando cae el debito del mes la prevision se da por conciliada.
   // PAGOS PROGRAMADOS (Nicolas, 2026-10-06): todo egreso futuro conocido, tambien en la planilla. Va en
   // un bloque propio de PREVISION que NO suma al neto (el neto lo mueve el pago real cuando se carga).
+  // Cuentas (bancos, efectivo, cajas por persona) para elegir de donde sale / a donde entra la plata.
+  cuentas?: Cuenta[];
   programados?: Array<{
     clave: string;
     company: string;
@@ -217,6 +224,7 @@ export function CalendarioAnualTab({
     conceptKey?: string;
     incomeCategory?: "trabajo" | "prestamo" | "financiero" | "varios";
     costKind?: "fijo" | "variable";
+    cuentaId?: string;
   }) => void;
   onAssignConcept: (bankIds: number[], conceptKey: string) => void;
   // Cargar una cobranza COMO PAGO del trabajo aprobado: el trabajo es el dueño del dato y la
@@ -226,16 +234,18 @@ export function CalendarioAnualTab({
   onAddCostEntry?: (g: {
     company: string; date: string; amount: number; administration: "blanco" | "negro";
     description: string; notes: string; conceptKey: string; group: string; paymentMethod: PaymentMethod;
+    cuentaId?: string;
   }) => boolean;
   onAddCommission?: (
     budgetNumber: string,
-    pago: { date: string; amount: number; administration: "blanco" | "negro"; note: string }
+    pago: { date: string; amount: number; administration: "blanco" | "negro"; note: string; cuentaId?: string }
   ) => boolean;
   onAddJobPayment?: (
     budgetNumber: string,
     pay: {
       date: string; amount: number; administration: "blanco" | "negro";
       transactionType: "efectivo" | "transferencia" | "cheque" | "otros"; notes: string;
+      cuentaId?: string;
     }
   ) => boolean;
   // Editar / borrar el movimiento que está DETRÁS de un número (click derecho). Devuelven false si ese
@@ -862,7 +872,12 @@ export function CalendarioAnualTab({
       cliente: "",
       jobPpto: "",
       transactionType: "transferencia",
-      destinoEgreso: "",
+      // Un EGRESO cargado en la planilla va a Costos como gasto (Nicolas, 2026-10-06: "lo que se carga
+      // desde el cash flow tiene que cargarse en la solapa que corresponde"). Haberes no: ese renglon
+      // es del empleado y lo maneja Personal.
+      destinoEgreso:
+        sectionByKey.get(sectionKey)?.dir === "out" && sectionKey !== "haberes" && onAddCostEntry ? "gasto" : "",
+      cuentaId: "",
       paymentMethod: "",
       grupoCosto: "",
       customLabel: presetLabel,
@@ -1517,6 +1532,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         amount: Number(addForm.amount),
         administration: addForm.administration,
         note: addForm.notes,
+        cuentaId: addForm.cuentaId || undefined,
       })) {
         avisar("No encontré ese trabajo aprobado.");
         return;
@@ -1539,6 +1555,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         conceptKey,
         group: addForm.grupoCosto,
         paymentMethod: addForm.paymentMethod,
+        cuentaId: addForm.cuentaId || undefined,
       })) {
         avisar("No pude cargar el gasto.");
         return;
@@ -1553,6 +1570,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         administration: addForm.administration,
         transactionType: addForm.transactionType,
         notes: addForm.notes,
+        cuentaId: addForm.cuentaId || undefined,
       });
       if (!ok) {
         avisar("No encontré ese trabajo aprobado. Cargala sin trabajo o revisá el presupuesto.");
@@ -1574,6 +1592,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
       conceptKey,
       incomeCategory: type === "cobranza" ? incomeCategoryOfSection(addForm.sectionKey) : undefined,
       costKind: type === "pago" && addForm.costKind ? addForm.costKind : undefined,
+      cuentaId: addForm.cuentaId || undefined,
     });
     setAddForm(null);
   };
@@ -3763,6 +3782,15 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     <option value="negro">Negro</option>
                   </select>
                 </label>
+                {cuentas.length > 0 && (
+                  <SelectorCuenta
+                    cuentas={cuentas}
+                    company={addForm.company}
+                    label={section?.dir === "in" ? "A qué cuenta entra" : "De qué cuenta sale"}
+                    value={addForm.cuentaId}
+                    onChange={(id) => setAddForm({ ...addForm, cuentaId: id })}
+                  />
+                )}
                 {section?.dir === "out" && (onAddCostEntry || onAddCommission) && (
                   <label style={lblStyle}>Qué estás cargando
                     <select

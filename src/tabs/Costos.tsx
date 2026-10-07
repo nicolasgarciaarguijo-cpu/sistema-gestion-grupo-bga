@@ -109,6 +109,8 @@ type CostosTabProps = {
   createCostGroup: (name: string, kind: CostKind) => string;
   // gastos
   addCostEntry: () => void;
+  // Cuentas para elegir de donde salio cada gasto (ver domain/cuentas.ts).
+  cuentas?: any[];
   removeCostEntry: (id: number) => void;
   updateCostEntry: (id: number, field: keyof CostEntry, value: any) => void;
   // reglas de clasificación con memoria
@@ -152,6 +154,7 @@ export function CostosTab({
   updateCostGroup,
   createCostGroup,
   addCostEntry,
+  cuentas,
   removeCostEntry,
   updateCostEntry,
   costRules,
@@ -1533,6 +1536,30 @@ export function CostosTab({
                   >
                     Cambiar a {entry.administration === "negro" ? "BLANCO (B)" : "NEGRO (N)"}
                   </button>
+                  {(cuentas || []).length > 0 && (
+                    <>
+                      <QuickMenuSep />
+                      <QuickMenuTitle>De qué cuenta salió…</QuickMenuTitle>
+                      <select
+                        style={{ ...quickMenuItem, width: "100%", cursor: "pointer" }}
+                        value={(entry as any).cuentaId || ""}
+                        onChange={(ev) => {
+                          updateCostEntry(ctxMenu.id, "cuentaId" as any, ev.target.value || undefined);
+                          setCtxMenu(null);
+                        }}
+                      >
+                        <option value="">Por defecto (según cómo se pagó)</option>
+                        {(cuentas || [])
+                          .filter((c: any) => c.company === entry.company && c.activa !== false && c.moneda === "ARS")
+                          .map((c: any) => (
+                            <option key={c.id} value={c.id}>
+                              {c.tipo === "banco" ? "🏦 " : c.tipo === "persona" ? "👤 " : "💵 "}
+                              {c.nombre}
+                            </option>
+                          ))}
+                      </select>
+                    </>
+                  )}
                   <QuickMenuSep />
                   <QuickMenuTitle>Renglón del Calendario anual…</QuickMenuTitle>
                   <select
@@ -1555,8 +1582,8 @@ export function CostosTab({
                     ))}
                   </select>
                   <div style={{ padding: "4px 10px", fontSize: 11, color: "#64748b", maxWidth: 280 }}>
-                    Solo llegan al calendario los pagos que <strong>no pasan por el banco</strong>
-                    {" "}(efectivo o negro). Los que salen del banco ya entran por el débito del extracto.
+                    Desde el 29/08/2026 el banco solo controla: todo gasto cargado llega al calendario y
+                    mueve la cuenta de donde salió (Plata disponible).
                   </div>
                 </>
               )}
