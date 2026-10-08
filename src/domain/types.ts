@@ -1369,6 +1369,10 @@ export type EmployeeBaseProvisionTemplate = {
 };
 
 export type EmployeeBaseConfig = {
+  // PRECARGA DE HORAS (Nicolas, 2026-10-08): encendida = las horas se calculan solas desde la entrada y
+  // la salida (al llegar del reloj y al editarlas); apagada = se cargan a mano, y el boton "Precargar
+  // horas del mes" las calcula solo cuando se lo aprieta. Ausente = encendida (como venia funcionando).
+  precargaHorasAuto?: boolean;
   category: string;
   seniorityYears: number;
   hourlyNetManual: number;

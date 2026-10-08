@@ -203,10 +203,14 @@ export function AsistenciaTab({
   getCompanyMeta,
   onPrecargarHoras,
   onUpdateAttendance,
+  precargaAuto = true,
+  onPrecargaAuto,
 }: {
   employees: Employee[];
   // El mismo handler que usa el Presentismo de la ficha: la planilla de fichajes y la ficha son el mismo dato.
   onUpdateAttendance?: (employeeId: number, date: string, field: keyof AttendanceRecord, value: string | number | boolean) => void;
+  precargaAuto?: boolean;
+  onPrecargaAuto?: (activa: boolean) => void;
   initialMonth: string;
   companyOptions: Array<{ value: CompanyName; short?: string }>;
   getCompanyMeta: (company: CompanyName) => { short: string; primary: string };
@@ -425,6 +429,11 @@ export function AsistenciaTab({
   return (
     <div style={styles.column}>
       <SyncReloj companyOptions={companyOptions} getCompanyMeta={getCompanyMeta} />
+      {onPrecargaAuto && (
+        <div>
+          <InterruptorPrecarga activa={precargaAuto} onChange={onPrecargaAuto} />
+        </div>
+      )}
       {diagFichadas.pendientes > 0 && onPrecargarHoras && (
         <div style={{ ...styles.noticeBox, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", borderLeft: "4px solid #f59e0b" }}>
           <span style={{ flex: 1, minWidth: 260 }}>
@@ -737,3 +746,32 @@ const cellHead: React.CSSProperties = {
   color: "#0f172a",
 };
 const cellSched: React.CSSProperties = { fontSize: 10, color: "#94a3b8" };
+
+// Interruptor de la precarga de horas (el mismo en Asistencia y en la ficha del empleado).
+export function InterruptorPrecarga({ activa, onChange }: { activa: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label
+      title={
+        activa
+          ? "Las horas se calculan solas desde la entrada y la salida (lo editado a mano tiene candado y no se toca). Apagalo para cargarlas a mano."
+          : "Las horas se cargan a mano. El botón 'Precargar horas del mes' las calcula cuando lo apretás."
+      }
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "4px 10px",
+        borderRadius: 999,
+        border: `1px solid ${activa ? "#86efac" : "#cbd5e1"}`,
+        background: activa ? "#f0fdf4" : "#f8fafc",
+        fontSize: 12.5,
+        fontWeight: 600,
+        cursor: "pointer",
+        userSelect: "none",
+      }}
+    >
+      <input type="checkbox" checked={activa} onChange={(e) => onChange(e.target.checked)} />
+      Precarga automática de horas: {activa ? "ENCENDIDA" : "APAGADA"}
+    </label>
+  );
+}

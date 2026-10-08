@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { InterruptorPrecarga } from "./Asistencia";
 import { styles } from "../ui/styles";
 import {
   Panel,
@@ -43,6 +44,8 @@ type PersonalTabProps = {
   // Recibo oficial (PDF del estudio) y pago de haberes del mes en el cash flow.
   onCargarReciboOficial: (employee: any, month: string, file: File | null) => void;
   setPayrollHaberes: (employeeId: number, month: string, patch: any) => void;
+  precargaAuto?: boolean;
+  onPrecargaAuto?: (activa: boolean) => void;
   visibleEmployees: any[];
   formerEmployees: any[];
   selectedEmployee: any;
@@ -198,7 +201,7 @@ function ReglasLiquidacion({ config }: { config: any }) {
 
 export function PersonalTab(props: PersonalTabProps) {
   const {
-    employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
+    employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, precargaAuto = true, onPrecargaAuto, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
     employeeBaseConfig, payrollMonth, newEmployeeDraft,
     employeeProvisionModal, employeeDocumentModal, stockPersonalItems, personalReminders, scaleRows,
     isEmployeeSetupModalOpen, uploadMessage, COMPANY_OPTIONS, CATEGORY_OPTIONS,
@@ -2244,6 +2247,7 @@ export function PersonalTab(props: PersonalTabProps) {
                           >
                             ⧗ Precargar horas del mes
                           </button>
+                          {onPrecargaAuto && <InterruptorPrecarga activa={precargaAuto} onChange={onPrecargaAuto} />}
                         </div>
                       </div>
                       <div style={styles.attendanceWeekdayHeader}>

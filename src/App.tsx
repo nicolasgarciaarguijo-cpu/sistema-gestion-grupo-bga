@@ -14731,6 +14731,9 @@ Escribi CERRAR para confirmar:`
     return objetivos;
   };
 
+  const setPrecargaHorasAuto = (activa: boolean) =>
+    setEmployeeBaseConfig((prev) => ({ ...prev, precargaHorasAuto: activa }));
+
   const precargarHorasDesdeFichadas = (
     month: string | null,
     company: "all" | CompanyName
@@ -14874,8 +14877,11 @@ Escribi CERRAR para confirmar:`
             ];
         // Precarga de horas del convenio al cargar/editar entrada o salida: si el día ya tiene las dos,
         // se estiman normales/extra 50/extra 100/nocturna 50 (editable después). Ver deriveConvenioHours.
+        // Con la precarga APAGADA, editar la entrada o la salida a mano no toca las horas: se cargan a
+        // mano. El boton "Precargar horas" (fromAutofill) calcula igual, porque es pedirlo a proposito.
+        const calcularHoras = employeeBaseConfig.precargaHorasAuto !== false || fromAutofill;
         const attendanceWithHours =
-          field === "checkIn" || field === "checkOut"
+          calcularHoras && (field === "checkIn" || field === "checkOut")
             ? nextAttendance.map((item) => {
                 if (item.date !== date) return item;
                 // Si se borro la entrada o la salida, el dia ya no tiene jornada: sus horas se van a 0
@@ -14951,6 +14957,8 @@ Escribi CERRAR para confirmar:`
   // vez por sesion (autoHorasHechasRef), asi ni un dato raro puede dejarlo reintentando en loop.
   useEffect(() => {
     if (!supabaseHydratedOkRef.current) return;
+    // Precarga APAGADA: no se calcula nada solo (las horas se cargan a mano o con el boton).
+    if (employeeBaseConfig.precargaHorasAuto === false) return;
     const nuevos = listarDiasParaPrecargar(null, "all").filter(
       (o) => !autoHorasHechasRef.current.has(`${o.id}|${o.date}`)
     );
@@ -14961,7 +14969,7 @@ Escribi CERRAR para confirmar:`
     });
     // Depende a proposito solo de los empleados y del aviso de hidratacion: es lo unico que puede
     // traer fichadas nuevas.
-  }, [employees, supabaseHydratedTick]);
+  }, [employees, supabaseHydratedTick, employeeBaseConfig.precargaHorasAuto]);
 
   const updateEmployeeDocument = (
     employeeId: number,
@@ -19186,6 +19194,8 @@ Escribi CERRAR para confirmar:`
           employees={employees}
           onPayrollMonthReport={openPayrollMonthReport}
           onCargarReciboOficial={cargarReciboOficial}
+          precargaAuto={employeeBaseConfig.precargaHorasAuto !== false}
+          onPrecargaAuto={setPrecargaHorasAuto}
           setPayrollHaberes={setPayrollHaberes}
           visibleEmployees={visibleEmployees}
           formerEmployees={formerEmployees}
@@ -19267,6 +19277,8 @@ Escribi CERRAR para confirmar:`
           getCompanyMeta={getCompanyMeta}
           onPrecargarHoras={precargarHorasDesdeFichadas}
           onUpdateAttendance={updateAttendanceRecord}
+          precargaAuto={employeeBaseConfig.precargaHorasAuto !== false}
+          onPrecargaAuto={setPrecargaHorasAuto}
         />
       )}
 
