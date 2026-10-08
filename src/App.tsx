@@ -14922,6 +14922,9 @@ Escribi CERRAR para confirmar:`
               item.date === date ? { ...item, locked: true } : item
             )
           : attendanceWithHours;
+        // Con la precarga APAGADA tambien se apaga el CONTADOR: las horas de la liquidacion del mes no se
+        // suman solas desde el calendario; se cargan a mano en la liquidacion (segun los recibos).
+        if (!calcularHoras) return { ...employee, attendance: attendanceFinal };
         const monthPayrollFromAttendance = recalcMonthPayroll(attendanceFinal);
         const existsPayroll = employee.payrolls.some((item) => item.month === month);
         const nextPayrolls = existsPayroll

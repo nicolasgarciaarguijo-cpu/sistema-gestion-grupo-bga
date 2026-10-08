@@ -20,6 +20,7 @@ import {
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 import type { AttendanceRecord, CompanyName, Employee } from "../domain/types";
 import { PlanillaFichajes } from "./PlanillaFichajes";
+import { InterruptorPrecarga } from "../ui/InterruptorPrecarga";
 
 const MONTHS = [
   "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
@@ -746,32 +747,3 @@ const cellHead: React.CSSProperties = {
   color: "#0f172a",
 };
 const cellSched: React.CSSProperties = { fontSize: 10, color: "#94a3b8" };
-
-// Interruptor de la precarga de horas (el mismo en Asistencia y en la ficha del empleado).
-export function InterruptorPrecarga({ activa, onChange }: { activa: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <label
-      title={
-        activa
-          ? "Las horas se calculan solas desde la entrada y la salida (lo editado a mano tiene candado y no se toca). Apagalo para cargarlas a mano."
-          : "Las horas se cargan a mano. El botón 'Precargar horas del mes' las calcula cuando lo apretás."
-      }
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "4px 10px",
-        borderRadius: 999,
-        border: `1px solid ${activa ? "#86efac" : "#cbd5e1"}`,
-        background: activa ? "#f0fdf4" : "#f8fafc",
-        fontSize: 12.5,
-        fontWeight: 600,
-        cursor: "pointer",
-        userSelect: "none",
-      }}
-    >
-      <input type="checkbox" checked={activa} onChange={(e) => onChange(e.target.checked)} />
-      Precarga automática de horas: {activa ? "ENCENDIDA" : "APAGADA"}
-    </label>
-  );
-}

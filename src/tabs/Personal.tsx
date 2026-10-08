@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { InterruptorPrecarga } from "./Asistencia";
+import { InterruptorPrecarga } from "../ui/InterruptorPrecarga";
 import { styles } from "../ui/styles";
 import {
   Panel,
@@ -2240,14 +2240,24 @@ export function PersonalTab(props: PersonalTabProps) {
                           >
                             Mes siguiente
                           </button>
-                          <button
-                            style={{ ...styles.smallBtn, background: "#0f172a", color: "#fff", borderColor: "#0f172a" }}
-                            title="Recalcula las horas (normales/extra/nocturnas) de todos los días del mes que ya tienen entrada y salida cargadas."
-                            onClick={precargarMesDesdeFichadas}
-                          >
-                            ⧗ Precargar horas del mes
-                          </button>
-                          {onPrecargaAuto && <InterruptorPrecarga activa={precargaAuto} onChange={onPrecargaAuto} />}
+                          {/* El boton ES el interruptor: tocarlo enciende o apaga la precarga. Al encenderla se
+                              calculan enseguida los dias del mes que ya tienen entrada y salida. */}
+                          {onPrecargaAuto ? (
+                            <InterruptorPrecarga
+                              activa={precargaAuto}
+                              onChange={(v) => {
+                                onPrecargaAuto(v);
+                                if (v) precargarMesDesdeFichadas();
+                              }}
+                            />
+                          ) : (
+                            <button
+                              style={{ ...styles.smallBtn, background: "#0f172a", color: "#fff", borderColor: "#0f172a" }}
+                              onClick={precargarMesDesdeFichadas}
+                            >
+                              ⧗ Precargar horas del mes
+                            </button>
+                          )}
                         </div>
                       </div>
                       <div style={styles.attendanceWeekdayHeader}>
@@ -2543,44 +2553,64 @@ export function PersonalTab(props: PersonalTabProps) {
                             </div>
                           </details>
                           <div style={styles.liquidationColumn}>
-                            <Field label="Horas normales (desde calendario)">
+                            <Field label={precargaAuto ? "Horas normales (desde calendario)" : "Horas normales (a mano)"}>
                               <input
-                                style={styles.inputReadOnly}
+                                style={precargaAuto ? styles.inputReadOnly : styles.input}
                                 type="number"
                                 value={payroll.normalHours}
-                                readOnly
+                                readOnly={precargaAuto}
+                                onChange={(e) =>
+                                  !precargaAuto &&
+                                  updateEmployeePayrollManual(selectedEmployee.id, payrollMonth, "normalHours", Number(e.target.value))
+                                }
                               />
                             </Field>
-                            <Field label="Horas extra 50 (desde calendario)">
+                            <Field label={precargaAuto ? "Horas extra 50 (desde calendario)" : "Horas extra 50 (a mano)"}>
                               <input
-                                style={styles.inputReadOnly}
+                                style={precargaAuto ? styles.inputReadOnly : styles.input}
                                 type="number"
                                 value={payroll.extra50Hours}
-                                readOnly
+                                readOnly={precargaAuto}
+                                onChange={(e) =>
+                                  !precargaAuto &&
+                                  updateEmployeePayrollManual(selectedEmployee.id, payrollMonth, "extra50Hours", Number(e.target.value))
+                                }
                               />
                             </Field>
-                            <Field label="Horas extra 100 (desde calendario)">
+                            <Field label={precargaAuto ? "Horas extra 100 (desde calendario)" : "Horas extra 100 (a mano)"}>
                               <input
-                                style={styles.inputReadOnly}
+                                style={precargaAuto ? styles.inputReadOnly : styles.input}
                                 type="number"
                                 value={payroll.extra100Hours}
-                                readOnly
+                                readOnly={precargaAuto}
+                                onChange={(e) =>
+                                  !precargaAuto &&
+                                  updateEmployeePayrollManual(selectedEmployee.id, payrollMonth, "extra100Hours", Number(e.target.value))
+                                }
                               />
                             </Field>
-                            <Field label="Hs feriado trabajadas al 100% (desde calendario)">
+                            <Field label={precargaAuto ? "Hs feriado trabajadas al 100% (desde calendario)" : "Hs feriado trabajadas al 100% (a mano)"}>
                               <input
-                                style={styles.inputReadOnly}
+                                style={precargaAuto ? styles.inputReadOnly : styles.input}
                                 type="number"
                                 value={Number(payroll.holidayWorkedHours || 0)}
-                                readOnly
+                                readOnly={precargaAuto}
+                                onChange={(e) =>
+                                  !precargaAuto &&
+                                  updateEmployeePayrollManual(selectedEmployee.id, payrollMonth, "holidayWorkedHours", Number(e.target.value))
+                                }
                               />
                             </Field>
-                            <Field label="Hs nocturnas al 100% (desde calendario)">
+                            <Field label={precargaAuto ? "Hs nocturnas al 100% (desde calendario)" : "Hs nocturnas al 100% (a mano)"}>
                               <input
-                                style={styles.inputReadOnly}
+                                style={precargaAuto ? styles.inputReadOnly : styles.input}
                                 type="number"
                                 value={Number(payroll.night100Hours || 0)}
-                                readOnly
+                                readOnly={precargaAuto}
+                                onChange={(e) =>
+                                  !precargaAuto &&
+                                  updateEmployeePayrollManual(selectedEmployee.id, payrollMonth, "night100Hours", Number(e.target.value))
+                                }
                               />
                             </Field>
                             <Field label="Hs nocturnas al 50% (+13,33%)">
