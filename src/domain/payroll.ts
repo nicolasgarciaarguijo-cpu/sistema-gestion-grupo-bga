@@ -113,6 +113,9 @@ export const MULT_EXTRA_50 = 1.5;
 export const MULT_EXTRA_100 = 2;
 export const RECARGO_NOCTURNO = 1.133333333; // +13,33% de la hora nocturna
 
+// Mes desde el que el aporte sindical no se cobra sobre las horas extras (criterio del estudio contable).
+export const SINDICATO_SIN_EXTRAS_DESDE = "2026-09";
+
 export function computePayrollSummary({
   seniorityYears,
   hourlyNetManual,
@@ -195,7 +198,16 @@ export function computePayrollSummary({
   const jubilacion = grossRem * 0.11;
   const ley19032 = grossRem * 0.03;
   const obraSocial = grossRem * 0.03;
-  const sindicato = grossRem * (config.unionPct / 100);
+  // APORTE SINDICAL. Desde la liquidacion de SEPTIEMBRE 2026 el estudio lo calcula sobre el remunerativo
+  // SIN las horas extras (recibo oficial de Soria, sept 2026: 3% de 2.045.335,09 - 49.569 - 41.307,50 =
+  // 58.633,76 exacto). Hasta agosto lo cobraba sobre TODO el remunerativo (recibo de Carmona, jul 2026:
+  // 3% de 2.022.874,69 = 60.686,24 exacto). Las nocturnas extra tambien son horas extra. Jubilacion, ley
+  // 19032, obra social y el seguro de vida y sepelio van siempre sobre todo el remunerativo.
+  const sindicatoSinExtras = String(payroll.month || "") >= SINDICATO_SIN_EXTRAS_DESDE;
+  const baseSindical = sindicatoSinExtras
+    ? Math.max(0, grossRem - extra50 - extra100 - night50 - night100)
+    : grossRem;
+  const sindicato = baseSindical * (config.unionPct / 100);
   const seguro = grossRem * (config.insurancePct / 100);
   const descuentos = jubilacion + ley19032 + obraSocial + sindicato + seguro;
   const cashBonus = Number(payroll.cashBonus || 0);
@@ -300,6 +312,7 @@ export function computePayrollSummary({
     ley19032,
     obraSocial,
     sindicato,
+    baseSindical,
     seguro,
     grossRem,
     totalGross,

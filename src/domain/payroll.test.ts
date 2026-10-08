@@ -101,6 +101,21 @@ describe("computePayrollSummary", () => {
     expect(r.nonRem).toBeCloseTo(100 * 200);
   });
 
+  // Recibo oficial de Soria (sept 2026): el aporte sindical NO va sobre las horas extras.
+  it("aporte sindical desde sept 2026: 3% del remunerativo SIN las horas extras; el resto sobre todo", () => {
+    const r = run({ month: "2026-09", extra50Hours: 10, extra100Hours: 5 }); // extras: 15.000 + 10.000
+    const remunerativo = 200000 + 15000 + 10000;
+    expect(r.grossRem).toBeCloseTo(remunerativo);
+    expect(r.sindicato).toBeCloseTo((remunerativo - 25000) * 0.03);
+    expect(r.jubilacion).toBeCloseTo(remunerativo * 0.11);
+    expect(r.obraSocial).toBeCloseTo(remunerativo * 0.03);
+  });
+
+  it("hasta agosto 2026 el aporte sindical iba sobre TODO el remunerativo (recibo de Carmona, julio)", () => {
+    const r = run({ month: "2026-08", extra50Hours: 10, extra100Hours: 5 });
+    expect(r.sindicato).toBeCloseTo((200000 + 15000 + 10000) * 0.03);
+  });
+
   it("hora extra al 50% multiplica x1.5", () => {
     expect(run({ extra50Hours: 10 }).grossRem).toBeCloseTo(200000 + 15000);
   });
@@ -447,5 +462,55 @@ describe("recibo real De Raíz · Carmona 07/2026", () => {
     // 18% del remunerativo entero, sin restarle nada.
     expect(conSac.employerJubilacion).toBeCloseTo(2022874.69 * 0.18, 1);
     expect(conSac.employerJubilacion).toBeGreaterThan(r.employerJubilacion);
+  });
+});
+
+// RECIBO OFICIAL de Soria (De Raiz, legajo 6, OFI MULTIPLE, septiembre 2026), el del estudio contable.
+// Tiene que dar igual concepto por concepto (salvo la "diferencia redondeo" de $0,96 que el estudio
+// suma para que el neto quede en pesos enteros).
+describe("recibo oficial De Raíz · Soria 09/2026", () => {
+  const r = computePayrollSummary({
+    seniorityYears: 9,
+    hourlyNetManual: 0,
+    hourlyGrossManual: 0,
+    payroll: {
+      ...basePayroll,
+      month: "2026-09",
+      normalHours: 197.97,
+      extra50Hours: 4,
+      extra100Hours: 2.5,
+      presentismoPctOverride: 10,
+    },
+    scale: {
+      baseHourly: 8261.5,
+      vht: 8575.44,
+      nonRemHourly: 313.94,
+      nonRemItems: [
+        { label: "1,90% ago", hourly: 156.97 },
+        { label: "1,90% sep", hourly: 156.97 },
+      ],
+    },
+    config: { ...config, unionPct: 3, insurancePct: 1.5 },
+    monthlyProvisionCost: 0,
+  });
+  it("haberes", () => {
+    expect(r.grossNormal).toBeCloseTo(1635529.16, 1);
+    expect(r.extra50).toBeCloseTo(49569, 2);
+    expect(r.extra100).toBeCloseTo(41307.5, 2);
+    expect(r.seniorityBonus).toBeCloseTo(155376.51, 1);
+    expect(r.presentismo).toBeCloseTo(163552.92, 1);
+    expect(r.nonRem).toBeCloseTo(62150.7, 1);
+    expect(r.grossRem).toBeCloseTo(2045335.09, 1);
+  });
+  it("descuentos, con el aporte sindical sin horas extras", () => {
+    expect(r.jubilacion).toBeCloseTo(224986.86, 1);
+    expect(r.ley19032).toBeCloseTo(61360.05, 1);
+    expect(r.obraSocial).toBeCloseTo(61360.05, 1);
+    expect(r.sindicato).toBeCloseTo(58633.76, 1);
+    expect(r.seguro).toBeCloseTo(30680.03, 1);
+    expect(r.descuentos).toBeCloseTo(437020.75, 1);
+  });
+  it("neto: el del recibo menos la diferencia de redondeo", () => {
+    expect(r.net).toBeCloseTo(1670466 - 0.96, 1);
   });
 });
