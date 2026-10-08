@@ -54,6 +54,9 @@ export type PayrollScale = {
   baseHourly?: number;
   vht?: number;
   nonRemHourly?: number;
+  // Varios conceptos no remunerativos (cada uno su renglon en el recibo). Si estan, mandan sobre
+  // nonRemHourly (que es su suma).
+  nonRemItems?: Array<{ label: string; hourly: number }>;
 } | null | undefined;
 
 export type PayrollConfig = {
@@ -127,7 +130,11 @@ export function computePayrollSummary({
   isPartner,
 }: PayrollSummaryInput) {
   const baseHourly = hourlyGrossManual || scale?.baseHourly || scale?.vht || 0;
-  const nonRemHourly = Math.max(0, scale?.nonRemHourly || 0);
+  const nonRemConceptos = (scale?.nonRemItems || []).filter((i) => Number(i.hourly) > 0);
+  const nonRemHourly = Math.max(
+    0,
+    nonRemConceptos.length ? nonRemConceptos.reduce((a, i) => a + Number(i.hourly), 0) : scale?.nonRemHourly || 0
+  );
   const grossReference = hourlyGrossManual || scale?.vht || baseHourly;
   const payableHours =
     payroll.normalHours +
@@ -168,6 +175,12 @@ export function computePayrollSummary({
       : Math.min(100, Math.max(0, Number(payroll.presentismoAsistenciaPct)));
   const presentismo = grossNormal * (presentismoPct / 100) * (asistenciaPct / 100);
   const nonRem = nonRemHourly * Math.max(payableHours, 0) * hourWeight;
+  // El no remunerativo concepto por concepto (para el recibo). Un solo concepto si la escala no los separa.
+  const nonRemItems = (nonRemConceptos.length ? nonRemConceptos : [{ label: "", hourly: nonRemHourly }]).map((i) => ({
+    label: i.label,
+    hourly: Number(i.hourly),
+    amount: Number(i.hourly) * Math.max(payableHours, 0) * hourWeight,
+  }));
   // Premio BLANCO: remunerativo. Entra al bruto despues de antiguedad/presentismo (no los multiplica),
   // y por estar en grossRem paga descuentos de ley y genera cargas patronales y SAC.
   const whiteBonus = Number(payroll.whiteBonus || 0);
@@ -271,6 +284,7 @@ export function computePayrollSummary({
     baseHourly,
     grossReference,
     nonRemHourly,
+    nonRemItems,
     grossNormal,
     grossHoliday,
     // Los importes de cada tipo de hora y el detalle de descuentos salen ACA y no se recalculan en el

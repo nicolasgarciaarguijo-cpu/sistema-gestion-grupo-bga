@@ -1409,6 +1409,10 @@ export type ScaleRow = {
   category: string;
   baseHourly: number;
   nonRemHourly: number;
+  // Cuando el no remunerativo son VARIOS conceptos (ej. septiembre 2026: 1,90% de agosto + 1,90% de
+  // septiembre, que todavia no se incorporaron al basico), van uno por uno: el recibo los muestra en
+  // renglones separados. nonRemHourly es la suma. Ausente = un solo concepto.
+  nonRemItems?: Array<{ label: string; hourly: number }>;
   vht: number;
   sourceFileName: string;
 };

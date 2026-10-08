@@ -1226,10 +1226,16 @@ export function PersonalTab(props: PersonalTabProps) {
                               value={row.nonRemHourly}
                               onChange={(n) =>
                                 setScaleRows((prev) =>
-                                  prev.map((item) => (item.id === row.id ? { ...item, nonRemHourly: n } : item))
+                                  // Corregir el total a mano lo deja como UN concepto (los separados quedarian viejos).
+                                  prev.map((item) => (item.id === row.id ? { ...item, nonRemHourly: n, nonRemItems: undefined } : item))
                                 )
                               }
                             />
+                            {Array.isArray(row.nonRemItems) && row.nonRemItems.length > 1 && (
+                              <div style={{ fontSize: 10, color: "#64748b", textAlign: "right", padding: "0 6px 2px" }}>
+                                {row.nonRemItems.map((i: any) => `${i.label} ${money(i.hourly)}`).join(" + ")}
+                              </div>
+                            )}
                           </td>
                           <td style={{ ...tdDato, padding: 0 }}>
                             <AmountInput

@@ -83,7 +83,10 @@ export function ReciboBlancoDocument({
     ["0180", "ANTIGÜEDAD", u(Number(employee.seniorityYears || 0)), Number(s.seniorityBonus || 0)],
     ["0190", "PRESENTISMO", u(Number(s.presentismoPct || 10)), Number(s.presentismo || 0)],
     ["0200", "ADICIONAL REMUNERATIVO", "", Number(s.whiteBonus || 0)],
-    ["0250", "ASIG. SNR", "", Number(s.nonRem || 0)],
+    // No remunerativo: un renglon por concepto cuando la escala trae varios (ej. 1,90% + 1,90%).
+    ...((Array.isArray(s.nonRemItems) && s.nonRemItems.length > 1
+      ? s.nonRemItems.map((i: any) => ["0250", `ASIG. SNR${i.label ? " " + i.label : ""}`, u(Number(i.hourly || 0)), Number(i.amount || 0)])
+      : [["0250", "ASIG. SNR", "", Number(s.nonRem || 0)]]) as Array<[string, string, string, number]>),
   ] as Array<[string, string, string, number]>).filter((r) => r[3] !== 0);
   const descuentos: Array<[string, string, string, number]> = [
     ["0300", "JUBILACION", "11,000000", jubilacion],

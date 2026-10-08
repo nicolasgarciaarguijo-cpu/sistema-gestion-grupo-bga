@@ -73,6 +73,34 @@ describe("computePayrollSummary", () => {
     expect(run().grossRem).toBe(200000);
   });
 
+  // Septiembre 2026 (Nicolas): basico 8.261,50 + 1,90% no remunerativo (agosto) + 1,90% (septiembre).
+  it("varios conceptos no remunerativos: se suman y cada uno sale aparte para el recibo", () => {
+    const r = run(
+      {},
+      {
+        scale: {
+          baseHourly: 8261.5,
+          vht: 8575.44,
+          nonRemHourly: 313.94,
+          nonRemItems: [
+            { label: "1,90% ago", hourly: 156.97 },
+            { label: "1,90% sep", hourly: 156.97 },
+          ],
+        },
+      }
+    );
+    expect(r.grossNormal).toBeCloseTo(8261.5 * 200);
+    expect(r.nonRem).toBeCloseTo(313.94 * 200);
+    expect(r.nonRemItems.map((i: any) => i.label)).toEqual(["1,90% ago", "1,90% sep"]);
+    expect(r.nonRemItems[0].amount).toBeCloseTo(156.97 * 200);
+  });
+
+  it("un solo no remunerativo sigue saliendo como un concepto", () => {
+    const r = run({}, { scale: { baseHourly: 1000, vht: 1100, nonRemHourly: 100 } });
+    expect(r.nonRemItems).toHaveLength(1);
+    expect(r.nonRem).toBeCloseTo(100 * 200);
+  });
+
   it("hora extra al 50% multiplica x1.5", () => {
     expect(run({ extra50Hours: 10 }).grossRem).toBeCloseTo(200000 + 15000);
   });
