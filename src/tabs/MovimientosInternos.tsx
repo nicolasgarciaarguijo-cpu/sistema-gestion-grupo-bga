@@ -185,6 +185,7 @@ export function MovimientosInternosTab({
   // Neto de los pases en pesos del scope: positivo = salio de la caja al banco.
   const netoPases = transfers
     .filter((t) => (t.currency || "ARS") !== "USD")
+    .filter((t) => t.direction === "efectivo_a_banco" || t.direction === "banco_a_efectivo")
     .reduce((acc, t) => acc + (t.direction === "banco_a_efectivo" ? -1 : 1) * Number(t.amount || 0), 0);
 
   return (
@@ -325,6 +326,8 @@ export function MovimientosInternosTab({
                         >
                           <option value="efectivo_a_banco">Efectivo al banco (deposito)</option>
                           <option value="banco_a_efectivo">Banco al efectivo (extraccion)</option>
+                          <option value="banco_a_banco">Banco a banco (pase entre cuentas)</option>
+                          <option value="efectivo_a_efectivo">Efectivo a efectivo (entre cajas)</option>
                         </select>
                         <select
                           style={{ ...inputCelda, width: "auto" }}

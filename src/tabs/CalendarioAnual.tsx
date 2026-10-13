@@ -71,6 +71,9 @@ type AddForm = {
   transactionType: "efectivo" | "transferencia" | "cheque" | "otros";
   // Estado del cobro de un trabajo: realizado (suma) / estimado (violeta) / inamovible (rojo).
   estadoCobro?: "realizado" | "estimado" | "inamovible";
+  // Movimientos internos: la OTRA cuenta de un pase, y quien puso (o a quien se devuelve) la plata.
+  cuentaOtraId?: string;
+  origenMovInt?: string;
   // EGRESOS: adonde va lo que se carga. "" = queda como movimiento del calendario.
   destinoEgreso: "" | "gasto" | "comision";
   // Lo que pide la solapa Costos y la planilla no preguntaba. El medio decide si el pago tiene que
@@ -88,6 +91,7 @@ type AddForm = {
 
 import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
 import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
+import { destinoEnSolapa } from "../domain/movimientosInternosCalendario";
 import { permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
 import { estadoDePrevision, previsionPorConceptoYDia, previsionPorConceptoYMes } from "../domain/segurosCalendar";
 import { PAYMENT_METHOD_OPTIONS, type PaymentMethod } from "../domain/types";
@@ -107,6 +111,7 @@ export function CalendarioAnualTab({
   onAddJobPayment,
   costGroupNames = [],
   onAddCostEntry,
+  onAddMovInterno,
   onAddCommission,
   onAssignConcept,
   bnaCompra,
@@ -244,6 +249,12 @@ export function CalendarioAnualTab({
   // planilla lo muestra por el reflejo automatico. Devuelve false si no encontro el trabajo.
   // Crear un GASTO (solapa Costos) o una COMISION de un trabajo directo desde la planilla.
   costGroupNames?: string[];
+  // Carga en un renglon de MOVIMIENTOS INTERNOS: se escribe en la solapa (pase o aporte/prestamo).
+  onAddMovInterno?: (m: {
+    tipo: "pase" | "capital"; company: string; date: string; amount: number; administration: "blanco" | "negro";
+    cuentaDesdeId?: string; cuentaHaciaId?: string; notes: string;
+    kind?: "aporte" | "prestamo"; direction?: "recibido" | "devuelto"; origin?: string;
+  }) => boolean;
   onAddCostEntry?: (g: {
     company: string; date: string; amount: number; administration: "blanco" | "negro";
     description: string; notes: string; conceptKey: string; group: string; paymentMethod: PaymentMethod;
@@ -1577,6 +1588,33 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         avisar("No encontré ese trabajo aprobado.");
         return;
       }
+      setAddForm(null);
+      return;
+    }
+    // MOVIMIENTOS INTERNOS: lo cargado aca va a la solapa (pase o aporte/prestamo) y vuelve solo.
+    const movInt = !isCob && !isCustom && !extraLabel ? destinoEnSolapa(addForm.itemKey) : null;
+    if (movInt && onAddMovInterno) {
+      const entra = section.dir === "in";
+      if (movInt.tipo === "pase" && !addForm.cuentaOtraId) {
+        avisar(entra ? "Elegí de qué cuenta sale el pase." : "Elegí a qué cuenta va el pase.", "Un pase tiene dos puntas: sale de una cuenta y entra en la otra.");
+        return;
+      }
+      const origin = (movInt.tipo === "capital" && movInt.origin) || (addForm.origenMovInt || "").trim();
+      if (movInt.tipo === "capital" && !origin) {
+        avisar(movInt.direction === "devuelto" ? "Decí a quién se le devuelve la plata." : "Decí quién puso la plata.");
+        return;
+      }
+      onAddMovInterno({
+        tipo: movInt.tipo,
+        company: addForm.company,
+        date: addForm.date,
+        amount: Number(addForm.amount),
+        administration: addForm.administration,
+        cuentaDesdeId: entra ? addForm.cuentaOtraId || undefined : addForm.cuentaId || undefined,
+        cuentaHaciaId: entra ? addForm.cuentaId || undefined : addForm.cuentaOtraId || undefined,
+        notes: addForm.notes,
+        ...(movInt.tipo === "capital" ? { kind: movInt.kind, direction: movInt.direction, origin } : {}),
+      });
       setAddForm(null);
       return;
     }
@@ -3905,7 +3943,40 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     onChange={(id) => setAddForm({ ...addForm, cuentaId: id })}
                   />
                 )}
-                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && (
+                {(() => {
+                  // Renglon de MOVIMIENTOS INTERNOS: un pase pide la otra cuenta; un prestamo o aporte
+                  // sin dueño fijo pide quien puso la plata. Va a la solapa Movimientos internos.
+                  const mi = !addForm.editId ? destinoEnSolapa(addForm.itemKey) : null;
+                  if (!mi || !onAddMovInterno) return null;
+                  return (
+                    <>
+                      {mi.tipo === "pase" && cuentas.length > 0 && (
+                        <SelectorCuenta
+                          cuentas={cuentas}
+                          company={addForm.company}
+                          label={section?.dir === "in" ? "De qué cuenta sale" : "A qué cuenta va"}
+                          value={addForm.cuentaOtraId}
+                          onChange={(id) => setAddForm({ ...addForm, cuentaOtraId: id })}
+                        />
+                      )}
+                      {mi.tipo === "capital" && !mi.origin && (
+                        <label style={lblStyle}>{mi.direction === "devuelto" ? "A quién se le devuelve" : "Quién puso la plata"}
+                          <input
+                            style={styles.input}
+                            value={addForm.origenMovInt || ""}
+                            placeholder={addForm.itemKey.includes("empresa") || addForm.itemKey.includes("bga") ? "BGA / De Raíz" : "Nombre"}
+                            onChange={(e) => setAddForm({ ...addForm, origenMovInt: e.target.value })}
+                          />
+                        </label>
+                      )}
+                      <div style={{ ...styles.noticeBox, gridColumn: "1 / -1", margin: 0, fontSize: 12 }}>
+                        Se carga en la solapa <strong>Movimientos internos</strong>
+                        {mi.tipo === "pase" ? " como pase entre cuentas: sale de una y entra en la otra (las dos patas aparecen solas)." : " como aporte / préstamo, y vuelve solo a esta planilla."}
+                      </div>
+                    </>
+                  );
+                })()}
+                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && !(!addForm.editId && onAddMovInterno && destinoEnSolapa(addForm.itemKey)) && (
                   <label style={lblStyle}>Qué estás cargando
                     <select
                       style={styles.input}

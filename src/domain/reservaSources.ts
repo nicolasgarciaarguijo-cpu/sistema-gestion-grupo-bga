@@ -391,7 +391,9 @@ export type InternalTransferLike = {
 };
 
 export function internalTransfersToMovements(items: InternalTransferLike[]): ReservaMovementInput[] {
-  return items.map((t) => ({
+  // Solo los pases que cruzan efectivo <-> banco tocan la caja. Uno banco->banco no pasa por la caja, y
+  // uno efectivo->efectivo entra y sale de la misma billetera.
+  return items.filter((t) => !t.direction || t.direction === "efectivo_a_banco" || t.direction === "banco_a_efectivo").map((t) => ({
     date: t.date,
     currency: t.currency === "USD" ? ("USD" as const) : ("ARS" as const),
     location: "efectivo" as const,

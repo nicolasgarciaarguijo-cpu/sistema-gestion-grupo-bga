@@ -102,12 +102,23 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     totalLabel: "Total Trabajos aprobados · Cobranzas", dynamic: "cobranzas", items: [],
   },
   {
-    key: "prestamos", label: "PRÉSTAMOS", group: "ingreso", dir: "in", totalLabel: "Total Préstamos",
+    // MOVIMIENTOS INTERNOS (Nicolas, 2026-10-13): antes "Préstamos" + parte de "Ingresos varios".
+    // Vinculada con la solapa Movimientos internos: préstamos entre empresas, préstamos de personas y
+    // pases entre cuentas. Los keys viejos se mantienen (hay datos cargados con ellos).
+    key: "prestamos", label: "MOVIMIENTOS INTERNOS · INGRESO", group: "ingreso", dir: "in",
+    totalLabel: "Total Movimientos internos (ingreso)",
     items: [
-      { key: "prestamo_nicolas", label: "Préstamo Nicolás" },
-      { key: "prestamo_gustavo", label: "Préstamo Gustavo" },
+      { key: "mi_in_prestamo_empresa", label: "Préstamo de la otra empresa del grupo" },
+      { key: "prestamo_bga_patagonia", label: "Préstamo de BGA Patagonia" },
+      { key: "prestamo_nicolas", label: "Préstamo de Nicolás" },
+      { key: "prestamo_gustavo", label: "Préstamo de Gustavo" },
+      { key: "mi_in_aporte", label: "Aporte de socios" },
       { key: "prestamo_bancario", label: "Préstamo bancario" },
-      { key: "prestamo_bga_patagonia", label: "BGA Patagonia" },
+      { key: "iv_pasaje_bga", label: "Pase entre cuentas (entra)" },
+      { key: "iv_venta_dolares", label: "Venta de dólares a pesos" },
+      // Lo que sobra de una caja chica y se devuelve. La asignacion ya salio como egreso (ver la
+      // seccion CAJA CHICA), asi que el vuelto tiene que volver a entrar o la plata queda gastada.
+      { key: "iv_devolucion_caja_chica", label: "Devolución de caja chica" },
     ],
   },
   {
@@ -122,14 +133,10 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
-    key: "ingresos_varios", label: "INGRESOS VARIOS", group: "ingreso", dir: "in", totalLabel: "Total Varios",
+    // Lo que no es de ninguna solapa todavia (por ahora, el reintegro de ART).
+    key: "ingresos_varios", label: "OTROS INGRESOS", group: "ingreso", dir: "in", totalLabel: "Total Otros ingresos",
     items: [
-      { key: "iv_pasaje_bga", label: "Pasaje de BGA Santander a BGA Patagonia" },
       { key: "iv_reintegro_art", label: "Reintegro de ART" },
-      { key: "iv_venta_dolares", label: "Venta de dólares a pesos" },
-      // Lo que sobra de una caja chica y se devuelve. La asignacion ya salio como egreso (ver la
-      // seccion CAJA CHICA), asi que el vuelto tiene que volver a entrar o la plata queda gastada.
-      { key: "iv_devolucion_caja_chica", label: "Devolución de caja chica" },
     ],
   },
   // ===================== EGRESOS =====================
@@ -288,6 +295,17 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     totalLabel: "Total Materiales e Insumos",
     items: [
       { key: "cm_materiales", label: "Compra de materiales e insumos" },
+    ],
+  },
+  {
+    // La otra punta de los movimientos internos: la plata que SALE de una cuenta (un pase sale de un
+    // banco y entra en el otro) o que se le devuelve a quien la presto. Vinculada con la solapa.
+    key: "mov_internos_out", label: "EGRESOS · MOVIMIENTOS INTERNOS", group: "egreso", dir: "out",
+    totalLabel: "Total Movimientos internos (egreso)",
+    items: [
+      { key: "mi_out_pase", label: "Pase entre cuentas (sale)" },
+      { key: "mi_out_prestamo_empresa", label: "Préstamo / devolución a la otra empresa del grupo" },
+      { key: "mi_out_devolucion_prestamo", label: "Devolución de préstamos y aportes" },
     ],
   },
 ];

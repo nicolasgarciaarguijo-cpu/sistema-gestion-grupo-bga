@@ -190,7 +190,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
 
   // PASES efectivo <-> banco (Movimientos internos).
   f.internalTransfers.forEach((t) => {
-    const deEfectivo = t.direction === "efectivo_a_banco";
+    const [puntaDesde, , puntaHacia] = String(t.direction || "efectivo_a_banco").split("_");
     out.push({
       refId: `pase-${t.id}`,
       origen: "Pase efectivo ↔ banco",
@@ -201,8 +201,8 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       sentido: "pase",
       moneda: moneda(t.currency),
       color: color(t.color),
-      desde: deEfectivo ? "efectivo" : "banco",
-      hacia: deEfectivo ? "banco" : "efectivo",
+      desde: puntaDesde === "banco" ? "banco" : "efectivo",
+      hacia: puntaHacia === "efectivo" ? "efectivo" : "banco",
       cuentaId: cuenta(t),
       cuentaDestinoId: t.cuentaDestinoId,
     });

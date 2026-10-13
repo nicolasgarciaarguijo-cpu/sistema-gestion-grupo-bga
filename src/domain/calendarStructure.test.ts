@@ -34,7 +34,7 @@ describe("estructura de la planilla", () => {
     expect(prestamos?.dir).toBe("in");
     expect(CALENDAR_ITEM_INDEX["prestamo_nicolas"]).toEqual({
       sectionKey: "prestamos",
-      label: "Préstamo Nicolás",
+      label: "Préstamo de Nicolás",
       dir: "in",
     });
   });

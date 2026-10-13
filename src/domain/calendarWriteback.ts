@@ -38,6 +38,10 @@ const PREFIJOS: Array<{ prefijo: string; permiso: PermisoDeRenglon }> = [
   // hace falta preguntarlos: se quedan como estaban.
   { prefijo: "cost-", permiso: { editable: true, borrable: true } },
 
+  // MOVIMIENTOS INTERNOS (pase entre cuentas, aporte / prestamo): monto, dia y notas se editan en la
+  // solapa Movimientos internos desde aca. Borrar un pase borra sus DOS patas (es un solo movimiento).
+  { prefijo: "movint-", permiso: { editable: true, borrable: true } },
+
   // GASTO DE CAJA CHICA: no se opera desde la planilla porque NO VIVE en la planilla. Lo que entra
   // al calendario es la ASIGNACION del fondo (la plata ya se considera gastada cuando se entrega);
   // el gasto suelto es el rinde de esa plata. Si el gasto tambien sumara, se gastaria dos veces.

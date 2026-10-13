@@ -331,6 +331,7 @@ import { readTicket, ensureScript } from "./lib/ocr";
 import { buildClientCrmRows } from "./domain/clientCrm";
 import { buildReservaFromSources, latestBankBalancesByAccount, usdPaymentsToMovements } from "./domain/reservaSources";
 import { summarizeContributions, type CapitalEntry } from "./domain/contributions";
+import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
@@ -9584,7 +9585,10 @@ Escribi CERRAR para confirmar:`
         ...item,
         currency: item.currency === "USD" ? "USD" : "ARS",
         color: item.color === "negro" ? "negro" : "blanco",
-        direction: item.direction === "banco_a_efectivo" ? "banco_a_efectivo" : "efectivo_a_banco",
+        direction:
+          item.direction === "banco_a_efectivo" || item.direction === "banco_a_banco" || item.direction === "efectivo_a_efectivo"
+            ? item.direction
+            : "efectivo_a_banco",
         bank: item.bank || "",
         description: item.description || "",
         notes: item.notes || "",
@@ -12160,6 +12164,43 @@ Escribi CERRAR para confirmar:`
       setPayrollHaberes(haber.empId, haber.month, cambio);
       return true;
     }
+    // MOVIMIENTOS INTERNOS: se edita el pase o el aporte/prestamo de la solapa (las dos patas del pase
+    // cambian juntas, porque son el mismo movimiento).
+    if (entryId.startsWith("movint-pase-")) {
+      const id = Number(entryId.slice("movint-pase-".length).split("-")[0]);
+      if (!id || !internalTransfers.some((t) => t.id === id)) return false;
+      setInternalTransfers((prev) =>
+        prev.map((t) =>
+          t.id !== id
+            ? t
+            : {
+                ...t,
+                ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
+                ...(patch.date ? { date: patch.date } : {}),
+                ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+              }
+        )
+      );
+      return true;
+    }
+    if (entryId.startsWith("movint-cap-")) {
+      const id = Number(entryId.slice("movint-cap-".length));
+      if (!id || !capitalEntries.some((c) => c.id === id)) return false;
+      setCapitalEntries((prev) =>
+        prev.map((c) =>
+          c.id !== id
+            ? c
+            : {
+                ...c,
+                ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
+                ...(patch.date ? { date: patch.date } : {}),
+                ...(patch.administration ? { color: patch.administration } : {}),
+                ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+              }
+        )
+      );
+      return true;
+    }
     if (entryId.startsWith("bank-")) {
       const id = Number(entryId.slice(5));
       if (!id) return false;
@@ -12280,6 +12321,18 @@ Escribi CERRAR para confirmar:`
   };
 
   const deleteCalendarEntry = (entryId: string): boolean => {
+    if (entryId.startsWith("movint-pase-")) {
+      const id = Number(entryId.slice("movint-pase-".length).split("-")[0]);
+      if (!id || !internalTransfers.some((t) => t.id === id)) return false;
+      setInternalTransfers((prev) => prev.filter((t) => t.id !== id));
+      return true;
+    }
+    if (entryId.startsWith("movint-cap-")) {
+      const id = Number(entryId.slice("movint-cap-".length));
+      if (!id || !capitalEntries.some((c) => c.id === id)) return false;
+      setCapitalEntries((prev) => prev.filter((c) => c.id !== id));
+      return true;
+    }
     if (entryId.startsWith("comm-")) {
       const id = Number(entryId.slice("comm-".length));
       if (!id) return false;
@@ -14052,6 +14105,8 @@ Escribi CERRAR para confirmar:`
     const CUSTOM_PREFIX = "custom:prestamos:";
     const labelOfConcept = (conceptKey: string): string | null => {
       if (conceptKey.startsWith(CUSTOM_PREFIX)) return conceptKey.slice(CUSTOM_PREFIX.length) || null;
+      // La seccion ahora es MOVIMIENTOS INTERNOS: un pase o una venta de dolares NO es un prestamo.
+      if (!FILAS_PRESTAMO_INGRESO.has(conceptKey)) return null;
       const item = section.items.find((it) => it.key === conceptKey);
       if (!item) return null;
       return calendarRowConfig.labels?.[item.key] || item.label;
@@ -14191,7 +14246,8 @@ Escribi CERRAR para confirmar:`
         // Fuentes que se sumaron el 2026-08-26 para cerrar el circuito hacia el calendario:
         | "gasto"             // pago de Costos que NO pasa por el banco (efectivo / negro)
         | "caja-chica-fondo"  // asignacion de un fondo de caja chica (y su devolucion)
-        | "haberes-negro";    // el sueldo en negro, que no deja rastro en el extracto
+        | "haberes-negro"     // el sueldo en negro, que no deja rastro en el extracto
+        | "mov-interno";      // pases entre cuentas, aportes y prestamos de la solapa Movimientos internos
       amount: number;
       statusLabel: string;
       subcat?: string;
@@ -14470,8 +14526,22 @@ Escribi CERRAR para confirmar:`
       });
     });
 
+    // MOVIMIENTOS INTERNOS (solapa): cada pase da dos patas (sale de una cuenta, entra en la otra) y
+    // cada aporte / prestamo cae en el renglon de quien puso la plata. Ver domain/movimientosInternosCalendario.
+    entradasMovimientosInternos({
+      pases: visibleInternalTransfers as any,
+      capital: visibleCapitalEntries as any,
+      empresas: COMPANY_OPTIONS.filter((o) => o.value !== "General").map((o) => String(o.value)),
+      nombreCuenta: (id, company, tipo) =>
+        cuentasGuardadas.find((c) => c.id === id)?.nombre ||
+        (tipo === "efectivo" ? "efectivo" : visibleInternalTransfers.find((t) => t.company === company && t.bank)?.bank || "banco"),
+    }).forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
+
     return entries.sort((a, b) => a.date.localeCompare(b.date));
   }, [
+    visibleInternalTransfers,
+    visibleCapitalEntries,
+    cuentasGuardadas,
     analysisYear,
     annualDebtRows,
     approvedJobsSummary,
@@ -17993,6 +18063,52 @@ Escribi CERRAR para confirmar:`
           onSetCobroEstado={setPaymentEstado}
           onAddCommission={addCommissionFromCalendar}
           onAddCostEntry={addCostEntryFromCalendar}
+          onAddMovInterno={(m) => {
+            // CARGA DESDE LA PLANILLA en Movimientos internos: se escribe en la solapa (la duena del
+            // dato) y vuelve a la planilla por su propio camino. No se crea un movimiento suelto.
+            if (m.tipo === "pase") {
+              const tipoDe = (id?: string) => {
+                const c = cuentasSistema.find((x) => x.id === id);
+                return c && c.tipo !== "banco" ? "efectivo" : "banco";
+              };
+              const desde = tipoDe(m.cuentaDesdeId);
+              const hacia = tipoDe(m.cuentaHaciaId);
+              setInternalTransfers((prev) => [
+                {
+                  id: newId(),
+                  company: m.company as CompanyName,
+                  date: m.date,
+                  direction: `${desde}_a_${hacia}` as InternalTransfer["direction"],
+                  currency: "ARS",
+                  color: m.administration,
+                  amount: m.amount,
+                  cuentaId: m.cuentaDesdeId || undefined,
+                  cuentaDestinoId: m.cuentaHaciaId || undefined,
+                  bank: "",
+                  description: m.notes || "",
+                  notes: "Cargado desde el Calendario anual",
+                },
+                ...prev,
+              ]);
+              return true;
+            }
+            setCapitalEntries((prev) => [
+              {
+                id: newId(),
+                company: m.company as CompanyName,
+                date: m.date,
+                origin: m.origin || "",
+                kind: m.kind || "prestamo",
+                direction: m.direction || "recibido",
+                color: m.administration,
+                amount: m.amount,
+                cuentaId: m.cuentaDesdeId || m.cuentaHaciaId || undefined,
+                notes: m.notes || "Cargado desde el Calendario anual",
+              },
+              ...prev,
+            ]);
+            return true;
+          }}
           costGroupNames={costGroups.map((g) => g.name)}
           onAssignConcept={assignBankConcept}
           bnaCompra={dollarRates.find((r) => r.casa === "oficial")?.compra || 0}

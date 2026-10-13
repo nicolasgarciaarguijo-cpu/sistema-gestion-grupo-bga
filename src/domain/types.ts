@@ -705,7 +705,8 @@ export type InternalTransfer = {
   id: number;
   company: CompanyName;
   date: string; // "yyyy-mm-dd"
-  direction: "efectivo_a_banco" | "banco_a_efectivo";
+  // banco_a_banco / efectivo_a_efectivo: pase entre dos cuentas del mismo tipo (Nicolas, 2026-10-13).
+  direction: "efectivo_a_banco" | "banco_a_efectivo" | "banco_a_banco" | "efectivo_a_efectivo";
   currency: "ARS" | "USD";
   // Color de la plata que se mueve. Un deposito de efectivo NEGRO baja la caja negra; en el banco la
   // plata es blanca, pero esa pata no se emite (la trae el extracto), asi que el color de aca es
