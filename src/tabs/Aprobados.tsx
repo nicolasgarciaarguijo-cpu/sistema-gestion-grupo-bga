@@ -904,10 +904,10 @@ export function AprobadosTab({
                     value={money(selectedApprovedJob.additionalsWhiteNet || 0)}
                     color="blanco"
                   />
-                  {(selectedApprovedJob.additionalsVat || 0) > 0 && (
+                  {(selectedApprovedJob.additionalsVatPendiente || 0) > 0.5 && (
                     <SummaryRow
-                      label="IVA adicionales (entra al facturarlos)"
-                      value={money(selectedApprovedJob.additionalsVat || 0)}
+                      label="IVA adicionales sin facturar (suma a cobrar)"
+                      value={money(selectedApprovedJob.additionalsVatPendiente || 0)}
                     />
                   )}
                   {(selectedApprovedJob.additionalsBlackNet || 0) > 0 && (

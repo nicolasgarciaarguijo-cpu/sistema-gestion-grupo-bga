@@ -5085,11 +5085,25 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           (acc, item) => acc + Number(item.amount || 0),
           0
         );
-        // A COBRAR = neto + adicionales (blancos y negros, por su monto) - descuentos + IVA FACTURADO.
-        // El IVA de un adicional blanco entra cuando se factura (va en invoiceVatAmount), igual que el del
-        // trabajo. Antes se sumaba ademas additionalsVat y el IVA del adicional facturado quedaba contado
-        // DOS veces: el saldo nunca llegaba a cero (Nicolas, 2026-10-13; ej. 3169 Mitre: saldo = 22.575 = ese IVA).
-        const valueToCollect = job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount;
+        // A COBRAR = neto + adicionales (blancos y negros, por su monto) - descuentos + IVA FACTURADO
+        //           + IVA de los adicionales BLANCOS que todavia NO se facturaron.
+        // El IVA de cada adicional blanco se cuenta UNA sola vez:
+        //   - ya facturado -> viene dentro de invoiceVatAmount (antes se sumaba ademas additionalsVat y
+        //     quedaba DOBLE: ej. 3169 Mitre, saldo = 22.575 = ese IVA);
+        //   - sin facturar -> se suma como IVA pendiente, porque se le va a cobrar al cliente al facturarlo
+        //     (ej. 3162 Contract: 14,3 M de "adicionales por cambios" sin facturar; sin esto el saldo
+        //     caia de ~5 M a ~2 M. Nicolas, 2026-10-14).
+        // Lo sin facturar del circuito blanco = (neto x %facturado + adicionales blancos) - neto facturado,
+        // tope: los adicionales blancos (el IVA del trabajo en si sigue yendo solo sobre lo facturado).
+        const baseBlancoAFacturar = job.soldNetPrice * (Number(job.billedPct || 0) / 100) + additionalsWhiteNet;
+        const adicionalesBlancosSinFacturar = Math.min(
+          additionalsWhiteNet,
+          Math.max(0, baseBlancoAFacturar - billedNet)
+        );
+        const additionalsVatPendiente =
+          additionalsWhiteNet > 0 ? adicionalesBlancosSinFacturar * (additionalsVat / additionalsWhiteNet) : 0;
+        const valueToCollect =
+          job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount + additionalsVatPendiente;
         // Manda el trabajo aprobado: el % anticipo se resuelve del job (fallback forma de pago) y
         // el IVA va SOLO sobre lo facturado (invoiceVatAmount). Anticipo = %anticipo x neto + IVA facturado.
         const anticipoPctResolved = resolveAdvancePct(
@@ -5154,6 +5168,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           additionalsWhiteNet,
           additionalsBlackNet,
           additionalsVat,
+          additionalsVatPendiente,
           additionalsUsdWhiteNet,
           additionalsUsdBlackNet,
           additionalsUsdVat,

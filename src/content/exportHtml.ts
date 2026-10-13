@@ -550,7 +550,9 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
   const soldNet = Number(job.soldNetPrice || 0);
   const invoiceVat = Number(job.invoiceVatAmount || 0);
   const addArsNet = Number(job.additionalsWhiteNet || 0) + Number(job.additionalsBlackNet || 0);
-  const addArsVat = 0;
+  // Solo el IVA de los adicionales que todavia no se facturaron (el de los facturados ya esta en el IVA
+  // facturado): mismo calculo que A cobrar en la ficha.
+  const addArsVat = Number(job.additionalsVatPendiente || 0);
   const discountsTotal = Number(job.discountsTotal || 0);
   const valorRows = [
     `<tr><td>Precio del trabajo (neto)</td><td class="num">${money(soldNet)}</td></tr>`,
