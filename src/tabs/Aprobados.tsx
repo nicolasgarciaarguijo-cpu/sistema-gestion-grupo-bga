@@ -93,6 +93,8 @@ type AprobadosTabProps = {
   updateInvoice: (jobId: number, invoiceId: number, field: string, value: string | number) => void;
   addPayment: (jobId: number, estado?: "realizado" | "estimado" | "inamovible") => void;
   setPaymentEstado: (jobId: number, paymentId: number, estado: "realizado" | "estimado" | "inamovible") => void;
+  // Guardar YA este trabajo en el servidor y verificarlo releyendolo.
+  onGuardarTrabajo?: (jobId: number) => Promise<{ ok: boolean; texto: string }>;
   removePayment: (jobId: number, paymentId: number) => void;
   updatePayment: (
     jobId: number,
@@ -156,6 +158,7 @@ export function AprobadosTab({
   updateInvoice,
   addPayment,
   setPaymentEstado,
+  onGuardarTrabajo,
   removePayment,
   updatePayment,
   addAdditional,
@@ -641,6 +644,12 @@ export function AprobadosTab({
               green={selectedApprovedJob.executionStatus === "finalizado"}
               actions={
                 <>
+                  {onGuardarTrabajo && (
+                    <BotonGuardarTrabajo
+                      key={selectedApprovedJob.id}
+                      onGuardar={() => onGuardarTrabajo(selectedApprovedJob.id)}
+                    />
+                  )}
                   <ButtonLike
                     onClick={() => setVerMateriales((prev) => !prev)}
                     secondary={verMateriales}
@@ -2108,3 +2117,52 @@ const ESTADO_COBRO_COLOR = {
   estimado: { fg: "#7c3aed", bg: "#f5f3ff" },
   inamovible: { fg: "#dc2626", bg: "#fef2f2" },
 };
+
+// Boton "Guardar este trabajo" de la ficha: guarda en el servidor y muestra el resultado de la
+// VERIFICACION (relectura). Verde = esta en el servidor tal cual se ve; rojo = hay que volver a probar.
+function BotonGuardarTrabajo({ onGuardar }: { onGuardar: () => Promise<{ ok: boolean; texto: string }> }) {
+  const [estado, setEstado] = React.useState<"" | "guardando" | "ok" | "error">("");
+  const [texto, setTexto] = React.useState("");
+  const guardar = async () => {
+    if (estado === "guardando") return;
+    setEstado("guardando");
+    setTexto("");
+    const r = await onGuardar();
+    setEstado(r.ok ? "ok" : "error");
+    setTexto(r.texto);
+  };
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <button
+        type="button"
+        onClick={guardar}
+        disabled={estado === "guardando"}
+        title="Sube este trabajo al servidor ahora (sin esperar el guardado automático) y verifica que quedó igual a lo que ves."
+        style={{
+          padding: "7px 14px",
+          borderRadius: 8,
+          border: "1px solid #15803d",
+          background: estado === "guardando" ? "#86efac" : "#16a34a",
+          color: "#ffffff",
+          fontWeight: 800,
+          fontSize: 13,
+          cursor: estado === "guardando" ? "wait" : "pointer",
+        }}
+      >
+        {estado === "guardando" ? "Guardando…" : "💾 Guardar este trabajo"}
+      </button>
+      {texto && (
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: estado === "ok" ? "#15803d" : "#b91c1c",
+            maxWidth: 420,
+          }}
+        >
+          {texto}
+        </span>
+      )}
+    </span>
+  );
+}

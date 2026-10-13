@@ -9903,6 +9903,72 @@ Escribi CERRAR para confirmar:`
     }
   };
 
+  // GUARDAR ESTE TRABAJO (Nicolas, 2026-10-13: "para poder asegurarse que la carga quedo guardada").
+  // Sube YA el modulo de Trabajos aprobados y despues RELEE el trabajo desde el servidor y lo compara
+  // con lo que se ve en pantalla: facturas, cobros, cobros previstos, adicionales, descuentos y
+  // comisiones. La confirmacion es la relectura, no el "se mando".
+  const guardarTrabajoEnServidor = async (jobId: number): Promise<{ ok: boolean; texto: string }> => {
+    const job = approvedJobs.find((j) => j.id === jobId);
+    if (!job) return { ok: false, texto: "No encontré el trabajo." };
+    try {
+      await persistAppStateImmediately(buildPersistedAppData(), {
+        moduleKeys: ["trabajos-aprobados"],
+        allowSupabaseWithPendingRemote: true,
+      });
+      const { data, error } = await supabase
+        .from(SUPABASE_APP_STATE_MODULES_V2_TABLE)
+        .select("company,payload")
+        .eq("module_key", "trabajos-aprobados");
+      if (error) throw error;
+      const enServidor: any = (data || [])
+        .flatMap((r: any) => (Array.isArray(r?.payload?.data?.approvedJobs) ? r.payload.data.approvedJobs : []))
+        .find((j: any) => j?.id === jobId);
+      if (!enServidor) {
+        return { ok: false, texto: "El servidor todavía no tiene este trabajo. Volvé a apretar Guardar en un momento." };
+      }
+      const listas: Array<[string, string]> = [
+        ["invoices", "facturas"],
+        ["payments", "cobros"],
+        ["cobrosPrevistos", "cobros previstos"],
+        ["additionals", "adicionales"],
+        ["discounts", "descuentos"],
+        ["commissionPayments", "comisiones"],
+      ];
+      // La base (jsonb) reordena las claves de cada objeto: se compara en forma canonica (claves
+      // ordenadas, sin undefined) para no dar un falso "no coincide".
+      const canon = (v: any): any =>
+        Array.isArray(v)
+          ? v.map(canon)
+          : v && typeof v === "object"
+            ? Object.keys(v)
+                .sort()
+                .filter((k) => v[k] !== undefined)
+                .reduce((o: any, k) => ((o[k] = canon(v[k])), o), {})
+            : v;
+      const igual = (a: any, b: any) => JSON.stringify(canon(a || [])) === JSON.stringify(canon(b || []));
+      const distintas = listas
+        .filter(([campo]) => !igual((job as any)[campo], enServidor[campo]))
+        .map(([, nombre]) => nombre);
+      const hora = new Date().toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+      if (distintas.length > 0) {
+        return {
+          ok: false,
+          texto: `Ojo: en el servidor no coinciden ${distintas.join(", ")}. Volvé a apretar Guardar; si sigue, avisá antes de seguir cargando.`,
+        };
+      }
+      const cuenta = (campo: string) => ((job as any)[campo] || []).length;
+      return {
+        ok: true,
+        texto: `✓ Guardado y verificado en el servidor ${hora} · ${cuenta("invoices")} facturas · ${cuenta("payments")} cobros · ${cuenta("additionals")} adicionales`,
+      };
+    } catch (err) {
+      return {
+        ok: false,
+        texto: `No se pudo confirmar en el servidor: ${err instanceof Error ? err.message : "error de conexión"}. Lo cargado sigue en pantalla: no cierres ni recargues y volvé a probar.`,
+      };
+    }
+  };
+
   const saveMonthlyHistorySnapshot = async () => {
     if (!isMonthlyHistoryTab(activeTab)) return;
 
@@ -19239,6 +19305,7 @@ Escribi CERRAR para confirmar:`
           updateInvoice={updateInvoice}
           addPayment={addPayment}
           setPaymentEstado={setPaymentEstado}
+          onGuardarTrabajo={guardarTrabajoEnServidor}
           removePayment={removePayment}
           updatePayment={updatePayment}
           addAdditional={addAdditional}
