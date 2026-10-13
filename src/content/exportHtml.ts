@@ -546,10 +546,11 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
       : "";
 
   // ---- Composicion del valor del trabajo (pesos): neto + IVA facturado + adicionales - descuentos.
+  // El IVA de los adicionales va dentro del "IVA sobre lo facturado" (se cobra al facturarlos).
   const soldNet = Number(job.soldNetPrice || 0);
   const invoiceVat = Number(job.invoiceVatAmount || 0);
   const addArsNet = Number(job.additionalsWhiteNet || 0) + Number(job.additionalsBlackNet || 0);
-  const addArsVat = Number(job.additionalsVat || 0);
+  const addArsVat = 0;
   const discountsTotal = Number(job.discountsTotal || 0);
   const valorRows = [
     `<tr><td>Precio del trabajo (neto)</td><td class="num">${money(soldNet)}</td></tr>`,

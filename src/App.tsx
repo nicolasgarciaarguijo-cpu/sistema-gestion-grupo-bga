@@ -5084,8 +5084,11 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           (acc, item) => acc + Number(item.amount || 0),
           0
         );
-        const valueToCollect =
-          job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount + additionalsVat;
+        // A COBRAR = neto + adicionales (blancos y negros, por su monto) - descuentos + IVA FACTURADO.
+        // El IVA de un adicional blanco entra cuando se factura (va en invoiceVatAmount), igual que el del
+        // trabajo. Antes se sumaba ademas additionalsVat y el IVA del adicional facturado quedaba contado
+        // DOS veces: el saldo nunca llegaba a cero (Nicolas, 2026-10-13; ej. 3169 Mitre: saldo = 22.575 = ese IVA).
+        const valueToCollect = job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount;
         // Manda el trabajo aprobado: el % anticipo se resuelve del job (fallback forma de pago) y
         // el IVA va SOLO sobre lo facturado (invoiceVatAmount). Anticipo = %anticipo x neto + IVA facturado.
         const anticipoPctResolved = resolveAdvancePct(

@@ -895,7 +895,7 @@ export function AprobadosTab({
                   />
                   {(selectedApprovedJob.additionalsVat || 0) > 0 && (
                     <SummaryRow
-                      label="IVA adicionales"
+                      label="IVA adicionales (entra al facturarlos)"
                       value={money(selectedApprovedJob.additionalsVat || 0)}
                     />
                   )}
