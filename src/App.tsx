@@ -10727,26 +10727,50 @@ Escribi CERRAR para confirmar:`
     );
   };
 
-  const addPayment = (jobId: number) => {
+  const addPayment = (jobId: number, estado: "realizado" | "estimado" | "inamovible" = "realizado") => {
+    const nuevo: Payment = {
+      id: newId(),
+      paymentNumber: "",
+      paymentDate: "",
+      transactionType: "transferencia",
+      administration: "blanco",
+      amount: 0,
+    };
     setApprovedJobs((prev) =>
       prev.map((job) =>
-        job.id === jobId
-          ? {
-              ...job,
-              payments: [
-                {
-                  id: newId(),
-                  paymentNumber: "",
-                  paymentDate: "",
-                  transactionType: "transferencia",
-                  administration: "blanco",
-                  amount: 0,
-                },
-                ...job.payments,
-              ],
-            }
-          : job
+        job.id !== jobId
+          ? job
+          : estado === "realizado"
+            ? { ...job, payments: [nuevo, ...job.payments] }
+            : { ...job, cobrosPrevistos: [{ ...nuevo, estado }, ...(job.cobrosPrevistos || [])] }
       )
+    );
+  };
+
+  // Cambiar el ESTADO de un cobro. Realizado vive en payments (suma); estimado/inamovible viven en
+  // cobrosPrevistos (no suman). Cambiar el estado MUEVE el cobro de una lista a la otra. `fecha`
+  // opcional: al pasar a realizado desde la planilla se toma el dia en que de verdad entro.
+  const setPaymentEstado = (
+    jobId: number,
+    paymentId: number,
+    estado: "realizado" | "estimado" | "inamovible",
+    fecha?: string
+  ) => {
+    setApprovedJobs((prev) =>
+      prev.map((job) => {
+        if (job.id !== jobId) return job;
+        const todos = [...(job.cobrosPrevistos || []), ...job.payments];
+        const pago = todos.find((p) => p.id === paymentId);
+        if (!pago) return job;
+        const payments = job.payments.filter((p) => p.id !== paymentId);
+        const cobrosPrevistos = (job.cobrosPrevistos || []).filter((p) => p.id !== paymentId);
+        const movido: Payment = { ...pago, ...(fecha ? { paymentDate: fecha } : {}) };
+        if (estado === "realizado") {
+          delete movido.estado;
+          return { ...job, payments: [movido, ...payments], cobrosPrevistos };
+        }
+        return { ...job, payments, cobrosPrevistos: [{ ...movido, estado }, ...cobrosPrevistos] };
+      })
     );
   };
 
@@ -10764,6 +10788,13 @@ Escribi CERRAR para confirmar:`
               payments: job.payments.map((payment) =>
                 payment.id === paymentId ? { ...payment, [field]: value } : payment
               ),
+              ...(job.cobrosPrevistos
+                ? {
+                    cobrosPrevistos: job.cobrosPrevistos.map((payment) =>
+                      payment.id === paymentId ? { ...payment, [field]: value } : payment
+                    ),
+                  }
+                : {}),
             }
           : job
       )
@@ -12007,10 +12038,12 @@ Escribi CERRAR para confirmar:`
       cuentaId?: string;
       transactionType: "efectivo" | "transferencia" | "cheque" | "otros";
       notes: string;
+      estado?: "realizado" | "estimado" | "inamovible";
     }
   ): boolean => {
     const job = approvedJobs.find((j) => String(j.budgetNumber) === String(budgetNumber));
     if (!job) return false;
+    const previsto = pay.estado === "estimado" || pay.estado === "inamovible";
     const nuevo: Payment = {
       id: newId(),
       paymentNumber: "",
@@ -12024,7 +12057,9 @@ Escribi CERRAR para confirmar:`
     setApprovedJobs((prev) =>
       prev.map((j) =>
         String(j.budgetNumber) === String(budgetNumber)
-          ? { ...j, payments: [...(j.payments || []), nuevo] }
+          ? previsto
+            ? { ...j, cobrosPrevistos: [...(j.cobrosPrevistos || []), { ...nuevo, estado: pay.estado }] }
+            : { ...j, payments: [...(j.payments || []), nuevo] }
           : j
       )
     );
@@ -13147,7 +13182,13 @@ Escribi CERRAR para confirmar:`
     setApprovedJobs((prev) =>
       prev.map((job) =>
         job.id === jobId
-          ? { ...job, payments: job.payments.filter((payment) => payment.id !== paymentId) }
+          ? {
+              ...job,
+              payments: job.payments.filter((payment) => payment.id !== paymentId),
+              ...(job.cobrosPrevistos
+                ? { cobrosPrevistos: job.cobrosPrevistos.filter((payment) => payment.id !== paymentId) }
+                : {}),
+            }
           : job
       )
     );
@@ -17932,6 +17973,24 @@ Escribi CERRAR para confirmar:`
           companyOptions={COMPANY_OPTIONS}
           onAddMovement={addCalendarMovement}
           onAddJobPayment={addPaymentFromCalendar}
+          cobrosPrevistos={approvedJobs
+            .filter((j) => canAccessCompany(j.company))
+            .flatMap((j) =>
+              (j.cobrosPrevistos || [])
+                .filter((p) => !!p.paymentDate && Number(p.amount || 0) > 0)
+                .map((p) => ({
+                  jobId: j.id,
+                  paymentId: p.id,
+                  budgetNumber: String(j.budgetNumber),
+                  client: j.client,
+                  company: String(j.company),
+                  date: p.paymentDate,
+                  amount: Number(p.amount || 0),
+                  currency: (p.currency === "USD" ? "USD" : "ARS") as "ARS" | "USD",
+                  estado: (p.estado === "inamovible" ? "inamovible" : "estimado") as "estimado" | "inamovible",
+                }))
+            )}
+          onSetCobroEstado={setPaymentEstado}
           onAddCommission={addCommissionFromCalendar}
           onAddCostEntry={addCostEntryFromCalendar}
           costGroupNames={costGroups.map((g) => g.name)}
@@ -17964,6 +18023,15 @@ Escribi CERRAR para confirmar:`
               faltaFacturar,
               faltaCobrar,
               faltaComision,
+              // Desde cuando y hasta cuando se ve su renglon: un trabajo TERMINADO desaparece el mes
+              // siguiente al ultimo movimiento (Nicolas, 2026-10-13: "para saber que ya termino").
+              desde: j.approvalDate || "",
+              cierre: [
+                ...(j.payments || []).map((p: any) => p.paymentDate || ""),
+                ...(j.invoices || []).map((i: any) => i?.invoiceDate || ""),
+                ...(j.commissionPayments || []).map((c: any) => c?.paymentDate || ""),
+                j.approvalDate || "",
+              ].reduce((a: string, b: string) => (b > a ? b : a), ""),
             };
           })}
           onAssignToJob={assignBankToJob}
@@ -19054,6 +19122,7 @@ Escribi CERRAR para confirmar:`
           emitInvoiceAfip={emitInvoiceAfip}
           updateInvoice={updateInvoice}
           addPayment={addPayment}
+          setPaymentEstado={setPaymentEstado}
           removePayment={removePayment}
           updatePayment={updatePayment}
           addAdditional={addAdditional}

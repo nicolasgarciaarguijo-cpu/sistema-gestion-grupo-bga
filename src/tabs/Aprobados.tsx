@@ -91,7 +91,8 @@ type AprobadosTabProps = {
   emitInvoiceAfip: (jobId: number, invoiceId: number) => void;
   canEmitFacturas: boolean;
   updateInvoice: (jobId: number, invoiceId: number, field: string, value: string | number) => void;
-  addPayment: (jobId: number) => void;
+  addPayment: (jobId: number, estado?: "realizado" | "estimado" | "inamovible") => void;
+  setPaymentEstado: (jobId: number, paymentId: number, estado: "realizado" | "estimado" | "inamovible") => void;
   removePayment: (jobId: number, paymentId: number) => void;
   updatePayment: (
     jobId: number,
@@ -154,6 +155,7 @@ export function AprobadosTab({
   canEmitFacturas,
   updateInvoice,
   addPayment,
+  setPaymentEstado,
   removePayment,
   updatePayment,
   addAdditional,
@@ -1464,20 +1466,50 @@ export function AprobadosTab({
                 <Panel
                   title="Cobranzas"
                   nested
-                  actions={<ButtonLike onClick={() => addPayment(selectedApprovedJob.id)}>Agregar cobranza</ButtonLike>}
+                  actions={
+                    <>
+                      <ButtonLike onClick={() => addPayment(selectedApprovedJob.id)}>Agregar cobranza</ButtonLike>
+                      <ButtonLike onClick={() => addPayment(selectedApprovedJob.id, "estimado")}>+ Cobro estimado</ButtonLike>
+                    </>
+                  }
                 >
-                  {selectedApprovedJob.payments.length === 0 ? (
+                  {/* Arriba los cobros PREVISTOS (violeta = estimado, rojo = inamovible): no suman en el
+                      cobrado ni en la planilla hasta pasarlos a "Realizado". */}
+                  {selectedApprovedJob.payments.length === 0 && (selectedApprovedJob.cobrosPrevistos || []).length === 0 ? (
                     <div style={styles.empty}>No hay pagos cargados.</div>
                   ) : (
-                    selectedApprovedJob.payments.map((payment) => (
+                    [...(selectedApprovedJob.cobrosPrevistos || []), ...selectedApprovedJob.payments].map((payment) => {
+                      const est = payment.estado === "estimado" || payment.estado === "inamovible" ? payment.estado : "realizado";
+                      const prevColor = est === "estimado" ? ESTADO_COBRO_COLOR.estimado : est === "inamovible" ? ESTADO_COBRO_COLOR.inamovible : null;
+                      return (
                       <div
                         key={payment.id}
                         style={{
                           ...styles.subCard,
-                          borderLeft: `8px solid ${payment.administration === "negro" ? "#1f2937" : "#cbd5e1"}`,
+                          borderLeft: `8px solid ${prevColor ? prevColor.fg : payment.administration === "negro" ? "#1f2937" : "#cbd5e1"}`,
+                          ...(prevColor ? { background: prevColor.bg } : {}),
                         }}
                       >
                         <div style={styles.inlineActions}>
+                          <select
+                            title="Realizado = la plata entró y suma. Estimado (violeta) e Inamovible (rojo) = fecha prevista: se ven en la planilla pero NO suman hasta pasarlos a Realizado."
+                            value={est}
+                            onChange={(e) => setPaymentEstado(selectedApprovedJob.id, payment.id, e.target.value as any)}
+                            style={{
+                              ...styles.statusPill,
+                              cursor: "pointer",
+                              border: `1px solid ${prevColor ? prevColor.fg : "#16a34a"}`,
+                              background: prevColor ? prevColor.fg : "#16a34a",
+                              color: "#ffffff",
+                            }}
+                          >
+                            <option value="realizado">COBRO REALIZADO</option>
+                            <option value="estimado">COBRO ESTIMADO</option>
+                            <option value="inamovible">COBRO INAMOVIBLE</option>
+                          </select>
+                          {prevColor && (
+                            <span style={{ fontSize: 11, color: prevColor.fg, fontWeight: 600 }}>no suma hasta que se cobre</span>
+                          )}
                           {jobPaymentMissing(payment).length > 0 && (
                             <PillD missing={jobPaymentMissing(payment)} size={18} />
                           )}
@@ -1673,7 +1705,8 @@ export function AprobadosTab({
                           )}
                         </div>
                       </div>
-                    ))
+                      );
+                    })
                   )}
                 </Panel>
               </div>
@@ -2069,3 +2102,9 @@ export function AprobadosTab({
         </div>
   );
 }
+
+// Colores del estado del cobro: los mismos que en la planilla (violeta = estimado, rojo = inamovible).
+const ESTADO_COBRO_COLOR = {
+  estimado: { fg: "#7c3aed", bg: "#f5f3ff" },
+  inamovible: { fg: "#dc2626", bg: "#fef2f2" },
+};

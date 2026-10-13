@@ -98,8 +98,8 @@ export const extraRowsOf = (config: CalendarRowConfig | undefined, sectionKey: s
 export const CALENDAR_SECTIONS: CalSection[] = [
   // ===================== INGRESOS =====================
   {
-    key: "cobranzas", label: "COBRANZAS · INGRESO", group: "ingreso", dir: "in",
-    totalLabel: "Total Cobranzas", dynamic: "cobranzas", items: [],
+    key: "cobranzas", label: "TRABAJOS APROBADOS · COBRANZAS", group: "ingreso", dir: "in",
+    totalLabel: "Total Trabajos aprobados · Cobranzas", dynamic: "cobranzas", items: [],
   },
   {
     key: "prestamos", label: "PRÉSTAMOS", group: "ingreso", dir: "in", totalLabel: "Total Préstamos",
@@ -111,8 +111,8 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
-    key: "inversiones", label: "INVERSIONES FINANCIERAS", group: "ingreso", dir: "in",
-    totalLabel: "Total Inversiones Financieras",
+    key: "inversiones", label: "INVERSIONES", group: "ingreso", dir: "in",
+    totalLabel: "Total Inversiones",
     items: [
       { key: "rescate_fci_mix", label: "Rescate de FCI Mix VI" },
       { key: "rescate_fci_plus", label: "Rescate de FCI Plus $" },

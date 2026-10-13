@@ -69,6 +69,8 @@ type AddForm = {
   jobPpto: string;
   // Lo mismo que pide el trabajo: sin esto la cobranza en efectivo no llega a la billetera.
   transactionType: "efectivo" | "transferencia" | "cheque" | "otros";
+  // Estado del cobro de un trabajo: realizado (suma) / estimado (violeta) / inamovible (rojo).
+  estadoCobro?: "realizado" | "estimado" | "inamovible";
   // EGRESOS: adonde va lo que se carga. "" = queda como movimiento del calendario.
   destinoEgreso: "" | "gasto" | "comision";
   // Lo que pide la solapa Costos y la planilla no preguntaba. El medio decide si el pago tiene que
@@ -111,6 +113,8 @@ export function CalendarioAnualTab({
   money,
   employees = [],
   jobs = [],
+  cobrosPrevistos = [],
+  onSetCobroEstado,
   onAssignToJob,
   onOpenJob,
   suppliers = [],
@@ -196,7 +200,16 @@ export function CalendarioAnualTab({
     // Resumen del trabajo, para el boton derecho sobre su renglón de cobranzas.
     id?: number; estado?: string; vendido?: number;
     faltaFacturar?: number; faltaCobrar?: number; faltaComision?: number;
+    // Aprobado el / ultimo movimiento. Un trabajo cerrado se deja de ver el mes siguiente a `cierre`.
+    desde?: string; cierre?: string;
   }>;
+  // Cobros PREVISTOS de los trabajos (estimado = violeta, inamovible = rojo). Se ven con "≈" en el
+  // renglon del trabajo y NO suman en ningun total.
+  cobrosPrevistos?: Array<{
+    jobId: number; paymentId: number; budgetNumber: string; client: string; company: string;
+    date: string; amount: number; currency: "ARS" | "USD"; estado: "estimado" | "inamovible";
+  }>;
+  onSetCobroEstado?: (jobId: number, paymentId: number, estado: "realizado" | "estimado" | "inamovible", fecha?: string) => void;
   // Abrir la ficha del trabajo en la solapa Trabajos aprobados.
   onOpenJob?: (jobId: number) => void;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
@@ -246,6 +259,7 @@ export function CalendarioAnualTab({
       date: string; amount: number; administration: "blanco" | "negro";
       transactionType: "efectivo" | "transferencia" | "cheque" | "otros"; notes: string;
       cuentaId?: string;
+      estado?: "realizado" | "estimado" | "inamovible";
     }
   ) => boolean;
   // Editar / borrar el movimiento que está DETRÁS de un número (click derecho). Devuelven false si ese
@@ -828,7 +842,32 @@ export function CalendarioAnualTab({
   // tengan movimiento este mes— como alerta; más las cobranzas con movimiento en el mes visible.
   const cobranzaRows = useMemo(() => {
     const budgetOf = (key: string) => key.split("·")[0].trim();
-    const rows: Array<{ title: string; drowB: Map<string, number>; drowN: Map<string, number>; falta?: string; company?: string }> = [];
+    type Prev = { monto: number; usd: number; estado: "estimado" | "inamovible"; items: typeof cobrosPrevistos };
+    const rows: Array<{ title: string; drowB: Map<string, number>; drowN: Map<string, number>; falta?: string; company?: string; prevs?: Map<string, Prev> }> = [];
+    const firstIso = visibleDayCols[0]?.iso || "";
+    const lastIso = visibleDayCols[visibleDayCols.length - 1]?.iso || "";
+    // Previstos en vista, agrupados por trabajo y dia. Si en un mismo dia hay estimado e inamovible,
+    // manda el rojo (inamovible), que es el que no se puede correr.
+    const prevsByBudget = new Map<string, Map<string, Prev>>();
+    cobrosPrevistos
+      .filter((p) => (companyScope === "__ALL__" || p.company === companyScope) && p.date >= firstIso && p.date <= lastIso)
+      .forEach((p) => {
+        if (!prevsByBudget.has(p.budgetNumber)) prevsByBudget.set(p.budgetNumber, new Map());
+        const m = prevsByBudget.get(p.budgetNumber)!;
+        const cur = m.get(p.date) || { monto: 0, usd: 0, estado: p.estado, items: [] };
+        if (p.currency === "USD") cur.usd += p.amount; else cur.monto += p.amount;
+        if (p.estado === "inamovible") cur.estado = "inamovible";
+        cur.items = [...cur.items, p];
+        m.set(p.date, cur);
+      });
+    // Un trabajo TERMINADO se ve hasta el mes de su ultimo movimiento y desaparece el mes siguiente.
+    const mesDe = (iso: string) => (iso || "").slice(0, 7);
+    const seVe = (j: (typeof jobs)[number]) => {
+      if (prevsByBudget.has(String(j.budgetNumber))) return true;
+      if (j.desde && mesDe(j.desde) > mesDe(lastIso)) return false;
+      if (j.active) return true;
+      return !!j.cierre && mesDe(j.cierre) >= mesDe(firstIso);
+    };
     const usedKeys = new Set<string>();
     const mergeByBudget = (src: Map<string, Map<string, number>>, budget: string) => {
       const merged = new Map<string, number>();
@@ -841,14 +880,15 @@ export function CalendarioAnualTab({
       return merged;
     };
     jobs
-      .filter((j) => j.active && (companyScope === "__ALL__" || j.company === companyScope))
+      .filter((j) => (companyScope === "__ALL__" || j.company === companyScope) && seVe(j))
       .forEach((job) => {
         rows.push({
           title: `${job.budgetNumber} · ${job.client}`,
           drowB: mergeByBudget(agg.cobranzaDetailB, String(job.budgetNumber)),
           drowN: mergeByBudget(agg.cobranzaDetailN, String(job.budgetNumber)),
-          falta: job.falta || "",
+          falta: job.active ? job.falta || "" : "",
           company: job.company,
+          prevs: prevsByBudget.get(String(job.budgetNumber)),
         });
       });
     const hasMove = (m?: Map<string, number>) => !!m && visibleDayCols.some((c) => (m.get(c.iso) || 0) !== 0);
@@ -860,7 +900,7 @@ export function CalendarioAnualTab({
         drowN: agg.cobranzaDetailN.get(key) || new Map(),
       }));
     return rows.sort((a, b) => a.title.localeCompare(b.title));
-  }, [jobs, companyScope, agg, visibleDayCols]);
+  }, [jobs, cobrosPrevistos, companyScope, agg, visibleDayCols]);
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string, presetLabel = "", presetCompany = "") =>
     setAddForm({
@@ -1571,6 +1611,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         transactionType: addForm.transactionType,
         notes: addForm.notes,
         cuentaId: addForm.cuentaId || undefined,
+        estado: addForm.estadoCobro || "realizado",
       });
       if (!ok) {
         avisar("No encontré ese trabajo aprobado. Cargala sin trabajo o revisá el presupuesto.");
@@ -2173,7 +2214,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                       ))}
                     </tr>
                     {!isCol && (isCob
-                      ? cobranzaRows.map(({ title, drowB, drowN, falta, company }) => {
+                      ? cobranzaRows.map(({ title, drowB, drowN, falta, company, prevs }) => {
                           // El trabajo es de UNA empresa, asi que se pinta la fila entera con su
                           // color. Si la fila no vino de un trabajo (cobranza suelta), se cae al
                           // tinte por dia segun quien puso la plata.
@@ -2202,17 +2243,34 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                               const empCob = tinte
                                 ? { style: { background: tinte } as React.CSSProperties, detalle: "" }
                                 : fondoEmpresa(title, c.iso);
+                              // Cobro PREVISTO del dia: violeta (estimado) o rojo (inamovible), con "≈".
+                              // No suma en ningun total: es solo la fecha en que se espera cobrar.
+                              const pv = prevs?.get(c.iso);
+                              const hayReal = !!(drowB.get(c.iso) || drowN.get(c.iso));
+                              const pvColor = pv ? ESTADO_COBRO[pv.estado] : null;
+                              const pvTexto = pv
+                                ? [pv.monto ? money(pv.monto) : "", pv.usd ? `U$S ${Math.round(pv.usd).toLocaleString("es-AR")}` : ""].filter(Boolean).join(" + ")
+                                : "";
+                              const pvTitulo = pv
+                                ? `Cobro ${pv.estado === "inamovible" ? "INAMOVIBLE" : "ESTIMADO"} ${pvTexto} — todavía no entró, no suma. Click derecho: "Ya se cobró".`
+                                : "";
                               return (
                               <td
                                 key={`cob-${title}-${c.iso}`}
                                 onContextMenu={(ev) =>
                                   openCellMenu(ev, title, c.iso, section.key, cobKey, (e) => isCobranzaEntry(e) && sameTitle(e, title))
                                 }
-                                title={empCob.detalle || undefined}
-                                style={{ ...tdCell, ...fondoNoHabil(c.iso), ...(empCob.style || {}), ...hi(c.iso), ...estiloCelda(section.key, cobKey, c.iso) }}
+                                title={[pvTitulo, empCob.detalle].filter(Boolean).join(" · ") || undefined}
+                                style={{
+                                  ...tdCell, ...fondoNoHabil(c.iso), ...(empCob.style || {}), ...hi(c.iso), ...estiloCelda(section.key, cobKey, c.iso),
+                                  ...(pvColor && !hayReal ? { background: pvColor.bg, color: pvColor.fg, fontStyle: "italic", fontWeight: 600 } : {}),
+                                }}
                               >
                                 {marcasDeCelda(section.key, cobKey, c.iso)}
-                                {bnCell(drowB, drowN, c.iso, false)}
+                                {pv && !hayReal ? `≈ ${pvTexto}` : bnCell(drowB, drowN, c.iso, false)}
+                                {pv && hayReal ? (
+                                  <span style={{ ...prevOkChip, color: pvColor!.fg }} title={pvTitulo}>≈</span>
+                                ) : null}
                               </td>
                               );
                             })}
@@ -3156,6 +3214,46 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
             <QuickMenuTitle>
               {cellMenu.label} · {dayLabel}
             </QuickMenuTitle>
+            {onSetCobroEstado && (() => {
+              // Cobros PREVISTOS de esta celda (renglon del trabajo, este dia).
+              const budget = cellMenu.label.split("·")[0].trim();
+              const pvs = cobrosPrevistos.filter(
+                (p) => p.date === cellMenu.iso && p.budgetNumber === budget && (companyScope === "__ALL__" || p.company === companyScope)
+              );
+              if (pvs.length === 0) return null;
+              return (
+                <>
+                  <QuickMenuSep />
+                  {pvs.map((p) => (
+                    <React.Fragment key={p.paymentId}>
+                      <div style={{ fontSize: 11, color: ESTADO_COBRO[p.estado].fg, padding: "4px 8px", fontWeight: 700 }}>
+                        Cobro {p.estado} · {p.currency === "USD" ? `U$S ${p.amount}` : money(p.amount)}
+                      </div>
+                      <button
+                        style={{ ...quickMenuItem, fontWeight: 700 }}
+                        onClick={() => { onSetCobroEstado(p.jobId, p.paymentId, "realizado"); close(); }}
+                      >
+                        ✓ Ya se cobró este día (pasa a realizado y suma)
+                      </button>
+                      <button
+                        style={quickMenuItem}
+                        onClick={() => {
+                          onSetCobroEstado(p.jobId, p.paymentId, p.estado === "estimado" ? "inamovible" : "estimado");
+                          close();
+                        }}
+                      >
+                        Pasar a {p.estado === "estimado" ? "inamovible (rojo)" : "estimado (violeta)"}
+                      </button>
+                      {onOpenJob && (
+                        <button style={quickMenuItem} onClick={() => { onOpenJob(p.jobId); close(); }}>
+                          Abrir la ficha para cambiar fecha o monto
+                        </button>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </>
+              );
+            })()}
             {onEditEntry && (() => {
               const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
               // Paso 2: ya hay algo agarrado y esta celda puede recibirlo.
@@ -3695,6 +3793,22 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                       <div style={{ ...styles.noticeBox, gridColumn: "1 / -1", margin: 0, fontSize: 12 }}>
                         Se carga como <strong>pago del trabajo {addForm.jobPpto}</strong>: aparece en Trabajos
                         aprobados y vuelve sola a esta planilla. Es el mismo cobro, no dos.
+                        <label style={{ ...lblStyle, marginTop: 8 }}>Estado del cobro
+                          <select
+                            style={{
+                              ...styles.input,
+                              ...(addForm.estadoCobro && addForm.estadoCobro !== "realizado"
+                                ? { background: ESTADO_COBRO[addForm.estadoCobro].bg, color: ESTADO_COBRO[addForm.estadoCobro].fg, fontWeight: 700 }
+                                : {}),
+                            }}
+                            value={addForm.estadoCobro || "realizado"}
+                            onChange={(e) => setAddForm({ ...addForm, estadoCobro: e.target.value as any })}
+                          >
+                            <option value="realizado">Cobro realizado (la plata entró, suma)</option>
+                            <option value="estimado">Cobro estimado (violeta, no suma)</option>
+                            <option value="inamovible">Cobro inamovible (rojo, no suma)</option>
+                          </select>
+                        </label>
                       </div>
                     ) : (
                       <>
@@ -3955,6 +4069,11 @@ const costChip: React.CSSProperties = {
 const previstaCell: React.CSSProperties = {
   color: "#94a3b8", fontStyle: "italic", fontWeight: 500,
 };
+// Cobros previstos de un trabajo: los mismos colores que en la ficha (violeta / rojo).
+const ESTADO_COBRO = {
+  estimado: { fg: "#7c3aed", bg: "#ede9fe" },
+  inamovible: { fg: "#dc2626", bg: "#fee2e2" },
+} as const;
 // El debito del mes ya cubrio lo previsto.
 const prevOkChip: React.CSSProperties = {
   color: "#16a34a", fontWeight: 800, fontSize: 9, marginLeft: 3, verticalAlign: "middle",

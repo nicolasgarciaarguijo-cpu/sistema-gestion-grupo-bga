@@ -378,6 +378,10 @@ export type Payment = {
   // dólar puro (descuenta del saldo U$S, como siempre).
   arsApplied?: boolean;
   attachmentName?: string;
+  // ESTADO DEL COBRO (Nicolas, 2026-10-13). Ausente/"realizado" = plata que entro. "estimado" (violeta)
+  // e "inamovible" (rojo) son cobros PREVISTOS: viven en ApprovedJob.cobrosPrevistos, no en payments,
+  // y no suman en el cobrado, ni en la planilla, ni en la plata disponible hasta pasar a realizado.
+  estado?: "realizado" | "estimado" | "inamovible";
 };
 
 export type Retention = {
@@ -516,6 +520,10 @@ export type ApprovedJob = {
   commissionPayments: CommissionPayment[];
   invoices: Invoice[];
   payments: Payment[];
+  // Cobros PREVISTOS (estimado / inamovible). Van APARTE de payments a proposito: todo lo que suma
+  // cobranzas lee payments, asi que lo previsto no puede colarse en ningun total. Al pasarlo a
+  // "realizado" se mueve a payments y recien ahi suma.
+  cobrosPrevistos?: Payment[];
   retentions: Retention[];
   snapshot: BudgetSnapshot;
 };
