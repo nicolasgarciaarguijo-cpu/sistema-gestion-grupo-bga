@@ -261,6 +261,7 @@ import type {
   PurchaseInvoice,
   PettyCashFund,
   PettyCashExpense,
+  Viatico,
   DebtPlan,
   CashHolding,
   InternalTransfer,
@@ -334,6 +335,8 @@ import { summarizeContributions, type CapitalEntry } from "./domain/contribution
 import { egresoDeEntrada, egresoDePrevisto, fvEfectivo, type Egreso } from "./domain/analisisGastos";
 import { AnalisisGastos } from "./tabs/AnalisisGastos";
 import { FichaProveedor } from "./ui/FichaProveedor";
+import { ViaticosPanel } from "./tabs/Viaticos";
+import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
@@ -1738,6 +1741,7 @@ type PersistedAppStateData = {
   purchaseInvoices: PurchaseInvoice[];
   pettyCashFunds: PettyCashFund[];
   pettyCashExpenses: PettyCashExpense[];
+  viaticos?: Viatico[];
   debtPlans: DebtPlan[];
   bankStatementEntries: BankStatementEntry[];
   capitalEntries: CapitalEntry[];
@@ -1899,7 +1903,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "caja-chica",
     label: "Caja chica y viáticos",
-    fields: ["pettyCashFunds", "pettyCashExpenses"] as const,
+    fields: ["pettyCashFunds", "pettyCashExpenses", "viaticos"] as const,
   },
   {
     key: "stock-costos",
@@ -2935,6 +2939,7 @@ export default function App() {
   const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(defaultPurchaseInvoices);
   const [pettyCashFunds, setPettyCashFunds] = useState<PettyCashFund[]>(defaultPettyCashFunds);
   const [pettyCashExpenses, setPettyCashExpenses] = useState<PettyCashExpense[]>(defaultPettyCashExpenses);
+  const [viaticos, setViaticos] = useState<Viatico[]>([]);
   const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>(defaultCapitalEntries);
@@ -3958,6 +3963,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     prune(purchaseInvoices, setPurchaseInvoices);
     prune(pettyCashFunds, setPettyCashFunds);
     prune(pettyCashExpenses, setPettyCashExpenses);
+    prune(viaticos, setViaticos);
     prune(debtPlans, setDebtPlans);
     prune(bankStatementEntries, setBankStatementEntries);
     prune(capitalEntries, setCapitalEntries);
@@ -3988,6 +3994,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     purchaseInvoices,
     pettyCashFunds,
     pettyCashExpenses,
+    viaticos,
     debtPlans,
     bankStatementEntries,
     capitalEntries,
@@ -4361,6 +4368,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const visiblePettyCashExpenses = useMemo(
     () => normalizedPettyCashExpenses.filter((item) => canAccessCompany(item.company)),
     [normalizedPettyCashExpenses, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+  const visibleViaticos = useMemo(
+    () => viaticos.filter((item) => canAccessCompany(item.company)),
+    [viaticos, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   // Balance blanco/negro de caja chica: entradas por origen del fondo vs salidas por administracion.
@@ -9327,6 +9338,7 @@ Escribi CERRAR para confirmar:`
     })),
     pettyCashFunds: pettyCashFunds.map((item) => ({ ...item })),
     pettyCashExpenses: pettyCashExpenses.map((item) => ({ ...item, date: stampDate(item.date) })),
+    viaticos: viaticos.map((item) => ({ ...item })),
     debtPlans: debtPlans.map((item) => ({ ...item })),
     bankStatementEntries: bankStatementEntries.map((item) => ({
       ...item,
@@ -9576,6 +9588,7 @@ Escribi CERRAR para confirmar:`
       }))
     );
     setPettyCashExpenses(keepAccessibleByCompany(data.pettyCashExpenses || defaultPettyCashExpenses).map((item) => ({ ...item })));
+    setViaticos(keepAccessibleByCompany(data.viaticos || []).map((item) => ({ ...item })));
     setDebtPlans(keepAccessibleByCompany(data.debtPlans || defaultDebtPlans).map((item) => ({ ...item })));
     setBankStatementEntries(
       keepAccessibleByCompany(data.bankStatementEntries || defaultBankStatementEntries).map((item) => ({ ...item }))
@@ -11976,6 +11989,7 @@ Escribi CERRAR para confirmar:`
     purchaseInvoices,
     pettyCashFunds,
     pettyCashExpenses,
+    viaticos,
     debtPlans,
     bankStatementEntries,
     capitalEntries,
@@ -12255,6 +12269,24 @@ Escribi CERRAR para confirmar:`
       setPayrollHaberes(haber.empId, haber.month, cambio);
       return true;
     }
+    // VIATICO eventual: monto, dia y circuito, en la solapa Caja chica y viaticos.
+    if (entryId.startsWith("viatico-")) {
+      const id = Number(entryId.slice("viatico-".length));
+      if (!id || !viaticos.some((v) => v.id === id)) return false;
+      setViaticos((prev) =>
+        prev.map((v) =>
+          v.id !== id
+            ? v
+            : {
+                ...v,
+                ...(patch.amount !== undefined ? { monto: Number(patch.amount) || 0 } : {}),
+                ...(patch.date ? { fecha: patch.date } : {}),
+                ...(patch.administration ? { administration: patch.administration } : {}),
+              }
+        )
+      );
+      return true;
+    }
     // MOVIMIENTOS INTERNOS: se edita el pase o el aporte/prestamo de la solapa (las dos patas del pase
     // cambian juntas, porque son el mismo movimiento).
     if (entryId.startsWith("movint-pase-")) {
@@ -12412,6 +12444,12 @@ Escribi CERRAR para confirmar:`
   };
 
   const deleteCalendarEntry = (entryId: string): boolean => {
+    if (entryId.startsWith("viatico-")) {
+      const id = Number(entryId.slice("viatico-".length));
+      if (!id || !viaticos.some((v) => v.id === id)) return false;
+      setViaticos((prev) => prev.filter((v) => v.id !== id));
+      return true;
+    }
     if (entryId.startsWith("movint-pase-")) {
       const id = Number(entryId.slice("movint-pase-".length).split("-")[0]);
       if (!id || !internalTransfers.some((t) => t.id === id)) return false;
@@ -14338,7 +14376,8 @@ Escribi CERRAR para confirmar:`
         | "gasto"             // pago de Costos que NO pasa por el banco (efectivo / negro)
         | "caja-chica-fondo"  // asignacion de un fondo de caja chica (y su devolucion)
         | "haberes-negro"     // el sueldo en negro, que no deja rastro en el extracto
-        | "mov-interno";      // pases entre cuentas, aportes y prestamos de la solapa Movimientos internos
+        | "mov-interno"       // pases entre cuentas, aportes y prestamos de la solapa Movimientos internos
+        | "viatico";          // viaticos eventuales y fijos (Caja chica y viaticos / acuerdo en Personal)
       amount: number;
       statusLabel: string;
       subcat?: string;
@@ -14622,6 +14661,26 @@ Escribi CERRAR para confirmar:`
       });
     });
 
+    // VIATICOS: los eventuales (anticipos, solapa Caja chica y viaticos) y los FIJOS del acuerdo de cada
+    // empleado (salen solos el dia de pago del sueldo). Renglon "Viaticos". Ver domain/viaticos.
+    visibleViaticos.forEach((v) => {
+      if (!v.fecha || !v.fecha.startsWith(String(analysisYear)) || !(Number(v.monto || 0) > 0)) return;
+      entries.push({
+        id: `viatico-${v.id}`,
+        date: v.fecha,
+        company: v.company,
+        title: `Viático · ${v.persona || "sin persona"}${v.motivo ? ` · ${v.motivo}` : ""}`,
+        kind: "viatico",
+        amount: Number(v.monto || 0),
+        statusLabel: "debito",
+        conceptKey: RENGLON_VIATICOS,
+        administration: v.administration === "negro" ? "negro" : "blanco",
+      });
+    });
+    viaticosFijos(visibleEmployees as any, todayIso(), paymentDateForPeriod)
+      .filter((e) => e.date.startsWith(String(analysisYear)))
+      .forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
+
     // MOVIMIENTOS INTERNOS (solapa): cada pase da dos patas (sale de una cuenta, entra en la otra) y
     // cada aporte / prestamo cae en el renglon de quien puso la plata. Ver domain/movimientosInternosCalendario.
     entradasMovimientosInternos({
@@ -14635,6 +14694,7 @@ Escribi CERRAR para confirmar:`
 
     return entries.sort((a, b) => a.date.localeCompare(b.date));
   }, [
+    visibleViaticos,
     visibleInternalTransfers,
     visibleCapitalEntries,
     cuentasGuardadas,
@@ -15738,7 +15798,21 @@ Escribi CERRAR para confirmar:`
           payments: j.payments || [],
           commissionPayments: j.commissionPayments || [],
         })) as any,
-        costEntries: costEntries.filter((e) => canAccessCompany(e.company)) as any,
+        costEntries: [
+          ...costEntries.filter((e) => canAccessCompany(e.company)),
+          // Viaticos eventuales: salen de su cuenta como un gasto (los fijos van con los haberes).
+          ...visibleViaticos.map((v) => ({
+            id: v.id,
+            company: v.company,
+            date: v.fecha,
+            amount: Number(v.monto || 0),
+            administration: v.administration,
+            source: "manual",
+            description: `Viático · ${v.persona}${v.motivo ? ` · ${v.motivo}` : ""}`,
+            supplier: "",
+            cuentaId: v.cuentaId,
+          })),
+        ] as any,
         financialItems: visibleFinancialItems as any,
         haberes: cashFlowEntries.filter((e) => e.id.startsWith("payroll-")) as any,
         pettyCashFunds: visiblePettyCashFunds as any,
@@ -18949,6 +19023,35 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "cajaChica" && (
         <CajaChicaTab
+          viaticosSlot={
+            <ViaticosPanel
+              viaticos={visibleViaticos}
+              empleados={visibleEmployees as any}
+              cuentas={cuentasSistema as any}
+              companyOptions={COMPANY_OPTIONS as any}
+              money={money}
+              onAdd={() =>
+                setViaticos((prev) => [
+                  {
+                    id: newId(),
+                    company: budget.company,
+                    persona: "",
+                    fecha: todayIso(),
+                    monto: 0,
+                    administration: "blanco",
+                    motivo: "",
+                    rendido: false,
+                    notas: "",
+                  },
+                  ...prev,
+                ])
+              }
+              onUpdate={(id, field, value) =>
+                setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, [field]: value } : v)))
+              }
+              onRemove={(id) => setViaticos((prev) => prev.filter((v) => v.id !== id))}
+            />
+          }
           cuentas={cuentasSistema}
           pettyCashBalanceSummary={pettyCashBalanceSummary}
           pettyOcrBusy={pettyOcrBusy}

@@ -35,6 +35,7 @@ const TAB_DE_FUENTE: Record<string, { tab: string; label: string }> = {
   "Pago a proveedores": { tab: "costos", label: "Pago a proveedores" },
   Comisiones: { tab: "aprobados", label: "Trabajos aprobados" },
   "Caja chica": { tab: "cajaChica", label: "Caja chica y viáticos" },
+  "Viáticos": { tab: "cajaChica", label: "Caja chica y viáticos" },
   Haberes: { tab: "personal", label: "Personal" },
   Seguros: { tab: "seguros", label: "Seguros" },
   Deudas: { tab: "cashflow", label: "Balance (deudas)" },

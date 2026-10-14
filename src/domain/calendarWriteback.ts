@@ -28,7 +28,14 @@ const PREFIJOS: Array<{ prefijo: string; permiso: PermisoDeRenglon }> = [
   // HABERES del mes (blanco o negro) de un empleado: monto, dia y circuito, que es lo que el
   // calendario pide. Se guarda en la liquidacion de ese mes del empleado (Personal). Borrar = ese mes
   // no se pago por ese circuito (queda en 0).
+  // Viatico FIJO: sale del acuerdo del empleado; se cambia en su ficha de Personal.
+  {
+    prefijo: "payroll-viatico-",
+    permiso: { editable: false, borrable: false, motivo: "es el viático fijo del acuerdo del empleado", donde: "la ficha del empleado en Personal" },
+  },
   { prefijo: "payroll-", permiso: { editable: true, borrable: true } },
+  // Viatico eventual: monto, dia y circuito (solapa Caja chica y viaticos).
+  { prefijo: "viatico-", permiso: { editable: true, borrable: true } },
 
   // Comision pagada de un trabajo: monto, dia y circuito. Es exactamente lo que el calendario pide.
   { prefijo: "comm-", permiso: { editable: true, borrable: true } },

@@ -285,6 +285,8 @@ export const CALENDAR_SECTIONS: CalSection[] = [
       { key: "rh_ler_medicina", label: "LER Medicina laboral" },
       { key: "rh_capacitaciones", label: "Capacitaciones" },
       { key: "rh_cartas_documento", label: "Cartas documento" },
+      // Viaticos eventuales y fijos (solapa Caja chica y viaticos / acuerdo en Personal).
+      { key: "rh_viaticos", label: "Viáticos" },
     ],
   },
   {

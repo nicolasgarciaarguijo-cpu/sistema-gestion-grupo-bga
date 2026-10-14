@@ -54,6 +54,8 @@ type CajaChicaTabProps = {
   visiblePettyCashFunds: PettyCashFund[];
   // Cuentas para elegir de donde sale el fondo y a donde vuelve lo que sobra (ver domain/cuentas.ts).
   cuentas?: any[];
+  // Viaticos (eventuales y fijos del personal): van arriba de todo.
+  viaticosSlot?: React.ReactNode;
   pettyCashSummary: any;
   totalResponsibleDebt: number;
   responsibleRendicion: any[];
@@ -88,6 +90,7 @@ type CajaChicaTabProps = {
 };
 
 export function CajaChicaTab({
+  viaticosSlot,
   cuentas,
   pettyCashBalanceSummary,
   pettyOcrBusy,
@@ -131,6 +134,7 @@ export function CajaChicaTab({
 
   return (
         <div style={styles.column}>
+          {viaticosSlot}
           <Panel span="full" title="Semaforo de caja chica">
             <SemaforoResumen
               items={[

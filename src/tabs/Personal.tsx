@@ -1963,6 +1963,50 @@ export function PersonalTab(props: PersonalTabProps) {
                               </select>
                             </Field>
                           )}
+                          {/* VIATICO FIJO del acuerdo: sale solo cada mes (renglon Viaticos del Calendario). */}
+                          <Field label="Viático fijo mensual · blanco ($)">
+                            <AmountInput
+                              style={styles.input}
+                              value={selectedEmployee.viaticoFijo?.blanco ?? 0}
+                              onChange={(n) =>
+                                updateEmployeeField(selectedEmployee.id, "viaticoFijo", {
+                                  blanco: n,
+                                  negro: selectedEmployee.viaticoFijo?.negro ?? 0,
+                                  desde: selectedEmployee.viaticoFijo?.desde || new Date().toISOString().slice(0, 7),
+                                })
+                              }
+                              placeholder="0 = sin viático fijo"
+                            />
+                          </Field>
+                          <Field label="Viático fijo mensual · negro ($)">
+                            <AmountInput
+                              style={styles.input}
+                              value={selectedEmployee.viaticoFijo?.negro ?? 0}
+                              onChange={(n) =>
+                                updateEmployeeField(selectedEmployee.id, "viaticoFijo", {
+                                  blanco: selectedEmployee.viaticoFijo?.blanco ?? 0,
+                                  negro: n,
+                                  desde: selectedEmployee.viaticoFijo?.desde || new Date().toISOString().slice(0, 7),
+                                })
+                              }
+                              placeholder="0 = sin viático fijo"
+                            />
+                          </Field>
+                          {selectedEmployee.viaticoFijo && (
+                            <Field label="Viático fijo desde (mes)">
+                              <input
+                                style={styles.input}
+                                type="month"
+                                value={selectedEmployee.viaticoFijo.desde || ""}
+                                onChange={(e) =>
+                                  updateEmployeeField(selectedEmployee.id, "viaticoFijo", {
+                                    ...selectedEmployee.viaticoFijo!,
+                                    desde: e.target.value,
+                                  })
+                                }
+                              />
+                            </Field>
+                          )}
                           <Field label="Horas nominales">
                             <input
                               style={styles.input}

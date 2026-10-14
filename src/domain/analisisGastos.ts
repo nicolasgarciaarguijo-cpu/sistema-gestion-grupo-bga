@@ -126,6 +126,7 @@ const FUENTE_DE_KIND: Record<string, string> = {
 };
 
 const fuenteDe = (e: EntradaCalendario): string => {
+  if (e.kind === "viatico") return "Viáticos";
   if (e.id.startsWith("payroll-")) return "Haberes";
   return FUENTE_DE_KIND[e.kind] || "Cash flow";
 };

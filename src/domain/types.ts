@@ -603,6 +603,21 @@ export type PurchaseInvoice = {
   fechaPagoPrevista?: string;
 };
 
+// VIATICO EVENTUAL: anticipo a una persona por un viaje o un trabajo (solapa Caja chica y viaticos).
+// Sale de una cuenta el dia del anticipo y despues se rinde. Ver domain/viaticos.ts.
+export type Viatico = {
+  id: number;
+  company: CompanyName;
+  persona: string;
+  fecha: string; // yyyy-mm-dd
+  monto: number;
+  administration: "blanco" | "negro";
+  motivo: string;
+  cuentaId?: string;
+  rendido?: boolean;
+  notas: string;
+};
+
 export type PettyCashFund = {
   id: number;
   company: CompanyName;
@@ -1321,6 +1336,9 @@ export type EmployeePayroll = {
 };
 
 export type Employee = {
+  // VIATICO FIJO del acuerdo: monto mensual en blanco y en negro, desde un mes ("yyyy-mm"). Sale solo
+  // cada mes el dia de pago del sueldo (ver domain/viaticos.ts).
+  viaticoFijo?: { blanco: number; negro: number; desde: string };
   id: number;
   company: CompanyName;
   legajo: string;
