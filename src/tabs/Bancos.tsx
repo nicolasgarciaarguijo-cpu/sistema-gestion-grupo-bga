@@ -84,6 +84,8 @@ type BancosTabProps = {
   knownBanks: string[];
   // Bloque de Tarjetas: se renderiza DENTRO de esta solapa, debajo del banco.
   tarjetasSlot?: React.ReactNode;
+  // Costo real de bancos y tarjetas por empresa: va arriba de todo.
+  costoSlot?: React.ReactNode;
 };
 
 export function BancosTab({
@@ -127,6 +129,7 @@ export function BancosTab({
   discardBankMirrorDraft,
   knownBanks,
   tarjetasSlot,
+  costoSlot,
 }: BancosTabProps) {
   const anchosExtracto = usePlanillaWidths("bancos.extracto", { label: 340, col: 124, colCompact: 94 });
   const anchosEspejo = usePlanillaWidths("bancos.espejo", { label: 340, col: 124, colCompact: 94 });
@@ -186,6 +189,7 @@ export function BancosTab({
 
   return (
     <>
+      {costoSlot}
 
       <Panel
         title="Importar extracto al espejo bancario (masivo)"

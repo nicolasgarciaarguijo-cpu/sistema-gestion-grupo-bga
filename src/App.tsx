@@ -334,6 +334,7 @@ import { summarizeContributions, type CapitalEntry } from "./domain/contribution
 import { egresoDeEntrada, egresoDePrevisto, fvEfectivo, type Egreso } from "./domain/analisisGastos";
 import { AnalisisGastos } from "./tabs/AnalisisGastos";
 import { FichaProveedor } from "./ui/FichaProveedor";
+import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
@@ -19236,6 +19237,16 @@ Escribi CERRAR para confirmar:`
           commitBankMirrorDraft={commitBankMirrorDraft}
           discardBankMirrorDraft={discardBankMirrorDraft}
           knownBanks={knownBanks}
+          costoSlot={
+            <CostoBancosTarjetas
+              bancos={visibleBankStatementEntries as any}
+              tarjetas={visibleCreditCards as any}
+              resumenes={visibleCreditCardStatements as any}
+              consumos={visibleCreditCardConsumptions as any}
+              companyOptions={COMPANY_OPTIONS as any}
+              money={money}
+            />
+          }
           tarjetasSlot={
             <TarjetasTab
               companyScope={tarjetasCompanyScope}
