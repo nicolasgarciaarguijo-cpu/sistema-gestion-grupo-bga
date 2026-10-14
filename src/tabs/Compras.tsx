@@ -851,8 +851,6 @@ export function ComprasTab({
                   tone="out"
                 />
               )}
-
-          {vista === "compras" && facturasSlot}
               <MiniMetric label="Caja chica blanco" value={money(pettyCashSummary.whiteTotal)} tone="out" />
               <MiniMetric label="Caja chica negro" value={money(pettyCashSummary.blackTotal)} tone="out" />
               <MiniMetric label="Del listado de ARCA" value={String(facturasDeArca.length)} />
@@ -869,6 +867,8 @@ export function ComprasTab({
             </div>
           </Panel>
           )}
+
+          {vista === "compras" && facturasSlot}
 
           {OCULTO && (
           <Panel
