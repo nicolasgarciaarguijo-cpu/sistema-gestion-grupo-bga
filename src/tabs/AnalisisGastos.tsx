@@ -108,7 +108,10 @@ export function AnalisisGastos({
       actions={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <button type="button" style={btn} onClick={() => setMes(sumarMes(mes, -1))}>◀</button>
-          <strong style={{ minWidth: 120, textAlign: "center" }}>{NOMBRE_MES[m - 1]} {y}</strong>
+          <strong style={{ minWidth: 120, textAlign: "center" }}>
+            {NOMBRE_MES[m - 1]} {y}
+            {m === 11 && <span style={{ color: "#7c3aed", fontSize: 11, marginLeft: 4 }} title="Salto de año: primer mes del ejercicio">◆ inicio del ejercicio</span>}
+          </strong>
           <button type="button" style={btn} onClick={() => setMes(sumarMes(mes, 1))}>▶</button>
           <select style={{ ...btn, padding: "4px 6px" }} value={empresa} onChange={(e) => setEmpresa(e.target.value)}>
             <option value="__ALL__">Todas las empresas</option>

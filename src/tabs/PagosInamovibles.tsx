@@ -254,11 +254,25 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                   </td>
                 </tr>
               ) : (
-                lista.map((i) => {
+                lista.map((i, idx) => {
                   const c = ESTADO_COLOR[i.estado];
                   const m = meta(i.company);
+                  // SALTO DE AÑO: si el pago anterior es de otro ejercicio (nov-oct), una linea que lo marca.
+                  const inicioEj = (iso: string) => {
+                    const y = Number(iso.slice(0, 4));
+                    return Number(iso.slice(5, 7)) >= 11 ? `${y}-11-01` : `${y - 1}-11-01`;
+                  };
+                  const salto = idx > 0 && inicioEj(lista[idx - 1].fechaLimite) !== inicioEj(i.fechaLimite);
                   return (
-                    <tr key={i.clave} onContextMenu={(ev) => abrirMenu(ev, i)} style={{ cursor: "context-menu" }}>
+                    <React.Fragment key={i.clave}>
+                    {salto && (
+                      <tr>
+                        <td colSpan={4} style={{ padding: "3px 6px", background: "#f5f3ff", color: "#6d28d9", fontWeight: 800, fontSize: 11.5, borderTop: "2px solid #7c3aed" }}>
+                          ◆ Salto de año · empieza el ejercicio {inicioEj(i.fechaLimite).slice(0, 4)}-{Number(inicioEj(i.fechaLimite).slice(0, 4)) + 1}
+                        </td>
+                      </tr>
+                    )}
+                    <tr onContextMenu={(ev) => abrirMenu(ev, i)} style={{ cursor: "context-menu" }}>
                       <td style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>
                         {fmtFecha(i.fechaLimite)}
                         {i.origen === "manual" && !i.fechaConfirmada && (
@@ -289,6 +303,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                         <span style={{ ...styles.statusPill, background: c.bg, color: c.fg }}>{i.texto}</span>
                       </td>
                     </tr>
+                    </React.Fragment>
                   );
                 })
               )}

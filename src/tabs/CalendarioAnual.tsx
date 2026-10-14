@@ -1744,8 +1744,16 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
   // Hoy: sombreamos su columna con dos líneas verticales ámbar (se ven aunque la fila tenga color de
   // fondo) para ubicar rápido lo que ya pasó (izquierda) y lo que se viene (derecha).
   const today = todayIso();
-  const hi = (iso: string): React.CSSProperties =>
-    iso === today ? { boxShadow: "inset 2px 0 0 #f59e0b, inset -2px 0 0 #f59e0b" } : {};
+  // SALTO DE AÑO (Nicolas, 2026-10-14): el primer dia del ejercicio lleva una linea violeta a lo largo
+  // de toda la planilla, para que se vea bien donde termina un ejercicio y empieza el otro.
+  const mesInicio = String(fiscalStartMonth || 11).padStart(2, "0");
+  const esInicioEjercicio = (iso: string) => iso.slice(5) === `${mesInicio}-01`;
+  const hi = (iso: string): React.CSSProperties => {
+    const sombras: string[] = [];
+    if (iso === today) sombras.push("inset 2px 0 0 #f59e0b", "inset -2px 0 0 #f59e0b");
+    if (esInicioEjercicio(iso)) sombras.push("inset 3px 0 0 #7c3aed");
+    return sombras.length ? { boxShadow: sombras.join(", ") } : {};
+  };
   // Al abrir (o cambiar de vista) posicionamos el scroll horizontal en la columna de hoy.
   // El scroll horizontal lo maneja UN solo efecto (el de mas arriba, que lleva al mes elegido y
   // centra hoy si el mes es el de hoy). Antes habia ademas un scrollIntoView con monthIdx entre sus
@@ -2076,15 +2084,23 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   <th
                     key={`d-${c.iso}`}
                     ref={c.iso === today ? todayCellRef : undefined}
-                    title={[c.iso === today ? "Hoy" : "", diaNoHabil(c.iso)?.texto || ""].filter(Boolean).join(" · ") || undefined}
-                    style={
-                      c.iso === today
+                    title={[
+                      c.iso === today ? "Hoy" : "",
+                      diaNoHabil(c.iso)?.texto || "",
+                      esInicioEjercicio(c.iso) ? `SALTO DE AÑO: empieza el ejercicio ${c.iso.slice(0, 4)}-${Number(c.iso.slice(0, 4)) + 1}` : "",
+                    ]
+                      .filter(Boolean)
+                      .join(" · ") || undefined}
+                    style={{
+                      ...(c.iso === today
                         ? { ...thDay, top: monthRowH, background: "#f59e0b", color: "#fff", fontWeight: 800 }
                         : diaNoHabil(c.iso)
                         ? { ...thDay, top: monthRowH, background: diaNoHabil(c.iso)!.color, color: "#fff", fontWeight: 700 }
-                        : { ...thDay, top: monthRowH }
-                    }
+                        : { ...thDay, top: monthRowH }),
+                      ...(esInicioEjercicio(c.iso) ? { boxShadow: "inset 3px 0 0 #7c3aed" } : {}),
+                    }}
                   >
+                    {esInicioEjercicio(c.iso) && <span style={{ color: "#7c3aed", fontWeight: 900, marginRight: 1 }}>◆</span>}
                     {c.day}
                     <span
                       onMouseDown={(ev) => startResize(ev, "day")}

@@ -91,6 +91,7 @@ export function CostoBancosTarjetas({
           <button type="button" style={btn} onClick={() => setMes(sumarMes(mes, modo === "mes" ? -1 : -12))}>◀</button>
           <strong style={{ minWidth: 130, textAlign: "center" }}>
             {modo === "mes" ? `${NOMBRE_MES[m - 1]} ${y}` : `nov ${inicioEj.slice(0, 4)} – oct ${finEj.slice(0, 4)}`}
+            {modo === "mes" && m === 11 && <span style={{ color: "#7c3aed", fontSize: 11, marginLeft: 4 }} title="Salto de año: primer mes del ejercicio">◆</span>}
           </strong>
           <button type="button" style={btn} onClick={() => setMes(sumarMes(mes, modo === "mes" ? 1 : 12))}>▶</button>
         </span>
