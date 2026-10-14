@@ -79,6 +79,35 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Es el corazon operativo: cada trabajo vendido vive aca con su precio, su avance, su facturacion y su cobranza. Desde este trabajo se alimentan Facturacion, Fabricacion y los reportes.",
     sections: [
       {
+        heading: "Estado de cada cobro: realizado, estimado o inamovible",
+        blocks: [
+          { type: "p", text: "Cada cobro de un trabajo tiene un estado. REALIZADO es plata que entró y suma. ESTIMADO (violeta) e INAMOVIBLE (rojo) son la fecha en que se espera cobrar: se ven en la ficha y en el Calendario con '≈', pero NO suman en el cobrado, ni en la planilla, ni en la plata disponible." },
+          { type: "steps", items: ["En la ficha del trabajo, en Cobranzas, tocá '+ Cobro estimado' (o 'Agregar cobranza' para uno ya cobrado).", "Arriba de cada cobro elegí el estado: COBRO REALIZADO, COBRO ESTIMADO o COBRO INAMOVIBLE.", "Cuando la plata entra, cambialo a REALIZADO y poné la fecha real: recién ahí empieza a sumar."] },
+          { type: "tip", text: "Desde el Calendario: click derecho sobre la celda violeta o roja del trabajo → 'Ya se cobró este día'." }
+        ],
+      },
+      {
+        heading: "💾 Guardar este trabajo",
+        blocks: [
+          { type: "p", text: "El botón verde de arriba de la ficha sube el trabajo al servidor en el momento (sin esperar el guardado automático) y lo verifica releyéndolo: facturas, cobros, adicionales, descuentos y comisiones." },
+          { type: "steps", items: ["Cargá lo que necesites en la ficha.", "Tocá '💾 Guardar este trabajo'.", "Esperá el mensaje verde 'Guardado y verificado en el servidor' con la hora y la cantidad de facturas, cobros y adicionales."] },
+          { type: "warn", text: "Si sale en rojo, NO cierres ni recargues la página: volvé a apretar el botón. Si sigue en rojo, avisá antes de seguir cargando." }
+        ],
+      },
+      {
+        heading: "A cobrar y el IVA de los adicionales",
+        blocks: [
+          { type: "p", text: "A cobrar = precio neto + adicionales (blancos y negros) − descuentos + IVA facturado + IVA de los adicionales blancos que todavía no se facturaron. El IVA de cada adicional se cuenta una sola vez: si ya se facturó, va en el IVA de la factura; si no, aparece como 'IVA adicionales sin facturar'." },
+          { type: "tip", text: "Si un adicional se cobra en negro, marcalo como NEGRO: no lleva IVA. Un descuento cargalo en Descuentos, no como adicional negativo." }
+        ],
+      },
+      {
+        heading: "Trabajo terminado",
+        blocks: [
+          { type: "p", text: "Un trabajo COMPLETO y FINALIZADO (todo cobrado y comisión paga) se ve celeste y tachado con una línea suave en la lista. En el Calendario, su renglón desaparece el mes siguiente a su último movimiento. Si figura finalizado pero le falta algo, se ve en rojo con ⚠." }
+        ],
+      },
+      {
         heading: "La lista y la ficha del trabajo",
         blocks: [
           {
@@ -240,6 +269,23 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Es el tablero financiero. Aca ves el balance de facturacion y cobranza, el estado de resultados y el cash flow, todo por empresa y por periodo (año fiscal o mes).",
     sections: [
       {
+        heading: "Retiros societarios",
+        blocks: [
+          { type: "p", text: "Lo que retiran los socios. No es un gasto de funcionamiento: sale del resultado. Cada retiro sale de su cuenta y aparece en el Calendario en EGRESOS · RETIROS SOCIETARIOS." },
+          { type: "steps", items: ["En Balance, en el bloque 'Retiros societarios', tocá '+ Retiro'.", "Completá fecha, empresa, socio, monto, moneda, blanco o negro, de qué cuenta sale y el motivo.", "Arriba ves lo retirado en el período y 'resultado − retiros'; abajo, los totales por socio."] },
+          { type: "tip", text: "También se carga desde el Calendario, en el renglón 'Retiros de socios' (te pide el socio)." }
+        ],
+      },
+      {
+        heading: "Cierre de ejercicio con arqueo",
+        blocks: [
+          { type: "p", text: "El ejercicio va de noviembre a octubre. Al cerrarlo, el sistema pide la plata REAL de cada cuenta (cada banco, efectivo blanco, efectivo negro, en pesos y en dólares, y las cajas por persona). El ejercicio nuevo arranca con esa plata contada." },
+          { type: "steps", items: ["Balance → Cierre de ejercicio → Cerrar (solo el administrador, y con la carpeta del sistema vinculada).", "En la ventana del arqueo, cargá en cada cuenta lo que hay de verdad al último día del ejercicio.", "Si no coincide con el sistema, elegí el motivo: retiro de socios (falta plata), aporte de socios (sobra), diferencia de arqueo u otro, con su explicación.", "Confirmá el arqueo. El sistema guarda todo en la carpeta y pide escribir CERRAR."] },
+          { type: "warn", text: "Un retiro o un aporte del arqueo queda asentado solo (en Retiros societarios o en Movimientos internos) con fecha del último día del ejercicio." },
+          { type: "tip", text: "El año cerrado se sigue viendo entero, pero solo el superadmin puede editarlo. En los calendarios, una línea violeta marca el salto de año." }
+        ],
+      },
+      {
         heading: "El selector de arriba (empresa y periodo)",
         blocks: [
           {
@@ -288,11 +334,33 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
   },
   {
     tabKey: "compras",
-    title: "Compras",
+    title: "Compras y análisis de gastos",
     emoji: "🛒",
     intro:
-      "Cargas las facturas de compra y ves que material falta comprar para los trabajos en curso.",
+      "Todos los pagos del sistema analizados por grupo, las facturas de compra con su pago, las cuentas corrientes y la ficha de cada proveedor.",
     sections: [
+      {
+        heading: "Análisis de gastos",
+        blocks: [
+          { type: "p", text: "Arriba de la solapa están TODOS los egresos del sistema, cargados en la solapa que sea, agrupados en: gastos de personal, gastos empresariales (IVA, impuestos), funcionamiento, materiales e insumos, bancos y tarjetas, deudas y créditos, seguros, caja chica y viáticos. Blanco y negro siempre separados; dólares aparte." },
+          { type: "steps", items: ["Elegí el mes y la empresa.", "Tocá un grupo para ver sus renglones, y un renglón para ver cada pago (fecha, de qué solapa vino, B/N, F/V y estado).", "La última columna, 'Previsto', es lo que viene (programado, estimado, inamovible): no suma en los totales."] },
+          { type: "tip", text: "Click derecho sobre un pago → 'Ir a' la solapa donde se cargó." }
+        ],
+      },
+      {
+        heading: "Fijo o variable, con candado",
+        blocks: [
+          { type: "p", text: "El tipo de gasto (el renglón) dice si es FIJO o VARIABLE. Con el candado 🔒, todos los pagos de ese tipo quedan así; sin candado es una sugerencia y cada pago puede tener el suyo." },
+          { type: "steps", items: ["Click derecho sobre un renglón (en el Análisis o en el Calendario anual) → Fijo o Variable.", "Para fijarlo para todos sus pagos: '🔒 Candado'.", "Para un pago puntual (si su tipo no tiene candado): click derecho sobre el pago → 'Este pago es fijo / variable'."] }
+        ],
+      },
+      {
+        heading: "Ficha del proveedor",
+        blocks: [
+          { type: "p", text: "Click derecho sobre una cuenta corriente o una factura abre la ficha: datos, tipo de gasto con candado, condición de pago habitual, cuenta corriente, próximos pagos e historial." },
+          { type: "bullets", items: ["Tipo de gasto con 🔒: cada factura y cada pago nuevo del proveedor quedan clasificados solos.", "Condición de pago (contado, a N días o el día X de cada mes): cada factura sin pagar toma su fecha de pago y aparece en Pagos programados.", "Próximos pagos: podés cambiar la fecha de pago de cada factura ahí mismo."] }
+        ],
+      },
       {
         heading: "Cargar una factura de compra",
         blocks: [
@@ -343,11 +411,25 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
   },
   {
     tabKey: "cajaChica",
-    title: "Caja chica",
+    title: "Caja chica y viáticos",
     emoji: "💵",
     intro:
       "Manejas los fondos de caja chica de cada empresa y sus gastos del dia a dia. Es el circuito por donde suele moverse el negro (incluido el pago a empleados temporales).",
     sections: [
+      {
+        heading: "Viáticos eventuales",
+        blocks: [
+          { type: "p", text: "Un anticipo a una persona por un viaje o un trabajo. Sale de la cuenta elegida el día del anticipo y va al renglón 'Viáticos' del Calendario (gasto de personal)." },
+          { type: "steps", items: ["Arriba de la solapa tocá '+ Viático'.", "Completá fecha, empresa, persona, motivo, monto, blanco o negro y de qué cuenta sale.", "Cuando la persona rinde, tildá 'Rendido'. Los que faltan rendir se ven en amarillo."] }
+        ],
+      },
+      {
+        heading: "Viáticos fijos",
+        blocks: [
+          { type: "p", text: "Si un viático es fijo, es parte del acuerdo del empleado: se carga en su ficha de Personal (viático fijo mensual blanco y negro, y desde qué mes) y sale solo cada mes, el día de pago del sueldo." },
+          { type: "tip", text: "La tabla 'Viáticos fijos del personal' muestra quién lo tiene y el total mensual. Para cambiarlo, andá a la ficha del empleado." }
+        ],
+      },
       {
         heading: "Cajas (abiertas y cerradas)",
         blocks: [
@@ -647,6 +729,12 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Los empleados, su liquidacion mensual, las escalas salariales y las provisiones (EPP, insumos, examenes, capacitaciones) con su vigencia. Aca tambien sale el costo hora hombre que se usa para cotizar.",
     sections: [
       {
+        heading: "Viático fijo en el acuerdo",
+        blocks: [
+          { type: "steps", items: ["En la ficha del empleado, cargá 'Viático fijo mensual · blanco' y/o '· negro'.", "Elegí desde qué mes corre.", "Sale solo cada mes en el renglón 'Viáticos' del Calendario, hasta la baja del empleado."] }
+        ],
+      },
+      {
         heading: "Alta de empleado (convenio o temporal)",
         blocks: [
           {
@@ -867,6 +955,95 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
               },
             ],
           },
+        ],
+      },
+    ],
+  },
+  {
+    tabKey: "calendarioAnual",
+    title: "Calendario anual · cash flow",
+    emoji: "📅",
+    intro:
+      "La planilla de cash flow del sistema: cada renglón está vinculado con su solapa, y lo que se carga en un lado aparece en el otro.",
+    sections: [
+      {
+        heading: "Cargar desde la planilla",
+        blocks: [
+          { type: "p", text: "Tocá el día en un renglón para cargar. Lo cargado va a la solapa que corresponde: un cobro al trabajo, un pago a Pago a proveedores, un pase o préstamo a Movimientos internos, una colocación o un rescate a Inversiones, un retiro a Retiros societarios." },
+          { type: "tip", text: "Click derecho sobre un número: editar, borrar o mover. Lo que vive en otra solapa se edita allá (te avisa)." }
+        ],
+      },
+      {
+        heading: "Secciones de ingresos y egresos",
+        blocks: [
+          { type: "bullets", items: ["TRABAJOS APROBADOS · COBRANZAS: una fila por trabajo; los cobros estimados (violeta) e inamovibles (rojo) se ven con '≈' y no suman.", "MOVIMIENTOS INTERNOS (ingreso y egreso): préstamos, aportes y pases entre cuentas. Un pase aparece en las dos puntas.", "INVERSIONES (ingreso y egreso): colocación y rescate.", "RETIROS SOCIETARIOS (egreso).", "OTROS INGRESOS: reintegro de ART."] }
+        ],
+      },
+      {
+        heading: "Pagos programados",
+        blocks: [
+          { type: "p", text: "Arriba de la planilla: el calendario de lo que se viene (tarjetas, cuotas, seguros, sueldos, facturas de proveedores, vencimientos)." },
+          { type: "steps", items: ["Click derecho sobre un pago → elegí su estado: programado (verde agua), estimado (violeta) o inamovible (rojo).", "Cuando se paga, marcalo pagado o subí el comprobante."] }
+        ],
+      },
+      {
+        heading: "Salto de año",
+        blocks: [
+          { type: "p", text: "Una línea violeta (◆) marca el 1 de noviembre: ahí empieza el ejercicio nuevo. En Pagos programados, un separador marca el cambio de ejercicio." }
+        ],
+      },
+    ],
+  },
+  {
+    tabKey: "movimientosInternos",
+    title: "Movimientos internos",
+    emoji: "↔️",
+    intro:
+      "La plata que se mueve entre cuentas propias o entre las empresas del grupo, y la que ponen o prestan los socios.",
+    sections: [
+      {
+        heading: "Pases entre cuentas",
+        blocks: [
+          { type: "steps", items: ["Agregá un pase y elegí el tipo: efectivo al banco, banco al efectivo, banco a banco o entre cajas.", "Elegí las dos cuentas y el monto.", "En el Calendario sale de una cuenta (egreso) y entra en la otra (ingreso): el neto de la empresa no cambia."] }
+        ],
+      },
+      {
+        heading: "Préstamos y aportes",
+        blocks: [
+          { type: "p", text: "Cada aporte o préstamo cae en el renglón de quien puso la plata (Nicolás, Gustavo, banco, la otra empresa del grupo). Las devoluciones van a egresos." },
+          { type: "tip", text: "También se cargan desde el Calendario, en los renglones de MOVIMIENTOS INTERNOS (te pide las cuentas o quién puso la plata)." }
+        ],
+      },
+    ],
+  },
+  {
+    tabKey: "bancos",
+    title: "Bancos y tarjetas",
+    emoji: "🏦",
+    intro:
+      "El extracto del banco, las tarjetas y el costo real de cada cuenta y tarjeta.",
+    sections: [
+      {
+        heading: "Costo real de bancos y tarjetas",
+        blocks: [
+          { type: "p", text: "Arriba de la solapa: por empresa, cada cuenta y cada tarjeta con sus comisiones, impuestos, intereses y consumos, en el mes o en el ejercicio." },
+          { type: "bullets", items: ["Cuentas: salen de los débitos del extracto según su renglón (el pago de la tarjeta y las cuotas de créditos no cuentan como costo bancario).", "Tarjetas: por cierre de resumen, con sus cargos y sus consumos por tipo de gasto; avisa si lo cargado no coincide con el total del resumen.", "'⚠ revisar': el texto del banco no parece de ese renglón (por ejemplo, sueldos cargados como impuesto). Corregí el renglón del movimiento."] }
+        ],
+      },
+    ],
+  },
+  {
+    tabKey: "inversiones",
+    title: "Inversiones",
+    emoji: "📈",
+    intro:
+      "Donde se pone plata a trabajar (plazo fijo, FCI, cauciones...), con su crecimiento y su vínculo con el cash flow.",
+    sections: [
+      {
+        heading: "Colocación y rescate",
+        blocks: [
+          { type: "steps", items: ["Agregá la inversión con fecha de inicio, capital, moneda, blanco o negro y de qué cuenta sale: la plata sale de esa cuenta (EGRESOS · INVERSIONES).", "Actualizá el valor actual cuando quieras.", "Al rescatarla, pasala a Cerrada con la fecha de fin y lo que volvió: entra en INGRESOS · INVERSIONES, en el renglón de su tipo."] },
+          { type: "tip", text: "Desde el Calendario: cargar en 'Colocación en inversiones' crea la inversión; cargar en un renglón de rescate te pide cuál se rescata y la cierra." }
         ],
       },
     ],
