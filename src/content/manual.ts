@@ -442,23 +442,23 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
   },
   {
     tabKey: "cajaChica",
-    title: "Caja chica y viáticos",
+    title: "Caja chica",
     emoji: "💵",
     intro:
-      "Manejas los fondos de caja chica de cada empresa y sus gastos del dia a dia. Es el circuito por donde suele moverse el negro (incluido el pago a empleados temporales).",
+      "La solapa muestra solo el listado de las cajas chicas asignadas y los tipos de caja. Todo lo de cada persona está en su ficha: click derecho sobre el responsable. La caja no va al cash flow; sus gastos sí, como pago a cada proveedor.",
     sections: [
       {
-        heading: "Rendir un gasto (como un pago a proveedor)",
+        heading: "Asignar una caja chica",
         blocks: [
-          { type: "p", text: "La caja chica NO figura en el cash flow: asignar o devolver un fondo es plata que pasa a la caja de una persona. Al cash flow van los GASTOS que se rinden, como pago al proveedor, en el grupo de costo elegido. Arriba, junto a los bancos, se ve cuánto hay asignado en cajas chicas." },
-          { type: "steps", items: ["En la caja de la persona tocá '+ Rendir gasto'.", "Elegí el proveedor habitual o escribí uno nuevo (se le abre ficha).", "Cargá fecha, monto, blanco/negro, comprobante y dónde va en el cash flow (grupo de costo).", "Si el proveedor tiene candado, el gasto va siempre a su grupo."] }
+          { type: "steps", items: ["Tocá '+ Nueva caja chica'.", "Mirá el resumen de fondos de arriba (asignado, utilizado y lo que resta, blanco y negro).", "Elegí responsable, tipo de caja (General, Viáticos u otro), empresa, fecha, monto en blanco y en negro, y de qué cuenta sale.", "Guardá: aparece en el listado con lo utilizado y lo que resta."] },
+          { type: "tip", text: "Los tipos de caja se agregan, renombran o quitan en el bloque 'Tipos de cajas chicas' (click derecho sobre el tipo). Los viáticos son un tipo de caja chica." }
         ],
       },
       {
-        heading: "Viáticos eventuales",
+        heading: "La ficha del responsable",
         blocks: [
-          { type: "p", text: "Un anticipo a una persona por un viaje o un trabajo. Sale de la cuenta elegida el día del anticipo y va al renglón 'Viáticos' del Calendario (gasto de personal)." },
-          { type: "steps", items: ["Arriba de la solapa tocá '+ Viático'.", "Completá fecha, empresa, persona, motivo, monto, blanco o negro y de qué cuenta sale.", "Cuando la persona rinde, tildá 'Rendido'. Los que faltan rendir se ven en amarillo."] }
+          { type: "p", text: "Click derecho sobre el nombre del responsable abre su ficha: el historial de sus cajas (click derecho para editar, cerrar, reabrir o quitar una), sus rendiciones, en qué se gastó por grupo de costo, sus viáticos anteriores y las facturas que pagó de su bolsillo." },
+          { type: "steps", items: ["'+ Rendir gasto' o '📷 Leer ticket o factura' (el lector precarga fecha, monto y proveedor).", "Elegí el proveedor habitual o uno nuevo (se le abre ficha) y el grupo de costo (si el proveedor tiene candado, va a su grupo).", "Si es en blanco, cargá la factura (letra, número, neto e IVA): queda en Compras y en la ficha del proveedor, pagada por la caja chica.", "El pago va al cash flow como pago al proveedor."] }
         ],
       },
       {

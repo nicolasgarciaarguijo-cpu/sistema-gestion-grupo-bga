@@ -636,11 +636,20 @@ export type Viatico = {
   notas: string;
 };
 
+// TIPOS DE CAJA CHICA (2026-10-14): ordenan las cajas y sus gastos (General, Viaticos, Obra...). Al
+// asignar una caja se elige su tipo. Los viaticos son un tipo de caja chica, no una seccion aparte.
+export type PettyCashType = {
+  id: number;
+  company: CompanyName;
+  nombre: string;
+};
+
 export type PettyCashFund = {
   id: number;
   company: CompanyName;
   description: string;
   responsible: string;
+  tipo?: string; // nombre del tipo de caja chica (ausente = "General")
   // Plata que se le entrega al responsable. Regla del usuario (2026-08-26): con la ASIGNACION la
   // plata ya se considera gastada, asi que este es el EGRESO que ve el Calendario anual. Los gastos
   // sueltos del fondo son el rinde y NO van al calendario (si fueran, se gastaria dos veces).

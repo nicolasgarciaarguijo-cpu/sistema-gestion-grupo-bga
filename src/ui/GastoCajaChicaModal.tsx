@@ -19,6 +19,11 @@ export type GastoCajaForm = {
   description: string;
   invoiceNumber: string;
   notes: string;
+  // Factura (solo blanco): queda en Compras y en la ficha del proveedor, pagada por la caja chica.
+  receiptLetter?: string;
+  net21?: number;
+  vat?: number;
+  attachmentName?: string; // archivo leido por el lector de tickets
 };
 
 type ProveedorOpt = {
@@ -80,6 +85,7 @@ export function GastoCajaChicaModal({
   if (!g.supplier.trim()) faltan.push("el proveedor");
   if (!g.date) faltan.push("la fecha");
   if (!(Number(g.amount) > 0)) faltan.push("el monto");
+  if (g.administration === "blanco" && !g.invoiceNumber.trim()) faltan.push("el número de factura (blanco = con factura; si no tiene, es negro)");
 
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4600, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "30px 12px" }}>
@@ -153,15 +159,32 @@ export function GastoCajaChicaModal({
               <select
                 style={{ ...input, background: g.administration === "negro" ? "#1f2937" : "#fff", color: g.administration === "negro" ? "#fff" : "#0f172a" }}
                 value={g.administration}
-                onChange={(e) => set({ administration: e.target.value as any })}
+                onChange={(e) => set(e.target.value === "negro" ? { administration: "negro", invoiceNumber: "" } : { administration: "blanco" })}
               >
                 <option value="blanco">Blanco (con factura)</option>
                 <option value="negro">Negro (sin factura)</option>
               </select>
             </label>
-            <label style={lbl}>Factura / comprobante
-              <input style={input} value={g.invoiceNumber} onChange={(e) => set({ invoiceNumber: e.target.value })} />
-            </label>
+            {g.administration === "blanco" && (
+              <>
+                <label style={lbl}>Letra
+                  <select style={input} value={g.receiptLetter || "B"} onChange={(e) => set({ receiptLetter: e.target.value })}>
+                    {["A", "B", "C", "M"].map((l) => (
+                      <option key={l} value={l}>{l}</option>
+                    ))}
+                  </select>
+                </label>
+                <label style={lbl}>Número de factura
+                  <input style={input} value={g.invoiceNumber} placeholder="0001-00001234" onChange={(e) => set({ invoiceNumber: e.target.value })} />
+                </label>
+                <label style={lbl}>Neto gravado
+                  <input style={input} type="number" value={g.net21 || ""} onChange={(e) => set({ net21: Number(e.target.value) || 0 })} />
+                </label>
+                <label style={lbl}>IVA
+                  <input style={input} type="number" value={g.vat || ""} onChange={(e) => set({ vat: Number(e.target.value) || 0 })} />
+                </label>
+              </>
+            )}
             <label style={{ ...lbl, gridColumn: "span 2" }}>
               Dónde va en el cash flow (grupo de costo)
               <select
@@ -188,7 +211,11 @@ export function GastoCajaChicaModal({
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <div style={{ fontSize: 12, color: faltan.length ? "#b45309" : "#166534" }}>
-            {faltan.length ? `Falta: ${faltan.join(", ")}.` : "Va al cash flow en EGRESOS como pago a este proveedor (no como caja chica)."}
+            {faltan.length
+              ? `Falta: ${faltan.join(", ")}.`
+              : g.administration === "blanco"
+              ? "La factura queda en Compras y en la ficha del proveedor, pagada por la caja chica. El pago va al cash flow como pago a este proveedor."
+              : "Va al cash flow en EGRESOS como pago a este proveedor (no como caja chica)."}
           </div>
           <div style={{ display: "flex", gap: 8 }}>
             {g.id != null && onBorrar && (

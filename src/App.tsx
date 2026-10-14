@@ -199,10 +199,13 @@ import { segurosPrevisionMensual } from "./domain/segurosCalendar";
 import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocuments";
 import { workingDaysInMonth, reciboNegroAmount, paymentDateForPeriod } from "./domain/recibo";
 import { ComprasTab } from "./tabs/Compras";
-import { CajaChicaTab } from "./tabs/CajaChica";
 import { DesendeudamientoTab, type PagoCuotaForm, type OtraDeuda } from "./tabs/Desendeudamiento";
 import { camposLegacy, cuotasDeDeuda, cuotasPendientes } from "./domain/desendeudamiento";
 import { GastoCajaChicaModal, type GastoCajaForm } from "./ui/GastoCajaChicaModal";
+import { CajaChicaListado } from "./tabs/CajaChicaListado";
+import { FichaCajaChica } from "./ui/FichaCajaChica";
+import { CajaChicaModal, type CajaForm } from "./ui/CajaChicaModal";
+import { TIPOS_CAJA_BASE, mismaPersona } from "./domain/cajaChicaFicha";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
@@ -264,6 +267,7 @@ import type {
   PurchaseInvoice,
   PettyCashFund,
   PettyCashExpense,
+  PettyCashType,
   Viatico,
   RetiroSocietario,
   DebtPlan,
@@ -343,7 +347,6 @@ import { FacturaCompraModal, type FacturaForm } from "./ui/FacturaCompraModal";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { ProveedoresPanel } from "./tabs/Proveedores";
 import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
-import { ViaticosPanel } from "./tabs/Viaticos";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
 import { entradasRetiros, RENGLON_RETIROS } from "./domain/retirosSocietarios";
@@ -1760,6 +1763,7 @@ type PersistedAppStateData = {
   pettyCashFunds: PettyCashFund[];
   pettyCashExpenses: PettyCashExpense[];
   viaticos?: Viatico[];
+  pettyCashTypes?: PettyCashType[];
   debtPlans: DebtPlan[];
   bankStatementEntries: BankStatementEntry[];
   capitalEntries: CapitalEntry[];
@@ -1922,7 +1926,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "caja-chica",
     label: "Caja chica y viáticos",
-    fields: ["pettyCashFunds", "pettyCashExpenses", "viaticos"] as const,
+    fields: ["pettyCashFunds", "pettyCashExpenses", "viaticos", "pettyCashTypes"] as const,
   },
   {
     key: "stock-costos",
@@ -2959,6 +2963,7 @@ export default function App() {
   const [pettyCashFunds, setPettyCashFunds] = useState<PettyCashFund[]>(defaultPettyCashFunds);
   const [pettyCashExpenses, setPettyCashExpenses] = useState<PettyCashExpense[]>(defaultPettyCashExpenses);
   const [viaticos, setViaticos] = useState<Viatico[]>([]);
+  const [pettyCashTypes, setPettyCashTypes] = useState<PettyCashType[]>([]);
   const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
   const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>(defaultCapitalEntries);
@@ -3997,6 +4002,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     prune(pettyCashFunds, setPettyCashFunds);
     prune(pettyCashExpenses, setPettyCashExpenses);
     prune(viaticos, setViaticos);
+    prune(pettyCashTypes, setPettyCashTypes);
     prune(retirosSocietarios, setRetirosSocietarios);
     prune(debtPlans, setDebtPlans);
     prune(bankStatementEntries, setBankStatementEntries);
@@ -4029,6 +4035,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     pettyCashFunds,
     pettyCashExpenses,
     viaticos,
+    pettyCashTypes,
     retirosSocietarios,
     debtPlans,
     bankStatementEntries,
@@ -9448,6 +9455,7 @@ Escribi CERRAR para confirmar:`
     pettyCashFunds: pettyCashFunds.map((item) => ({ ...item })),
     pettyCashExpenses: pettyCashExpenses.map((item) => ({ ...item, date: stampDate(item.date) })),
     viaticos: viaticos.map((item) => ({ ...item })),
+    pettyCashTypes: pettyCashTypes.map((item) => ({ ...item })),
     debtPlans: debtPlans.map((item) => ({ ...item })),
     bankStatementEntries: bankStatementEntries.map((item) => ({
       ...item,
@@ -9699,6 +9707,7 @@ Escribi CERRAR para confirmar:`
     );
     setPettyCashExpenses(keepAccessibleByCompany(data.pettyCashExpenses || defaultPettyCashExpenses).map((item) => ({ ...item })));
     setViaticos(keepAccessibleByCompany(data.viaticos || []).map((item) => ({ ...item })));
+    setPettyCashTypes(keepAccessibleByCompany(data.pettyCashTypes || []).map((item) => ({ ...item })));
     setDebtPlans(keepAccessibleByCompany(data.debtPlans || defaultDebtPlans).map((item) => ({ ...item })));
     setBankStatementEntries(
       keepAccessibleByCompany(data.bankStatementEntries || defaultBankStatementEntries).map((item) => ({ ...item }))
@@ -12102,6 +12111,7 @@ Escribi CERRAR para confirmar:`
     pettyCashFunds,
     pettyCashExpenses,
     viaticos,
+    pettyCashTypes,
     retirosSocietarios,
     debtPlans,
     bankStatementEntries,
@@ -14217,12 +14227,35 @@ Escribi CERRAR para confirmar:`
         };
       })
       .filter(Boolean) as LedgerPayment[];
-    return [...gastos, ...bancos];
+    // Y el GASTO DE CAJA CHICA que paga una factura (la factura queda en Compras; la plata salio de la caja).
+    const facturaDeGastoCaja = new Map(
+      purchaseInvoicesWithBankLink.filter((i) => i.pettyCashExpenseId != null).map((i) => [Number(i.pettyCashExpenseId), i])
+    );
+    const caja = visiblePettyCashExpenses
+      .filter((g) => facturaDeGastoCaja.has(g.id))
+      .map((g) => {
+        const inv = facturaDeGastoCaja.get(g.id)!;
+        return {
+          id: g.id,
+          kind: "gasto" as const,
+          company: String(g.company),
+          supplier: inv.supplier || g.supplier || "",
+          taxId: inv.taxId || "",
+          date: g.date || "",
+          amount: Number(g.amount || 0),
+          administration: (g.administration === "negro" ? "negro" : "blanco") as "blanco" | "negro",
+          description: "Pagada con caja chica",
+          bankEntryId: null,
+        };
+      });
+    return [...gastos, ...bancos, ...caja];
   }, [
     costEntries,
     suppliers,
     visibleBankStatementEntries,
     purchaseLedgerInvoices,
+    purchaseInvoicesWithBankLink,
+    visiblePettyCashExpenses,
     allowedCompaniesForSession,
     effectiveIsAdmin,
   ]);
@@ -16456,6 +16489,9 @@ Escribi CERRAR para confirmar:`
   const [facturaModal, setFacturaModal] = useState<FacturaForm | null>(null);
   // Ventana para rendir un gasto de caja chica (nuevo o existente).
   const [gastoCajaModal, setGastoCajaModal] = useState<GastoCajaForm | null>(null);
+  // Ficha de caja chica abierta (nombre del responsable) y ventana de nueva / editar caja.
+  const [fichaCaja, setFichaCaja] = useState<string | null>(null);
+  const [cajaForm, setCajaForm] = useState<CajaForm | null>(null);
 
   const agendaInamoviblesItems = useMemo<ItemInamovible[]>(() => {
     const desdeD = new Date();
@@ -19064,11 +19100,16 @@ Escribi CERRAR para confirmar:`
         description: exp.description || "",
         invoiceNumber: exp.invoiceNumber || "",
         notes: exp.notes || "",
+        ...(() => {
+          const inv = purchaseInvoices.find((i) => i.pettyCashExpenseId === exp.id);
+          return inv ? { receiptLetter: inv.receiptLetter, net21: inv.net21, vat: inv.vat, taxId: inv.taxId || prov?.taxId || "" } : {};
+        })(),
       });
       return;
     }
+    const delResponsable = fichaCaja ? visiblePettyCashFunds.filter((x) => mismaPersona(x.responsible, fichaCaja)) : visiblePettyCashFunds;
     const fondo =
-      typeof fundId === "number" ? pettyCashFunds.find((x) => x.id === fundId) : visiblePettyCashFunds.find((x) => !x.closed) || visiblePettyCashFunds[0];
+      typeof fundId === "number" ? pettyCashFunds.find((x) => x.id === fundId) : delResponsable.find((x) => !x.closed) || delResponsable[0];
     setGastoCajaModal({
       fundId: fondo?.id ?? null,
       company: fondo?.company || budget.company,
@@ -19105,9 +19146,47 @@ Escribi CERRAR para confirmar:`
         notes: g.notes,
         costGroup: grupo?.nombre || "",
         costGroupKind: grupo?.tipo,
+        ...(g.attachmentName ? { attachmentName: g.attachmentName } : {}),
       };
       return previo ? prev.map((x) => (x.id === id ? gasto : x)) : [gasto, ...prev];
     });
+    // FACTURA: un gasto en blanco tiene factura. Queda en Compras y en la ficha del proveedor, pagada por
+    // la caja chica (no es deuda). Si pasa a negro, la factura se quita.
+    const facturaPrevia = purchaseInvoices.find((i) => i.pettyCashExpenseId === id);
+    if (g.administration === "blanco" && g.invoiceNumber.trim()) {
+      const total = Number(g.amount || 0);
+      const net = Number(g.net21 || 0);
+      const iva = Number(g.vat || 0);
+      const fondo = pettyCashFunds.find((x) => x.id === g.fundId);
+      const factura: PurchaseInvoice = {
+        ...(facturaPrevia || ({} as PurchaseInvoice)),
+        id: facturaPrevia?.id ?? newId(),
+        company: g.company as CompanyName,
+        administration: "blanco",
+        source: "caja_chica",
+        pettyCashExpenseId: id,
+        supplier: g.supplier.trim(),
+        taxId: g.taxId.trim(),
+        receiptKind: "Factura",
+        receiptLetter: g.receiptLetter || "B",
+        invoiceNumber: g.invoiceNumber.trim(),
+        invoiceDate: g.date,
+        currency: "ARS",
+        net21: net,
+        vat: iva,
+        exemptAmount: net > 0 ? Math.max(0, Math.round((total - net - iva) * 100) / 100) : 0,
+        subtotal: net > 0 ? total - iva : total,
+        total,
+        grupoCosto: g.grupoCosto,
+        notes: `Pagada con caja chica${fondo?.responsible ? " · " + fondo.responsible : ""}`,
+        extractedAutomatically: false,
+      };
+      setPurchaseInvoices((prev) => (facturaPrevia ? prev.map((i) => (i.id === factura.id ? factura : i)) : [factura, ...prev]));
+      setPettyCashExpenses((prev) => prev.map((x) => (x.id === id ? { ...x, linkedPurchaseInvoiceId: factura.id } : x)));
+    } else if (facturaPrevia) {
+      setPurchaseInvoices((prev) => prev.filter((i) => i.id !== facturaPrevia.id));
+      setPettyCashExpenses((prev) => prev.map((x) => (x.id === id ? { ...x, linkedPurchaseInvoiceId: null } : x)));
+    }
     const prov = buscarProveedor(suppliers as any, g.supplier, g.taxId);
     if (g.altaProveedor && !prov && g.supplier.trim()) {
       setSuppliers((prev) => [
@@ -19116,6 +19195,108 @@ Escribi CERRAR para confirmar:`
       ]);
     }
     setGastoCajaModal(null);
+  };
+  // LECTOR DE TICKETS / FACTURAS (solo en la ficha): lee el archivo y abre la ventana del gasto ya cargada.
+  const leerTicketCaja = async (fundId: number | null, file: File) => {
+    setPettyOcrBusy(true);
+    setPettyOcrMsg("Leyendo el comprobante... (la primera vez descarga el lector, puede tardar)");
+    try {
+      const t = await readTicket(file);
+      const fondo = fundId != null ? pettyCashFunds.find((x) => x.id === fundId) : undefined;
+      const prov = t.supplier ? (buscarProveedor(suppliers as any, t.supplier, "") as any) : undefined;
+      setGastoCajaModal({
+        fundId: fondo?.id ?? null,
+        company: fondo?.company || budget.company,
+        supplier: prov?.name || t.supplier || "",
+        taxId: prov?.taxId || "",
+        altaProveedor: !prov,
+        date: t.date || defaultDateForActiveMonth(),
+        amount: Number(t.amount || 0),
+        administration: "negro",
+        grupoCosto: prov?.grupoCosto,
+        description: "",
+        invoiceNumber: "",
+        notes: "",
+        attachmentName: file.name,
+      });
+      setPettyOcrMsg(
+        t.amount > 0
+          ? `Leído: ${money(t.amount)}${t.date ? " · " + t.date : ""}. Revisá y completá la ventana (si tiene factura, pasalo a blanco).`
+          : "No pude leer el monto: completalo a mano en la ventana."
+      );
+    } catch (err: any) {
+      console.error("[ocr] caja chica:", err);
+      setPettyOcrMsg("No se pudo leer el comprobante: " + (err?.message || String(err)));
+    }
+    setPettyOcrBusy(false);
+  };
+  // CAJAS: nueva (desde el listado o la ficha) y editar.
+  const abrirNuevaCaja = (responsable?: string) =>
+    setCajaForm({
+      company: budget.company,
+      responsible: responsable || "",
+      tipo: "General",
+      description: "",
+      deliveredDate: todayIso(),
+      assignedWhite: 0,
+      assignedBlack: 0,
+      notes: "",
+    });
+  const abrirEditarCaja = (fundId: number) => {
+    const f = pettyCashFunds.find((x) => x.id === fundId);
+    if (!f) return;
+    setCajaForm({
+      id: f.id,
+      company: f.company,
+      responsible: f.responsible,
+      tipo: f.tipo || "General",
+      description: f.description || "",
+      deliveredDate: f.deliveredDate || todayIso(),
+      assignedWhite: Number(f.assignedWhite || 0),
+      assignedBlack: Number(f.assignedBlack || 0),
+      cuentaId: f.cuentaId,
+      cuentaDevolucionId: f.cuentaDevolucionId,
+      notes: f.notes || "",
+    });
+  };
+  const guardarCaja = (c: CajaForm) => {
+    const datos = {
+      company: c.company as CompanyName,
+      responsible: c.responsible.trim(),
+      tipo: c.tipo || "General",
+      description: c.description,
+      deliveredDate: c.deliveredDate,
+      assignedWhite: Number(c.assignedWhite || 0),
+      assignedBlack: Number(c.assignedBlack || 0),
+      assignedAmount: Number(c.assignedWhite || 0) + Number(c.assignedBlack || 0),
+      cuentaId: c.cuentaId,
+      cuentaDevolucionId: c.cuentaDevolucionId,
+      notes: c.notes,
+    };
+    if (c.id != null) {
+      setPettyCashFunds((prev) => prev.map((f) => (f.id === c.id ? { ...f, ...datos } : f)));
+    } else {
+      setPettyCashFunds((prev) => [{ id: newId(), rechargeDate: "", active: true, closed: false, closedDate: "", ...datos }, ...prev]);
+    }
+    setCajaForm(null);
+  };
+  const cerrarCajaChica = (fundId: number) =>
+    setPettyCashFunds((prev) => prev.map((f) => (f.id === fundId ? { ...f, active: false, closed: true, closedDate: todayIso() } : f)));
+  // TIPOS de caja chica: los de base, los creados y los que ya usan las cajas.
+  const tiposCaja = Array.from(
+    new Set([
+      ...TIPOS_CAJA_BASE,
+      ...pettyCashTypes.filter((t) => canAccessCompany(t.company)).map((t) => t.nombre),
+      ...visiblePettyCashFunds.map((f) => f.tipo || "General"),
+    ])
+  );
+  const renombrarTipoCaja = (viejo: string, nuevo: string) => {
+    setPettyCashTypes((prev) => {
+      const yaEsta = prev.some((t) => t.nombre === viejo);
+      const sinViejo = prev.map((t) => (t.nombre === viejo ? { ...t, nombre: nuevo } : t));
+      return yaEsta ? sinViejo : [...sinViejo, { id: newId(), company: budget.company, nombre: nuevo }];
+    });
+    setPettyCashFunds((prev) => prev.map((f) => ((f.tipo || "General") === viejo && canAccessCompany(f.company) ? { ...f, tipo: nuevo } : f)));
   };
   const renderFacturasCompra = () => (
     <FacturasCompraPanel
@@ -19758,11 +19939,65 @@ Escribi CERRAR para confirmar:`
           onEntendido={cerrarNovedades}
         />
       )}
+      {fichaCaja != null && (() => {
+        const fondos = visiblePettyCashFunds.filter((f) => mismaPersona(f.responsible, fichaCaja) || (!f.responsible.trim() && !fichaCaja.trim()));
+        const ids = new Set(fondos.map((f) => f.id));
+        const deuda = (personDebts.debts || []).find((d: any) => mismaPersona(d.person, fichaCaja));
+        return (
+          <FichaCajaChica
+            responsable={fichaCaja}
+            fondos={fondos as any}
+            gastos={visiblePettyCashExpenses.filter((g) => g.fundId != null && ids.has(g.fundId)) as any}
+            viaticos={visibleViaticos.filter((v) => mismaPersona(v.persona, fichaCaja)) as any}
+            deudas={(deuda?.invoices || []).map((i: any) => ({ id: i.id, supplier: i.supplier, invoiceNumber: i.invoiceNumber, invoiceDate: i.invoiceDate, total: i.total }))}
+            companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+            money={money}
+            facturaDeGasto={(gid) => {
+              const inv = purchaseInvoices.find((i) => i.pettyCashExpenseId === gid);
+              return inv ? `Factura ${inv.receiptLetter || ""} ${inv.invoiceNumber}`.replace(/\s+/g, " ").trim() : null;
+            }}
+            ocrBusy={pettyOcrBusy}
+            ocrMsg={pettyOcrMsg}
+            onCerrar={() => {
+              setFichaCaja(null);
+              setPettyOcrMsg("");
+            }}
+            onNuevaCaja={() => abrirNuevaCaja(fichaCaja)}
+            onEditarCaja={abrirEditarCaja}
+            onCerrarCaja={cerrarCajaChica}
+            onReabrirCaja={reopenPettyCashFund}
+            onQuitarCaja={removePettyCashFund}
+            onRendirGasto={(fundId) => abrirGastoCaja(fundId)}
+            onLeerTicket={leerTicketCaja}
+            onAbrirGasto={(gid) => abrirGastoCaja(null, gid)}
+            onQuitarGasto={removePettyCashExpense}
+            onAdjuntar={uploadPettyCashFile}
+            onViaticoRendido={(id, rendido) => setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, rendido } : v)))}
+          />
+        );
+      })()}
+      {cajaForm && (
+        <CajaChicaModal
+          key={cajaForm.id || "nueva"}
+          inicial={cajaForm}
+          tipos={tiposCaja}
+          personas={Array.from(
+            new Set([...visibleEmployees.map((e: any) => String(e.name || "").trim()), ...visiblePettyCashFunds.map((f) => f.responsible.trim())].filter(Boolean))
+          ).sort()}
+          fondos={visiblePettyCashFunds as any}
+          gastos={visiblePettyCashExpenses as any}
+          cuentas={cuentasSistema as any}
+          companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
+          money={money}
+          onGuardar={guardarCaja}
+          onCerrar={() => setCajaForm(null)}
+        />
+      )}
       {gastoCajaModal && (
         <GastoCajaChicaModal
           key={gastoCajaModal.id || "nuevo"}
           inicial={gastoCajaModal}
-          cajas={visiblePettyCashFunds as any}
+          cajas={(fichaCaja != null ? visiblePettyCashFunds.filter((f) => mismaPersona(f.responsible, fichaCaja) || f.id === gastoCajaModal.fundId) : visiblePettyCashFunds) as any}
           proveedores={visibleSuppliers as any}
           grupos={renglonesEgreso}
           onGuardar={guardarGastoCaja}
@@ -19988,7 +20223,7 @@ Escribi CERRAR para confirmar:`
               if (p.deudaProveedores > 0.5)
                 out.push({ titulo: "Cuentas corrientes con proveedores", company: p.short || p.company, monto: p.deudaProveedores, detalle: "Facturas de proveedores habituales sin pagar", tab: "costos" });
               if (p.deudaConLaGente > 0.5)
-                out.push({ titulo: "Deuda con la gente", company: p.short || p.company, monto: p.deudaConLaGente, detalle: `${p.deudaConLaGenteCount} factura(s) pagadas de su bolsillo, sin reintegrar`, tab: "cajaChica" });
+                out.push({ titulo: "Deuda con la gente", company: p.short || p.company, monto: p.deudaConLaGente, detalle: `${p.deudaConLaGenteCount} factura(s) pagadas de su bolsillo, sin reintegrar`, tab: "movimientosInternos" });
             });
             visibleCreditCardStatements
               .filter((t) => !t.paid && Number(t.totalArs || 0) > 0)
@@ -20013,73 +20248,23 @@ Escribi CERRAR para confirmar:`
       )}
 
       {activeTab === "cajaChica" && (
-        <CajaChicaTab
-          viaticosSlot={
-            <ViaticosPanel
-              viaticos={visibleViaticos}
-              empleados={visibleEmployees as any}
-              cuentas={cuentasSistema as any}
-              companyOptions={COMPANY_OPTIONS as any}
-              money={money}
-              onAdd={() =>
-                setViaticos((prev) => [
-                  {
-                    id: newId(),
-                    company: budget.company,
-                    persona: "",
-                    fecha: todayIso(),
-                    monto: 0,
-                    administration: "blanco",
-                    motivo: "",
-                    rendido: false,
-                    notas: "",
-                  },
-                  ...prev,
-                ])
-              }
-              onUpdate={(id, field, value) =>
-                setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, [field]: value } : v)))
-              }
-              onRemove={(id) => setViaticos((prev) => prev.filter((v) => v.id !== id))}
-            />
-          }
-          cuentas={cuentasSistema}
-          pettyCashBalanceSummary={pettyCashBalanceSummary}
-          pettyOcrBusy={pettyOcrBusy}
-          pettyOcrMsg={pettyOcrMsg}
-          pettyTicketDraft={pettyTicketDraft}
-          onRunTicketOcr={runPettyCashTicketOcr}
-          onUpdateTicketDraft={updatePettyTicketDraft}
-          onSaveTicketDraft={savePettyTicketDraft}
-          onCancelTicketDraft={cancelPettyTicketDraft}
-          fundSemaphoreSummary={fundSemaphoreSummary}
-          visiblePettyCashFunds={visiblePettyCashFunds}
-          pettyCashSummary={pettyCashSummary}
-          totalResponsibleDebt={totalResponsibleDebt}
-          responsibleRendicion={responsibleRendicion}
-          getCompanyMeta={getCompanyMeta}
-          addPettyCashFund={addPettyCashFund}
-          updateArrayItem={updateArrayItem}
-          setPettyCashFunds={setPettyCashFunds}
-          COMPANY_OPTIONS={COMPANY_OPTIONS}
-          removePettyCashFund={removePettyCashFund}
-          visiblePettyCashExpenses={visiblePettyCashExpenses}
-          onAbrirGasto={abrirGastoCaja}
-          pettyCashFundSummaries={pettyCashFundSummaries}
-          getFundSemaphore={getFundSemaphore}
-          fundDebtAdjustments={fundDebtAdjustments}
-          addPettyCashExpense={addPettyCashExpense}
-          reopenPettyCashFund={reopenPettyCashFund}
-          itemMonthKey={itemMonthKey}
-          operationalMonth={operationalMonth}
-          monthLabel={monthLabel}
-          updatePettyCashExpense={updatePettyCashExpense}
-          removePettyCashExpense={removePettyCashExpense}
-          uploadPettyCashFile={uploadPettyCashFile}
-          pettyCashTrackingRows={pettyCashTrackingRows}
+        <CajaChicaListado
+          fondos={visiblePettyCashFunds as any}
+          gastos={visiblePettyCashExpenses as any}
+          tipos={tiposCaja}
+          viaticos={visibleViaticos as any}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+          money={money}
+          onNuevaCaja={() => abrirNuevaCaja()}
+          onAbrirFicha={(r) => setFichaCaja(r)}
+          onAgregarTipo={(nombre) => {
+            if (tiposCaja.some((t) => t.toLowerCase() === nombre.toLowerCase())) return;
+            setPettyCashTypes((prev) => [...prev, { id: newId(), company: budget.company, nombre }]);
+          }}
+          onRenombrarTipo={renombrarTipoCaja}
+          onQuitarTipo={(nombre) => setPettyCashTypes((prev) => prev.filter((t) => t.nombre !== nombre))}
         />
       )}
-      {activeTab === "cajaChica" && renderCompras("cajaChica")}
 
       {activeTab === "presupuesto" && (
         <PresupuestoTab

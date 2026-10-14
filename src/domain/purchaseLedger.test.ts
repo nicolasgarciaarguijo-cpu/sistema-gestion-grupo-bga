@@ -172,3 +172,15 @@ describe("computePersonDebts", () => {
     expect(computePersonDebts([inv(), inv({ id: 2 })]).total).toBe(0);
   });
 });
+
+describe("factura pagada con caja chica", () => {
+  it("no queda sin conciliar y su pago (el gasto de la caja) salda la cuenta", () => {
+    const { ledgers } = computeSupplierLedgers({
+      invoices: [inv({ origin: "caja_chica", total: 5000 })],
+      payments: [pay({ id: 77, amount: 5000, description: "Pagada con caja chica" })],
+    });
+    expect(ledgers[0].facturasSinPago).toBe(0);
+    expect(ledgers[0].deudaSinConciliar).toBe(0);
+    expect(ledgers[0].saldo).toBe(0);
+  });
+});

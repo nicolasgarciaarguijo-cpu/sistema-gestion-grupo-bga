@@ -22,7 +22,7 @@ export const GENERAL_COMPANY = "General";
 // DEBE coincidir con `per_company_keys` del splitter SQL.
 export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   archivos: ["companyAssets"],
-  "caja-chica": ["pettyCashExpenses", "pettyCashFunds", "viaticos"],
+  "caja-chica": ["pettyCashExpenses", "pettyCashFunds", "viaticos", "pettyCashTypes"],
   // `fiscalClosings`: cada cierre es de una empresa, asi que se parte como el resto.
   "cash-flow": ["debtPlans", "financialItems", "bankStatementEntries", "ivaVepPayments", "fiscalClosings", "retirosSocietarios"],
   compras: ["purchaseInvoices", "remitoDrafts"],

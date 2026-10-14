@@ -110,8 +110,9 @@ export function supplierKey(supplier: string, taxId: string): string {
   return normalizeName(supplier) || "sin-proveedor";
 }
 
+// Una factura que se pago con CAJA CHICA ya esta pagada (el pago es el gasto rendido).
 const isConciliada = (inv: LedgerInvoice) =>
-  inv.paidByCostEntryId != null || inv.paidByBankEntryId != null;
+  inv.paidByCostEntryId != null || inv.paidByBankEntryId != null || inv.origin === "caja_chica";
 
 /**
  * Libro mayor por proveedor. `currentAccountKeys` son las llaves (CUIT o nombre normalizado) de los

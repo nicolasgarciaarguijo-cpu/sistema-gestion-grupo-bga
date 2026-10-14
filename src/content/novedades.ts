@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-14f",
+    fecha: "14/10/2026",
+    titulo: "Caja chica: listado y ficha por responsable",
+    items: [
+      {
+        titulo: "La solapa muestra solo las cajas asignadas",
+        que: "Un listado con responsable, tipo de caja, fecha de asignación, monto, administración (blanco/negro), lo utilizado y lo que resta. Abajo, los tipos de caja chica (General, Viáticos y los que agregues) con lo asignado y lo gastado de cada uno.",
+        como: "'+ Nueva caja chica' para asignar una: ahí se ve el resumen de fondos (lo asignado, lo usado y lo que resta, blanco y negro) y se elige el tipo de caja. Los viáticos ahora son un tipo de caja chica.",
+        tab: "cajaChica",
+      },
+      {
+        titulo: "Ficha del responsable (click derecho sobre su nombre)",
+        que: "Adentro está todo lo de esa persona: el historial de sus cajas, sus rendiciones, en qué se gastó (por grupo de costo), sus viáticos y las facturas que pagó de su bolsillo.",
+        como: "Desde la ficha se rinde un gasto o se lee un ticket o factura (el lector está solo ahí). Si el gasto es en blanco se carga la factura: queda en Compras y en la ficha del proveedor, pagada por la caja chica. El pago va al cash flow como pago al proveedor, en su grupo de costo.",
+        tab: "cajaChica",
+      },
+    ],
+  },
+  {
     id: "2026-10-14e",
     fecha: "14/10/2026",
     titulo: "Solapa nueva: Desendeudamiento",
