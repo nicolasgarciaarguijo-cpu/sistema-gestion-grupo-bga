@@ -200,6 +200,8 @@ import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocum
 import { workingDaysInMonth, reciboNegroAmount, paymentDateForPeriod } from "./domain/recibo";
 import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
+import { DesendeudamientoTab, type PagoCuotaForm, type OtraDeuda } from "./tabs/Desendeudamiento";
+import { camposLegacy, cuotasDeDeuda, cuotasPendientes } from "./domain/desendeudamiento";
 import { GastoCajaChicaModal, type GastoCajaForm } from "./ui/GastoCajaChicaModal";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { AprobadosTab } from "./tabs/Aprobados";
@@ -520,6 +522,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "facturacion", label: "FACTURACIÓN Y COBRANZAS" },
   { key: "costos", label: "PAGO A PROVEEDORES" },
   { key: "bancos", label: "BANCOS Y TARJETAS" },
+  { key: "desendeudamiento", label: "DESENDEUDAMIENTO" },
   { key: "seguros", label: "SEGUROS" },
   { key: "inversiones", label: "INVERSIONES" },
   { key: "compras", label: "COMPRAS Y ANÁLISIS DE GASTOS" },
@@ -547,6 +550,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "facturacion",
   "costos",
   "bancos",
+  "desendeudamiento",
   "seguros",
   "inversiones",
   "compras",
@@ -637,6 +641,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   costos: "PRV",
   bancos: "BCO",
   seguros: "SEG",
+  desendeudamiento: "DES",
   inversiones: "INV",
   tarjetas: "TAR",
   documentos: "DOC",
@@ -13024,12 +13029,61 @@ Escribi CERRAR para confirmar:`
         nextDueDate: todayIso(),
         notes: "",
         active: true,
+        tipo: "otra",
+        administration: "blanco",
+        cuotas: [],
       },
     ]);
   };
 
   const removeDebtPlan = (debtId: number) => {
     setDebtPlans((prev) => prev.filter((item) => item.id !== debtId));
+  };
+
+  // DESENDEUDAMIENTO: cambiar una deuda. Si cambian las cuotas, los campos viejos (proxima cuota,
+  // restantes, vencimiento) se recalculan de las pendientes para quien todavia los lee.
+  const actualizarDeuda = (id: number, patch: Partial<DebtPlan>) => {
+    setDebtPlans((prev) =>
+      prev.map((d) => (d.id === id ? { ...d, ...patch, ...(patch.cuotas ? camposLegacy(patch.cuotas) : {}) } : d))
+    );
+  };
+  // Asignar el pago de una cuota: uno nuevo (un pago a proveedor, al acreedor, en el grupo de la deuda)
+  // o uno ya cargado. Ese pago es el que llega al cash flow.
+  const registrarPagoCuota = (deudaId: number, cuotaId: string, f: PagoCuotaForm) => {
+    const d = debtPlans.find((x) => x.id === deudaId);
+    if (!d) return;
+    const cuota = cuotasDeDeuda(d).find((c) => c.id === cuotaId);
+    if (!cuota) return;
+    let costEntryId = f.costEntryId;
+    if (f.modo === "nuevo") {
+      const grupo = parseClaveGrupo(d.grupoCosto);
+      costEntryId = newId();
+      const pago: CostEntry = {
+        id: costEntryId,
+        company: d.company,
+        date: f.fecha,
+        group: grupo?.nombre || "",
+        groupKind: grupo?.tipo,
+        description: `Cuota ${cuota.numero} · ${d.concept}`.trim(),
+        amount: Number(f.monto || 0),
+        cuentaId: f.cuentaId,
+        administration: f.administration,
+        source: "manual",
+        supplier: d.acreedor || d.concept,
+        notes: "Pago de cuota (Desendeudamiento)",
+        paymentMethod: f.metodo,
+      };
+      setCostEntries((prev) => [pago, ...prev]);
+    }
+    if (costEntryId == null) return;
+    actualizarDeuda(deudaId, {
+      cuotas: cuotasDeDeuda(d).map((c) => (c.id === cuotaId ? { ...c, pagoCostEntryId: costEntryId } : c)),
+    });
+  };
+  const quitarPagoCuota = (deudaId: number, cuotaId: string) => {
+    const d = debtPlans.find((x) => x.id === deudaId);
+    if (!d) return;
+    actualizarDeuda(deudaId, { cuotas: cuotasDeDeuda(d).map((c) => (c.id === cuotaId ? { ...c, pagoCostEntryId: null } : c)) });
   };
 
   const addCapitalEntry = () => {
@@ -13811,26 +13865,22 @@ Escribi CERRAR para confirmar:`
       totalInstallments: number;
     }> = [];
 
-    visibleDebtPlans
-      .filter((item) => item.active && item.nextDueDate)
-      .forEach((item) => {
-        const remaining = Math.max(0, Number(item.remainingInstallments || 0));
-        for (let index = 0; index < remaining; index += 1) {
-          const baseDate = new Date(item.nextDueDate);
-          baseDate.setMonth(baseDate.getMonth() + index);
-          const dueDate = baseDate.toISOString().slice(0, 10);
-          if (baseDate.getFullYear() !== analysisYear) continue;
-          rows.push({
-            id: `${item.id}-${index}`,
-            company: item.company,
-            concept: item.concept,
-            date: dueDate,
-            amount: Number(item.nextInstallmentAmount || 0),
-            installmentNumber: index + 1,
-            totalInstallments: remaining,
-          });
-        }
+    // Las cuotas PENDIENTES de cada deuda (las estipuladas en Desendeudamiento o, deuda vieja, una por mes).
+    visibleDebtPlans.forEach((item) => {
+      const pendientes = cuotasPendientes(item);
+      pendientes.forEach((c, index) => {
+        if (!c.fecha.startsWith(String(analysisYear))) return;
+        rows.push({
+          id: `${item.id}-${c.id}`,
+          company: item.company,
+          concept: item.acreedor ? `${item.concept} · ${item.acreedor}` : item.concept,
+          date: c.fecha,
+          amount: Number(c.monto || 0),
+          installmentNumber: c.numero,
+          totalInstallments: pendientes.length,
+        });
       });
+    });
 
     return rows.sort((a, b) => a.date.localeCompare(b.date));
   }, [analysisYear, visibleDebtPlans]);
@@ -19905,6 +19955,62 @@ Escribi CERRAR para confirmar:`
       )}
 
       {activeTab === "compras" && renderCompras("compras")}
+
+      {activeTab === "desendeudamiento" && (
+        <DesendeudamientoTab
+          deudas={visibleDebtPlans}
+          hoy={hoyIso}
+          companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
+          grupos={gruposCostoLista.map((g) => ({ key: g.clave, label: etiquetaGrupo(g.clave) }))}
+          acreedores={Array.from(new Set(visibleSuppliers.map((s) => s.name).filter(Boolean))).sort()}
+          cuentas={cuentasSistema as any}
+          money={money}
+          etiquetaGrupo={etiquetaGrupo}
+          pagoDeCuota={(id) => {
+            const c = costEntries.find((x) => x.id === id);
+            if (!c) return null;
+            const metodo = c.paymentMethod ? PAYMENT_METHOD_OPTIONS.find((o) => o.value === c.paymentMethod)?.label || c.paymentMethod : "sin medio";
+            return { date: c.date, amount: Number(c.amount || 0), metodo };
+          }}
+          pagosVinculables={(company, acreedor) => {
+            const usados = new Set<number>();
+            debtPlans.forEach((d) => (d.cuotas || []).forEach((c) => c.pagoCostEntryId != null && usados.add(c.pagoCostEntryId)));
+            const n = acreedor.trim().toLowerCase();
+            return costEntries
+              .filter((c) => c.company === company && !usados.has(c.id) && (!n || (c.supplier || "").trim().toLowerCase() === n))
+              .sort((a, b) => b.date.localeCompare(a.date))
+              .slice(0, 80)
+              .map((c) => ({ id: c.id, date: c.date, amount: Number(c.amount || 0), description: c.description || c.supplier || "Pago" }));
+          }}
+          otrasDeudas={(() => {
+            const out: OtraDeuda[] = [];
+            plataDisponibleByCompany.forEach((p: any) => {
+              if (p.deudaProveedores > 0.5)
+                out.push({ titulo: "Cuentas corrientes con proveedores", company: p.short || p.company, monto: p.deudaProveedores, detalle: "Facturas de proveedores habituales sin pagar", tab: "costos" });
+              if (p.deudaConLaGente > 0.5)
+                out.push({ titulo: "Deuda con la gente", company: p.short || p.company, monto: p.deudaConLaGente, detalle: `${p.deudaConLaGenteCount} factura(s) pagadas de su bolsillo, sin reintegrar`, tab: "cajaChica" });
+            });
+            visibleCreditCardStatements
+              .filter((t) => !t.paid && Number(t.totalArs || 0) > 0)
+              .forEach((t) =>
+                out.push({
+                  titulo: `Resumen de tarjeta · ${visibleCreditCards.find((c) => c.id === t.cardId)?.name || "tarjeta"}`,
+                  company: String(t.company),
+                  monto: Number(t.totalArs || 0),
+                  detalle: t.dueDate ? `vence ${t.dueDate.slice(8, 10)}/${t.dueDate.slice(5, 7)}/${t.dueDate.slice(0, 4)}` : "sin vencimiento",
+                  tab: "bancos",
+                })
+              );
+            return out;
+          })()}
+          onAgregar={addDebtPlan}
+          onActualizar={actualizarDeuda}
+          onBorrar={removeDebtPlan}
+          onRegistrarPago={registrarPagoCuota}
+          onQuitarPago={quitarPagoCuota}
+          onIr={(tab) => setActiveTab(tab as TabKey)}
+        />
+      )}
 
       {activeTab === "cajaChica" && (
         <CajaChicaTab

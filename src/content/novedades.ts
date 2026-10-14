@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-14e",
+    fecha: "14/10/2026",
+    titulo: "Solapa nueva: Desendeudamiento",
+    items: [
+      {
+        titulo: "Todas las deudas en un lugar",
+        que: "Planes de pago (AFIP, ABL, moratorias), préstamos externos y financiaciones de equipos se cargan en la solapa DESENDEUDAMIENTO, como si fueran un proveedor: acreedor, tipo, empresa, grupo de costo (dónde van sus pagos en el cash flow) y blanco/negro. Las deudas que ya estaban cargadas en Balance se mudaron solas.",
+        como: "'+ Agregar deuda', completá los datos y estipulá las cuotas (primera fecha, cantidad y monto). Abajo se ven, de referencia, las otras deudas del sistema (cuentas corrientes, deuda con la gente, tarjetas) con un botón para ir a su solapa.",
+        tab: "desendeudamiento",
+      },
+      {
+        titulo: "Asignar el pago de cada cuota",
+        que: "Cada cuota se salda con un pago: uno nuevo (fecha, monto, cómo y de qué cuenta) o uno ya cargado. Ese pago va al cash flow en EGRESOS · PROVEEDORES, en el grupo de la deuda y con el nombre del acreedor. Las cuotas pendientes van a la agenda de pagos inamovibles.",
+        como: "Click derecho sobre la cuota: asignar el pago, desvincularlo, cambiar el estado (programado, estimado, inamovible) o quitarla.",
+        tab: "desendeudamiento",
+      },
+    ],
+  },
+  {
     id: "2026-10-14d",
     fecha: "14/10/2026",
     titulo: "Caja chica: se rinden gastos a proveedores",

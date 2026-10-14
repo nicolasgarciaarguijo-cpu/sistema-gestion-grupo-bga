@@ -15,6 +15,7 @@ import {
   claveReal,
 } from "./vencimientos";
 
+import { cuotasPendientes, type CuotaDeuda } from "./desendeudamiento";
 export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos" | "factura";
 
 export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
@@ -125,6 +126,8 @@ export type FuentesInamovibles = {
     remainingInstallments: number;
     nextDueDate: string;
     active: boolean;
+    acreedor?: string;
+    cuotas?: CuotaDeuda[];
   }>;
   tarjetas: Array<{ id: number; company: string; dueDate: string; totalArs: number; totalUsd: number; paid: boolean; nombre: string }>;
   pagosCashflow: Array<{
@@ -185,11 +188,13 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
 
   // 2. Cuotas de deudas (desendeudamiento): una por mes desde la proxima, hasta agotar las que quedan.
   f.debtPlans
-    .filter((p) => p.active && p.nextDueDate)
+    .filter((p) => p.active && (p.nextDueDate || (p.cuotas || []).length))
     .forEach((p) => {
-      const quedan = Math.max(0, Math.floor(Number(p.remainingInstallments || 0)));
+      // Las cuotas ESTIPULADAS en Desendeudamiento (o, deuda vieja, una por mes); las pagadas no van.
+      const pendientes = cuotasPendientes(p as any);
+      const quedan = pendientes.length;
       for (let i = 0; i < quedan; i++) {
-        const fecha = sumarMeses(p.nextDueDate.slice(0, 10), i);
+        const fecha = pendientes[i].fecha;
         if (fecha > hasta) break;
         if (!enRango(fecha)) continue;
         const clave = `deuda:${p.id}:${fecha}`;
@@ -200,11 +205,11 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
               origen: "deuda",
               refId: p.id,
               company: p.company,
-              titulo: p.concept,
-              detalle: `cuota ${i + 1} de ${quedan} que quedan`,
+              titulo: p.acreedor ? `${p.concept} · ${p.acreedor}` : p.concept,
+              detalle: `cuota ${pendientes[i].numero} · ${i + 1} de ${quedan} que quedan`,
               ventanaDesde: fecha,
               fechaLimite: fecha,
-              monto: Number(p.nextInstallmentAmount || 0),
+              monto: Number(pendientes[i].monto || 0),
               currency: "ARS",
               avisoDias: AVISO_DEFAULT,
               pagado: marcado.has(clave),

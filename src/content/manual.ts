@@ -418,6 +418,29 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
     ],
   },
   {
+    tabKey: "desendeudamiento",
+    title: "Desendeudamiento",
+    emoji: "📉",
+    intro:
+      "Todas las deudas de la empresa que se pagan en cuotas: planes de pago, préstamos externos y financiaciones de equipos. Los préstamos entre socios o entre las empresas NO van acá: son movimientos internos.",
+    sections: [
+      {
+        heading: "Cargar una deuda",
+        blocks: [
+          { type: "p", text: "Cada deuda se trata como un proveedor: tiene un acreedor (a quién se le debe), un tipo, la empresa, el grupo de costo donde van sus pagos en el cash flow y si es blanco o negro." },
+          { type: "steps", items: ["Tocá '+ Agregar deuda'.", "Completá concepto, acreedor, tipo, empresa, grupo de costo y circuito.", "Estipulá las cuotas: primera fecha, cantidad y monto por cuota, y 'Agregar cuotas'. Cada cuota se puede corregir (fecha y monto).", "'Rehacer pendientes' reemplaza las cuotas impagas por un cronograma nuevo; las pagadas quedan."] }
+        ],
+      },
+      {
+        heading: "Pagar una cuota",
+        blocks: [
+          { type: "p", text: "Click derecho sobre la cuota → 'Asignar el pago'. Se carga un pago nuevo (fecha, monto, cómo se pagó y de qué cuenta) o se vincula uno ya cargado. Ese pago va al cash flow en EGRESOS · PROVEEDORES, en el grupo de la deuda, con el nombre del acreedor. Si sale del banco, lo cuenta el débito del extracto (no se duplica)." },
+          { type: "tip", text: "Las cuotas pendientes aparecen en la agenda de pagos inamovibles. Una cuota vencida sin pago se pinta de rojo." }
+        ],
+      },
+    ],
+  },
+  {
     tabKey: "cajaChica",
     title: "Caja chica y viáticos",
     emoji: "💵",

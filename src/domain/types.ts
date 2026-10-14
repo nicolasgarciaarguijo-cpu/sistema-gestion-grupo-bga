@@ -37,6 +37,7 @@ export type TabKey =
   | "tarjetas"
   | "movimientosInternos"
   | "seguros"
+  | "desendeudamiento"
   | "inversiones"
   | "documentos"
   | "manual";
@@ -694,6 +695,15 @@ export type DebtPlan = {
   usdValuePerInstallment?: number;
   notes: string;
   active: boolean;
+  // --- Solapa DESENDEUDAMIENTO (2026-10-14): la deuda se trata como un proveedor. ---
+  tipo?: "plan_pago" | "prestamo" | "financiacion" | "otra";
+  acreedor?: string; // a quien se le debe (AFIP, el banco, el tercero)
+  grupoCosto?: string; // "tipo|nombre": donde van sus pagos en el cash flow
+  administration?: "blanco" | "negro";
+  capital?: number; // monto original de la deuda (referencia)
+  fechaInicio?: string;
+  // Cuotas estipuladas, cada una con el pago que la salda. Sin esto, se generan de los campos de arriba.
+  cuotas?: import("./desendeudamiento").CuotaDeuda[];
 };
 
 // Efectivo fuera del banco Y fuera de caja chica (caja de seguridad, plata en mano). Se asienta a
