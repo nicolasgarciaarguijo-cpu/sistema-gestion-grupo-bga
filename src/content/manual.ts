@@ -718,6 +718,13 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "El stock de materiales (ligado por codigo), sus movimientos de entrada y salida, y el analisis de costos.",
     sections: [
       {
+        heading: "Remitos: recepción, salida por trabajo y entrega",
+        blocks: [
+          { type: "p", text: "El material ENTRA al stock con el remito de recepción del proveedor (no con la factura). La factura de una compra de materiales se vincula a su remito y no vuelve a sumar; si no vino remito, desde la factura se cargan sus renglones como recepción. La SALIDA por trabajo descuenta el material imputado al trabajo. La ENTREGA al cliente es un documento: no mueve stock. Todos quedan en 'Remitos · historial'." },
+          { type: "steps", items: ["'+ Recepción de proveedor': proveedor, número, fecha, factura (si ya está) y los renglones (cada uno vinculado a un ítem del stock o uno nuevo con su grupo).", "Guardar: el stock sube y queda el movimiento con el número de remito.", "Desde la ficha del trabajo: 'Salida de stock por trabajo' (Traer materiales del trabajo) o 'Entrega al cliente' (se imprime con firma de conformidad).", "Click derecho sobre un remito para abrirlo, imprimirlo o quitarlo: el stock se corrige solo."] }
+        ],
+      },
+      {
         heading: "Stock por codigo",
         blocks: [
           {

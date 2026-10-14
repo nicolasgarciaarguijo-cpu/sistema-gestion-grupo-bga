@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-14g",
+    fecha: "14/10/2026",
+    titulo: "Remitos con historial y stock que se mueve solo",
+    items: [
+      {
+        titulo: "Recepción de material (remito del proveedor)",
+        que: "El material entra al stock con el remito de recepción, y el remito queda en el historial (en Stock → Remitos · historial). Cada renglón se vincula a un ítem del stock; si no existe, se da de alta. Editar o quitar un remito corrige el stock solo.",
+        como: "'+ Recepción de proveedor', o desde 'Remitos a cargar' (el archivo subido abre la recepción para confirmar). En la factura de una compra de materiales se vincula el remito (no vuelve a sumar) o, si no vino remito, se tilda 'cargar los renglones de esta factura'.",
+        tab: "stock",
+      },
+      {
+        titulo: "Salida por trabajo y entrega al cliente",
+        que: "En la ficha del trabajo aprobado: 'Salida de stock por trabajo' descuenta el material imputado a ese trabajo (con 'Traer materiales del trabajo') y muestra el costo real contra lo cotizado. 'Entrega al cliente' arma el remito de entrega imprimible (no mueve stock).",
+        como: "Click derecho sobre un remito: abrir, imprimir o quitar.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Caja chica: empresa y eliminar",
+        que: "Cada caja dice de qué empresa sale la plata y a qué empresa corresponden los gastos (si son distintas, se marca en naranja). Una caja se puede eliminar, con o sin sus gastos.",
+        como: "Click derecho sobre la fila de la caja (fuera del nombre) → Editar o Eliminar caja chica.",
+        tab: "cajaChica",
+      },
+    ],
+  },
+  {
     id: "2026-10-14f",
     fecha: "14/10/2026",
     titulo: "Caja chica: listado y ficha por responsable",

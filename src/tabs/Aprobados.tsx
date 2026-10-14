@@ -119,6 +119,8 @@ type AprobadosTabProps = {
   onClientSummary: (job: any) => void;
   // Abre el resumen de materiales en una pestana nueva, listo para "Guardar como PDF".
   onMaterialsSummary: (job: any) => void;
+  // Fase 5: remitos del trabajo (salidas de stock y entregas al cliente).
+  remitosDelTrabajo?: (job: any) => React.ReactNode;
 };
 
 // Bloques que Nicolas pidio ocultar POR EL MOMENTO (2026-08-27). Se dejan en el codigo, no se
@@ -177,6 +179,7 @@ export function AprobadosTab({
   exportPaymentReceipt,
   onClientSummary,
   onMaterialsSummary,
+  remitosDelTrabajo,
 }: AprobadosTabProps) {
   // Menú contextual (click derecho) del cliente: resumen económico (falta facturar/cobrar/comisión).
   const [ctxMenu, setCtxMenu] = React.useState<null | { x: number; y: number; job: any }>(null);
@@ -1009,6 +1012,8 @@ export function AprobadosTab({
                   <SummaryRow label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} strong tone="out" />
                 </Panel>
               </div>
+
+              {remitosDelTrabajo && remitosDelTrabajo(selectedApprovedJob)}
 
               {verMateriales &&
                 (() => {

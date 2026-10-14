@@ -63,6 +63,8 @@ type StockTabProps = {
   removeRemitoDraftRow: (draftId: number, rowId: number) => void;
   addRemitoDraftRow: (draftId: number) => void;
   commitRemitoDraftToStock: (draftId: number) => void;
+  // Fase 5: historial de remitos (recepciones, salidas por trabajo, entregas).
+  remitosSlot?: React.ReactNode;
   removeRemitoDraft: (draftId: number) => void;
   addPersonalStockItem: (kind: string) => void;
   restorePersonalProvisionMarkersFromStock: () => void;
@@ -113,6 +115,7 @@ export function StockTab({
   removeRemitoDraftRow,
   addRemitoDraftRow,
   commitRemitoDraftToStock,
+  remitosSlot,
   removeRemitoDraft,
   addPersonalStockItem,
   restorePersonalProvisionMarkersFromStock,
@@ -815,6 +818,8 @@ export function StockTab({
               marcadores y luego pueden restaurarse dentro del presupuesto.
             </div>
           </Panel>
+
+          {remitosSlot}
 
           <Panel
             title="Remitos a cargar" span="full"

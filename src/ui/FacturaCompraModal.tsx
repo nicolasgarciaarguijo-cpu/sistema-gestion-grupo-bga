@@ -33,6 +33,10 @@ export type FacturaForm = {
     estadoPrevisto: "programado" | "estimado" | "inamovible";
     porBanco?: string; // solo lectura: "pagada por un debito del banco del dd/mm"
   };
+  // MATERIAL (Fase 5): los remitos de recepcion que respaldan esta factura (el stock ya entro con
+  // ellos) o, si no vino remito, cargar sus renglones como recepcion al guardar.
+  remitoIds?: number[];
+  cargarRenglones?: boolean;
 };
 
 type ProveedorOpt = {
@@ -63,6 +67,8 @@ export function FacturaCompraModal({
   onGuardar,
   onBorrar,
   onCerrar,
+  esMateriales,
+  recepciones,
 }: {
   inicial: FacturaForm;
   proveedores: ProveedorOpt[];
@@ -75,6 +81,9 @@ export function FacturaCompraModal({
   onGuardar: (f: FacturaForm) => void;
   onBorrar?: (id: number) => void;
   onCerrar: () => void;
+  // Fase 5: si la compra es de materiales, los remitos de recepcion del proveedor para vincular.
+  esMateriales?: (grupoCosto?: string) => boolean;
+  recepciones?: (company: string, supplier: string, taxId: string, facturaId?: number) => Array<{ id: number; label: string }>;
 }) {
   const [f, setF] = useState<FacturaForm>(inicial);
   const set = (patch: Partial<FacturaForm>) => setF((p) => ({ ...p, ...patch }));
@@ -304,6 +313,39 @@ export function FacturaCompraModal({
             </>
           )}
         </div>
+
+        {esMateriales && recepciones && esMateriales(f.grupoCosto || elegido?.grupoCosto) && (() => {
+          const opciones = recepciones(f.company, f.supplier, f.taxId, f.id);
+          const ids = f.remitoIds || [];
+          return (
+            <div style={caja}>
+              <div style={titulo}>4 · Material (stock)</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+                Es una compra de materiales: el material entra al stock con el REMITO. Vinculá el remito que llegó (la factura no vuelve a sumar) o, si no vino remito, cargá los renglones de la factura.
+              </div>
+              {opciones.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: "#94a3b8" }}>No hay remitos de recepción de este proveedor sin factura.</div>
+              ) : (
+                <div style={{ display: "grid", gap: 4 }}>
+                  {opciones.map((o) => (
+                    <label key={o.id} style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={ids.includes(o.id)}
+                        onChange={(e) => set({ remitoIds: e.target.checked ? [...ids, o.id] : ids.filter((x) => x !== o.id), cargarRenglones: false })}
+                      />
+                      {o.label}
+                    </label>
+                  ))}
+                </div>
+              )}
+              <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13, marginTop: 8, fontWeight: 700, color: "#0f766e" }}>
+                <input type="checkbox" checked={!!f.cargarRenglones} disabled={ids.length > 0} onChange={(e) => set({ cargarRenglones: e.target.checked })} />
+                No vino remito: al guardar, cargar los renglones de esta factura (entran al stock)
+              </label>
+            </div>
+          );
+        })()}
 
         {faltan.length > 0 && <div style={{ fontSize: 12.5, color: "#b45309" }}>Falta: {faltan.join(", ")}.</div>}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>

@@ -206,7 +206,10 @@ import { CajaChicaListado } from "./tabs/CajaChicaListado";
 import { FichaCajaChica } from "./ui/FichaCajaChica";
 import { CajaChicaModal, type CajaForm } from "./ui/CajaChicaModal";
 import { TIPOS_CAJA_BASE, mismaPersona } from "./domain/cajaChicaFicha";
-import { aplicarRemito, esCompraDeMateriales, proximoNumero, recepcionesSinFactura, costoSalidasDelTrabajo, type Remito } from "./domain/remitos";
+import { aplicarRemito, esCompraDeMateriales, proximoNumero, recepcionesSinFactura, costoSalidasDelTrabajo, TIPOS_REMITO, type Remito, type TipoRemito } from "./domain/remitos";
+import { RemitoModal } from "./ui/RemitoModal";
+import { RemitosPanel } from "./tabs/RemitosPanel";
+import { resumirMaterialesDelTrabajo } from "./domain/jobMaterials";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
@@ -383,6 +386,7 @@ import {
   buildReceiptHtml,
   remitoFileName,
   buildRemitoHtml,
+  buildRemitoDocHtml,
   buildGeneralSummaryHtml,
   buildComprasSummaryHtml,
   buildFacturacionCobranzasHtml,
@@ -11725,90 +11729,52 @@ Escribi CERRAR para confirmar:`
     setRemitoDrafts((prev) => [...drafts, ...prev]);
   };
 
+  // Un archivo de "Remitos a cargar" se convierte en una RECEPCION (Fase 5): se abre la ventana para
+  // confirmar proveedor, numero y renglones; al guardar entra al stock y queda en el historial.
   const commitRemitoDraftToStock = (draftId: number) => {
     const draft = remitoDrafts.find((item) => item.id === draftId);
     if (!draft) return;
-
     const validRows = draft.rows.filter(
       (row) => row.description.trim() || Number(row.quantity || 0) || Number(row.unitPrice || 0)
     );
-
     if (validRows.length === 0) {
       window.alert("No hay filas validas para cargar al stock.");
       return;
     }
-
-    setStockItems((prev) => {
-      const nextStock = [...prev];
-
-      validRows.forEach((row) => {
-        const normalizedDescription = row.description.trim().toLowerCase();
-        const matchedIndex =
-          row.matchedStockId != null
-            ? nextStock.findIndex((item) => item.id === row.matchedStockId)
-            : nextStock.findIndex(
-                (item) =>
-                  item.kind === "general" &&
-                  item.description.trim().toLowerCase() === normalizedDescription &&
-                  (item.company === row.company ||
-                    item.company === "General" ||
-                    row.company === "General")
-              );
-
-        if (matchedIndex >= 0) {
-          const existing = nextStock[matchedIndex];
-          const incomingQuantity = Number(row.quantity || 0);
-          const existingQuantity = Number(existing.quantity || 0);
-          const incomingPrice = Number(row.unitPrice || 0);
-          const existingPrice = Number(existing.unitPrice || 0);
-          const totalQuantity = existingQuantity + incomingQuantity;
-          const weightedPrice =
-            totalQuantity > 0
-              ? (existingQuantity * existingPrice + incomingQuantity * incomingPrice) / totalQuantity
-              : existingPrice;
-
-          nextStock[matchedIndex] = {
-            ...existing,
-            company: row.company === "General" ? existing.company : row.company,
-            group: row.group || existing.group,
-            location: row.location || existing.location,
-            unit: row.unit || existing.unit,
-            quantity: totalQuantity,
-            unitPrice: Number(weightedPrice.toFixed(2)),
-            active: true,
+    const company = draft.company === "General" ? String(budget.company) : String(draft.company);
+    setRemitoModal({
+      existe: false,
+      draftId,
+      remito: {
+        id: newId(),
+        company,
+        tipo: "recepcion",
+        numero: "",
+        fecha: todayIso(),
+        proveedor: "",
+        taxId: "",
+        purchaseInvoiceId: null,
+        renglones: validRows.map((row, i) => {
+          const s0 =
+            row.matchedStockId != null
+              ? stockItems.find((x) => x.id === row.matchedStockId)
+              : stockItems.find((x) => x.kind === "general" && x.description.trim().toLowerCase() === row.description.trim().toLowerCase());
+          return {
+            id: newId() + i,
+            stockItemId: s0?.id ?? null,
+            codigo: s0?.code || "",
+            descripcion: s0?.description || row.description.trim(),
+            unidad: row.unit || s0?.unit || "u",
+            cantidad: Number(row.quantity || 0),
+            precioUnitario: Number(row.unitPrice || 0),
+            grupo: row.group || undefined,
           };
-          return;
-        }
-
-        const nextGroup = row.group.trim() || "Melaminas";
-        nextStock.push({
-          id: newId(),
-          company: row.company,
-          kind: "general",
-          shared: row.company === "General",
-          group: nextGroup,
-          location: row.location,
-          sortOrder:
-            Math.max(
-              0,
-              ...nextStock
-                .filter((item) => item.kind === "general")
-                .map((item) => Number(item.sortOrder || 0))
-            ) + 1,
-          code: getNextStockCode(nextStock, nextGroup as StockGeneralGroupName),
-          description: row.description.trim(),
-          unit: row.unit || "u",
-          quantity: Number(row.quantity || 0),
-          unitPrice: Number(row.unitPrice || 0),
-          periodicityMonths: 0,
-          active: true,
-        });
-      });
-
-      return nextStock;
+        }),
+        notas: draft.notes || "",
+        archivo: draft.fileName,
+        creadoEl: todayIso(),
+      },
     });
-
-    setRemitoDrafts((prev) => prev.filter((item) => item.id !== draftId));
   };
 
   const removeFixedMarker = (markerId: number) => {
@@ -16501,6 +16467,8 @@ Escribi CERRAR para confirmar:`
   // Ficha de caja chica abierta (nombre del responsable) y ventana de nueva / editar caja.
   const [fichaCaja, setFichaCaja] = useState<string | null>(null);
   const [cajaForm, setCajaForm] = useState<CajaForm | null>(null);
+  // Remito abierto (nuevo o existente). `draftId`: viene de un archivo de "Remitos a cargar".
+  const [remitoModal, setRemitoModal] = useState<{ remito: Remito; existe: boolean; draftId?: number } | null>(null);
 
   const agendaInamoviblesItems = useMemo<ItemInamovible[]>(() => {
     const desdeD = new Date();
@@ -18990,6 +18958,7 @@ Escribi CERRAR para confirmar:`
       administration: inv.administration === "negro" ? "negro" : "blanco",
       grupoCosto: inv.grupoCosto,
       notes: inv.notes || "",
+      remitoIds: remitos.filter((r) => r.purchaseInvoiceId === id).map((r) => r.id),
       pago: {
         estado: inv.paidByCostEntryId != null || inv.paidByBankEntryId != null ? "pagada" : "impaga",
         modo: "nuevo",
@@ -19088,7 +19057,28 @@ Escribi CERRAR para confirmar:`
         { id: newId(), company: f.company as CompanyName, name: f.supplier.trim(), taxId: f.taxId.trim(), aliases: "", active: true, notes: "Alta desde una factura de compra" } as Supplier,
       ]);
     }
+    // MATERIAL (Fase 5): los remitos de recepcion que respaldan la factura.
+    if (f.remitoIds) {
+      const elegidos = new Set(f.remitoIds);
+      setRemitos((prev) =>
+        prev.map((r) =>
+          elegidos.has(r.id) ? { ...r, purchaseInvoiceId: id } : r.purchaseInvoiceId === id ? { ...r, purchaseInvoiceId: null } : r
+        )
+      );
+    }
     setFacturaModal(null);
+    // Sin remito: los renglones de la factura cargan una recepcion vinculada (la reemplaza).
+    if (f.cargarRenglones && !(f.remitoIds || []).length) {
+      abrirRemitoNuevo("recepcion", {
+        company: f.company,
+        proveedor: f.supplier.trim(),
+        taxId: f.taxId.trim(),
+        fecha: f.invoiceDate || todayIso(),
+        numero: `Factura ${f.receiptLetter} ${f.invoiceNumber}`.trim(),
+        purchaseInvoiceId: id,
+        notas: "Cargado desde la factura (vino sin remito)",
+      });
+    }
   };
   // GASTO DE CAJA CHICA: se abre la ventana (como una factura de Pago a proveedores) con la caja de origen.
   const abrirGastoCaja = (fundId?: number | null, expenseId?: number) => {
@@ -19205,6 +19195,120 @@ Escribi CERRAR para confirmar:`
     }
     setGastoCajaModal(null);
   };
+  // ---------- REMITOS (Fase 5) ----------
+  const trabajoDeRemito = (jobId: number) => {
+    const j = approvedJobs.find((x) => x.id === jobId);
+    return j ? `${j.budgetNumber ? j.budgetNumber + " · " : ""}${j.client || j.project || "Trabajo"}` : "Trabajo";
+  };
+  const facturaDeRemito = (invoiceId: number) => {
+    const inv = purchaseInvoices.find((i) => i.id === invoiceId);
+    return inv ? `${inv.receiptLetter || ""} ${inv.invoiceNumber || "s/n"}`.trim() : null;
+  };
+  const abrirRemitoNuevo = (tipo: TipoRemito, extra: Partial<Remito> = {}) => {
+    const company = String(extra.company || budget.company);
+    setRemitoModal({
+      existe: false,
+      remito: {
+        id: newId(),
+        company,
+        tipo,
+        numero: tipo === "recepcion" ? "" : proximoNumero(remitos, company, tipo),
+        fecha: todayIso(),
+        renglones: [],
+        notas: "",
+        creadoEl: todayIso(),
+        ...extra,
+      },
+    });
+  };
+  const abrirRemito = (id: number) => {
+    const r = remitos.find((x) => x.id === id);
+    if (r) setRemitoModal({ existe: true, remito: { ...r, renglones: r.renglones.map((g) => ({ ...g })) } });
+  };
+  const guardarRemito = (r: Remito, draftId?: number) => {
+    const anterior = remitos.find((x) => x.id === r.id) || null;
+    // Recepcion: lo que no estaba en el stock se da de alta (con cantidad 0; el remito le suma).
+    const altas: StockItem[] = [];
+    const renglones = r.renglones.map((g) => {
+      if (r.tipo !== "recepcion" || g.stockItemId != null) return g;
+      const grupo = (g.grupo || "Melaminas") as StockGeneralGroupName;
+      const item: StockItem = {
+        id: newId(),
+        company: r.company as CompanyName,
+        kind: "general",
+        shared: false,
+        group: grupo,
+        location: "",
+        sortOrder: 0,
+        code: "",
+        description: g.descripcion.trim(),
+        unit: g.unidad || "u",
+        quantity: 0,
+        unitPrice: Number(g.precioUnitario || 0),
+        periodicityMonths: 0,
+        active: true,
+      };
+      altas.push(item);
+      return { ...g, stockItemId: item.id };
+    });
+    const final: Remito = { ...r, renglones };
+    setStockItems((prev) => {
+      let base = prev;
+      if (altas.length) {
+        base = [...prev];
+        altas.forEach((it) => {
+          const maxOrden = Math.max(0, ...base.filter((x) => x.kind === "general").map((x) => Number(x.sortOrder || 0)));
+          base.push({ ...it, sortOrder: maxOrden + 1, code: getNextStockCode(base, it.group as StockGeneralGroupName) });
+        });
+      }
+      return aplicarRemito(base, anterior, final, newId);
+    });
+    // Los codigos nuevos quedan en el renglon cuando el stock se recalcula; se guardan los ids.
+    setRemitos((prev) => (anterior ? prev.map((x) => (x.id === final.id ? final : x)) : [final, ...prev]));
+    if (draftId != null) setRemitoDrafts((prev) => prev.filter((d) => d.id !== draftId));
+    setRemitoModal(null);
+    setStorageMessage(
+      r.tipo === "recepcion" ? "Remito guardado: el material entró al stock." : r.tipo === "salida" ? "Salida guardada: el material salió del stock." : "Remito de entrega guardado."
+    );
+  };
+  const quitarRemito = (id: number) => {
+    const anterior = remitos.find((x) => x.id === id);
+    if (!anterior) return;
+    setStockItems((prev) => aplicarRemito(prev, anterior, null, newId));
+    setRemitos((prev) => prev.filter((x) => x.id !== id));
+    setRemitoModal(null);
+  };
+  const imprimirRemito = (r: Remito) => {
+    const html = buildRemitoDocHtml(r, {
+      empresa: String(r.company),
+      tituloTipo: r.tipo === "recepcion" ? "Remito de recepción" : r.tipo === "salida" ? "Salida de stock" : "Remito de entrega",
+      trabajo: r.jobId != null ? trabajoDeRemito(r.jobId) : undefined,
+      factura: r.purchaseInvoiceId != null ? facturaDeRemito(r.purchaseInvoiceId) : null,
+    });
+    const url = window.URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+    if (!window.open(url, "_blank")) setStorageMessage("Habilitá las ventanas emergentes para imprimir el remito.");
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 60000);
+  };
+  const renderRemitosPanel = (opts: { titulo: string; lista: Remito[]; tipos: TipoRemito[]; extra?: Partial<Remito>; nota?: React.ReactNode }) => (
+    <RemitosPanel
+      titulo={opts.titulo}
+      remitos={opts.lista}
+      tipos={opts.tipos}
+      trabajoLabel={trabajoDeRemito}
+      facturaLabel={facturaDeRemito}
+      companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+      money={money}
+      nota={opts.nota}
+      onNuevo={(t) => abrirRemitoNuevo(t, opts.extra)}
+      onAbrir={abrirRemito}
+      onImprimir={(id) => {
+        const r = remitos.find((x) => x.id === id);
+        if (r) imprimirRemito(r);
+      }}
+      onQuitar={quitarRemito}
+    />
+  );
+
   // LECTOR DE TICKETS / FACTURAS (solo en la ficha): lee el archivo y abre la ventana del gasto ya cargada.
   const leerTicketCaja = async (fundId: number | null, file: File) => {
     setPettyOcrBusy(true);
@@ -19959,6 +20063,43 @@ Escribi CERRAR para confirmar:`
           onEntendido={cerrarNovedades}
         />
       )}
+      {remitoModal && (
+        <RemitoModal
+          key={remitoModal.remito.id}
+          inicial={remitoModal.remito}
+          stock={visibleStockItems
+            .filter((x) => x.kind === "general")
+            .map((x) => ({ id: x.id, company: String(x.company), code: x.code, description: x.description, unit: x.unit, unitPrice: Number(x.unitPrice || 0), quantity: Number(x.quantity || 0), group: x.group }))}
+          proveedores={visibleSuppliers.map((p) => ({ name: p.name, taxId: p.taxId || "", company: String(p.company) }))}
+          trabajos={visibleApprovedJobs.map((j) => ({
+            id: j.id,
+            company: String(j.company),
+            label: trabajoDeRemito(j.id),
+            client: j.client || "",
+            destino: j.deliveryDestination || "",
+            materiales: resumirMaterialesDelTrabajo(j).consolidado.map((m) => ({ descripcion: m.descripcion, cantidad: m.cantidad, unidad: m.unidad })),
+          }))}
+          facturas={(company, proveedor, taxId) =>
+            purchaseInvoices
+              .filter(
+                (i) =>
+                  String(i.company) === company &&
+                  ((taxId && (i.taxId || "").replace(/\D/g, "") === taxId.replace(/\D/g, "")) ||
+                    (proveedor && (i.supplier || "").trim().toLowerCase() === proveedor.trim().toLowerCase()))
+              )
+              .sort((a, b) => (b.invoiceDate || "").localeCompare(a.invoiceDate || ""))
+              .slice(0, 40)
+              .map((i) => ({ id: i.id, label: `${i.receiptLetter || ""} ${i.invoiceNumber || "s/n"} · ${i.invoiceDate || ""} · ${money(Number(i.total || 0))}` }))
+          }
+          companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
+          gruposStock={[...STOCK_GENERAL_GROUP_OPTIONS]}
+          money={money}
+          onGuardar={(r) => guardarRemito(r, remitoModal.draftId)}
+          onBorrar={remitoModal.existe ? quitarRemito : undefined}
+          onImprimir={imprimirRemito}
+          onCerrar={() => setRemitoModal(null)}
+        />
+      )}
       {fichaCaja != null && (() => {
         const fondos = visiblePettyCashFunds.filter((f) => mismaPersona(f.responsible, fichaCaja) || (!f.responsible.trim() && !fichaCaja.trim()));
         const ids = new Set(fondos.map((f) => f.id));
@@ -20031,6 +20172,21 @@ Escribi CERRAR para confirmar:`
       {facturaModal && (
         <FacturaCompraModal
           key={facturaModal.id || "nueva"}
+          esMateriales={esCompraDeMateriales}
+          recepciones={(company, supplier, taxId, facturaId) =>
+            remitos
+              .filter(
+                (r) =>
+                  (facturaId != null && r.purchaseInvoiceId === facturaId) ||
+                  recepcionesSinFactura([r], company, supplier, taxId).length > 0
+              )
+              .map((r) => ({
+                id: r.id,
+                label: `Remito ${r.numero || "s/n"} · ${r.fecha.slice(8, 10)}/${r.fecha.slice(5, 7)} · ${r.renglones.length} renglón(es) · ${money(
+                  r.renglones.reduce((a, g) => a + Number(g.cantidad || 0) * Number(g.precioUnitario || 0), 0)
+                )}`,
+              }))
+          }
           inicial={facturaModal}
           proveedores={visibleSuppliers as any}
           cuentas={cuentasSistema as any}
@@ -20744,6 +20900,20 @@ Escribi CERRAR para confirmar:`
           exportPaymentReceipt={exportPaymentReceipt}
           onClientSummary={openJobClientSummary}
           onMaterialsSummary={openJobMaterialsSummary}
+          remitosDelTrabajo={(job: any) =>
+            renderRemitosPanel({
+              titulo: "Remitos del trabajo",
+              lista: remitos.filter((r) => r.jobId === job.id),
+              tipos: ["salida", "entrega"],
+              extra: { jobId: job.id, company: String(job.company), cliente: job.client || "", destino: job.deliveryDestination || "" },
+              nota: (
+                <>
+                  Material que salió del stock para este trabajo (costo real): <b>{money(costoSalidasDelTrabajo(remitos, job.id))}</b>
+                  {Number(job.estimatedMaterialCost || 0) > 0 ? <> · cotizado: <b>{money(Number(job.estimatedMaterialCost || 0))}</b></> : null}
+                </>
+              ),
+            })
+          }
         />
       )}
 
@@ -20830,6 +21000,12 @@ Escribi CERRAR para confirmar:`
           costAnalysisGroups={costAnalysisGroups}
           costAnalysisEntries={costAnalysisEntries}
           remitoDrafts={remitoDrafts}
+          remitosSlot={renderRemitosPanel({
+            titulo: "Remitos · historial",
+            lista: remitos.filter((r) => canAccessCompany(r.company as CompanyName)),
+            tipos: ["recepcion", "salida", "entrega"],
+            nota: "La RECEPCIÓN del proveedor hace entrar el material al stock (la factura se vincula y no vuelve a sumar). La SALIDA por trabajo lo descuenta, imputado al trabajo. La ENTREGA al cliente es el remito que acompaña lo entregado: no mueve stock. Editar o quitar un remito corrige el stock solo.",
+          })}
           stockPersonalItems={stockPersonalItems}
           personalProvisionAlerts={personalProvisionAlerts}
           visibleCompanyAssets={visibleCompanyAssets}
