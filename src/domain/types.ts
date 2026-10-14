@@ -920,6 +920,12 @@ export type Inversion = {
   fechaFin: string; // ISO ("" si sigue abierta)
   estado: "activa" | "cerrada";
   notas: string;
+  // Vinculo con el Calendario (Nicolas, 2026-10-14): de que cuenta sale / a cual vuelve, el circuito,
+  // lo que volvio al rescatarla (si no, la ultima valuacion) y el renglon del rescate (si no, por tipo).
+  administration?: "blanco" | "negro";
+  cuentaId?: string;
+  montoRescatado?: number;
+  renglonRescate?: string;
 };
 
 // --- Seguros (solapa Seguros) ---

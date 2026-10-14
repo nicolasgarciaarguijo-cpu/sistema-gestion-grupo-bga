@@ -30,6 +30,8 @@ export type FuentesDePlata = {
   personLedgerEntries: Array<{ id: number; company: string; person: string; date: string; kind: string; amount: number; color: string; paymentMethod?: string; description: string; cuentaId?: string }>;
   capitalEntries: Array<{ id: number; company: string; date: string; origin: string; direction: string; color: string; amount: number; cuentaId?: string }>;
   ivaVepPayments: Array<{ id: number; company: string; date: string; amount: number; period: string; cuentaId?: string }>;
+  // Inversiones: la colocacion sale de la cuenta y el rescate vuelve (ver domain/inversionesCalendario).
+  inversiones?: Array<{ id: string; company: string; date: string; amount: number; statusLabel: string; title: string; administration: string; currency: string; cuentaId?: string }>;
 };
 
 export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
@@ -274,6 +276,21 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       color: "blanco",
       metodo: "transferencia",
       cuentaId: cuenta(v),
+    })
+  );
+
+  (f.inversiones || []).forEach((i) =>
+    out.push({
+      refId: i.id,
+      origen: i.statusLabel === "credito" ? "Rescate de inversión" : "Colocación en inversión",
+      detalle: i.title,
+      company: i.company,
+      date: i.date,
+      amount: Number(i.amount || 0),
+      sentido: i.statusLabel === "credito" ? "entra" : "sale",
+      moneda: moneda(i.currency),
+      color: color(i.administration),
+      cuentaId: cuenta(i),
     })
   );
 

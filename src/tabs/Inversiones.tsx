@@ -2,7 +2,8 @@
 //
 // Cada inversion lleva el capital invertido y su valuacion actual; el crecimiento sale de la diferencia.
 // La moneda importa: ARS y USD se muestran por separado (no se suman). La vinculacion con el Calendario
-// anual (la planilla) es el proximo paso ("de a poco").
+// anual: la colocacion sale de su cuenta (EGRESOS · INVERSIONES) y el rescate vuelve a INGRESOS ·
+// INVERSIONES en el renglon de su tipo (ver domain/inversionesCalendario).
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, ButtonLike } from "../ui/primitives";
@@ -23,7 +24,19 @@ type InversionesTabProps = {
   addInversion: () => void;
   removeInversion: (id: number) => void;
   updateInversion: (id: number, field: keyof Inversion, value: any) => void;
+  // Vinculo con el Calendario: cuentas para elegir de donde sale / a donde vuelve.
+  cuentas?: Array<{ id: string; company: string; nombre: string; moneda?: string; activa?: boolean }>;
 };
+
+// Renglones del rescate en INGRESOS · INVERSIONES (vacio = segun el tipo).
+const RENGLONES_RESCATE_LABEL: Array<[string, string]> = [
+  ["", "Según el tipo"],
+  ["rescate_plazo_fijo", "Rescate de plazo fijo"],
+  ["rescate_fci_mix", "Rescate de FCI Mix"],
+  ["rescate_fci_plus", "Rescate de FCI Plus"],
+  ["rescate_cauciones", "Rescate de cauciones"],
+  ["rescate_otra", "Rescate de otra inversión"],
+];
 
 const GAIN_COLOR = "#16a34a";
 const LOSS_COLOR = "#dc2626";
@@ -41,6 +54,7 @@ export function InversionesTab({
   addInversion,
   removeInversion,
   updateInversion,
+  cuentas = [],
 }: InversionesTabProps) {
   const companies: CompanyName[] = COMPANY_OPTIONS.map((c) => c.value);
   const resumen = resumenInversionesPorEmpresa(inversiones, companies);
@@ -118,13 +132,17 @@ export function InversionesTab({
                 <th>Desde</th>
                 <th>Hasta</th>
                 <th>Estado</th>
+                <th>B/N</th>
+                <th>Cuenta</th>
+                <th style={{ textAlign: "right" }}>Volvió (rescate)</th>
+                <th>Renglón del rescate</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {visibles.length === 0 && (
                 <tr>
-                  <td colSpan={11} style={{ color: "#64748b" }}>
+                  <td colSpan={15} style={{ color: "#64748b" }}>
                     Todavía no cargaste inversiones. Agregá la primera (plazo fijo, dólares, FCI…).
                   </td>
                 </tr>
@@ -218,6 +236,44 @@ export function InversionesTab({
                       >
                         <option value="activa">Activa</option>
                         <option value="cerrada">Cerrada</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        style={{ ...styles.input, background: i.administration === "negro" ? "#1f2937" : undefined, color: i.administration === "negro" ? "#ffffff" : undefined }}
+                        value={i.administration || "blanco"}
+                        onChange={(e) => updateInversion(i.id, "administration", e.target.value)}
+                      >
+                        <option value="blanco">Blanco</option>
+                        <option value="negro">Negro</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select style={styles.input} value={i.cuentaId || ""} onChange={(e) => updateInversion(i.id, "cuentaId", e.target.value || undefined)}>
+                        <option value="">Por defecto</option>
+                        {cuentas
+                          .filter((c) => c.company === i.company && c.activa !== false && (!c.moneda || c.moneda === i.moneda))
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>{c.nombre}</option>
+                          ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        style={{ ...styles.input, textAlign: "right" }}
+                        disabled={!cerrada}
+                        title={cerrada ? "Lo que volvió al rescatarla (si queda vacío, se toma el valor actual)" : "Se carga al cerrarla"}
+                        placeholder={cerrada ? String(i.valorActual || 0) : "al cerrarla"}
+                        value={i.montoRescatado ?? ""}
+                        onChange={(e) => updateInversion(i.id, "montoRescatado", e.target.value === "" ? undefined : Number(e.target.value))}
+                      />
+                    </td>
+                    <td>
+                      <select style={styles.input} value={i.renglonRescate || ""} onChange={(e) => updateInversion(i.id, "renglonRescate", e.target.value || undefined)}>
+                        {RENGLONES_RESCATE_LABEL.map(([k, l]) => (
+                          <option key={k} value={k}>{l}</option>
+                        ))}
                       </select>
                     </td>
                     <td>

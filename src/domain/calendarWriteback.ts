@@ -49,6 +49,10 @@ const PREFIJOS: Array<{ prefijo: string; permiso: PermisoDeRenglon }> = [
   // solapa Movimientos internos desde aca. Borrar un pase borra sus DOS patas (es un solo movimiento).
   { prefijo: "movint-", permiso: { editable: true, borrable: true } },
 
+  // INVERSION: colocacion (monto/fecha de inicio) o rescate (lo que volvio/fecha de fin), en la solapa
+  // Inversiones. Borrar la colocacion borra la inversion; borrar el rescate la vuelve a dejar activa.
+  { prefijo: "inv-", permiso: { editable: true, borrable: true } },
+
   // GASTO DE CAJA CHICA: no se opera desde la planilla porque NO VIVE en la planilla. Lo que entra
   // al calendario es la ASIGNACION del fondo (la plata ya se considera gastada cuando se entrega);
   // el gasto suelto es el rinde de esa plata. Si el gasto tambien sumara, se gastaria dos veces.

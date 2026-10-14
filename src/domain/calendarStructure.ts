@@ -314,6 +314,13 @@ export const CALENDAR_SECTIONS: CalSection[] = [
       { key: "mi_out_devolucion_prestamo", label: "Devolución de préstamos y aportes" },
     ],
   },
+  {
+    // La otra punta de INVERSIONES: la plata que se pone a trabajar (sale de la cuenta al colocarla).
+    // No es un gasto: el rescate vuelve por INGRESOS · INVERSIONES. Vinculada con la solapa Inversiones.
+    key: "inversiones_out", label: "EGRESOS · INVERSIONES", group: "egreso", dir: "out",
+    totalLabel: "Total Inversiones (colocado)",
+    items: [{ key: "inv_colocacion", label: "Colocación en inversiones" }],
+  },
 ];
 
 // Índice itemKey → { section, label } para clasificar y mostrar.

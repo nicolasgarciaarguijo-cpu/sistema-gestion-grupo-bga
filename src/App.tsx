@@ -337,6 +337,7 @@ import { AnalisisGastos } from "./tabs/AnalisisGastos";
 import { FichaProveedor } from "./ui/FichaProveedor";
 import { ViaticosPanel } from "./tabs/Viaticos";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
+import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
@@ -12269,6 +12270,25 @@ Escribi CERRAR para confirmar:`
       setPayrollHaberes(haber.empId, haber.month, cambio);
       return true;
     }
+    // INVERSION: colocacion -> capital y fecha de inicio; rescate -> lo que volvio y fecha de fin.
+    if (entryId.startsWith("inv-coloc-") || entryId.startsWith("inv-rescate-")) {
+      const esRescate = entryId.startsWith("inv-rescate-");
+      const id = Number(entryId.slice(esRescate ? "inv-rescate-".length : "inv-coloc-".length));
+      if (!id || !inversiones.some((i) => i.id === id)) return false;
+      setInversiones((prev) =>
+        prev.map((i) =>
+          i.id !== id
+            ? i
+            : {
+                ...i,
+                ...(patch.amount !== undefined ? (esRescate ? { montoRescatado: Number(patch.amount) || 0 } : { montoInvertido: Number(patch.amount) || 0 }) : {}),
+                ...(patch.date ? (esRescate ? { fechaFin: patch.date } : { fechaInicio: patch.date }) : {}),
+                ...(patch.administration ? { administration: patch.administration } : {}),
+              }
+        )
+      );
+      return true;
+    }
     // VIATICO eventual: monto, dia y circuito, en la solapa Caja chica y viaticos.
     if (entryId.startsWith("viatico-")) {
       const id = Number(entryId.slice("viatico-".length));
@@ -12444,6 +12464,18 @@ Escribi CERRAR para confirmar:`
   };
 
   const deleteCalendarEntry = (entryId: string): boolean => {
+    if (entryId.startsWith("inv-coloc-")) {
+      const id = Number(entryId.slice("inv-coloc-".length));
+      if (!id || !inversiones.some((i) => i.id === id)) return false;
+      setInversiones((prev) => prev.filter((i) => i.id !== id));
+      return true;
+    }
+    if (entryId.startsWith("inv-rescate-")) {
+      const id = Number(entryId.slice("inv-rescate-".length));
+      if (!id || !inversiones.some((i) => i.id === id)) return false;
+      setInversiones((prev) => prev.map((i) => (i.id === id ? { ...i, estado: "activa", fechaFin: "", montoRescatado: undefined } : i)));
+      return true;
+    }
     if (entryId.startsWith("viatico-")) {
       const id = Number(entryId.slice("viatico-".length));
       if (!id || !viaticos.some((v) => v.id === id)) return false;
@@ -14377,7 +14409,8 @@ Escribi CERRAR para confirmar:`
         | "caja-chica-fondo"  // asignacion de un fondo de caja chica (y su devolucion)
         | "haberes-negro"     // el sueldo en negro, que no deja rastro en el extracto
         | "mov-interno"       // pases entre cuentas, aportes y prestamos de la solapa Movimientos internos
-        | "viatico";          // viaticos eventuales y fijos (Caja chica y viaticos / acuerdo en Personal)
+        | "viatico"           // viaticos eventuales y fijos (Caja chica y viaticos / acuerdo en Personal)
+        | "inversion";        // colocacion y rescate de la solapa Inversiones
       amount: number;
       statusLabel: string;
       subcat?: string;
@@ -14681,6 +14714,11 @@ Escribi CERRAR para confirmar:`
       .filter((e) => e.date.startsWith(String(analysisYear)))
       .forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
 
+    // INVERSIONES (solapa): la colocacion sale de la cuenta, el rescate vuelve en el renglon de su tipo.
+    entradasInversiones(inversiones.filter((i) => canAccessCompany(i.company)) as any)
+      .filter((e) => e.date.startsWith(String(analysisYear)))
+      .forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
+
     // MOVIMIENTOS INTERNOS (solapa): cada pase da dos patas (sale de una cuenta, entra en la otra) y
     // cada aporte / prestamo cae en el renglon de quien puso la plata. Ver domain/movimientosInternosCalendario.
     entradasMovimientosInternos({
@@ -14694,6 +14732,7 @@ Escribi CERRAR para confirmar:`
 
     return entries.sort((a, b) => a.date.localeCompare(b.date));
   }, [
+    inversiones,
     visibleViaticos,
     visibleInternalTransfers,
     visibleCapitalEntries,
@@ -15822,8 +15861,12 @@ Escribi CERRAR para confirmar:`
         personLedgerEntries: visiblePersonLedgerEntries as any,
         capitalEntries: visibleCapitalEntries as any,
         ivaVepPayments: visibleIvaVepPayments as any,
+        inversiones: entradasInversiones(inversiones.filter((i) => canAccessCompany(i.company)) as any).map((e) => ({
+          ...e,
+          cuentaId: inversiones.find((i) => `inv-coloc-${i.id}` === e.id || `inv-rescate-${i.id}` === e.id)?.cuentaId,
+        })),
       }),
-    [visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments]
+    [visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos]
   );
   const movimientosDeCuentas = useMemo(
     () => movimientosPorCuenta(plataMovidaSistema, cuentasSistema),
@@ -18302,6 +18345,49 @@ Escribi CERRAR para confirmar:`
           onSetCobroEstado={setPaymentEstado}
           onAddCommission={addCommissionFromCalendar}
           onAddCostEntry={addCostEntryFromCalendar}
+          inversionesActivas={inversiones
+            .filter((i) => canAccessCompany(i.company) && i.estado === "activa")
+            .map((i) => ({
+              id: i.id,
+              company: String(i.company),
+              moneda: i.moneda,
+              renglon: renglonDeRescate(i),
+              label: `${[i.tipo, i.descripcion].filter(Boolean).join(" · ") || "Inversión"} · ${i.moneda === "USD" ? "US$" : "$"} ${Number(i.montoInvertido || 0).toLocaleString("es-AR")}`,
+            }))}
+          onAddInversion={(m) => {
+            // CARGA DESDE LA PLANILLA en INVERSIONES: la colocacion crea la inversion; el rescate cierra la
+            // elegida. Se escribe en la solapa y vuelve a la planilla por su propio camino.
+            if (m.tipo === "colocacion") {
+              setInversiones((prev) => [
+                ...prev,
+                {
+                  id: newId(),
+                  company: m.company as CompanyName,
+                  tipo: m.tipoInversion || "",
+                  descripcion: m.notes || "",
+                  moneda: "ARS",
+                  montoInvertido: m.amount,
+                  valorActual: m.amount,
+                  fechaInicio: m.date,
+                  fechaFin: "",
+                  estado: "activa",
+                  notas: "Cargada desde el Calendario anual",
+                  administration: m.administration,
+                  cuentaId: m.cuentaId || undefined,
+                },
+              ]);
+              return true;
+            }
+            if (!m.inversionId || !inversiones.some((i) => i.id === m.inversionId)) return false;
+            setInversiones((prev) =>
+              prev.map((i) =>
+                i.id === m.inversionId
+                  ? { ...i, estado: "cerrada", fechaFin: m.date, montoRescatado: m.amount, valorActual: m.amount, renglonRescate: m.conceptKey, ...(m.cuentaId ? { cuentaId: m.cuentaId } : {}) }
+                  : i
+              )
+            );
+            return true;
+          }}
           onAddMovInterno={(m) => {
             // CARGA DESDE LA PLANILLA en Movimientos internos: se escribe en la solapa (la duena del
             // dato) y vuelve a la planilla por su propio camino. No se crea un movimiento suelto.
@@ -19283,6 +19369,7 @@ Escribi CERRAR para confirmar:`
           addInversion={addInversion}
           removeInversion={removeInversion}
           updateInversion={updateInversion}
+          cuentas={cuentasSistema as any}
         />
       )}
 

@@ -74,6 +74,9 @@ type AddForm = {
   // Movimientos internos: la OTRA cuenta de un pase, y quien puso (o a quien se devuelve) la plata.
   cuentaOtraId?: string;
   origenMovInt?: string;
+  // Inversiones: que inversion se rescata, y el tipo de la que se coloca.
+  inversionId?: number;
+  tipoInversion?: string;
   // EGRESOS: adonde va lo que se carga. "" = queda como movimiento del calendario.
   destinoEgreso: "" | "gasto" | "comision";
   // Lo que pide la solapa Costos y la planilla no preguntaba. El medio decide si el pago tiene que
@@ -91,6 +94,7 @@ type AddForm = {
 
 import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
 import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
+import { destinoInversion } from "../domain/inversionesCalendario";
 import { destinoEnSolapa } from "../domain/movimientosInternosCalendario";
 import { permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
 import { estadoDePrevision, previsionPorConceptoYDia, previsionPorConceptoYMes } from "../domain/segurosCalendar";
@@ -112,6 +116,8 @@ export function CalendarioAnualTab({
   costGroupNames = [],
   onAddCostEntry,
   onAddMovInterno,
+  onAddInversion,
+  inversionesActivas = [],
   onAddCommission,
   onAssignConcept,
   bnaCompra,
@@ -254,6 +260,12 @@ export function CalendarioAnualTab({
   // planilla lo muestra por el reflejo automatico. Devuelve false si no encontro el trabajo.
   // Crear un GASTO (solapa Costos) o una COMISION de un trabajo directo desde la planilla.
   costGroupNames?: string[];
+  // Carga en un renglon de INVERSIONES: la colocacion crea la inversion, el rescate cierra la elegida.
+  onAddInversion?: (m: {
+    tipo: "colocacion" | "rescate"; company: string; date: string; amount: number; administration: "blanco" | "negro";
+    cuentaId?: string; notes: string; conceptKey: string; inversionId?: number; tipoInversion?: string;
+  }) => boolean;
+  inversionesActivas?: Array<{ id: number; company: string; moneda: string; renglon: string; label: string }>;
   // Carga en un renglon de MOVIMIENTOS INTERNOS: se escribe en la solapa (pase o aporte/prestamo).
   onAddMovInterno?: (m: {
     tipo: "pase" | "capital"; company: string; date: string; amount: number; administration: "blanco" | "negro";
@@ -1591,6 +1603,31 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         cuentaId: addForm.cuentaId || undefined,
       })) {
         avisar("No encontré ese trabajo aprobado.");
+        return;
+      }
+      setAddForm(null);
+      return;
+    }
+    // INVERSIONES: la colocacion crea la inversion; el rescate cierra la elegida (solapa Inversiones).
+    const inv = !isCob && !isCustom && !extraLabel ? destinoInversion(addForm.itemKey) : null;
+    if (inv && onAddInversion && !addForm.editId) {
+      if (inv === "rescate" && !addForm.inversionId) {
+        avisar("Elegí qué inversión se rescata.", "El rescate cierra una inversión de la solapa Inversiones. Si no está, cargala primero (o cargá la colocación).");
+        return;
+      }
+      if (!onAddInversion({
+        tipo: inv,
+        company: addForm.company,
+        date: addForm.date,
+        amount: Number(addForm.amount),
+        administration: addForm.administration,
+        cuentaId: addForm.cuentaId || undefined,
+        notes: addForm.notes,
+        conceptKey: addForm.itemKey,
+        inversionId: addForm.inversionId,
+        tipoInversion: addForm.tipoInversion,
+      })) {
+        avisar("No encontré esa inversión.");
         return;
       }
       setAddForm(null);
@@ -3975,6 +4012,43 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   />
                 )}
                 {(() => {
+                  // Renglon de INVERSIONES: la colocacion pide el tipo; el rescate, cual inversion se cierra.
+                  const di = !addForm.editId ? destinoInversion(addForm.itemKey) : null;
+                  if (!di || !onAddInversion) return null;
+                  const delaEmpresa = inversionesActivas.filter((i) => i.company === addForm.company);
+                  return (
+                    <>
+                      {di === "colocacion" ? (
+                        <label style={lblStyle}>Tipo de inversión
+                          <input
+                            style={styles.input}
+                            value={addForm.tipoInversion || ""}
+                            placeholder="Plazo fijo, FCI, Caución…"
+                            onChange={(e) => setAddForm({ ...addForm, tipoInversion: e.target.value })}
+                          />
+                        </label>
+                      ) : (
+                        <label style={lblStyle}>¿Qué inversión se rescata?
+                          <select
+                            style={styles.input}
+                            value={addForm.inversionId || ""}
+                            onChange={(e) => setAddForm({ ...addForm, inversionId: Number(e.target.value) || undefined })}
+                          >
+                            <option value="">{delaEmpresa.length ? "Elegí una" : "No hay inversiones activas de esta empresa"}</option>
+                            {delaEmpresa.map((i) => (
+                              <option key={i.id} value={i.id}>{i.label}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                      <div style={{ ...styles.noticeBox, gridColumn: "1 / -1", margin: 0, fontSize: 12 }}>
+                        Se carga en la solapa <strong>Inversiones</strong>
+                        {di === "colocacion" ? " como inversión nueva (la plata sale de la cuenta elegida)." : ": la inversión queda cerrada con este monto y esta fecha (la plata vuelve a la cuenta)."}
+                      </div>
+                    </>
+                  );
+                })()}
+                {(() => {
                   // Renglon de MOVIMIENTOS INTERNOS: un pase pide la otra cuenta; un prestamo o aporte
                   // sin dueño fijo pide quien puso la plata. Va a la solapa Movimientos internos.
                   const mi = !addForm.editId ? destinoEnSolapa(addForm.itemKey) : null;
@@ -4007,7 +4081,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     </>
                   );
                 })()}
-                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && !(!addForm.editId && onAddMovInterno && destinoEnSolapa(addForm.itemKey)) && (
+                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && !(!addForm.editId && onAddMovInterno && destinoEnSolapa(addForm.itemKey)) && !(!addForm.editId && onAddInversion && destinoInversion(addForm.itemKey)) && (
                   <label style={lblStyle}>Qué estás cargando
                     <select
                       style={styles.input}
