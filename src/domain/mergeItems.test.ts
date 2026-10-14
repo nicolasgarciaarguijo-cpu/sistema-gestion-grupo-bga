@@ -1,4 +1,4 @@
-import { mergeItemsById, mergeModuleSlice } from "./mergeItems";
+import { mergeItemsById, mergeModuleSlice, mergeObjects3 } from "./mergeItems";
 
 const A = { id: 1, v: "a" };
 const B = { id: 2, v: "b" };
@@ -85,5 +85,57 @@ describe("mergeModuleSlice", () => {
       { employees: [A, B] }
     );
     expect((out.employees as any[]).map((i) => i.id)).toEqual([1]);
+  });
+});
+
+describe("anti-pisado con la base (incidente del 13/10/2026)", () => {
+  // Un trabajo con sus listas, como en Trabajos aprobados.
+  const jobBase = { id: 7, client: "Contract", invoices: [{ id: 1, total: 100 }], payments: [{ id: 10, amount: 50 }], additionals: [] as any[] };
+
+  it("una sesion VIEJA que no toco el trabajo no pisa lo que cargo otro", () => {
+    const cargadoPorOtro = { ...jobBase, invoices: [...jobBase.invoices, { id: 2, total: 200 }], payments: [...jobBase.payments, { id: 11, amount: 70 }] };
+    const merged = mergeItemsById([jobBase], [jobBase], [cargadoPorOtro]);
+    expect(merged).toEqual([cargadoPorOtro]);
+  });
+
+  it("si los dos cambiaron el mismo trabajo, se juntan las facturas y los pagos de cada uno", () => {
+    const nuestro = { ...jobBase, payments: [...jobBase.payments, { id: 12, amount: 5 }] };
+    const ajeno = { ...jobBase, invoices: [...jobBase.invoices, { id: 2, total: 200 }], additionals: [{ id: 30, amount: 9 }] };
+    const [m] = mergeItemsById([jobBase], [nuestro], [ajeno]) as any[];
+    expect(m.invoices.map((i: any) => i.id).sort()).toEqual([1, 2]);
+    expect(m.payments.map((p: any) => p.id).sort()).toEqual([10, 12]);
+    expect(m.additionals.map((a: any) => a.id)).toEqual([30]);
+  });
+
+  it("un pago borrado por nosotros no vuelve, aunque el otro haya agregado otro", () => {
+    const nuestro = { ...jobBase, payments: [] as any[] };
+    const ajeno = { ...jobBase, payments: [...jobBase.payments, { id: 11, amount: 70 }] };
+    const [m] = mergeItemsById([jobBase], [nuestro], [ajeno]) as any[];
+    expect(m.payments.map((p: any) => p.id)).toEqual([11]);
+  });
+
+  it("campo distinto cambiado por cada uno: entran los dos cambios", () => {
+    const m = mergeObjects3({ id: 1, a: 1, b: 1 }, { id: 1, a: 2, b: 1 }, { id: 1, a: 1, b: 3 });
+    expect(m).toEqual({ id: 1, a: 2, b: 3 });
+  });
+
+  it("el orden de las claves que devuelve la base no cuenta como cambio", () => {
+    const base = { id: 1, a: 1, b: 2 };
+    const ajeno = { b: 5, a: 1, id: 1 };
+    expect(mergeItemsById([base], [{ id: 1, a: 1, b: 2 }], [ajeno])).toEqual([ajeno]);
+  });
+});
+
+describe("caso real: la sesion vieja normalizo el trabajo al cargarlo", () => {
+  it("los campos que agrega la carga no tapan las facturas y pagos nuevos de la base", () => {
+    const base = { id: 3395, client: "Contract", invoices: [] as any[], payments: [] as any[] };
+    // La sesion vieja: mismo trabajo, con los defaults que pone la carga (sourceType, legacyImported).
+    const vieja = { ...base, sourceType: "from_budget", legacyImported: false };
+    // En la base, Nicolas cargo una factura y un pago.
+    const enLaBase = { ...base, invoices: [{ id: 381, total: 2023953.91 }], payments: [{ id: 1, amount: 100 }] };
+    const [m] = mergeItemsById([base], [vieja], [enLaBase]) as any[];
+    expect(m.invoices).toEqual([{ id: 381, total: 2023953.91 }]);
+    expect(m.payments).toEqual([{ id: 1, amount: 100 }]);
+    expect(m.sourceType).toBe("from_budget");
   });
 });

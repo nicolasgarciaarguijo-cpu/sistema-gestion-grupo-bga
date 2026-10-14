@@ -19,6 +19,47 @@ export type WithId = Record<string, unknown> & { id?: unknown };
 
 const idOf = (item: WithId, idKey: string): unknown => (item as any)?.[idKey];
 
+// Igualdad "de contenido": claves ordenadas y sin undefined (la base reordena las claves de los
+// objetos, y un campo ausente equivale a uno undefined).
+const canon = (v: unknown): unknown =>
+  Array.isArray(v)
+    ? v.map(canon)
+    : v && typeof v === "object"
+      ? Object.keys(v as Record<string, unknown>)
+          .sort()
+          .filter((k) => (v as any)[k] !== undefined)
+          .reduce((o: Record<string, unknown>, k) => ((o[k] = canon((v as any)[k])), o), {})
+      : v;
+export const sameContent = (a: unknown, b: unknown): boolean => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+
+const isArrayOfItemsWithId = (v: unknown, idKey: string) =>
+  Array.isArray(v) && v.length > 0 && v.every((x) => x && typeof x === "object" && (x as any)[idKey] != null);
+
+// 3-way por CAMPO de un mismo item que cambiaron las dos sesiones (Nicolas, 2026-10-14: el pisado de
+// Trabajos aprobados). Lo que solo cambio una de las dos, entra; si cambiaron el mismo campo, gana la
+// nuestra. Las listas de items con id (facturas, pagos, adicionales...) se fusionan item por item.
+export function mergeObjects3<T extends WithId>(base: T, ours: T, theirs: T, idKey: string = "id"): T {
+  const out: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(base || {}), ...Object.keys(ours || {}), ...Object.keys(theirs || {})]);
+  keys.forEach((k) => {
+    const b = (base as any)?.[k];
+    const o = (ours as any)?.[k];
+    const t = (theirs as any)?.[k];
+    let v: unknown;
+    if (sameContent(o, b)) v = t; // nosotros no lo tocamos: manda la base
+    else if (sameContent(t, b)) v = o; // solo lo cambiamos nosotros
+    else if (
+      (isArrayOfItemsWithId(o, idKey) || isArrayOfItemsWithId(t, idKey) || isArrayOfItemsWithId(b, idKey)) &&
+      (o === undefined || Array.isArray(o)) &&
+      (t === undefined || Array.isArray(t))
+    )
+      v = mergeItemsById((Array.isArray(b) ? b : []) as WithId[], (o || []) as WithId[], (t || []) as WithId[], idKey);
+    else v = o; // los dos cambiaron el mismo campo: gana el que esta guardando
+    if (v !== undefined) out[k] = v;
+  });
+  return out as T;
+}
+
 export function mergeItemsById<T extends WithId>(
   baseline: readonly T[],
   ours: readonly T[],
@@ -27,6 +68,8 @@ export function mergeItemsById<T extends WithId>(
 ): T[] {
   const baselineIds = new Set(baseline.map((it) => idOf(it, idKey)));
   const ourIds = new Set(ours.map((it) => idOf(it, idKey)));
+  const baseById = new Map(baseline.map((it) => [idOf(it, idKey), it]));
+  const theirsById = new Map(theirs.map((it) => [idOf(it, idKey), it]));
   // Lo que borramos nosotros: estaba en baseline y ya no esta en ours.
   const ourDeletes = new Set(
     Array.from(baselineIds).filter((id) => id != null && !ourIds.has(id))
@@ -35,15 +78,27 @@ export function mergeItemsById<T extends WithId>(
   const result: T[] = [];
   const seen = new Set<unknown>();
   for (const it of ours) {
-    result.push(it);
     const id = idOf(it, idKey);
+    const b = id != null ? baseById.get(id) : undefined;
+    const t = id != null ? theirsById.get(id) : undefined;
+    // Con la base sabemos QUIEN cambio el item:
+    //  - nosotros no lo tocamos (ours == base) y en la DB cambio -> manda la DB. Es el caso de una
+    //    sesion vieja abierta en otra maquina: ya no pisa lo que cargo otro.
+    //  - cambiamos los dos -> se fusiona campo por campo (y facturas/pagos/adicionales, por id).
+    let elegido: T = it;
+    if (b && t && !sameContent(t, b)) {
+      if (sameContent(it, b)) elegido = t;
+      else if (!sameContent(it, t)) elegido = mergeObjects3(b, it, t, idKey);
+    }
+    result.push(elegido);
     if (id != null) seen.add(id);
   }
   for (const it of theirs) {
     const id = idOf(it, idKey);
     if (id == null) continue; // sin id no se puede fusionar; manda lo nuestro
     if (seen.has(id)) continue; // ya lo tenemos: nuestra version gana
-    if (ourDeletes.has(id)) continue; // lo borramos nosotros: no resucitar
+    // Lo borramos nosotros: no resucitar (salvo que otro lo haya cambiado despues: ahi se conserva).
+    if (ourDeletes.has(id) && sameContent(it, baseById.get(id))) continue;
     result.push(it); // item nuevo/ajeno: conservar para no pisarlo
     seen.add(id);
   }

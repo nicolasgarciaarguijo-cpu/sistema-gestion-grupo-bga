@@ -3230,6 +3230,12 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const lastSupabaseModuleSignaturesRef = useRef<Record<string, string>>({});
   const lastRealtimeModuleMergeSavedAtRef = useRef("");
   const lastRealtimeModuleMergedDataRef = useRef<PersistedAppStateData | null>(null);
+  // FOTO DE LA BASE para el merge anti-pisado: lo ultimo que esta sesion sabe que esta en la base Y que
+  // tiene aplicado en pantalla. Solo se actualiza cuando los datos de la base se APLICAN (carga inicial,
+  // refresco, o un cambio ajeno sin cambios locales pendientes). Si hay cambios locales sin guardar y
+  // llega un cambio ajeno, NO se toca: asi, al guardar, lo que esta sesion no toco lo decide la base y no
+  // se pisa lo que cargo otro (incidente del 13/10/2026). Ver domain/mergeItems.ts.
+  const dbBaselineRef = useRef<PersistedAppStateData | null>(null);
   const lastSupabaseAutosaveAtRef = useRef(0);
   const pendingRemoteSnapshotRef = useRef<PersistedAppState | null>(null);
   // Guard anti-pérdida: solo permitimos ESCRIBIR en Supabase despues de una carga
@@ -7982,6 +7988,7 @@ Escribi CERRAR para confirmar:`
       );
       lastRealtimeModuleMergeSavedAtRef.current = normalized.savedAt;
       lastRealtimeModuleMergedDataRef.current = normalized.data;
+      dbBaselineRef.current = normalized.data;
       return;
     }
 
@@ -8017,6 +8024,7 @@ Escribi CERRAR para confirmar:`
     );
     lastRealtimeModuleMergeSavedAtRef.current = normalized.savedAt;
     lastRealtimeModuleMergedDataRef.current = normalized.data;
+    dbBaselineRef.current = normalized.data;
     setLastSavedAt(normalized.savedAt);
     setPendingRealtimeRefresh(null);
     setStorageMessage(
@@ -9461,7 +9469,7 @@ Escribi CERRAR para confirmar:`
           moduleKeys: moduleKeysToSave,
           writableCompanies: allowedCompaniesForSession,
           // #16 base para el merge por item: el ultimo estado sincronizado con la DB.
-          baselineData: lastRealtimeModuleMergedDataRef.current,
+          baselineData: dbBaselineRef.current,
         });
         lastSupabaseAutosaveAtRef.current = Date.now();
         lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
@@ -9865,6 +9873,7 @@ Escribi CERRAR para confirmar:`
         return;
       }
       applyPersistedAppData(persisted.data);
+      dbBaselineRef.current = persisted.data;
       lastPersistedDataSignatureRef.current = buildPersistedDataSignature(
         persisted.data
       );
@@ -11926,7 +11935,7 @@ Escribi CERRAR para confirmar:`
               moduleKeys: shouldSeedAllModules ? undefined : changedModuleKeys,
               writableCompanies: allowedCompaniesForSession,
               // #16 base para el merge por item: el ultimo estado sincronizado con la DB.
-              baselineData: lastRealtimeModuleMergedDataRef.current,
+              baselineData: dbBaselineRef.current,
             });
             lastSupabaseAutosaveAtRef.current = Date.now();
             lastSupabaseSnapshotSavedAtRef.current = payload.savedAt;
