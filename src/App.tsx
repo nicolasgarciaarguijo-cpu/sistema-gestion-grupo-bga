@@ -502,7 +502,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "seguros", label: "SEGUROS" },
   { key: "inversiones", label: "INVERSIONES" },
   { key: "compras", label: "COMPRAS" },
-  { key: "cajaChica", label: "CAJA CHICA" },
+  { key: "cajaChica", label: "CAJA CHICA Y VIÁTICOS" },
   { key: "emitirFacturas", label: "EMITIR FACTURAS" },
   { key: "fabricacion", label: "FABRICACIÓN" },
   { key: "personal", label: "PERSONAL" },
@@ -1893,7 +1893,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   },
   {
     key: "caja-chica",
-    label: "Caja chica",
+    label: "Caja chica y viáticos",
     fields: ["pettyCashFunds", "pettyCashExpenses"] as const,
   },
   {
