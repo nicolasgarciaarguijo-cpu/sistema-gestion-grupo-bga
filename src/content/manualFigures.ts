@@ -81,7 +81,7 @@ const NAV: Array<{ sec?: string; k?: string; s?: string; l?: string }> = [
   { k: "facturacion", s: "FC", l: "Facturacion y cobranzas" },
   { k: "aprobados", s: "TA", l: "Trabajos aprobados" },
   { k: "fabricacion", s: "FB", l: "Fabricacion" },
-  { k: "compras", s: "CP", l: "Compras" },
+  { k: "compras", s: "CP", l: "Compras y análisis de gastos" },
   { k: "cajaChica", s: "CC", l: "Caja chica y viáticos" },
   { sec: "Administracion neta" },
   { k: "presupuesto", s: "PR", l: "Presupuesto actual" },

@@ -501,7 +501,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "bancos", label: "BANCOS Y TARJETAS" },
   { key: "seguros", label: "SEGUROS" },
   { key: "inversiones", label: "INVERSIONES" },
-  { key: "compras", label: "COMPRAS" },
+  { key: "compras", label: "COMPRAS Y ANÁLISIS DE GASTOS" },
   { key: "cajaChica", label: "CAJA CHICA Y VIÁTICOS" },
   { key: "emitirFacturas", label: "EMITIR FACTURAS" },
   { key: "fabricacion", label: "FABRICACIÓN" },
