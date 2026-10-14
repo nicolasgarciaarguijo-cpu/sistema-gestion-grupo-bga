@@ -597,6 +597,10 @@ export type PurchaseInvoice = {
   paidByPerson?: string;
   // Fecha en que se le reintegro a esa persona. Con fecha, sale de la deuda.
   reimbursedAt?: string;
+  // Tipo de gasto propio de esta factura (si no, el del proveedor con candado).
+  conceptKey?: string;
+  // Fecha de pago elegida para esta factura (si no, la de la condicion del proveedor).
+  fechaPagoPrevista?: string;
 };
 
 export type PettyCashFund = {
@@ -1104,6 +1108,12 @@ export type Supplier = {
   // al bloque de cuentas corrientes de Compras, con su libro mayor (cada compra suma, cada pago
   // descuenta). Ausente/false = proveedor suelto, se paga contra entrega.
   currentAccount?: boolean;
+  // TIPO DE GASTO (renglon del Calendario) del proveedor. Con candado, cada factura y cada pago suyo
+  // queda clasificado ahi solo (Nicolas, 2026-10-14). Sin candado es una sugerencia.
+  tipoGasto?: string;
+  tipoGastoLocked?: boolean;
+  // Condicion de pago habitual: de aca sale la fecha de pago de cada factura sin pagar.
+  condicionPago?: { tipo: "contado" } | { tipo: "dias"; dias: number } | { tipo: "diaDelMes"; dia: number };
 };
 
 export type RemitoDraftRow = {

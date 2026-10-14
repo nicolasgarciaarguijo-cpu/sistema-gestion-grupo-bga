@@ -65,6 +65,8 @@ type ComprasTabProps = {
   uploadPurchaseInvoiceFile: (invoiceId: number, file: File | null) => void;
   // Analisis de gastos (todos los egresos del sistema): va arriba de todo.
   analisisSlot?: React.ReactNode;
+  // Click derecho sobre un proveedor / factura -> ficha del proveedor.
+  onAbrirFichaProveedor?: (nombre: string, taxId?: string) => void;
 };
 
 export function ComprasTab({
@@ -96,6 +98,7 @@ export function ComprasTab({
   updatePurchaseInvoice,
   uploadPurchaseInvoiceFile,
   analisisSlot,
+  onAbrirFichaProveedor,
 }: ComprasTabProps) {
   const anchosPendientes = usePlanillaWidths("compras.pendientes", { label: 300, col: 110, colCompact: 84 });
   const anchosCompras = usePlanillaWidths("compras.realizadas", { label: 280, col: 120, colCompact: 92 });
@@ -323,7 +326,12 @@ export function ComprasTab({
                         cursor: "pointer",
                       }}
                       onClick={() => toggleCuenta(cuenta.key)}
-                      title="Tocá para ver el detalle de compras y pagos"
+                      onContextMenu={(ev) => {
+                        if (!onAbrirFichaProveedor) return;
+                        ev.preventDefault();
+                        onAbrirFichaProveedor(cuenta.supplier, cuenta.taxId);
+                      }}
+                      title="Tocá para ver el detalle de compras y pagos · Click derecho: ficha del proveedor"
                     >
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
                         <button
@@ -491,7 +499,16 @@ export function ComprasTab({
                 const faltantes = [...purchaseInvoiceMissing(invoice)];
                 if (!facturasConPago.has(invoice.id)) faltantes.push("pago registrado");
                 return (
-                <div key={invoice.id} style={styles.subCard}>
+                <div
+                  key={invoice.id}
+                  style={styles.subCard}
+                  onContextMenu={(ev) => {
+                    if (!onAbrirFichaProveedor) return;
+                    ev.preventDefault();
+                    onAbrirFichaProveedor(invoice.supplier, invoice.taxId);
+                  }}
+                  title="Click derecho: ficha del proveedor"
+                >
                   <div style={{ ...styles.inlineActions, justifyContent: "space-between" }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                       {faltantes.length > 0 && <PillD missing={faltantes} />}
@@ -685,7 +702,14 @@ export function ComprasTab({
                       const pagada = !!inv.pagoFecha;
                       const laPuso = String(inv.paidByPerson || "").trim();
                       return (
-                        <tr key={`pago-${inv.id}`}>
+                        <tr
+                          key={`pago-${inv.id}`}
+                          onContextMenu={(ev) => {
+                            if (!onAbrirFichaProveedor) return;
+                            ev.preventDefault();
+                            onAbrirFichaProveedor(inv.supplier, inv.taxId);
+                          }}
+                        >
                           <td
                             style={{
                               ...tdNombre,

@@ -333,6 +333,8 @@ import { buildReservaFromSources, latestBankBalancesByAccount, usdPaymentsToMove
 import { summarizeContributions, type CapitalEntry } from "./domain/contributions";
 import { egresoDeEntrada, egresoDePrevisto, fvEfectivo, type Egreso } from "./domain/analisisGastos";
 import { AnalisisGastos } from "./tabs/AnalisisGastos";
+import { FichaProveedor } from "./ui/FichaProveedor";
+import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
@@ -14474,6 +14476,10 @@ Escribi CERRAR para confirmar:`
         conceptKey: item.conceptKey || undefined,
         administration: item.administration === "negro" ? "negro" : "blanco",
         costKind: item.costKind || (grupo?.kind === "fijo" || grupo?.kind === "variable" ? grupo.kind : undefined),
+        // Sin renglon propio: el del proveedor si tiene candado (cada pago suyo queda clasificado solo).
+        ...(item.conceptKey
+          ? {}
+          : { conceptKey: tipoGastoEfectivo(undefined, buscarProveedor(suppliers as any, item.supplier || "", "")) }),
       });
     });
 
@@ -16035,6 +16041,14 @@ Escribi CERRAR para confirmar:`
       ),
     [cashFlowEntries]
   );
+  // FACTURAS DE PROVEEDORES POR PAGAR (con fecha elegida o por la condicion del proveedor). Bajan a
+  // Pagos programados como pagos que vienen. Ver domain/proveedores.
+  const facturasAPagar = useMemo(
+    () => facturasPorPagar(purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company)) as any, suppliers as any),
+    [purchaseInvoicesWithBankLink, suppliers]
+  );
+  const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
+
   const agendaInamoviblesItems = useMemo<ItemInamovible[]>(() => {
     const desdeD = new Date();
     desdeD.setDate(desdeD.getDate() - 90);
@@ -16092,13 +16106,14 @@ Escribi CERRAR para confirmar:`
           meses.filter((m) => m >= mesActual)
         ),
         sueldos,
+        facturas: facturasAPagar,
         real: realPorRenglon,
       },
       desde,
       hasta,
       hoyIso
     );
-  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, cashFlowEntries]);
+  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, cashFlowEntries, facturasAPagar]);
 
   // ANALISIS DE GASTOS (Compras y analisis de gastos): todos los egresos del sistema, los realizados (lo
   // mismo que alimenta el Calendario) y lo que viene (Pagos programados). Ver domain/analisisGastos.
@@ -16172,6 +16187,8 @@ Escribi CERRAR para confirmar:`
       setCreditCardStatements((prev) => prev.map((t) => (t.id === item.refId ? { ...t, dueDate: fecha } : t)));
     } else if (item.origen === "cashflow") {
       setFinancialItems((prev) => prev.map((f) => (f.id === item.refId ? { ...f, date: fecha } : f)));
+    } else if (item.origen === "factura") {
+      setPurchaseInvoices((prev) => prev.map((f) => (f.id === item.refId ? { ...f, fechaPagoPrevista: fecha } : f)));
     } else {
       upsertMarcaInamovible(item, { reprogramadoA: fecha });
     }
@@ -16269,6 +16286,7 @@ Escribi CERRAR para confirmar:`
       cashflow: "facturacion",
       seguro: "seguros",
       sueldos: "personal",
+      factura: "compras",
     };
     const tab = destino[item.origen];
     if (tab) setActiveTab(tab);
@@ -18799,6 +18817,40 @@ Escribi CERRAR para confirmar:`
         />
       )}
       {activeTab === "calendarioAnual" && renderCalendarioAnual()}
+      {fichaProveedor && (() => {
+        const prov = buscarProveedor(suppliers as any, fichaProveedor.nombre, fichaProveedor.taxId) as any;
+        const key = supplierKey(prov?.name || fichaProveedor.nombre, prov?.taxId || fichaProveedor.taxId);
+        const ledger = (purchaseLedger?.ledgers || []).find((l: any) => l.key === key);
+        const porPagar = facturasAPagar.filter(
+          (f) => buscarProveedor(prov ? [prov] : [], f.supplier) || supplierKey(f.supplier, "") === supplierKey(fichaProveedor.nombre, "")
+        );
+        const renglonesEgreso = allSectionsWith(calendarRowConfig)
+          .filter((s: any) => s.dir === "out" && s.key !== "mov_internos_out")
+          .flatMap((s: any) => (s.items || []).map((it: any) => ({ key: it.key, label: `${String(s.label).replace(/^EGRESOS · /, "")} · ${calendarRowConfig.labels?.[it.key] || it.label}` })));
+        return (
+          <FichaProveedor
+            nombre={fichaProveedor.nombre}
+            taxId={fichaProveedor.taxId}
+            proveedor={prov}
+            ledger={ledger}
+            porPagar={porPagar}
+            renglonesEgreso={renglonesEgreso}
+            fvPorRenglon={calendarRowConfig.fv || {}}
+            money={money}
+            onUpdateProveedor={(id, field, value) => updateArrayItem(setSuppliers, id, field as any, value as any)}
+            onAltaProveedor={(nombre, taxId) =>
+              setSuppliers((prev) => [
+                ...prev,
+                { id: newId(), company: budget.company, name: nombre, taxId: taxId || "", aliases: "", active: true, notes: "Alta desde la ficha del proveedor" } as Supplier,
+              ])
+            }
+            onFechaFactura={(invoiceId, fecha) =>
+              setPurchaseInvoices((prev) => prev.map((f) => (f.id === invoiceId ? { ...f, fechaPagoPrevista: fecha } : f)))
+            }
+            onCerrar={() => setFichaProveedor(null)}
+          />
+        );
+      })()}
       {activeTab === "cashflow" && (
         <CashflowTab
           purchaseLedger={purchaseLedger}
@@ -18878,6 +18930,7 @@ Escribi CERRAR para confirmar:`
           removePurchaseInvoice={removePurchaseInvoice}
           updatePurchaseInvoice={updatePurchaseInvoice}
           uploadPurchaseInvoiceFile={uploadPurchaseInvoiceFile}
+          onAbrirFichaProveedor={(nombre, taxId) => setFichaProveedor({ nombre, taxId: taxId || "" })}
           analisisSlot={
             <AnalisisGastos
               egresos={egresosDelSistema}

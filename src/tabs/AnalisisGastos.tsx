@@ -40,6 +40,7 @@ const TAB_DE_FUENTE: Record<string, { tab: string; label: string }> = {
   Deudas: { tab: "cashflow", label: "Balance (deudas)" },
   "Cargado en el cash flow": { tab: "calendarioAnual", label: "Calendario anual" },
   Vencimiento: { tab: "calendarioAnual", label: "Calendario anual" },
+  "Facturas de proveedores": { tab: "compras", label: "Compras (facturas)" },
 };
 
 type Menu =

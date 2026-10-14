@@ -212,6 +212,7 @@ const FUENTE_DE_ORIGEN: Record<string, string> = {
   sueldos: "Haberes",
   cashflow: "Cargado en el cash flow",
   manual: "Vencimiento",
+  factura: "Facturas de proveedores",
 };
 
 export function egresoDePrevisto(p: PrevistoAgenda): Egreso | null {

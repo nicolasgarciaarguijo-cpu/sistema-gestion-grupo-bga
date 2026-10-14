@@ -15,7 +15,7 @@ import {
   claveReal,
 } from "./vencimientos";
 
-export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos";
+export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos" | "factura";
 
 export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
   manual: "Vencimiento",
@@ -24,6 +24,7 @@ export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
   cashflow: "Pendiente del cash flow",
   seguro: "Seguro",
   sueldos: "Sueldos",
+  factura: "Factura de proveedor",
 };
 
 // Marca sobre un pago de la agenda: "pagado" (para los origenes que no tienen el suyo), REPROGRAMADO a
@@ -140,6 +141,8 @@ export type FuentesInamovibles = {
   seguros: Array<{ seguroId: number; company: string; date: string; amount: number; administration: "blanco" | "negro"; conceptKey: string; tipo: string; descripcion: string }>;
   // Sueldos: una fecha por empresa y periodo (4to dia habil del mes siguiente) y, si se sabe, el monto.
   sueldos: Array<{ company: string; periodo: string; fecha: string; monto: number }>;
+  // Facturas de proveedores SIN pagar con fecha de pago (elegida o por la condicion del proveedor).
+  facturas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
   real: RealPorRenglonMes;
 };
 
@@ -322,6 +325,35 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
       );
     });
 
+  // 7. Facturas de proveedores por pagar.
+  (f.facturas || [])
+    .filter((x) => enRango(x.fechaPago))
+    .forEach((x) => {
+      const clave = `factura:${x.id}`;
+      out.push(
+        conEstado(
+          {
+            clave,
+            origen: "factura",
+            refId: x.id,
+            company: x.company,
+            titulo: `Factura ${x.supplier || "proveedor"}`,
+            detalle: `${x.invoiceNumber || "sin número"} · ${x.fechaElegida ? "fecha elegida" : "según la condición del proveedor"}`,
+            ventanaDesde: x.fechaPago,
+            fechaLimite: x.fechaPago,
+            monto: Number(x.total || 0),
+            currency: "ARS",
+            administration: x.administration,
+            conceptKey: x.conceptKey,
+            avisoDias: AVISO_DEFAULT,
+            pagado: marcado.has(clave),
+            pagadoComo: marcado.has(clave) ? "a mano" : "",
+          },
+          hoy
+        )
+      );
+    });
+
   // Reprogramaciones y comprobantes: valen para CUALQUIER origen (van por clave). Reprogramar mueve la
   // fecha limite (y con ella el aviso); el comprobante lo da por pagado.
   const porClave = new Map(f.marcas.map((m) => [m.clave, m]));
@@ -355,8 +387,17 @@ export const RECLAMO_DESDE = "2026-10-07";
  * Los pagos que hay que resolver YA: vencidos (la fecha limite ya paso), sin pagar, y con fecha desde
  * que rige el reclamo. Cada uno exige comprobante o reprogramacion.
  */
+// Las facturas de proveedores entraron a la agenda el 14/10/2026: las impagas de antes solo avisan en
+// la franja (no bloquean), para que ponerle condicion de pago a un proveedor no trabe el sistema.
+export const RECLAMO_FACTURAS_DESDE = "2026-10-15";
+
 export function pagosAReclamar(items: ItemInamovible[], desde = RECLAMO_DESDE): ItemInamovible[] {
-  return items.filter((i) => i.estado === "vencido" && i.fechaLimite >= desde);
+  return items.filter(
+    (i) =>
+      i.estado === "vencido" &&
+      i.fechaLimite >= desde &&
+      (i.origen !== "factura" || i.fechaLimite >= RECLAMO_FACTURAS_DESDE)
+  );
 }
 
 /** Lo que tiene que sonar hoy: impago y vencido, que vence hoy, o dentro de su aviso/ventana. */
