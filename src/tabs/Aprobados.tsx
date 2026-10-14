@@ -435,6 +435,11 @@ export function AprobadosTab({
                           </div>
                         </td>
                       </tr>
+                      <tr style={{ display: "none" }}>
+                        <td>
+                          <style>{FILA_TERMINADA_CSS}</style>
+                        </td>
+                      </tr>
                       {group.items.map((job) => {
                         const finalizado = job.executionStatus === "finalizado";
                         const done = isJobDone(job);
@@ -451,6 +456,9 @@ export function AprobadosTab({
                         return (
                         <tr
                           key={job.id}
+                          // Completo y finalizado: ademas del celeste, la fila va TACHADA con una linea suave
+                          // (se leen numeros y letras igual). Nicolas, 2026-10-14. Regla CSS al pie del archivo.
+                          className={completado ? "fila-trabajo-terminado" : undefined}
                           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
                           title={finalizadoPendiente ? `Figura finalizado pero falta: ${faltas.join(", ")}` : "Click derecho: resumen del cliente y abrir ficha"}
                           style={
@@ -2166,3 +2174,15 @@ function BotonGuardarTrabajo({ onGuardar }: { onGuardar: () => Promise<{ ok: boo
     </span>
   );
 }
+
+// Tachado suave de la fila de un trabajo COMPLETO Y FINALIZADO: linea fina y semitransparente para
+// que se lea todo igual. Va por celda (td) porque el tachado de un <tr> no baja a las celdas en todos
+// los navegadores.
+const FILA_TERMINADA_CSS = `
+.fila-trabajo-terminado td {
+  text-decoration: line-through;
+  text-decoration-color: rgba(7, 89, 133, 0.38);
+  text-decoration-thickness: 1px;
+}
+.fila-trabajo-terminado td * { text-decoration: inherit; }
+`;
