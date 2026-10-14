@@ -27,6 +27,8 @@
 // ni de estado global, para poder testearlo.
 import { fiscalYearBounds } from "./fiscalYear";
 
+import type { FilaArqueo } from "./arqueoCierre";
+
 export type CierreCurrency = "ARS" | "USD";
 export type CierreLocation = "banco" | "efectivo";
 export type CierreColor = "blanco" | "negro";
@@ -60,6 +62,9 @@ export type CierreEjercicio = {
   resultado: { ingresos: number; egresos: number; resultado: number };
   iva: { debito: number; credito: number; saldo: number };
   notes: string;
+  // ARQUEO: la plata contada por cuenta al cierre y el motivo de cada diferencia (14/10/2026). Si esta,
+  // las billeteras salen de lo contado y cada cuenta arranca el ejercicio nuevo con su saldo real.
+  arqueo?: FilaArqueo[];
   // Si se reabrió: el cierre deja de bloquear y deja de dar apertura, pero NO se borra (queda el
   // rastro de que existió y de que alguien lo abrió).
   reopenedAt?: string;

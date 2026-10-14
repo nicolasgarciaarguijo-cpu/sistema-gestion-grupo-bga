@@ -341,6 +341,8 @@ import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
 import { entradasRetiros, RENGLON_RETIROS } from "./domain/retirosSocietarios";
 import { RetirosSocietariosPanel } from "./tabs/RetirosSocietarios";
+import { ArqueoCierre } from "./ui/ArqueoCierre";
+import { filasDeArqueo, billeterasDesdeArqueo, movimientosDelArqueo, diferencia, TOLERANCIA_ARQUEO, type FilaArqueo } from "./domain/arqueoCierre";
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
@@ -2951,6 +2953,13 @@ export default function App() {
   // Cierres de ejercicio (uno por empresa y ano cerrado). Ver domain/cierreEjercicio.ts.
   const [fiscalClosings, setFiscalClosings] = useState<CierreEjercicio[]>([]);
   const [retirosSocietarios, setRetirosSocietarios] = useState<RetiroSocietario[]>([]);
+  // Arqueo del cierre en curso: la ventana devuelve las filas confirmadas (o null si se cancela).
+  const [arqueoPendiente, setArqueoPendiente] = useState<null | {
+    empresa: string;
+    hastaIso: string;
+    filas: FilaArqueo[];
+    resolver: (filas: FilaArqueo[] | null) => void;
+  }>(null);
 
   // EL CANDADO DEL CIERRE. Un ejercicio cerrado se SIGUE VIENDO ENTERO -- los datos no se borran --
   // pero queda de solo lectura: la unica persona que puede editarlo es el superadmin (regla de
@@ -7180,6 +7189,25 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
       return;
     }
 
+    // ARQUEO: la plata de verdad en cada cuenta al ultimo dia del ejercicio, y el motivo de cada
+    // diferencia. El ejercicio nuevo arranca con lo contado.
+    const finEjercicio = fiscalYearBounds(startMonth, fiscalStartYear).endIso;
+    setCierreMensaje("Arqueo: cargá la plata de cada cuenta...");
+    const filasArqueo = await new Promise<FilaArqueo[] | null>((resolver) =>
+      setArqueoPendiente({
+        empresa: meta.short || String(company),
+        hastaIso: finEjercicio,
+        filas: filasDeArqueo(saldosDeCuentas(cuentasSistema, movimientosDeCuentas, finEjercicio) as any, String(company)),
+        resolver,
+      })
+    );
+    setArqueoPendiente(null);
+    if (!filasArqueo) {
+      setCierreBusy(false);
+      setCierreMensaje("Cierre cancelado en el arqueo. No se tocó nada.");
+      return;
+    }
+
     const cierre = construirCierre({
       id: newId(),
       company,
@@ -7212,6 +7240,58 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
       })(),
     });
 
+    // Lo contado manda: billeteras de apertura y detalle del arqueo dentro del cierre.
+    if (filasArqueo.length > 0) {
+      cierre.billeteras = billeterasDesdeArqueo(filasArqueo);
+      cierre.arqueo = filasArqueo;
+    }
+    // Lo que el arqueo deja ASENTADO: retiros de socios y aportes, con fecha del ultimo dia del ejercicio.
+    const movArqueo = movimientosDelArqueo(filasArqueo);
+    if (movArqueo.retiros.length > 0) {
+      setRetirosSocietarios((prev) => [
+        ...movArqueo.retiros.map((r) => ({
+          id: newId(),
+          company,
+          fecha: cierre.endIso,
+          socio: r.socio,
+          monto: r.monto,
+          moneda: r.moneda,
+          administration: r.color,
+          cuentaId: r.cuentaId,
+          motivo: `Asentado en el arqueo del cierre (${r.nombre})`,
+          origen: "arqueo" as const,
+        })),
+        ...prev,
+      ]);
+    }
+    if (movArqueo.aportes.length > 0) {
+      setCapitalEntries((prev) => [
+        ...movArqueo.aportes.map((a) => ({
+          id: newId(),
+          company,
+          date: cierre.endIso,
+          origin: a.socio,
+          kind: "aporte" as const,
+          direction: "recibido" as const,
+          color: a.color,
+          amount: a.moneda === "USD" ? 0 : a.monto,
+          ...(a.moneda === "USD" ? { usdValue: a.monto } : {}),
+          cuentaId: a.cuentaId,
+          notes: `Asentado en el arqueo del cierre (${a.nombre})`,
+        })),
+        ...prev,
+      ]);
+    }
+    const diferenciasTexto = filasArqueo
+      .filter((f) => Math.abs(diferencia(f)) > TOLERANCIA_ARQUEO)
+      .map(
+        (f) =>
+          `  ${f.nombre}: ${diferencia(f) > 0 ? "+" : "−"}${money(Math.abs(diferencia(f)), f.moneda)} · ${
+            f.motivo === "retiro" ? `retiro de ${f.socio}` : f.motivo === "aporte" ? `aporte de ${f.socio}` : f.detalle
+          }`
+      )
+      .join("\n");
+
     const plan = planDelCierre(company, cierre.endIso);
 
     // Lo que se va y lo que queda, ANTES de tocar nada.
@@ -7224,7 +7304,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         `Se va a guardar TODO el ejercicio en la carpeta y despues SACARLO del sistema.\n` +
         `En el sistema queda solo lo que sigue pendiente.\n\n${detalle}\n\n` +
         `Saldo con el que arranca el ano nuevo: ${money(totalDeMoneda(cierre.billeteras, "ARS"))}` +
-        `${totalDeMoneda(cierre.billeteras, "USD") !== 0 ? " + " + money(totalDeMoneda(cierre.billeteras, "USD"), "USD") : ""}\n\n` +
+        `${totalDeMoneda(cierre.billeteras, "USD") !== 0 ? " + " + money(totalDeMoneda(cierre.billeteras, "USD"), "USD") : ""} (lo contado en el arqueo)\n\n` +
+        (diferenciasTexto ? `Diferencias del arqueo (quedan asentadas):\n${diferenciasTexto}\n\n` : "") +
         `¿Seguimos? (todavia no se borra nada)`
     );
     if (!ok) {
@@ -15871,6 +15952,14 @@ Escribi CERRAR para confirmar:`
   // extracto, el efectivo segun la reserva. Desde ahi, lo que mueve las cuentas es lo CARGADO; el
   // extracto queda como control.
   const cuentasSistema = useMemo(() => {
+    // Despues de un CIERRE con arqueo, cada cuenta arranca el ejercicio nuevo con la plata CONTADA.
+    const conArqueo = (cuentas: Cuenta[]): Cuenta[] =>
+      cuentas.map((c) => {
+        const cierre = ultimoCierre(fiscalClosings, c.company);
+        const fila = cierre?.arqueo?.find((f) => f.cuentaId === c.id);
+        if (!cierre || !fila || cierre.endIso < c.fechaApertura) return c;
+        return { ...c, saldoApertura: Number(fila.real || 0), fechaApertura: cierre.endIso };
+      });
     const companies = plataDisponibleByCompany.map((p) => String(p.company));
     const responsables = visiblePettyCashFunds.flatMap((f) => {
       const colores: Array<"blanco" | "negro"> = [];
@@ -15878,7 +15967,7 @@ Escribi CERRAR para confirmar:`
       if (Number(f.assignedBlack || 0) > 0) colores.push("negro");
       return colores.map((color) => ({ company: String(f.company), persona: f.responsible || "", color }));
     });
-    return armarCuentas({
+    return conArqueo(armarCuentas({
       companies,
       guardadas: cuentasGuardadas.filter((c) => canAccessCompany(c.company as CompanyName)),
       fechaCorte: bankLoadsUntil,
@@ -15890,8 +15979,8 @@ Escribi CERRAR para confirmar:`
       })),
       efectivoApertura: plataDisponibleByCompany.flatMap((p: any) => p.efectivoApertura || []),
       personas: responsables,
-    });
-  }, [plataDisponibleByCompany, visiblePettyCashFunds, cuentasGuardadas, bankLoadsUntil, visibleBankStatementEntries]);
+    }));
+  }, [plataDisponibleByCompany, visiblePettyCashFunds, cuentasGuardadas, bankLoadsUntil, visibleBankStatementEntries, fiscalClosings]);
 
   const plataMovidaSistema = useMemo(
     () =>
@@ -19063,6 +19152,16 @@ Escribi CERRAR para confirmar:`
         />
       )}
       {activeTab === "calendarioAnual" && renderCalendarioAnual()}
+      {arqueoPendiente && (
+        <ArqueoCierre
+          empresa={arqueoPendiente.empresa}
+          hastaIso={arqueoPendiente.hastaIso}
+          filasIniciales={arqueoPendiente.filas}
+          money={money}
+          onConfirmar={(filas) => arqueoPendiente.resolver(filas)}
+          onCancelar={() => arqueoPendiente.resolver(null)}
+        />
+      )}
       {fichaProveedor && (() => {
         const prov = buscarProveedor(suppliers as any, fichaProveedor.nombre, fichaProveedor.taxId) as any;
         const key = supplierKey(prov?.name || fichaProveedor.nombre, prov?.taxId || fichaProveedor.taxId);
