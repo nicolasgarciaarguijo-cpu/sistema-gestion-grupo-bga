@@ -45,6 +45,8 @@ export function CajaChicaListado({
   money,
   onNuevaCaja,
   onAbrirFicha,
+  onEditarCaja,
+  onEliminarCaja,
   onAgregarTipo,
   onRenombrarTipo,
   onQuitarTipo,
@@ -57,6 +59,8 @@ export function CajaChicaListado({
   money: (n: number) => string;
   onNuevaCaja: () => void;
   onAbrirFicha: (responsable: string) => void;
+  onEditarCaja: (fundId: number) => void;
+  onEliminarCaja: (fundId: number, conGastos: boolean) => void;
   onAgregarTipo: (nombre: string) => void;
   onRenombrarTipo: (viejo: string, nuevo: string) => void;
   onQuitarTipo: (nombre: string) => void;
@@ -64,6 +68,7 @@ export function CajaChicaListado({
   const [verCerradas, setVerCerradas] = useState(false);
   const [nuevoTipo, setNuevoTipo] = useState("");
   const [menuTipo, setMenuTipo] = useState<null | { x: number; y: number; tipo: string }>(null);
+  const [menuCaja, setMenuCaja] = useState<null | { x: number; y: number; id: number }>(null);
 
   const filas = useMemo(
     () =>
@@ -117,7 +122,7 @@ export function CajaChicaListado({
               <tr>
                 <th style={th}>Responsable</th>
                 <th style={th}>Tipo</th>
-                <th style={th}>Empresa</th>
+                <th style={th}>Plata de → corresponde a</th>
                 <th style={th}>Asignada el</th>
                 <th style={{ ...th, textAlign: "right" }}>Asignado</th>
                 <th style={th}>Administración</th>
@@ -135,13 +140,28 @@ export function CajaChicaListado({
               {filas.map(({ f, r }) => {
                 const sem = getFundSemaphore(r.resta, r.asignado);
                 return (
-                  <tr key={f.id} style={{ opacity: f.closed ? 0.55 : 1 }}>
+                  <tr
+                    key={f.id}
+                    style={{ opacity: f.closed ? 0.55 : 1 }}
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      setMenuCaja({ x: ev.clientX, y: ev.clientY, id: f.id });
+                    }}
+                  >
                     {nombreResponsable(
                       f.responsible,
                       f.description ? <div style={{ fontSize: 11.5, color: "#64748b", fontWeight: 400 }}>{f.description}</div> : null
                     )}
                     <td style={td}>{f.tipo || "General"}</td>
-                    <td style={td}>{companyShort(f.company)}</td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      {f.empresaImputada && f.empresaImputada !== f.company ? (
+                        <span style={{ color: "#b45309", fontWeight: 700 }} title={`La plata sale de ${f.company}; los gastos son de ${f.empresaImputada}`}>
+                          {companyShort(f.company)} → {companyShort(f.empresaImputada)}
+                        </span>
+                      ) : (
+                        companyShort(f.company)
+                      )}
+                    </td>
                     <td style={td}>{fecha(f.deliveredDate)}</td>
                     <td style={num}>{money(r.asignado)}</td>
                     <td style={td}>
@@ -248,6 +268,36 @@ export function CajaChicaListado({
         </div>
       </Panel>
 
+      {menuCaja && (() => {
+        const f = fondos.find((x) => x.id === menuCaja.id);
+        if (!f) return null;
+        const r = resumenCaja(f, gastos);
+        return (
+          <QuickMenu x={menuCaja.x} y={menuCaja.y} onClose={() => setMenuCaja(null)}>
+            <QuickMenuTitle>{`${f.responsible || "Sin responsable"} · ${f.tipo || "General"}`}</QuickMenuTitle>
+            <button style={quickMenuItem} onClick={() => { onAbrirFicha(f.responsible); setMenuCaja(null); }}>Abrir la ficha del responsable</button>
+            <button style={quickMenuItem} onClick={() => { onEditarCaja(f.id); setMenuCaja(null); }}>Editar caja…</button>
+            <QuickMenuSep />
+            <button
+              style={{ ...quickMenuItem, color: "#b91c1c" }}
+              onClick={() => {
+                setMenuCaja(null);
+                if (r.gastos === 0) {
+                  if (window.confirm("¿Eliminar esta caja chica?")) onEliminarCaja(f.id, false);
+                  return;
+                }
+                if (!window.confirm(`¿Eliminar esta caja chica? Tiene ${r.gastos} gasto(s) rendido(s) por ${money(r.utilizado)}.`)) return;
+                const conGastos = window.confirm(
+                  "¿Eliminar también sus gastos?\n\nAceptar = se borran los gastos (y sus facturas de Compras) y salen del cash flow.\nCancelar = los gastos quedan cargados, sin caja."
+                );
+                onEliminarCaja(f.id, conGastos);
+              }}
+            >
+              🗑 Eliminar caja chica…
+            </button>
+          </QuickMenu>
+        );
+      })()}
       {menuTipo && (
         <QuickMenu x={menuTipo.x} y={menuTipo.y} onClose={() => setMenuTipo(null)}>
           <QuickMenuTitle>{menuTipo.tipo}</QuickMenuTitle>

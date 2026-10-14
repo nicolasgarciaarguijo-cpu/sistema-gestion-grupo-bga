@@ -926,6 +926,47 @@ export function buildRemitoHtml(draft: RemitoDraft): string {
   return page(`Remito ${draft.fileName || draft.id}`, body);
 }
 
+// ---- Remito con historial (Fase 5): recepcion, salida por trabajo o entrega al cliente ----
+
+export function buildRemitoDocHtml(
+  r: import("../domain/remitos").Remito,
+  ctx: { empresa: string; tituloTipo: string; trabajo?: string; factura?: string | null }
+): string {
+  const conPrecio = r.tipo !== "entrega";
+  const rows = r.renglones
+    .map(
+      (g) =>
+        `<tr><td>${esc(g.codigo || "")}</td><td>${esc(g.descripcion)}</td><td class="num">${esc(g.cantidad)}</td><td>${esc(g.unidad)}</td>${
+          conPrecio ? `<td class="num">${money(g.precioUnitario)}</td><td class="num">${money(Number(g.cantidad || 0) * Number(g.precioUnitario || 0))}</td>` : ""
+        }</tr>`
+    )
+    .join("");
+  const total = r.renglones.reduce((a, g) => a + Number(g.cantidad || 0) * Number(g.precioUnitario || 0), 0);
+  const fecha = r.fecha ? `${r.fecha.slice(8, 10)}/${r.fecha.slice(5, 7)}/${r.fecha.slice(0, 4)}` : "";
+  const datos = [
+    `<b>${esc(ctx.empresa)}</b>`,
+    `Fecha: ${esc(fecha)}`,
+    r.tipo === "recepcion" ? `Proveedor: ${esc(r.proveedor || "")}${r.taxId ? " · CUIT " + esc(r.taxId) : ""}` : "",
+    ctx.trabajo ? `Trabajo: ${esc(ctx.trabajo)}` : "",
+    r.tipo === "entrega" && r.cliente ? `Cliente: ${esc(r.cliente)}` : "",
+    r.tipo === "entrega" && r.destino ? `Lugar de entrega: ${esc(r.destino)}` : "",
+    ctx.factura ? `Factura: ${esc(ctx.factura)}` : "",
+  ]
+    .filter(Boolean)
+    .join("<br/>");
+  const body = `
+    <h1>${esc(ctx.tituloTipo)} · N.º ${esc(r.numero || "s/n")}</h1>
+    <p class="sub">${datos}</p>
+    <table>
+      <thead><tr><th>Código</th><th>Descripción</th><th class="num">Cant.</th><th>Unidad</th>${conPrecio ? '<th class="num">P. unit</th><th class="num">Subtotal</th>' : ""}</tr></thead>
+      <tbody>${rows}</tbody>
+      ${conPrecio ? `<tfoot><tr class="tot"><td colspan="5">Total</td><td class="num">${money(total)}</td></tr></tfoot>` : ""}
+    </table>
+    ${r.notas ? `<h2>Notas</h2><p>${esc(r.notas)}</p>` : ""}
+    ${r.tipo === "entrega" ? `<p style="margin-top:60px">Recibí conforme: ____________________________ &nbsp;&nbsp; Aclaración: ____________________ &nbsp;&nbsp; DNI: ____________</p>` : ""}`;
+  return page(`${ctx.tituloTipo} ${r.numero || r.id}`, body);
+}
+
 // ---- Resumen general (balance + trabajos) ----
 
 export function buildGeneralSummaryHtml(input: {

@@ -36,7 +36,7 @@ type ProveedorOpt = {
   tipoGastoLocked?: boolean;
 };
 
-type CajaOpt = { id: number; company: string; description: string; responsible: string; closed?: boolean };
+type CajaOpt = { id: number; company: string; empresaImputada?: string; description: string; responsible: string; closed?: boolean };
 
 const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600 };
 const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 8px", fontSize: 13, width: "100%", boxSizing: "border-box", fontWeight: 400, color: "#0f172a" };
@@ -105,7 +105,8 @@ export function GastoCajaChicaModal({
                 onChange={(e) => {
                   const id = e.target.value ? Number(e.target.value) : null;
                   const c = cajas.find((x) => x.id === id);
-                  set({ fundId: id, company: c?.company || g.company });
+                  // El gasto es de la empresa a la que CORRESPONDE la caja (la plata puede salir de otra).
+                  set({ fundId: id, company: c?.empresaImputada || c?.company || g.company });
                 }}
               >
                 <option value="">— Elegí la caja —</option>

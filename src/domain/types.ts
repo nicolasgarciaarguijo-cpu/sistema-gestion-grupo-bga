@@ -650,6 +650,9 @@ export type PettyCashFund = {
   description: string;
   responsible: string;
   tipo?: string; // nombre del tipo de caja chica (ausente = "General")
+  // `company` es la empresa de la que SALE la plata. Esta es la empresa a la que CORRESPONDEN los gastos
+  // (ausente = la misma). Si son distintas, una le puso la plata a la otra.
+  empresaImputada?: CompanyName;
   // Plata que se le entrega al responsable. Regla del usuario (2026-08-26): con la ASIGNACION la
   // plata ya se considera gastada, asi que este es el EGRESO que ve el Calendario anual. Los gastos
   // sueltos del fondo son el rinde y NO van al calendario (si fueran, se gastaria dos veces).
@@ -861,6 +864,8 @@ export type StockMovement = {
   type: "entrada" | "salida";
   quantity: number;
   note: string;
+  remitoId?: number; // el remito que lo genero (recepcion o salida por trabajo)
+  jobId?: number; // trabajo al que se imputa una salida
 };
 
 export type StockItem = {

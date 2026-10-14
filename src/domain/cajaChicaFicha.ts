@@ -10,6 +10,7 @@ export type FondoLike = {
   responsible: string;
   description?: string;
   tipo?: string;
+  empresaImputada?: string;
   assignedAmount: number;
   assignedWhite?: number;
   assignedBlack?: number;

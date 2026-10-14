@@ -206,6 +206,7 @@ import { CajaChicaListado } from "./tabs/CajaChicaListado";
 import { FichaCajaChica } from "./ui/FichaCajaChica";
 import { CajaChicaModal, type CajaForm } from "./ui/CajaChicaModal";
 import { TIPOS_CAJA_BASE, mismaPersona } from "./domain/cajaChicaFicha";
+import { aplicarRemito, esCompraDeMateriales, proximoNumero, recepcionesSinFactura, costoSalidasDelTrabajo, type Remito } from "./domain/remitos";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
@@ -1805,6 +1806,7 @@ type PersistedAppStateData = {
   suppliers: Supplier[];
   issuedInvoices: IssuedInvoice[];
   remitoDrafts: RemitoDraft[];
+  remitos?: Remito[];
   companyAssets: CompanyAsset[];
   linkedDocuments: LinkedDocument[];
   employees: Employee[];
@@ -1921,7 +1923,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "compras",
     label: "Compras",
-    fields: ["purchaseInvoices", "remitoDrafts"] as const,
+    fields: ["purchaseInvoices", "remitoDrafts", "remitos"] as const,
   },
   {
     key: "caja-chica",
@@ -3048,6 +3050,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     defaultCostAnalysisEntries
   );
   const [remitoDrafts, setRemitoDrafts] = useState<RemitoDraft[]>(defaultRemitoDrafts);
+  // Remitos con historial (Fase 5): recepciones de proveedor, salidas por trabajo y entregas al cliente.
+  const [remitos, setRemitos] = useState<Remito[]>([]);
   const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>(defaultCompanyAssets);
   // Documentos vinculados (F1): metadatos de archivos subidos desde la carpeta de la PC a Storage.
   const [linkedDocuments, setLinkedDocuments] = useState<LinkedDocument[]>([]);
@@ -4018,6 +4022,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     prune(costAnalysisGroups, setCostAnalysisGroups);
     prune(costAnalysisEntries, setCostAnalysisEntries);
     prune(remitoDrafts, setRemitoDrafts);
+    prune(remitos, setRemitos);
     prune(companyAssets, setCompanyAssets);
     prune(employees, setEmployees);
     prune(fixedMarkers, setFixedMarkers);
@@ -4055,6 +4060,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     costAnalysisEntries,
     costRules,
     remitoDrafts,
+    remitos,
     companyAssets,
     employees,
     fixedMarkers,
@@ -9497,6 +9503,7 @@ Escribi CERRAR para confirmar:`
       ...draft,
       rows: draft.rows.map((row) => ({ ...row })),
     })),
+    remitos: remitos.map((r) => ({ ...r, renglones: r.renglones.map((g) => ({ ...g })) })),
     companyAssets: companyAssets.map((item) => ({ ...item })),
     linkedDocuments: linkedDocuments.map((item) => ({ ...item })),
     employees: employees.map((item) => {
@@ -9858,6 +9865,7 @@ Escribi CERRAR para confirmar:`
     setIssuedInvoices(
       keepAccessibleByCompany(data.issuedInvoices || defaultIssuedInvoices).map((item) => ({ ...item }))
     );
+    setRemitos(keepAccessibleByCompany((data.remitos || []) as Remito[]).map((r) => ({ ...r, renglones: (r.renglones || []).map((g) => ({ ...g })) })));
     setRemitoDrafts(
       keepAccessibleByCompany(data.remitoDrafts || defaultRemitoDrafts).map((draft) => ({
         ...draft,
@@ -12132,6 +12140,7 @@ Escribi CERRAR para confirmar:`
     costAnalysisEntries,
     costRules,
     remitoDrafts,
+    remitos,
     companyAssets,
     employees,
     employeeBaseConfig,
@@ -19112,7 +19121,7 @@ Escribi CERRAR para confirmar:`
       typeof fundId === "number" ? pettyCashFunds.find((x) => x.id === fundId) : delResponsable.find((x) => !x.closed) || delResponsable[0];
     setGastoCajaModal({
       fundId: fondo?.id ?? null,
-      company: fondo?.company || budget.company,
+      company: fondo?.empresaImputada || fondo?.company || budget.company,
       supplier: "",
       taxId: "",
       altaProveedor: true,
@@ -19206,7 +19215,7 @@ Escribi CERRAR para confirmar:`
       const prov = t.supplier ? (buscarProveedor(suppliers as any, t.supplier, "") as any) : undefined;
       setGastoCajaModal({
         fundId: fondo?.id ?? null,
-        company: fondo?.company || budget.company,
+        company: fondo?.empresaImputada || fondo?.company || budget.company,
         supplier: prov?.name || t.supplier || "",
         taxId: prov?.taxId || "",
         altaProveedor: !prov,
@@ -19234,6 +19243,7 @@ Escribi CERRAR para confirmar:`
   const abrirNuevaCaja = (responsable?: string) =>
     setCajaForm({
       company: budget.company,
+      empresaImputada: budget.company,
       responsible: responsable || "",
       tipo: "General",
       description: "",
@@ -19248,6 +19258,7 @@ Escribi CERRAR para confirmar:`
     setCajaForm({
       id: f.id,
       company: f.company,
+      empresaImputada: f.empresaImputada || f.company,
       responsible: f.responsible,
       tipo: f.tipo || "General",
       description: f.description || "",
@@ -19260,8 +19271,10 @@ Escribi CERRAR para confirmar:`
     });
   };
   const guardarCaja = (c: CajaForm) => {
+    const imputada = (c.empresaImputada || c.company) as CompanyName;
     const datos = {
       company: c.company as CompanyName,
+      empresaImputada: imputada !== c.company ? imputada : undefined,
       responsible: c.responsible.trim(),
       tipo: c.tipo || "General",
       description: c.description,
@@ -19275,10 +19288,17 @@ Escribi CERRAR para confirmar:`
     };
     if (c.id != null) {
       setPettyCashFunds((prev) => prev.map((f) => (f.id === c.id ? { ...f, ...datos } : f)));
+      // Los gastos de la caja son de la empresa a la que corresponde.
+      setPettyCashExpenses((prev) => prev.map((g) => (g.fundId === c.id && g.company !== imputada ? { ...g, company: imputada } : g)));
     } else {
       setPettyCashFunds((prev) => [{ id: newId(), rechargeDate: "", active: true, closed: false, closedDate: "", ...datos }, ...prev]);
     }
     setCajaForm(null);
+  };
+  // ELIMINAR una caja chica: con sus gastos (y las facturas que generaron) o dejandolos sin caja.
+  const eliminarCajaChica = (fundId: number, conGastos: boolean) => {
+    if (conGastos) pettyCashExpenses.filter((g) => g.fundId === fundId).forEach((g) => removePettyCashExpense(g.id));
+    removePettyCashFund(fundId);
   };
   const cerrarCajaChica = (fundId: number) =>
     setPettyCashFunds((prev) => prev.map((f) => (f.id === fundId ? { ...f, active: false, closed: true, closedDate: todayIso() } : f)));
@@ -19966,7 +19986,7 @@ Escribi CERRAR para confirmar:`
             onEditarCaja={abrirEditarCaja}
             onCerrarCaja={cerrarCajaChica}
             onReabrirCaja={reopenPettyCashFund}
-            onQuitarCaja={removePettyCashFund}
+            onQuitarCaja={eliminarCajaChica}
             onRendirGasto={(fundId) => abrirGastoCaja(fundId)}
             onLeerTicket={leerTicketCaja}
             onAbrirGasto={(gid) => abrirGastoCaja(null, gid)}
@@ -20257,6 +20277,8 @@ Escribi CERRAR para confirmar:`
           money={money}
           onNuevaCaja={() => abrirNuevaCaja()}
           onAbrirFicha={(r) => setFichaCaja(r)}
+          onEditarCaja={abrirEditarCaja}
+          onEliminarCaja={eliminarCajaChica}
           onAgregarTipo={(nombre) => {
             if (tiposCaja.some((t) => t.toLowerCase() === nombre.toLowerCase())) return;
             setPettyCashTypes((prev) => [...prev, { id: newId(), company: budget.company, nombre }]);

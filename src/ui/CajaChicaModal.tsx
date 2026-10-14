@@ -6,7 +6,8 @@ import { mismaPersona, resumenCaja, type FondoLike, type GastoLike } from "../do
 
 export type CajaForm = {
   id?: number;
-  company: string;
+  company: string; // de que empresa SALE la plata
+  empresaImputada: string; // a que empresa CORRESPONDEN los gastos
   responsible: string;
   tipo: string;
   description: string;
@@ -113,8 +114,26 @@ export function CajaChicaModal({
                 ))}
               </select>
             </label>
-            <label style={lbl}>Empresa
-              <select style={input} value={f.company} onChange={(e) => set({ company: e.target.value, cuentaId: undefined, cuentaDevolucionId: undefined })}>
+            <label style={lbl}>Sale la plata de (empresa)
+              <select
+                style={input}
+                value={f.company}
+                onChange={(e) =>
+                  set({
+                    company: e.target.value,
+                    cuentaId: undefined,
+                    cuentaDevolucionId: undefined,
+                    ...(f.empresaImputada === f.company ? { empresaImputada: e.target.value } : {}),
+                  })
+                }
+              >
+                {companyOptions.filter((c) => c.value !== "General").map((c) => (
+                  <option key={c.value} value={c.value}>{c.label || c.value}</option>
+                ))}
+              </select>
+            </label>
+            <label style={lbl}>Corresponde a (empresa)
+              <select style={input} value={f.empresaImputada || f.company} onChange={(e) => set({ empresaImputada: e.target.value })}>
                 {companyOptions.filter((c) => c.value !== "General").map((c) => (
                   <option key={c.value} value={c.value}>{c.label || c.value}</option>
                 ))}
@@ -155,6 +174,11 @@ export function CajaChicaModal({
             </label>
           </div>
           <div style={{ marginTop: 8, fontSize: 13 }}>Total de la caja: <b>{money(total)}</b></div>
+          {(f.empresaImputada || f.company) !== f.company && (
+            <div style={{ marginTop: 6, fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>
+              La plata sale de {f.company} y los gastos son de {f.empresaImputada}: {f.company} le pone la plata a {f.empresaImputada} (queda a la vista en el listado y en la ficha).
+            </div>
+          )}
         </div>
 
         <datalist id="cc-personas">

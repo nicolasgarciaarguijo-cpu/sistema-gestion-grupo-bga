@@ -63,7 +63,7 @@ export function FichaCajaChica({
   onEditarCaja: (fundId: number) => void;
   onCerrarCaja: (fundId: number) => void;
   onReabrirCaja: (fundId: number) => void;
-  onQuitarCaja: (fundId: number) => void;
+  onQuitarCaja: (fundId: number, conGastos: boolean) => void;
   onRendirGasto: (fundId: number | null) => void;
   onLeerTicket: (fundId: number | null, file: File) => void;
   onAbrirGasto: (expenseId: number) => void;
@@ -173,7 +173,7 @@ export function FichaCajaChica({
               <thead>
                 <tr>
                   <th style={th}>Tipo</th>
-                  <th style={th}>Empresa</th>
+                  <th style={th}>Plata de → corresponde a</th>
                   <th style={th}>Asignada</th>
                   <th style={{ ...th, textAlign: "right" }}>Blanco</th>
                   <th style={{ ...th, textAlign: "right" }}>Negro</th>
@@ -205,7 +205,15 @@ export function FichaCajaChica({
                         {f.tipo || "General"}
                         {f.description ? <div style={{ fontSize: 11.5, color: "#64748b", fontWeight: 400 }}>{f.description}</div> : null}
                       </td>
-                      <td style={td}>{companyShort(f.company)}</td>
+                      <td style={{ ...td, whiteSpace: "nowrap" }}>
+                        {f.empresaImputada && f.empresaImputada !== f.company ? (
+                          <span style={{ color: "#b45309", fontWeight: 700 }} title={`La plata sale de ${f.company}; los gastos son de ${f.empresaImputada}`}>
+                            {companyShort(f.company)} → {companyShort(f.empresaImputada)}
+                          </span>
+                        ) : (
+                          companyShort(f.company)
+                        )}
+                      </td>
                       <td style={td}>{fecha(f.deliveredDate)}</td>
                       <td style={num}>{money(r.asignadoBlanco)}</td>
                       <td style={{ ...num, color: "#92400e" }}>{money(r.asignadoNegro)}</td>
@@ -404,11 +412,19 @@ export function FichaCajaChica({
             <button
               style={{ ...quickMenuItem, color: "#b91c1c" }}
               onClick={() => {
-                if (window.confirm("¿Quitar esta caja? Sus gastos quedan, sin caja asignada.")) onQuitarCaja(menuCaja.id);
+                const r = cajas.find((x) => x.f.id === menuCaja.id)?.r;
+                if (!window.confirm(`¿Eliminar esta caja chica?${r && r.gastos ? ` Tiene ${r.gastos} gasto(s) por ${money(r.utilizado)}.` : ""}`)) {
+                  setMenuCaja(null);
+                  return;
+                }
+                const conGastos =
+                  !!r && r.gastos > 0 &&
+                  window.confirm("¿Eliminar también sus gastos?\n\nAceptar = se borran los gastos (y sus facturas de Compras) y salen del cash flow.\nCancelar = los gastos quedan cargados, sin caja.");
+                onQuitarCaja(menuCaja.id, conGastos);
                 setMenuCaja(null);
               }}
             >
-              Quitar caja
+              🗑 Eliminar caja chica…
             </button>
           </QuickMenu>
         )}
