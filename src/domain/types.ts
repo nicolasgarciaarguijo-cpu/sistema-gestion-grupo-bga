@@ -764,6 +764,8 @@ export type IvaVepPayment = {
 };
 
 export type BankStatementEntry = {
+  // Fijo / variable de este movimiento (si el tipo de gasto no tiene candado).
+  costKind?: "fijo" | "variable";
   id: number;
   company: CompanyName;
   date: string;
@@ -980,6 +982,8 @@ export type CostEntry = {
   // OJO: solo llegan al calendario los pagos que NO pasan por el banco (efectivo / negro); los que
   // salen del banco ya entran por el debito del extracto y contarlos aca los duplicaria.
   conceptKey?: string;
+  // Fijo / variable de ESTE pago (si el tipo de gasto no tiene candado). Ausente = el del grupo.
+  costKind?: "fijo" | "variable";
 };
 
 export type PaymentMethod = "transferencia" | "cheque" | "efectivo" | "debito";

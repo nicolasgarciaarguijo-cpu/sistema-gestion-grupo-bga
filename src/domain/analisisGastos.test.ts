@@ -1,4 +1,4 @@
-import { analizarGastos, egresoDeEntrada, egresoDePrevisto } from "./analisisGastos";
+import { analizarGastos, egresoDeEntrada, egresoDePrevisto, fvEfectivo } from "./analisisGastos";
 
 const base = { company: "De raiz s.r.l", date: "2026-10-05", title: "x", amount: 1000 };
 
@@ -52,5 +52,21 @@ describe("analizarGastos", () => {
     expect(mat.previsto).toBe(999);
     expect(r.total.total).toBe(150);
     expect(r.previsto.programado).toBe(999);
+  });
+});
+
+describe("fvEfectivo", () => {
+  const cfg = { log_internet: { kind: "fijo" as const, locked: true }, cm_materiales: { kind: "variable" as const, locked: false } };
+  it("con candado manda el tipo de gasto aunque el pago diga otra cosa", () => {
+    expect(fvEfectivo("variable", "log_internet", cfg)).toBe("fijo");
+  });
+  it("sin candado manda el pago; si el pago no tiene, la sugerencia del renglón", () => {
+    expect(fvEfectivo("fijo", "cm_materiales", cfg)).toBe("fijo");
+    expect(fvEfectivo(undefined, "cm_materiales", cfg)).toBe("variable");
+    expect(fvEfectivo(undefined, "otro", cfg)).toBeUndefined();
+  });
+  it("el estado elegido para un pago programado le gana al de su origen", () => {
+    const p = { clave: "t1", origen: "tarjeta", company: "x", titulo: "Visa", fechaLimite: "2026-10-10", monto: 5, currency: "ARS" as const, pagado: false, estadoPago: "estimado" as const };
+    expect(egresoDePrevisto(p)?.estado).toBe("estimado");
   });
 });

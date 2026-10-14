@@ -331,7 +331,7 @@ import { readTicket, ensureScript } from "./lib/ocr";
 import { buildClientCrmRows } from "./domain/clientCrm";
 import { buildReservaFromSources, latestBankBalancesByAccount, usdPaymentsToMovements } from "./domain/reservaSources";
 import { summarizeContributions, type CapitalEntry } from "./domain/contributions";
-import { egresoDeEntrada, egresoDePrevisto, type Egreso } from "./domain/analisisGastos";
+import { egresoDeEntrada, egresoDePrevisto, fvEfectivo, type Egreso } from "./domain/analisisGastos";
 import { AnalisisGastos } from "./tabs/AnalisisGastos";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
@@ -9682,6 +9682,11 @@ Escribi CERRAR para confirmar:`
         label: String(item?.label || ""),
         dir: item?.dir === "in" ? ("in" as const) : ("out" as const),
       })).filter((item: any) => item.key && item.label),
+      fv: Object.fromEntries(
+        Object.entries((data.calendarRowConfig as any)?.fv || {})
+          .filter(([, v]: any) => v && (v.kind === "fijo" || v.kind === "variable"))
+          .map(([k, v]: any) => [k, { kind: v.kind, locked: v.locked === true }])
+      ),
     });
     // Reglas de clasificación (memoria): no se filtran por acceso (son memoria de clasificación,
     // incluye reglas "General"); se normalizan flags para datos viejos.
@@ -14468,7 +14473,7 @@ Escribi CERRAR para confirmar:`
         statusLabel: "debito",
         conceptKey: item.conceptKey || undefined,
         administration: item.administration === "negro" ? "negro" : "blanco",
-        costKind: grupo?.kind === "fijo" || grupo?.kind === "variable" ? grupo.kind : undefined,
+        costKind: item.costKind || (grupo?.kind === "fijo" || grupo?.kind === "variable" ? grupo.kind : undefined),
       });
     });
 
@@ -14592,6 +14597,7 @@ Escribi CERRAR para confirmar:`
         conceptKey: item.conceptKey || undefined,
         administration: item.administration === "negro" ? "negro" : "blanco",
         currency: item.currency === "USD" ? "USD" : "ARS",
+        costKind: item.costKind || undefined,
       });
     });
 
@@ -15646,9 +15652,47 @@ Escribi CERRAR para confirmar:`
   // TODO lo que va a la planilla: las fuentes de siempre + el sueldo blanco. Si un sueldo ya se cargo
   // a mano en el renglon del empleado (mismo mes y circuito), el automatico se saca: se pagaria dos veces.
   const cashFlowEntries = useMemo(
-    () => sacarHaberesDuplicados([...annualCashFlowEntries, ...haberesBlancoEntries]),
-    [annualCashFlowEntries, haberesBlancoEntries]
+    () =>
+      sacarHaberesDuplicados([...annualCashFlowEntries, ...haberesBlancoEntries]).map((e: any) => {
+        // FIJO / VARIABLE efectivo: el candado del tipo de gasto (renglon) manda sobre el del pago.
+        const fv = fvEfectivo(e.costKind, e.conceptKey, calendarRowConfig.fv);
+        return fv === e.costKind ? e : { ...e, costKind: fv };
+      }),
+    [annualCashFlowEntries, haberesBlancoEntries, calendarRowConfig.fv]
   );
+
+  // F/V del TIPO DE GASTO (renglon), con o sin candado. kind null = se lo saca.
+  const setFVRenglon = (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => {
+    if (!conceptKey) return;
+    setCalendarRowConfig((prev) => {
+      const fv = { ...(prev.fv || {}) };
+      if (!kind) delete fv[conceptKey];
+      else fv[conceptKey] = { kind, locked };
+      return { ...prev, fv };
+    });
+  };
+  // F/V de UN pago (cuando su tipo de gasto no tiene candado). Va al registro de origen.
+  const setFVPago = (entryId: string, kind: "fijo" | "variable" | undefined): boolean => {
+    if (entryId.startsWith("cost-")) {
+      const id = Number(entryId.slice(5));
+      if (!costEntries.some((c) => c.id === id)) return false;
+      setCostEntries((prev) => prev.map((c) => (c.id === id ? { ...c, costKind: kind } : c)));
+      return true;
+    }
+    if (entryId.startsWith("financial-")) {
+      const id = Number(entryId.slice("financial-".length));
+      if (!financialItems.some((f) => f.id === id)) return false;
+      setFinancialItems((prev) => prev.map((f) => (f.id === id ? { ...f, costKind: kind } : f)));
+      return true;
+    }
+    if (entryId.startsWith("bank-")) {
+      const id = Number(entryId.slice(5));
+      if (!bankStatementEntries.some((b) => b.id === id)) return false;
+      setBankStatementEntries((prev) => prev.map((b) => (b.id === id ? { ...b, costKind: kind } : b)));
+      return true;
+    }
+    return false;
+  };
 
   // ===== CUENTAS: toda la plata cargada en el sistema mueve una cuenta (ver domain/cuentas.ts) =====
   // Apertura de cada cuenta = su saldo a la fecha de corte del banco (29/08/2026): el banco segun el
@@ -16087,6 +16131,12 @@ Escribi CERRAR para confirmar:`
         },
       ];
     });
+  };
+
+  // ESTADO elegido de un pago que viene (programado / estimado / inamovible). Vale para cualquier origen.
+  const setEstadoPrevisto = (clave: string, estado: "programado" | "estimado" | "inamovible") => {
+    const item = agendaInamoviblesItems.find((i) => i.clave === clave);
+    if (item) upsertMarcaInamovible(item, { estadoPago: estado });
   };
 
   // RECLAMO: "ya se pago" -> se sube el comprobante y el pago queda cerrado. Si el origen tiene su
@@ -18137,6 +18187,8 @@ Escribi CERRAR para confirmar:`
           companyOptions={COMPANY_OPTIONS}
           onAddMovement={addCalendarMovement}
           onAddJobPayment={addPaymentFromCalendar}
+          fvPorRenglon={calendarRowConfig.fv || {}}
+          onFVRenglon={setFVRenglon}
           cobrosPrevistos={approvedJobs
             .filter((j) => canAccessCompany(j.company))
             .flatMap((j) =>
@@ -18743,6 +18795,7 @@ Escribi CERRAR para confirmar:`
           onSaveVencimiento={saveVencimiento}
           onDeleteVencimiento={deleteVencimiento}
           onIrAlOrigen={irAlOrigenInamovible}
+          onEstadoPago={(item, estado) => upsertMarcaInamovible(item, { estadoPago: estado })}
         />
       )}
       {activeTab === "calendarioAnual" && renderCalendarioAnual()}
@@ -18830,6 +18883,11 @@ Escribi CERRAR para confirmar:`
               egresos={egresosDelSistema}
               companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
               money={money}
+              fvPorRenglon={calendarRowConfig.fv || {}}
+              onFVRenglon={setFVRenglon}
+              onFVPago={setFVPago}
+              onEstadoPrevisto={setEstadoPrevisto}
+              onIrA={(tab) => setActiveTab(tab as TabKey)}
             />
           }
         />

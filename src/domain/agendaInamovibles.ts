@@ -38,6 +38,8 @@ export type VencimientoMarca = {
   reprogramadoA?: string; // nueva fecha limite (yyyy-mm-dd)
   comprobante?: { fileName: string; storagePath?: string; at: string };
   nota?: string;
+  // Estado elegido para este pago (Compras y analisis de gastos): programado / estimado / inamovible.
+  estadoPago?: "programado" | "estimado" | "inamovible";
 };
 
 export type ItemInamovible = {
@@ -60,6 +62,7 @@ export type ItemInamovible = {
   pagadoComo: string; // "" | "a mano" | "cayó en el banco" | "en Tarjetas" | "realizado en el cash flow" | "con comprobante"
   comprobante?: { fileName: string; storagePath?: string };
   reprogramadoDe?: string; // fecha original, si se reprogramo
+  estadoPago?: "programado" | "estimado" | "inamovible"; // elegido a mano (marca)
   estado: "pagado" | "vencido" | "hoy" | "proximo" | "en_ventana" | "futuro";
   diasRestantes: number;
   alerta: boolean;
@@ -324,7 +327,7 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
   const porClave = new Map(f.marcas.map((m) => [m.clave, m]));
   const conMarcas = out.map((i) => {
     const m = porClave.get(i.clave);
-    if (!m || (!m.reprogramadoA && !m.comprobante)) return i;
+    if (!m || (!m.reprogramadoA && !m.comprobante && !m.estadoPago)) return i;
     const { estado: _e, diasRestantes: _d, alerta: _a, texto: _t, ...base } = i;
     const nueva = { ...base };
     if (m.reprogramadoA && m.reprogramadoA !== i.fechaLimite) {
@@ -332,6 +335,7 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
       nueva.fechaLimite = m.reprogramadoA;
       if (nueva.ventanaDesde > m.reprogramadoA) nueva.ventanaDesde = m.reprogramadoA;
     }
+    if (m.estadoPago) nueva.estadoPago = m.estadoPago;
     if (m.comprobante) {
       nueva.pagado = true;
       nueva.pagadoComo = "con comprobante";

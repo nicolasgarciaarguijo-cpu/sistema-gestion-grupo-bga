@@ -40,6 +40,10 @@ export type CalendarRowConfig = {
   extra: CalendarExtraRow[];
   // Secciones propias del usuario (titulos grandes que no estan en la estructura fija).
   sections?: CalendarExtraSection[];
+  // FIJO / VARIABLE del TIPO DE GASTO (renglon). Con `locked` (candado) TODOS los pagos de ese renglon
+  // quedan fijados asi; sin candado es solo la sugerencia y cada pago puede tener el suyo
+  // (Nicolas, 2026-10-14).
+  fv?: Record<string, { kind: "fijo" | "variable"; locked: boolean }>;
 };
 
 export const DEFAULT_CALENDAR_ROW_CONFIG: CalendarRowConfig = { labels: {}, hidden: [], extra: [], sections: [] };

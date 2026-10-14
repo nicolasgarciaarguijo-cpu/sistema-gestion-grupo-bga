@@ -120,6 +120,8 @@ export function CalendarioAnualTab({
   jobs = [],
   cobrosPrevistos = [],
   onSetCobroEstado,
+  fvPorRenglon = {},
+  onFVRenglon,
   onAssignToJob,
   onOpenJob,
   suppliers = [],
@@ -215,6 +217,9 @@ export function CalendarioAnualTab({
     date: string; amount: number; currency: "ARS" | "USD"; estado: "estimado" | "inamovible";
   }>;
   onSetCobroEstado?: (jobId: number, paymentId: number, estado: "realizado" | "estimado" | "inamovible", fecha?: string) => void;
+  // Fijo / variable del TIPO DE GASTO (renglon), con candado: todos sus pagos quedan asi.
+  fvPorRenglon?: Record<string, { kind: "fijo" | "variable"; locked: boolean }>;
+  onFVRenglon?: (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => void;
   // Abrir la ficha del trabajo en la solapa Trabajos aprobados.
   onOpenJob?: (jobId: number) => void;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
@@ -2893,6 +2898,32 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
             <QuickMenuTitle>
               {rowMenu.label} · {list.length} mov.
             </QuickMenuTitle>
+            {onFVRenglon && rowMenu.itemKey && sectionByKey.get(rowMenu.sectionKey)?.dir === "out" && (() => {
+              // TIPO DE GASTO: fijo o variable. Con candado, todos los pagos del renglon quedan asi.
+              const actual = fvPorRenglon[rowMenu.itemKey];
+              const fijar = (kind: "fijo" | "variable" | null, locked: boolean) => {
+                onFVRenglon(rowMenu.itemKey, kind, locked);
+                close();
+              };
+              return (
+                <>
+                  <div style={{ fontSize: 11, color: "#64748b", padding: "4px 8px" }}>
+                    Tipo de gasto: {actual ? `${actual.kind === "fijo" ? "FIJO" : "VARIABLE"}${actual.locked ? " 🔒" : ""}` : "sin definir"}
+                  </div>
+                  <button style={quickMenuItem} onClick={() => fijar("fijo", actual?.locked || false)}>Fijo</button>
+                  <button style={quickMenuItem} onClick={() => fijar("variable", actual?.locked || false)}>Variable</button>
+                  {actual && (
+                    <button style={quickMenuItem} onClick={() => fijar(actual.kind, !actual.locked)}>
+                      {actual.locked ? "🔓 Quitar candado (cada pago puede ser distinto)" : "🔒 Candado: todos los pagos de este renglón"}
+                    </button>
+                  )}
+                  {actual && (
+                    <button style={{ ...quickMenuItem, color: "#94a3b8" }} onClick={() => fijar(null, false)}>Sacar fijo/variable</button>
+                  )}
+                  <QuickMenuSep />
+                </>
+              );
+            })()}
             {rowMenu.kind === "uncl" && bankIdsOf(list).length > 0 && (
               <>
                 <button style={{ ...quickMenuItem, fontWeight: 700 }} onClick={() => openLink(list, rowMenu.label)}>

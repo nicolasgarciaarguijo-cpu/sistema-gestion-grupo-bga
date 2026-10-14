@@ -39,7 +39,17 @@ export type PagosInamoviblesProps = {
   onSaveVencimiento: (v: Vencimiento) => void;
   onDeleteVencimiento: (id: number) => void;
   onIrAlOrigen: (item: ItemInamovible) => void;
+  // Estado del pago (el mismo que en Compras y analisis de gastos).
+  onEstadoPago?: (item: ItemInamovible, estado: "programado" | "estimado" | "inamovible") => void;
 };
+
+// Estado por defecto segun el origen (tarjeta y cuota no se pueden correr) y sus colores.
+const estadoDe = (i: ItemInamovible) => i.estadoPago || (i.origen === "tarjeta" || i.origen === "deuda" ? "inamovible" : "programado");
+const ESTADO_PAGO = {
+  programado: { label: "Programado", fg: "#0f766e", bg: "#ccfbf1" },
+  estimado: { label: "Estimado", fg: "#7c3aed", bg: "#ede9fe" },
+  inamovible: { label: "Inamovible", fg: "#dc2626", bg: "#fee2e2" },
+} as const;
 
 const nuevoVencimiento = (company: string): Vencimiento => ({
   id: 0,
@@ -257,6 +267,16 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                       </td>
                       <td style={{ padding: "4px 6px", boxShadow: `inset 3px 0 0 ${m?.primary || "#cbd5e1"}` }}>
                         <strong>{i.titulo}</strong>
+                        {!i.pagado && (
+                          <span
+                            style={{
+                              marginLeft: 6, padding: "0 6px", borderRadius: 999, fontSize: 10.5, fontWeight: 700,
+                              color: ESTADO_PAGO[estadoDe(i)].fg, background: ESTADO_PAGO[estadoDe(i)].bg,
+                            }}
+                          >
+                            {ESTADO_PAGO[estadoDe(i)].label}
+                          </span>
+                        )}
                         <div style={{ fontSize: 11, color: "#64748b" }}>
                           {m?.short || i.company} · {ORIGEN_LABEL[i.origen]}
                           {i.detalle ? ` · ${i.detalle}` : ""}
@@ -282,6 +302,24 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
           <QuickMenuTitle>
             {menu.item.titulo} · {fmtFecha(menu.item.fechaLimite)}
           </QuickMenuTitle>
+          {canEdit && props.onEstadoPago && !menu.item.pagado && (
+            <>
+              {(["programado", "estimado", "inamovible"] as const).map((k) => (
+                <button
+                  key={k}
+                  style={{ ...quickMenuItem, color: ESTADO_PAGO[k].fg, fontWeight: estadoDe(menu.item) === k ? 800 : 500 }}
+                  onClick={() => {
+                    props.onEstadoPago!(menu.item, k);
+                    setMenu(null);
+                  }}
+                >
+                  {estadoDe(menu.item) === k ? "● " : ""}
+                  {ESTADO_PAGO[k].label}
+                </button>
+              ))}
+              <QuickMenuSep />
+            </>
+          )}
           {canEdit && (
             <button
               style={quickMenuItem}

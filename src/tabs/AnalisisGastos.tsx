@@ -2,7 +2,7 @@
 // materiales, bancos y tarjetas, deudas, seguros, caja chica y viaticos), con blanco y negro SEPARADOS,
 // fijo / variable, y lo que viene (programado / estimado / inamovible) aparte. Ver domain/analisisGastos.
 import React, { useMemo, useState } from "react";
-import { Panel } from "../ui/primitives";
+import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { analizarGastos, type Egreso, type EstadoGasto, type Totales } from "../domain/analisisGastos";
 
 const ESTADO_COLOR: Record<EstadoGasto, { fg: string; bg: string; label: string }> = {
@@ -28,15 +28,45 @@ const th: React.CSSProperties = { textAlign: "right", fontSize: 11.5, color: "#6
 const td: React.CSSProperties = { textAlign: "right", padding: "5px 8px", borderBottom: "1px solid #f1f5f9", whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" };
 const pill = (fg: string, bg: string): React.CSSProperties => ({ display: "inline-block", padding: "1px 7px", borderRadius: 999, fontSize: 11, fontWeight: 700, color: fg, background: bg });
 
+// De que solapa viene cada pago -> a donde ir con "Ir a la solapa".
+const TAB_DE_FUENTE: Record<string, { tab: string; label: string }> = {
+  Banco: { tab: "bancos", label: "Bancos y tarjetas" },
+  Tarjetas: { tab: "bancos", label: "Bancos y tarjetas" },
+  "Pago a proveedores": { tab: "costos", label: "Pago a proveedores" },
+  Comisiones: { tab: "aprobados", label: "Trabajos aprobados" },
+  "Caja chica": { tab: "cajaChica", label: "Caja chica y viáticos" },
+  Haberes: { tab: "personal", label: "Personal" },
+  Seguros: { tab: "seguros", label: "Seguros" },
+  Deudas: { tab: "cashflow", label: "Balance (deudas)" },
+  "Cargado en el cash flow": { tab: "calendarioAnual", label: "Calendario anual" },
+  Vencimiento: { tab: "calendarioAnual", label: "Calendario anual" },
+};
+
+type Menu =
+  | { x: number; y: number; tipo: "renglon"; conceptKey: string; renglon: string }
+  | { x: number; y: number; tipo: "item"; egreso: Egreso };
+
 export function AnalisisGastos({
   egresos,
   companyOptions,
   money,
+  fvPorRenglon = {},
+  onFVRenglon,
+  onFVPago,
+  onEstadoPrevisto,
+  onIrA,
 }: {
   egresos: Egreso[];
   companyOptions: Array<{ value: string; label?: string; short?: string }>;
   money: (n: number, currency?: string) => string;
+  fvPorRenglon?: Record<string, { kind: "fijo" | "variable"; locked: boolean }>;
+  onFVRenglon?: (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => void;
+  onFVPago?: (entryId: string, kind: "fijo" | "variable" | undefined) => boolean;
+  onEstadoPrevisto?: (clave: string, estado: "programado" | "estimado" | "inamovible") => void;
+  onIrA?: (tab: string) => void;
 }) {
+  const [menu, setMenu] = useState<Menu | null>(null);
+  const [aviso, setAviso] = useState("");
   const [mes, setMes] = useState(mesActual());
   const [empresa, setEmpresa] = useState<string>("__ALL__");
   const [abiertos, setAbiertos] = useState<Set<string>>(new Set());
@@ -164,16 +194,43 @@ export function AnalisisGastos({
                         const rAbierto = abiertos.has(kr);
                         return (
                           <React.Fragment key={kr}>
-                            <tr onClick={() => toggle(kr)} style={{ cursor: "pointer" }}>
+                            <tr
+                              onClick={() => toggle(kr)}
+                              onContextMenu={(ev) => {
+                                const ck = r.items.find((i) => i.conceptKey)?.conceptKey || "";
+                                if (!ck) return;
+                                ev.preventDefault();
+                                setMenu({ x: ev.clientX, y: ev.clientY, tipo: "renglon", conceptKey: ck, renglon: r.renglon });
+                              }}
+                              style={{ cursor: "pointer" }}
+                              title="Click: ver cada pago · Click derecho: fijo / variable del tipo de gasto (con candado)"
+                            >
                               <td style={{ ...td, textAlign: "left", paddingLeft: 26 }}>
                                 {rAbierto ? "▾ " : "▸ "}
                                 {r.renglon} <span style={{ color: "#94a3b8" }}>({r.items.length})</span>
+                                {(() => {
+                                  const cfg = fvPorRenglon[r.items.find((i) => i.conceptKey)?.conceptKey || ""];
+                                  if (!cfg) return null;
+                                  return (
+                                    <span style={{ ...pill(cfg.kind === "fijo" ? "#1d4ed8" : "#b45309", cfg.kind === "fijo" ? "#dbeafe" : "#fef3c7"), marginLeft: 6 }}>
+                                      {cfg.kind === "fijo" ? "F" : "V"}{cfg.locked ? " 🔒" : ""}
+                                    </span>
+                                  );
+                                })()}
                               </td>
                               {celdas(r.realizado, r.previsto)}
                             </tr>
                             {rAbierto &&
                               r.items.map((e) => (
-                                <tr key={e.id} style={{ background: "#fcfcfd" }}>
+                                <tr
+                                  key={e.id}
+                                  style={{ background: "#fcfcfd", cursor: "context-menu" }}
+                                  title="Click derecho: fijo / variable, estado, ir a la solapa"
+                                  onContextMenu={(ev) => {
+                                    ev.preventDefault();
+                                    setMenu({ x: ev.clientX, y: ev.clientY, tipo: "item", egreso: e });
+                                  }}
+                                >
                                   <td style={{ ...td, textAlign: "left", paddingLeft: 46, color: "#475569" }} colSpan={1} title={e.titulo}>
                                     <span style={{ color: "#94a3b8", marginRight: 6 }}>{e.fecha.slice(8, 10)}/{e.fecha.slice(5, 7)}</span>
                                     {e.titulo.length > 46 ? e.titulo.slice(0, 46) + "…" : e.titulo}
@@ -208,6 +265,106 @@ export function AnalisisGastos({
           </tbody>
         </table>
       </div>
+      {aviso && <div style={{ fontSize: 12, color: "#b45309", marginTop: 6 }}>{aviso}</div>}
+      {menu && (() => {
+        const close = () => setMenu(null);
+        if (menu.tipo === "renglon") {
+          const actual = fvPorRenglon[menu.conceptKey];
+          const fijar = (kind: "fijo" | "variable" | null, locked: boolean) => {
+            onFVRenglon?.(menu.conceptKey, kind, locked);
+            close();
+          };
+          return (
+            <QuickMenu x={menu.x} y={menu.y} onClose={close}>
+              <QuickMenuTitle>Tipo de gasto · {menu.renglon}</QuickMenuTitle>
+              <div style={{ fontSize: 11, color: "#64748b", padding: "4px 8px" }}>
+                {actual
+                  ? `${actual.kind === "fijo" ? "FIJO" : "VARIABLE"}${actual.locked ? " 🔒 (todos sus pagos)" : " (sugerencia; cada pago puede cambiar)"}`
+                  : "Sin definir"}
+              </div>
+              {onFVRenglon && (
+                <>
+                  <button style={quickMenuItem} onClick={() => fijar("fijo", actual?.locked || false)}>Fijo</button>
+                  <button style={quickMenuItem} onClick={() => fijar("variable", actual?.locked || false)}>Variable</button>
+                  {actual && (
+                    <button style={{ ...quickMenuItem, fontWeight: 700 }} onClick={() => fijar(actual.kind, !actual.locked)}>
+                      {actual.locked ? "🔓 Quitar candado" : "🔒 Candado: todos los pagos de este tipo"}
+                    </button>
+                  )}
+                  {actual && (
+                    <button style={{ ...quickMenuItem, color: "#94a3b8" }} onClick={() => fijar(null, false)}>
+                      Sacar fijo/variable
+                    </button>
+                  )}
+                </>
+              )}
+            </QuickMenu>
+          );
+        }
+        const e = menu.egreso;
+        const destino = TAB_DE_FUENTE[e.fuente];
+        const bloqueado = fvPorRenglon[e.conceptKey]?.locked;
+        const fvPago = (kind: "fijo" | "variable" | undefined) => {
+          const ok = onFVPago?.(e.id, kind);
+          setAviso(ok ? "" : `Este pago (${e.fuente}) se marca con el candado de su tipo de gasto o desde su solapa.`);
+          close();
+        };
+        return (
+          <QuickMenu x={menu.x} y={menu.y} onClose={close}>
+            <QuickMenuTitle>
+              {e.titulo.slice(0, 40)} · {money(e.monto, e.moneda)}
+            </QuickMenuTitle>
+            {e.estado === "realizado" ? (
+              bloqueado ? (
+                <div style={{ fontSize: 11, color: "#64748b", padding: "4px 8px" }}>
+                  Fijo/variable bloqueado 🔒 por su tipo de gasto ({e.renglon}).
+                </div>
+              ) : (
+                onFVPago && (
+                  <>
+                    <button style={quickMenuItem} onClick={() => fvPago("fijo")}>Este pago es fijo</button>
+                    <button style={quickMenuItem} onClick={() => fvPago("variable")}>Este pago es variable</button>
+                    {e.fv && (
+                      <button style={{ ...quickMenuItem, color: "#94a3b8" }} onClick={() => fvPago(undefined)}>
+                        Sacar fijo/variable
+                      </button>
+                    )}
+                  </>
+                )
+              )
+            ) : (
+              onEstadoPrevisto &&
+              (["programado", "estimado", "inamovible"] as const).map((k) => (
+                <button
+                  key={k}
+                  style={{ ...quickMenuItem, color: ESTADO_COLOR[k].fg, fontWeight: e.estado === k ? 800 : 500 }}
+                  onClick={() => {
+                    onEstadoPrevisto(e.id.replace(/^prev-/, ""), k);
+                    close();
+                  }}
+                >
+                  {e.estado === k ? "● " : ""}
+                  {ESTADO_COLOR[k].label}
+                </button>
+              ))
+            )}
+            {destino && onIrA && (
+              <>
+                <QuickMenuSep />
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    onIrA(destino.tab);
+                    close();
+                  }}
+                >
+                  Ir a {destino.label}
+                </button>
+              </>
+            )}
+          </QuickMenu>
+        );
+      })()}
     </Panel>
   );
 }

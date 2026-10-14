@@ -100,7 +100,20 @@ export type PrevistoAgenda = {
   administration?: "blanco" | "negro";
   conceptKey?: string;
   pagado: boolean;
+  estadoPago?: "programado" | "estimado" | "inamovible";
 };
+
+// FIJO / VARIABLE efectivo de un pago: si el tipo de gasto (renglon) tiene candado, manda el renglon;
+// si no, el del pago, y si el pago no tiene, la sugerencia del renglon.
+export function fvEfectivo(
+  delPago: "fijo" | "variable" | undefined | null,
+  conceptKey: string | undefined,
+  porRenglon: Record<string, { kind: "fijo" | "variable"; locked: boolean }> | undefined
+): "fijo" | "variable" | undefined {
+  const r = conceptKey ? porRenglon?.[conceptKey] : undefined;
+  if (r?.locked) return r.kind;
+  return delPago || r?.kind || undefined;
+}
 
 const FUENTE_DE_KIND: Record<string, string> = {
   banco: "Banco",
@@ -222,7 +235,7 @@ export function egresoDePrevisto(p: PrevistoAgenda): Egreso | null {
     conceptKey: ck,
     administracion: p.administration === "negro" ? "negro" : "blanco",
     fv: null,
-    estado: ESTADO_DE_ORIGEN[p.origen] || "programado",
+    estado: p.estadoPago || ESTADO_DE_ORIGEN[p.origen] || "programado",
     monto,
     moneda: p.currency === "USD" ? "USD" : "ARS",
     fuente: FUENTE_DE_ORIGEN[p.origen] || "Pagos programados",
