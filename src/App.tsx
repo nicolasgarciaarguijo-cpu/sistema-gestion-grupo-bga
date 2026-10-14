@@ -342,6 +342,8 @@ import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domai
 import { entradasRetiros, RENGLON_RETIROS } from "./domain/retirosSocietarios";
 import { RetirosSocietariosPanel } from "./tabs/RetirosSocietarios";
 import { ArqueoCierre } from "./ui/ArqueoCierre";
+import { VentanaNovedades } from "./ui/Novedades";
+import { NOVEDADES, novedadesPendientes, ultimaNovedad, type TandaNovedades } from "./content/novedades";
 import { filasDeArqueo, billeterasDesdeArqueo, movimientosDelArqueo, diferencia, TOLERANCIA_ARQUEO, type FilaArqueo } from "./domain/arqueoCierre";
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo } from "./domain/proveedores";
@@ -16470,6 +16472,36 @@ Escribi CERRAR para confirmar:`
   };
   const canSeeInamovibles = effectiveIsAdmin || supabaseAllowedTabs.includes("calendarioAnual");
 
+  // NOVEDADES: al iniciar sesion, lo nuevo que esa persona todavia no vio (solo de sus solapas). Se
+  // abre una vez por sesion, cuando ya cargaron los datos y los permisos. "Visto" queda en el navegador.
+  const [novedadesAbiertas, setNovedadesAbiertas] = useState<TandaNovedades[] | null>(null);
+  const novedadesMostradasRef = useRef<string>("");
+  const puedeVerNovedad = (tab?: string) => !tab || effectiveIsAdmin || supabaseAllowedTabs.includes(tab as any);
+  const claveNovedades = `novedades.visto.${supabaseSession?.user?.id || "anonimo"}`;
+  useEffect(() => {
+    const uid = supabaseSession?.user?.id;
+    if (!isSupabaseLoggedIn || !uid || !supabaseHydratedTick) return;
+    if (!effectiveIsAdmin && supabaseAllowedTabs.length === 0) return; // esperar los permisos
+    if (novedadesMostradasRef.current === uid) return;
+    novedadesMostradasRef.current = uid;
+    let visto = "";
+    try {
+      visto = window.localStorage.getItem(claveNovedades) || "";
+    } catch {
+      visto = "";
+    }
+    const pendientes = novedadesPendientes(visto, puedeVerNovedad);
+    if (pendientes.length > 0) setNovedadesAbiertas(pendientes);
+  }, [isSupabaseLoggedIn, supabaseSession?.user?.id, supabaseHydratedTick, effectiveIsAdmin, supabaseAllowedTabs.length]);
+  const cerrarNovedades = () => {
+    try {
+      window.localStorage.setItem(claveNovedades, ultimaNovedad());
+    } catch {
+      // sin almacenamiento: se vuelve a mostrar la proxima vez, no pasa nada
+    }
+    setNovedadesAbiertas(null);
+  };
+
   // Lo que baja a la planilla por el carril de previsiones (no suma al neto): los seguros y los
   // vencimientos cargados a mano con fecha CONFIRMADA y renglon.
   const previsionesPlanilla = useMemo(() => {
@@ -18773,6 +18805,16 @@ Escribi CERRAR para confirmar:`
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {activeTab !== "acceso" && (
             <>
+              <ButtonLike
+                onClick={() =>
+                  setNovedadesAbiertas(
+                    NOVEDADES.map((t) => ({ ...t, items: t.items.filter((i) => puedeVerNovedad(i.tab)) })).filter((t) => t.items.length > 0)
+                  )
+                }
+                secondary
+              >
+                🆕 Novedades
+              </ButtonLike>
               <ButtonLike onClick={handleUndo} secondary disabled={undoAvailable === 0}>
                 {undoAvailable > 0 ? `Atras (${undoAvailable})` : "Atras"}
               </ButtonLike>
@@ -19152,6 +19194,17 @@ Escribi CERRAR para confirmar:`
         />
       )}
       {activeTab === "calendarioAnual" && renderCalendarioAnual()}
+      {novedadesAbiertas && (
+        <VentanaNovedades
+          tandas={novedadesAbiertas}
+          nombre={supabaseProfile?.full_name?.split(" ")[0]}
+          onIrA={(tab) => {
+            cerrarNovedades();
+            setActiveTab(tab as TabKey);
+          }}
+          onEntendido={cerrarNovedades}
+        />
+      )}
       {arqueoPendiente && (
         <ArqueoCierre
           empresa={arqueoPendiente.empresa}
