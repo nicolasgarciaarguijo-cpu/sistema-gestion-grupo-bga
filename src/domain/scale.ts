@@ -6,18 +6,28 @@ import type { ScaleRow } from "./types";
 // Fallback (fix F7): si no hay escala del mes pedido, usa el ultimo mes cargado
 // para esa categoria (preferentemente anterior o igual al mes pedido) en vez de
 // devolver null/0, que rompia el calculo del valor hora.
+// La categoria se compara sin acentos, mayusculas ni espacios de mas: "Oficial Múltiple " y "oficial
+// multiple" son la misma (si no, la escala no aparecia y el valor hora quedaba en 0).
+export const normalizarCategoria = (s: string) =>
+  String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
 export const getScaleForCategory = (
   scaleRows: ScaleRow[],
   category: string,
   month: string
 ): ScaleRow | null => {
-  const cat = category.toLowerCase();
+  const cat = normalizarCategoria(category);
   const exact = scaleRows.find(
-    (row) => row.month === month && row.category.toLowerCase() === cat
+    (row) => row.month === month && normalizarCategoria(row.category) === cat
   );
   if (exact) return exact;
   const forCategory = scaleRows
-    .filter((row) => row.category.toLowerCase() === cat)
+    .filter((row) => normalizarCategoria(row.category) === cat)
     .sort((a, b) => a.month.localeCompare(b.month));
   if (forCategory.length === 0) return null;
   const notFuture = forCategory.filter((row) => row.month <= month);

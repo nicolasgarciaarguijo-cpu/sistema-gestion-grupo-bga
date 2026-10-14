@@ -514,3 +514,11 @@ describe("recibo oficial De Raíz · Soria 09/2026", () => {
     expect(r.net).toBeCloseTo(1670466 - 0.96, 1);
   });
 });
+
+describe("costo hora: fuera de convenio con blanco sin cargas", () => {
+  it("el blanco acordado tal cual entra al costo hora", () => {
+    const sin = run({}, { isFueraConvenio: true, agreedWhite: 0, computeWhiteCharges: false });
+    const con = run({}, { isFueraConvenio: true, agreedWhite: 240000, computeWhiteCharges: false });
+    expect(con.hourlyCost - sin.hourlyCost).toBeCloseTo((12 * 240000) / con.productiveAnnualHours);
+  });
+});

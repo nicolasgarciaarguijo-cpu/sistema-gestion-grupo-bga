@@ -82,7 +82,7 @@ export type PayrollConfig = {
 };
 
 // Dias laborables promedio por mes, para convertir dias no trabajados a horas.
-const WORK_DAYS_PER_MONTH = 22;
+export const WORK_DAYS_PER_MONTH = 22;
 
 export type PayrollSummaryInput = {
   seniorityYears: number;
@@ -257,8 +257,10 @@ export function computePayrollSummary({
   // Aguinaldo NEGRO: mismo criterio que el blanco (bruto x meses de aguinaldo) pero SIN cargas y todo
   // dentro del circuito negro. Solo aguinaldo (el negro no genera contribuciones ni descuentos de ley).
   const annualBlackSAC = blackMonthly * (config.aguinaldoAnnualMonths || 0);
+  // El blanco acordado "tal cual" (fuera de convenio sin cargas) tambien lo paga la empresa: entra al
+  // costo hora (antes quedaba afuera y el costo de esa persona salia por debajo).
   const annualCompanyCost =
-    12 * (totalGross + employerContrib + employerInsurance + monthlyProvisionCost) +
+    12 * (totalGross + flatAgreedWhite + employerContrib + employerInsurance + monthlyProvisionCost) +
     annualSACBase +
     annualSACCharges +
     12 * blackMonthly +

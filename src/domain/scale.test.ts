@@ -53,3 +53,10 @@ describe("getScaleForCategory (F7)", () => {
     expect(getScaleForCategory([], "Oficial", "2026-06")).toBeNull();
   });
 });
+
+describe("categoria con acentos o espacios", () => {
+  it("'Oficial Múltiple ' encuentra la escala de 'Oficial multiple' (y la ultima vigente)", () => {
+    const rows = [row({ id: 7, month: "2026-05", category: "Oficial multiple", vht: 9000 })];
+    expect(getScaleForCategory(rows, "Oficial  Múltiple ", "2026-10")?.id).toBe(7);
+  });
+});

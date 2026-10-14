@@ -75,6 +75,8 @@ type PersonalTabProps = {
   getEmployeeDocumentState: any;
   getEmployeeDocumentSummary: any;
   getEmployeePayrollSummary: any;
+  // Costo hora para COTIZAR: mes completo con la ultima escala vigente (no el del mes a medias).
+  costoHoraDe?: (employee: any) => number;
   getEmployeeProvisionSummary: any;
   getEmployeeSemaphore: any;
   getScaleSemaphore: any;
@@ -208,7 +210,7 @@ export function PersonalTab(props: PersonalTabProps) {
     companyCategoryCostRows, canAccessCompany, totalCompanyPayroll,
     employeesSortedByPay, attendanceMonthData, shiftMonthKey,
     getCompanyMeta, getAttendanceRecord, getAttendanceSummary, getCurrentPayroll,
-    getEmployeeDocumentState, getEmployeeDocumentSummary, getEmployeePayrollSummary,
+    getEmployeeDocumentState, getEmployeeDocumentSummary, getEmployeePayrollSummary, costoHoraDe,
     getEmployeeProvisionSummary, getEmployeeSemaphore, getScaleSemaphore,
     getStockPersonalItemForCompany, monthLabel, formatDateTimeDisplay,
     setEmployeeBaseConfig, setEmployeeDocumentModal, setEmployeeProvisionModal,
@@ -683,7 +685,7 @@ export function PersonalTab(props: PersonalTabProps) {
                             : salary.netSalary
                         )}
                       </td>
-                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(salary.hourlyCost)}</td>
+                      <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(costoHoraDe ? costoHoraDe(employee) : salary.hourlyCost)}</td>
                       <td style={{ ...tdDato, color: "#64748b", fontSize: 11 }}>
                         {employee.category}
                         <div style={{ ...styles.muted, fontSize: 10 }}>
@@ -3070,7 +3072,10 @@ export function PersonalTab(props: PersonalTabProps) {
                             value={money(payrollSummary.totalMonthlyImpact || 0)}
                           />
                           <MiniMetric label="Horas productivas/año" value={String(Math.round(payrollSummary.productiveAnnualHours || 0))} />
-                          <MiniMetric label="Costo hora (real, blanco+negro)" value={money(payrollSummary.hourlyCost)} />
+                          <MiniMetric
+                            label="Costo hora para cotizar (mes completo, blanco+negro)"
+                            value={money(costoHoraDe ? costoHoraDe(selectedEmployee) : payrollSummary.hourlyCost)}
+                          />
                         </div>
                         <Field label="Experiencias y destrezas">
                           <textarea style={styles.textarea} value={selectedEmployee.skills} onChange={(e) => updateEmployeeField(selectedEmployee.id, "skills", e.target.value)} />

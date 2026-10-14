@@ -28,7 +28,7 @@ import {
   type PriceChange,
 } from "./domain/budgetPriceRefresh";
 import { ordenarSubpresupuestos } from "./domain/budgetSections";
-import { computePayrollSummary, isPartnerCategory, monthlyBlackPay } from "./domain/payroll";
+import { computePayrollSummary, isPartnerCategory, monthlyBlackPay, WORK_DAYS_PER_MONTH } from "./domain/payroll";
 import {
   pagoAlimentaCalendario,
   devolucionDeCajaChica,
@@ -15904,6 +15904,50 @@ Escribi CERRAR para confirmar:`
 
   const getEmployeePayrollSummary = (employee: Employee) => payrollSummaryFor(employee, payrollMonth);
 
+  // COSTO HORA PARA COTIZAR (Nicolas, 2026-10-14: "a la hora de presupuestar tengo los valores muy por
+  // debajo"). La liquidacion del mes usa las horas FICHADAS: a mitad de mes son la mitad, y el costo
+  // hora (costo anual / horas anuales) salia a la mitad. Para cotizar se calcula sobre un MES COMPLETO:
+  // horas nominales, sin extras ni ausencias, asistencia completa, el temporal por dia con los dias
+  // habiles del mes, y la ULTIMA ESCALA VIGENTE (la del mes en curso o, si no se actualizo, la anterior).
+  const costoHoraSummaryFor = (employee: Employee) => {
+    const mes = localMonthKey();
+    const guardado = ensureEmployeePayroll(employee, payrollMonth);
+    const payroll: EmployeePayroll = {
+      ...guardado,
+      month: mes,
+      normalHours: employeeBaseConfig.normalHoursDefault,
+      holidayHours: 0,
+      holidayWorkedHours: 0,
+      extra50Hours: 0,
+      extra100Hours: 0,
+      night50Hours: 0,
+      nightHours: 0,
+      night100Hours: 0,
+      unjustifiedAbsenceHours: 0,
+      justifiedAbsenceHours: 0,
+      vacationsDays: 0,
+      anticipos: 0,
+      liquidaSAC: false,
+      presentismoAsistenciaPct: 100,
+    };
+    const temporalPorDia = employee.employmentType === "temporal" && employee.temporalAgreementMode === "diario";
+    return getPayrollSummaryForScenario({
+      company: employee.company,
+      category: employee.category,
+      seniorityYears: employee.seniorityYears,
+      hourlyNetManual: employee.hourlyNetManual,
+      hourlyGrossManual: employee.hourlyGrossManual,
+      payroll,
+      isTemporal: employee.employmentType === "temporal",
+      agreedSalary: temporalPorDia ? Number(employee.agreedDailyRate || 0) * WORK_DAYS_PER_MONTH : Number(employee.agreedSalary || 0),
+      isFueraConvenio: employee.employmentType === "fuera_convenio",
+      agreedWhite: Number(employee.agreedWhite || 0),
+      agreedBlack: Number(employee.agreedBlack || 0),
+      computeWhiteCharges: !!employee.computeWhiteCharges,
+    });
+  };
+  const costoHoraDe = (employee: Employee) => costoHoraSummaryFor(employee).hourlyCost;
+
   // Liquidacion de un empleado para un MES cualquiera (la de la ficha es la del mes elegido).
   const payrollSummaryFor = (employee: Employee, month: string) => {
     const payrollGuardado = ensureEmployeePayroll(employee, month);
@@ -17825,9 +17869,7 @@ Escribi CERRAR para confirmar:`
   const employeesSortedByPay = useMemo(
     () =>
       [...visibleEmployees].sort((a, b) => {
-        const salaryDiff =
-          getEmployeePayrollSummary(b).hourlyCost -
-          getEmployeePayrollSummary(a).hourlyCost;
+        const salaryDiff = costoHoraDe(b) - costoHoraDe(a);
         if (salaryDiff !== 0) return salaryDiff;
         return a.name.localeCompare(b.name);
       }),
@@ -17926,7 +17968,8 @@ Escribi CERRAR para confirmar:`
       current.totalGross += Number(salary.totalGross || 0);
       current.totalNet += Number(salary.net || 0);
       current.totalEmployerImpact += Number(salary.employerImpact || 0);
-      current.totalHourlyCost += Number(salary.hourlyCost || 0);
+      // Para cotizar: costo hora de un mes completo con la ultima escala vigente (no el del mes a medias).
+      current.totalHourlyCost += Number(costoHoraDe(employee) || 0);
 
       grouped.set(key, current);
     });
@@ -20489,7 +20532,7 @@ Escribi CERRAR para confirmar:`
           getCompanyMeta={getCompanyMeta}
           getCompanyBankingLines={getCompanyBankingLines}
           getCompanyTaxId={getCompanyTaxId}
-          getEmployeePayrollSummary={getEmployeePayrollSummary}
+          getEmployeePayrollSummary={costoHoraSummaryFor}
           getSavedBudgetDisplayLabel={getSavedBudgetDisplayLabel}
           renderBudgetHistoryBlock={renderBudgetHistoryBlock}
           updateArrayItem={updateArrayItem}
@@ -21081,6 +21124,7 @@ Escribi CERRAR para confirmar:`
           getEmployeeDocumentState={getEmployeeDocumentState}
           getEmployeeDocumentSummary={getEmployeeDocumentSummary}
           getEmployeePayrollSummary={getEmployeePayrollSummary}
+          costoHoraDe={costoHoraDe}
           getEmployeeProvisionSummary={getEmployeeProvisionSummary}
           getEmployeeSemaphore={getEmployeeSemaphore}
           getScaleSemaphore={getScaleSemaphore}

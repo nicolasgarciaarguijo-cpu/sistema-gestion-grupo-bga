@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-14h",
+    fecha: "14/10/2026",
+    titulo: "Costo hora para cotizar corregido",
+    items: [
+      {
+        titulo: "El costo hora se calcula sobre un mes completo",
+        que: "Antes salía de las horas fichadas del mes en curso: a mitad de mes daba la mitad, y los presupuestos quedaban muy por debajo. Ahora se calcula sobre un mes completo (horas nominales, asistencia completa) con la última escala vigente: si la escala del mes no se cargó, usa la anterior. También suma el blanco acordado de los fuera de convenio sin cargas, y la categoría encuentra su escala aunque tenga acentos o espacios distintos.",
+        como: "Para llevarlo a los presupuestos: en Marcadores tocá 'Tomar costo hora desde personal' (en Mano de obra base), y en cada presupuesto viejo usá 'Actualizar presupuesto vencido'. La liquidación del mes no cambia.",
+        tab: "marcadores",
+      },
+    ],
+  },
+  {
     id: "2026-10-14g",
     fecha: "14/10/2026",
     titulo: "Remitos con historial y stock que se mueve solo",
