@@ -31,7 +31,7 @@ export function FichaProveedor({
     taxId: string;
     aliases: string;
     currentAccount?: boolean;
-    tipoGasto?: string;
+    grupoCosto?: string;
     tipoGastoLocked?: boolean;
     condicionPago?: CondicionPago;
     notes: string;
@@ -53,7 +53,8 @@ export function FichaProveedor({
   onAbrirFactura?: (id: number) => void;
 }) {
   const cond = proveedor?.condicionPago;
-  const fv = proveedor?.tipoGasto ? fvPorRenglon[proveedor.tipoGasto] : undefined;
+  const fv = proveedor?.grupoCosto ? { kind: proveedor.grupoCosto.startsWith("fijo|") ? "fijo" : "variable", locked: false } : undefined;
+  void fvPorRenglon;
   const setCond = (c: CondicionPago | undefined) => proveedor && onUpdateProveedor(proveedor.id, "condicionPago", c);
   const caja: React.CSSProperties = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 12px" };
   const titulo: React.CSSProperties = { fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 };
@@ -103,28 +104,28 @@ export function FichaProveedor({
         {proveedor && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10, marginTop: 12 }}>
             <div style={caja}>
-              <div style={titulo}>Tipo de gasto</div>
+              <div style={titulo}>Grupo de costo (tipo · grupo)</div>
               <select
                 style={{ ...input, width: "100%" }}
-                value={proveedor.tipoGasto || ""}
-                onChange={(e) => onUpdateProveedor(proveedor.id, "tipoGasto", e.target.value || undefined)}
+                value={proveedor.grupoCosto || ""}
+                onChange={(e) => onUpdateProveedor(proveedor.id, "grupoCosto", e.target.value || undefined)}
               >
-                <option value="">Sin tipo de gasto</option>
+                <option value="">Sin grupo de costo</option>
                 {renglonesEgreso.map((r) => (
                   <option key={r.key} value={r.key}>{r.label}</option>
                 ))}
               </select>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: 13, cursor: proveedor.tipoGasto ? "pointer" : "not-allowed" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: 13, cursor: proveedor.grupoCosto ? "pointer" : "not-allowed" }}>
                 <input
                   type="checkbox"
-                  disabled={!proveedor.tipoGasto}
-                  checked={!!proveedor.tipoGastoLocked && !!proveedor.tipoGasto}
+                  disabled={!proveedor.grupoCosto}
+                  checked={!!proveedor.tipoGastoLocked && !!proveedor.grupoCosto}
                   onChange={(e) => onUpdateProveedor(proveedor.id, "tipoGastoLocked", e.target.checked)}
                 />
-                🔒 Candado: cada factura y cada pago de este proveedor entra así
+                🔒 Candado: cada factura nueva de este proveedor entra en este grupo
               </label>
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
-                {fv ? `Ese tipo de gasto es ${fv.kind === "fijo" ? "FIJO" : "VARIABLE"}${fv.locked ? " 🔒" : ""}.` : "Fijo/variable: se elige en el tipo de gasto (click derecho en el renglón)."}
+                {fv ? `Sus pagos van al cash flow en ${fv.kind === "fijo" ? "un grupo FIJO" : "un grupo VARIABLE"} (EGRESOS · ${proveedor?.currentAccount ? "CUENTAS CORRIENTES" : "PROVEEDORES"}).` : "Elegí el grupo: ahí van sus pagos en el cash flow."}
               </div>
             </div>
 

@@ -448,7 +448,7 @@ export function CostosTab({
 
       {vista === "grupos" && (
       <Panel
-        title="Grupos de costos" span="full"
+        title="Grupos de costos" span="half"
         actions={<ButtonLike onClick={addCostGroup}>Agregar grupo</ButtonLike>}
       >
         <div style={styles.sectionNote}>
@@ -1182,7 +1182,7 @@ export function CostosTab({
       )}
 
       {vista === "composicion" && (
-      <Panel title="Composicion: fijos / variables → grupo → gastos" span="full">
+      <Panel title="Composicion: fijos / variables → grupo → gastos" span="half">
         <div style={styles.sectionNote}>
           Cada grupo con su TOTAL y, debajo, los gastos asignados: así ves cómo se compone cada tipo de
           costo a medida que cargás. El buscador de "Gastos cargados" también filtra esta vista.

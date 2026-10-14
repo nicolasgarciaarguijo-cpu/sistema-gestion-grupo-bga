@@ -135,7 +135,7 @@ import {
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
-import { CALENDAR_SECTIONS, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, type CalendarRowConfig } from "./domain/calendarStructure";
+import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, type CalendarRowConfig } from "./domain/calendarStructure";
 import { buildLoanLines, lenderFromLabel, type CalendarLoan } from "./domain/loanLines";
 import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
 import { aggregateCardCosts } from "./domain/cardCosts";
@@ -339,6 +339,7 @@ import { FichaProveedor } from "./ui/FichaProveedor";
 import { FacturaCompraModal, type FacturaForm } from "./ui/FacturaCompraModal";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { ProveedoresPanel } from "./tabs/Proveedores";
+import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
 import { ViaticosPanel } from "./tabs/Viaticos";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
@@ -12326,9 +12327,10 @@ Escribi CERRAR para confirmar:`
   const addCostEntryFromCalendar = (g: {
     company: string; date: string; amount: number; administration: "blanco" | "negro";
     description: string; notes: string; conceptKey: string; group: string; paymentMethod: PaymentMethod;
-    cuentaId?: string;
+    cuentaId?: string; supplier?: string; groupKind?: "fijo" | "variable";
   }): boolean => {
-    if (!g.company || !g.date || !g.group || !g.paymentMethod) return false;
+    if (!g.company || !g.date || !g.paymentMethod) return false;
+    if (!g.group && !g.supplier) return false;
     setCostEntries((prev) => [
       {
         id: newId(),
@@ -12340,7 +12342,9 @@ Escribi CERRAR para confirmar:`
         cuentaId: g.cuentaId || undefined,
         administration: g.administration,
         source: "manual",
-        supplier: "",
+        supplier: g.supplier || "",
+        supplierId: g.supplier ? (buscarProveedor(suppliers as any, g.supplier, "") as any)?.id : undefined,
+        groupKind: g.groupKind,
         notes: g.notes || "",
         paymentMethod: g.paymentMethod,
         conceptKey: g.conceptKey || undefined,
@@ -15919,6 +15923,45 @@ Escribi CERRAR para confirmar:`
     [annualCashFlowEntries, haberesBlancoEntries, calendarRowConfig.fv]
   );
 
+  // GRUPOS DE COSTO para la planilla, la factura y la ficha (tipo + nombre; los automaticos no).
+  const gruposCostoLista = useMemo(
+    () =>
+      costGroups
+        .filter((g) => g.active && !g.auto && g.name.trim())
+        .map((g) => ({ clave: claveGrupo(g.kind === "fijo" ? "fijo" : "variable", g.name), nombre: g.name.trim(), tipo: (g.kind === "fijo" ? "fijo" : "variable") as "fijo" | "variable" })),
+    [costGroups]
+  );
+  // LA PLANILLA: los pagos a proveedores (y lo de los renglones reemplazados) van a EGRESOS · PROVEEDORES
+  // o CUENTAS CORRIENTES, en el renglon de su grupo de costo y con el nombre del proveedor. Es una
+  // traduccion para mostrar: los datos no cambian (ver domain/gruposProveedores.ts).
+  const cashFlowEntriesPlanilla = useMemo(() => {
+    const costById = new Map(costEntries.map((c) => [c.id, c]));
+    const facturaDePago = new Map<number, any>();
+    purchaseInvoices.forEach((i) => {
+      if (i.paidByCostEntryId != null) facturaDePago.set(i.paidByCostEntryId, i);
+    });
+    const tipoDeGrupo = (nombre: string) => (costGroups.find((g) => g.name === nombre)?.kind === "fijo" ? "fijo" : "variable");
+    return cashFlowEntries.map((e: any) => {
+      let contexto: any;
+      if (String(e.id).startsWith("cost-")) {
+        const ce = costById.get(Number(String(e.id).slice(5)));
+        if (ce) {
+          const inv = facturaDePago.get(ce.id);
+          const prov = buscarProveedor(suppliers as any, ce.supplier || inv?.supplier || "", inv?.taxId || "") as any;
+          contexto = {
+            proveedor: ce.supplier || inv?.supplier || ce.description || "",
+            grupoDeFactura: inv?.grupoCosto,
+            grupoDelPago: ce.group ? claveGrupo((ce.groupKind as any) || tipoDeGrupo(ce.group), ce.group) : undefined,
+            grupoDelProveedor: prov?.grupoCosto,
+            cuentaCorriente: !!prov?.currentAccount,
+          };
+        }
+      }
+      const r = aRenglonDeProveedores(e, (ck) => CALENDAR_ITEM_INDEX[ck]?.sectionKey, contexto);
+      return r ? { ...e, conceptKey: r.conceptKey, title: r.title } : e;
+    });
+  }, [cashFlowEntries, costEntries, purchaseInvoices, suppliers, costGroups]);
+
   // F/V del TIPO DE GASTO (renglon), con o sin candado. kind null = se lo saca.
   const setFVRenglon = (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => {
     if (!conceptKey) return;
@@ -16323,7 +16366,15 @@ Escribi CERRAR para confirmar:`
   // FACTURAS DE PROVEEDORES POR PAGAR (con fecha elegida o por la condicion del proveedor). Bajan a
   // Pagos programados como pagos que vienen. Ver domain/proveedores.
   const facturasAPagar = useMemo(
-    () => facturasPorPagar(purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company)) as any, suppliers as any),
+    () =>
+      facturasPorPagar(purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company)) as any, suppliers as any).map((f) => {
+        const inv = purchaseInvoicesWithBankLink.find((i) => i.id === f.id);
+        const prov = buscarProveedor(suppliers as any, f.supplier, inv?.taxId || "") as any;
+        return {
+          ...f,
+          conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, inv?.grupoCosto || prov?.grupoCosto || "|Sin grupo"),
+        };
+      }),
     [purchaseInvoicesWithBankLink, suppliers]
   );
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
@@ -16401,10 +16452,10 @@ Escribi CERRAR para confirmar:`
   const egresosDelSistema = useMemo<Egreso[]>(
     () =>
       [
-        ...cashFlowEntries.map((e) => egresoDeEntrada(e as any)),
+        ...cashFlowEntriesPlanilla.map((e: any) => egresoDeEntrada(e as any)),
         ...agendaInamoviblesItems.map((p) => egresoDePrevisto(p as any)),
       ].filter((e): e is Egreso => !!e),
-    [cashFlowEntries, agendaInamoviblesItems]
+    [cashFlowEntriesPlanilla, agendaInamoviblesItems]
   );
   const alertasInamovibles = useMemo(() => alertasActivas(agendaInamoviblesItems), [agendaInamoviblesItems]);
   const pagosVencidosAReclamar = useMemo(() => pagosAReclamar(agendaInamoviblesItems), [agendaInamoviblesItems]);
@@ -16979,7 +17030,8 @@ Escribi CERRAR para confirmar:`
     const clean = String(name || "").trim();
     if (!clean || isAutoCostGroup(clean)) return "";
     setCostGroups((prev) => {
-      if (prev.some((g) => g.name.trim().toLowerCase() === clean.toLowerCase())) return prev;
+      // Puede haber dos grupos con el mismo nombre si son de distinto tipo (fijo / variable).
+      if (prev.some((g) => g.name.trim().toLowerCase() === clean.toLowerCase() && g.kind === kind)) return prev;
       return [
         ...prev,
         { id: newId(), name: clean, kind, company: "General", active: true, auto: false, notes: "" },
@@ -16992,11 +17044,26 @@ Escribi CERRAR para confirmar:`
     // Cascada al RENOMBRAR un grupo no-auto: los gastos se asignan por nombre, así que hay que
     // reetiquetar todos los CostEntry que apuntaban al nombre viejo (si no, se desenganchan).
     const target = costGroups.find((g) => g.id === id);
+    if (target && (field === "name" || field === "kind") && !target.auto && value && value !== (target as any)[field]) {
+      const oldName = target.name;
+      const nuevoNombre = field === "name" ? String(value) : target.name;
+      const nuevoTipo = field === "kind" ? (value as any) : target.kind;
+      const viejaClave = claveGrupo(target.kind as any, oldName);
+      const nuevaClave = claveGrupo(nuevoTipo, nuevoNombre);
+      // Los pagos de ESE grupo (mismo nombre y, si lo tienen, mismo tipo).
+      setCostEntries((prev) =>
+        prev.map((e) =>
+          e.group === oldName && (!e.groupKind || e.groupKind === target.kind)
+            ? { ...e, group: nuevoNombre, ...(e.groupKind ? { groupKind: nuevoTipo } : {}) }
+            : e
+        )
+      );
+      // Proveedores y facturas que apuntan al grupo.
+      setSuppliers((prev) => prev.map((x) => (x.grupoCosto === viejaClave ? { ...x, grupoCosto: nuevaClave } : x)));
+      setPurchaseInvoices((prev) => prev.map((x) => (x.grupoCosto === viejaClave ? { ...x, grupoCosto: nuevaClave } : x)));
+    }
     if (target && field === "name" && !target.auto && value && value !== target.name) {
       const oldName = target.name;
-      setCostEntries((prev) =>
-        prev.map((e) => (e.group === oldName ? { ...e, group: String(value) } : e))
-      );
       // Los gastos de caja chica clasificados a este grupo también se reetiquetan.
       setPettyCashExpenses((prev) =>
         prev.map((e) => (e.costGroup === oldName ? { ...e, costGroup: String(value) } : e))
@@ -18504,7 +18571,14 @@ Escribi CERRAR para confirmar:`
           notes={calendarNotes}
           onSetNote={setCalendarCellNote}
           billeteraDiaria={billeteraDiariaConCuentas}
-          entries={cashFlowEntries}
+          entries={cashFlowEntriesPlanilla}
+          gruposCosto={gruposCostoLista}
+          proveedoresSugeridos={visibleSuppliers.map((x) => x.name).filter(Boolean)}
+          onRenombrarGrupo={(clave, nuevo) => {
+            const g = parseClaveGrupo(clave);
+            const grupo = g ? costGroups.find((x) => x.name === g.nombre && (x.kind === "fijo" ? "fijo" : "variable") === g.tipo) : undefined;
+            if (grupo) updateCostGroup(grupo.id, "name", nuevo);
+          }}
           previsiones={previsionesPlanilla}
           programados={agendaInamoviblesItems.filter((i) => i.origen !== "sueldos" && i.origen !== "cashflow")}
           cuentas={cuentasSistema}
@@ -18719,14 +18793,8 @@ Escribi CERRAR para confirmar:`
   };
 
   // ===== FACTURAS DE COMPRA (listado + ventana) y PROVEEDORES (Nicolas, 2026-10-14) =====
-  const renglonesEgreso = allSectionsWith(calendarRowConfig)
-    .filter((sec: any) => sec.dir === "out" && sec.key !== "mov_internos_out" && sec.key !== "inversiones_out" && sec.key !== "retiros_out")
-    .flatMap((sec: any) =>
-      (sec.items || []).map((it: any) => ({
-        key: it.key,
-        label: `${String(sec.label).replace(/^EGRESOS · /, "")} · ${calendarRowConfig.labels?.[it.key] || it.label}`,
-      }))
-    );
+  // El "tipo de gasto" de una factura o un proveedor es un GRUPO DE COSTO con su tipo (fijo/variable).
+  const renglonesEgreso = gruposCostoLista.map((g) => ({ key: g.clave, label: etiquetaGrupo(g.clave) }));
   const fmtCorta = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
   const METODO_TEXTO: Record<string, string> = { transferencia: "transferencia", efectivo: "efectivo", cheque: "cheque", debito: "débito" };
   const filasFacturas: FilaFactura[] = useMemo(() => purchaseInvoicesWithBankLink
@@ -18775,8 +18843,7 @@ Escribi CERRAR para confirmar:`
     vat: 0,
     total: 0,
     administration: "blanco",
-    conceptKey: tipoGastoEfectivo(undefined, buscarProveedor(suppliers as any, supplier, taxId) as any) ||
-      (buscarProveedor(suppliers as any, supplier, taxId) as any)?.tipoGasto,
+    grupoCosto: (buscarProveedor(suppliers as any, supplier, taxId) as any)?.grupoCosto,
     notes: "",
     pago: { estado: "impaga", modo: "nuevo", fecha: todayIso(), monto: 0, metodo: "transferencia", administration: "blanco", estadoPrevisto: "programado" },
   });
@@ -18800,7 +18867,7 @@ Escribi CERRAR para confirmar:`
       vat: Number(inv.vat || 0),
       total: Number(inv.total || 0),
       administration: inv.administration === "negro" ? "negro" : "blanco",
-      conceptKey: inv.conceptKey,
+      grupoCosto: inv.grupoCosto,
       notes: inv.notes || "",
       pago: {
         estado: inv.paidByCostEntryId != null || inv.paidByBankEntryId != null ? "pagada" : "impaga",
@@ -18838,7 +18905,9 @@ Escribi CERRAR para confirmar:`
             supplier: f.supplier,
             supplierId: prov?.id,
             invoiceRef: f.invoiceNumber,
-            conceptKey: f.conceptKey || tipoGastoEfectivo(undefined, prov),
+            // Grupo del pago = el de la factura (o el del proveedor): va a su renglon en el cash flow.
+            group: parseClaveGrupo(f.grupoCosto || prov?.grupoCosto)?.nombre || "",
+            groupKind: parseClaveGrupo(f.grupoCosto || prov?.grupoCosto)?.tipo,
             description: `Factura ${f.receiptLetter} ${f.invoiceNumber}`.trim(),
           };
           const previo = existente?.paidByCostEntryId != null ? costEntries.find((c) => c.id === existente.paidByCostEntryId) : undefined;
@@ -18848,7 +18917,7 @@ Escribi CERRAR para confirmar:`
           } else {
             const ceId = newId();
             setCostEntries((prev) => [
-              { id: ceId, group: "", source: "manual", notes: "Cargado con la factura (Compras)", ...datosPago } as CostEntry,
+              { id: ceId, source: "manual", notes: "Cargado con la factura (Compras)", ...datosPago } as CostEntry,
               ...prev,
             ]);
             paidByCostEntryId = ceId;
@@ -18878,7 +18947,7 @@ Escribi CERRAR para confirmar:`
       total: Number(f.total) || 0,
       notes: f.notes,
       extractedAutomatically: existente?.extractedAutomatically ?? false,
-      conceptKey: f.conceptKey,
+      grupoCosto: f.grupoCosto,
       fechaPagoPrevista: f.pago.estado === "impaga" ? f.pago.fechaPrevista : existente?.fechaPagoPrevista,
       paidByCostEntryId,
     };
@@ -19587,9 +19656,7 @@ Escribi CERRAR para confirmar:`
         const porPagar = facturasAPagar.filter(
           (f) => buscarProveedor(prov ? [prov] : [], f.supplier) || supplierKey(f.supplier, "") === supplierKey(fichaProveedor.nombre, "")
         );
-        const renglonesEgreso = allSectionsWith(calendarRowConfig)
-          .filter((s: any) => s.dir === "out" && s.key !== "mov_internos_out")
-          .flatMap((s: any) => (s.items || []).map((it: any) => ({ key: it.key, label: `${String(s.label).replace(/^EGRESOS · /, "")} · ${calendarRowConfig.labels?.[it.key] || it.label}` })));
+        const renglonesEgreso = gruposCostoLista.map((g) => ({ key: g.clave, label: etiquetaGrupo(g.clave) }));
         return (
           <FichaProveedor
             nombre={fichaProveedor.nombre}

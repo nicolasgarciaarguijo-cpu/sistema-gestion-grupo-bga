@@ -836,7 +836,7 @@ export function ComprasTab({
           )}
 
           {vista === "compras" && (
-          <Panel title="Resumen administrativo de compras" span="half">
+          <Panel title="Resumen administrativo de compras" span="full">
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturas cargadas" value={String(purchaseInvoiceSummary.invoicesCount)} />
               <MiniMetric label="Carga asistida" value={String(purchaseInvoiceSummary.autoLoadedCount)} />

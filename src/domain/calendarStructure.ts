@@ -11,7 +11,9 @@ export type CalSection = {
   dir: "in" | "out";
   totalLabel: string;
   items: CalItem[];
-  dynamic?: "cobranzas"; // sección con renglones dinámicos (por trabajo)
+  dynamic?: "cobranzas" | "proveedores"; // sección con renglones dinámicos (por trabajo / por grupo y proveedor)
+  // Sección reemplazada (14/10/2026): no se dibuja; lo que tenía cargado se ve en PROVEEDORES por grupo.
+  oculta?: boolean;
 };
 
 // Retoques del usuario sobre la estructura fija: renombrar un renglón (alias) o sacarlo de la vista.
@@ -72,8 +74,8 @@ export function allSectionsWith(config: CalendarRowConfig | undefined): CalSecti
       totalLabel: `Total ${s.label}`,
       items: [],
     }));
-  const fijasIn = CALENDAR_SECTIONS.filter((s) => s.dir === "in");
-  const fijasOut = CALENDAR_SECTIONS.filter((s) => s.dir === "out");
+  const fijasIn = CALENDAR_SECTIONS.filter((s) => s.dir === "in" && !s.oculta);
+  const fijasOut = CALENDAR_SECTIONS.filter((s) => s.dir === "out" && !s.oculta);
   return [
     ...fijasIn,
     ...propias.filter((s) => s.dir === "in"),
@@ -145,6 +147,18 @@ export const CALENDAR_SECTIONS: CalSection[] = [
   },
   // ===================== EGRESOS =====================
   {
+    key: "ctacte_out", label: "EGRESOS · CUENTAS CORRIENTES · PROVEEDORES HABITUALES", group: "egreso", dir: "out",
+    totalLabel: "Total Cuentas corrientes", dynamic: "proveedores", items: [],
+  },
+  {
+    // PAGOS A PROVEEDORES (Nicolas, 2026-10-14): los renglones son los GRUPOS DE COSTOS (tipo + nombre) y
+    // debajo va cada proveedor. Se cargan con los pagos de Compras y de Pago a proveedores. Bancos,
+    // tarjetas y seguros tambien son proveedores. Ver domain/gruposProveedores.ts.
+    key: "proveedores_out", label: "EGRESOS · PROVEEDORES", group: "egreso", dir: "out",
+    totalLabel: "Total Proveedores", dynamic: "proveedores", items: [],
+  },
+  {
+    oculta: true,
     key: "bancos", label: "EGRESOS · BANCOS", group: "egreso", dir: "out", totalLabel: "Total de Bancos",
     items: [
       { key: "b_tarjeta_credito", label: "Tarjeta de crédito" },
@@ -177,7 +191,13 @@ export const CALENDAR_SECTIONS: CalSection[] = [
   },
   {
     key: "haberes", label: "EGRESOS · HABERES", group: "egreso", dir: "out", totalLabel: "Total Haberes",
-    items: [],
+    items: [
+      { key: "cs_art_vida", label: "CCSS ART - Vida" },
+      { key: "cs_seg_soc", label: "CCSS Aportes y Contrib. Seg. Soc." },
+      { key: "cs_obra_soc", label: "CCSS Aportes y Contrib. Obra Soc." },
+      { key: "cs_intereses", label: "Intereses" },
+      { key: "rh_viaticos", label: "Viáticos" },
+    ],
   },
   {
     // CAJA CHICA. Regla del usuario (2026-08-26): la plata se considera GASTADA cuando se le asigna el
@@ -185,6 +205,7 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     // ASIGNACION del fondo (egreso) y la DEVOLUCION de lo que sobro (ingreso, en Ingresos varios), y
     // NUNCA los gastos sueltos: esos son el rinde y viven en la solapa Caja chica. Si se mostraran los
     // dos, la misma plata se gastaria dos veces.
+    oculta: true,
     key: "caja_chica", label: "EGRESOS · CAJA CHICA", group: "egreso", dir: "out",
     totalLabel: "Total Caja Chica",
     items: [
@@ -192,13 +213,10 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
+    oculta: true,
     key: "cargas_sociales", label: "EGRESOS · CARGAS SOCIALES", group: "egreso", dir: "out",
     totalLabel: "Total Cargas Sociales",
     items: [
-      { key: "cs_art_vida", label: "CCSS ART - Vida" },
-      { key: "cs_seg_soc", label: "CCSS Aportes y Contrib. Seg. Soc." },
-      { key: "cs_obra_soc", label: "CCSS Aportes y Contrib. Obra Soc." },
-      { key: "cs_intereses", label: "Intereses" },
     ],
   },
   {
@@ -221,6 +239,7 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
+    oculta: true,
     key: "seguros", label: "EGRESOS · SEGUROS", group: "egreso", dir: "out", totalLabel: "Total Seguros",
     items: [
       { key: "seg_caucion_1", label: "Seguro póliza de caución (1)" },
@@ -237,6 +256,7 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
+    oculta: true,
     key: "logistica", label: "EGRESOS · LOGÍSTICA", group: "egreso", dir: "out", totalLabel: "Total Logística",
     items: [
       { key: "log_internet", label: "Internet" },
@@ -255,6 +275,7 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
+    oculta: true,
     key: "gastos_comerciales", label: "EGRESOS · GASTOS COMERCIALES", group: "egreso", dir: "out",
     totalLabel: "Total Gastos Comerciales",
     items: [
@@ -263,6 +284,7 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
+    oculta: true,
     key: "gastos_admin", label: "EGRESOS · GASTOS ADMINISTRACIÓN", group: "egreso", dir: "out",
     totalLabel: "Total Administración",
     items: [
@@ -279,6 +301,7 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
+    oculta: true,
     key: "gastos_rrhh", label: "EGRESOS · GASTOS RRHH", group: "egreso", dir: "out",
     totalLabel: "Total de Gastos de RRHH",
     items: [
@@ -286,10 +309,10 @@ export const CALENDAR_SECTIONS: CalSection[] = [
       { key: "rh_capacitaciones", label: "Capacitaciones" },
       { key: "rh_cartas_documento", label: "Cartas documento" },
       // Viaticos eventuales y fijos (solapa Caja chica y viaticos / acuerdo en Personal).
-      { key: "rh_viaticos", label: "Viáticos" },
     ],
   },
   {
+    oculta: true,
     key: "compras_insumos", label: "EGRESOS · COMPRAS DE INSUMOS", group: "egreso", dir: "out",
     totalLabel: "Total Otros Gastos",
     items: [
@@ -297,6 +320,7 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     ],
   },
   {
+    oculta: true,
     key: "compra_materiales", label: "EGRESOS · COMPRA DE MATERIALES E INSUMOS", group: "egreso", dir: "out",
     totalLabel: "Total Materiales e Insumos",
     items: [
@@ -312,20 +336,24 @@ export const CALENDAR_SECTIONS: CalSection[] = [
       { key: "mi_out_pase", label: "Pase entre cuentas (sale)" },
       { key: "mi_out_prestamo_empresa", label: "Préstamo / devolución a la otra empresa del grupo" },
       { key: "mi_out_devolucion_prestamo", label: "Devolución de préstamos y aportes" },
+      { key: "inv_colocacion", label: "Colocación en inversiones" },
+      { key: "rs_retiros", label: "Retiros de socios" },
     ],
   },
   {
     // La otra punta de INVERSIONES: la plata que se pone a trabajar (sale de la cuenta al colocarla).
     // No es un gasto: el rescate vuelve por INGRESOS · INVERSIONES. Vinculada con la solapa Inversiones.
+    oculta: true,
     key: "inversiones_out", label: "EGRESOS · INVERSIONES", group: "egreso", dir: "out",
     totalLabel: "Total Inversiones (colocado)",
-    items: [{ key: "inv_colocacion", label: "Colocación en inversiones" }],
+    items: [],
   },
   {
     // Lo que retiran los socios (bloque en Balance y estado de resultados). No es gasto: sale del resultado.
+    oculta: true,
     key: "retiros_out", label: "EGRESOS · RETIROS SOCIETARIOS", group: "egreso", dir: "out",
     totalLabel: "Total Retiros societarios",
-    items: [{ key: "rs_retiros", label: "Retiros de socios" }],
+    items: [],
   },
 ];
 

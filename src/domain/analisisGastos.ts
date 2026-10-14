@@ -12,6 +12,19 @@
 //  - Las facturas (registro) y los movimientos internos (pases, prestamos) NO son gasto.
 
 import { CALENDAR_ITEM_INDEX, CALENDAR_SECTIONS, esCobranzaReal } from "./calendarStructure";
+import { parseRenglonProveedor, parseClaveGrupo } from "./gruposProveedores";
+
+// Grupo de costo (nombre) -> grupo del analisis.
+const GRUPO_DE_GRUPO_COSTO = (nombre: string): GrupoGasto => {
+  const n = String(nombre || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  if (/compra|material|insumo/.test(n)) return "materiales";
+  if (/personal|sueldo|rrhh/.test(n)) return "personal";
+  if (/financ|banco|tarjeta/.test(n)) return "bancos";
+  if (/seguro/.test(n)) return "seguros";
+  if (/caja chica|viatic/.test(n)) return "cajaChica";
+  if (/impuest|iva|ganancia/.test(n)) return "empresariales";
+  return "funcionamiento";
+};
 
 export type GrupoGasto =
   | "personal"
@@ -156,7 +169,27 @@ export function egresoDeEntrada(e: EntradaCalendario): Egreso | null {
 
   let grupo: GrupoGasto;
   let renglon: string;
-  if (e.kind === "comision") {
+  const pv = parseRenglonProveedor(ck);
+  if (pv) {
+    const g = parseClaveGrupo(pv.grupo);
+    grupo = g ? GRUPO_DE_GRUPO_COSTO(g.nombre) : "sinClasificar";
+    renglon = g ? `${g.tipo === "fijo" ? "Fijo" : "Variable"} · ${g.nombre}` : "Proveedores sin grupo";
+    return {
+      id: e.id,
+      fecha: e.date,
+      company: e.company,
+      titulo: (e.title || "—").trim(),
+      grupo,
+      renglon,
+      conceptKey: ck,
+      administracion: e.administration === "negro" ? "negro" : "blanco",
+      fv: e.costKind || g?.tipo || null,
+      estado: "realizado",
+      monto,
+      moneda: e.currency === "USD" ? "USD" : "ARS",
+      fuente: e.kind === "comision" ? "Comisiones" : fuenteDe(e),
+    };
+  } else if (e.kind === "comision") {
     grupo = "funcionamiento";
     renglon = "Comisiones";
   } else if (ck.startsWith("custom:")) {
@@ -221,6 +254,26 @@ export function egresoDePrevisto(p: PrevistoAgenda): Egreso | null {
   const monto = Number(p.monto || 0);
   if (!(monto > 0)) return null;
   const ck = p.conceptKey || "";
+  const pvPrev = parseRenglonProveedor(ck);
+  if (pvPrev) {
+    const g = parseClaveGrupo(pvPrev.grupo);
+    if (!(Number(p.monto || 0) > 0) || p.pagado) return null;
+    return {
+      id: `prev-${p.clave}`,
+      fecha: p.fechaConfirmada || p.fechaLimite,
+      company: p.company,
+      titulo: p.titulo,
+      grupo: g ? GRUPO_DE_GRUPO_COSTO(g.nombre) : "sinClasificar",
+      renglon: g ? `${g.tipo === "fijo" ? "Fijo" : "Variable"} · ${g.nombre}` : "Proveedores sin grupo",
+      conceptKey: ck,
+      administracion: p.administration === "negro" ? "negro" : "blanco",
+      fv: g?.tipo || null,
+      estado: p.estadoPago || "programado",
+      monto: Number(p.monto || 0),
+      moneda: p.currency === "USD" ? "USD" : "ARS",
+      fuente: "Facturas de proveedores",
+    };
+  }
   const idx = ck ? CALENDAR_ITEM_INDEX[ck] : undefined;
   const custom = ck.startsWith("custom:") ? seccionDeCustom(ck) : null;
   const grupo: GrupoGasto =

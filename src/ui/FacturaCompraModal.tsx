@@ -18,7 +18,7 @@ export type FacturaForm = {
   vat: number;
   total: number;
   administration: "blanco" | "negro";
-  conceptKey?: string;
+  grupoCosto?: string; // "tipo|nombre"
   notes: string;
   pago: {
     estado: "pagada" | "impaga";
@@ -41,7 +41,7 @@ type ProveedorOpt = {
   taxId: string;
   company: string;
   currentAccount?: boolean;
-  tipoGasto?: string;
+  grupoCosto?: string;
   tipoGastoLocked?: boolean;
 };
 
@@ -68,7 +68,7 @@ export function FacturaCompraModal({
   proveedores: ProveedorOpt[];
   cuentas: Array<{ id: string; company: string; nombre: string; moneda?: string; activa?: boolean }>;
   companyOptions: Array<{ value: string; label?: string; short?: string }>;
-  renglonesEgreso: Array<{ key: string; label: string }>;
+  renglonesEgreso: Array<{ key: string; label: string }>; // grupos de costo: key "tipo|nombre"
   pagosVinculables: (company: string, supplier: string) => Array<{ id: number; date: string; amount: number; description: string }>;
   fechaSegunCondicion: (supplier: string, taxId: string, fechaFactura: string) => string | undefined;
   money: (n: number) => string;
@@ -95,7 +95,7 @@ export function FacturaCompraModal({
       return;
     }
     const patch: Partial<FacturaForm> = { supplier: p.name, taxId: p.taxId || "", altaProveedor: false };
-    if (!f.conceptKey && p.tipoGasto) patch.conceptKey = p.tipoGasto;
+    if (!f.grupoCosto && p.grupoCosto) patch.grupoCosto = p.grupoCosto;
     setF((prev) => {
       const next = { ...prev, ...patch };
       const prevista = fechaSegunCondicion(p.name, p.taxId, prev.invoiceDate);
@@ -203,9 +203,9 @@ export function FacturaCompraModal({
                 <option value="negro">Negro (sin factura)</option>
               </select>
             </label>
-            <label style={{ ...lbl, gridColumn: "span 2" }}>Tipo de gasto (renglón del Calendario)
-              <select style={input} value={f.conceptKey || ""} onChange={(e) => set({ conceptKey: e.target.value || undefined })}>
-                <option value="">— Sin tipo de gasto —</option>
+            <label style={{ ...lbl, gridColumn: "span 2" }}>Grupo de costo (tipo · grupo)
+              <select style={input} value={f.grupoCosto || ""} onChange={(e) => set({ grupoCosto: e.target.value || undefined })}>
+                <option value="">— El del proveedor —</option>
                 {renglonesEgreso.map((r) => (
                   <option key={r.key} value={r.key}>{r.label}</option>
                 ))}

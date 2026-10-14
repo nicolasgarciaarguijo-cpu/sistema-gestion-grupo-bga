@@ -975,6 +975,13 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "La planilla de cash flow del sistema: cada renglón está vinculado con su solapa, y lo que se carga en un lado aparece en el otro.",
     sections: [
       {
+        heading: "Proveedores y grupos de costos",
+        blocks: [
+          { type: "p", text: "Los pagos a proveedores van a EGRESOS · CUENTAS CORRIENTES · PROVEEDORES HABITUALES (si el proveedor tiene cuenta corriente) o a EGRESOS · PROVEEDORES. Los renglones son los grupos de costos (con su F o V) y debajo va cada proveedor. Bancos, tarjetas, seguros y caja chica también son proveedores." },
+          { type: "steps", items: ["El grupo de un pago sale de su factura; si la factura no tiene, de la ficha del proveedor.", "Para cargar un pago desde acá, tocá la celda del grupo: pide el proveedor y cómo se pagó, y queda en Pago a proveedores.", "Click derecho en el nombre del grupo: renombrarlo (se renombra también en Grupos de costos)."] },
+        ],
+      },
+      {
         heading: "Cargar desde la planilla",
         blocks: [
           { type: "p", text: "Tocá el día en un renglón para cargar. Lo cargado va a la solapa que corresponde: un cobro al trabajo, un pago a Pago a proveedores, un pase o préstamo a Movimientos internos, una colocación o un rescate a Inversiones, un retiro a Retiros societarios." },

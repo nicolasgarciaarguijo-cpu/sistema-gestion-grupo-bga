@@ -78,6 +78,7 @@ type AddForm = {
   inversionId?: number;
   tipoInversion?: string;
   socioRetiro?: string;
+  proveedorNombre?: string;
   // EGRESOS: adonde va lo que se carga. "" = queda como movimiento del calendario.
   destinoEgreso: "" | "gasto" | "comision";
   // Lo que pide la solapa Costos y la planilla no preguntaba. El medio decide si el pago tiene que
@@ -96,6 +97,7 @@ type AddForm = {
 import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
 import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
 import { destinoInversion } from "../domain/inversionesCalendario";
+import { parseRenglonProveedor, renglonProveedor, parseClaveGrupo } from "../domain/gruposProveedores";
 import { destinoEnSolapa } from "../domain/movimientosInternosCalendario";
 import { permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
 import { estadoDePrevision, previsionPorConceptoYDia, previsionPorConceptoYMes } from "../domain/segurosCalendar";
@@ -120,6 +122,9 @@ export function CalendarioAnualTab({
   onAddInversion,
   onAddRetiro,
   inversionesActivas = [],
+  gruposCosto = [],
+  proveedoresSugeridos = [],
+  onRenombrarGrupo,
   onAddCommission,
   onAssignConcept,
   bnaCompra,
@@ -268,6 +273,10 @@ export function CalendarioAnualTab({
     cuentaId?: string; notes: string; conceptKey: string; inversionId?: number; tipoInversion?: string;
   }) => boolean;
   inversionesActivas?: Array<{ id: number; company: string; moneda: string; renglon: string; label: string }>;
+  // PROVEEDORES / CUENTAS CORRIENTES: los grupos de costos (renglones) y los nombres de proveedores.
+  gruposCosto?: Array<{ clave: string; nombre: string; tipo: "fijo" | "variable" }>;
+  proveedoresSugeridos?: string[];
+  onRenombrarGrupo?: (clave: string, nuevoNombre: string) => void;
   // Carga en RETIROS SOCIETARIOS: se crea el retiro en el bloque de Balance.
   onAddRetiro?: (m: { company: string; date: string; amount: number; administration: "blanco" | "negro"; cuentaId?: string; notes: string; socio: string }) => boolean;
   // Carga en un renglon de MOVIMIENTOS INTERNOS: se escribe en la solapa (pase o aporte/prestamo).
@@ -279,7 +288,7 @@ export function CalendarioAnualTab({
   onAddCostEntry?: (g: {
     company: string; date: string; amount: number; administration: "blanco" | "negro";
     description: string; notes: string; conceptKey: string; group: string; paymentMethod: PaymentMethod;
-    cuentaId?: string;
+    cuentaId?: string; supplier?: string; groupKind?: "fijo" | "variable";
   }) => boolean;
   onAddCommission?: (
     budgetNumber: string,
@@ -476,6 +485,10 @@ export function CalendarioAnualTab({
     const usdByDate = new Map<string, number>();
     // Comisiones (egreso comercial), por nombre de trabajo.
     const comisionDetail = new Map<string, Map<string, number>>();
+    // PROVEEDORES: "<seccion>|<grupo>" -> proveedor -> dia -> monto; y el total del grupo por circuito.
+    const provDetail = new Map<string, Map<string, Map<string, number>>>();
+    const provB = new Map<string, Map<string, number>>();
+    const provN = new Map<string, Map<string, number>>();
     const comisionByDate = new Map<string, number>();
     // Totales por SECCIÓN separados blanco/negro (para mostrar debajo del total de cada sección).
     const secB = new Map<string, Map<string, number>>();
@@ -555,6 +568,20 @@ export function CalendarioAnualTab({
       // que sumar en SU sección. Si no, todo termina impactando en Cobranzas y el número no es real.
       const isCobranza = esCobranzaReal(e.kind, e.conceptKey);
       const neg = e.administration === "negro";
+      const pv = parseRenglonProveedor(e.conceptKey);
+      if (pv) {
+        const k = `${pv.seccion}|${pv.grupo}`;
+        if (!provDetail.has(k)) provDetail.set(k, new Map());
+        const porProv = provDetail.get(k)!;
+        if (!porProv.has(title)) porProv.set(title, new Map());
+        add(porProv.get(title)!, e.date, amt);
+        addDeep(neg ? provN : provB, k, e.date, amt);
+        marcarEmpresa(detailCompany, `${k}|${title}`, e.date, e.company, amt);
+        add(egresoByDate, e.date, amt);
+        add(neg ? egrN : egrB, e.date, amt);
+        track(pv.seccion, "out", neg, e.company, e.date, amt);
+        return;
+      }
       if (e.kind === "comision") {
         addDeep(comisionDetail, title, e.date, amt);
         marcarEmpresa(detailCompany, title, e.date, e.company, amt);
@@ -650,7 +677,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, customRowsB, customRowsN, internoDetail, internoByDate, facturaDetail, facturaByDate };
+    return { provDetail, provB, provN, byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, customRowsB, customRowsN, internoDetail, internoByDate, facturaDetail, facturaByDate };
   }, [entries, companyScope, dayCols, sectionByKey]);
 
   // CARRIL DE PREVISION (hoy lo alimenta la solapa Seguros). Va aparte de `agg` a proposito: aca no
@@ -1612,6 +1639,36 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
       setAddForm(null);
       return;
     }
+    // PROVEEDORES: el pago se crea en Pago a proveedores (con el proveedor y el grupo del renglon) y
+    // vuelve solo a la planilla.
+    const pvForm = !addForm.editId ? parseRenglonProveedor(addForm.itemKey) : null;
+    if (pvForm && onAddCostEntry) {
+      const grupo = parseClaveGrupo(pvForm.grupo);
+      const proveedor = (addForm.proveedorNombre || "").trim();
+      if (!proveedor || !addForm.paymentMethod) {
+        avisar("Falta el proveedor y cómo se pagó.", "Es un pago a proveedor: queda en Pago a proveedores y en la ficha del proveedor.");
+        return;
+      }
+      if (!onAddCostEntry({
+        company: addForm.company,
+        date: addForm.date,
+        amount: Number(addForm.amount),
+        administration: addForm.administration,
+        description: proveedor,
+        notes: addForm.notes,
+        conceptKey: "",
+        group: grupo?.nombre || "",
+        groupKind: grupo?.tipo,
+        paymentMethod: addForm.paymentMethod as PaymentMethod,
+        cuentaId: addForm.cuentaId || undefined,
+        supplier: proveedor,
+      })) {
+        avisar("No pude cargar el pago.");
+        return;
+      }
+      setAddForm(null);
+      return;
+    }
     // RETIROS SOCIETARIOS: se crea el retiro (bloque de Balance) y vuelve a la planilla solo.
     if (!isCob && !isCustom && !extraLabel && addForm.itemKey === "rs_retiros" && onAddRetiro && !addForm.editId) {
       const socio = (addForm.socioRetiro || "").trim();
@@ -2467,6 +2524,66 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         {visibleDayCols.map((c) => <td key={`cobadd-${c.iso}`} style={{ ...tdCell, ...hi(c.iso) }}></td>)}
                       </tr>
                     )}
+                    {!isCol && section.dynamic === "proveedores" && (() => {
+                      // Grupos de costos (todos los del bloque, mas los que tengan plata y no esten) y
+                      // debajo cada proveedor con movimiento en lo que se ve.
+                      const prefijo = `${section.key}|`;
+                      const conPlata = Array.from(agg.provDetail.keys()).filter((k) => k.startsWith(prefijo)).map((k) => k.slice(prefijo.length));
+                      const claves = Array.from(new Set([...gruposCosto.map((g) => g.clave), ...conPlata]));
+                      const tipoDe = (clave: string) => parseClaveGrupo(clave)?.tipo;
+                      claves.sort((a, b) => (tipoDe(a) === tipoDe(b) ? (parseClaveGrupo(a)?.nombre || a).localeCompare(parseClaveGrupo(b)?.nombre || b) : tipoDe(a) === "fijo" ? -1 : 1));
+                      return claves.map((clave) => {
+                        const g = parseClaveGrupo(clave);
+                        const k = `${prefijo}${clave}`;
+                        const renglon = renglonProveedor(section.key as any, clave);
+                        const provs = Array.from((agg.provDetail.get(k) || new Map()).entries())
+                          .filter(([, drow]) => activeInView(drow))
+                          .sort((a, b) => a[0].localeCompare(b[0]));
+                        return (
+                          <React.Fragment key={k}>
+                            <tr>
+                              <td
+                                style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 600 }}
+                                title={`${g ? g.nombre : "Sin grupo"} — click derecho: renombrar el grupo (se renombra en Grupos de costos)`}
+                                onContextMenu={(ev) => {
+                                  if (!onRenombrarGrupo || !g) return;
+                                  ev.preventDefault();
+                                  const nuevo = window.prompt(`Nuevo nombre para el grupo "${g.nombre}" (${g.tipo}):`, g.nombre);
+                                  if (nuevo && nuevo.trim() && nuevo.trim() !== g.nombre) onRenombrarGrupo(clave, nuevo.trim());
+                                }}
+                              >
+                                {g ? g.nombre : "Sin grupo"}
+                                {g && (
+                                  <span style={{ ...costChip, background: g.tipo === "fijo" ? "#e0e7ff" : "#fef3c7", color: g.tipo === "fijo" ? "#3730a3" : "#92400e" }} title={g.tipo === "fijo" ? "Costo fijo" : "Costo variable"}>
+                                    {g.tipo === "fijo" ? "F" : "V"}
+                                  </span>
+                                )}
+                              </td>
+                              {visibleDayCols.map((c) => (
+                                <td
+                                  key={`${k}-${c.iso}`}
+                                  onClick={() => openAdd(section.key, renglon, c.iso)}
+                                  onContextMenu={(ev) => openCellMenu(ev, g ? g.nombre : "Sin grupo", c.iso, section.key, renglon, (e) => e.conceptKey === renglon)}
+                                  title="Click: cargar un pago a un proveedor de este grupo · Click derecho: editar / borrar"
+                                  style={{ ...tdCell, cursor: "pointer", fontWeight: 600, ...fondoNoHabil(c.iso), ...hi(c.iso), ...estiloCelda(section.key, renglon, c.iso) }}
+                                >
+                                  {marcasDeCelda(section.key, renglon, c.iso)}
+                                  {agg.provB.get(k)?.get(c.iso) || agg.provN.get(k)?.get(c.iso) ? bnCell(agg.provB.get(k), agg.provN.get(k), c.iso, true) : <span style={{ color: "#cbd5e1" }}>+</span>}
+                                </td>
+                              ))}
+                            </tr>
+                            {provs.map(([titulo, drow]) =>
+                              detailRow(titulo, drow, `${k}|${titulo}`, true, {
+                                label: titulo,
+                                sectionKey: section.key,
+                                itemKey: renglon,
+                                match: (e) => e.conceptKey === renglon && sameTitle(e, titulo),
+                              })
+                            )}
+                          </React.Fragment>
+                        );
+                      });
+                    })()}
                     {!isCol && isComerciales &&
                       Array.from(agg.comisionDetail.entries())
                         .filter(([, drow]) => activeInView(drow))
@@ -4050,6 +4167,37 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     onChange={(id) => setAddForm({ ...addForm, cuentaId: id })}
                   />
                 )}
+                {!addForm.editId && parseRenglonProveedor(addForm.itemKey) && onAddCostEntry && (
+                  <>
+                    <datalist id="cal-proveedores">
+                      {proveedoresSugeridos.map((p) => (
+                        <option key={p} value={p} />
+                      ))}
+                    </datalist>
+                    <label style={lblStyle}>Proveedor
+                      <input
+                        style={styles.input}
+                        list="cal-proveedores"
+                        value={addForm.proveedorNombre || ""}
+                        placeholder="Nombre del proveedor"
+                        onChange={(e) => setAddForm({ ...addForm, proveedorNombre: e.target.value })}
+                      />
+                    </label>
+                    <label style={lblStyle}>Cómo se pagó
+                      <select style={styles.input} value={addForm.paymentMethod} onChange={(e) => setAddForm({ ...addForm, paymentMethod: e.target.value as any })}>
+                        <option value="">Elegí…</option>
+                        <option value="transferencia">Transferencia</option>
+                        <option value="efectivo">Efectivo</option>
+                        <option value="cheque">Cheque</option>
+                        <option value="debito">Débito</option>
+                      </select>
+                    </label>
+                    <div style={{ ...styles.noticeBox, gridColumn: "1 / -1", margin: 0, fontSize: 12 }}>
+                      Se carga como <strong>pago a proveedor</strong> en el grupo{" "}
+                      <strong>{(() => { const g = parseClaveGrupo(parseRenglonProveedor(addForm.itemKey)!.grupo); return g ? `${g.tipo} · ${g.nombre}` : "sin grupo"; })()}</strong>: queda en Pago a proveedores y en la ficha del proveedor.
+                    </div>
+                  </>
+                )}
                 {!addForm.editId && addForm.itemKey === "rs_retiros" && onAddRetiro && (
                   <>
                     <label style={lblStyle}>Socio que retira
@@ -4135,7 +4283,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     </>
                   );
                 })()}
-                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && !(!addForm.editId && onAddMovInterno && destinoEnSolapa(addForm.itemKey)) && !(!addForm.editId && onAddInversion && destinoInversion(addForm.itemKey)) && !(!addForm.editId && onAddRetiro && addForm.itemKey === "rs_retiros") && (
+                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && !(!addForm.editId && onAddMovInterno && destinoEnSolapa(addForm.itemKey)) && !(!addForm.editId && onAddInversion && destinoInversion(addForm.itemKey)) && !(!addForm.editId && onAddRetiro && addForm.itemKey === "rs_retiros") && !(!addForm.editId && parseRenglonProveedor(addForm.itemKey)) && (
                   <label style={lblStyle}>Qué estás cargando
                     <select
                       style={styles.input}

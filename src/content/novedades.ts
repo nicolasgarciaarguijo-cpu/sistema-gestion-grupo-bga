@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-14c",
+    fecha: "14/10/2026",
+    titulo: "Cash flow ordenado por proveedores y grupos de costos",
+    items: [
+      {
+        titulo: "Las secciones del cash flow",
+        que: "Ingresos: Trabajos aprobados · Cobranzas, Movimientos internos · Ingreso, Inversiones, Otros ingresos. Egresos: Cuentas corrientes · Proveedores habituales, Proveedores, Haberes (con cargas sociales y viáticos), Impuestos y Movimientos internos · Egresos (con colocación en inversiones y retiros societarios).",
+        como: "Lo que ya estaba cargado no se perdió: se ve en su sección nueva.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Proveedores por grupo de costos",
+        que: "En PROVEEDORES y CUENTAS CORRIENTES los renglones son los grupos de costos (fijo o variable) y debajo va cada proveedor con su nombre. Bancos, tarjetas, seguros y caja chica también son proveedores.",
+        como: "El grupo sale de la factura o, si no tiene, de la ficha del proveedor (Pago a proveedores). Click en una celda del grupo para cargar un pago (pide proveedor y cómo se pagó). Click derecho en el nombre del grupo para renombrarlo (se renombra en Grupos de costos).",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Grupo de costo en facturas y proveedores",
+        que: "El 'tipo de gasto' de una factura o de un proveedor es ahora un grupo de costo con su tipo: por ejemplo 'Fijo · Administrativos' o 'Variable · Compras y materiales'. Puede haber dos grupos con el mismo nombre y distinto tipo.",
+        como: "Los grupos se crean en Compras y análisis de gastos → Grupos de costos. En la factura y en la ficha del proveedor se elige el grupo.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-10-14b",
     fecha: "14/10/2026",
     titulo: "Compras y Pago a proveedores reordenados",

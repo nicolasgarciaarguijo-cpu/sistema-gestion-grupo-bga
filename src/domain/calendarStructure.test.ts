@@ -86,7 +86,7 @@ describe("secciones propias del usuario", () => {
     const keys = allSectionsWith(config).map((s) => s.key);
     const iPropiaIn = keys.indexOf("propia:aportes-socios");
     expect(iPropiaIn).toBeGreaterThan(keys.indexOf("ingresos_varios"));
-    expect(iPropiaIn).toBeLessThan(keys.indexOf("bancos"));
+    expect(iPropiaIn).toBeLessThan(keys.indexOf("ctacte_out"));
   });
 
   it("las propias de EGRESO quedan al final de todo", () => {
@@ -101,18 +101,41 @@ describe("secciones propias del usuario", () => {
 
   it("sin secciones propias devuelve la estructura fija tal cual", () => {
     expect(allSectionsWith({ labels: {}, hidden: [], extra: [] }).map((s) => s.key)).toEqual(
-      CALENDAR_SECTIONS.map((s) => s.key)
+      CALENDAR_SECTIONS.filter((s) => !s.oculta).map((s) => s.key)
     );
   });
 
   it("descarta las secciones sin nombre o sin clave", () => {
     const roto = { labels: {}, hidden: [], extra: [], sections: [{ key: "", label: "x", dir: "in" as const }] };
-    expect(allSectionsWith(roto).length).toBe(CALENDAR_SECTIONS.length);
+    expect(allSectionsWith(roto).length).toBe(CALENDAR_SECTIONS.filter((s) => !s.oculta).length);
   });
 
   it("la clave sale del nombre, sin acentos ni símbolos", () => {
     expect(sectionKeyFromLabel("Obra galpón 2026!")).toBe("propia:obra-galpon-2026");
     expect(esSeccionPropia(sectionKeyFromLabel("Lo que sea"))).toBe(true);
     expect(esSeccionPropia("prestamos")).toBe(false);
+  });
+});
+
+describe("estructura final del cash flow (14/10/2026)", () => {
+  it("ingresos y egresos visibles, en orden", () => {
+    const visibles = allSectionsWith(undefined).map((s) => s.label);
+    expect(visibles).toEqual([
+      "TRABAJOS APROBADOS · COBRANZAS",
+      "MOVIMIENTOS INTERNOS · INGRESO",
+      "INVERSIONES",
+      "OTROS INGRESOS",
+      "EGRESOS · CUENTAS CORRIENTES · PROVEEDORES HABITUALES",
+      "EGRESOS · PROVEEDORES",
+      "EGRESOS · HABERES",
+      "EGRESOS · IMPUESTOS",
+      "EGRESOS · MOVIMIENTOS INTERNOS",
+    ]);
+  });
+  it("los renglones que se mudaron conservan su clave", () => {
+    expect(CALENDAR_ITEM_INDEX["cs_seg_soc"].sectionKey).toBe("haberes");
+    expect(CALENDAR_ITEM_INDEX["rh_viaticos"].sectionKey).toBe("haberes");
+    expect(CALENDAR_ITEM_INDEX["rs_retiros"].sectionKey).toBe("mov_internos_out");
+    expect(CALENDAR_ITEM_INDEX["inv_colocacion"].sectionKey).toBe("mov_internos_out");
   });
 });

@@ -20,7 +20,8 @@ const m = String(hoy.getMonth() + 1).padStart(2, "0");
 const diaPrevisto = `${y}-${m}-05`;
 const diaReal = `${y}-${m}-20`;
 
-const RENGLON = "seg_vehiculo";
+// Un renglon fijo visible (los seguros pasaron a PROVEEDORES): el mecanismo de la prevision es el mismo.
+const RENGLON = "imp_iva_mensual";
 
 const prevision = {
   conceptKey: RENGLON,

@@ -601,6 +601,8 @@ export type PurchaseInvoice = {
   conceptKey?: string;
   // Fecha de pago elegida para esta factura (si no, la de la condicion del proveedor).
   fechaPagoPrevista?: string;
+  // Grupo de costo de ESTA factura ("tipo|nombre"); si no, el del proveedor.
+  grupoCosto?: string;
 };
 
 // VIATICO EVENTUAL: anticipo a una persona por un viaje o un trabajo (solapa Caja chica y viaticos).
@@ -1024,6 +1026,8 @@ export type CostEntry = {
   conceptKey?: string;
   // Fijo / variable de ESTE pago (si el tipo de gasto no tiene candado). Ausente = el del grupo.
   costKind?: "fijo" | "variable";
+  // Tipo del grupo (puede haber dos grupos con el mismo nombre: uno fijo y uno variable).
+  groupKind?: "fijo" | "variable";
 };
 
 export type PaymentMethod = "transferencia" | "cheque" | "efectivo" | "debito";
@@ -1150,6 +1154,9 @@ export type Supplier = {
   tipoGastoLocked?: boolean;
   // Condicion de pago habitual: de aca sale la fecha de pago de cada factura sin pagar.
   condicionPago?: { tipo: "contado" } | { tipo: "dias"; dias: number } | { tipo: "diaDelMes"; dia: number };
+  // GRUPO DE COSTO del proveedor ("tipo|nombre", ej. "fijo|Administrativos"): a ese grupo van sus pagos
+  // en el cash flow (EGRESOS · PROVEEDORES / CUENTAS CORRIENTES) si la factura no dice otro.
+  grupoCosto?: string;
   // Datos de contacto (ventana de proveedor, 14/10/2026).
   direccion?: string;
   contacto?: string;
