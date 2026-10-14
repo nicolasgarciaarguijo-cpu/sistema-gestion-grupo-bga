@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { styles } from "../ui/styles";
 import {
   Panel,
@@ -63,6 +63,8 @@ type ComprasTabProps = {
     value: string | number | boolean
   ) => void;
   uploadPurchaseInvoiceFile: (invoiceId: number, file: File | null) => void;
+  // Analisis de gastos (todos los egresos del sistema): va arriba de todo.
+  analisisSlot?: React.ReactNode;
 };
 
 export function ComprasTab({
@@ -93,6 +95,7 @@ export function ComprasTab({
   removePurchaseInvoice,
   updatePurchaseInvoice,
   uploadPurchaseInvoiceFile,
+  analisisSlot,
 }: ComprasTabProps) {
   const anchosPendientes = usePlanillaWidths("compras.pendientes", { label: 300, col: 110, colCompact: 84 });
   const anchosCompras = usePlanillaWidths("compras.realizadas", { label: 280, col: 120, colCompact: 92 });
@@ -167,6 +170,8 @@ export function ComprasTab({
               <option key={nombre} value={nombre} />
             ))}
           </datalist>
+
+          {analisisSlot}
 
           <Panel span="wide" title="Semaforo de compras">
             <SemaforoResumen

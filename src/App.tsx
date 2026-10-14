@@ -331,6 +331,8 @@ import { readTicket, ensureScript } from "./lib/ocr";
 import { buildClientCrmRows } from "./domain/clientCrm";
 import { buildReservaFromSources, latestBankBalancesByAccount, usdPaymentsToMovements } from "./domain/reservaSources";
 import { summarizeContributions, type CapitalEntry } from "./domain/contributions";
+import { egresoDeEntrada, egresoDePrevisto, type Egreso } from "./domain/analisisGastos";
+import { AnalisisGastos } from "./tabs/AnalisisGastos";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
@@ -16053,6 +16055,17 @@ Escribi CERRAR para confirmar:`
       hoyIso
     );
   }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, cashFlowEntries]);
+
+  // ANALISIS DE GASTOS (Compras y analisis de gastos): todos los egresos del sistema, los realizados (lo
+  // mismo que alimenta el Calendario) y lo que viene (Pagos programados). Ver domain/analisisGastos.
+  const egresosDelSistema = useMemo<Egreso[]>(
+    () =>
+      [
+        ...cashFlowEntries.map((e) => egresoDeEntrada(e as any)),
+        ...agendaInamoviblesItems.map((p) => egresoDePrevisto(p as any)),
+      ].filter((e): e is Egreso => !!e),
+    [cashFlowEntries, agendaInamoviblesItems]
+  );
   const alertasInamovibles = useMemo(() => alertasActivas(agendaInamoviblesItems), [agendaInamoviblesItems]);
   const pagosVencidosAReclamar = useMemo(() => pagosAReclamar(agendaInamoviblesItems), [agendaInamoviblesItems]);
 
@@ -18812,6 +18825,13 @@ Escribi CERRAR para confirmar:`
           removePurchaseInvoice={removePurchaseInvoice}
           updatePurchaseInvoice={updatePurchaseInvoice}
           uploadPurchaseInvoiceFile={uploadPurchaseInvoiceFile}
+          analisisSlot={
+            <AnalisisGastos
+              egresos={egresosDelSistema}
+              companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
+              money={money}
+            />
+          }
         />
       )}
 
