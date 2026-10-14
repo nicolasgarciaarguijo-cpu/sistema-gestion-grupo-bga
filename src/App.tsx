@@ -262,6 +262,7 @@ import type {
   PettyCashFund,
   PettyCashExpense,
   Viatico,
+  RetiroSocietario,
   DebtPlan,
   CashHolding,
   InternalTransfer,
@@ -338,6 +339,8 @@ import { FichaProveedor } from "./ui/FichaProveedor";
 import { ViaticosPanel } from "./tabs/Viaticos";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
+import { entradasRetiros, RENGLON_RETIROS } from "./domain/retirosSocietarios";
+import { RetirosSocietariosPanel } from "./tabs/RetirosSocietarios";
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
@@ -1755,6 +1758,7 @@ type PersistedAppStateData = {
   // Cierres de ejercicio: la foto de cada ano cerrado. Es lo que le da al ejercicio nuevo su saldo
   // de apertura, y lo que traba que se edite un ano ya cerrado.
   fiscalClosings: CierreEjercicio[];
+  retirosSocietarios?: RetiroSocietario[];
   // Retoques del Calendario anual sobre la estructura fija (renglones renombrados / ocultos).
   calendarRowConfig: CalendarRowConfig;
   // Banderitas de revision del Calendario anual. Ver domain/types.ts CalendarFlag.
@@ -1889,7 +1893,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "calendarRowConfig", "calendarFlags", "calendarMarks", "calendarNotes"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "retirosSocietarios", "calendarRowConfig", "calendarFlags", "calendarMarks", "calendarNotes"] as const,
   },
   {
     key: "movimientos-internos",
@@ -2946,6 +2950,7 @@ export default function App() {
   const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>(defaultCapitalEntries);
   // Cierres de ejercicio (uno por empresa y ano cerrado). Ver domain/cierreEjercicio.ts.
   const [fiscalClosings, setFiscalClosings] = useState<CierreEjercicio[]>([]);
+  const [retirosSocietarios, setRetirosSocietarios] = useState<RetiroSocietario[]>([]);
 
   // EL CANDADO DEL CIERRE. Un ejercicio cerrado se SIGUE VIENDO ENTERO -- los datos no se borran --
   // pero queda de solo lectura: la unica persona que puede editarlo es el superadmin (regla de
@@ -3971,6 +3976,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     prune(pettyCashFunds, setPettyCashFunds);
     prune(pettyCashExpenses, setPettyCashExpenses);
     prune(viaticos, setViaticos);
+    prune(retirosSocietarios, setRetirosSocietarios);
     prune(debtPlans, setDebtPlans);
     prune(bankStatementEntries, setBankStatementEntries);
     prune(capitalEntries, setCapitalEntries);
@@ -4002,6 +4008,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     pettyCashFunds,
     pettyCashExpenses,
     viaticos,
+    retirosSocietarios,
     debtPlans,
     bankStatementEntries,
     capitalEntries,
@@ -9362,6 +9369,7 @@ Escribi CERRAR para confirmar:`
     calendarNotes: calendarNotes.map((item) => ({ ...item })),
     ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
     fiscalClosings: fiscalClosings.map((item) => ({ ...item })),
+    retirosSocietarios: retirosSocietarios.map((item) => ({ ...item })),
     calendarRowConfig: {
       labels: { ...(calendarRowConfig.labels || {}) },
       hidden: [...(calendarRowConfig.hidden || [])],
@@ -9603,6 +9611,7 @@ Escribi CERRAR para confirmar:`
       keepAccessibleByCompany(data.bankStatementEntries || defaultBankStatementEntries).map((item) => ({ ...item }))
     );
     setFiscalClosings(keepAccessibleByCompany(data.fiscalClosings || []).map((item) => ({ ...item })));
+    setRetirosSocietarios(keepAccessibleByCompany(data.retirosSocietarios || []).map((item) => ({ ...item })));
     setCapitalEntries(
       keepAccessibleByCompany(data.capitalEntries || defaultCapitalEntries).map((item) => ({
         ...item,
@@ -12000,6 +12009,7 @@ Escribi CERRAR para confirmar:`
     pettyCashFunds,
     pettyCashExpenses,
     viaticos,
+    retirosSocietarios,
     debtPlans,
     bankStatementEntries,
     capitalEntries,
@@ -12295,6 +12305,24 @@ Escribi CERRAR para confirmar:`
       setPayrollHaberes(haber.empId, haber.month, cambio);
       return true;
     }
+    // RETIRO SOCIETARIO: monto, dia y circuito.
+    if (entryId.startsWith("retiro-")) {
+      const id = Number(entryId.slice("retiro-".length));
+      if (!id || !retirosSocietarios.some((r) => r.id === id)) return false;
+      setRetirosSocietarios((prev) =>
+        prev.map((r) =>
+          r.id !== id
+            ? r
+            : {
+                ...r,
+                ...(patch.amount !== undefined ? { monto: Number(patch.amount) || 0 } : {}),
+                ...(patch.date ? { fecha: patch.date } : {}),
+                ...(patch.administration ? { administration: patch.administration } : {}),
+              }
+        )
+      );
+      return true;
+    }
     // INVERSION: colocacion -> capital y fecha de inicio; rescate -> lo que volvio y fecha de fin.
     if (entryId.startsWith("inv-coloc-") || entryId.startsWith("inv-rescate-")) {
       const esRescate = entryId.startsWith("inv-rescate-");
@@ -12489,6 +12517,12 @@ Escribi CERRAR para confirmar:`
   };
 
   const deleteCalendarEntry = (entryId: string): boolean => {
+    if (entryId.startsWith("retiro-")) {
+      const id = Number(entryId.slice("retiro-".length));
+      if (!id || !retirosSocietarios.some((r) => r.id === id)) return false;
+      setRetirosSocietarios((prev) => prev.filter((r) => r.id !== id));
+      return true;
+    }
     if (entryId.startsWith("inv-coloc-")) {
       const id = Number(entryId.slice("inv-coloc-".length));
       if (!id || !inversiones.some((i) => i.id === id)) return false;
@@ -14435,7 +14469,8 @@ Escribi CERRAR para confirmar:`
         | "haberes-negro"     // el sueldo en negro, que no deja rastro en el extracto
         | "mov-interno"       // pases entre cuentas, aportes y prestamos de la solapa Movimientos internos
         | "viatico"           // viaticos eventuales y fijos (Caja chica y viaticos / acuerdo en Personal)
-        | "inversion";        // colocacion y rescate de la solapa Inversiones
+        | "inversion"         // colocacion y rescate de la solapa Inversiones
+        | "retiro";           // retiros societarios (Balance y estado de resultados)
       amount: number;
       statusLabel: string;
       subcat?: string;
@@ -14739,6 +14774,11 @@ Escribi CERRAR para confirmar:`
       .filter((e) => e.date.startsWith(String(analysisYear)))
       .forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
 
+    // RETIROS SOCIETARIOS (bloque de Balance): salen de su cuenta.
+    entradasRetiros(retirosSocietarios.filter((r) => canAccessCompany(r.company)) as any)
+      .filter((e) => e.date.startsWith(String(analysisYear)))
+      .forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
+
     // INVERSIONES (solapa): la colocacion sale de la cuenta, el rescate vuelve en el renglon de su tipo.
     entradasInversiones(inversiones.filter((i) => canAccessCompany(i.company)) as any)
       .filter((e) => e.date.startsWith(String(analysisYear)))
@@ -14757,6 +14797,7 @@ Escribi CERRAR para confirmar:`
 
     return entries.sort((a, b) => a.date.localeCompare(b.date));
   }, [
+    retirosSocietarios,
     inversiones,
     visibleViaticos,
     visibleInternalTransfers,
@@ -15886,12 +15927,13 @@ Escribi CERRAR para confirmar:`
         personLedgerEntries: visiblePersonLedgerEntries as any,
         capitalEntries: visibleCapitalEntries as any,
         ivaVepPayments: visibleIvaVepPayments as any,
+        retiros: retirosSocietarios.filter((r) => canAccessCompany(r.company)) as any,
         inversiones: entradasInversiones(inversiones.filter((i) => canAccessCompany(i.company)) as any).map((e) => ({
           ...e,
           cuentaId: inversiones.find((i) => `inv-coloc-${i.id}` === e.id || `inv-rescate-${i.id}` === e.id)?.cuentaId,
         })),
       }),
-    [visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos]
+    [visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos, retirosSocietarios]
   );
   const movimientosDeCuentas = useMemo(
     () => movimientosPorCuenta(plataMovidaSistema, cuentasSistema),
@@ -18379,6 +18421,24 @@ Escribi CERRAR para confirmar:`
               renglon: renglonDeRescate(i),
               label: `${[i.tipo, i.descripcion].filter(Boolean).join(" · ") || "Inversión"} · ${i.moneda === "USD" ? "US$" : "$"} ${Number(i.montoInvertido || 0).toLocaleString("es-AR")}`,
             }))}
+          onAddRetiro={(m) => {
+            setRetirosSocietarios((prev) => [
+              {
+                id: newId(),
+                company: m.company as CompanyName,
+                fecha: m.date,
+                socio: m.socio,
+                monto: m.amount,
+                moneda: "ARS",
+                administration: m.administration,
+                cuentaId: m.cuentaId || undefined,
+                motivo: m.notes || "",
+                origen: "manual",
+              },
+              ...prev,
+            ]);
+            return true;
+          }}
           onAddInversion={(m) => {
             // CARGA DESDE LA PLANILLA en INVERSIONES: la colocacion crea la inversion; el rescate cierra la
             // elegida. Se escribe en la solapa y vuelve a la planilla por su propio camino.
@@ -19039,6 +19099,56 @@ Escribi CERRAR para confirmar:`
       })()}
       {activeTab === "cashflow" && (
         <CashflowTab
+          retirosSlot={(() => {
+            // Mismo periodo que el estado de resultados (ejercicio, mes o todo).
+            const b =
+              balancePeriodMode === "month"
+                ? monthBounds(balanceMonth)
+                : balancePeriodMode === "fiscalYear"
+                  ? fiscalYearBounds(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear)
+                  : { startIso: "0000-01-01", endIso: "9999-12-31" };
+            const label =
+              balancePeriodMode === "month"
+                ? monthLabel(balanceMonth)
+                : balancePeriodMode === "fiscalYear"
+                  ? `ejercicio ${b.startIso.slice(0, 7)} a ${b.endIso.slice(0, 7)}`
+                  : "todo";
+            return (
+              <RetirosSocietariosPanel
+                retiros={retirosSocietarios.filter(
+                  (r) => canAccessCompany(r.company) && (balanceCompanyScope === "__ALL__" || r.company === balanceCompanyScope)
+                )}
+                desde={b.startIso}
+                hasta={b.endIso}
+                periodoLabel={label}
+                resultado={Number((periodStatement as any)?.totalResult ?? NaN) || undefined}
+                cuentas={cuentasSistema as any}
+                companyOptions={COMPANY_OPTIONS as any}
+                money={money}
+                bloqueado={(company, iso) => bloqueadoPorCierre(company, iso)}
+                onAdd={() =>
+                  setRetirosSocietarios((prev) => [
+                    {
+                      id: newId(),
+                      company: (balanceCompanyScope !== "__ALL__" ? balanceCompanyScope : budget.company) as CompanyName,
+                      fecha: todayIso(),
+                      socio: "",
+                      monto: 0,
+                      moneda: "ARS",
+                      administration: "blanco",
+                      motivo: "",
+                      origen: "manual",
+                    },
+                    ...prev,
+                  ])
+                }
+                onUpdate={(id, field, value) =>
+                  setRetirosSocietarios((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)))
+                }
+                onRemove={(id) => setRetirosSocietarios((prev) => prev.filter((r) => r.id !== id))}
+              />
+            );
+          })()}
           purchaseLedger={purchaseLedger}
           cashFlowSummary={cashFlowSummary}
           billingBalance={billingBalance}

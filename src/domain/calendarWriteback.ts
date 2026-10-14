@@ -52,6 +52,8 @@ const PREFIJOS: Array<{ prefijo: string; permiso: PermisoDeRenglon }> = [
   // INVERSION: colocacion (monto/fecha de inicio) o rescate (lo que volvio/fecha de fin), en la solapa
   // Inversiones. Borrar la colocacion borra la inversion; borrar el rescate la vuelve a dejar activa.
   { prefijo: "inv-", permiso: { editable: true, borrable: true } },
+  // RETIRO SOCIETARIO: monto, dia y circuito (bloque de Balance).
+  { prefijo: "retiro-", permiso: { editable: true, borrable: true } },
 
   // GASTO DE CAJA CHICA: no se opera desde la planilla porque NO VIVE en la planilla. Lo que entra
   // al calendario es la ASIGNACION del fondo (la plata ya se considera gastada cuando se entrega);

@@ -162,12 +162,12 @@ export function egresoDeEntrada(e: EntradaCalendario): Egreso | null {
   } else if (ck.startsWith("custom:")) {
     const { sectionKey, label } = seccionDeCustom(ck);
     if (dirDeSeccion(sectionKey) !== "out") return null;
-    if (sectionKey === "mov_internos_out" || sectionKey === "inversiones_out") return null;
+    if (sectionKey === "mov_internos_out" || sectionKey === "inversiones_out" || sectionKey === "retiros_out") return null;
     grupo = GRUPO_DE_SECCION[sectionKey] || "otros";
     renglon = label || e.title;
   } else if (ck && CALENDAR_ITEM_INDEX[ck]) {
     const idx = CALENDAR_ITEM_INDEX[ck];
-    if (idx.dir !== "out" || idx.sectionKey === "mov_internos_out" || idx.sectionKey === "inversiones_out") return null;
+    if (idx.dir !== "out" || idx.sectionKey === "mov_internos_out" || idx.sectionKey === "inversiones_out" || idx.sectionKey === "retiros_out") return null;
     grupo = GRUPO_DE_SECCION[idx.sectionKey] || "otros";
     renglon = idx.label;
   } else {

@@ -321,6 +321,12 @@ export const CALENDAR_SECTIONS: CalSection[] = [
     totalLabel: "Total Inversiones (colocado)",
     items: [{ key: "inv_colocacion", label: "Colocación en inversiones" }],
   },
+  {
+    // Lo que retiran los socios (bloque en Balance y estado de resultados). No es gasto: sale del resultado.
+    key: "retiros_out", label: "EGRESOS · RETIROS SOCIETARIOS", group: "egreso", dir: "out",
+    totalLabel: "Total Retiros societarios",
+    items: [{ key: "rs_retiros", label: "Retiros de socios" }],
+  },
 ];
 
 // Índice itemKey → { section, label } para clasificar y mostrar.

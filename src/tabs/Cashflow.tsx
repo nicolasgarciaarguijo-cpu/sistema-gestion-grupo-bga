@@ -195,6 +195,8 @@ type CashflowTabProps = {
   addDebtPlan: () => void;
   removeDebtPlan: (debtId: number) => void;
   annualDebtByMonth: any[];
+  // Bloque de RETIROS SOCIETARIOS (va junto al estado de resultados).
+  retirosSlot?: React.ReactNode;
 };
 
 export function CashflowTab({
@@ -243,6 +245,7 @@ export function CashflowTab({
   cierreBusy,
   cierreMensaje,
   puedeCerrar,
+  retirosSlot,
 }: CashflowTabProps) {
   const anchosDeudas = usePlanillaWidths("cashflow.deudas", { label: 280, col: 116, colCompact: 88 });
 
@@ -447,6 +450,8 @@ export function CashflowTab({
               </div>
             </details>
           </Panel>
+
+          {retirosSlot}
 
           {/* CIERRE DE EJERCICIO. Da por terminado el año: guarda TODO en la carpeta y deja el año
               de solo lectura. Los datos NO se borran; lo único que sale del sistema son las

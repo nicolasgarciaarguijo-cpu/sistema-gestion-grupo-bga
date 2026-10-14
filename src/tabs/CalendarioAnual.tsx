@@ -77,6 +77,7 @@ type AddForm = {
   // Inversiones: que inversion se rescata, y el tipo de la que se coloca.
   inversionId?: number;
   tipoInversion?: string;
+  socioRetiro?: string;
   // EGRESOS: adonde va lo que se carga. "" = queda como movimiento del calendario.
   destinoEgreso: "" | "gasto" | "comision";
   // Lo que pide la solapa Costos y la planilla no preguntaba. El medio decide si el pago tiene que
@@ -117,6 +118,7 @@ export function CalendarioAnualTab({
   onAddCostEntry,
   onAddMovInterno,
   onAddInversion,
+  onAddRetiro,
   inversionesActivas = [],
   onAddCommission,
   onAssignConcept,
@@ -266,6 +268,8 @@ export function CalendarioAnualTab({
     cuentaId?: string; notes: string; conceptKey: string; inversionId?: number; tipoInversion?: string;
   }) => boolean;
   inversionesActivas?: Array<{ id: number; company: string; moneda: string; renglon: string; label: string }>;
+  // Carga en RETIROS SOCIETARIOS: se crea el retiro en el bloque de Balance.
+  onAddRetiro?: (m: { company: string; date: string; amount: number; administration: "blanco" | "negro"; cuentaId?: string; notes: string; socio: string }) => boolean;
   // Carga en un renglon de MOVIMIENTOS INTERNOS: se escribe en la solapa (pase o aporte/prestamo).
   onAddMovInterno?: (m: {
     tipo: "pase" | "capital"; company: string; date: string; amount: number; administration: "blanco" | "negro";
@@ -1605,6 +1609,25 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
         avisar("No encontré ese trabajo aprobado.");
         return;
       }
+      setAddForm(null);
+      return;
+    }
+    // RETIROS SOCIETARIOS: se crea el retiro (bloque de Balance) y vuelve a la planilla solo.
+    if (!isCob && !isCustom && !extraLabel && addForm.itemKey === "rs_retiros" && onAddRetiro && !addForm.editId) {
+      const socio = (addForm.socioRetiro || "").trim();
+      if (!socio) {
+        avisar("Decí qué socio retira la plata.");
+        return;
+      }
+      onAddRetiro({
+        company: addForm.company,
+        date: addForm.date,
+        amount: Number(addForm.amount),
+        administration: addForm.administration,
+        cuentaId: addForm.cuentaId || undefined,
+        notes: addForm.notes,
+        socio,
+      });
       setAddForm(null);
       return;
     }
@@ -4011,6 +4034,21 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     onChange={(id) => setAddForm({ ...addForm, cuentaId: id })}
                   />
                 )}
+                {!addForm.editId && addForm.itemKey === "rs_retiros" && onAddRetiro && (
+                  <>
+                    <label style={lblStyle}>Socio que retira
+                      <input
+                        style={styles.input}
+                        value={addForm.socioRetiro || ""}
+                        placeholder="Nombre del socio"
+                        onChange={(e) => setAddForm({ ...addForm, socioRetiro: e.target.value })}
+                      />
+                    </label>
+                    <div style={{ ...styles.noticeBox, gridColumn: "1 / -1", margin: 0, fontSize: 12 }}>
+                      Se carga en <strong>Balance y estado de resultados · Retiros societarios</strong> y vuelve solo a esta planilla.
+                    </div>
+                  </>
+                )}
                 {(() => {
                   // Renglon de INVERSIONES: la colocacion pide el tipo; el rescate, cual inversion se cierra.
                   const di = !addForm.editId ? destinoInversion(addForm.itemKey) : null;
@@ -4081,7 +4119,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     </>
                   );
                 })()}
-                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && !(!addForm.editId && onAddMovInterno && destinoEnSolapa(addForm.itemKey)) && !(!addForm.editId && onAddInversion && destinoInversion(addForm.itemKey)) && (
+                {section?.dir === "out" && (onAddCostEntry || onAddCommission) && !(!addForm.editId && onAddMovInterno && destinoEnSolapa(addForm.itemKey)) && !(!addForm.editId && onAddInversion && destinoInversion(addForm.itemKey)) && !(!addForm.editId && onAddRetiro && addForm.itemKey === "rs_retiros") && (
                   <label style={lblStyle}>Qué estás cargando
                     <select
                       style={styles.input}

@@ -605,6 +605,21 @@ export type PurchaseInvoice = {
 
 // VIATICO EVENTUAL: anticipo a una persona por un viaje o un trabajo (solapa Caja chica y viaticos).
 // Sale de una cuenta el dia del anticipo y despues se rinde. Ver domain/viaticos.ts.
+// RETIRO SOCIETARIO: plata que retira un socio (Balance y estado de resultados / Calendario EGRESOS ·
+// RETIROS SOCIETARIOS). Tambien se crea desde el arqueo del cierre de ejercicio.
+export type RetiroSocietario = {
+  id: number;
+  company: CompanyName;
+  fecha: string;
+  socio: string;
+  monto: number;
+  moneda?: "ARS" | "USD";
+  administration: "blanco" | "negro";
+  cuentaId?: string;
+  motivo: string;
+  origen?: "manual" | "arqueo";
+};
+
 export type Viatico = {
   id: number;
   company: CompanyName;

@@ -32,6 +32,8 @@ export type FuentesDePlata = {
   ivaVepPayments: Array<{ id: number; company: string; date: string; amount: number; period: string; cuentaId?: string }>;
   // Inversiones: la colocacion sale de la cuenta y el rescate vuelve (ver domain/inversionesCalendario).
   inversiones?: Array<{ id: string; company: string; date: string; amount: number; statusLabel: string; title: string; administration: string; currency: string; cuentaId?: string }>;
+  // Retiros societarios: salen de su cuenta.
+  retiros?: Array<{ id: number; company: string; fecha: string; socio: string; monto: number; moneda?: string; administration: string; cuentaId?: string }>;
 };
 
 export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
@@ -276,6 +278,21 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       color: "blanco",
       metodo: "transferencia",
       cuentaId: cuenta(v),
+    })
+  );
+
+  (f.retiros || []).forEach((r) =>
+    out.push({
+      refId: `retiro-${r.id}`,
+      origen: "Retiro societario",
+      detalle: r.socio,
+      company: r.company,
+      date: r.fecha,
+      amount: Number(r.monto || 0),
+      sentido: "sale",
+      moneda: moneda(r.moneda),
+      color: color(r.administration),
+      cuentaId: cuenta(r),
     })
   );
 
