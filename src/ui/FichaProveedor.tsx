@@ -19,6 +19,9 @@ export function FichaProveedor({
   onAltaProveedor,
   onFechaFactura,
   onCerrar,
+  facturas = [],
+  onCargarFactura,
+  onAbrirFactura,
 }: {
   nombre: string;
   taxId: string;
@@ -32,6 +35,8 @@ export function FichaProveedor({
     tipoGastoLocked?: boolean;
     condicionPago?: CondicionPago;
     notes: string;
+    direccion?: string;
+    contacto?: string;
   };
   ledger?: { comprado: number; pagado: number; saldo: number; deudaSinConciliar: number; facturasSinPago: number; esCuentaCorriente: boolean; movimientos: Movimiento[] };
   porPagar: FacturaPorPagar[];
@@ -42,6 +47,10 @@ export function FichaProveedor({
   onAltaProveedor: (nombre: string, taxId: string) => void;
   onFechaFactura: (invoiceId: number, fecha: string) => void;
   onCerrar: () => void;
+  // Todas las facturas del proveedor con su situacion de pago, y la ventana para cargar una nueva.
+  facturas?: Array<{ id: number; invoiceDate: string; receiptLetter: string; invoiceNumber: string; total: number; pagada: boolean; pagoTexto: string; fechaPrevista?: string; company: string }>;
+  onCargarFactura?: () => void;
+  onAbrirFactura?: (id: number) => void;
 }) {
   const cond = proveedor?.condicionPago;
   const fv = proveedor?.tipoGasto ? fvPorRenglon[proveedor.tipoGasto] : undefined;
@@ -72,7 +81,14 @@ export function FichaProveedor({
               )}
             </div>
           </div>
-          <button type="button" onClick={onCerrar} style={{ ...input, cursor: "pointer", fontWeight: 700 }}>Cerrar</button>
+          <span style={{ display: "inline-flex", gap: 6 }}>
+            {onCargarFactura && (
+              <button type="button" onClick={onCargarFactura} style={{ ...input, cursor: "pointer", fontWeight: 800, background: "#16a34a", color: "#fff", borderColor: "#15803d" }}>
+                + Cargar factura
+              </button>
+            )}
+            <button type="button" onClick={onCerrar} style={{ ...input, cursor: "pointer", fontWeight: 700 }}>Cerrar</button>
+          </span>
         </div>
 
         {!proveedor && (
@@ -149,6 +165,41 @@ export function FichaProveedor({
             </div>
           </div>
         )}
+
+        {proveedor && (
+          <div style={{ ...caja, marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            <label style={{ fontSize: 12, color: "#475569", fontWeight: 600, display: "grid", gap: 3 }}>Dirección
+              <input style={input} value={proveedor.direccion || ""} onChange={(e) => onUpdateProveedor(proveedor.id, "direccion", e.target.value)} />
+            </label>
+            <label style={{ fontSize: 12, color: "#475569", fontWeight: 600, display: "grid", gap: 3 }}>Contacto
+              <input style={input} value={proveedor.contacto || ""} onChange={(e) => onUpdateProveedor(proveedor.id, "contacto", e.target.value)} />
+            </label>
+          </div>
+        )}
+
+        <div style={{ ...caja, marginTop: 10 }}>
+          <div style={titulo}>Facturas ({facturas.length})</div>
+          {facturas.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#64748b" }}>No hay facturas cargadas de este proveedor.</div>
+          ) : (
+            <div style={{ maxHeight: 260, overflowY: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                <tbody>
+                  {[...facturas].sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate)).map((f) => (
+                    <tr key={f.id} onClick={() => onAbrirFactura?.(f.id)} style={{ cursor: onAbrirFactura ? "pointer" : undefined, borderBottom: "1px solid #f1f5f9", background: f.pagada ? undefined : "#fffbeb" }}>
+                      <td style={{ padding: "3px 6px", color: "#64748b", whiteSpace: "nowrap" }}>{f.invoiceDate ? `${f.invoiceDate.slice(8, 10)}/${f.invoiceDate.slice(5, 7)}/${f.invoiceDate.slice(0, 4)}` : "—"}</td>
+                      <td style={{ padding: "3px 6px" }}>{f.receiptLetter} {f.invoiceNumber || "—"}</td>
+                      <td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700 }}>{money(f.total)}</td>
+                      <td style={{ padding: "3px 6px", color: f.pagada ? "#166534" : "#b45309", fontWeight: 700 }}>
+                        {f.pagada ? `✓ Pagada · ${f.pagoTexto}` : f.fechaPrevista ? `Sin pagar · vence ${f.fechaPrevista.slice(8, 10)}/${f.fechaPrevista.slice(5, 7)}` : "Sin pagar"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
 
         <div style={{ ...caja, marginTop: 10 }}>
           <div style={titulo}>Cuenta corriente</div>

@@ -1150,6 +1150,9 @@ export type Supplier = {
   tipoGastoLocked?: boolean;
   // Condicion de pago habitual: de aca sale la fecha de pago de cada factura sin pagar.
   condicionPago?: { tipo: "contado" } | { tipo: "dias"; dias: number } | { tipo: "diaDelMes"; dia: number };
+  // Datos de contacto (ventana de proveedor, 14/10/2026).
+  direccion?: string;
+  contacto?: string;
 };
 
 export type RemitoDraftRow = {

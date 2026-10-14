@@ -336,6 +336,9 @@ import { summarizeContributions, type CapitalEntry } from "./domain/contribution
 import { egresoDeEntrada, egresoDePrevisto, fvEfectivo, type Egreso } from "./domain/analisisGastos";
 import { AnalisisGastos } from "./tabs/AnalisisGastos";
 import { FichaProveedor } from "./ui/FichaProveedor";
+import { FacturaCompraModal, type FacturaForm } from "./ui/FacturaCompraModal";
+import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
+import { ProveedoresPanel } from "./tabs/Proveedores";
 import { ViaticosPanel } from "./tabs/Viaticos";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
@@ -346,7 +349,7 @@ import { VentanaNovedades } from "./ui/Novedades";
 import { NOVEDADES, novedadesPendientes, ultimaNovedad, type TandaNovedades } from "./content/novedades";
 import { filasDeArqueo, billeterasDesdeArqueo, movimientosDelArqueo, diferencia, TOLERANCIA_ARQUEO, type FilaArqueo } from "./domain/arqueoCierre";
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
-import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo } from "./domain/proveedores";
+import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo, fechaDePago } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
@@ -16324,6 +16327,8 @@ Escribi CERRAR para confirmar:`
     [purchaseInvoicesWithBankLink, suppliers]
   );
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
+  // Ventana de factura de compra abierta (nueva o existente).
+  const [facturaModal, setFacturaModal] = useState<FacturaForm | null>(null);
 
   const agendaInamoviblesItems = useMemo<ItemInamovible[]>(() => {
     const desdeD = new Date();
@@ -18707,6 +18712,337 @@ Escribi CERRAR para confirmar:`
     />
   );
 
+  // FICHA DEL PROVEEDOR: vive en Pago a proveedores; se abre desde cualquier lado y lleva ahi.
+  const abrirFichaProveedor = (nombre: string, taxId?: string) => {
+    setActiveTab("costos");
+    setFichaProveedor({ nombre, taxId: taxId || "" });
+  };
+
+  // ===== FACTURAS DE COMPRA (listado + ventana) y PROVEEDORES (Nicolas, 2026-10-14) =====
+  const renglonesEgreso = allSectionsWith(calendarRowConfig)
+    .filter((sec: any) => sec.dir === "out" && sec.key !== "mov_internos_out" && sec.key !== "inversiones_out" && sec.key !== "retiros_out")
+    .flatMap((sec: any) =>
+      (sec.items || []).map((it: any) => ({
+        key: it.key,
+        label: `${String(sec.label).replace(/^EGRESOS · /, "")} · ${calendarRowConfig.labels?.[it.key] || it.label}`,
+      }))
+    );
+  const fmtCorta = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
+  const METODO_TEXTO: Record<string, string> = { transferencia: "transferencia", efectivo: "efectivo", cheque: "cheque", debito: "débito" };
+  const filasFacturas: FilaFactura[] = useMemo(() => purchaseInvoicesWithBankLink
+    .filter((inv) => canAccessCompany(inv.company))
+    .map((inv) => {
+      const pago = inv.paidByCostEntryId != null ? costEntries.find((c) => c.id === inv.paidByCostEntryId) : undefined;
+      const porPersona = String(inv.paidByPerson || "").trim();
+      const pagada = inv.paidByCostEntryId != null || inv.paidByBankEntryId != null || !!porPersona;
+      const prov = buscarProveedor(suppliers as any, inv.supplier, inv.taxId) as any;
+      const prevista = facturasAPagar.find((x) => x.id === inv.id);
+      const marca = vencimientoMarcas.find((m) => m.clave === `factura:${inv.id}`);
+      return {
+        id: inv.id,
+        company: String(inv.company),
+        supplier: inv.supplier,
+        taxId: inv.taxId,
+        receiptLetter: inv.receiptLetter,
+        invoiceNumber: inv.invoiceNumber,
+        invoiceDate: inv.invoiceDate,
+        total: Number(inv.total || 0),
+        administration: inv.administration === "negro" ? "negro" : "blanco",
+        source: inv.source,
+        pagada,
+        pagoTexto: pago
+          ? `${fmtCorta(pago.date)} · ${METODO_TEXTO[pago.paymentMethod || ""] || "sin medio"}`
+          : inv.paidByBankEntryId != null
+            ? "por el banco"
+            : porPersona
+              ? `la puso ${porPersona}`
+              : "",
+        fechaPrevista: prevista?.fechaPago,
+        estadoPrevisto: marca?.estadoPago,
+        tipoProveedor: prov ? (prov.currentAccount ? "ctacte" : "habitual") : "nuevo",
+      } as FilaFactura;
+    }), [purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas]);
+  const facturaVacia = (supplier = "", taxId = "", company = ""): FacturaForm => ({
+    company: company || (budget.company as string),
+    supplier,
+    taxId,
+    altaProveedor: false,
+    receiptLetter: "A",
+    invoiceNumber: "",
+    invoiceDate: todayIso(),
+    net21: 0,
+    exemptAmount: 0,
+    vat: 0,
+    total: 0,
+    administration: "blanco",
+    conceptKey: tipoGastoEfectivo(undefined, buscarProveedor(suppliers as any, supplier, taxId) as any) ||
+      (buscarProveedor(suppliers as any, supplier, taxId) as any)?.tipoGasto,
+    notes: "",
+    pago: { estado: "impaga", modo: "nuevo", fecha: todayIso(), monto: 0, metodo: "transferencia", administration: "blanco", estadoPrevisto: "programado" },
+  });
+  const facturaDeId = (id: number): FacturaForm | null => {
+    const inv = purchaseInvoicesWithBankLink.find((i) => i.id === id);
+    if (!inv) return null;
+    const pago = inv.paidByCostEntryId != null ? costEntries.find((c) => c.id === inv.paidByCostEntryId) : undefined;
+    const prevista = facturasAPagar.find((x) => x.id === id);
+    const marca = vencimientoMarcas.find((m) => m.clave === `factura:${id}`);
+    return {
+      id,
+      company: String(inv.company),
+      supplier: inv.supplier || "",
+      taxId: inv.taxId || "",
+      altaProveedor: false,
+      receiptLetter: inv.receiptLetter || "A",
+      invoiceNumber: inv.invoiceNumber || "",
+      invoiceDate: inv.invoiceDate || "",
+      net21: Number(inv.net21 || 0),
+      exemptAmount: Number(inv.exemptAmount || 0),
+      vat: Number(inv.vat || 0),
+      total: Number(inv.total || 0),
+      administration: inv.administration === "negro" ? "negro" : "blanco",
+      conceptKey: inv.conceptKey,
+      notes: inv.notes || "",
+      pago: {
+        estado: inv.paidByCostEntryId != null || inv.paidByBankEntryId != null ? "pagada" : "impaga",
+        modo: "nuevo",
+        costEntryId: inv.paidByCostEntryId ?? undefined,
+        fecha: pago?.date || todayIso(),
+        monto: Number(pago?.amount ?? inv.total ?? 0),
+        metodo: (pago?.paymentMethod as any) || "transferencia",
+        cuentaId: pago?.cuentaId,
+        administration: pago?.administration === "negro" ? "negro" : "blanco",
+        fechaPrevista: inv.fechaPagoPrevista || prevista?.fechaPago,
+        estadoPrevisto: marca?.estadoPago || "programado",
+        porBanco: inv.paidByBankEntryId != null && inv.paidByCostEntryId == null ? "Pagada por un débito del banco (conciliado en Bancos y tarjetas)." : undefined,
+      },
+    };
+  };
+  const guardarFacturaCompra = (f: FacturaForm) => {
+    const existente = f.id ? purchaseInvoices.find((i) => i.id === f.id) : undefined;
+    const id = existente?.id || newId();
+    const prov = buscarProveedor(suppliers as any, f.supplier, f.taxId) as any;
+    let paidByCostEntryId: number | null = existente?.paidByCostEntryId ?? null;
+    if (!f.pago.porBanco) {
+      if (f.pago.estado === "pagada") {
+        if (f.pago.modo === "vincular") {
+          paidByCostEntryId = f.pago.costEntryId ?? null;
+        } else {
+          // El PAGO es el gasto: queda en el cash flow y baja la cuenta de donde salio.
+          const datosPago = {
+            company: f.company as CompanyName,
+            date: f.pago.fecha,
+            amount: Number(f.pago.monto) || 0,
+            paymentMethod: f.pago.metodo,
+            cuentaId: f.pago.cuentaId,
+            administration: f.pago.administration,
+            supplier: f.supplier,
+            supplierId: prov?.id,
+            invoiceRef: f.invoiceNumber,
+            conceptKey: f.conceptKey || tipoGastoEfectivo(undefined, prov),
+            description: `Factura ${f.receiptLetter} ${f.invoiceNumber}`.trim(),
+          };
+          const previo = existente?.paidByCostEntryId != null ? costEntries.find((c) => c.id === existente.paidByCostEntryId) : undefined;
+          if (previo) {
+            setCostEntries((prev) => prev.map((c) => (c.id === previo.id ? { ...c, ...datosPago } : c)));
+            paidByCostEntryId = previo.id;
+          } else {
+            const ceId = newId();
+            setCostEntries((prev) => [
+              { id: ceId, group: "", source: "manual", notes: "Cargado con la factura (Compras)", ...datosPago } as CostEntry,
+              ...prev,
+            ]);
+            paidByCostEntryId = ceId;
+          }
+        }
+      } else {
+        paidByCostEntryId = null;
+      }
+    }
+    const factura: PurchaseInvoice = {
+      ...(existente || ({} as PurchaseInvoice)),
+      id,
+      company: f.company as CompanyName,
+      administration: f.administration,
+      source: existente?.source || "compras",
+      supplier: f.supplier.trim(),
+      taxId: f.taxId.trim(),
+      receiptKind: existente?.receiptKind || "Factura",
+      receiptLetter: f.receiptLetter,
+      invoiceNumber: f.invoiceNumber.trim(),
+      invoiceDate: f.invoiceDate,
+      currency: existente?.currency || "ARS",
+      exemptAmount: Number(f.exemptAmount) || 0,
+      net21: Number(f.net21) || 0,
+      subtotal: (Number(f.net21) || 0) + (Number(f.exemptAmount) || 0),
+      vat: Number(f.vat) || 0,
+      total: Number(f.total) || 0,
+      notes: f.notes,
+      extractedAutomatically: existente?.extractedAutomatically ?? false,
+      conceptKey: f.conceptKey,
+      fechaPagoPrevista: f.pago.estado === "impaga" ? f.pago.fechaPrevista : existente?.fechaPagoPrevista,
+      paidByCostEntryId,
+    };
+    delete (factura as any).paidByBankEntryId; // derivado: no se guarda
+    setPurchaseInvoices((prev) => (existente ? prev.map((i) => (i.id === id ? factura : i)) : [factura, ...prev]));
+    if (f.pago.estado === "impaga") {
+      const clave = `factura:${id}`;
+      setVencimientoMarcas((prev) => {
+        const previa = prev.find((m) => m.clave === clave);
+        const resto = prev.filter((m) => m.clave !== clave);
+        return [...resto, { id: previa?.id || newId(), company: f.company, clave, pagado: false, ...previa, estadoPago: f.pago.estadoPrevisto, at: todayIso() }];
+      });
+    }
+    if (f.altaProveedor && !prov && f.supplier.trim()) {
+      setSuppliers((prev) => [
+        ...prev,
+        { id: newId(), company: f.company as CompanyName, name: f.supplier.trim(), taxId: f.taxId.trim(), aliases: "", active: true, notes: "Alta desde una factura de compra" } as Supplier,
+      ]);
+    }
+    setFacturaModal(null);
+  };
+  const renderFacturasCompra = () => (
+    <FacturasCompraPanel
+      filas={filasFacturas}
+      companyOptions={COMPANY_OPTIONS as any}
+      money={money}
+      onNueva={() => setFacturaModal(facturaVacia())}
+      onAbrir={(id) => {
+        const f = facturaDeId(id);
+        if (f) setFacturaModal(f);
+      }}
+      onAsignarPago={(id) => {
+        const f = facturaDeId(id);
+        if (f) setFacturaModal({ ...f, pago: { ...f.pago, estado: "pagada", monto: f.pago.monto || f.total } });
+      }}
+      onFichaProveedor={abrirFichaProveedor}
+    />
+  );
+  const renderProveedores = () => (
+    <ProveedoresPanel
+      proveedores={visibleSuppliers as any}
+      ledgers={(purchaseLedger?.ledgers || []) as any}
+      empresaPorDefecto={String(budget.company)}
+      companyOptions={COMPANY_OPTIONS as any}
+      money={money}
+      onGuardar={(p) => {
+        const datos = {
+          company: p.company as any,
+          name: p.name.trim(),
+          taxId: p.taxId.trim(),
+          direccion: p.direccion,
+          contacto: p.contacto,
+          currentAccount: p.currentAccount,
+          aliases: p.aliases,
+          notes: p.notes,
+        };
+        if (p.id) setSuppliers((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...datos } : x)));
+        else setSuppliers((prev) => [...prev, { id: newId(), active: true, ...datos } as Supplier]);
+      }}
+      onQuitar={(id) => removeSupplier(id)}
+      onVaciar={() => {
+        // Solo el LISTADO: facturas, pagos y gastos conservan el nombre del proveedor (el cash flow no
+        // cambia). Se vacian los que esta sesion puede ver.
+        const visibles = new Set(visibleSuppliers.map((x) => x.id));
+        setSuppliers((prev) => prev.filter((x) => !visibles.has(x.id)));
+      }}
+      onAbrirFicha={abrirFichaProveedor}
+    />
+  );
+  // Compras y analisis de gastos, y los bloques que se mudaron a Fabricacion y a Caja chica y viaticos
+  // (Nicolas, 2026-10-14). Es el mismo componente: cada solapa dibuja solo sus bloques.
+  const renderCompras = (vista: "compras" | "fabricacion" | "cajaChica") => (
+        <ComprasTab
+          vista={vista}
+          stockSemaphoreSummary={stockSemaphoreSummary}
+          purchaseDeadlineSemaphore={purchaseDeadlineSemaphore}
+          fabricationPendingPurchases={fabricationPendingPurchases}
+          fabricationCompletedPurchases={fabricationCompletedPurchases}
+          stockNeedRows={stockNeedRows}
+          totalPurchaseNeed={totalPurchaseNeed}
+          purchaseCalendarRows={purchaseCalendarRows}
+          purchaseLedger={purchaseLedger}
+          personDebts={personDebts}
+          suppliers={visibleSuppliers}
+          updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field as any, value as any)}
+          purchaseInvoiceRows={purchaseInvoiceRows}
+          costEntries={costEntries}
+          employeeNames={employeeNames}
+          purchaseInvoiceSummary={purchaseInvoiceSummary}
+          pettyCashSummary={pettyCashSummary}
+          monthPettyCashExpenses={monthPettyCashExpenses}
+          purchaseMonth={purchaseMonth}
+          monthPurchaseInvoices={monthPurchaseInvoices}
+          monthLabel={monthLabel}
+          getCompanyMeta={getCompanyMeta}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          shiftPurchaseMonth={shiftPurchaseMonth}
+          addPurchaseInvoice={addPurchaseInvoice}
+          removePurchaseInvoice={removePurchaseInvoice}
+          updatePurchaseInvoice={updatePurchaseInvoice}
+          uploadPurchaseInvoiceFile={uploadPurchaseInvoiceFile}
+          onAbrirFichaProveedor={abrirFichaProveedor}
+          facturasSlot={vista === "compras" ? renderFacturasCompra() : undefined}
+          costosSlot={vista === "compras" ? <>{renderCostos("composicion")}{renderCostos("grupos")}</> : undefined}
+          analisisSlot={
+            <AnalisisGastos
+              egresos={egresosDelSistema}
+              companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
+              money={money}
+              fvPorRenglon={calendarRowConfig.fv || {}}
+              onFVRenglon={setFVRenglon}
+              onFVPago={setFVPago}
+              onEstadoPrevisto={setEstadoPrevisto}
+              onIrA={(tab) => setActiveTab(tab as TabKey)}
+            />
+          }
+        />
+  );
+  // Pago a proveedores, y los bloques que se mudaron al final de Compras (composicion y grupos).
+  const renderCostos = (vista: "pagoProveedores" | "composicion" | "grupos") => (
+        <CostosTab
+          vista={vista}
+          proveedoresSlot={vista === "pagoProveedores" ? renderProveedores() : undefined}
+          cuentas={cuentasSistema}
+          fiscalLabel={costsFiscalLabel}
+          months={costsMonths}
+          aggregation={costsAggregation}
+          costGroups={costGroups}
+          costEntries={costEntries}
+          pettyCashExpenses={visiblePettyCashExpenses}
+          updatePettyCashExpense={updatePettyCashExpense}
+          getPettyCashAdministration={getPettyCashAdministration}
+          autoClassifyUnassigned={autoClassifyUnassigned}
+          purchaseInvoices={purchaseInvoicesWithBankLink}
+          updatePurchaseInvoice={updatePurchaseInvoice}
+          approvedJobsForLink={visibleApprovedJobs.map((j) => ({
+            budgetNumber: j.budgetNumber,
+            client: j.client,
+            company: j.company,
+          }))}
+          suppliers={visibleSuppliers}
+          addSupplier={addSupplier}
+          removeSupplier={removeSupplier}
+          updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field, value)}
+          paymentsReconciliation={paymentsReconciliation}
+          costRows={costRows}
+          companyScope={costsCompanyScope}
+          COMPANY_OPTIONS={COMPANY_OPTIONS}
+          getCompanyMeta={getCompanyMeta}
+          onScopeChange={(scope) => setCostsCompanyScope(scope)}
+          onShiftFiscalYear={(delta) => setCostsFiscalStartYear((prev) => prev + delta)}
+          addCostGroup={addCostGroup}
+          removeCostGroup={removeCostGroup}
+          updateCostGroup={updateCostGroup}
+          createCostGroup={createCostGroup}
+          addCostEntry={addCostEntry}
+          removeCostEntry={removeCostEntry}
+          updateCostEntry={updateCostEntry}
+          costRules={costRules}
+          updateCostRule={updateCostRule}
+          removeCostRule={removeCostRule}
+        />
+  );
+
   return (
     <div style={{ ...styles.page, background: workspaceTheme.pageBackground }}>
       <style>{`
@@ -19205,6 +19541,35 @@ Escribi CERRAR para confirmar:`
           onEntendido={cerrarNovedades}
         />
       )}
+      {facturaModal && (
+        <FacturaCompraModal
+          key={facturaModal.id || "nueva"}
+          inicial={facturaModal}
+          proveedores={visibleSuppliers as any}
+          cuentas={cuentasSistema as any}
+          companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
+          renglonesEgreso={renglonesEgreso}
+          pagosVinculables={(company, supplier) => {
+            const yaVinculados = new Set(
+              purchaseInvoices.filter((i) => i.id !== facturaModal.id && i.paidByCostEntryId != null).map((i) => i.paidByCostEntryId)
+            );
+            const n = supplier.trim().toLowerCase();
+            return costEntries
+              .filter((c) => c.company === company && !yaVinculados.has(c.id) && (!n || !c.supplier || c.supplier.trim().toLowerCase() === n))
+              .sort((a, b) => b.date.localeCompare(a.date))
+              .slice(0, 60)
+              .map((c) => ({ id: c.id, date: c.date, amount: Number(c.amount || 0), description: c.description || c.supplier || "Pago" }));
+          }}
+          fechaSegunCondicion={(supplier, taxId, fecha) => fechaDePago(fecha, (buscarProveedor(suppliers as any, supplier, taxId) as any)?.condicionPago)}
+          money={money}
+          onGuardar={guardarFacturaCompra}
+          onBorrar={(id) => {
+            removePurchaseInvoice(id);
+            setFacturaModal(null);
+          }}
+          onCerrar={() => setFacturaModal(null)}
+        />
+      )}
       {arqueoPendiente && (
         <ArqueoCierre
           empresa={arqueoPendiente.empresa}
@@ -19246,6 +19611,16 @@ Escribi CERRAR para confirmar:`
               setPurchaseInvoices((prev) => prev.map((f) => (f.id === invoiceId ? { ...f, fechaPagoPrevista: fecha } : f)))
             }
             onCerrar={() => setFichaProveedor(null)}
+            facturas={filasFacturas.filter(
+              (f) => buscarProveedor(prov ? [prov] : [], f.supplier, f.taxId) || supplierKey(f.supplier, f.taxId) === supplierKey(fichaProveedor.nombre, fichaProveedor.taxId)
+            )}
+            onCargarFactura={() =>
+              setFacturaModal(facturaVacia(prov?.name || fichaProveedor.nombre, prov?.taxId || fichaProveedor.taxId, prov && prov.company !== "General" ? String(prov.company) : ""))
+            }
+            onAbrirFactura={(id) => {
+              const f = facturaDeId(id);
+              if (f) setFacturaModal(f);
+            }}
           />
         );
       })()}
@@ -19349,50 +19724,7 @@ Escribi CERRAR para confirmar:`
         />
       )}
 
-      {activeTab === "compras" && (
-        <ComprasTab
-          stockSemaphoreSummary={stockSemaphoreSummary}
-          purchaseDeadlineSemaphore={purchaseDeadlineSemaphore}
-          fabricationPendingPurchases={fabricationPendingPurchases}
-          fabricationCompletedPurchases={fabricationCompletedPurchases}
-          stockNeedRows={stockNeedRows}
-          totalPurchaseNeed={totalPurchaseNeed}
-          purchaseCalendarRows={purchaseCalendarRows}
-          purchaseLedger={purchaseLedger}
-          personDebts={personDebts}
-          suppliers={visibleSuppliers}
-          updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field as any, value as any)}
-          purchaseInvoiceRows={purchaseInvoiceRows}
-          costEntries={costEntries}
-          employeeNames={employeeNames}
-          purchaseInvoiceSummary={purchaseInvoiceSummary}
-          pettyCashSummary={pettyCashSummary}
-          monthPettyCashExpenses={monthPettyCashExpenses}
-          purchaseMonth={purchaseMonth}
-          monthPurchaseInvoices={monthPurchaseInvoices}
-          monthLabel={monthLabel}
-          getCompanyMeta={getCompanyMeta}
-          COMPANY_OPTIONS={COMPANY_OPTIONS}
-          shiftPurchaseMonth={shiftPurchaseMonth}
-          addPurchaseInvoice={addPurchaseInvoice}
-          removePurchaseInvoice={removePurchaseInvoice}
-          updatePurchaseInvoice={updatePurchaseInvoice}
-          uploadPurchaseInvoiceFile={uploadPurchaseInvoiceFile}
-          onAbrirFichaProveedor={(nombre, taxId) => setFichaProveedor({ nombre, taxId: taxId || "" })}
-          analisisSlot={
-            <AnalisisGastos
-              egresos={egresosDelSistema}
-              companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
-              money={money}
-              fvPorRenglon={calendarRowConfig.fv || {}}
-              onFVRenglon={setFVRenglon}
-              onFVPago={setFVPago}
-              onEstadoPrevisto={setEstadoPrevisto}
-              onIrA={(tab) => setActiveTab(tab as TabKey)}
-            />
-          }
-        />
-      )}
+      {activeTab === "compras" && renderCompras("compras")}
 
       {activeTab === "cajaChica" && (
         <CajaChicaTab
@@ -19460,6 +19792,7 @@ Escribi CERRAR para confirmar:`
           pettyCashTrackingRows={pettyCashTrackingRows}
         />
       )}
+      {activeTab === "cajaChica" && renderCompras("cajaChica")}
 
       {activeTab === "presupuesto" && (
         <PresupuestoTab
@@ -19585,48 +19918,7 @@ Escribi CERRAR para confirmar:`
         />
       )}
 
-      {activeTab === "costos" && (
-        <CostosTab
-          cuentas={cuentasSistema}
-          fiscalLabel={costsFiscalLabel}
-          months={costsMonths}
-          aggregation={costsAggregation}
-          costGroups={costGroups}
-          costEntries={costEntries}
-          pettyCashExpenses={visiblePettyCashExpenses}
-          updatePettyCashExpense={updatePettyCashExpense}
-          getPettyCashAdministration={getPettyCashAdministration}
-          autoClassifyUnassigned={autoClassifyUnassigned}
-          purchaseInvoices={purchaseInvoicesWithBankLink}
-          updatePurchaseInvoice={updatePurchaseInvoice}
-          approvedJobsForLink={visibleApprovedJobs.map((j) => ({
-            budgetNumber: j.budgetNumber,
-            client: j.client,
-            company: j.company,
-          }))}
-          suppliers={visibleSuppliers}
-          addSupplier={addSupplier}
-          removeSupplier={removeSupplier}
-          updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field, value)}
-          paymentsReconciliation={paymentsReconciliation}
-          costRows={costRows}
-          companyScope={costsCompanyScope}
-          COMPANY_OPTIONS={COMPANY_OPTIONS}
-          getCompanyMeta={getCompanyMeta}
-          onScopeChange={(scope) => setCostsCompanyScope(scope)}
-          onShiftFiscalYear={(delta) => setCostsFiscalStartYear((prev) => prev + delta)}
-          addCostGroup={addCostGroup}
-          removeCostGroup={removeCostGroup}
-          updateCostGroup={updateCostGroup}
-          createCostGroup={createCostGroup}
-          addCostEntry={addCostEntry}
-          removeCostEntry={removeCostEntry}
-          updateCostEntry={updateCostEntry}
-          costRules={costRules}
-          updateCostRule={updateCostRule}
-          removeCostRule={removeCostRule}
-        />
-      )}
+      {activeTab === "costos" && renderCostos("pagoProveedores")}
 
       {activeTab === "seguros" && (
         <SegurosTab
@@ -20028,6 +20320,7 @@ Escribi CERRAR para confirmar:`
           updateApprovedJob={updateApprovedJob}
         />
       )}
+      {activeTab === "fabricacion" && renderCompras("fabricacion")}
 
       {activeTab === "stock" && (
         <StockTab

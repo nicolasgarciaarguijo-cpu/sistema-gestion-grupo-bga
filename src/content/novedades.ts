@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-14b",
+    fecha: "14/10/2026",
+    titulo: "Compras y Pago a proveedores reordenados",
+    items: [
+      {
+        titulo: "Facturas de compra: listado y ventana",
+        que: "En Compras, las facturas se ven en un listado con su estado de pago (pagada, sin pagar con fecha y estado, o sin fecha) y si el proveedor tiene cuenta corriente o es nuevo.",
+        como: "'+ Agregar factura' abre la ventana: 1) proveedor (de la lista o uno nuevo), 2) datos de la factura, 3) pago: si se pagó, cómo y de qué cuenta (queda en el cash flow); si no, para cuándo y con qué estado (va a Pagos programados). 'Asignar pago' en una factura sin pagar.",
+        tab: "compras",
+      },
+      {
+        titulo: "Compras más limpia",
+        que: "Arriba el Análisis de gastos, debajo el Resumen administrativo y las facturas; al final, la composición de costos y los grupos de costos. El semáforo y las compras pendientes pasaron a Fabricación; la deuda con la gente, a Caja chica y viáticos.",
+        como: "Todo sigue cargándose igual; solo cambió de lugar.",
+        tab: "compras",
+      },
+      {
+        titulo: "Proveedores con ficha",
+        que: "En Pago a proveedores: el listado de proveedores (agregar, editar, quitar o vaciar la lista sin perder lo cargado en el cash flow) y el resumen de los que tienen cuenta corriente.",
+        como: "'+ Agregar proveedor' o click derecho en la sección: razón social, CUIT, dirección, contacto y tipo (con o sin cuenta corriente). Click en un proveedor abre su ficha: ahí se cargan facturas y se ven todas con su situación de pago. Desde Compras, la ficha te trae acá.",
+        tab: "costos",
+      },
+    ],
+  },
+  {
     id: "2026-10-14",
     fecha: "14/10/2026",
     titulo: "Cash flow vinculado, análisis de gastos, cierre de año y guardado más seguro",

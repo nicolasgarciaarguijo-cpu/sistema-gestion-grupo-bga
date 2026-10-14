@@ -29,6 +29,11 @@ const invoiceOrigin = (invoice: { invoiceNumber?: string; administration?: strin
   invoice.invoiceNumber?.trim() ? "blanco" : invoice.administration === "negro" ? "negro" : "blanco";
 import type { CompanyName, PurchaseInvoice } from "../domain/types";
 
+// Bloques que Nicolas saco de Compras el 14/10/2026 (quedan en el codigo, apagados): las cuentas
+// corrientes (resumen en Pago a proveedores), las facturas del mes y "facturas recibidas y su pago"
+// (reemplazados por el listado nuevo), las compras de caja chica y las compras realizadas.
+const OCULTO: boolean = false;
+
 type ComprasTabProps = {
   // Lo operativo de compras vive aca (se mudo de Fabricacion el 2026-08-27): que falta comprar, para
   // cuando, y que se compro. En Fabricacion quedo oculto; aca es donde se mira.
@@ -65,6 +70,12 @@ type ComprasTabProps = {
   uploadPurchaseInvoiceFile: (invoiceId: number, file: File | null) => void;
   // Analisis de gastos (todos los egresos del sistema): va arriba de todo.
   analisisSlot?: React.ReactNode;
+  // Que bloques se dibujan (Nicolas, 2026-10-14): la solapa Compras, o los bloques que se mudaron a
+  // Fabricacion (semaforo y pendientes) y a Caja chica y viaticos (deuda con la gente).
+  vista?: "compras" | "fabricacion" | "cajaChica";
+  // Listado de facturas de compra (nuevo) y, al final, composicion de costos y grupos de costos.
+  facturasSlot?: React.ReactNode;
+  costosSlot?: React.ReactNode;
   // Click derecho sobre un proveedor / factura -> ficha del proveedor.
   onAbrirFichaProveedor?: (nombre: string, taxId?: string) => void;
 };
@@ -99,6 +110,9 @@ export function ComprasTab({
   uploadPurchaseInvoiceFile,
   analisisSlot,
   onAbrirFichaProveedor,
+  vista = "compras",
+  facturasSlot,
+  costosSlot,
 }: ComprasTabProps) {
   const anchosPendientes = usePlanillaWidths("compras.pendientes", { label: 300, col: 110, colCompact: 84 });
   const anchosCompras = usePlanillaWidths("compras.realizadas", { label: 280, col: 120, colCompact: 92 });
@@ -174,8 +188,9 @@ export function ComprasTab({
             ))}
           </datalist>
 
-          {analisisSlot}
+          {vista === "compras" && analisisSlot}
 
+          {vista === "fabricacion" && (
           <Panel span="wide" title="Semaforo de compras">
             <SemaforoResumen
               items={[
@@ -192,7 +207,9 @@ export function ComprasTab({
               </div>
             </div>
           </Panel>
+          )}
 
+          {vista === "cajaChica" && (
           <Panel title="Deuda con la gente (lo que pusieron de su bolsillo)" span="full">
             <div style={styles.sectionNote}>
               Cuando una factura la paga un empleado, un socio o un tercero, la empresa le queda
@@ -268,7 +285,9 @@ export function ComprasTab({
               ))
             )}
           </Panel>
+          )}
 
+          {OCULTO && (
           <Panel
             title="Cuentas corrientes con proveedores"
             span="full"
@@ -477,7 +496,9 @@ export function ComprasTab({
               })
             )}
           </Panel>
+          )}
 
+          {OCULTO && (
           <Panel
             title={`Facturas de compra - ${monthLabel(purchaseMonth)}`}
             actions={<ButtonLike onClick={addPurchaseInvoice}>Agregar factura</ButtonLike>}
@@ -648,7 +669,9 @@ export function ComprasTab({
               })
             )}
           </Panel>
+          )}
 
+          {OCULTO && (
           <Panel
             title="Facturas recibidas y su pago"
             span="full"
@@ -810,7 +833,9 @@ export function ComprasTab({
               </div>
             )}
           </Panel>
+          )}
 
+          {vista === "compras" && (
           <Panel title="Resumen administrativo de compras" span="half">
             <div style={styles.metricGrid}>
               <MiniMetric label="Facturas cargadas" value={String(purchaseInvoiceSummary.invoicesCount)} />
@@ -826,6 +851,8 @@ export function ComprasTab({
                   tone="out"
                 />
               )}
+
+          {vista === "compras" && facturasSlot}
               <MiniMetric label="Caja chica blanco" value={money(pettyCashSummary.whiteTotal)} tone="out" />
               <MiniMetric label="Caja chica negro" value={money(pettyCashSummary.blackTotal)} tone="out" />
               <MiniMetric label="Del listado de ARCA" value={String(facturasDeArca.length)} />
@@ -841,7 +868,9 @@ export function ComprasTab({
               o falta cargar el pago, o se pagó en negro, o lo puso alguien de su bolsillo.
             </div>
           </Panel>
+          )}
 
+          {OCULTO && (
           <Panel
             title={`Compras de caja chica - ${monthLabel(purchaseMonth)}`}
             span="full"
@@ -934,7 +963,9 @@ export function ComprasTab({
               </div>
             )}
           </Panel>
+          )}
 
+          {vista === "fabricacion" && (
           <Panel title="Compras pendientes para fabricacion" span="full">
             <div style={styles.metricGrid}>
               <MiniMetric label="Items faltantes" value={String(stockNeedRows.length)} />
@@ -1011,7 +1042,9 @@ export function ComprasTab({
               </div>
             )}
           </Panel>
+          )}
 
+          {OCULTO && (
           <Panel title="Compras realizadas" span="full">
             {fabricationCompletedPurchases.length === 0 ? (
               <div style={styles.empty}>Todavia no hay facturas de compra cargadas.</div>
@@ -1070,8 +1103,10 @@ export function ComprasTab({
               </div>
             )}
           </Panel>
+          )}
 
 
+          {vista === "compras" && costosSlot}
         </div>
   );
 }

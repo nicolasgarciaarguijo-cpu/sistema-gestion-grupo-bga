@@ -78,7 +78,14 @@ const KindPill = ({ kind }: { kind: CostKind }) => (
   </span>
 );
 
+// Bloques que Nicolas saco de Pago a proveedores el 14/10/2026 (quedan en el codigo, apagados).
+const OCULTO: boolean = false;
+
 type CostosTabProps = {
+  // Que se dibuja: Pago a proveedores (proveedores + cuenta corriente), o los bloques que se mudaron
+  // al final de Compras y analisis de gastos (composicion de costos / grupos de costos).
+  vista?: "pagoProveedores" | "composicion" | "grupos";
+  proveedoresSlot?: React.ReactNode;
   fiscalLabel: string;
   months: string[];
   aggregation: CostAggregation;
@@ -127,6 +134,8 @@ type CostosTabProps = {
 };
 
 export function CostosTab({
+  vista = "pagoProveedores",
+  proveedoresSlot,
   suppliers,
   addSupplier,
   removeSupplier,
@@ -382,6 +391,8 @@ export function CostosTab({
 
   return (
     <>
+      {vista === "pagoProveedores" && proveedoresSlot}
+      {OCULTO && (
       <Panel
         title={`Costos fijos y variables - ${fiscalLabel}`}
         span="full"
@@ -433,7 +444,9 @@ export function CostosTab({
           BANCOS Y TARJETAS.
         </div>
       </Panel>
+      )}
 
+      {vista === "grupos" && (
       <Panel
         title="Grupos de costos" span="full"
         actions={<ButtonLike onClick={addCostGroup}>Agregar grupo</ButtonLike>}
@@ -533,7 +546,9 @@ export function CostosTab({
         </table>
         </div>
       </Panel>
+      )}
 
+      {OCULTO && (
       <Panel title="Reglas de clasificación · memoria" span="full">
         <div style={styles.sectionNote}>
           Cuando clasificás un gasto a un grupo, el sistema <strong>aprende una regla</strong> y el
@@ -651,7 +666,9 @@ export function CostosTab({
           </div>
         )}
       </Panel>
+      )}
 
+      {OCULTO && (
       <Panel
         title="Proveedores"
         span="full"
@@ -772,7 +789,9 @@ export function CostosTab({
           </div>
         </div>
       </Panel>
+      )}
 
+      {OCULTO && (
       <Panel
         title="Gastos cargados"
         span="full"
@@ -947,7 +966,9 @@ export function CostosTab({
           </table>
         </div>
       </Panel>
+      )}
 
+      {OCULTO && (
       <Panel title="Gastos de caja chica (clasificar a un grupo)" span="full">
         <div style={styles.sectionNote}>
           Compras/gastos que entraron por caja chica. Asignales un grupo de costo (fijo/variable) para que
@@ -1054,7 +1075,9 @@ export function CostosTab({
           </div>
         </div>
       </Panel>
+      )}
 
+      {OCULTO && (
       <Panel title="Cuenta corriente proveedores (deuda por pagar)" span="full">
         <div style={styles.sectionNote}>
           Facturas de compra por proveedor. Una factura SIN pago vinculado queda como DEUDA hasta que le
@@ -1156,7 +1179,9 @@ export function CostosTab({
           ))
         )}
       </Panel>
+      )}
 
+      {vista === "composicion" && (
       <Panel title="Composicion: fijos / variables → grupo → gastos" span="full">
         <div style={styles.sectionNote}>
           Cada grupo con su TOTAL y, debajo, los gastos asignados: así ves cómo se compone cada tipo de
@@ -1261,7 +1286,9 @@ export function CostosTab({
           </div>
         )}
       </Panel>
+      )}
 
+      {OCULTO && (
       <Panel
         title="Costos por grupo y mes (fijos / variables)"
         span="full"
@@ -1417,6 +1444,7 @@ export function CostosTab({
           </table>
         </div>
       </Panel>
+      )}
 
       {menuCelda && (() => {
         const lista = gastosDetras(menuCelda.group, menuCelda.month);

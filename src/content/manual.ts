@@ -340,6 +340,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Todos los pagos del sistema analizados por grupo, las facturas de compra con su pago, las cuentas corrientes y la ficha de cada proveedor.",
     sections: [
       {
+        heading: "Facturas de compra: el listado y la ventana",
+        blocks: [
+          { type: "p", text: "Cada factura en una fila con su estado de pago: ✓ pagada (fecha y cómo), sin pagar con su fecha prevista y su estado, o sin pagar sin fecha. La marca 'cta cte' o 'nuevo' dice si el proveedor tiene cuenta corriente o todavía no está en el listado." },
+          { type: "steps", items: ["Tocá '+ Agregar factura'.", "1 · Proveedor: elegilo de la lista de habituales o escribí uno nuevo (y tildá darlo de alta).", "2 · Factura: letra, número, fecha, neto, IVA, total, circuito y tipo de gasto.", "3 · Pago: si se pagó, registrá fecha, monto, cómo y de qué cuenta (o vinculá un pago ya cargado); si no, la fecha prevista y el estado.", "Guardá. El pago queda en el cash flow; lo que falta pagar va a Pagos programados."] },
+          { type: "tip", text: "Click en una factura para verla o editarla; 'Asignar pago' en las que faltan pagar; click derecho para abrir la ficha del proveedor." },
+        ],
+      },
+      {
         heading: "Análisis de gastos",
         blocks: [
           { type: "p", text: "Arriba de la solapa están TODOS los egresos del sistema, cargados en la solapa que sea, agrupados en: gastos de personal, gastos empresariales (IVA, impuestos), funcionamiento, materiales e insumos, bancos y tarjetas, deudas y créditos, seguros, caja chica y viáticos. Blanco y negro siempre separados; dólares aparte." },
