@@ -677,6 +677,8 @@ export type PettyCashExpense = {
   // Grupo de costo al que se imputa este gasto (fijo/variable) para la solapa Costos. Ausente/"" = cae
   // en el grupo auto "Caja chica". NO genera doble conteo: es el MISMO gasto, solo cambia a qué grupo va.
   costGroup?: string;
+  // Tipo del grupo (fijo/variable): puede haber dos grupos con el mismo nombre y distinto tipo.
+  costGroupKind?: "fijo" | "variable";
 };
 
 export type DebtPlan = {

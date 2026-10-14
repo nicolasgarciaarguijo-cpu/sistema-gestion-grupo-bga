@@ -57,3 +57,18 @@ describe("bancos y seguros son proveedores", () => {
     expect(parseRenglonProveedor(s.conceptKey)?.grupo).toBe("fijo|Seguros");
   });
 });
+
+describe("candado y caja chica", () => {
+  it("con candado, el grupo del proveedor le gana al de la factura", () => {
+    const r = aRenglonDeProveedores({ id: "cost-1", kind: "gasto", title: "x" }, seccion, {
+      proveedor: "Cusmano", grupoBloqueado: "fijo|Administrativos", grupoDeFactura: "variable|Compras y materiales", cuentaCorriente: false,
+    })!;
+    expect(parseRenglonProveedor(r.conceptKey)?.grupo).toBe("fijo|Administrativos");
+  });
+  it("asignar o devolver un fondo de caja chica no va al cash flow; el gasto rendido sí, como proveedor", () => {
+    expect(aRenglonDeProveedores({ id: "fondo-1", kind: "caja-chica-fondo", title: "Fondo", conceptKey: "cc_caja_chica" }, seccion)?.conceptKey).toBe("__fuera__");
+    const g = aRenglonDeProveedores({ id: "petty-cash-5", kind: "caja-chica", title: "Ferretería" }, seccion, { proveedor: "Ferretería X", grupoDelPago: "variable|Compras y materiales", cuentaCorriente: false })!;
+    expect(parseRenglonProveedor(g.conceptKey)).toEqual({ seccion: SECCION_PROVEEDORES, grupo: "variable|Compras y materiales" });
+    expect(g.title).toBe("Ferretería X");
+  });
+});

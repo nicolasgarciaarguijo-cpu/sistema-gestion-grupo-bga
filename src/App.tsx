@@ -200,6 +200,7 @@ import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocum
 import { workingDaysInMonth, reciboNegroAmount, paymentDateForPeriod } from "./domain/recibo";
 import { ComprasTab } from "./tabs/Compras";
 import { CajaChicaTab } from "./tabs/CajaChica";
+import { GastoCajaChicaModal, type GastoCajaForm } from "./ui/GastoCajaChicaModal";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
@@ -14665,10 +14666,11 @@ Escribi CERRAR para confirmar:`
         id: `petty-cash-${item.id}`,
         date: item.date,
         company: item.company,
-        title: item.description || item.supplier || "Caja chica",
+        title: item.supplier || item.description || "Caja chica",
         kind: "caja-chica",
         amount: Number(item.amount || 0),
         statusLabel: item.administration === "blanco" ? "Caja blanca" : "Caja negra",
+        administration: item.administration === "blanco" ? "blanco" : "negro",
       });
     });
 
@@ -15941,8 +15943,26 @@ Escribi CERRAR para confirmar:`
       if (i.paidByCostEntryId != null) facturaDePago.set(i.paidByCostEntryId, i);
     });
     const tipoDeGrupo = (nombre: string) => (costGroups.find((g) => g.name === nombre)?.kind === "fijo" ? "fijo" : "variable");
-    return cashFlowEntries.map((e: any) => {
+    const pettyById = new Map(pettyCashExpenses.map((p) => [p.id, p]));
+    // Candado del proveedor: con el tilde puesto, TODO lo suyo va a su grupo (le gana a lo elegido al cargar).
+    const bloqueado = (prov: any) => (prov?.tipoGastoLocked && prov?.grupoCosto ? prov.grupoCosto : undefined);
+    const salida: any[] = [];
+    cashFlowEntries.forEach((e: any) => {
       let contexto: any;
+      // GASTO DE CAJA CHICA rendido: es un pago a proveedor (el origen de la plata es la caja de una persona).
+      if (String(e.id).startsWith("petty-cash-")) {
+        const pe = pettyById.get(Number(String(e.id).slice(11)));
+        if (pe) {
+          const prov = buscarProveedor(suppliers as any, pe.supplier || "", "") as any;
+          contexto = {
+            proveedor: pe.supplier || pe.description || "Caja chica",
+            grupoBloqueado: bloqueado(prov),
+            grupoDelPago: pe.costGroup ? claveGrupo(pe.costGroupKind || tipoDeGrupo(pe.costGroup), pe.costGroup) : undefined,
+            grupoDelProveedor: prov?.grupoCosto,
+            cuentaCorriente: !!prov?.currentAccount,
+          };
+        }
+      }
       if (String(e.id).startsWith("cost-")) {
         const ce = costById.get(Number(String(e.id).slice(5)));
         if (ce) {
@@ -15950,6 +15970,7 @@ Escribi CERRAR para confirmar:`
           const prov = buscarProveedor(suppliers as any, ce.supplier || inv?.supplier || "", inv?.taxId || "") as any;
           contexto = {
             proveedor: ce.supplier || inv?.supplier || ce.description || "",
+            grupoBloqueado: bloqueado(prov),
             grupoDeFactura: inv?.grupoCosto,
             grupoDelPago: ce.group ? claveGrupo((ce.groupKind as any) || tipoDeGrupo(ce.group), ce.group) : undefined,
             grupoDelProveedor: prov?.grupoCosto,
@@ -15958,9 +15979,12 @@ Escribi CERRAR para confirmar:`
         }
       }
       const r = aRenglonDeProveedores(e, (ck) => CALENDAR_ITEM_INDEX[ck]?.sectionKey, contexto);
-      return r ? { ...e, conceptKey: r.conceptKey, title: r.title } : e;
+      // La asignacion / devolucion de un fondo de caja chica NO va al cash flow (queda en Caja chica).
+      if (r?.conceptKey === "__fuera__") return;
+      salida.push(r ? { ...e, conceptKey: r.conceptKey, title: r.title } : e);
     });
-  }, [cashFlowEntries, costEntries, purchaseInvoices, suppliers, costGroups]);
+    return salida;
+  }, [cashFlowEntries, costEntries, purchaseInvoices, suppliers, costGroups, pettyCashExpenses]);
 
   // F/V del TIPO DE GASTO (renglon), con o sin candado. kind null = se lo saca.
   const setFVRenglon = (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => {
@@ -16380,6 +16404,8 @@ Escribi CERRAR para confirmar:`
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
   // Ventana de factura de compra abierta (nueva o existente).
   const [facturaModal, setFacturaModal] = useState<FacturaForm | null>(null);
+  // Ventana para rendir un gasto de caja chica (nuevo o existente).
+  const [gastoCajaModal, setGastoCajaModal] = useState<GastoCajaForm | null>(null);
 
   const agendaInamoviblesItems = useMemo<ItemInamovible[]>(() => {
     const desdeD = new Date();
@@ -18969,6 +18995,78 @@ Escribi CERRAR para confirmar:`
     }
     setFacturaModal(null);
   };
+  // GASTO DE CAJA CHICA: se abre la ventana (como una factura de Pago a proveedores) con la caja de origen.
+  const abrirGastoCaja = (fundId?: number | null, expenseId?: number) => {
+    const exp = expenseId != null ? pettyCashExpenses.find((x) => x.id === expenseId) : undefined;
+    if (exp) {
+      const prov = buscarProveedor(suppliers as any, exp.supplier || "", "") as any;
+      setGastoCajaModal({
+        id: exp.id,
+        fundId: exp.fundId,
+        company: exp.company,
+        supplier: exp.supplier || "",
+        taxId: prov?.taxId || "",
+        altaProveedor: false,
+        date: exp.date,
+        amount: Number(exp.amount || 0),
+        administration: exp.administration === "blanco" ? "blanco" : "negro",
+        grupoCosto: exp.costGroup ? claveGrupo(exp.costGroupKind || (costGroups.find((g) => g.name === exp.costGroup)?.kind === "fijo" ? "fijo" : "variable"), exp.costGroup) : undefined,
+        description: exp.description || "",
+        invoiceNumber: exp.invoiceNumber || "",
+        notes: exp.notes || "",
+      });
+      return;
+    }
+    const fondo =
+      typeof fundId === "number" ? pettyCashFunds.find((x) => x.id === fundId) : visiblePettyCashFunds.find((x) => !x.closed) || visiblePettyCashFunds[0];
+    setGastoCajaModal({
+      fundId: fondo?.id ?? null,
+      company: fondo?.company || budget.company,
+      supplier: "",
+      taxId: "",
+      altaProveedor: true,
+      date: defaultDateForActiveMonth(),
+      amount: 0,
+      administration: "negro",
+      description: "",
+      invoiceNumber: "",
+      notes: "",
+    });
+  };
+  const guardarGastoCaja = (g: GastoCajaForm) => {
+    const grupo = parseClaveGrupo(g.grupoCosto);
+    const id = g.id ?? newId();
+    setPettyCashExpenses((prev) => {
+      const previo = prev.find((x) => x.id === id);
+      const gasto: PettyCashExpense = {
+        category: "Gasto operativo",
+        attachmentName: "",
+        linkedPurchaseInvoiceId: null,
+        ...previo,
+        id,
+        company: g.company as CompanyName,
+        fundId: g.fundId,
+        date: g.date,
+        amount: Number(g.amount || 0),
+        administration: g.administration,
+        supplier: g.supplier.trim(),
+        description: g.description,
+        invoiceNumber: g.invoiceNumber,
+        notes: g.notes,
+        costGroup: grupo?.nombre || "",
+        costGroupKind: grupo?.tipo,
+      };
+      return previo ? prev.map((x) => (x.id === id ? gasto : x)) : [gasto, ...prev];
+    });
+    const prov = buscarProveedor(suppliers as any, g.supplier, g.taxId);
+    if (g.altaProveedor && !prov && g.supplier.trim()) {
+      setSuppliers((prev) => [
+        ...prev,
+        { id: newId(), company: g.company as CompanyName, name: g.supplier.trim(), taxId: g.taxId.trim(), aliases: "", active: true, notes: "Alta desde un gasto de caja chica", grupoCosto: g.grupoCosto } as Supplier,
+      ]);
+    }
+    setGastoCajaModal(null);
+  };
   const renderFacturasCompra = () => (
     <FacturasCompraPanel
       filas={filasFacturas}
@@ -19610,6 +19708,21 @@ Escribi CERRAR para confirmar:`
           onEntendido={cerrarNovedades}
         />
       )}
+      {gastoCajaModal && (
+        <GastoCajaChicaModal
+          key={gastoCajaModal.id || "nuevo"}
+          inicial={gastoCajaModal}
+          cajas={visiblePettyCashFunds as any}
+          proveedores={visibleSuppliers as any}
+          grupos={renglonesEgreso}
+          onGuardar={guardarGastoCaja}
+          onBorrar={(id) => {
+            removePettyCashExpense(id);
+            setGastoCajaModal(null);
+          }}
+          onCerrar={() => setGastoCajaModal(null)}
+        />
+      )}
       {facturaModal && (
         <FacturaCompraModal
           key={facturaModal.id || "nueva"}
@@ -19845,6 +19958,7 @@ Escribi CERRAR para confirmar:`
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           removePettyCashFund={removePettyCashFund}
           visiblePettyCashExpenses={visiblePettyCashExpenses}
+          onAbrirGasto={abrirGastoCaja}
           pettyCashFundSummaries={pettyCashFundSummaries}
           getFundSemaphore={getFundSemaphore}
           fundDebtAdjustments={fundDebtAdjustments}

@@ -68,6 +68,8 @@ export type EntradaParaProveedores = {
 // Lo que se necesita saber de cada pago (CostEntry) y de su proveedor / factura.
 export type ContextoPago = {
   proveedor: string;
+  // Candado del proveedor: si esta, TODO lo de ese proveedor va a este grupo (le gana a la factura).
+  grupoBloqueado?: string;
   grupoDeFactura?: string;
   grupoDelPago?: string;
   grupoDelProveedor?: string;
@@ -86,6 +88,10 @@ export function aRenglonDeProveedores(
   if (ck.startsWith("prov:")) return null; // ya esta
   // El debito del banco que ARMA un fondo de caja chica no es un gasto: ya cuenta la asignacion del fondo.
   if (e.kind === "banco" && ck === "cc_caja_chica") return null;
+  // CAJA CHICA (Nicolas, 2026-10-14): asignar un fondo o devolver el sobrante es plata que se mueve
+  // dentro de la empresa (a la caja de una persona): NO va al cash flow. Lo que va es cada GASTO
+  // rendido, como pago a proveedor (con contexto).
+  if (e.kind === "caja-chica-fondo") return { conceptKey: "__fuera__", title: e.title };
   // Comisiones de los trabajos: van a Comerciales, con el trabajo como nombre.
   if (e.kind === "comision") {
     return { conceptKey: renglonProveedor(SECCION_PROVEEDORES, SECCIONES_REEMPLAZADAS.gastos_comerciales), title: `Comisión · ${e.title}` };
@@ -94,7 +100,12 @@ export function aRenglonDeProveedores(
   if (contextoPago) {
     if (ck && !reemplazada) return null;
     const grupo =
-      contextoPago.grupoDeFactura || contextoPago.grupoDelPago || contextoPago.grupoDelProveedor || reemplazada || "|Sin grupo";
+      contextoPago.grupoBloqueado ||
+      contextoPago.grupoDeFactura ||
+      contextoPago.grupoDelPago ||
+      contextoPago.grupoDelProveedor ||
+      reemplazada ||
+      "|Sin grupo";
     return {
       conceptKey: renglonProveedor(contextoPago.cuentaCorriente ? SECCION_CTACTE : SECCION_PROVEEDORES, grupo),
       title: contextoPago.proveedor || e.title,

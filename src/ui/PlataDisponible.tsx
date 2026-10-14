@@ -209,6 +209,20 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                 {/* CAJAS POR PERSONA: plata de la empresa que tiene alguien en mano. */}
                 {(c.cajas || []).length > 0 && (
                   <div style={banksRow}>
+                    {/* Aclaracion: cuanta plata hay asignada en cajas chicas (NO va al cash flow: ahi van los
+                        gastos que se rinden). Blanco y negro, siempre separados. */}
+                    {(["blanco", "negro"] as const).map((color) => {
+                      const total = (c.cajas || []).filter((k) => k.color === color).reduce((a, k) => a + Number(k.saldo || 0), 0);
+                      return Math.abs(total) > 0.5 ? (
+                        <span
+                          key={`total-${color}`}
+                          style={{ ...chip, color: color === "negro" ? "#fde68a" : "#e2e8f0", fontWeight: 700 }}
+                          title="Plata asignada en cajas chicas (y en la caja de cada persona), todavía sin rendir"
+                        >
+                          🧰 En cajas chicas{color === "negro" ? " (negro)" : ""}: <b>{money(total)}</b>
+                        </span>
+                      ) : null;
+                    })}
                     {(c.cajas || []).map((caja) => (
                       <span
                         key={`${caja.persona}-${caja.color}`}

@@ -75,6 +75,8 @@ type CajaChicaTabProps = {
   getFundSemaphore: (remaining: number, assigned: number) => { level: SemaphoreLevel; label: string };
   fundDebtAdjustments: Map<number, any>;
   addPettyCashExpense: (fundId?: number | null) => void;
+  // Ventana "Rendir gasto" (proveedor + grupo de costo + caja de origen). Sin esto, el alta vieja en linea.
+  onAbrirGasto?: (fundId?: number | null, expenseId?: number) => void;
   reopenPettyCashFund: (fundId: number) => void;
   itemMonthKey: (dateValue: unknown) => string;
   operationalMonth: string;
@@ -116,6 +118,7 @@ export function CajaChicaTab({
   getFundSemaphore,
   fundDebtAdjustments,
   addPettyCashExpense,
+  onAbrirGasto,
   reopenPettyCashFund,
   itemMonthKey,
   operationalMonth,
@@ -571,8 +574,8 @@ export function CajaChicaTab({
                         </span>
                       </div>
                       <div style={styles.inlineActions}>
-                        <button style={styles.smallBtn} onClick={() => addPettyCashExpense(fund.id)}>
-                          Agregar gasto
+                        <button style={styles.smallBtn} onClick={() => (onAbrirGasto ? onAbrirGasto(fund.id) : addPettyCashExpense(fund.id))}>
+                          + Rendir gasto
                         </button>
                         {(fund.closed || remainingBalance <= 0) && (
                           <button style={styles.smallBtn} onClick={() => reopenPettyCashFund(fund.id)}>
@@ -638,7 +641,9 @@ export function CajaChicaTab({
                         <details key={expense.id} style={styles.pettyCashInlineBubble}>
                           <summary style={styles.pettyCashExpenseSummary}>
                             <span style={styles.pettyCashExpenseSummaryLine}>
-                              <strong>{expense.description || "Gasto sin descripcion"}</strong>
+                              <strong>{expense.supplier || expense.description || "Gasto sin proveedor"}</strong>
+                              {expense.supplier && expense.description ? <span style={styles.muted}> · {expense.description}</span> : null}
+                              {expense.costGroup ? <span style={styles.muted}> · {expense.costGroupKind === "fijo" ? "Fijo" : "Variable"} · {expense.costGroup}</span> : null}
                             </span>
                             <span style={{ ...styles.pettyCashExpenseSummaryLine, ...styles.amountOut }}>
                               {money(Number(expense.amount || 0))}
@@ -652,6 +657,11 @@ export function CajaChicaTab({
                             <span style={styles.muted}>
                               Fecha {formatDateDisplay(expense.date)} · {expense.administration === "blanco" ? "Compra en blanco" : "Compra en negro"}
                             </span>
+                            {onAbrirGasto && (
+                              <button style={styles.smallBtn} onClick={() => onAbrirGasto(expense.fundId, expense.id)}>
+                                Abrir ficha del gasto
+                              </button>
+                            )}
                             <button style={styles.smallBtn} onClick={() => removePettyCashExpense(expense.id)}>
                               Quitar gasto
                             </button>

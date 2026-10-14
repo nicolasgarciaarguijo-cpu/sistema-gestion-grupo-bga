@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-14d",
+    fecha: "14/10/2026",
+    titulo: "Caja chica: se rinden gastos a proveedores",
+    items: [
+      {
+        titulo: "La caja chica ya no figura en el cash flow",
+        que: "Asignar un fondo o devolver lo que sobra es plata que pasa a la caja de una persona: no va al cash flow. Lo que va son los GASTOS que se rinden, como pago al proveedor, en el grupo de costo que corresponda.",
+        como: "Arriba, junto a los bancos, se ve cuánta plata hay asignada en cajas chicas (blanco y negro aparte).",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Rendir gasto",
+        que: "En cada caja, '+ Rendir gasto' abre una ventana como la de una factura: caja (persona) de origen, proveedor habitual o uno nuevo (se le abre ficha), fecha, monto, blanco/negro, comprobante y dónde va en el cash flow (grupo de costo).",
+        como: "Si el proveedor tiene candado en su ficha, el gasto va siempre a su grupo y no se puede cambiar. 'Abrir ficha del gasto' para corregir uno cargado.",
+        tab: "cajaChica",
+      },
+    ],
+  },
+  {
     id: "2026-10-14c",
     fecha: "14/10/2026",
     titulo: "Cash flow ordenado por proveedores y grupos de costos",

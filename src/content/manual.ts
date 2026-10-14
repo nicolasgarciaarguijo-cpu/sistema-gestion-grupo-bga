@@ -425,6 +425,13 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Manejas los fondos de caja chica de cada empresa y sus gastos del dia a dia. Es el circuito por donde suele moverse el negro (incluido el pago a empleados temporales).",
     sections: [
       {
+        heading: "Rendir un gasto (como un pago a proveedor)",
+        blocks: [
+          { type: "p", text: "La caja chica NO figura en el cash flow: asignar o devolver un fondo es plata que pasa a la caja de una persona. Al cash flow van los GASTOS que se rinden, como pago al proveedor, en el grupo de costo elegido. Arriba, junto a los bancos, se ve cuánto hay asignado en cajas chicas." },
+          { type: "steps", items: ["En la caja de la persona tocá '+ Rendir gasto'.", "Elegí el proveedor habitual o escribí uno nuevo (se le abre ficha).", "Cargá fecha, monto, blanco/negro, comprobante y dónde va en el cash flow (grupo de costo).", "Si el proveedor tiene candado, el gasto va siempre a su grupo."] }
+        ],
+      },
+      {
         heading: "Viáticos eventuales",
         blocks: [
           { type: "p", text: "Un anticipo a una persona por un viaje o un trabajo. Sale de la cuenta elegida el día del anticipo y va al renglón 'Viáticos' del Calendario (gasto de personal)." },
