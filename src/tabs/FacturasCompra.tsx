@@ -20,6 +20,8 @@ export type FilaFactura = {
   fechaPrevista?: string;
   estadoPrevisto?: "programado" | "estimado" | "inamovible";
   tipoProveedor: "ctacte" | "habitual" | "nuevo";
+  // Factura pagada con una CAJA CHICA: quien la rindio (se ve como pill y la fila abre el gasto).
+  cajaResponsable?: string;
 };
 
 const NOMBRE_MES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -59,7 +61,8 @@ export function FacturasCompraPanel({
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
     return filas
-      .filter((f) => f.source !== "caja_chica") // las de caja chica viven en Caja chica y viaticos
+      // Las de CAJA CHICA tambien van: Compras es el registro unico de todas las facturas y pagos
+      // (se cargan en Caja chica y se ven aca, pagadas por la caja de la persona).
       .filter((f) => (soloSinPagar ? !f.pagada : f.invoiceDate.startsWith(mes)))
       .filter((f) => !q || `${f.supplier} ${f.invoiceNumber} ${f.taxId}`.toLowerCase().includes(q))
       .sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate));
@@ -131,6 +134,11 @@ export function FacturasCompraPanel({
                   <td style={td}>{fmt(f.invoiceDate)}</td>
                   <td style={{ ...td, whiteSpace: "normal" }}>
                     <strong>{f.supplier || "Sin proveedor"}</strong>{" "}
+                    {f.source === "caja_chica" && (
+                      <span style={{ ...pill("#7c2d12", "#ffedd5"), marginRight: 4 }}>
+                        caja chica{f.cajaResponsable ? ` · ${f.cajaResponsable}` : ""}
+                      </span>
+                    )}
                     {f.tipoProveedor === "ctacte" ? (
                       <span style={pill("#166534", "#dcfce7")}>cta cte</span>
                     ) : f.tipoProveedor === "nuevo" ? (

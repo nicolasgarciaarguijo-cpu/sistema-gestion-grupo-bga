@@ -18943,7 +18943,14 @@ Escribi CERRAR para confirmar:`
     .map((inv) => {
       const pago = inv.paidByCostEntryId != null ? costEntries.find((c) => c.id === inv.paidByCostEntryId) : undefined;
       const porPersona = String(inv.paidByPerson || "").trim();
-      const pagada = inv.paidByCostEntryId != null || inv.paidByBankEntryId != null || !!porPersona;
+      // Pagada con CAJA CHICA: la plata salio de la caja de la persona el dia del gasto (no es deuda).
+      const gastoCaja =
+        inv.source === "caja_chica" && inv.pettyCashExpenseId != null
+          ? pettyCashExpenses.find((g) => g.id === inv.pettyCashExpenseId)
+          : undefined;
+      const cajaResponsable = gastoCaja?.fundId != null ? pettyCashFunds.find((x) => x.id === gastoCaja.fundId)?.responsible || "" : "";
+      const pagada =
+        inv.paidByCostEntryId != null || inv.paidByBankEntryId != null || !!porPersona || inv.source === "caja_chica";
       const prov = buscarProveedor(suppliers as any, inv.supplier, inv.taxId) as any;
       const prevista = facturasAPagar.find((x) => x.id === inv.id);
       const marca = vencimientoMarcas.find((m) => m.clave === `factura:${inv.id}`);
@@ -18959,7 +18966,9 @@ Escribi CERRAR para confirmar:`
         administration: inv.administration === "negro" ? "negro" : "blanco",
         source: inv.source,
         pagada,
-        pagoTexto: pago
+        pagoTexto: inv.source === "caja_chica"
+          ? `${fmtCorta(gastoCaja?.date || inv.invoiceDate)} · caja chica${cajaResponsable ? " de " + cajaResponsable : ""}`
+          : pago
           ? `${fmtCorta(pago.date)} · ${METODO_TEXTO[pago.paymentMethod || ""] || "sin medio"}`
           : inv.paidByBankEntryId != null
             ? "por el banco"
@@ -18969,8 +18978,9 @@ Escribi CERRAR para confirmar:`
         fechaPrevista: prevista?.fechaPago,
         estadoPrevisto: marca?.estadoPago,
         tipoProveedor: prov ? (prov.currentAccount ? "ctacte" : "habitual") : "nuevo",
+        cajaResponsable: cajaResponsable || undefined,
       } as FilaFactura;
-    }), [purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas]);
+    }), [purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas, pettyCashExpenses, pettyCashFunds]);
   const facturaVacia = (supplier = "", taxId = "", company = ""): FacturaForm => ({
     company: company || (budget.company as string),
     supplier,
@@ -19481,6 +19491,12 @@ Escribi CERRAR para confirmar:`
       money={money}
       onNueva={() => setFacturaModal(facturaVacia())}
       onAbrir={(id) => {
+        // La factura de un gasto de CAJA CHICA se edita desde el gasto (un solo lugar de carga).
+        const inv = purchaseInvoices.find((i) => i.id === id);
+        if (inv?.source === "caja_chica" && inv.pettyCashExpenseId != null && pettyCashExpenses.some((g) => g.id === inv.pettyCashExpenseId)) {
+          abrirGastoCaja(undefined, inv.pettyCashExpenseId);
+          return;
+        }
         const f = facturaDeId(id);
         if (f) setFacturaModal(f);
       }}
