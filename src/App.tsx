@@ -20478,6 +20478,7 @@ Escribi CERRAR para confirmar:`
           onAbrirFicha={(r) => setFichaCaja(r)}
           onEditarCaja={abrirEditarCaja}
           onEliminarCaja={eliminarCajaChica}
+          onQuitarViatico={(id) => setViaticos((prev) => prev.filter((v) => v.id !== id))}
           onAgregarTipo={(nombre) => {
             if (tiposCaja.some((t) => t.toLowerCase() === nombre.toLowerCase())) return;
             setPettyCashTypes((prev) => [...prev, { id: newId(), company: budget.company, nombre }]);

@@ -47,6 +47,7 @@ export function CajaChicaListado({
   onAbrirFicha,
   onEditarCaja,
   onEliminarCaja,
+  onQuitarViatico,
   onAgregarTipo,
   onRenombrarTipo,
   onQuitarTipo,
@@ -61,6 +62,7 @@ export function CajaChicaListado({
   onAbrirFicha: (responsable: string) => void;
   onEditarCaja: (fundId: number) => void;
   onEliminarCaja: (fundId: number, conGastos: boolean) => void;
+  onQuitarViatico?: (id: number) => void;
   onAgregarTipo: (nombre: string) => void;
   onRenombrarTipo: (viejo: string, nuevo: string) => void;
   onQuitarTipo: (nombre: string) => void;
@@ -85,12 +87,28 @@ export function CajaChicaListado({
   );
   const porTipo = porTipoDeCaja(fondos, gastos, tipos);
 
+  // Eliminar una caja: si tiene gastos, pregunta si se borran tambien o quedan sin caja.
+  const pedirEliminar = (f: FondoLike) => {
+    const r = resumenCaja(f, gastos);
+    if (r.gastos === 0) {
+      if (window.confirm(`¿Eliminar la caja chica de ${f.responsible || "sin responsable"}?`)) onEliminarCaja(f.id, false);
+      return;
+    }
+    if (!window.confirm(`¿Eliminar la caja chica de ${f.responsible || "sin responsable"}? Tiene ${r.gastos} gasto(s) rendido(s) por ${money(r.utilizado)}.`)) return;
+    const conGastos = window.confirm(
+      "¿Eliminar también sus gastos?\n\nAceptar = se borran los gastos (y sus facturas de Compras) y salen del cash flow.\nCancelar = los gastos quedan cargados, sin caja."
+    );
+    onEliminarCaja(f.id, conGastos);
+  };
+  const botonAccion: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", cursor: "pointer", padding: "2px 8px", fontSize: 12, fontWeight: 700 };
+
   const nombreResponsable = (nombre: string, extra?: React.ReactNode) => (
     <td
       style={{ ...td, fontWeight: 800, cursor: "context-menu", whiteSpace: "nowrap" }}
       title="Click derecho: abrir la ficha del responsable"
       onContextMenu={(ev) => {
         ev.preventDefault();
+        ev.stopPropagation();
         onAbrirFicha(nombre);
       }}
     >
@@ -129,6 +147,7 @@ export function CajaChicaListado({
                 <th style={{ ...th, textAlign: "right" }}>Utilizado</th>
                 <th style={{ ...th, textAlign: "right" }}>Resta</th>
                 <th style={th}>Estado</th>
+                <th style={th}></th>
               </tr>
             </thead>
             <tbody>
@@ -179,6 +198,16 @@ export function CajaChicaListado({
                         </span>
                       )}
                     </td>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>
+                      <span style={{ display: "inline-flex", gap: 4 }}>
+                        <button type="button" style={botonAccion} title="Editar la caja" onClick={() => onEditarCaja(f.id)}>
+                          ✏️ Editar
+                        </button>
+                        <button type="button" style={{ ...botonAccion, color: "#b91c1c" }} title="Quitar la caja" onClick={() => pedirEliminar(f)}>
+                          🗑
+                        </button>
+                      </span>
+                    </td>
                   </tr>
                 );
               })}
@@ -195,6 +224,20 @@ export function CajaChicaListado({
                   <td style={num}>—</td>
                   <td style={num}>—</td>
                   <td style={{ ...td, fontSize: 12 }}>{v.rendido ? "Rendido" : "Sin rendir"}</td>
+                  <td style={td}>
+                    {onQuitarViatico && (
+                      <button
+                        type="button"
+                        style={{ ...botonAccion, color: "#b91c1c" }}
+                        title="Quitar el viático"
+                        onClick={() => {
+                          if (window.confirm(`¿Quitar el viático de ${v.persona || "sin persona"} por ${money(v.monto)}?`)) onQuitarViatico(v.id);
+                        }}
+                      >
+                        🗑
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -206,6 +249,7 @@ export function CajaChicaListado({
                   <td style={td} />
                   <td style={{ ...num, fontWeight: 800 }}>{money(totales.utilizado)}</td>
                   <td style={{ ...num, fontWeight: 800 }}>{money(totales.resta)}</td>
+                  <td style={td} />
                   <td style={td} />
                 </tr>
               </tfoot>
@@ -271,7 +315,6 @@ export function CajaChicaListado({
       {menuCaja && (() => {
         const f = fondos.find((x) => x.id === menuCaja.id);
         if (!f) return null;
-        const r = resumenCaja(f, gastos);
         return (
           <QuickMenu x={menuCaja.x} y={menuCaja.y} onClose={() => setMenuCaja(null)}>
             <QuickMenuTitle>{`${f.responsible || "Sin responsable"} · ${f.tipo || "General"}`}</QuickMenuTitle>
@@ -282,15 +325,7 @@ export function CajaChicaListado({
               style={{ ...quickMenuItem, color: "#b91c1c" }}
               onClick={() => {
                 setMenuCaja(null);
-                if (r.gastos === 0) {
-                  if (window.confirm("¿Eliminar esta caja chica?")) onEliminarCaja(f.id, false);
-                  return;
-                }
-                if (!window.confirm(`¿Eliminar esta caja chica? Tiene ${r.gastos} gasto(s) rendido(s) por ${money(r.utilizado)}.`)) return;
-                const conGastos = window.confirm(
-                  "¿Eliminar también sus gastos?\n\nAceptar = se borran los gastos (y sus facturas de Compras) y salen del cash flow.\nCancelar = los gastos quedan cargados, sin caja."
-                );
-                onEliminarCaja(f.id, conGastos);
+                pedirEliminar(f);
               }}
             >
               🗑 Eliminar caja chica…
