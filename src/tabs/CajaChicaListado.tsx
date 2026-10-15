@@ -5,8 +5,9 @@
 import React, { useMemo, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
-import { porTipoDeCaja, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
+import { porTipoDeCaja, posicionCajaChica, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
 import { getFundSemaphore } from "../domain/pettyCash";
+import { DesbalanceCaja } from "../ui/DesbalanceCaja";
 
 export type ViaticoFila = { id: number; company: string; persona: string; fecha: string; monto: number; administration: "blanco" | "negro"; motivo: string; rendido?: boolean };
 
@@ -82,10 +83,18 @@ export function CajaChicaListado({
   );
   const viaticosVisibles = viaticos.filter((v) => verCerradas || !v.rendido);
   const totales = filas.reduce(
-    (a, { r }) => ({ asignado: a.asignado + r.asignado, utilizado: a.utilizado + r.utilizado, resta: a.resta + r.resta }),
-    { asignado: 0, utilizado: 0, resta: 0 }
+    (a, { r }) => ({
+      asignado: a.asignado + r.asignado,
+      utilizado: a.utilizado + r.utilizado,
+      resta: a.resta + r.resta,
+      negroFacturado: a.negroFacturado + (r.desbalanceConocido ? r.negroFacturado : 0),
+      blancoSinFactura: a.blancoSinFactura + (r.desbalanceConocido ? r.blancoSinFactura : 0),
+    }),
+    { asignado: 0, utilizado: 0, resta: 0, negroFacturado: 0, blancoSinFactura: 0 }
   );
   const porTipo = porTipoDeCaja(fondos, gastos, tipos);
+  // CONTADOR B/N: todas las cajas (abiertas y cerradas), por empresa de la que sale la plata.
+  const posiciones = useMemo(() => posicionCajaChica(fondos, gastos), [fondos, gastos]);
 
   // Eliminar una caja: si tiene gastos, pregunta si se borran tambien o quedan sin caja.
   const pedirEliminar = (f: FondoLike) => {
@@ -119,6 +128,70 @@ export function CajaChicaListado({
 
   return (
     <div style={styles.column}>
+      {posiciones.length > 0 && (
+        <Panel span="full" title="Contador blanco / negro de cajas chicas">
+          <div style={{ fontSize: 12, color: "#64748b", marginBottom: 8 }}>
+            Suma todas las cajas (abiertas y cerradas) de cada empresa: lo que entró en blanco y en negro contra lo que se gastó con factura y sin factura. Dice cómo conviene hacer las próximas compras para nivelar.
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 10 }}>
+            {posiciones.map((p) => {
+              const color = p.recomendacion === "sin_factura" ? "#b45309" : p.recomendacion === "con_factura" ? "#7c3aed" : "#16a34a";
+              const fondo = p.recomendacion === "sin_factura" ? "#fffbeb" : p.recomendacion === "con_factura" ? "#f5f3ff" : "#f0fdf4";
+              const saldoB = p.entroBlanco - p.gastoBlanco;
+              const saldoN = p.entroNegro - p.gastoNegro;
+              const fila = (label: string, entro: number, gasto: number, saldo: number, negro: boolean) => (
+                <tr>
+                  <td style={{ ...td, fontWeight: 700 }}>
+                    <span style={{ display: "inline-block", minWidth: 18, textAlign: "center", borderRadius: 999, fontSize: 11, fontWeight: 800, marginRight: 6, background: negro ? "#1f2937" : "#f1f5f9", color: negro ? "#fde68a" : "#0f172a" }}>{negro ? "N" : "B"}</span>
+                    {label}
+                  </td>
+                  <td style={num}>{money(entro)}</td>
+                  <td style={num}>{money(gasto)}</td>
+                  <td style={{ ...num, fontWeight: 800, color: saldo < 0 ? "#dc2626" : undefined }}>{money(saldo)}</td>
+                </tr>
+              );
+              return (
+                <div key={p.company} style={{ border: `1px solid ${color}55`, background: fondo, borderRadius: 10, padding: 10 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 6 }}>{companyShort(p.company)}</div>
+                  <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                    <thead>
+                      <tr>
+                        <th style={th}></th>
+                        <th style={{ ...th, textAlign: "right" }}>Entró</th>
+                        <th style={{ ...th, textAlign: "right" }}>Gastado</th>
+                        <th style={{ ...th, textAlign: "right" }}>Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {fila("Blanco · con factura", p.entroBlanco, p.gastoBlanco, saldoB, false)}
+                      {fila("Negro · sin factura", p.entroNegro, p.gastoNegro, saldoN, true)}
+                    </tbody>
+                  </table>
+                  <div style={{ marginTop: 8, fontSize: 13, color, fontWeight: 800 }}>
+                    {p.recomendacion === "sin_factura"
+                      ? `Comprar SIN factura: ${money(p.neto)}`
+                      : p.recomendacion === "con_factura"
+                      ? `Comprar CON factura: ${money(-p.neto)}`
+                      : "✓ Nivelado"}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#475569", marginTop: 2 }}>
+                    {p.recomendacion === "sin_factura"
+                      ? `Se pagaron ${money(p.neto)} de compras con factura con plata negra. Las próximas compras por ese monto conviene hacerlas sin factura (con plata blanca).`
+                      : p.recomendacion === "con_factura"
+                      ? `Se gastaron ${money(-p.neto)} de plata blanca sin factura. Las próximas compras por ese monto conviene hacerlas con factura (con plata negra).`
+                      : "Lo gastado con y sin factura coincide con lo que entró en blanco y en negro."}
+                  </div>
+                  {p.cajasSinOrigen > 0 && (
+                    <div style={{ fontSize: 11.5, color: "#b91c1c", marginTop: 4 }}>
+                      ⚠ {p.cajasSinOrigen} caja(s) por {money(p.montoSinOrigen)} sin blanco/negro cargado: no entran en la cuenta (editalas).
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
       <Panel
         span="full"
         title="Cajas chicas asignadas"
@@ -133,6 +206,7 @@ export function CajaChicaListado({
       >
         <div style={{ fontSize: 12, color: "#64748b", marginBottom: 6 }}>
           Click derecho sobre el responsable para abrir su ficha: ahí se rinden los gastos (tickets y facturas) y se ve su historial. La caja no va al cash flow; sus gastos sí, como pago a cada proveedor.
+          {" "}Lo que manda es el BRUTO (asignado − utilizado). <b>Desbalance B/N</b>: <span style={{ color: "#b45309", fontWeight: 700 }}>N→B</span> = compras con factura pagadas con plata negra; <span style={{ color: "#7c3aed", fontWeight: 700 }}>B→N</span> = gastos sin factura pagados con plata blanca.
         </div>
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
@@ -142,10 +216,11 @@ export function CajaChicaListado({
                 <th style={th}>Tipo</th>
                 <th style={th}>Plata de → corresponde a</th>
                 <th style={th}>Asignada el</th>
-                <th style={{ ...th, textAlign: "right" }}>Asignado</th>
+                <th style={{ ...th, textAlign: "right" }}>Asignado (bruto)</th>
                 <th style={th}>Administración</th>
                 <th style={{ ...th, textAlign: "right" }}>Utilizado</th>
                 <th style={{ ...th, textAlign: "right" }}>Resta</th>
+                <th style={{ ...th, textAlign: "right" }}>Desbalance B/N</th>
                 <th style={th}>Estado</th>
                 <th style={th}></th>
               </tr>
@@ -153,7 +228,7 @@ export function CajaChicaListado({
             <tbody>
               {filas.length === 0 && viaticosVisibles.length === 0 && (
                 <tr>
-                  <td style={{ ...td, color: "#94a3b8" }} colSpan={9}>No hay cajas abiertas. Tocá "+ Nueva caja chica".</td>
+                  <td style={{ ...td, color: "#94a3b8" }} colSpan={11}>No hay cajas abiertas. Tocá "+ Nueva caja chica".</td>
                 </tr>
               )}
               {filas.map(({ f, r }) => {
@@ -188,6 +263,9 @@ export function CajaChicaListado({
                     </td>
                     <td style={num}>{money(r.utilizado)}</td>
                     <td style={{ ...num, fontWeight: 800, color: r.resta < 0 ? "#dc2626" : undefined }}>{money(r.resta)}</td>
+                    <td style={num}>
+                      <DesbalanceCaja r={r} money={money} />
+                    </td>
                     <td style={{ ...td, whiteSpace: "nowrap", fontSize: 12 }}>
                       {f.closed ? (
                         `Cerrada${f.closedDate ? " " + fecha(f.closedDate) : ""}`
@@ -223,6 +301,7 @@ export function CajaChicaListado({
                   </td>
                   <td style={num}>—</td>
                   <td style={num}>—</td>
+                  <td style={num}>—</td>
                   <td style={{ ...td, fontSize: 12 }}>{v.rendido ? "Rendido" : "Sin rendir"}</td>
                   <td style={td}>
                     {onQuitarViatico && (
@@ -249,6 +328,10 @@ export function CajaChicaListado({
                   <td style={td} />
                   <td style={{ ...num, fontWeight: 800 }}>{money(totales.utilizado)}</td>
                   <td style={{ ...num, fontWeight: 800 }}>{money(totales.resta)}</td>
+                  <td style={num}>
+                    {totales.negroFacturado > 0.5 && <div style={{ color: "#b45309", fontWeight: 800, whiteSpace: "nowrap" }}>N→B {money(totales.negroFacturado)}</div>}
+                    {totales.blancoSinFactura > 0.5 && <div style={{ color: "#7c3aed", fontWeight: 800, whiteSpace: "nowrap" }}>B→N {money(totales.blancoSinFactura)}</div>}
+                  </td>
                   <td style={td} />
                   <td style={td} />
                 </tr>

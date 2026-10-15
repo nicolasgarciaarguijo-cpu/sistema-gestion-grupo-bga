@@ -56,6 +56,17 @@ export type ResumenCaja = {
   resta: number;
   administracion: Administracion;
   gastos: number;
+  // DESBALANCE B/N (Nicolas, 2026-10-15). La caja es UNA bolsa de plata: lo que importa es el BRUTO
+  // (asignado - utilizado). Pero con plata NEGRA se puede comprar CON FACTURA (y al reves), y eso
+  // desbalancea las administraciones:
+  //   negroFacturado   = lo gastado con factura (blanco) por encima de lo que entro en blanco: compras
+  //                      facturadas pagadas con plata negra.
+  //   blancoSinFactura = lo gastado sin factura (negro) por encima de lo que entro en negro: plata blanca
+  //                      que se fue sin comprobante.
+  // Solo se sabe si la caja tiene cargado de donde salio la plata (blanco/negro); si no, desbalanceConocido = false.
+  negroFacturado: number;
+  blancoSinFactura: number;
+  desbalanceConocido: boolean;
 };
 
 const n = (v: unknown) => {
@@ -85,6 +96,9 @@ export function resumenCaja(fondo: FondoLike, gastos: GastoLike[]): ResumenCaja 
     resta: asignado - utilizado,
     administracion,
     gastos: propios.length,
+    negroFacturado: Math.max(0, utilizadoBlanco - asignadoBlanco),
+    blancoSinFactura: Math.max(0, utilizadoNegro - asignadoNegro),
+    desbalanceConocido: asignado > 0 && sinClasificar < 0.5,
   };
 }
 
@@ -135,4 +149,56 @@ export function porTipoDeCaja(fondos: FondoLike[], gastos: GastoLike[], tipos: s
       resta: rs.reduce((a, r) => a + r.resta, 0),
     };
   });
+}
+
+// CONTADOR B/N DE CAJA CHICA (Nicolas, 2026-10-15): "un contador mostrando la situacion de blanco y negro
+// para entender si futuras compras hay que hacerlas con factura o sin factura para nivelar".
+// Se acumula por EMPRESA de la que sale la plata, sobre TODAS sus cajas (abiertas y cerradas: el
+// desbalance de una caja cerrada sigue ahi hasta que se compense). Solo cuentan las cajas con el origen
+// B/N cargado; las otras se informan aparte (sinOrigen).
+//   neto > 0: se pago con plata NEGRA mas de lo que se gasto sin factura con plata blanca -> para
+//             nivelar, las proximas compras por `neto` van SIN factura (con plata blanca).
+//   neto < 0: al reves -> las proximas compras por |neto| van CON factura (con plata negra).
+export type PosicionCajaChica = {
+  company: string;
+  entroBlanco: number;
+  entroNegro: number;
+  gastoBlanco: number; // con factura
+  gastoNegro: number; // sin factura
+  negroFacturado: number;
+  blancoSinFactura: number;
+  neto: number;
+  recomendacion: "sin_factura" | "con_factura" | "nivelado";
+  cajasSinOrigen: number;
+  montoSinOrigen: number;
+};
+
+export function posicionCajaChica(fondos: FondoLike[], gastos: GastoLike[]): PosicionCajaChica[] {
+  const map = new Map<string, PosicionCajaChica>();
+  fondos.forEach((f) => {
+    const p =
+      map.get(f.company) ||
+      ({ company: f.company, entroBlanco: 0, entroNegro: 0, gastoBlanco: 0, gastoNegro: 0, negroFacturado: 0, blancoSinFactura: 0, neto: 0, recomendacion: "nivelado", cajasSinOrigen: 0, montoSinOrigen: 0 } as PosicionCajaChica);
+    const r = resumenCaja(f, gastos);
+    if (!r.desbalanceConocido) {
+      if (r.asignado > 0 || r.utilizado > 0) {
+        p.cajasSinOrigen += 1;
+        p.montoSinOrigen += r.asignado;
+      }
+    } else {
+      p.entroBlanco += r.asignadoBlanco;
+      p.entroNegro += r.asignadoNegro;
+      p.gastoBlanco += r.utilizadoBlanco;
+      p.gastoNegro += r.utilizadoNegro;
+      p.negroFacturado += r.negroFacturado;
+      p.blancoSinFactura += r.blancoSinFactura;
+    }
+    map.set(f.company, p);
+  });
+  return Array.from(map.values())
+    .map((p) => {
+      const neto = Math.round((p.negroFacturado - p.blancoSinFactura) * 100) / 100;
+      return { ...p, neto, recomendacion: (neto > 0.5 ? "sin_factura" : neto < -0.5 ? "con_factura" : "nivelado") as PosicionCajaChica["recomendacion"] };
+    })
+    .sort((a, b) => a.company.localeCompare(b.company));
 }

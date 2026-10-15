@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-15c",
+    fecha: "15/10/2026",
+    titulo: "Caja chica: desbalance y contador blanco / negro",
+    items: [
+      {
+        titulo: "Contador blanco / negro",
+        que: "Arriba de Caja chica, por empresa: lo que entró en blanco y en negro a las cajas contra lo gastado con factura y sin factura. Si se compró con factura usando plata negra, dice cuánto conviene comprar SIN factura para nivelar (y al revés).",
+        como: "Solo cuentan las cajas que tienen cargado cuánto se dio en blanco y en negro; las otras aparecen con un aviso para editarlas.",
+        tab: "cajaChica",
+      },
+      {
+        titulo: "Desbalance B/N de cada caja",
+        que: "La caja se maneja por el bruto (asignado − utilizado). La columna 'Desbalance B/N' marca N→B (compras con factura pagadas con plata negra) y B→N (gastos sin factura pagados con plata blanca).",
+        como: "En el listado de cajas y en la ficha de cada responsable.",
+        tab: "cajaChica",
+      },
+    ],
+  },
+  {
     id: "2026-10-15b",
     fecha: "15/10/2026",
     titulo: "Facturas de compra: ARCA, caja chica y edición",

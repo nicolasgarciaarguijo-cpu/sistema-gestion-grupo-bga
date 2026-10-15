@@ -1,4 +1,4 @@
-import { gastosPorGrupo, mismaPersona, porTipoDeCaja, responsablesDe, resumenCaja } from "./cajaChicaFicha";
+import { gastosPorGrupo, mismaPersona, porTipoDeCaja, posicionCajaChica, responsablesDe, resumenCaja } from "./cajaChicaFicha";
 
 const fondo = (id: number, extra: any = {}) => ({
   id,
@@ -50,5 +50,55 @@ describe("caja chica por responsable", () => {
     expect(t.find((x) => x.tipo === "Viáticos")).toMatchObject({ cajas: 1, utilizado: 100, resta: 900 });
     expect(t.find((x) => x.tipo === "General")).toMatchObject({ cajas: 1 });
     expect(t.find((x) => x.tipo === "Obra")).toMatchObject({ cajas: 0, asignado: 0 });
+  });
+});
+
+// DESBALANCE B/N: la caja es una bolsa (manda el bruto), pero con plata negra se puede comprar con
+// factura y al reves. Caso: entro todo en NEGRO y se compro con factura.
+describe("desbalance blanco/negro de la caja", () => {
+  it("plata negra gastada con factura = N→B", () => {
+    const r = resumenCaja(fondo(1, { assignedWhite: 0, assignedBlack: 1000 }), [gasto(1, 1, 300, "blanco"), gasto(2, 1, 200, "negro")]);
+    expect(r).toMatchObject({ resta: 500, negroFacturado: 300, blancoSinFactura: 0, desbalanceConocido: true });
+  });
+
+  it("plata blanca gastada sin factura = B→N", () => {
+    const r = resumenCaja(fondo(1, { assignedWhite: 1000, assignedBlack: 0 }), [gasto(1, 1, 250, "negro")]);
+    expect(r).toMatchObject({ negroFacturado: 0, blancoSinFactura: 250 });
+  });
+
+  it("dentro de lo que entro por cada circuito no hay desbalance", () => {
+    const r = resumenCaja(fondo(1), [gasto(1, 1, 600, "blanco"), gasto(2, 1, 400, "negro")]);
+    expect(r).toMatchObject({ resta: 0, negroFacturado: 0, blancoSinFactura: 0 });
+  });
+
+  it("caja sin origen blanco/negro cargado: no se puede saber", () => {
+    const r = resumenCaja(fondo(1, { assignedWhite: undefined, assignedBlack: undefined }), [gasto(1, 1, 100, "blanco")]);
+    expect(r.desbalanceConocido).toBe(false);
+  });
+});
+
+describe("contador B/N de caja chica (por empresa)", () => {
+  it("negro gastado con factura -> las proximas compras van SIN factura", () => {
+    const [p] = posicionCajaChica(
+      [fondo(1, { assignedWhite: 0, assignedBlack: 686000 })],
+      [gasto(1, 1, 7037.05, "blanco")]
+    );
+    expect(p).toMatchObject({ negroFacturado: 7037.05, neto: 7037.05, recomendacion: "sin_factura" });
+  });
+
+  it("se compensa entre cajas: N→B de una con B→N de otra", () => {
+    const [p] = posicionCajaChica(
+      [fondo(1, { assignedWhite: 0, assignedBlack: 1000, closed: true }), fondo(2, { assignedWhite: 1000, assignedBlack: 0 })],
+      [gasto(1, 1, 300, "blanco"), gasto(2, 2, 300, "negro")]
+    );
+    expect(p).toMatchObject({ neto: 0, recomendacion: "nivelado" });
+  });
+
+  it("blanco gastado sin factura -> las proximas van CON factura; cajas sin origen aparte", () => {
+    const [p] = posicionCajaChica(
+      [fondo(1, { assignedWhite: 1000, assignedBlack: 0 }), fondo(2, { assignedWhite: undefined, assignedBlack: undefined })],
+      [gasto(1, 1, 400, "negro")]
+    );
+    expect(p).toMatchObject({ neto: -400, recomendacion: "con_factura", cajasSinOrigen: 1, montoSinOrigen: 1000 });
   });
 });

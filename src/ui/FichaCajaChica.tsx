@@ -8,6 +8,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import { QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "./primitives";
 import { gastosPorGrupo, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
+import { DesbalanceCaja } from "./DesbalanceCaja";
 import { getFundSemaphore } from "../domain/pettyCash";
 
 export type GastoFicha = GastoLike & { company: string; invoiceNumber?: string; attachmentName?: string; notes?: string };
@@ -93,8 +94,10 @@ export function FichaCajaChica({
       utilizado: a.utilizado + r.utilizado,
       restaAbiertas: a.restaAbiertas + (f.closed ? 0 : r.resta),
       sobregiro: a.sobregiro + (r.resta < 0 ? -r.resta : 0),
+      negroFacturado: a.negroFacturado + (r.desbalanceConocido ? r.negroFacturado : 0),
+      blancoSinFactura: a.blancoSinFactura + (r.desbalanceConocido ? r.blancoSinFactura : 0),
     }),
-    { asignado: 0, utilizado: 0, restaAbiertas: 0, sobregiro: 0 }
+    { asignado: 0, utilizado: 0, restaAbiertas: 0, sobregiro: 0, negroFacturado: 0, blancoSinFactura: 0 }
   );
   const gastosVisibles = gastos
     .filter((g) => filtroCaja === "todas" || g.fundId === filtroCaja)
@@ -155,6 +158,18 @@ export function FichaCajaChica({
           <div style={stat}>Asignado histórico<br /><b style={{ fontSize: 16 }}>{money(totales.asignado)}</b></div>
           <div style={stat}>Rendido histórico<br /><b style={{ fontSize: 16 }}>{money(totales.utilizado)}</b></div>
           <div style={stat}>Resta en cajas abiertas<br /><b style={{ fontSize: 16 }}>{money(totales.restaAbiertas)}</b></div>
+          {totales.negroFacturado > 0.5 && (
+            <div style={{ ...stat, background: "#fffbeb", borderColor: "#fde68a" }} title="Compras con factura pagadas con plata negra de sus cajas">
+              Negro gastado con factura (N→B)<br />
+              <b style={{ fontSize: 16, color: "#b45309" }}>{money(totales.negroFacturado)}</b>
+            </div>
+          )}
+          {totales.blancoSinFactura > 0.5 && (
+            <div style={{ ...stat, background: "#f5f3ff", borderColor: "#ddd6fe" }} title="Gastos sin factura pagados con plata blanca de sus cajas">
+              Blanco gastado sin factura (B→N)<br />
+              <b style={{ fontSize: 16, color: "#7c3aed" }}>{money(totales.blancoSinFactura)}</b>
+            </div>
+          )}
           {(totales.sobregiro > 0 || deudaTotal > 0) && (
             <div style={{ ...stat, background: "#fff7ed", borderColor: "#fed7aa" }}>
               La empresa le debe<br />
@@ -179,13 +194,14 @@ export function FichaCajaChica({
                   <th style={{ ...th, textAlign: "right" }}>Negro</th>
                   <th style={{ ...th, textAlign: "right" }}>Utilizado</th>
                   <th style={{ ...th, textAlign: "right" }}>Resta</th>
+                  <th style={{ ...th, textAlign: "right" }}>Desbalance B/N</th>
                   <th style={th}>Estado</th>
                 </tr>
               </thead>
               <tbody>
                 {cajas.length === 0 && (
                   <tr>
-                    <td style={{ ...td, color: "#94a3b8" }} colSpan={8}>No tiene cajas asignadas.</td>
+                    <td style={{ ...td, color: "#94a3b8" }} colSpan={9}>No tiene cajas asignadas.</td>
                   </tr>
                 )}
                 {cajas.map(({ f, r }) => {
@@ -219,6 +235,9 @@ export function FichaCajaChica({
                       <td style={{ ...num, color: "#92400e" }}>{money(r.asignadoNegro)}</td>
                       <td style={num}>{money(r.utilizado)}</td>
                       <td style={{ ...num, fontWeight: 800, color: r.resta < 0 ? "#dc2626" : undefined }}>{money(r.resta)}</td>
+                      <td style={num}>
+                        <DesbalanceCaja r={r} money={money} />
+                      </td>
                       <td style={{ ...td, fontSize: 12, whiteSpace: "nowrap" }}>
                         {f.closed ? (
                           `Cerrada ${fecha(f.closedDate)}`
