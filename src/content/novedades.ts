@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-15b",
+    fecha: "15/10/2026",
+    titulo: "Facturas de compra: ARCA, caja chica y edición",
+    items: [
+      {
+        titulo: "Importar el listado de ARCA",
+        que: "En Facturas de compra se puede subir el listado 'Mis comprobantes recibidos' de ARCA, para las facturas que no están en mano. Se cruza con las ya cargadas (por número, CUIT o nombre del proveedor, y total): las que ya estaban no se duplican y quedan con la pill verde '✓ ARCA'. Las nuevas entran con la pill azul 'ARCA' y SIN PAGAR.",
+        como: "Botón 'Importar listado de ARCA' arriba del listado. Para asignarles el pago: 'Asignar pago' en la fila, o tildá 'Todas las sin pagar' para verlas juntas.",
+        tab: "compras",
+      },
+      {
+        titulo: "Las facturas de caja chica también están en Compras",
+        que: "La factura de un gasto rendido en una caja chica aparece en el listado, pagada por la caja, con la pill 'caja chica · responsable'. En el cash flow ese pago va en Proveedores, en el grupo del gasto y el día del gasto.",
+        como: "Click en la fila: abre el gasto de caja chica (se edita ahí).",
+        tab: "compras",
+      },
+      {
+        titulo: "Editar y eliminar facturas",
+        que: "Toda factura se edita o se elimina desde el click derecho. Si tiene un pago cargado, se puede eliminar la factura sola o la factura y su pago (para las de prueba).",
+        como: "Click derecho sobre la factura → Editar factura… / Eliminar… / Ficha del proveedor.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-10-15a",
     fecha: "15/10/2026",
     titulo: "Personal: acuerdo y premio en negro por separado",

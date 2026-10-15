@@ -1,7 +1,7 @@
 // LISTADO DE FACTURAS DE COMPRA (Compras y analisis de gastos, Nicolas 2026-10-14): una fila por factura
 // con su estado de pago, para ver lo pagado y lo que falta y adjudicar pagos. "Agregar factura" y cada
 // fila abren la ventana de la factura (proveedor, datos y pago).
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 
 export type FilaFactura = {
@@ -24,6 +24,8 @@ export type FilaFactura = {
   cajaResponsable?: string;
   // Tiene un pago cargado en el sistema (CostEntry) vinculado: al eliminar se puede llevar tambien.
   tienePagoCargado?: boolean;
+  // ARCA: "importada" = vino del listado (no la tenemos en mano); "cruzada" = la cargada se encontro en ARCA.
+  arca?: "importada" | "cruzada";
 };
 
 const NOMBRE_MES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -46,6 +48,7 @@ export function FacturasCompraPanel({
   onAsignarPago,
   onFichaProveedor,
   onEliminar,
+  onImportarArca,
 }: {
   filas: FilaFactura[];
   companyOptions: Array<{ value: string; short?: string }>;
@@ -56,7 +59,11 @@ export function FacturasCompraPanel({
   onFichaProveedor: (nombre: string, taxId: string) => void;
   // conPago: borra tambien el pago cargado (si la factura era de prueba, el pago tambien).
   onEliminar: (id: number, conPago: boolean) => void;
+  // Importa el listado "Mis comprobantes recibidos" de ARCA. Devuelve el resumen para mostrar.
+  onImportarArca: (files: FileList | null) => Promise<string>;
 }) {
+  const archivoArca = useRef<HTMLInputElement>(null);
+  const [avisoArca, setAvisoArca] = useState("");
   // CLICK DERECHO sobre la factura: editar, eliminar, ficha del proveedor (regla: toda accion sale de aca).
   const [menu, setMenu] = useState<{ x: number; y: number; fila: FilaFactura } | null>(null);
   const [mes, setMes] = useState(new Date().toISOString().slice(0, 7));
@@ -95,9 +102,30 @@ export function FacturasCompraPanel({
             Todas las sin pagar
           </label>
           <ButtonLike onClick={onNueva}>+ Agregar factura</ButtonLike>
+          <ButtonLike onClick={() => archivoArca.current?.click()}>Importar listado de ARCA</ButtonLike>
+          <input
+            ref={archivoArca}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            multiple
+            style={{ display: "none" }}
+            onChange={async (e) => {
+              const files = e.target.files;
+              setAvisoArca("Leyendo el listado de ARCA...");
+              const msg = await onImportarArca(files);
+              setAvisoArca(msg);
+              e.target.value = "";
+            }}
+          />
         </span>
       }
     >
+      {avisoArca && (
+        <div style={{ fontSize: 12.5, color: /^Error/.test(avisoArca) ? "#b91c1c" : "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "6px 10px", marginBottom: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span>{avisoArca}</span>
+          <button type="button" onClick={() => setAvisoArca("")} style={{ border: "none", background: "transparent", cursor: "pointer", color: "#64748b" }}>✕</button>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
         <input
           style={{ border: "1px solid #cbd5e1", borderRadius: 6, padding: "5px 8px", fontSize: 13, minWidth: 240 }}
@@ -142,6 +170,16 @@ export function FacturasCompraPanel({
                   <td style={td}>{fmt(f.invoiceDate)}</td>
                   <td style={{ ...td, whiteSpace: "normal" }}>
                     <strong>{f.supplier || "Sin proveedor"}</strong>{" "}
+                    {f.arca === "importada" && (
+                      <span style={{ ...pill("#1e40af", "#dbeafe"), marginRight: 4 }} title="Vino del listado de ARCA: no está la factura en mano">
+                        ARCA
+                      </span>
+                    )}
+                    {f.arca === "cruzada" && (
+                      <span style={{ ...pill("#166534", "#dcfce7"), marginRight: 4 }} title="Cargada y encontrada en el listado de ARCA">
+                        ✓ ARCA
+                      </span>
+                    )}
                     {f.source === "caja_chica" && (
                       <span style={{ ...pill("#7c2d12", "#ffedd5"), marginRight: 4 }}>
                         caja chica{f.cajaResponsable ? ` · ${f.cajaResponsable}` : ""}

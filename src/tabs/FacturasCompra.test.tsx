@@ -18,7 +18,7 @@ const montar = (filas: FilaFactura[], onEliminar: jest.Mock, onAbrir = jest.fn()
   act(() => {
     root.render(
       <FacturasCompraPanel filas={filas} companyOptions={[]} money={(n) => String(n)} onNueva={() => {}}
-        onAbrir={onAbrir} onAsignarPago={() => {}} onFichaProveedor={() => {}} onEliminar={onEliminar} />
+        onAbrir={onAbrir} onAsignarPago={() => {}} onFichaProveedor={() => {}} onEliminar={onEliminar} onImportarArca={async () => ""} />
     );
   });
   const tr = Array.from(host.querySelectorAll("tbody tr"))[0] as HTMLElement;

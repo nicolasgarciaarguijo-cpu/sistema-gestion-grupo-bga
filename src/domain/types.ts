@@ -585,6 +585,9 @@ export type PurchaseInvoice = {
   notes: string;
   attachmentName?: string;
   extractedAutomatically: boolean;
+  // Esta factura (cargada a mano o en caja chica) se ENCONTRO en el listado de ARCA al importarlo: esta
+  // declarada por el proveedor y no se volvio a cargar. Ver domain/arcaCruce.ts.
+  arcaCruzada?: boolean;
   // Pago (CostEntry) vinculado a esta factura de compra. Ausente/null = sin pago -> deuda con el
   // proveedor (cuenta corriente). Ver domain/supplierAccounts.ts.
   paidByCostEntryId?: number | null;

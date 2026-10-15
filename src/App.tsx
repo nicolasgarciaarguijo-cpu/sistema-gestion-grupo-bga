@@ -198,6 +198,7 @@ import { CalendarioAnualTab } from "./tabs/CalendarioAnual";
 import { segurosPrevisionMensual } from "./domain/segurosCalendar";
 import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocuments";
 import { workingDaysInMonth, reciboNegroAmount, paymentDateForPeriod } from "./domain/recibo";
+import { buscarFacturaCargada } from "./domain/arcaCruce";
 import { ComprasTab } from "./tabs/Compras";
 import { DesendeudamientoTab, type PagoCuotaForm, type OtraDeuda } from "./tabs/Desendeudamiento";
 import { camposLegacy, cuotasDeDeuda, cuotasPendientes } from "./domain/desendeudamiento";
@@ -16996,13 +16997,17 @@ Escribi CERRAR para confirmar:`
   // (uno por mes) y no duplica lo que ya esta cargado.
   //   emitidas  -> issuedInvoices (lo que facturamos)
   //   recibidas -> purchaseInvoices (lo que nos facturaron). NINGUNA suma al resultado: son registro.
-  const importArcaFiles = async (files: FileList | File[] | null) => {
+  const importArcaFiles = async (files: FileList | File[] | null): Promise<string> => {
     const lista = Array.from(files || []);
-    if (lista.length === 0) return;
+    if (lista.length === 0) return "";
     setDocumentsMessage(`Leyendo ${lista.length} archivo(s) de ARCA...`);
     const resumen: string[] = [];
     let emitidasNuevas: IssuedInvoice[] = [];
     let compraNuevas: PurchaseInvoice[] = [];
+    // CRUCE con lo ya cargado (a mano o por caja chica): esas no se vuelven a cargar, se marcan como
+    // encontradas en ARCA y se completan los datos que les falten (CUIT, neto, IVA).
+    const cruzadas = new Map<number, Partial<PurchaseInvoice>>();
+    let yaCargadas = 0;
     const clavesEmitidas = new Set(issuedInvoices.map((inv) => arcaInvoiceKey(inv)));
     const clavesCompras = new Set(
       purchaseInvoices.map((inv) =>
@@ -17053,7 +17058,31 @@ Escribi CERRAR para confirmar:`
               source: "arca",
             });
           } else {
-            if (clavesCompras.has(clave)) continue;
+            if (clavesCompras.has(clave)) {
+              yaCargadas += 1;
+              continue;
+            }
+            const existente = buscarFacturaCargada(inv, String(empresa.value), [
+              ...purchaseInvoices.map((p) => ({ ...p, company: String(p.company) })),
+              ...compraNuevas.map((p) => ({ ...p, company: String(p.company) })),
+            ]);
+            if (existente) {
+              yaCargadas += 1;
+              clavesCompras.add(clave);
+              if (purchaseInvoices.some((p) => p.id === existente.id)) {
+                const patch: Partial<PurchaseInvoice> = { arcaCruzada: true };
+                const cuit = String(inv.counterpartyTaxId || "").replace(/\D/g, "");
+                if (!String(existente.taxId || "").replace(/\D/g, "") && cuit.length >= 11) {
+                  patch.taxId = cuit.replace(/^(\d{2})(\d{8})(\d)$/, "$1-$2-$3");
+                }
+                if (!Number((existente as any).net21 || 0) && Math.abs(Number(existente.total || 0) - inv.total) <= 1) {
+                  patch.net21 = inv.net;
+                  patch.vat = inv.vat;
+                }
+                cruzadas.set(existente.id, { ...(cruzadas.get(existente.id) || {}), ...patch });
+              }
+              continue;
+            }
             clavesCompras.add(clave);
             compraNuevas.push({
               id: newId(),
@@ -17063,7 +17092,7 @@ Escribi CERRAR para confirmar:`
               supplier: inv.counterpartyName,
               taxId: inv.counterpartyTaxId,
               receiptKind: inv.kind,
-              receiptLetter: "",
+              receiptLetter: (/\b([ABCEM])\s*$/i.exec(inv.kind)?.[1] || "").toUpperCase(),
               invoiceNumber: `${inv.pointOfSale}-${inv.number}`,
               invoiceDate: inv.date,
               currency: inv.currency,
@@ -17111,18 +17140,26 @@ Escribi CERRAR para confirmar:`
       }
 
       if (emitidasNuevas.length > 0) setIssuedInvoices((prev) => [...prev, ...emitidasNuevas]);
-      if (compraNuevas.length > 0) setPurchaseInvoices((prev) => [...prev, ...compraNuevas]);
+      if (compraNuevas.length > 0 || cruzadas.size > 0) {
+        setPurchaseInvoices((prev) => [
+          ...prev.map((p) => (cruzadas.has(p.id) ? { ...p, ...cruzadas.get(p.id) } : p)),
+          ...compraNuevas,
+        ]);
+      }
       if (proveedoresNuevos.length > 0) setSuppliers((prev) => [...prev, ...proveedoresNuevos]);
-      setDocumentsMessage(
-        `ARCA: ${emitidasNuevas.length} factura(s) emitida(s), ${compraNuevas.length} de compra` +
-          (proveedoresNuevos.length > 0
-            ? ` y ${proveedoresNuevos.length} proveedor(es) dados de alta.`
-            : ".") +
-          ` ${resumen.join(" · ")} (lo repetido no se duplica).`
-      );
+      const mensaje =
+        `ARCA: ${emitidasNuevas.length} factura(s) emitida(s), ${compraNuevas.length} de compra nueva(s)` +
+        (compraNuevas.length > 0 ? " (quedan SIN PAGAR para asignarles el pago)" : "") +
+        (yaCargadas > 0 ? `, ${yaCargadas} ya estaban cargadas (no se duplican)` : "") +
+        (proveedoresNuevos.length > 0 ? ` y ${proveedoresNuevos.length} proveedor(es) dados de alta.` : ".") +
+        ` ${resumen.join(" · ")}`;
+      setDocumentsMessage(mensaje);
+      return mensaje;
     } catch (err: any) {
       console.error("[arca] import:", err);
-      setDocumentsMessage("Error al leer el listado de ARCA: " + (err?.message || String(err)));
+      const mensaje = "Error al leer el listado de ARCA: " + (err?.message || String(err));
+      setDocumentsMessage(mensaje);
+      return mensaje;
     }
   };
 
@@ -18996,6 +19033,7 @@ Escribi CERRAR para confirmar:`
         tipoProveedor: prov ? (prov.currentAccount ? "ctacte" : "habitual") : "nuevo",
         cajaResponsable: cajaResponsable || undefined,
         tienePagoCargado: inv.paidByCostEntryId != null && !!pago,
+        arca: purchaseInvoiceOrigin(inv) === "arca" ? "importada" : inv.arcaCruzada ? "cruzada" : undefined,
       } as FilaFactura;
     }), [purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas, pettyCashExpenses, pettyCashFunds]);
   const facturaVacia = (supplier = "", taxId = "", company = ""): FacturaForm => ({
@@ -19523,6 +19561,7 @@ Escribi CERRAR para confirmar:`
       }}
       onFichaProveedor={abrirFichaProveedor}
       onEliminar={eliminarFacturaCompra}
+      onImportarArca={importArcaFiles}
     />
   );
   const renderProveedores = () => (
