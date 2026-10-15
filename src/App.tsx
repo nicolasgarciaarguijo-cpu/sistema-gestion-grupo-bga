@@ -88,6 +88,7 @@ import {
 } from "./content/cierreHtml";
 import { computeVatPosition } from "./domain/vatBalance";
 import { conteoBlanqueo, type ConteoBlanqueo, type MovFisco } from "./domain/faltaFactura";
+import { conteoPagosPorPersona, pagosCruzadosEntreEmpresas } from "./domain/pagosPorPersona";
 import { resumenCaja } from "./domain/cajaChicaFicha";
 import {
   construirCierre,
@@ -19075,7 +19076,9 @@ Escribi CERRAR para confirmar:`
         pagoTexto: inv.source === "caja_chica"
           ? `${fmtCorta(gastoCaja?.date || inv.invoiceDate)} · caja chica${cajaResponsable ? " de " + cajaResponsable : ""}`
           : pago
-          ? `${fmtCorta(pago.date)} · ${METODO_TEXTO[pago.paymentMethod || ""] || "sin medio"}`
+          ? `${fmtCorta(pago.date)} · ${METODO_TEXTO[pago.paymentMethod || ""] || "sin medio"}` +
+            (String(pago.company) !== String(inv.company) ? ` · ⚠ la pagó ${COMPANY_OPTIONS.find((o) => o.value === pago.company)?.short || pago.company}` : "") +
+            (pago.pagadoPor ? ` · ${pago.pagadoPor}` : "")
           : inv.paidByBankEntryId != null
             ? "por el banco"
             : porPersona
@@ -19138,6 +19141,8 @@ Escribi CERRAR para confirmar:`
         metodo: (pago?.paymentMethod as any) || "transferencia",
         cuentaId: pago?.cuentaId,
         administration: pago?.administration === "negro" ? "negro" : "blanco",
+        pagadoPor: pago?.pagadoPor,
+        empresa: pago && String(pago.company) !== String(inv.company) ? String(pago.company) : undefined,
         fechaPrevista: inv.fechaPagoPrevista || prevista?.fechaPago,
         estadoPrevisto: marca?.estadoPago || "programado",
         porBanco: inv.paidByBankEntryId != null && inv.paidByCostEntryId == null ? "Pagada por un débito del banco (conciliado en Bancos y tarjetas)." : undefined,
@@ -19155,8 +19160,11 @@ Escribi CERRAR para confirmar:`
           paidByCostEntryId = f.pago.costEntryId ?? null;
         } else {
           // El PAGO es el gasto: queda en el cash flow y baja la cuenta de donde salio.
+          // La empresa que PAGA (de su cuenta sale la plata). Si no es la de la factura, es un pago cruzado.
+          const empresaPaga = (f.pago.empresa || f.company) as CompanyName;
           const datosPago = {
-            company: f.company as CompanyName,
+            company: empresaPaga,
+            empresaFactura: empresaPaga !== f.company ? f.company : undefined,
             date: f.pago.fecha,
             amount: Number(f.pago.monto) || 0,
             paymentMethod: f.pago.metodo,
@@ -19169,6 +19177,8 @@ Escribi CERRAR para confirmar:`
             group: parseClaveGrupo(f.grupoCosto || prov?.grupoCosto)?.nombre || "",
             groupKind: parseClaveGrupo(f.grupoCosto || prov?.grupoCosto)?.tipo,
             description: `Factura ${f.receiptLetter} ${f.invoiceNumber}`.trim(),
+            // Quien pago: solo para efectivo negro (informativo, se cuenta en Movimientos internos).
+            pagadoPor: f.pago.metodo === "efectivo" && f.pago.administration === "negro" ? f.pago.pagadoPor || undefined : undefined,
           };
           const previo = existente?.paidByCostEntryId != null ? costEntries.find((c) => c.id === existente.paidByCostEntryId) : undefined;
           if (previo) {
@@ -20350,6 +20360,11 @@ Escribi CERRAR para confirmar:`
       {facturaModal && (
         <FacturaCompraModal
           key={facturaModal.id || "nueva"}
+          personas={visibleEmployees
+            .filter((e) => !isEmployeeTerminated(e))
+            .map((e) => String(e.name || "").trim())
+            .filter(Boolean)
+            .sort((a, b) => a.localeCompare(b))}
           esMateriales={esCompraDeMateriales}
           recepciones={(company, supplier, taxId, facturaId) =>
             remitos
@@ -20884,6 +20899,13 @@ Escribi CERRAR para confirmar:`
       {activeTab === "movimientosInternos" && (
         <MovimientosInternosTab
           devolucionesCruzadas={devolucionesCruzadas}
+          pagosCruzados={pagosCruzadosEntreEmpresas(
+            purchaseInvoices.filter((i) => canAccessCompany(i.company)) as any,
+            costEntries as any
+          )}
+          pagosPorPersona={conteoPagosPorPersona(
+            costEntries.filter((c) => canAccessCompany(c.company)).map((c) => ({ ...c, company: String(c.company) })) as any
+          )}
           companyScope={internalCompanyScope}
           setCompanyScope={setInternalCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}

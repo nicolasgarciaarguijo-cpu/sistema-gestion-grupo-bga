@@ -1048,6 +1048,13 @@ export type CostEntry = {
   supplierId?: number; // proveedor del listado (el nombre libre queda en `supplier`)
   bankEntryId?: number; // debito del extracto con el que quedo conciliado
   invoiceRef?: string; // factura que respalda el pago (numero); la factura NO suma, solo respalda
+  // QUIEN PAGO (persona de la nomina) cuando el pago es en EFECTIVO NEGRO y no salio de una caja chica.
+  // Informativo: se cuenta por persona en Movimientos internos (domain/pagosPorPersona), no suma ni resta.
+  pagadoPor?: string;
+  // PAGO CRUZADO entre empresas: `company` es la empresa que PAGA (de su cuenta sale la plata) y esta es
+  // la empresa de la FACTURA, cuando es otra. No deberia pasar; si pasa, queda a la vista en Movimientos
+  // internos (domain/pagosCruzados). Ausente = la misma.
+  empresaFactura?: string;
   // Renglon del Calendario anual al que se imputa este pago. Con esto el gasto ALIMENTA el calendario
   // (regla del usuario 2026-08-26). Ausente = cae en "Sin clasificar" con la pill D hasta asignarlo.
   // OJO: solo llegan al calendario los pagos que NO pasan por el banco (efectivo / negro); los que

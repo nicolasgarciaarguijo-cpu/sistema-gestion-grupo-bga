@@ -32,6 +32,8 @@ export type FacturaForm = {
     fechaPrevista?: string;
     estadoPrevisto: "programado" | "estimado" | "inamovible";
     porBanco?: string; // solo lectura: "pagada por un debito del banco del dd/mm"
+    pagadoPor?: string; // efectivo negro: quien de la nomina hizo el pago (informativo)
+    empresa?: string; // empresa que PAGA (ausente = la de la factura). Distinta = pago cruzado.
   };
   // MATERIAL (Fase 5): los remitos de recepcion que respaldan esta factura (el stock ya entro con
   // ellos) o, si no vino remito, cargar sus renglones como recepcion al guardar.
@@ -69,6 +71,7 @@ export function FacturaCompraModal({
   onCerrar,
   esMateriales,
   recepciones,
+  personas = [],
 }: {
   inicial: FacturaForm;
   proveedores: ProveedorOpt[];
@@ -84,6 +87,8 @@ export function FacturaCompraModal({
   // Fase 5: si la compra es de materiales, los remitos de recepcion del proveedor para vincular.
   esMateriales?: (grupoCosto?: string) => boolean;
   recepciones?: (company: string, supplier: string, taxId: string, facturaId?: number) => Array<{ id: number; label: string }>;
+  // Nomina: para elegir quien pago cuando el pago es en efectivo negro.
+  personas?: string[];
 }) {
   const [f, setF] = useState<FacturaForm>(inicial);
   const set = (patch: Partial<FacturaForm>) => setF((p) => ({ ...p, ...patch }));
@@ -277,10 +282,21 @@ export function FacturaCompraModal({
                           <option value="debito">Débito</option>
                         </select>
                       </label>
+                      <label style={lbl}>Empresa que paga
+                        <select
+                          style={{ ...input, ...((f.pago.empresa || f.company) !== f.company ? { borderColor: "#f59e0b", background: "#fffbeb", color: "#b45309", fontWeight: 700 } : {}) }}
+                          value={f.pago.empresa || f.company}
+                          onChange={(e) => setPago({ empresa: e.target.value === f.company ? undefined : e.target.value, cuentaId: undefined })}
+                        >
+                          {companyOptions.filter((c) => c.value !== "General").map((c) => (
+                            <option key={c.value} value={c.value}>{c.short || c.label || c.value}</option>
+                          ))}
+                        </select>
+                      </label>
                       <label style={lbl}>De qué cuenta salió
                         <select style={input} value={f.pago.cuentaId || ""} onChange={(e) => setPago({ cuentaId: e.target.value || undefined })}>
                           <option value="">Cuenta por defecto</option>
-                          {cuentas.filter((c) => c.company === f.company && c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (
+                          {cuentas.filter((c) => c.company === (f.pago.empresa || f.company) && c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (
                             <option key={c.id} value={c.id}>{c.nombre}</option>
                           ))}
                         </select>
@@ -291,6 +307,22 @@ export function FacturaCompraModal({
                           <option value="negro">Negro</option>
                         </select>
                       </label>
+                      {f.pago.metodo === "efectivo" && f.pago.administration === "negro" && (
+                        <label style={lbl} title="Quién de la nómina hizo el pago (si no salió de una caja chica). Solo se cuenta en Movimientos internos; no suma ni resta.">
+                          Quién pagó
+                          <select style={input} value={f.pago.pagadoPor || ""} onChange={(e) => setPago({ pagadoPor: e.target.value || undefined })}>
+                            <option value="">— la empresa (sin persona) —</option>
+                            {Array.from(new Set([...(f.pago.pagadoPor ? [f.pago.pagadoPor] : []), ...personas])).map((p) => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </div>
+                  )}
+                  {f.pago.modo === "nuevo" && (f.pago.empresa || f.company) !== f.company && (
+                    <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700, marginTop: 6 }}>
+                      ⚠ Pago cruzado: la factura es de una empresa y la paga otra. Queda a la vista en Movimientos internos.
                     </div>
                   )}
                   <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 6 }}>El pago queda asentado en el cash flow y baja la cuenta de donde salió.</div>

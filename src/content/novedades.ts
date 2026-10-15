@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-15e",
+    fecha: "15/10/2026",
+    titulo: "Pagos: quién pagó y qué empresa paga",
+    items: [
+      {
+        titulo: "Quién pagó en efectivo negro",
+        que: "Al cargar el pago de una factura en efectivo negro se elige quién de la nómina lo hizo (si no salió de una caja chica). En Movimientos internos aparece el conteo de toda la plata que pagó cada persona. Es solo informativo: no suma ni resta.",
+        como: "En la factura → Pago → Cómo se pagó: Efectivo, Circuito: Negro → 'Quién pagó'.",
+        tab: "compras",
+      },
+      {
+        titulo: "Empresa que paga y pagos cruzados",
+        que: "En el pago se elige la empresa que paga (por defecto, la de la factura). Si es otra, queda marcado como pago cruzado: aparece en naranja en la factura, en el listado de Compras ('la pagó …') y en Movimientos internos, en 'Pagos cruzados entre empresas'.",
+        como: "En la factura → Pago → 'Empresa que paga'.",
+        tab: "movimientosInternos",
+      },
+    ],
+  },
+  {
     id: "2026-10-15d",
     fecha: "15/10/2026",
     titulo: "Conteo de blanqueo y posición de IVA real",

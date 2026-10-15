@@ -1,5 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
+import type { ConteoPersona, PagoCruzado } from "../domain/pagosPorPersona";
 import { Panel, MiniMetric, ButtonLike, AmountInput, ColorTagToggle, moneyToneColor } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
@@ -118,6 +119,10 @@ type MovimientosInternosTabProps = {
   setPersonLedgerEntries: React.Dispatch<React.SetStateAction<PersonLedgerEntry[]>>;
   addPersonLedgerEntry: (kind?: "debe" | "haber") => void;
   removePersonLedgerEntry: (entryId: number) => void;
+  // 6) quien pago en efectivo negro (informativo, ver domain/pagosPorPersona)
+  pagosPorPersona?: ConteoPersona[];
+  // 7) facturas de una empresa pagadas por la otra (informativo)
+  pagosCruzados?: PagoCruzado[];
   // 5) cuenta corriente entre empresas
   intercompanyAccount: {
     transfers: any[];
@@ -127,6 +132,8 @@ type MovimientosInternosTabProps = {
 
 export function MovimientosInternosTab({
   devolucionesCruzadas = [],
+  pagosPorPersona = [],
+  pagosCruzados = [],
   companyScope,
   setCompanyScope,
   COMPANY_OPTIONS,
@@ -1111,6 +1118,96 @@ export function MovimientosInternosTab({
           </table>
         </Panel>
       )}
+
+      {(() => {
+        // Solo lo de la empresa elegida (o todas).
+        const filas = pagosPorPersona
+          .map((c) => {
+            const pagos = c.pagos.filter((p) => companyScope === "__ALL__" || p.company === companyScope);
+            return { ...c, pagos, total: pagos.reduce((a, p) => a + p.amount, 0), cantidad: pagos.length, ultimo: pagos[0]?.date || "" };
+          })
+          .filter((c) => c.cantidad > 0);
+        const fecha = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
+        return (
+          <Panel title="Pagos en efectivo negro hechos por personas" span="full">
+            <div style={{ ...styles.muted, marginBottom: 8 }}>
+              Facturas pagadas en efectivo negro donde se eligió quién hizo el pago (no salió de una caja chica). Es
+              solo para saber cuánta plata pasó por las manos de cada uno: no suma ni resta en ningún lado.
+            </div>
+            {filas.length === 0 ? (
+              <div style={styles.empty}>Todavía no hay pagos con persona. Se elige en la factura: pago en efectivo, circuito negro → "Quién pagó".</div>
+            ) : (
+              <table className="planilla" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                <thead>
+                  <tr style={{ background: "#f8fafc", color: "#475569", fontSize: 12 }}>
+                    <th style={{ textAlign: "left", padding: "4px 8px" }}>Persona · pago</th>
+                    <th style={{ textAlign: "left", padding: "4px 8px" }}>Fecha</th>
+                    <th style={{ textAlign: "left", padding: "4px 8px" }}>Empresa</th>
+                    <th style={{ textAlign: "right", padding: "4px 8px" }}>Monto</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filas.map((c) => (
+                    <React.Fragment key={c.persona}>
+                      <tr style={{ background: "#f1f5f9" }}>
+                        <td style={{ padding: "4px 8px", fontWeight: 800 }}>👤 {c.persona} <span style={{ fontWeight: 400, color: "#64748b" }}>({c.cantidad} pago{c.cantidad === 1 ? "" : "s"})</span></td>
+                        <td style={{ padding: "4px 8px", color: "#64748b" }}>último {fecha(c.ultimo)}</td>
+                        <td style={{ padding: "4px 8px" }} />
+                        <td style={{ padding: "4px 8px", textAlign: "right", fontWeight: 800 }}>{money(c.total)}</td>
+                      </tr>
+                      {c.pagos.map((p) => (
+                        <tr key={p.id}>
+                          <td style={{ padding: "3px 8px 3px 26px", color: "#334155" }}>{p.detalle || "Pago"}</td>
+                          <td style={{ padding: "3px 8px" }}>{fecha(p.date)}</td>
+                          <td style={{ padding: "3px 8px" }}>{getCompanyMeta(p.company as any)?.short || p.company}</td>
+                          <td style={{ padding: "3px 8px", textAlign: "right" }}>{money(p.amount)}</td>
+                        </tr>
+                      ))}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Panel>
+        );
+      })()}
+
+      {(() => {
+        const filas = pagosCruzados.filter((p) => companyScope === "__ALL__" || p.empresaPaga === companyScope || p.empresaFactura === companyScope);
+        if (filas.length === 0) return null;
+        const fecha = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
+        const corta = (c: string) => getCompanyMeta(c as any)?.short || c;
+        return (
+          <Panel title={`⚠ Pagos cruzados entre empresas (${filas.length})`} span="full">
+            <div style={{ ...styles.muted, marginBottom: 8 }}>
+              Facturas de una empresa que pagó la otra. No debería pasar: la plata salió de una empresa y el gasto es de la
+              otra, así que entre ellas queda una deuda. Solo se muestra; se corrige en la factura (Compras → click → "Empresa que paga").
+            </div>
+            <table className="planilla" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: "#f8fafc", color: "#475569", fontSize: 12 }}>
+                  <th style={{ textAlign: "left", padding: "4px 8px" }}>Fecha del pago</th>
+                  <th style={{ textAlign: "left", padding: "4px 8px" }}>Factura</th>
+                  <th style={{ textAlign: "left", padding: "4px 8px" }}>Es de</th>
+                  <th style={{ textAlign: "left", padding: "4px 8px" }}>La pagó</th>
+                  <th style={{ textAlign: "right", padding: "4px 8px" }}>Monto</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filas.map((p) => (
+                  <tr key={p.facturaId}>
+                    <td style={{ padding: "4px 8px" }}>{fecha(p.date)}</td>
+                    <td style={{ padding: "4px 8px" }}>{p.detalle || "Factura"}</td>
+                    <td style={{ padding: "4px 8px" }}>{corta(p.empresaFactura)}</td>
+                    <td style={{ padding: "4px 8px", color: "#b45309", fontWeight: 700 }}>{corta(p.empresaPaga)}</td>
+                    <td style={{ padding: "4px 8px", textAlign: "right" }}>{money(p.amount)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Panel>
+        );
+      })()}
 
       <Panel title="Cuenta corriente entre las empresas del grupo" span="full">
         <div style={styles.sectionNote}>
