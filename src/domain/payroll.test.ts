@@ -156,6 +156,14 @@ describe("computePayrollSummary", () => {
     expect(r.netWithCashBonus).toBeCloseTo(160000 + 10000); // entero al neto
   });
 
+  it("acuerdo y premio NEGRO van por separado y los dos se suman al neto y al costo negro, sin cargas", () => {
+    const r = run({ cashBonus: 10000, blackPrize: 5000 });
+    expect(r.descuentos).toBeCloseTo(40000); // bruto sin cambios
+    expect(r.blackPrize).toBeCloseTo(5000);
+    expect(r.blackMonthly).toBeCloseTo(15000);
+    expect(r.netWithCashBonus).toBeCloseTo(160000 + 15000);
+  });
+
   it("premio BLANCO entra al bruto y paga cargas (neto sube menos que el premio)", () => {
     const r = run({ whiteBonus: 10000 });
     expect(r.grossRem).toBeCloseTo(210000);

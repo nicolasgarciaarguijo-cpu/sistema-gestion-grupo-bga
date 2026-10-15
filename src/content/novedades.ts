@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-15a",
+    fecha: "15/10/2026",
+    titulo: "Personal: acuerdo y premio en negro por separado",
+    items: [
+      {
+        titulo: "Acuerdo y premio, cada uno en su renglón",
+        que: "El viejo 'Premios / Acuerdo (negro)' se partió en dos. El ACUERDO se prorratea por los días trabajados del mes (como hasta ahora). El PREMIO es un monto fijo no remunerativo: no mira los días trabajados y sale entero. Los dos son administración en negro, sin cargas, y suman al costo negro, al cash flow (Haberes con la pill N) y al costo hora. Lo que ya estaba cargado quedó como acuerdo.",
+        como: "En la ficha del empleado, en la liquidación del mes: 'Acuerdo (negro · por días trabajados)' y 'Premio (negro · monto fijo)'. El recibo negro muestra el acuerdo prorrateado y el premio en renglones aparte, y el total a entregar los suma.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-10-14h",
     fecha: "14/10/2026",
     titulo: "Costo hora para cotizar corregido",

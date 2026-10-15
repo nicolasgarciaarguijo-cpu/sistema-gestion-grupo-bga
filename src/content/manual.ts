@@ -822,6 +822,10 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
             text: "El sistema separa el impacto a la empresa en blanco (sueldo de convenio con cargas, aguinaldo, antiguedad, presentismo) y negro (premios, acuerdos y el sueldo del temporal). Ambos se ven en la tabla y en la ficha del empleado.",
           },
           {
+            type: "p",
+            text: "En negro hay dos renglones distintos. El ACUERDO se prorratea por los dias trabajados del mes (total / dias laborables x dias trabajados). El PREMIO es un monto fijo no remunerativo: sale entero, sin importar los dias trabajados. Los dos salen en el recibo negro, cada uno en su renglon.",
+          },
+          {
             type: "warn",
             text: "El negro SI cuenta para el costo hora hombre que usas para cotizar. Aunque no se declare, es plata que la empresa paga; si no lo sumas, cotizas por debajo del costo real. El aguinaldo del negro suma solo como aguinaldo.",
           },

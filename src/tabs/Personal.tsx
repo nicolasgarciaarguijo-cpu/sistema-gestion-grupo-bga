@@ -447,7 +447,8 @@ export function PersonalTab(props: PersonalTabProps) {
                 const negroDet = row.negroDetalle || {};
                 const negroLineas = (
                   [
-                    ["premio", "Premio / acuerdo"],
+                    ["acuerdo", "Acuerdo / sueldo negro"],
+                    ["premio", "Premio negro"],
                     ["aguinaldo", "Aguinaldo negro"],
                   ] as Array<[string, string]>
                 ).filter(([k]) => Number(negroDet[k] || 0) > 0.005);
@@ -2831,7 +2832,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                               />
                             </Field>
-                            <Field label="Premios / Acuerdo (negro)">
+                            <Field label="Acuerdo (negro · por días trabajados)">
                               <AmountInput
                                 style={styles.input}
                                 value={payroll.cashBonus}
@@ -2840,6 +2841,20 @@ export function PersonalTab(props: PersonalTabProps) {
                                     selectedEmployee.id,
                                     payrollMonth,
                                     "cashBonus",
+                                    n
+                                  )
+                                }
+                              />
+                            </Field>
+                            <Field label="Premio (negro · monto fijo)">
+                              <AmountInput
+                                style={styles.input}
+                                value={payroll.blackPrize || 0}
+                                onChange={(n) =>
+                                  updateEmployeePayrollManual(
+                                    selectedEmployee.id,
+                                    payrollMonth,
+                                    "blackPrize",
                                     n
                                   )
                                 }
@@ -2893,7 +2908,8 @@ export function PersonalTab(props: PersonalTabProps) {
                           <div style={{ ...styles.metricGrid, marginTop: 12 }}>
                             <MiniMetric label="Neto blanco" value={money(payrollSummary.net)} />
                             <MiniMetric label="Adicional blanco" value={money(payrollSummary.whiteBonus || 0)} />
-                            <MiniMetric label="Premios / Acuerdo (negro)" value={money(payrollSummary.blackMonthly)} />
+                            <MiniMetric label="Acuerdo (negro)" value={money(Number(payrollSummary.blackMonthly || 0) - Number(payrollSummary.blackPrize || 0))} />
+                            <MiniMetric label="Premio (negro)" value={money(payrollSummary.blackPrize || 0)} />
                             <MiniMetric label="Total empleado" value={money(payrollSummary.netWithCashBonus)} />
                           </div>
 

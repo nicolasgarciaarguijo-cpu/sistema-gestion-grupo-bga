@@ -1357,7 +1357,13 @@ export type EmployeePayroll = {
   justifiedAbsenceHours: number;
   vacationsDays: number;
   anticipos: number;
-  cashBonus: number; // premio NEGRO: se paga al neto, sin cargas.
+  // ACUERDO en NEGRO (mensual): se paga al neto, sin cargas. En el recibo negro se PRORRATEA por los
+  // dias trabajados (total / dias laborables x dias trabajados).
+  cashBonus: number;
+  // PREMIO en NEGRO: monto FIJO, no remunerativo, sin cargas. NO depende de los dias trabajados: sale
+  // entero en el recibo negro, en su propio renglon. Opcional: datos viejos = 0 (el campo unico
+  // "premio / acuerdo" de antes queda como acuerdo, que es como se liquidaba).
+  blackPrize?: number;
   // premio BLANCO: entra al bruto remunerativo (paga jubilacion/obra social/sindicato + cargas
   // patronales). Opcional: si falta (datos viejos) = 0, sin cambios.
   whiteBonus?: number;

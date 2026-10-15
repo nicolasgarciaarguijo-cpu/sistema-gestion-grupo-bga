@@ -77,6 +77,10 @@ describe("monthlyBlackPay", () => {
     expect(monthlyBlackPay({ cashBonus: 150000 })).toBe(150000);
   });
 
+  it("el premio fijo en negro se suma al acuerdo", () => {
+    expect(monthlyBlackPay({ cashBonus: 150000, blackPrize: 30000 })).toBe(180000);
+  });
+
   it("el temporal cobra todo su acuerdo en negro", () => {
     expect(monthlyBlackPay({ isTemporal: true, agreedSalary: 800000 })).toBe(800000);
     // sin la marca de temporal, el acuerdo no cuenta

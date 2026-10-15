@@ -268,7 +268,7 @@ export function ReciboBlancoDocument({
 }
 
 export function ReciboNegroDocument({
-  employee, company, monthKey, totalBlack, workingDays, daysWorked, negroAmount, logo,
+  employee, company, monthKey, totalBlack, workingDays, daysWorked, negroAmount, acuerdoAmount, premio, logo,
 }: {
   employee: ReciboEmployee;
   company: ReciboCompany;
@@ -277,8 +277,14 @@ export function ReciboNegroDocument({
   workingDays: number;
   daysWorked: number;
   negroAmount: number;
+  // Lo que sale del acuerdo ya prorrateado por dias. Ausente (datos viejos) = el total.
+  acuerdoAmount?: number;
+  // Premio en negro: monto fijo, NO se prorratea. Va en su propio renglon.
+  premio?: number;
   logo?: string;
 }) {
+  const premioN = Math.max(0, Number(premio || 0));
+  const acuerdoN = acuerdoAmount != null ? Number(acuerdoAmount || 0) : Number(negroAmount || 0) - premioN;
   return (
     <div style={{ fontFamily: "Arial, sans-serif", color: "#111", width: "100%" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 8 }}>
@@ -308,6 +314,16 @@ export function ReciboNegroDocument({
             <td style={lbl}>Cálculo</td><td style={cell}>{money(Number(totalBlack || 0))} ÷ {workingDays} × {daysWorked}</td>
           </tr>
           <tr>
+            <td style={lbl}>Acuerdo a entregar</td>
+            <td style={right} colSpan={3}>{money(acuerdoN)}</td>
+          </tr>
+          {premioN > 0 ? (
+            <tr>
+              <td style={lbl}>Premio (no remunerativo, monto fijo)</td>
+              <td style={right} colSpan={3}>{money(premioN)}</td>
+            </tr>
+          ) : null}
+          <tr>
             <td style={lbl}>TOTAL A ENTREGAR</td>
             <td style={{ ...right, fontWeight: 800, fontSize: 14 }} colSpan={3}>{money(Number(negroAmount || 0))}</td>
           </tr>
@@ -319,7 +335,8 @@ export function ReciboNegroDocument({
 
       <div style={{ fontSize: 10, color: "#555", marginTop: 8 }}>
         Documento interno. Deja constancia de la entrega efectiva del acuerdo del período, prorrateado por
-        los días trabajados. Sin descuentos salvo por días no trabajados.
+        los días trabajados (sin descuentos salvo por días no trabajados)
+        {premioN > 0 ? ", y del premio no remunerativo, que es un monto fijo y no depende de los días trabajados" : ""}.
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 46, fontSize: 11 }}>

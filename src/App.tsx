@@ -3149,7 +3149,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     logo?: string;
     sussDeposit?: { date: string; amount: number } | null;
     ivaVep?: { date: string; amount: number } | null;
-    negro?: { totalBlack: number; workingDays: number; daysWorked: number; negroAmount: number };
+    negro?: { totalBlack: number; workingDays: number; daysWorked: number; negroAmount: number; acuerdoAmount?: number; premio?: number };
   }>(null);
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto");
   // EL BANCO CORROBORA, NO CARGA (regla de Nicolas, 2026-08-26). El extracto solo alimenta el
@@ -9298,7 +9298,11 @@ Escribi CERRAR para confirmar:`
         temporalDiario ||
         (employee.employmentType === "fuera_convenio" && isPartnerCategory(employee.category)),
     });
-    setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, workingDays, daysWorked, negroAmount } });
+    // PREMIO en negro: monto fijo, va ENTERO en su propio renglon (no mira los dias trabajados).
+    const premio = Math.max(0, Number(getCurrentPayroll(employee)?.blackPrize || 0));
+    const acuerdoAmount = negroAmount;
+    const totalEntregar = Math.round((acuerdoAmount + premio) * 100) / 100;
+    setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, workingDays, daysWorked, negroAmount: totalEntregar, acuerdoAmount, premio } });
     void guardarReciboEnCarpeta(
       employee,
       monthKey,
@@ -9310,7 +9314,9 @@ Escribi CERRAR para confirmar:`
         totalBlack={totalBlack}
         workingDays={workingDays}
         daysWorked={daysWorked}
-        negroAmount={negroAmount}
+        acuerdoAmount={acuerdoAmount}
+        premio={premio}
+        negroAmount={totalEntregar}
         logo={logo}
       />
     );
@@ -14833,6 +14839,7 @@ Escribi CERRAR para confirmar:`
           netoLiquidado: 0,
           negroAcordado: monthlyBlackPay({
             cashBonus: Number(pr.cashBonus || 0),
+            blackPrize: Number(pr.blackPrize || 0),
             isTemporal: emp.employmentType === "temporal",
             agreedSalary: effectiveAgreedSalary(emp, pr.month),
             isFueraConvenio: emp.employmentType === "fuera_convenio",
@@ -18283,9 +18290,11 @@ Escribi CERRAR para confirmar:`
           seguro: sum((s) => (s as any).employerInsurance),
           aguinaldo: sum((s) => (s as any).monthlySACChargesProration),
         };
-        // Desglose del NEGRO: premio/acuerdo del mes + prorrateo del aguinaldo negro.
+        // Desglose del NEGRO: acuerdo del mes (y sueldo negro de temporal / fuera de convenio) + premio
+        // fijo en negro + prorrateo del aguinaldo negro. acuerdo + premio = blackMonthly exacto.
         const negroDetalle = {
-          premio: sum((s) => (s as any).blackMonthly),
+          acuerdo: sum((s) => Number((s as any).blackMonthly || 0) - Number((s as any).blackPrize || 0)),
+          premio: sum((s) => (s as any).blackPrize),
           aguinaldo: sum((s) => (s as any).blackSACProration),
         };
         return {
@@ -21592,6 +21601,8 @@ Escribi CERRAR para confirmar:`
               totalBlack={reciboData.negro.totalBlack}
               workingDays={reciboData.negro.workingDays}
               daysWorked={reciboData.negro.daysWorked}
+              acuerdoAmount={reciboData.negro.acuerdoAmount}
+              premio={reciboData.negro.premio}
               negroAmount={reciboData.negro.negroAmount}
               logo={reciboData.logo}
             />
