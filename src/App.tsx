@@ -12823,7 +12823,23 @@ Escribi CERRAR para confirmar:`
   };
 
   const removePurchaseInvoice = (invoiceId: number) => {
+    const actual = purchaseInvoices.find((item) => item.id === invoiceId);
+    if (actual && bloqueadoPorCierre(actual.company, actual.invoiceDate)) return;
     setPurchaseInvoices((prev) => prev.filter((item) => item.id !== invoiceId));
+  };
+  // ELIMINAR UNA FACTURA DE COMPRA (click derecho en el listado). La de caja chica se va con su gasto (es
+  // el mismo dato). conPago: tambien el pago cargado en el sistema; el debito del banco NO se toca (es
+  // el extracto), solo se suelta el vinculo al desaparecer la factura.
+  const eliminarFacturaCompra = (invoiceId: number, conPago: boolean) => {
+    const inv = purchaseInvoices.find((i) => i.id === invoiceId);
+    if (!inv) return;
+    if (inv.source === "caja_chica" && inv.pettyCashExpenseId != null && pettyCashExpenses.some((g) => g.id === inv.pettyCashExpenseId)) {
+      removePettyCashExpense(inv.pettyCashExpenseId);
+      return;
+    }
+    if (conPago && inv.paidByCostEntryId != null) removeCostEntry(inv.paidByCostEntryId);
+    removePurchaseInvoice(invoiceId);
+    setFacturaModal(null);
   };
 
   // Vincula/edita una factura emitida (ARCA). Se usa para atarla a un trabajo (jobBudgetNumber) desde
@@ -18979,6 +18995,7 @@ Escribi CERRAR para confirmar:`
         estadoPrevisto: marca?.estadoPago,
         tipoProveedor: prov ? (prov.currentAccount ? "ctacte" : "habitual") : "nuevo",
         cajaResponsable: cajaResponsable || undefined,
+        tienePagoCargado: inv.paidByCostEntryId != null && !!pago,
       } as FilaFactura;
     }), [purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas, pettyCashExpenses, pettyCashFunds]);
   const facturaVacia = (supplier = "", taxId = "", company = ""): FacturaForm => ({
@@ -19505,6 +19522,7 @@ Escribi CERRAR para confirmar:`
         if (f) setFacturaModal({ ...f, pago: { ...f.pago, estado: "pagada", monto: f.pago.monto || f.total } });
       }}
       onFichaProveedor={abrirFichaProveedor}
+      onEliminar={eliminarFacturaCompra}
     />
   );
   const renderProveedores = () => (

@@ -2,7 +2,7 @@
 // con su estado de pago, para ver lo pagado y lo que falta y adjudicar pagos. "Agregar factura" y cada
 // fila abren la ventana de la factura (proveedor, datos y pago).
 import React, { useMemo, useState } from "react";
-import { Panel, ButtonLike } from "../ui/primitives";
+import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 
 export type FilaFactura = {
   id: number;
@@ -22,6 +22,8 @@ export type FilaFactura = {
   tipoProveedor: "ctacte" | "habitual" | "nuevo";
   // Factura pagada con una CAJA CHICA: quien la rindio (se ve como pill y la fila abre el gasto).
   cajaResponsable?: string;
+  // Tiene un pago cargado en el sistema (CostEntry) vinculado: al eliminar se puede llevar tambien.
+  tienePagoCargado?: boolean;
 };
 
 const NOMBRE_MES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -43,6 +45,7 @@ export function FacturasCompraPanel({
   onAbrir,
   onAsignarPago,
   onFichaProveedor,
+  onEliminar,
 }: {
   filas: FilaFactura[];
   companyOptions: Array<{ value: string; short?: string }>;
@@ -51,7 +54,11 @@ export function FacturasCompraPanel({
   onAbrir: (id: number) => void;
   onAsignarPago: (id: number) => void;
   onFichaProveedor: (nombre: string, taxId: string) => void;
+  // conPago: borra tambien el pago cargado (si la factura era de prueba, el pago tambien).
+  onEliminar: (id: number, conPago: boolean) => void;
 }) {
+  // CLICK DERECHO sobre la factura: editar, eliminar, ficha del proveedor (regla: toda accion sale de aca).
+  const [menu, setMenu] = useState<{ x: number; y: number; fila: FilaFactura } | null>(null);
   const [mes, setMes] = useState(new Date().toISOString().slice(0, 7));
   const [soloSinPagar, setSoloSinPagar] = useState(false);
   const [buscar, setBuscar] = useState("");
@@ -126,10 +133,11 @@ export function FacturasCompraPanel({
                   onClick={() => onAbrir(f.id)}
                   onContextMenu={(ev) => {
                     ev.preventDefault();
-                    onFichaProveedor(f.supplier, f.taxId);
+                    ev.stopPropagation();
+                    setMenu({ x: ev.clientX, y: ev.clientY, fila: f });
                   }}
                   style={{ cursor: "pointer", background: f.pagada ? undefined : "#fffbeb" }}
-                  title="Click: ver o editar la factura · Click derecho: ficha del proveedor"
+                  title="Click: ver o editar la factura · Click derecho: editar, eliminar o ficha del proveedor"
                 >
                   <td style={td}>{fmt(f.invoiceDate)}</td>
                   <td style={{ ...td, whiteSpace: "normal" }}>
@@ -184,6 +192,46 @@ export function FacturasCompraPanel({
           </table>
         </div>
       )}
+      {menu && (() => {
+        const f = menu.fila;
+        const cerrar = () => setMenu(null);
+        const nombre = `${f.supplier || "Sin proveedor"}${f.invoiceNumber ? ` · ${f.receiptLetter || ""} ${f.invoiceNumber}` : ""}`;
+        const eliminar = (conPago: boolean) => {
+          cerrar();
+          const que =
+            f.source === "caja_chica"
+              ? "el gasto de caja chica y su factura (la plata vuelve a la caja)"
+              : conPago
+              ? "la factura Y su pago (sale tambien del cash flow)"
+              : f.tienePagoCargado
+              ? "la factura (el pago queda cargado)"
+              : "la factura";
+          if (window.confirm(`¿Eliminar ${que}?\n\n${nombre} · ${money(f.total)}`)) onEliminar(f.id, conPago);
+        };
+        const rojo: React.CSSProperties = { ...quickMenuItem, color: "#b91c1c" };
+        return (
+          <QuickMenu x={menu.x} y={menu.y} onClose={cerrar}>
+            <QuickMenuTitle>{nombre}</QuickMenuTitle>
+            <button type="button" style={quickMenuItem} onClick={() => { cerrar(); onAbrir(f.id); }}>
+              {f.source === "caja_chica" ? "Editar (gasto de caja chica)…" : "Editar factura…"}
+            </button>
+            {f.source === "caja_chica" ? (
+              <button type="button" style={rojo} onClick={() => eliminar(false)}>Eliminar gasto y factura</button>
+            ) : f.tienePagoCargado ? (
+              <>
+                <button type="button" style={rojo} onClick={() => eliminar(true)}>Eliminar factura y su pago</button>
+                <button type="button" style={rojo} onClick={() => eliminar(false)}>Eliminar solo la factura (el pago queda)</button>
+              </>
+            ) : (
+              <button type="button" style={rojo} onClick={() => eliminar(false)}>Eliminar factura</button>
+            )}
+            <QuickMenuSep />
+            <button type="button" style={quickMenuItem} onClick={() => { cerrar(); onFichaProveedor(f.supplier, f.taxId); }}>
+              Ficha del proveedor
+            </button>
+          </QuickMenu>
+        );
+      })()}
     </Panel>
   );
 }
