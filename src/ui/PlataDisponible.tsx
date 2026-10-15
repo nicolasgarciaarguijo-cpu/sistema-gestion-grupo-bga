@@ -35,6 +35,9 @@ export type PlataDisponibleCompany = {
   ivaDebito: number;
   ivaCredito: number;
   ivaPosicion: number;
+  // IVA de la factura que falta por lo blanqueado (ver domain/faltaFactura) y la posicion REAL.
+  ivaFaltaFactura?: number;
+  ivaPosicionReal?: number;
   // Lo que la empresa le debe a la gente: facturas que puso de su bolsillo un empleado, un socio o un
   // tercero y todavia no se le reintegraron. Se quiere saldar rapido, por eso sube aca arriba.
   deudaConLaGente: number;
@@ -290,23 +293,33 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                       )}
                     </span>
                   )}
-                  <span
-                    style={c.ivaPosicion > 1 ? pagarTag : c.ivaPosicion < -1 ? cobrarTag : chip}
-                    title="IVA débito (ventas) − crédito (compras blanco), desde el último VEP"
-                  >
-                    IVA:{" "}
-                    {c.ivaPosicion > 1 ? (
-                      <>
-                        a pagar <b style={{ color: "#fca5a5" }}>{money(c.ivaPosicion)}</b>
-                      </>
-                    ) : c.ivaPosicion < -1 ? (
-                      <>
-                        a favor <b style={{ color: "#86efac" }}>{money(-c.ivaPosicion)}</b>
-                      </>
-                    ) : (
-                      <b style={{ color: "#cbd5e1" }}>equilibrado</b>
-                    )}
-                  </span>
+                  {(() => {
+                    // Posicion REAL: la declarada + el IVA de la factura que falta por lo blanqueado.
+                    const real = c.ivaPosicionReal ?? c.ivaPosicion;
+                    const falta = Number(c.ivaFaltaFactura || 0);
+                    return (
+                      <span
+                        style={real > 1 ? pagarTag : real < -1 ? cobrarTag : chip}
+                        title={
+                          `IVA débito (ventas) − crédito (compras blanco), desde el último VEP: ${money(c.ivaPosicion)}` +
+                          (falta > 0.5 ? `\n+ IVA de la factura que falta por plata blanqueada: ${money(falta)}` : "")
+                        }
+                      >
+                        IVA{falta > 0.5 ? " real" : ""}:{" "}
+                        {real > 1 ? (
+                          <>
+                            a pagar <b style={{ color: "#fca5a5" }}>{money(real)}</b>
+                          </>
+                        ) : real < -1 ? (
+                          <>
+                            a favor <b style={{ color: "#86efac" }}>{money(-real)}</b>
+                          </>
+                        ) : (
+                          <b style={{ color: "#cbd5e1" }}>equilibrado</b>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
               </div>
             );

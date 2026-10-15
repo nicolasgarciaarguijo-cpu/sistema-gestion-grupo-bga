@@ -87,6 +87,8 @@ import {
   cierreFolderName,
 } from "./content/cierreHtml";
 import { computeVatPosition } from "./domain/vatBalance";
+import { conteoBlanqueo, type ConteoBlanqueo, type MovFisco } from "./domain/faltaFactura";
+import { resumenCaja } from "./domain/cajaChicaFicha";
 import {
   construirCierre,
   motivosParaNoCerrar,
@@ -14286,6 +14288,44 @@ Escribi CERRAR para confirmar:`
     return porEmpresa;
   }, [COMPANY_OPTIONS, purchaseLedgerInvoices, purchaseLedgerPayments]);
 
+  // CONTEO DE BLANQUEO por empresa, en el EJERCICIO FISCAL en curso (ver domain/faltaFactura). Sube con la
+  // plata negra que entra al banco (deposito, prestamo o aporte en negro); baja con lo que balancea (sacar
+  // plata blanca a negro, gastar blanco sin factura, comprar con factura y efectivo negro). El IVA de lo
+  // que quede se suma a la posicion declarada: es la situacion REAL frente al fisco.
+  const faltaFacturaPorEmpresa = useMemo(() => {
+    const movimientos: MovFisco[] = [];
+    visibleInternalTransfers.forEach((t) => {
+      if ((t.currency || "ARS") !== "ARS" || t.color !== "negro") return;
+      if (t.direction === "efectivo_a_banco") movimientos.push({ company: String(t.company), date: t.date, amount: Number(t.amount || 0), tipo: "deposito_negro" });
+      if (t.direction === "banco_a_efectivo") movimientos.push({ company: String(t.company), date: t.date, amount: Number(t.amount || 0), tipo: "blanco_a_negro" });
+    });
+    visibleCapitalEntries.forEach((c) => {
+      if (c.direction !== "recibido" || c.color !== "negro" || !String(c.cuentaId || "").startsWith("banco|")) return;
+      movimientos.push({ company: String(c.company), date: c.date, amount: Number(c.amount || 0), tipo: "prestamo_negro" });
+    });
+    visiblePettyCashFunds.forEach((f) => {
+      const r = resumenCaja(f as any, visiblePettyCashExpenses as any);
+      if (!r.desbalanceConocido) return;
+      const base = { company: String(f.company), date: f.deliveredDate };
+      if (r.blancoSinFactura > 0) movimientos.push({ ...base, amount: r.blancoSinFactura, tipo: "caja_blanco_sin_factura" });
+      if (r.negroFacturado > 0) movimientos.push({ ...base, amount: r.negroFacturado, tipo: "caja_negro_con_factura" });
+    });
+    visiblePurchaseInvoices.forEach((inv) => {
+      if (inv.source === "caja_chica" || inv.administration === "negro" || inv.paidByCostEntryId == null) return;
+      const pago = costEntries.find((c) => c.id === inv.paidByCostEntryId);
+      if (!pago || pago.administration !== "negro") return;
+      movimientos.push({ company: String(inv.company), date: pago.date || inv.invoiceDate, amount: Number(pago.amount || 0), tipo: "factura_pagada_negro" });
+    });
+    const out = new Map<string, ConteoBlanqueo>();
+    COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General").forEach((c) => {
+      const company = String(c.value);
+      const startMonth = getFiscalYearStartMonth(companyCatalog.find((x) => x.value === company));
+      const { startIso, endIso } = fiscalYearBounds(startMonth, currentFiscalStartYear(startMonth, new Date()));
+      out.set(company, conteoBlanqueo({ company, desde: startIso, hasta: endIso, movimientos }));
+    });
+    return out;
+  }, [visibleInternalTransfers, visibleCapitalEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visiblePurchaseInvoices, costEntries, companyCatalog, COMPANY_OPTIONS]);
+
   const plataDisponibleByCompany = useMemo(() => {
     const realCompanies = COMPANY_OPTIONS.filter(
       (c) => c.value && c.value !== "General" && canAccessCompany(c.value as CompanyName)
@@ -14448,6 +14488,9 @@ Escribi CERRAR para confirmar:`
         ivaDebito: ivaPos.debito,
         ivaCredito: ivaPos.credito,
         ivaPosicion: ivaPos.posicion,
+        // Posicion REAL = la declarada + el IVA de la factura que falta por lo blanqueado.
+        ivaFaltaFactura: Number(faltaFacturaPorEmpresa.get(String(company))?.ivaFaltante || 0),
+        ivaPosicionReal: ivaPos.posicion + Number(faltaFacturaPorEmpresa.get(String(company))?.ivaFaltante || 0),
         deudaConLaGente: deudaGente.total,
         deudaConLaGenteCount: deudaGente.debts.reduce((acc, d) => acc + d.count, 0),
         deudaProveedores: Number(deudaProveedoresPorEmpresa.get(String(company)) || 0),
@@ -14455,6 +14498,7 @@ Escribi CERRAR para confirmar:`
       };
     });
   }, [
+    faltaFacturaPorEmpresa,
     bankLoadsUntil,
     COMPANY_OPTIONS,
     visibleBankStatementEntries,
@@ -14606,9 +14650,18 @@ Escribi CERRAR para confirmar:`
           })),
           veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })),
         });
-        return { company, short: c.short || company, primary: c.primary || "#475569", ...pos };
+        const falta = faltaFacturaPorEmpresa.get(String(company));
+        return {
+          company,
+          short: c.short || company,
+          primary: c.primary || "#475569",
+          ...pos,
+          falta: falta || null,
+          posicionReal: pos.posicion + Number(falta?.ivaFaltante || 0),
+        };
       });
   }, [
+    faltaFacturaPorEmpresa,
     COMPANY_OPTIONS,
     balanceCompanyScope,
     issuedInvoices,

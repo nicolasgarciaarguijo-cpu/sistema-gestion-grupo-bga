@@ -13,6 +13,7 @@ import type { LoanLine } from "../domain/loanLines";
 import { totalDeMoneda, ultimoCierre } from "../domain/cierreEjercicio";
 import type { CierreEjercicio } from "../domain/cierreEjercicio";
 import { DEFAULT_FISCAL_START_MONTH, currentFiscalStartYear, fiscalYearLabel } from "../domain/fiscalYear";
+import { ETIQUETA_MOV_FISCO, type ConteoBlanqueo, type TipoMovFisco } from "../domain/faltaFactura";
 
 // Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
 // queda en el title (hover). Evita que un numero largo rompa una columna de ~80px.
@@ -176,6 +177,9 @@ type CashflowTabProps = {
     lastVepDate: string | null;
     ventas: number;
     compras: number;
+    // Conteo de blanqueo del ejercicio (ver domain/faltaFactura) y la posicion REAL.
+    falta?: ConteoBlanqueo | null;
+    posicionReal?: number;
   }[];
   ivaVepPayments: any[];
   addIvaVepPayment: () => void;
@@ -788,6 +792,53 @@ export function CashflowTab({
                       tone={v.posicion > 1 ? "warn" : "strong"}
                     />
                   </div>
+                  {v.falta && (v.falta.sube > 0.5 || v.falta.baja > 0.5) && (() => {
+                    const f = v.falta!;
+                    const real = v.posicionReal ?? v.posicion;
+                    const linea = (k: TipoMovFisco, signo: string) =>
+                      f.porTipo[k] > 0.5 ? (
+                        <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5 }}>
+                          <span>{signo} {ETIQUETA_MOV_FISCO[k]}</span>
+                          <span style={{ fontVariantNumeric: "tabular-nums" }}>{money(f.porTipo[k])}</span>
+                        </div>
+                      ) : null;
+                    return (
+                      <>
+                        <div style={{ ...styles.muted, margin: "8px 0 4px", fontSize: 12 }}>
+                          <strong>Conteo de blanqueo · ejercicio {formatDateDisplay(f.desde)} – {formatDateDisplay(f.hasta)}</strong>. La plata negra
+                          que entra al banco necesita una factura que no existe; su IVA (21/121 del monto) se suma a la
+                          posición. Lo que balancea lo baja. La meta es cerrar el ejercicio en cero.
+                        </div>
+                        <div style={{ display: "grid", gap: 2, maxWidth: 560, marginBottom: 6 }}>
+                          {linea("deposito_negro", "+")}
+                          {linea("prestamo_negro", "+")}
+                          {linea("blanco_a_negro", "−")}
+                          {linea("caja_blanco_sin_factura", "−")}
+                          {linea("caja_negro_con_factura", "−")}
+                          {linea("factura_pagada_negro", "−")}
+                        </div>
+                        <div style={balanceGrid}>
+                          <BalanceTile
+                            label={f.saldo > 0.5 ? "Saldo a balancear" : f.saldo < -0.5 ? "Margen para blanquear sin IVA" : "Conteo en cero"}
+                            value={money(Math.abs(f.saldo))}
+                            tone={f.saldo > 0.5 ? "warn" : "white"}
+                          />
+                          <BalanceTile label="IVA de la factura que falta" value={money(f.ivaFaltante)} tone={f.ivaFaltante > 0.5 ? "warn" : "white"} />
+                          <BalanceTile
+                            label={real > 1 ? "Posición REAL: A PAGAR" : real < -1 ? "Posición REAL: A FAVOR" : "Posición REAL: equilibrado"}
+                            value={money(real)}
+                            tone={real > 1 ? "warn" : "strong"}
+                          />
+                        </div>
+                        {f.saldo > 0.5 && (
+                          <div style={{ fontSize: 12.5, color: "#b45309", fontWeight: 700, marginTop: 4 }}>
+                            Para cerrar el ejercicio en cero: sacar {money(f.saldo)} de plata blanca para pagar en negro, o comprar
+                            con factura pagando con efectivo negro por ese monto (o una combinación).
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               ))
             )}

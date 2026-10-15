@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-15d",
+    fecha: "15/10/2026",
+    titulo: "Conteo de blanqueo y posición de IVA real",
+    items: [
+      {
+        titulo: "Conteo de blanqueo por ejercicio",
+        que: "Cuando entra plata negra al banco (un depósito de efectivo negro, o un préstamo o aporte en negro que entra a una cuenta de banco), para considerarla blanqueada habría que pagar el IVA de una factura que no existe (21/121 del monto). El conteo lo suma y lo baja todo lo que balancea: sacar plata blanca del banco a efectivo negro, gastar plata blanca de caja chica sin factura y comprar con factura pagando con efectivo negro (caja chica o facturas de compra pagadas en negro). Arranca de cero cada ejercicio fiscal: la meta es cerrarlo en cero.",
+        como: "En Balance → Posición de IVA, debajo de cada empresa: el detalle, el saldo a balancear, su IVA y la posición REAL (la declarada + ese IVA). El chip de IVA de la barra muestra la posición real.",
+        tab: "cashflow",
+      },
+    ],
+  },
+  {
     id: "2026-10-15c",
     fecha: "15/10/2026",
     titulo: "Caja chica: desbalance y contador blanco / negro",
