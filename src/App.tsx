@@ -20332,8 +20332,17 @@ Escribi CERRAR para confirmar:`
           money={money}
           onGuardar={guardarFacturaCompra}
           onBorrar={(id) => {
-            removePurchaseInvoice(id);
-            setFacturaModal(null);
+            // Si tiene un PAGO cargado, se pregunta si se va tambien: la factura no mueve plata, el pago
+            // si (si queda, sigue en el cash flow). Mismo camino que el click derecho del listado.
+            const inv = purchaseInvoices.find((i) => i.id === id);
+            const pago = inv?.paidByCostEntryId != null ? costEntries.find((c) => c.id === inv.paidByCostEntryId) : undefined;
+            const conPago =
+              !!pago &&
+              window.confirm(
+                `Esta factura tiene un pago cargado (${money(Number(pago.amount || 0))} del ${fmtCorta(pago.date)}).\n\n` +
+                  "¿Borrar TAMBIÉN el pago? (sale del cash flow)\n\nAceptar = borrar el pago · Cancelar = el pago queda"
+              );
+            eliminarFacturaCompra(id, conPago);
           }}
           onCerrar={() => setFacturaModal(null)}
         />

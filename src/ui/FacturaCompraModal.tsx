@@ -353,7 +353,7 @@ export function FacturaCompraModal({
             {f.id && onBorrar && (
               <button
                 type="button"
-                onClick={() => window.confirm("¿Borrar esta factura? (el pago, si tiene, queda cargado)") && onBorrar(f.id!)}
+                onClick={() => window.confirm("¿Borrar esta factura?") && onBorrar(f.id!)}
                 style={{ ...input, width: "auto", cursor: "pointer", color: "#b91c1c", borderColor: "#fecaca" }}
               >
                 Borrar factura
