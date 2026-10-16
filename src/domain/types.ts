@@ -1005,6 +1005,9 @@ export type Inversion = {
   cuentaId?: string;
   montoRescatado?: number;
   renglonRescate?: string;
+  // Responsable / firmante: el usuario que la cargo o la edito por ultima vez (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 // --- Seguros (solapa Seguros) ---

@@ -14,6 +14,7 @@ import {
   resumenInversionesPorEmpresa,
 } from "../domain/inversiones";
 import type { CompanyName, Inversion } from "../domain/types";
+import { FirmanteCelda } from "../ui/FirmanteSelect";
 
 type InversionesTabProps = {
   inversiones: Inversion[];
@@ -136,13 +137,14 @@ export function InversionesTab({
                 <th>Cuenta</th>
                 <th style={{ textAlign: "right" }}>Volvió (rescate)</th>
                 <th>Renglón del rescate</th>
+                <th>Firmante</th>
                 <th />
               </tr>
             </thead>
             <tbody>
               {visibles.length === 0 && (
                 <tr>
-                  <td colSpan={15} style={{ color: "#64748b" }}>
+                  <td colSpan={16} style={{ color: "#64748b" }}>
                     Todavía no cargaste inversiones. Agregá la primera (plazo fijo, dólares, FCI…).
                   </td>
                 </tr>
@@ -275,6 +277,9 @@ export function InversionesTab({
                           <option key={k} value={k}>{l}</option>
                         ))}
                       </select>
+                    </td>
+                    <td>
+                      <FirmanteCelda value={i.firmante} firmadoEn={i.firmadoEn} />
                     </td>
                     <td>
                       <ButtonLike onClick={() => removeInversion(i.id)} secondary>

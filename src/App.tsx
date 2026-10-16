@@ -12469,6 +12469,7 @@ Escribi CERRAR para confirmar:`
                 ...(patch.amount !== undefined ? (esRescate ? { montoRescatado: Number(patch.amount) || 0 } : { montoInvertido: Number(patch.amount) || 0 }) : {}),
                 ...(patch.date ? (esRescate ? { fechaFin: patch.date } : { fechaInicio: patch.date }) : {}),
                 ...(patch.administration ? { administration: patch.administration } : {}),
+                ...firma(),
               }
         )
       );
@@ -12677,7 +12678,7 @@ Escribi CERRAR para confirmar:`
     if (entryId.startsWith("inv-rescate-")) {
       const id = Number(entryId.slice("inv-rescate-".length));
       if (!id || !inversiones.some((i) => i.id === id)) return false;
-      setInversiones((prev) => prev.map((i) => (i.id === id ? { ...i, estado: "activa", fechaFin: "", montoRescatado: undefined } : i)));
+      setInversiones((prev) => prev.map((i) => (i.id === id ? { ...i, estado: "activa", fechaFin: "", montoRescatado: undefined, ...firma() } : i)));
       return true;
     }
     if (entryId.startsWith("viatico-")) {
@@ -16275,13 +16276,15 @@ Escribi CERRAR para confirmar:`
       if (id.startsWith("retiro-")) return retirosSocietarios.find((x) => x.id === num(id, "retiro-"))?.firmante;
       if (id.startsWith("movint-pase-")) return internalTransfers.find((x) => x.id === num(id, "movint-pase-"))?.firmante;
       if (id.startsWith("movint-cap-")) return capitalEntries.find((x) => x.id === num(id, "movint-cap-"))?.firmante;
+      if (id.startsWith("inv-coloc-")) return inversiones.find((x) => x.id === num(id, "inv-coloc-"))?.firmante;
+      if (id.startsWith("inv-rescate-")) return inversiones.find((x) => x.id === num(id, "inv-rescate-"))?.firmante;
       return undefined;
     };
     return cashFlowEntriesPlanilla.map((e: any) => {
       const firmante = firmanteDe(String(e.id));
       return firmante ? { ...e, firmante } : e;
     });
-  }, [cashFlowEntriesPlanilla, approvedJobs, financialItems, costEntries, pettyCashExpenses, pettyCashFunds, viaticos, retirosSocietarios, internalTransfers, capitalEntries]);
+  }, [cashFlowEntriesPlanilla, approvedJobs, financialItems, costEntries, pettyCashExpenses, pettyCashFunds, viaticos, retirosSocietarios, internalTransfers, capitalEntries, inversiones]);
 
   // F/V del TIPO DE GASTO (renglon), con o sin candado. kind null = se lo saca.
   const setFVRenglon = (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => {
@@ -17691,6 +17694,7 @@ Escribi CERRAR para confirmar:`
         fechaFin: "",
         estado: "activa",
         notas: "",
+        ...firma(),
       },
     ]);
   };
@@ -17700,7 +17704,7 @@ Escribi CERRAR para confirmar:`
   };
 
   const updateInversion = (id: number, field: keyof Inversion, value: any) => {
-    setInversiones((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value } : i)));
+    setInversiones((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value, ...firma() } : i)));
   };
 
   // Panel de reglas de clasificación: editar/activar/borrar. "Resolver ambigüedad" = fijar el grupo y
@@ -19097,6 +19101,7 @@ Escribi CERRAR para confirmar:`
                   notas: "Cargada desde el Calendario anual",
                   administration: m.administration,
                   cuentaId: m.cuentaId || undefined,
+                  ...firma(),
                 },
               ]);
               return true;
@@ -19105,7 +19110,7 @@ Escribi CERRAR para confirmar:`
             setInversiones((prev) =>
               prev.map((i) =>
                 i.id === m.inversionId
-                  ? { ...i, estado: "cerrada", fechaFin: m.date, montoRescatado: m.amount, valorActual: m.amount, renglonRescate: m.conceptKey, ...(m.cuentaId ? { cuentaId: m.cuentaId } : {}) }
+                  ? { ...i, estado: "cerrada", fechaFin: m.date, montoRescatado: m.amount, valorActual: m.amount, renglonRescate: m.conceptKey, ...(m.cuentaId ? { cuentaId: m.cuentaId } : {}), ...firma() }
                   : i
               )
             );

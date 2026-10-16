@@ -28,7 +28,7 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Dónde se ve",
-        que: "Pago a proveedores (columna del gasto), Trabajos aprobados (cobros y comisiones), Caja chica (pasando el mouse por la caja o el gasto), Movimientos internos, retiros societarios, VEP de IVA y el click derecho sobre un número del Calendario anual.",
+        que: "Pago a proveedores (columna del gasto), Trabajos aprobados (cobros y comisiones), Caja chica (pasando el mouse por la caja o el gasto), Movimientos internos, Inversiones, retiros societarios, VEP de IVA y el click derecho sobre un número del Calendario anual.",
         como: "Lo cargado antes de la regla aparece como '✍ sin firmante' en ámbar y queda firmado la próxima vez que alguien lo edite.",
         tab: "costos",
       },
