@@ -5,7 +5,7 @@ import React from "react";
 import { textoCondicion, type CondicionPago, type FacturaPorPagar } from "../domain/proveedores";
 import { FirmanteFijo } from "./FirmanteSelect";
 
-type Movimiento = { key: string; type: "compra" | "pago" | "nota_credito"; date: string; detail: string; amount: number; saldo: number; administration: "blanco" | "negro" };
+type Movimiento = { key: string; type: "compra" | "pago" | "nota_credito"; date: string; detail: string; amount: number; saldo: number; administration: "blanco" | "negro"; invoiceId?: number; paymentId?: number };
 
 export function FichaProveedor({
   nombre,
@@ -30,6 +30,8 @@ export function FichaProveedor({
   personas = [],
   onResolverSinFactura,
   onCargarFacturaDePago,
+  onEditarPago,
+  onQuitarPago,
 }: {
   nombre: string;
   taxId: string;
@@ -69,8 +71,18 @@ export function FichaProveedor({
   // Resolver un pago sin factura sin la factura: comprobante (gasto en negro) o un responsable que asume.
   onResolverSinFactura?: (pagoId: number, res: { tipo: "comprobante" | "responsable"; firmante: string; detalle: string; fecha: string }) => void;
   onCargarFacturaDePago?: (pagoId: number) => void;
+  // Todo se puede corregir (Nicolas, 2026-10-16): editar o quitar un pago cargado (CostEntry).
+  onEditarPago?: (pagoId: number) => void;
+  onQuitarPago?: (pagoId: number) => void;
 }) {
   const [menuPago, setMenuPago] = React.useState<null | { x: number; y: number; id: number }>(null);
+  // Click derecho sobre un renglon del historial: abrir la factura, editar o quitar el pago, abrir la nota.
+  const [menuMov, setMenuMov] = React.useState<null | { x: number; y: number; mov: Movimiento }>(null);
+  const quitarPago = (id: number, amount: number, date: string) => {
+    if (window.confirm(`¿Quitar el pago de ${money(amount)} del ${date ? `${date.slice(8, 10)}/${date.slice(5, 7)}/${date.slice(0, 4)}` : "sin fecha"}?\n\nSale del cash flow y de la cuenta de donde salió. Si pagaba una factura, la factura vuelve a quedar impaga.`)) {
+      onQuitarPago?.(id);
+    }
+  };
   const [resolver, setResolver] = React.useState<null | { id: number; tipo: "comprobante" | "responsable"; firmante: string; detalle: string }>(null);
   const cond = proveedor?.condicionPago;
   const fv = proveedor?.grupoCosto ? { kind: proveedor.grupoCosto.startsWith("fijo|") ? "fijo" : "variable", locked: false } : undefined;
@@ -219,7 +231,7 @@ export function FichaProveedor({
                   <tr
                     key={p.id}
                     style={{ borderBottom: "1px solid #fed7aa", cursor: "context-menu" }}
-                    title="Click derecho: cargar la factura, comprobante o lo asume un responsable"
+                    title="Click derecho: cargar la factura, comprobante, lo asume un responsable, editar o quitar el pago"
                     onContextMenu={(ev) => {
                       ev.preventDefault();
                       ev.stopPropagation();
@@ -343,7 +355,16 @@ export function FichaProveedor({
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                 <tbody>
                   {[...ledger.movimientos].reverse().map((m) => (
-                    <tr key={m.key} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                    <tr
+                      key={m.key}
+                      style={{ borderBottom: "1px solid #f1f5f9", cursor: "context-menu" }}
+                      title="Click derecho: corregir este movimiento"
+                      onContextMenu={(ev) => {
+                        ev.preventDefault();
+                        ev.stopPropagation();
+                        setMenuMov({ x: ev.clientX, y: ev.clientY, mov: m });
+                      }}
+                    >
                       <td style={{ padding: "3px 6px", color: "#64748b", whiteSpace: "nowrap" }}>{m.date ? `${m.date.slice(8, 10)}/${m.date.slice(5, 7)}/${m.date.slice(0, 4)}` : "—"}</td>
                       <td style={{ padding: "3px 6px" }}>{m.type === "compra" ? "Compra" : m.type === "nota_credito" ? "Crédito" : "Pago"} · {m.detail}</td>
                       <td style={{ padding: "3px 6px", textAlign: "center" }}>{m.administration === "negro" ? "N" : "B"}</td>
@@ -365,6 +386,16 @@ export function FichaProveedor({
               { label: "📄 Cargar la factura (y vincular este pago)", run: () => onCargarFacturaDePago?.(menuPago.id) },
               { label: "🧾 Es gasto en negro: cargar comprobante…", run: () => setResolver({ id: menuPago.id, tipo: "comprobante", firmante: "", detalle: "" }) },
               { label: "✍️ Lo asume un responsable (sin factura)…", run: () => setResolver({ id: menuPago.id, tipo: "responsable", firmante: "", detalle: "" }) },
+              ...(onEditarPago ? [{ label: "✏️ Editar el pago…", run: () => onEditarPago(menuPago.id) }] : []),
+              ...(onQuitarPago
+                ? [{
+                    label: "🗑 Quitar el pago",
+                    run: () => {
+                      const p = pagosSinFactura.find((x) => x.id === menuPago.id);
+                      quitarPago(menuPago.id, p?.amount || 0, p?.date || "");
+                    },
+                  }]
+                : []),
             ].map((o) => (
               <button key={o.label} type="button" style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, borderRadius: 6 }}
                 onClick={() => { setMenuPago(null); o.run(); }}>
@@ -374,6 +405,46 @@ export function FichaProveedor({
           </div>
         </div>
       )}
+      {menuMov && (() => {
+        const m = menuMov.mov;
+        const kindPago = m.type === "pago" ? (m.key.startsWith("pay-banco-") ? "banco" : "gasto") : "";
+        const ncId = m.type === "nota_credito" ? Number(m.key.slice(3)) : NaN;
+        const opciones: Array<{ label: string; run?: () => void }> =
+          m.type === "compra"
+            ? m.invoiceId != null && onAbrirFactura
+              ? [{ label: "✏️ Abrir la factura (editar o borrar)", run: () => onAbrirFactura(m.invoiceId!) }]
+              : [{ label: "Esta compra no tiene factura para abrir" }]
+            : m.type === "nota_credito"
+            ? onNotaCredito && Number.isFinite(ncId)
+              ? [{ label: "✏️ Abrir la nota de crédito (editar o eliminar)", run: () => onNotaCredito(ncId) }]
+              : []
+            : kindPago === "banco"
+            ? [{ label: "Es un débito del banco: se corrige en Bancos y tarjetas" }]
+            : m.paymentId != null
+            ? [
+                ...(onEditarPago ? [{ label: "✏️ Editar el pago…", run: () => onEditarPago(m.paymentId!) }] : []),
+                ...(onQuitarPago ? [{ label: "🗑 Quitar el pago", run: () => quitarPago(m.paymentId!, m.amount, m.date) }] : []),
+              ]
+            : [];
+        return (
+          <div style={{ position: "fixed", inset: 0, zIndex: 4100 }} onClick={(e) => { e.stopPropagation(); setMenuMov(null); }} onContextMenu={(e) => { e.preventDefault(); setMenuMov(null); }}>
+            <div onClick={(e) => e.stopPropagation()} style={{ position: "fixed", left: menuMov.x, top: menuMov.y, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.18)", padding: 4, minWidth: 260 }}>
+              <div style={{ fontSize: 11, color: "#64748b", padding: "4px 10px" }}>{m.detail} · {money(Math.abs(m.amount))}</div>
+              {opciones.length === 0 && <div style={{ fontSize: 13, color: "#94a3b8", padding: "6px 10px" }}>No hay nada para corregir acá.</div>}
+              {opciones.map((o) =>
+                o.run ? (
+                  <button key={o.label} type="button" style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, borderRadius: 6 }}
+                    onClick={() => { setMenuMov(null); o.run!(); }}>
+                    {o.label}
+                  </button>
+                ) : (
+                  <div key={o.label} style={{ fontSize: 12.5, color: "#64748b", padding: "6px 10px" }}>{o.label}</div>
+                )
+              )}
+            </div>
+          </div>
+        );
+      })()}
       {resolver && (
         <div onClick={(e) => { e.stopPropagation(); setResolver(null); }} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", zIndex: 4200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "80px 12px" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(480px, 100%)", padding: 16, display: "grid", gap: 10 }}>

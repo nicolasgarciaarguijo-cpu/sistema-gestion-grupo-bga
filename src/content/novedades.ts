@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-16d",
+    fecha: "16/10/2026",
+    titulo: "Corregir pagos desde la ficha del proveedor",
+    items: [
+      {
+        titulo: "Editar o quitar un pago",
+        que: "Si un pago se cargó mal o de más, se corrige desde la ficha del proveedor: se puede cambiar fecha, monto, empresa, cómo se pagó, la cuenta y el circuito, o quitarlo. Al quitarlo sale del cash flow y de la cuenta; si pagaba una factura, la factura vuelve a quedar impaga. Lo que se edita queda firmado por quien lo editó.",
+        como: "Ficha del proveedor → Historial (o Pagos sin factura) → click derecho sobre el pago → 'Editar el pago…' o 'Quitar el pago'. Sobre una compra, 'Abrir la factura' para editarla o borrarla; sobre una nota de crédito, abrirla. Los débitos del banco se corrigen en Bancos y tarjetas.",
+        tab: "costos",
+      },
+    ],
+  },
+  {
     id: "2026-10-16c",
     fecha: "16/10/2026",
     titulo: "Cada movimiento de plata queda firmado por quien lo carga",

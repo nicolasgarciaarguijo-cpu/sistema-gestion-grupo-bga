@@ -16714,9 +16714,62 @@ Escribi CERRAR para confirmar:`
   const [pagoACuentaModal, setPagoACuentaModal] = useState<PagoACuentaForm | null>(null);
   const [notaCreditoModal, setNotaCreditoModal] = useState<NotaCreditoCompra | null>(null);
   // Guarda el pago a cuenta: es un gasto comun (cash flow, cuenta) marcado aCuenta, del grupo del proveedor.
+  // EDITAR UN PAGO desde la ficha del proveedor (Nicolas, 2026-10-16: "todo debo poder editarlo por si
+  // surgio algun error"). Usa la misma ventana que el pago sin factura.
+  const abrirEditarPago = (pagoId: number) => {
+    const c = costEntries.find((x) => x.id === pagoId);
+    if (!c) return;
+    if (bloqueadoPorCierre(c.company, c.date)) {
+      window.alert("Ese pago es de un ejercicio cerrado: no se puede editar.");
+      return;
+    }
+    const prov = buscarProveedor(suppliers as any, c.supplier || "", "") as any;
+    setPagoACuentaModal({
+      id: c.id,
+      aCuenta: !!c.aCuenta,
+      supplier: c.supplier || "",
+      taxId: prov?.taxId || "",
+      company: String(c.company),
+      fecha: c.date,
+      monto: Number(c.amount || 0),
+      metodo: (c.paymentMethod as any) || "transferencia",
+      cuentaId: c.cuentaId,
+      administration: c.administration === "negro" ? "negro" : "blanco",
+      pagadoPor: c.pagadoPor,
+      notas: c.notes || "",
+    });
+  };
   const guardarPagoACuenta = (f: PagoACuentaForm) => {
     const prov = buscarProveedor(suppliers as any, f.supplier, f.taxId) as any;
     const grupo = parseClaveGrupo(prov?.grupoCosto);
+    if (f.id != null) {
+      const actual = costEntries.find((c) => c.id === f.id);
+      if (!actual) return setPagoACuentaModal(null);
+      if (bloqueadoPorCierre(actual.company, actual.date) || bloqueadoPorCierre(f.company as CompanyName, f.fecha)) {
+        window.alert("Esa fecha cae en un ejercicio cerrado: no se puede guardar.");
+        return;
+      }
+      setCostEntries((prev) =>
+        prev.map((c) =>
+          c.id !== f.id
+            ? c
+            : {
+                ...c,
+                company: f.company as CompanyName,
+                date: f.fecha,
+                amount: Number(f.monto) || 0,
+                paymentMethod: f.metodo,
+                cuentaId: f.cuentaId,
+                administration: f.administration,
+                notes: f.notas || "",
+                pagadoPor: f.metodo === "efectivo" && f.administration === "negro" ? f.pagadoPor || undefined : undefined,
+                ...firma(),
+              }
+        )
+      );
+      setPagoACuentaModal(null);
+      return;
+    }
     setCostEntries((prev) => [
       {
         id: newId(),
@@ -17540,8 +17593,25 @@ Escribi CERRAR para confirmar:`
 
   const removeCostEntry = (id: number) => {
     const actual = costEntries.find((e) => e.id === id);
-    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) {
+      window.alert("Ese pago es de un ejercicio cerrado: no se puede quitar.");
+      return;
+    }
     setCostEntries((prev) => prev.filter((entry) => entry.id !== id));
+    // Que no quede nada colgado de un pago que ya no existe: la factura vuelve a impaga y la cuota de la
+    // deuda vuelve a pendiente.
+    if (purchaseInvoices.some((i) => i.paidByCostEntryId === id)) {
+      setPurchaseInvoices((prev) => prev.map((i) => (i.paidByCostEntryId === id ? { ...i, paidByCostEntryId: null } : i)));
+    }
+    if (debtPlans.some((d) => (d.cuotas || []).some((c) => c.pagoCostEntryId === id))) {
+      setDebtPlans((prev) =>
+        prev.map((d) =>
+          (d.cuotas || []).some((c) => c.pagoCostEntryId === id)
+            ? { ...d, cuotas: (d.cuotas || []).map((c) => (c.pagoCostEntryId === id ? { ...c, pagoCostEntryId: null } : c)) }
+            : d
+        )
+      );
+    }
   };
 
   // Fase 3: ubica de una los gastos SIN clasificar (pagos y caja chica) usando las reglas ya aprendidas.
@@ -20704,6 +20774,8 @@ Escribi CERRAR para confirmar:`
               );
             }}
             personas={visibleEmployees.filter((e) => !isEmployeeTerminated(e)).map((e) => String(e.name || "").trim()).filter(Boolean).sort((a, b) => a.localeCompare(b))}
+            onEditarPago={abrirEditarPago}
+            onQuitarPago={removeCostEntry}
             onResolverSinFactura={(pagoId, res) =>
               setCostEntries((prev) => prev.map((c) => (c.id === pagoId ? { ...c, resolucionSinFactura: { ...res, firmante: usuarioFirmante }, ...firma() } : c)))
             }

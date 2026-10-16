@@ -5,6 +5,9 @@ import React, { useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
 export type PagoACuentaForm = {
+  // Si viene, la ventana EDITA ese pago (CostEntry) en vez de crear uno nuevo. aCuenta: si es un pago sin factura.
+  id?: number;
+  aCuenta?: boolean;
   supplier: string;
   taxId: string;
   company: string; // empresa que paga
@@ -45,10 +48,13 @@ export function PagoACuentaModal({
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(640px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800 }}>Pago sin factura · {f.supplier || "proveedor"}</div>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>
+            {f.id ? "Editar pago" : "Pago sin factura"} · {f.supplier || "proveedor"}
+          </div>
           <div style={{ fontSize: 12.5, color: "#64748b" }}>
-            Va al cash flow ahora. En la ficha el proveedor queda a favor y avisa hasta que llegue la factura: al cargarla,
-            elegí "Vincular un pago ya cargado" y este pago.
+            {f.id
+              ? "Corregí lo que haga falta: el cambio se ve en el cash flow, en la cuenta de donde salió y en la ficha. Queda firmado por vos."
+              : 'Va al cash flow ahora. En la ficha el proveedor queda a favor y avisa hasta que llegue la factura: al cargarla, elegí "Vincular un pago ya cargado" y este pago.'}
           </div>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
@@ -99,11 +105,11 @@ export function PagoACuentaModal({
             </label>
           )}
         </div>
-        <label style={lbl}>Por qué (qué se pagó, qué factura falta)
+        <label style={lbl}>{f.id && !f.aCuenta ? "Notas" : "Por qué (qué se pagó, qué factura falta)"}
           <input style={input} value={f.notas} onChange={(e) => set({ notas: e.target.value })} placeholder="Ej. seña de la compra de placas, falta la factura" />
         </label>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>{Number(f.monto) > 0 ? `Queda a favor ${money(Number(f.monto))} hasta la factura` : ""}</span>
+          <span style={{ fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>{Number(f.monto) > 0 && (!f.id || f.aCuenta) ? `Queda a favor ${money(Number(f.monto))} hasta la factura` : ""}</span>
           <span style={{ display: "inline-flex", gap: 8 }}>
             <button type="button" onClick={onCerrar} style={{ ...input, width: "auto", cursor: "pointer" }}>Cancelar</button>
             <button
@@ -112,7 +118,7 @@ export function PagoACuentaModal({
               onClick={() => onGuardar(f)}
               style={{ border: "1px solid #15803d", background: ok ? "#16a34a" : "#bbf7d0", color: "#fff", borderRadius: 8, padding: "8px 18px", fontWeight: 800, cursor: ok ? "pointer" : "not-allowed" }}
             >
-              Guardar pago
+              {f.id ? "Guardar cambios" : "Guardar pago"}
             </button>
           </span>
         </div>
