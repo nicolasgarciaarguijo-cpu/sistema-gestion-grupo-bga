@@ -128,6 +128,8 @@ export function CalendarioAnualTab({
   onAddRetiro,
   inversionesActivas = [],
   gruposCosto = [],
+  onFichaPagoHaberes,
+  onPagoHaber,
   proveedoresSugeridos = [],
   onRenombrarGrupo,
   onAddCommission,
@@ -280,6 +282,9 @@ export function CalendarioAnualTab({
   inversionesActivas?: Array<{ id: number; company: string; moneda: string; renglon: string; label: string }>;
   // PROVEEDORES / CUENTAS CORRIENTES: los grupos de costos (renglones) y los nombres de proveedores.
   gruposCosto?: Array<{ clave: string; nombre: string; tipo: "fijo" | "variable" }>;
+  // HABERES: click en la persona abre su ficha de pago; click en un dia vacio, cargar un pago ahi.
+  onFichaPagoHaberes?: (nombre: string, company: string) => void;
+  onPagoHaber?: (nombre: string, company: string, fechaIso: string) => void;
   proveedoresSugeridos?: string[];
   onRenombrarGrupo?: (clave: string, nuevoNombre: string) => void;
   // Carga en RETIROS SOCIETARIOS: se crea el retiro en el bloque de Balance.
@@ -491,6 +496,9 @@ export function CalendarioAnualTab({
     // Comisiones (egreso comercial), por nombre de trabajo.
     const comisionDetail = new Map<string, Map<string, number>>();
     // PROVEEDORES: "<seccion>|<grupo>" -> proveedor -> dia -> monto; y el total del grupo por circuito.
+    const haberesPorEmpresa = new Map<string, Map<string, number>>();
+    const haberesPorEmpresaB = new Map<string, Map<string, number>>();
+    const haberesPorEmpresaN = new Map<string, Map<string, number>>();
     const provDetail = new Map<string, Map<string, Map<string, number>>>();
     const provB = new Map<string, Map<string, number>>();
     const provN = new Map<string, Map<string, number>>();
@@ -636,6 +644,13 @@ export function CalendarioAnualTab({
         const secMap = customRows.get(sectionKey)!;
         if (!secMap.has(label)) secMap.set(label, new Map());
         add(secMap.get(label)!, e.date, amt);
+        // HABERES: ademas, por EMPRESA + nombre. La misma persona en las dos empresas son dos renglones
+        // (dos fichas de pago); leer solo por nombre los sumaba y los mostraba duplicados.
+        if (sectionKey === "haberes") {
+          const k = `${e.company}|${label}`;
+          addDeep(haberesPorEmpresa, k, e.date, amt);
+          addDeep(neg ? haberesPorEmpresaN : haberesPorEmpresaB, k, e.date, amt);
+        }
         const porCircuito = neg ? customRowsN : customRowsB;
         if (!porCircuito.has(sectionKey)) porCircuito.set(sectionKey, new Map());
         const secMapBN = porCircuito.get(sectionKey)!;
@@ -682,7 +697,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { provDetail, provB, provN, byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, customRowsB, customRowsN, internoDetail, internoByDate, facturaDetail, facturaByDate };
+    return { haberesPorEmpresa, haberesPorEmpresaB, haberesPorEmpresaN, provDetail, provB, provN, byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, customRowsB, customRowsN, internoDetail, internoByDate, facturaDetail, facturaByDate };
   }, [entries, companyScope, dayCols, sectionByKey]);
 
   // CARRIL DE PREVISION (hoy lo alimenta la solapa Seguros). Va aparte de `agg` a proposito: aca no
@@ -2602,16 +2617,17 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         {visibleDayCols.map((c) => <td key={`hab-empty-${c.iso}`} style={{ ...tdCell, ...hi(c.iso) }}></td>)}
                       </tr>
                     ) : employeesInScope.map((emp) => {
-                      const drow = agg.customRows.get("haberes")?.get(emp.name);
+                      const kEmp = `${emp.company}|${emp.name}`;
+                      const drow = agg.haberesPorEmpresa.get(kEmp);
                       const meta = companyMeta.get(emp.company);
+                      const deEsta = (e: Entry) => e.conceptKey === `custom:haberes:${emp.name}` && e.company === emp.company;
                       return (
                         <tr key={`hab-${emp.company}-${emp.name}`}>
                           <td
-                            onContextMenu={(ev) =>
-                              openRowMenu(ev, "haberes", emp.name, "haberes", "__custom__", (e) => e.conceptKey === `custom:haberes:${emp.name}`)
-                            }
-                            title={emp.name}
-                            style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500 }}
+                            onContextMenu={(ev) => openRowMenu(ev, "haberes", emp.name, "haberes", "__custom__", deEsta)}
+                            onClick={() => onFichaPagoHaberes?.(emp.name, emp.company)}
+                            title={`${emp.name} · click: ficha de pago de haberes`}
+                            style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 500, cursor: onFichaPagoHaberes ? "pointer" : undefined }}
                           >
                             {showByCompany && <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: meta?.color || "#64748b", marginRight: 6 }} />}
                             {emp.name}
@@ -2621,10 +2637,10 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                             return (
                               <td
                                 key={`hab-${emp.name}-${c.iso}`}
-                                onClick={() => !v && openAdd("haberes", "__custom__", c.iso, emp.name, emp.company)}
-                                onContextMenu={(ev) =>
-                                  openCellMenu(ev, emp.name, c.iso, "haberes", "__custom__", (e) => e.conceptKey === `custom:haberes:${emp.name}`)
+                                onClick={() =>
+                                  !v && (onPagoHaber ? onPagoHaber(emp.name, emp.company, c.iso) : openAdd("haberes", "__custom__", c.iso, emp.name, emp.company))
                                 }
+                                onContextMenu={(ev) => openCellMenu(ev, emp.name, c.iso, "haberes", "__custom__", deEsta)}
                                 title={
                                   v
                                     ? `${emp.name}: sueldo blanco (B) y negro (N). Click derecho: editar, pasar de blanco a negro, borrar o cargar otro pago`
@@ -2634,8 +2650,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                               >
                                 {v
                                   ? bnCell(
-                                      agg.customRowsB.get("haberes")?.get(emp.name),
-                                      agg.customRowsN.get("haberes")?.get(emp.name),
+                                      agg.haberesPorEmpresaB.get(kEmp),
+                                      agg.haberesPorEmpresaN.get(kEmp),
                                       c.iso,
                                       true
                                     )

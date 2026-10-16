@@ -1094,6 +1094,11 @@ export type CostEntry = {
   // PAGO A CUENTA SIN FACTURA (domain/pagosACuenta): se pago y la factura todavia no llego. Mientras ninguna
   // factura lo tenga vinculado, el proveedor queda a favor y se avisa.
   aCuenta?: boolean;
+  // PAGO DE HABERES (ficha de pago de la persona, domain/fichaHaberes): a quien de la nomina y de que
+  // periodo, y el comprobante del pago.
+  employeeId?: number;
+  periodoHaber?: string; // yyyy-mm
+  comprobante?: { fileName: string; storagePath?: string } | null;
   // RESPONSABLE / FIRMANTE del pago (Nicolas, 2026-10-16): "cada movimiento de dinero o pago debe exigir un
   // responsable o firmante". Persona de la nomina que responde por ese pago.
   firmante?: string;

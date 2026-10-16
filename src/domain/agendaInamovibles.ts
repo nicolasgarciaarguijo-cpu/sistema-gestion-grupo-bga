@@ -143,7 +143,8 @@ export type FuentesInamovibles = {
   }>;
   seguros: Array<{ seguroId: number; company: string; date: string; amount: number; administration: "blanco" | "negro"; conceptKey: string; tipo: string; descripcion: string }>;
   // Sueldos: una fecha por empresa y periodo (4to dia habil del mes siguiente) y, si se sabe, el monto.
-  sueldos: Array<{ company: string; periodo: string; fecha: string; monto: number }>;
+  // Haberes por pagar. Con `clave`/`titulo` es UNA PERSONA (ficha de pago de haberes); sin, la empresa entera.
+  sueldos: Array<{ company: string; periodo: string; fecha: string; monto: number; clave?: string; titulo?: string }>;
   // Facturas de proveedores SIN pagar con fecha de pago (elegida o por la condicion del proveedor).
   facturas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
   real: RealPorRenglonMes;
@@ -307,15 +308,15 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
   f.sueldos
     .filter((s) => enRango(s.fecha))
     .forEach((s) => {
-      const clave = `sueldos:${s.company}:${s.periodo}`;
+      const clave = s.clave || `sueldos:${s.company}:${s.periodo}`;
       out.push(
         conEstado(
           {
             clave,
             origen: "sueldos",
-            refId: `${s.company}|${s.periodo}`,
+            refId: s.clave || `${s.company}|${s.periodo}`,
             company: s.company,
-            titulo: `Sueldos de ${s.periodo.slice(5, 7)}/${s.periodo.slice(0, 4)}`,
+            titulo: s.titulo || `Sueldos de ${s.periodo.slice(5, 7)}/${s.periodo.slice(0, 4)}`,
             detalle: "4.º día hábil del mes siguiente",
             ventanaDesde: s.fecha,
             fechaLimite: s.fecha,

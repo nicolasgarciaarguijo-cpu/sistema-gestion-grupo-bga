@@ -33,8 +33,6 @@ import {
 import type { CompanyName } from "../domain/types";
 import { computeMonthAttendance, dayHoursTotal, deriveConvenioHours } from "../domain/attendance";
 import { reglasDeLiquidacion } from "../domain/reglasLiquidacion";
-import { haberesDelMes } from "../domain/haberes";
-import { paymentDateForPeriod } from "../domain/recibo";
 import type { DayAttendance } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
@@ -44,6 +42,8 @@ type PersonalTabProps = {
   // Recibo oficial (PDF del estudio) y pago de haberes del mes en el cash flow.
   onCargarReciboOficial: (employee: any, month: string, file: File | null) => void;
   setPayrollHaberes: (employeeId: number, month: string, patch: any) => void;
+  // Ficha de pago de haberes de la persona (recibo oficial, pagos, comprobantes, saldo).
+  onFichaPagoHaberes?: (employee: any) => void;
   precargaAuto?: boolean;
   onPrecargaAuto?: (activa: boolean) => void;
   visibleEmployees: any[];
@@ -203,7 +203,7 @@ function ReglasLiquidacion({ config }: { config: any }) {
 
 export function PersonalTab(props: PersonalTabProps) {
   const {
-    employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, precargaAuto = true, onPrecargaAuto, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
+    employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, onFichaPagoHaberes, precargaAuto = true, onPrecargaAuto, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
     employeeBaseConfig, payrollMonth, newEmployeeDraft,
     employeeProvisionModal, employeeDocumentModal, stockPersonalItems, personalReminders, scaleRows,
     isEmployeeSetupModalOpen, uploadMessage, COMPANY_OPTIONS, CATEGORY_OPTIONS,
@@ -753,8 +753,19 @@ export function PersonalTab(props: PersonalTabProps) {
                       cerrar();
                     }}
                   >
-                    {selectedEmployeeId === emp.id ? "Cerrar ficha" : "Abrir ficha"}
+                    {selectedEmployeeId === emp.id ? "Cerrar ficha" : "Abrir ficha de personal"}
                   </button>
+                  {onFichaPagoHaberes && (
+                    <button
+                      style={quickMenuItem}
+                      onClick={() => {
+                        onFichaPagoHaberes(emp);
+                        cerrar();
+                      }}
+                    >
+                      💵 Ficha de pago de haberes
+                    </button>
+                  )}
                   <QuickMenuSep />
                   {/* A fin de mes hay que corroborar recibo por recibo: desde la nomina se imprimen
                       sin tener que abrir y cerrar la ficha de cada uno. */}
@@ -2934,109 +2945,17 @@ export function PersonalTab(props: PersonalTabProps) {
                             )}
                           </div>
 
-                          {/* RECIBO OFICIAL + PAGO EN EL CASH FLOW. El neto del recibo del estudio es el gasto
-                              real en blanco; lo que se corrige aca (o en la planilla) le gana a todo. */}
-                          {(() => {
-                            const esTemporal = selectedEmployee.employmentType === "temporal";
-                            const h = haberesDelMes({
-                              fechaPorDefecto: paymentDateForPeriod(payrollMonth),
-                              payroll,
-                              netoLiquidado: esTemporal ? 0 : Number(payrollSummary.net || 0),
-                              negroAcordado: Number(payrollSummary.blackMonthly || 0),
-                            });
-                            const rec = payroll.reciboOficial;
-                            const fmt = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
-                            const set = (patch: any) => setPayrollHaberes(selectedEmployee.id, payrollMonth, patch);
-                            return (
-                              <div style={{ ...styles.noticeBox, marginTop: 14 }}>
-                                <div style={{ fontWeight: 700, marginBottom: 6 }}>
-                                  Recibo oficial y pago de {monthLabel(payrollMonth)}
-                                </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
-                                  <FileDropButton
-                                    label={rec ? "Reemplazar recibo oficial (PDF)" : "Cargar recibo oficial (PDF)"}
-                                    fileName={rec?.fileName}
-                                    accept=".pdf,application/pdf"
-                                    onFileSelected={(file) => onCargarReciboOficial(selectedEmployee, payrollMonth, file)}
-                                  />
-                                  {rec && (
-                                    <button style={styles.smallBtn} onClick={() => set({ reciboOficial: null })}>
-                                      Quitar recibo
-                                    </button>
-                                  )}
-                                </div>
-                                {rec && (
-                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end", marginTop: 8, fontSize: 13 }}>
-                                    <Field label="Neto del recibo (gasto real en blanco)">
-                                      <AmountInput
-                                        style={styles.input}
-                                        value={rec.neto ?? 0}
-                                        onChange={(n) => set({ reciboOficial: { ...rec, neto: n } })}
-                                      />
-                                    </Field>
-                                    <span>Remunerativo: <strong>{rec.remunerativo ? money(rec.remunerativo) : "—"}</strong></span>
-                                    <span>Período: <strong>{rec.periodo || "—"}</strong></span>
-                                    <span>Fecha de pago: <strong>{fmt(rec.fechaPago)}</strong></span>
-                                    {rec.coincide === false && (
-                                      <span style={{ ...styles.statusPill, ...styles.statusYellow }}>
-                                        No encontré a {selectedEmployee.name} en el PDF: revisá que sea su recibo
-                                      </span>
-                                    )}
-                                    {rec.periodo && rec.periodo !== payrollMonth && (
-                                      <span style={{ ...styles.statusPill, ...styles.statusYellow }}>
-                                        El recibo es de {rec.periodo}
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
-                                <div style={{ marginTop: 10, fontSize: 13, color: "#334155" }}>
-                                  En el cash flow (EGRESOS · HABERES, renglón de {selectedEmployee.name}) el{" "}
-                                  <strong>{fmt(h.fecha)}</strong>:{" "}
-                                  <span style={{ ...styles.statusPill, background: "#e2e8f0", color: "#334155" }}>B</span>{" "}
-                                  <strong>{money(h.blanco)}</strong> <span style={styles.muted}>({h.fuenteBlanco})</span>
-                                  {"  ·  "}
-                                  <span style={{ ...styles.statusPill, background: "#334155", color: "#fff" }}>N</span>{" "}
-                                  <strong>{money(h.negro)}</strong> <span style={styles.muted}>({h.fuenteNegro})</span>
-                                </div>
-                                <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end", marginTop: 8 }}>
-                                  <Field label="Blanco a mano">
-                                    <AmountInput
-                                      style={styles.input}
-                                      value={payroll.haberesBlanco ?? ""}
-                                      onChange={(n) => set({ haberesBlanco: n })}
-                                    />
-                                  </Field>
-                                  <Field label="Negro a mano">
-                                    <AmountInput
-                                      style={styles.input}
-                                      value={payroll.haberesNegro ?? ""}
-                                      onChange={(n) => set({ haberesNegro: n })}
-                                    />
-                                  </Field>
-                                  <Field label="Fecha de pago">
-                                    <input
-                                      style={styles.input}
-                                      type="date"
-                                      value={h.fecha}
-                                      onChange={(e) => set({ haberesFecha: e.target.value || undefined })}
-                                    />
-                                  </Field>
-                                  {(payroll.haberesBlanco != null || payroll.haberesNegro != null || payroll.haberesFecha) && (
-                                    <button
-                                      style={styles.smallBtn}
-                                      onClick={() => set({ haberesBlanco: null, haberesNegro: null, haberesFecha: undefined })}
-                                    >
-                                      Volver a lo automático
-                                    </button>
-                                  )}
-                                </div>
-                                <div style={{ ...styles.muted, marginTop: 6 }}>
-                                  Blanco: lo cargado a mano, si no el neto del recibo oficial, si no el neto liquidado. Negro:
-                                  lo cargado a mano, si no lo acordado. También se corrige desde el cash flow con click derecho.
-                                </div>
-                              </div>
-                            );
-                          })()}
+                          {/* El recibo oficial y los pagos ya no viven aca: van en la FICHA DE PAGO DE HABERES
+                              (click derecho sobre la persona en la nomina). Personal no alimenta el cash flow. */}
+                          {onFichaPagoHaberes && (
+                            <div style={{ ...styles.noticeBox, marginTop: 14 }}>
+                              El recibo oficial, los pagos y su comprobante se cargan en la{" "}
+                              <button type="button" style={{ ...styles.smallBtn, fontWeight: 800 }} onClick={() => onFichaPagoHaberes(selectedEmployee)}>
+                                ficha de pago de haberes
+                              </button>
+                              . Solo lo que se paga ahí va al cash flow.
+                            </div>
+                          )}
 
                           {selectedEmployee.payrolls.filter((item) => item.savedAt).length > 0 && (
                             <div style={styles.savedMonthsList}>

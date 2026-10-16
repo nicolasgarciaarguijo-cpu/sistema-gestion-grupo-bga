@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-16e",
+    fecha: "16/10/2026",
+    titulo: "Haberes: ficha de pago por persona",
+    items: [
+      {
+        titulo: "Personal ya no carga solo el cash flow",
+        que: "Los sueldos, el negro acordado y los viáticos fijos ya no entran automáticos a Haberes. Lo único que va al cash flow es lo que se paga desde la ficha de pago de haberes de cada persona.",
+        como: "Personal → click derecho sobre la persona → '💵 Ficha de pago de haberes'. También desde el Calendario: click sobre el nombre en EGRESOS · Haberes (o sobre un día vacío para cargar un pago ahí).",
+        tab: "personal",
+      },
+      {
+        titulo: "La ficha de pago de haberes",
+        que: "Por período: lo que corresponde (recibo oficial o liquidación en blanco, acordado en negro, viático fijo), los pagos con su comprobante, cuenta y firmante, y el saldo (le debemos / a favor). Avisa si se pagó en blanco sin el recibo oficial. Lo que falta pagar aparece en Pagos programados, por persona, el 4.º día hábil del mes siguiente.",
+        como: "'+ Cargar pago' (período, fecha, circuito, monto, cuenta, comprobante). Click derecho sobre un período: cargar o reemplazar el recibo oficial (PDF), o cargar un pago. El recibo ya no se carga en la liquidación.",
+        tab: "personal",
+      },
+      {
+        titulo: "Cada persona en su empresa",
+        que: "Si alguien está en las dos empresas, son dos fichas y dos renglones distintos en Haberes: ya no se suman ni se duplican.",
+        como: "El renglón y la ficha son de la persona en esa empresa.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-10-16d",
     fecha: "16/10/2026",
     titulo: "Corregir pagos desde la ficha del proveedor",
