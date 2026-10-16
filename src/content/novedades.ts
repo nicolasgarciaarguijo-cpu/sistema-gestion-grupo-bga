@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-16b",
+    fecha: "16/10/2026",
+    titulo: "Notas de crédito de proveedores",
+    items: [
+      {
+        titulo: "Bloque de notas de crédito en la ficha del proveedor",
+        que: "Cada proveedor tiene sus notas de crédito. No mueven plata: bajan lo que le debemos y el crédito fiscal de IVA. Si se aplican a una factura, esa factura debe solo la diferencia (y sale de Pagos programados si queda en cero). Si la factura ya estaba pagada, el proveedor queda a favor. Las notas de crédito del listado de ARCA entran solas a este bloque.",
+        como: "Pago a proveedores → ficha del proveedor → Notas de crédito → '+ Nota de crédito'. Click en una nota para verla, editarla o eliminarla.",
+        tab: "costos",
+      },
+    ],
+  },
+  {
     id: "2026-10-16a",
     fecha: "16/10/2026",
     titulo: "Pagos sin factura y responsable de cada pago",

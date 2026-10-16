@@ -25,7 +25,7 @@ export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   "caja-chica": ["pettyCashExpenses", "pettyCashFunds", "viaticos", "pettyCashTypes"],
   // `fiscalClosings`: cada cierre es de una empresa, asi que se parte como el resto.
   "cash-flow": ["debtPlans", "financialItems", "bankStatementEntries", "ivaVepPayments", "fiscalClosings", "retirosSocietarios"],
-  compras: ["purchaseInvoices", "remitoDrafts", "remitos"],
+  compras: ["purchaseInvoices", "remitoDrafts", "remitos", "creditNotes"],
   // Costos: los gastos van por empresa; los grupos tambien (cada empresa arma los suyos).
   // Modulo nuevo (2026-07-14): no necesita entrada en el splitter SQL porque no hay datos
   // legacy en app_state_modules que partir; el frontend escribe v2 directo.

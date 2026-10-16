@@ -4,7 +4,7 @@
 import React from "react";
 import { textoCondicion, type CondicionPago, type FacturaPorPagar } from "../domain/proveedores";
 
-type Movimiento = { key: string; type: "compra" | "pago"; date: string; detail: string; amount: number; saldo: number; administration: "blanco" | "negro" };
+type Movimiento = { key: string; type: "compra" | "pago" | "nota_credito"; date: string; detail: string; amount: number; saldo: number; administration: "blanco" | "negro" };
 
 export function FichaProveedor({
   nombre,
@@ -24,6 +24,8 @@ export function FichaProveedor({
   onAbrirFactura,
   pagosSinFactura = [],
   onPagoSinFactura,
+  notasCredito = [],
+  onNotaCredito,
   personas = [],
   onResolverSinFactura,
   onCargarFacturaDePago,
@@ -43,7 +45,7 @@ export function FichaProveedor({
     direccion?: string;
     contacto?: string;
   };
-  ledger?: { comprado: number; pagado: number; saldo: number; deudaSinConciliar: number; facturasSinPago: number; esCuentaCorriente: boolean; movimientos: Movimiento[] };
+  ledger?: { comprado: number; notasCredito?: number; pagado: number; saldo: number; deudaSinConciliar: number; facturasSinPago: number; esCuentaCorriente: boolean; movimientos: Movimiento[] };
   porPagar: FacturaPorPagar[];
   renglonesEgreso: Array<{ key: string; label: string }>;
   fvPorRenglon: Record<string, { kind: "fijo" | "variable"; locked: boolean }>;
@@ -59,6 +61,9 @@ export function FichaProveedor({
   // Pagos a cuenta que todavia esperan su factura, y la ventana para cargar uno nuevo.
   pagosSinFactura?: Array<{ id: number; date: string; amount: number; dias: number; company: string; administration: "blanco" | "negro" }>;
   onPagoSinFactura?: () => void;
+  // Notas de credito del proveedor; onNotaCredito(undefined) = nueva, (id) = abrir/editar.
+  notasCredito?: Array<{ id: number; date: string; receiptLetter: string; number: string; total: number; vat: number; motivo: string; aplicaA: string; company: string; source?: string }>;
+  onNotaCredito?: (id?: number) => void;
   personas?: string[];
   // Resolver un pago sin factura sin la factura: comprobante (gasto en negro) o un responsable que asume.
   onResolverSinFactura?: (pagoId: number, res: { tipo: "comprobante" | "responsable"; firmante: string; detalle: string; fecha: string }) => void;
@@ -256,10 +261,38 @@ export function FichaProveedor({
         </div>
 
         <div style={{ ...caja, marginTop: 10 }}>
+          <div style={{ ...titulo, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span>Notas de crédito ({notasCredito.length})</span>
+            {onNotaCredito && (
+              <button type="button" onClick={() => onNotaCredito()} style={{ ...input, cursor: "pointer", fontWeight: 800, fontSize: 12, textTransform: "none", letterSpacing: 0, background: "#f0fdf4", color: "#166534", borderColor: "#86efac" }}>
+                + Nota de crédito
+              </button>
+            )}
+          </div>
+          {notasCredito.length === 0 ? (
+            <div style={{ fontSize: 13, color: "#64748b" }}>No hay notas de crédito de este proveedor.</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <tbody>
+                {[...notasCredito].sort((a, b) => b.date.localeCompare(a.date)).map((n) => (
+                  <tr key={n.id} onClick={() => onNotaCredito?.(n.id)} style={{ cursor: onNotaCredito ? "pointer" : undefined, borderBottom: "1px solid #f1f5f9" }} title="Click: ver o editar la nota de crédito">
+                    <td style={{ padding: "3px 6px", color: "#64748b", whiteSpace: "nowrap" }}>{n.date ? `${n.date.slice(8, 10)}/${n.date.slice(5, 7)}/${n.date.slice(0, 4)}` : "—"}</td>
+                    <td style={{ padding: "3px 6px" }}>NC {n.receiptLetter} {n.number || "—"}{n.source === "arca" ? " · ARCA" : ""}</td>
+                    <td style={{ padding: "3px 6px", color: "#475569" }}>{n.aplicaA ? `aplica a ${n.aplicaA}` : "a la cuenta"}{n.motivo ? ` · ${n.motivo}` : ""}</td>
+                    <td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700, color: "#166534" }}>−{money(n.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div style={{ ...caja, marginTop: 10 }}>
           <div style={titulo}>Cuenta corriente</div>
           {ledger ? (
             <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 13 }}>
               <span>Comprado <strong>{money(ledger.comprado)}</strong></span>
+              {Number(ledger.notasCredito || 0) > 0 && <span>Notas de crédito <strong>−{money(Number(ledger.notasCredito))}</strong></span>}
               <span>Pagado <strong>{money(ledger.pagado)}</strong></span>
               <span style={{ color: ledger.saldo > 1 ? "#b45309" : "#16a34a", fontWeight: 800 }}>
                 {ledger.saldo > 1 ? `Debemos ${money(ledger.saldo)}` : ledger.saldo < -1 ? `A favor ${money(Math.abs(ledger.saldo))}` : "Al día"}
@@ -311,7 +344,7 @@ export function FichaProveedor({
                   {[...ledger.movimientos].reverse().map((m) => (
                     <tr key={m.key} style={{ borderBottom: "1px solid #f1f5f9" }}>
                       <td style={{ padding: "3px 6px", color: "#64748b", whiteSpace: "nowrap" }}>{m.date ? `${m.date.slice(8, 10)}/${m.date.slice(5, 7)}/${m.date.slice(0, 4)}` : "—"}</td>
-                      <td style={{ padding: "3px 6px" }}>{m.type === "compra" ? "Compra" : "Pago"} · {m.detail}</td>
+                      <td style={{ padding: "3px 6px" }}>{m.type === "compra" ? "Compra" : m.type === "nota_credito" ? "Crédito" : "Pago"} · {m.detail}</td>
                       <td style={{ padding: "3px 6px", textAlign: "center" }}>{m.administration === "negro" ? "N" : "B"}</td>
                       <td style={{ padding: "3px 6px", textAlign: "right", color: m.type === "compra" ? "#b45309" : "#16a34a", fontWeight: 700 }}>
                         {m.type === "compra" ? "+" : "−"}{money(Math.abs(m.amount))}

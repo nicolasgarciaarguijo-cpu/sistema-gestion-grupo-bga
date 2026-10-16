@@ -50,9 +50,22 @@ export type LedgerPayment = {
   bankEntryId?: number | null;
 };
 
+// NOTA DE CREDITO del proveedor (domain/notasCredito): baja lo comprado sin mover plata.
+export type LedgerCreditNote = {
+  id: number;
+  company: string;
+  supplier: string;
+  taxId: string;
+  number: string;
+  date: string;
+  total: number;
+  administration: "blanco" | "negro";
+  facturaId?: number | null;
+};
+
 export type LedgerMovement = {
   key: string;
-  type: "compra" | "pago";
+  type: "compra" | "pago" | "nota_credito";
   date: string;
   detail: string;
   amount: number; // compra suma, pago resta
@@ -72,8 +85,9 @@ export type SupplierLedger = {
   // El proveedor esta marcado como cuenta corriente (hay convenio de pago diferido).
   esCuentaCorriente: boolean;
   comprado: number;
+  notasCredito: number; // lo que anularon sus notas de credito
   pagado: number;
-  saldo: number; // comprado - pagado; >0 = le debemos
+  saldo: number; // comprado - notas de credito - pagado; >0 = le debemos
   // Deuda medida por conciliacion (facturas sin pago vinculado). Si no coincide con `saldo`, falta
   // conciliar: hay pagos que todavia no se ataron a una factura.
   deudaSinConciliar: number;
@@ -122,11 +136,13 @@ const isConciliada = (inv: LedgerInvoice) =>
 export function computeSupplierLedgers({
   invoices,
   payments,
+  creditNotes = [],
   currentAccountKeys = [],
   companyScope = "__ALL__",
 }: {
   invoices: LedgerInvoice[];
   payments: LedgerPayment[];
+  creditNotes?: LedgerCreditNote[];
   currentAccountKeys?: string[];
   companyScope?: string;
 }): { ledgers: SupplierLedger[]; saldoTotal: number; sinConciliarTotal: number } {
@@ -155,6 +171,7 @@ export function computeSupplierLedgers({
         taxId: taxId || "",
         esCuentaCorriente: ccKeys.has(key),
         comprado: 0,
+        notasCredito: 0,
         pagado: 0,
         saldo: 0,
         deudaSinConciliar: 0,
@@ -168,12 +185,19 @@ export function computeSupplierLedgers({
     return acc;
   };
 
+  // Credito aplicado a cada factura: esa factura debe solo la diferencia.
+  const aplicado = new Map<number, number>();
+  inScope(creditNotes).forEach((n) => {
+    if (n.facturaId != null) aplicado.set(n.facturaId, (aplicado.get(n.facturaId) || 0) + Math.max(0, Number(n.total || 0)));
+  });
+
   for (const inv of inScope(invoices)) {
     const acc = ensure(inv.supplier, inv.taxId);
     const total = Number(inv.total || 0);
     acc.comprado += total;
-    if (!isConciliada(inv)) {
-      acc.deudaSinConciliar += total;
+    const resta = Math.max(0, total - (aplicado.get(inv.id) || 0));
+    if (!isConciliada(inv) && resta > 0.005) {
+      acc.deudaSinConciliar += resta;
       acc.facturasSinPago += 1;
     }
     acc.movimientos.push({
@@ -187,6 +211,21 @@ export function computeSupplierLedgers({
       invoiceId: inv.id,
       conciliada: isConciliada(inv),
       paidByPerson: inv.paidByPerson || "",
+    });
+  }
+
+  for (const nc of inScope(creditNotes)) {
+    const acc = ensure(nc.supplier, nc.taxId);
+    const amount = Math.max(0, Number(nc.total || 0));
+    acc.notasCredito += amount;
+    acc.movimientos.push({
+      key: `nc-${nc.id}`,
+      type: "nota_credito",
+      date: nc.date || "",
+      detail: `Nota de crédito ${nc.number || ""}`.trim(),
+      amount,
+      administration: nc.administration,
+      saldo: 0,
     });
   }
 
@@ -216,14 +255,15 @@ export function computeSupplierLedgers({
     );
     let saldo = 0;
     for (const mov of acc.movimientos) {
-      saldo += mov.type === "compra" ? mov.amount : -mov.amount;
+      saldo += mov.type === "compra" ? mov.amount : -mov.amount; // pago y nota de credito restan
       mov.saldo = round2(saldo);
     }
     return {
       ...acc,
       comprado: round2(acc.comprado),
+      notasCredito: round2(acc.notasCredito),
       pagado: round2(acc.pagado),
-      saldo: round2(acc.comprado - acc.pagado),
+      saldo: round2(acc.comprado - acc.notasCredito - acc.pagado),
       deudaSinConciliar: round2(acc.deudaSinConciliar),
     };
   });

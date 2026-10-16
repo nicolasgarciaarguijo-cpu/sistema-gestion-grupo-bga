@@ -204,6 +204,8 @@ import { segurosPrevisionMensual } from "./domain/segurosCalendar";
 import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocuments";
 import { workingDaysInMonth, reciboNegroAmount, paymentDateForPeriod } from "./domain/recibo";
 import { buscarFacturaCargada } from "./domain/arcaCruce";
+import { esNotaDeCredito, creditoAplicadoPorFactura, saldoDeFactura, type NotaCreditoCompra } from "./domain/notasCredito";
+import { NotaCreditoModal } from "./ui/NotaCreditoModal";
 import { ComprasTab } from "./tabs/Compras";
 import { DesendeudamientoTab, type PagoCuotaForm, type OtraDeuda } from "./tabs/Desendeudamiento";
 import { camposLegacy, cuotasDeDeuda, cuotasPendientes } from "./domain/desendeudamiento";
@@ -1817,6 +1819,7 @@ type PersistedAppStateData = {
   issuedInvoices: IssuedInvoice[];
   remitoDrafts: RemitoDraft[];
   remitos?: Remito[];
+  creditNotes?: NotaCreditoCompra[];
   companyAssets: CompanyAsset[];
   linkedDocuments: LinkedDocument[];
   employees: Employee[];
@@ -1933,7 +1936,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "compras",
     label: "Compras",
-    fields: ["purchaseInvoices", "remitoDrafts", "remitos"] as const,
+    fields: ["purchaseInvoices", "remitoDrafts", "remitos", "creditNotes"] as const,
   },
   {
     key: "caja-chica",
@@ -3062,6 +3065,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [remitoDrafts, setRemitoDrafts] = useState<RemitoDraft[]>(defaultRemitoDrafts);
   // Remitos con historial (Fase 5): recepciones de proveedor, salidas por trabajo y entregas al cliente.
   const [remitos, setRemitos] = useState<Remito[]>([]);
+  // NOTAS DE CREDITO de proveedores (domain/notasCredito): registro, no mueven plata.
+  const [creditNotes, setCreditNotes] = useState<NotaCreditoCompra[]>([]);
   const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>(defaultCompanyAssets);
   // Documentos vinculados (F1): metadatos de archivos subidos desde la carpeta de la PC a Storage.
   const [linkedDocuments, setLinkedDocuments] = useState<LinkedDocument[]>([]);
@@ -4033,6 +4038,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     prune(costAnalysisEntries, setCostAnalysisEntries);
     prune(remitoDrafts, setRemitoDrafts);
     prune(remitos, setRemitos);
+    prune(creditNotes as any, setCreditNotes as any);
     prune(companyAssets, setCompanyAssets);
     prune(employees, setEmployees);
     prune(fixedMarkers, setFixedMarkers);
@@ -4071,6 +4077,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     costRules,
     remitoDrafts,
     remitos,
+    creditNotes,
     companyAssets,
     employees,
     fixedMarkers,
@@ -4360,6 +4367,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     [financialItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
+  const visibleCreditNotes = useMemo(
+    () => creditNotes.filter((n) => canAccessCompany(n.company as CompanyName)),
+    [creditNotes, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
   const visiblePurchaseInvoices = useMemo(
     () => purchaseInvoices.filter((item) => canAccessCompany(item.company)),
     [purchaseInvoices, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
@@ -9520,6 +9531,7 @@ Escribi CERRAR para confirmar:`
       rows: draft.rows.map((row) => ({ ...row })),
     })),
     remitos: remitos.map((r) => ({ ...r, renglones: r.renglones.map((g) => ({ ...g })) })),
+    creditNotes: creditNotes.map((n) => ({ ...n })),
     companyAssets: companyAssets.map((item) => ({ ...item })),
     linkedDocuments: linkedDocuments.map((item) => ({ ...item })),
     employees: employees.map((item) => {
@@ -9882,6 +9894,7 @@ Escribi CERRAR para confirmar:`
       keepAccessibleByCompany(data.issuedInvoices || defaultIssuedInvoices).map((item) => ({ ...item }))
     );
     setRemitos(keepAccessibleByCompany((data.remitos || []) as Remito[]).map((r) => ({ ...r, renglones: (r.renglones || []).map((g) => ({ ...g })) })));
+    setCreditNotes(keepAccessibleByCompany((data.creditNotes || []) as any).map((n: any) => ({ ...n })) as NotaCreditoCompra[]);
     setRemitoDrafts(
       keepAccessibleByCompany(data.remitoDrafts || defaultRemitoDrafts).map((draft) => ({
         ...draft,
@@ -12119,6 +12132,7 @@ Escribi CERRAR para confirmar:`
     costRules,
     remitoDrafts,
     remitos,
+    creditNotes,
     companyAssets,
     employees,
     employeeBaseConfig,
@@ -14268,11 +14282,12 @@ Escribi CERRAR para confirmar:`
       computeSupplierLedgers({
         invoices: purchaseLedgerInvoices,
         payments: purchaseLedgerPayments,
+        creditNotes: visibleCreditNotes as any,
         currentAccountKeys: suppliers
           .filter((sup) => sup.currentAccount)
           .map((sup) => supplierKey(sup.name, sup.taxId)),
       }),
-    [purchaseLedgerInvoices, purchaseLedgerPayments, suppliers]
+    [purchaseLedgerInvoices, purchaseLedgerPayments, suppliers, visibleCreditNotes]
   );
 
 
@@ -14284,12 +14299,13 @@ Escribi CERRAR para confirmar:`
       const { saldoTotal } = computeSupplierLedgers({
         invoices: purchaseLedgerInvoices,
         payments: purchaseLedgerPayments,
+        creditNotes: visibleCreditNotes as any,
         companyScope: String(c.value),
       });
       porEmpresa.set(String(c.value), saldoTotal);
     });
     return porEmpresa;
-  }, [COMPANY_OPTIONS, purchaseLedgerInvoices, purchaseLedgerPayments]);
+  }, [COMPANY_OPTIONS, purchaseLedgerInvoices, purchaseLedgerPayments, visibleCreditNotes]);
 
   // PAGOS A CUENTA SIN FACTURA todavia pendientes (ver domain/pagosACuenta): avisan en la ficha del
   // proveedor, en Pago a proveedores y en la barra de arriba hasta que se les vincule la factura.
@@ -14473,12 +14489,16 @@ Escribi CERRAR para confirmar:`
           date: inv.date,
           vat: Number(inv.vat || 0),
         })),
-        purchases: visiblePurchaseInvoices.map((p) => ({
-          company: p.company,
-          date: p.invoiceDate,
-          vat: Number(p.vat || 0),
-          administration: p.administration,
-        })),
+        purchases: [
+          ...visiblePurchaseInvoices.map((p) => ({
+            company: p.company,
+            date: p.invoiceDate,
+            vat: Number(p.vat || 0),
+            administration: p.administration,
+          })),
+          // Nota de credito: baja el credito fiscal.
+          ...visibleCreditNotes.map((n) => ({ company: n.company as CompanyName, date: n.date, vat: -Number(n.vat || 0), administration: n.administration })),
+        ],
         veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })),
       });
       // Deuda con la gente: facturas que puso alguien de su bolsillo y no se le reintegraron. La
@@ -14659,12 +14679,15 @@ Escribi CERRAR para confirmar:`
             date: inv.date,
             vat: Number(inv.vat || 0),
           })),
-          purchases: visiblePurchaseInvoices.map((p) => ({
-            company: p.company,
-            date: p.invoiceDate,
-            vat: Number(p.vat || 0),
-            administration: p.administration,
-          })),
+          purchases: [
+            ...visiblePurchaseInvoices.map((p) => ({
+              company: p.company,
+              date: p.invoiceDate,
+              vat: Number(p.vat || 0),
+              administration: p.administration,
+            })),
+            ...visibleCreditNotes.map((n) => ({ company: n.company as CompanyName, date: n.date, vat: -Number(n.vat || 0), administration: n.administration })),
+          ],
           veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })),
         });
         const falta = faltaFacturaPorEmpresa.get(String(company));
@@ -16587,7 +16610,16 @@ Escribi CERRAR para confirmar:`
   // Pagos programados como pagos que vienen. Ver domain/proveedores.
   const facturasAPagar = useMemo(
     () =>
-      facturasPorPagar(purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company)) as any, suppliers as any).map((f) => {
+      facturasPorPagar(
+        // Con nota de credito aplicada, la factura debe solo la diferencia (si queda en 0, no se paga).
+        (() => {
+          const aplicado = creditoAplicadoPorFactura(visibleCreditNotes);
+          return purchaseInvoicesWithBankLink
+            .filter((i) => canAccessCompany(i.company))
+            .map((i) => (aplicado.has(i.id) ? { ...i, total: saldoDeFactura(Number(i.total || 0), aplicado.get(i.id) || 0) } : i));
+        })() as any,
+        suppliers as any
+      ).map((f) => {
         const inv = purchaseInvoicesWithBankLink.find((i) => i.id === f.id);
         const prov = buscarProveedor(suppliers as any, f.supplier, inv?.taxId || "") as any;
         return {
@@ -16595,10 +16627,11 @@ Escribi CERRAR para confirmar:`
           conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, inv?.grupoCosto || prov?.grupoCosto || "|Sin grupo"),
         };
       }),
-    [purchaseInvoicesWithBankLink, suppliers]
+    [purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes]
   );
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
   const [pagoACuentaModal, setPagoACuentaModal] = useState<PagoACuentaForm | null>(null);
+  const [notaCreditoModal, setNotaCreditoModal] = useState<NotaCreditoCompra | null>(null);
   // Guarda el pago a cuenta: es un gasto comun (cash flow, cuenta) marcado aCuenta, del grupo del proveedor.
   const guardarPagoACuenta = (f: PagoACuentaForm) => {
     const prov = buscarProveedor(suppliers as any, f.supplier, f.taxId) as any;
@@ -17103,6 +17136,8 @@ Escribi CERRAR para confirmar:`
     const resumen: string[] = [];
     let emitidasNuevas: IssuedInvoice[] = [];
     let compraNuevas: PurchaseInvoice[] = [];
+    const notasNuevas: NotaCreditoCompra[] = [];
+    const clavesNotas = new Set(creditNotes.map((n) => `${n.company}|${String(n.taxId || "").replace(/\D/g, "")}|${String(n.number || "").replace(/\D/g, "").replace(/^0+/, "")}`));
     // CRUCE con lo ya cargado (a mano o por caja chica): esas no se vuelven a cargar, se marcan como
     // encontradas en ARCA y se completan los datos que les falten (CUIT, neto, IVA).
     const cruzadas = new Map<number, Partial<PurchaseInvoice>>();
@@ -17157,6 +17192,34 @@ Escribi CERRAR para confirmar:`
               source: "arca",
             });
           } else {
+            // NOTA DE CREDITO recibida: no es una compra, va al bloque de notas de credito del proveedor.
+            if (esNotaDeCredito(inv.kind)) {
+              const k = `${empresa.value}|${inv.counterpartyTaxId}|${String(inv.pointOfSale || "").replace(/^0+/, "")}${String(inv.number || "").replace(/^0+/, "").padStart(8, "0")}`;
+              const kAlt = `${empresa.value}|${inv.counterpartyTaxId}|${(String(inv.pointOfSale || "") + String(inv.number || "")).replace(/\D/g, "").replace(/^0+/, "")}`;
+              if (clavesNotas.has(k) || clavesNotas.has(kAlt)) {
+                yaCargadas += 1;
+                continue;
+              }
+              clavesNotas.add(kAlt);
+              notasNuevas.push({
+                id: newId(),
+                company: String(empresa.value),
+                supplier: inv.counterpartyName,
+                taxId: inv.counterpartyTaxId,
+                receiptLetter: (/\b([ABCEM])\s*$/i.exec(inv.kind)?.[1] || "").toUpperCase(),
+                number: `${inv.pointOfSale}-${inv.number}`,
+                date: inv.date,
+                net: Math.abs(inv.net),
+                vat: Math.abs(inv.vat),
+                total: Math.abs(inv.total),
+                administration: "blanco",
+                facturaId: null,
+                motivo: "",
+                source: "arca",
+                notes: "Importado del listado de ARCA",
+              });
+              continue;
+            }
             if (clavesCompras.has(clave)) {
               yaCargadas += 1;
               continue;
@@ -17239,6 +17302,7 @@ Escribi CERRAR para confirmar:`
       }
 
       if (emitidasNuevas.length > 0) setIssuedInvoices((prev) => [...prev, ...emitidasNuevas]);
+      if (notasNuevas.length > 0) setCreditNotes((prev) => [...prev, ...notasNuevas]);
       if (compraNuevas.length > 0 || cruzadas.size > 0) {
         setPurchaseInvoices((prev) => [
           ...prev.map((p) => (cruzadas.has(p.id) ? { ...p, ...cruzadas.get(p.id) } : p)),
@@ -17249,6 +17313,7 @@ Escribi CERRAR para confirmar:`
       const mensaje =
         `ARCA: ${emitidasNuevas.length} factura(s) emitida(s), ${compraNuevas.length} de compra nueva(s)` +
         (compraNuevas.length > 0 ? " (quedan SIN PAGAR para asignarles el pago)" : "") +
+        (notasNuevas.length > 0 ? `, ${notasNuevas.length} nota(s) de crédito` : "") +
         (yaCargadas > 0 ? `, ${yaCargadas} ya estaban cargadas (no se duplican)` : "") +
         (proveedoresNuevos.length > 0 ? ` y ${proveedoresNuevos.length} proveedor(es) dados de alta.` : ".") +
         ` ${resumen.join(" · ")}`;
@@ -20519,6 +20584,33 @@ Escribi CERRAR para confirmar:`
               if (f) setFacturaModal(f);
             }}
             pagosSinFactura={pendientesSinFactura.filter((p) => p.key === key)}
+            notasCredito={visibleCreditNotes
+              .filter((n) => supplierKey(n.supplier, n.taxId) === key || !!buscarProveedor(prov ? [prov] : [], n.supplier, n.taxId))
+              .map((n) => {
+                const f = n.facturaId != null ? purchaseInvoices.find((i) => i.id === n.facturaId) : undefined;
+                return { ...n, aplicaA: f ? `${f.receiptLetter || ""} ${f.invoiceNumber || "s/n"}`.trim() : "" };
+              })}
+            onNotaCredito={(id) => {
+              const existente = id != null ? creditNotes.find((n) => n.id === id) : undefined;
+              setNotaCreditoModal(
+                existente || {
+                  id: newId(),
+                  company: prov && prov.company !== "General" ? String(prov.company) : String(budget.company),
+                  supplier: prov?.name || fichaProveedor.nombre,
+                  taxId: prov?.taxId || fichaProveedor.taxId,
+                  receiptLetter: "A",
+                  number: "",
+                  date: todayIso(),
+                  net: 0,
+                  vat: 0,
+                  total: 0,
+                  administration: "blanco",
+                  facturaId: null,
+                  motivo: "",
+                  source: "manual",
+                }
+              );
+            }}
             personas={visibleEmployees.filter((e) => !isEmployeeTerminated(e)).map((e) => String(e.name || "").trim()).filter(Boolean).sort((a, b) => a.localeCompare(b))}
             onResolverSinFactura={(pagoId, res) =>
               setCostEntries((prev) => prev.map((c) => (c.id === pagoId ? { ...c, resolucionSinFactura: res, firmante: c.firmante || res.firmante } : c)))
@@ -20548,6 +20640,31 @@ Escribi CERRAR para confirmar:`
           />
         );
       })()}
+      {notaCreditoModal && (
+        <NotaCreditoModal
+          key={notaCreditoModal.id}
+          inicial={notaCreditoModal}
+          companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
+          facturas={purchaseInvoices
+            .filter((i) => canAccessCompany(i.company) && supplierKey(i.supplier, i.taxId) === supplierKey(notaCreditoModal.supplier, notaCreditoModal.taxId))
+            .sort((a, b) => String(b.invoiceDate).localeCompare(String(a.invoiceDate)))
+            .map((i) => ({ id: i.id, company: String(i.company), label: `${fmtCorta(i.invoiceDate)} · ${i.receiptLetter || ""} ${i.invoiceNumber || "s/n"} · ${money(Number(i.total || 0))}` }))}
+          money={money}
+          onGuardar={(n) => {
+            setCreditNotes((prev) => (prev.some((x) => x.id === n.id) ? prev.map((x) => (x.id === n.id ? n : x)) : [n, ...prev]));
+            setNotaCreditoModal(null);
+          }}
+          onBorrar={
+            creditNotes.some((x) => x.id === notaCreditoModal.id)
+              ? (id) => {
+                  setCreditNotes((prev) => prev.filter((x) => x.id !== id));
+                  setNotaCreditoModal(null);
+                }
+              : undefined
+          }
+          onCerrar={() => setNotaCreditoModal(null)}
+        />
+      )}
       {pagoACuentaModal && (
         <PagoACuentaModal
           inicial={pagoACuentaModal}
