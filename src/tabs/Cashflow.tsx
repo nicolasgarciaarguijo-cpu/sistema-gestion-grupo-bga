@@ -7,6 +7,7 @@ import {
   inputCelda, inputCeldaDerecha, focoCelda,
 } from "../ui/planilla";
 import { money, formatDateDisplay } from "../lib/format";
+import { FirmanteCelda } from "../ui/FirmanteSelect";
 import type { CompanyName, DebtPlan, CashHolding } from "../domain/types";
 import type { CapitalSummary } from "../domain/contributions";
 import type { LoanLine } from "../domain/loanLines";
@@ -898,6 +899,9 @@ export function CashflowTab({
                         value={v.amount}
                         onChange={(n) => updateIvaVepPayment(v.id, "amount", n)}
                       />
+                    </Field>
+                    <Field label="Responsable / firmante">
+                      <FirmanteCelda value={v.firmante} firmadoEn={v.firmadoEn} />
                     </Field>
                   </div>
                 </div>

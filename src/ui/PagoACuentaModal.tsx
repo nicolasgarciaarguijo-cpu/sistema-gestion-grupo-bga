@@ -2,6 +2,7 @@
 // donde sale; en la ficha el proveedor queda A FAVOR y se avisa hasta que llegue la factura y se le vincule
 // este pago (ver domain/pagosACuenta).
 import React, { useState } from "react";
+import { FirmanteFijo } from "./FirmanteSelect";
 
 export type PagoACuentaForm = {
   supplier: string;
@@ -13,7 +14,7 @@ export type PagoACuentaForm = {
   cuentaId?: string;
   administration: "blanco" | "negro";
   pagadoPor?: string;
-  firmante?: string; // responsable del pago (obligatorio)
+  firmante?: string; // lo graba App: el usuario que opera
   notas: string;
 };
 
@@ -39,7 +40,7 @@ export function PagoACuentaModal({
 }) {
   const [f, setF] = useState<PagoACuentaForm>(inicial);
   const set = (patch: Partial<PagoACuentaForm>) => setF((p) => ({ ...p, ...patch }));
-  const ok = !!f.fecha && Number(f.monto) > 0 && !!f.company && !!String(f.firmante || "").trim();
+  const ok = !!f.fecha && Number(f.monto) > 0 && !!f.company;
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(640px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
@@ -86,14 +87,7 @@ export function PagoACuentaModal({
               <option value="negro">Negro</option>
             </select>
           </label>
-          <label style={lbl} title="Persona que responde por este pago: queda como firmante.">Responsable / firmante *
-            <select style={{ ...input, ...(!f.firmante ? { borderColor: "#f59e0b", background: "#fffbeb" } : {}) }} value={f.firmante || ""} onChange={(e) => set({ firmante: e.target.value || undefined })}>
-              <option value="">— elegí quién responde —</option>
-              {personas.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </label>
+          <FirmanteFijo labelStyle={lbl} />
           {f.metodo === "efectivo" && f.administration === "negro" && (
             <label style={lbl}>Quién pagó
               <select style={input} value={f.pagadoPor || ""} onChange={(e) => set({ pagadoPor: e.target.value || undefined })}>

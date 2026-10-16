@@ -29,6 +29,9 @@ export type CapitalEntry = {
   cuentaId?: string; // cuenta donde entro / de donde salio (ver domain/cuentas.ts)
   usdValue?: number; // monto congelado en USD (solo referencia, no se suma con pesos)
   notes: string;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 export type CapitalColorSplit = { blanco: number; negro: number; total: number };

@@ -383,6 +383,9 @@ export type Payment = {
   // e "inamovible" (rojo) son cobros PREVISTOS: viven en ApprovedJob.cobrosPrevistos, no en payments,
   // y no suman en el cobrado, ni en la planilla, ni en la plata disponible hasta pasar a realizado.
   estado?: "realizado" | "estimado" | "inamovible";
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 export type Retention = {
@@ -465,6 +468,9 @@ export type CommissionPayment = {
   // Circuito del pago de comisión (definición administrativa). Ausente = blanco.
   administration?: "blanco" | "negro";
   attachmentName?: string;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 export type ApprovedJob = {
@@ -562,6 +568,9 @@ export type FinancialCalendarItem = {
   // Si el usuario editó a mano un item autogenerado (p.ej. partió el saldo en cuotas),
   // la regeneración NO lo recalcula: respeta lo cargado a mano ("sin pisarse").
   userEdited?: boolean;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 export type PurchaseInvoice = {
@@ -624,6 +633,9 @@ export type RetiroSocietario = {
   cuentaId?: string;
   motivo: string;
   origen?: "manual" | "arqueo";
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 export type Viatico = {
@@ -637,6 +649,9 @@ export type Viatico = {
   cuentaId?: string;
   rendido?: boolean;
   notas: string;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 // TIPOS DE CAJA CHICA (2026-10-14): ordenan las cajas y sus gastos (General, Viaticos, Obra...). Al
@@ -674,6 +689,9 @@ export type PettyCashFund = {
   active: boolean;
   closed: boolean;
   closedDate: string;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 export type PettyCashExpense = {
@@ -695,6 +713,9 @@ export type PettyCashExpense = {
   costGroup?: string;
   // Tipo del grupo (fijo/variable): puede haber dos grupos con el mismo nombre y distinto tipo.
   costGroupKind?: "fijo" | "variable";
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 export type DebtPlan = {
@@ -736,6 +757,9 @@ export type CashHolding = {
   // Cuenta de donde sale / a donde entra la plata (ver domain/cuentas.ts). Ausente = la por defecto.
   cuentaId?: string;
   notes: string;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 // BANDERITA DE REVISION en el Calendario anual.
@@ -782,6 +806,9 @@ export type InternalTransfer = {
   bank: string; // que cuenta (texto libre): de donde salio o a donde entro
   description: string;
   notes: string;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 // MOVIMIENTO DE LA CUENTA CORRIENTE CON LA GENTE, cargado a mano.
@@ -810,6 +837,9 @@ export type PersonLedgerEntry = {
   paymentMethod?: PaymentMethod;
   description: string;
   notes: string;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 // VEP de pago de IVA (trimestral). Al cargarlo, la posicion de IVA de esa empresa se reinicia: el
@@ -824,6 +854,9 @@ export type IvaVepPayment = {
   cuentaId?: string;
   notes: string;
   attachmentName?: string;
+  // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
+  firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
 };
 
 export type BankStatementEntry = {
@@ -1061,6 +1094,7 @@ export type CostEntry = {
   // RESPONSABLE / FIRMANTE del pago (Nicolas, 2026-10-16): "cada movimiento de dinero o pago debe exigir un
   // responsable o firmante". Persona de la nomina que responde por ese pago.
   firmante?: string;
+  firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
   // Pago sin factura RESUELTO sin factura: es un gasto en negro con su comprobante, o un responsable asume la
   // falta de la factura y queda como firmante de esa aprobacion. Con esto deja de estar pendiente.
   resolucionSinFactura?: { tipo: "comprobante" | "responsable"; firmante: string; detalle: string; fecha: string };

@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-16c",
+    fecha: "16/10/2026",
+    titulo: "Cada movimiento de plata queda firmado por quien lo carga",
+    items: [
+      {
+        titulo: "El firmante es el usuario que opera",
+        que: "Todo movimiento de plata (gastos, pagos de facturas, pagos sin factura, cobros, comisiones, caja chica, pases, aportes, cuenta con la gente, retiros, VEP, cuotas, lo cargado desde la planilla) queda firmado SOLO por el usuario que tiene la sesión iniciada. No se elige a otra persona. Al editarlo, firma quien lo editó: queda el último responsable, con fecha y hora.",
+        como: "En los formularios se ve 'Responsable / firmante: ✍ tu nombre' (no se cambia). En las planillas, cada fila muestra '✍ nombre'; pasando el mouse se ve cuándo firmó.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Dónde se ve",
+        que: "Pago a proveedores (columna del gasto), Trabajos aprobados (cobros y comisiones), Caja chica (pasando el mouse por la caja o el gasto), Movimientos internos, retiros societarios, VEP de IVA y el click derecho sobre un número del Calendario anual.",
+        como: "Lo cargado antes de la regla aparece como '✍ sin firmante' en ámbar y queda firmado la próxima vez que alguien lo edite.",
+        tab: "costos",
+      },
+    ],
+  },
+  {
     id: "2026-10-16b",
     fecha: "16/10/2026",
     titulo: "Notas de crédito de proveedores",
@@ -41,8 +60,8 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Responsable / firmante obligatorio",
-        que: "Todo pago que se carga con una factura o sin factura pide quién responde por él: queda como firmante.",
-        como: "Campo 'Responsable / firmante' en el pago.",
+        que: "Todo pago que se carga con una factura o sin factura queda firmado por el usuario que lo carga.",
+        como: "Se ve como 'Responsable / firmante' en el pago; no se elige.",
         tab: "costos",
       },
       {

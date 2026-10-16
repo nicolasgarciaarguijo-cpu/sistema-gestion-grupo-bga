@@ -4,6 +4,7 @@
 // proveedor tiene candado, va siempre a su grupo y no se puede cambiar.
 // La caja chica en si NO va al cash flow: van estos gastos, como pago a proveedor.
 import React, { useMemo, useState } from "react";
+import { FirmanteFijo } from "./FirmanteSelect";
 
 export type GastoCajaForm = {
   id?: number;
@@ -24,6 +25,7 @@ export type GastoCajaForm = {
   net21?: number;
   vat?: number;
   attachmentName?: string; // archivo leido por el lector de tickets
+  firmante?: string; // ultimo usuario que firmo el gasto (solo para mostrar; lo graba App)
 };
 
 type ProveedorOpt = {
@@ -117,6 +119,7 @@ export function GastoCajaChicaModal({
                 ))}
               </select>
             </label>
+            <FirmanteFijo previo={g.firmante} labelStyle={lbl} />
           </div>
           {cajaElegida && <div style={{ marginTop: 6, fontSize: 12, color: "#475569" }}>Rinde: <b>{cajaElegida.responsible || "sin responsable"}</b></div>}
         </div>

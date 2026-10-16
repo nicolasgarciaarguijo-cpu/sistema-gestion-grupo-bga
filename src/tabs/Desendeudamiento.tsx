@@ -8,6 +8,7 @@ import React, { useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import type { DebtPlan } from "../domain/types";
+import { FirmanteFijo } from "../ui/FirmanteSelect";
 import {
   TIPOS_DEUDA,
   cuotasDeDeuda,
@@ -447,6 +448,7 @@ export function DesendeudamientoTab({
                     <option value="negro">Negro</option>
                   </select>
                 </label>
+                <FirmanteFijo labelStyle={lbl} />
               </div>
             ) : (
               <label style={lbl}>Pago ya cargado (de {pago.deuda.acreedor || "este acreedor"})

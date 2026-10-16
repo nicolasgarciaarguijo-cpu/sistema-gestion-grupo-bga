@@ -25,6 +25,8 @@ type Entry = {
   administration?: "blanco" | "negro";
   currency?: "ARS" | "USD";
   costKind?: "fijo" | "variable";
+  // Responsable / firmante del movimiento (si su solapa lo guarda). Se muestra en el click derecho.
+  firmante?: string;
 };
 
 // De que tipo es la plata que entra, segun la seccion de la planilla donde se carga. Sirve para que
@@ -92,6 +94,8 @@ type AddForm = {
   notes: string;
   // De donde sale / a donde entra la plata (ver domain/cuentas.ts). "" = la cuenta por defecto.
   cuentaId?: string;
+  // Ultimo firmante del movimiento que se edita (solo para mostrar: al guardar firma el usuario que opera).
+  firmante?: string;
 };
 
 import { CalendarMark, CalendarNote, CALENDAR_MARK_COLORS, markHex, markLabel } from "../domain/calendarMarks";
@@ -104,6 +108,7 @@ import { estadoDePrevision, previsionPorConceptoYDia, previsionPorConceptoYMes }
 import { PAYMENT_METHOD_OPTIONS, type PaymentMethod } from "../domain/types";
 import type { Cuenta } from "../domain/cuentas";
 import { SelectorCuenta } from "./CuentasPanel";
+import { FirmanteFijo } from "../ui/FirmanteSelect";
 
 export function CalendarioAnualTab({
   entries,
@@ -1317,6 +1322,7 @@ export function CalendarioAnualTab({
       administration: e.administration === "negro" ? "negro" : "blanco",
       costKind: e.costKind === "fijo" || e.costKind === "variable" ? e.costKind : "",
       notes: "",
+      firmante: e.firmante,
     });
     setCellMenu(null);
   };
@@ -3476,6 +3482,11 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
             <QuickMenuTitle>
               {cellMenu.label} · {dayLabel}
             </QuickMenuTitle>
+            {list.some((e) => e.firmante) && (
+              <div style={{ fontSize: 11, color: "#475569", padding: "2px 8px" }} title="Responsable / firmante del movimiento">
+                ✍ Firmante: {Array.from(new Set(list.map((e) => e.firmante || "sin firmante"))).join(", ")}
+              </div>
+            )}
             {onSetCobroEstado && (() => {
               // Cobros PREVISTOS de esta celda (renglon del trabajo, este dia).
               const budget = cellMenu.label.split("·")[0].trim();
@@ -4024,6 +4035,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     {companyOptions.map((c) => <option key={c.value} value={c.value}>{c.short || c.value}</option>)}
                   </select>
                 </label>
+                {!(addForm.editId || "").startsWith("bank-") && <FirmanteFijo previo={addForm.firmante} labelStyle={lblStyle} />}
                 <label style={lblStyle}>
                   Sección
                   <select style={styles.input} value={addForm.sectionKey} onChange={(e) => {

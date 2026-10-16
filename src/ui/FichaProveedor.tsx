@@ -3,6 +3,7 @@
 // historial. Es una sola ficha para todo el sistema: se abre desde donde este vinculado el proveedor.
 import React from "react";
 import { textoCondicion, type CondicionPago, type FacturaPorPagar } from "../domain/proveedores";
+import { FirmanteFijo } from "./FirmanteSelect";
 
 type Movimiento = { key: string; type: "compra" | "pago" | "nota_credito"; date: string; detail: string; amount: number; saldo: number; administration: "blanco" | "negro" };
 
@@ -383,15 +384,8 @@ export function FichaProveedor({
               {resolver.tipo === "comprobante" ? "Comprobante (número, recibo, ticket, qué es)" : "Por qué no hay factura"}
               <input style={input} value={resolver.detalle} onChange={(e) => setResolver({ ...resolver, detalle: e.target.value })} autoFocus />
             </label>
-            <label style={{ fontSize: 12, color: "#475569", fontWeight: 600, display: "grid", gap: 3 }}>
-              Responsable / firmante *
-              <select style={input} value={resolver.firmante} onChange={(e) => setResolver({ ...resolver, firmante: e.target.value })}>
-                <option value="">— elegí quién firma —</option>
-                {personas.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </label>
+            {/* El firmante es el usuario que opera (Nicolas, 2026-10-16): no se elige. */}
+            <FirmanteFijo />
             <div style={{ fontSize: 12, color: "#64748b" }}>
               {resolver.tipo === "comprobante"
                 ? "El pago queda respaldado por el comprobante y deja de pedir factura. El firmante responde por él."
@@ -401,8 +395,8 @@ export function FichaProveedor({
               <button type="button" style={{ ...input, cursor: "pointer" }} onClick={() => setResolver(null)}>Cancelar</button>
               <button
                 type="button"
-                disabled={!resolver.firmante || !resolver.detalle.trim()}
-                style={{ ...input, cursor: resolver.firmante && resolver.detalle.trim() ? "pointer" : "not-allowed", fontWeight: 800, background: resolver.firmante && resolver.detalle.trim() ? "#16a34a" : "#bbf7d0", color: "#fff", borderColor: "#15803d" }}
+                disabled={!resolver.detalle.trim()}
+                style={{ ...input, cursor: resolver.detalle.trim() ? "pointer" : "not-allowed", fontWeight: 800, background: resolver.detalle.trim() ? "#16a34a" : "#bbf7d0", color: "#fff", borderColor: "#15803d" }}
                 onClick={() => {
                   onResolverSinFactura?.(resolver.id, { tipo: resolver.tipo, firmante: resolver.firmante, detalle: resolver.detalle.trim(), fecha: new Date().toISOString().slice(0, 10) });
                   setResolver(null);

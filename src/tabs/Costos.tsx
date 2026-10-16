@@ -39,6 +39,7 @@ import type {
   Supplier,
 } from "../domain/types";
 import type { ReconciliationSummary } from "../domain/suppliers";
+import { textoFirmante } from "../ui/FirmanteSelect";
 
 export type CostStatementDraftRow = {
   id: number;
@@ -949,6 +950,16 @@ export function CostosTab({
                         )?.label) || ""}
                       </span>
                       {entry.invoiceRef && <span title="Factura que respalda el pago">{entry.invoiceRef}</span>}
+                      {entry.firmante ? (
+                        <span title={textoFirmante(entry.firmante, entry.firmadoEn)}>✍ {entry.firmante}</span>
+                      ) : entry.source !== "extracto" ? (
+                        <span
+                          title="Sin firmante (cargado antes de la regla): queda firmado por el próximo usuario que lo edite"
+                          style={{ background: "#fffbeb", color: "#92400e", fontWeight: 700, borderRadius: 999, padding: "0 6px" }}
+                        >
+                          ✍ falta
+                        </span>
+                      ) : null}
                       {renderCotejo(entry.id)}
                       <span style={{ color: "#94a3b8" }}>{entry.source === "extracto" ? "extracto" : "manual"}</span>
                       <button

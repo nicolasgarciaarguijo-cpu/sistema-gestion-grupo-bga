@@ -5,6 +5,7 @@ import React from "react";
 import { Panel, ButtonLike } from "../ui/primitives";
 import { resumenRetiros } from "../domain/retirosSocietarios";
 import type { RetiroSocietario } from "../domain/types";
+import { FirmanteCelda } from "../ui/FirmanteSelect";
 
 const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px", fontSize: 12.5, width: "100%", boxSizing: "border-box" };
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 600, padding: "6px 6px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" };
@@ -115,6 +116,7 @@ export function RetirosSocietariosPanel({
                 <th style={th}>B/N</th>
                 <th style={th}>Sale de</th>
                 <th style={th}>Motivo</th>
+                <th style={th}>Firmante</th>
                 <th style={th}></th>
               </tr>
             </thead>
@@ -168,6 +170,9 @@ export function RetirosSocietariosPanel({
                     </td>
                     <td style={td}>
                       <input style={input} disabled={traba} value={r.motivo || ""} placeholder="Ej. retiro mensual" onChange={(e) => onUpdate(r.id, "motivo", e.target.value)} />
+                    </td>
+                    <td style={{ ...td, width: 140 }}>
+                      <FirmanteCelda value={r.firmante} firmadoEn={r.firmadoEn} />
                     </td>
                     <td style={{ ...td, width: 40 }}>
                       {!traba && (

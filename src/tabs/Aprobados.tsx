@@ -40,6 +40,7 @@ const jobInvoicingSem = (job: any) => {
   return getInvoicingSemaphore(invoicedNetReal, billedNetTarget);
 };
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
+import { FirmanteCelda } from "../ui/FirmanteSelect";
 
 // Tono del semaforo de planos -> nivel del componente Semaforo del sistema.
 const PLANO_TONE_LEVEL: Record<PlanoTone, SemaphoreLevel> = {
@@ -1637,6 +1638,9 @@ export function AprobadosTab({
                               }
                             />
                           </Field>
+                          <Field label="Responsable / firmante">
+                            <FirmanteCelda value={payment.firmante} firmadoEn={payment.firmadoEn} />
+                          </Field>
                         </TwoCol>
                         {payment.currency === "USD" && (
                           <div
@@ -2014,6 +2018,9 @@ export function AprobadosTab({
                             value={payment.note}
                             onChange={(e) => updateCommissionPayment(selectedApprovedJob.id, payment.id, "note", e.target.value)}
                           />
+                        </Field>
+                        <Field label="Responsable / firmante">
+                          <FirmanteCelda value={payment.firmante} firmadoEn={payment.firmadoEn} />
                         </Field>
                         <div style={styles.uploadActions}>
                           <label style={styles.buttonLikeLabel}>

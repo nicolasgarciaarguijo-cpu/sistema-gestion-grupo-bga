@@ -91,6 +91,7 @@ import { conteoBlanqueo, type ConteoBlanqueo, type MovFisco } from "./domain/fal
 import { conteoPagosPorPersona, pagosCruzadosEntreEmpresas } from "./domain/pagosPorPersona";
 import { pagosSinFactura, resumenPagosSinFactura } from "./domain/pagosACuenta";
 import { PagoACuentaModal, type PagoACuentaForm } from "./ui/PagoACuentaModal";
+import { UsuarioFirmanteContext } from "./ui/FirmanteSelect";
 import { resumenCaja } from "./domain/cajaChicaFicha";
 import {
   construirCierre,
@@ -4598,6 +4599,12 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     [accessibleEmployees]
   );
 
+  // RESPONSABLE / FIRMANTE (Nicolas, 2026-10-16): es SIEMPRE el usuario que opera, sin selector. Se graba
+  // solo (firmante + firmadoEn) al crear y al editar cada movimiento de plata: queda el ultimo responsable.
+  // Ver ui/FirmanteSelect.
+  const usuarioFirmante = String(supabaseProfile?.full_name || supabaseSession?.user?.email || "Usuario").trim();
+  const firma = () => ({ firmante: usuarioFirmante, firmadoEn: new Date().toISOString() });
+
   const formerEmployees = useMemo(
     () =>
       accessibleEmployees
@@ -7306,6 +7313,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           cuentaId: r.cuentaId,
           motivo: `Asentado en el arqueo del cierre (${r.nombre})`,
           origen: "arqueo" as const,
+          ...firma(),
         })),
         ...prev,
       ]);
@@ -7324,6 +7332,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           ...(a.moneda === "USD" ? { usdValue: a.monto } : {}),
           cuentaId: a.cuentaId,
           notes: `Asentado en el arqueo del cierre (${a.nombre})`,
+          ...firma(),
         })),
         ...prev,
       ]);
@@ -10996,6 +11005,7 @@ Escribi CERRAR para confirmar:`
   const addPayment = (jobId: number, estado: "realizado" | "estimado" | "inamovible" = "realizado") => {
     const nuevo: Payment = {
       id: newId(),
+      ...firma(),
       paymentNumber: "",
       paymentDate: "",
       transactionType: "transferencia",
@@ -11052,12 +11062,12 @@ Escribi CERRAR para confirmar:`
           ? {
               ...job,
               payments: job.payments.map((payment) =>
-                payment.id === paymentId ? { ...payment, [field]: value } : payment
+                payment.id === paymentId ? { ...payment, [field]: value, ...firma() } : payment
               ),
               ...(job.cobrosPrevistos
                 ? {
                     cobrosPrevistos: job.cobrosPrevistos.map((payment) =>
-                      payment.id === paymentId ? { ...payment, [field]: value } : payment
+                      payment.id === paymentId ? { ...payment, [field]: value, ...firma() } : payment
                     ),
                   }
                 : {}),
@@ -11219,6 +11229,7 @@ Escribi CERRAR para confirmar:`
               commissionPayments: [
                 {
                   id: newId(),
+                  ...firma(),
                   paymentDate: todayIso(),
                   amount: 0,
                   note: "",
@@ -11244,7 +11255,7 @@ Escribi CERRAR para confirmar:`
           ? {
               ...job,
               commissionPayments: job.commissionPayments.map((item) =>
-                item.id === paymentId ? { ...item, [field]: value } : item
+                item.id === paymentId ? { ...item, [field]: value, ...firma() } : item
               ),
             }
           : job
@@ -12175,6 +12186,15 @@ Escribi CERRAR para confirmar:`
   ) => {
     setter((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)));
   };
+  // Igual, pero para movimientos de plata: el que cambia algo queda como ultimo responsable.
+  const updateArrayItemFirmado = <T extends { id: number }>(
+    setter: React.Dispatch<React.SetStateAction<T[]>>,
+    id: number,
+    field: keyof T,
+    value: T[keyof T]
+  ) => {
+    setter((prev) => prev.map((item) => (item.id === id ? { ...item, [field]: value, ...firma() } : item)));
+  };
 
   // Asignar (o desasignar) el renglón del calendario a un conjunto de movimientos del banco. Desde el
   // propio calendario: clasificar "Sin clasificar" en bloque por concepto.
@@ -12253,6 +12273,7 @@ Escribi CERRAR para confirmar:`
   }) => {
     const item: FinancialCalendarItem = {
       id: newId(),
+      ...firma(),
       company: m.company,
       date: m.date,
       type: m.type,
@@ -12295,6 +12316,7 @@ Escribi CERRAR para confirmar:`
     const previsto = pay.estado === "estimado" || pay.estado === "inamovible";
     const nuevo: Payment = {
       id: newId(),
+      ...firma(),
       paymentNumber: "",
       paymentDate: pay.date,
       transactionType: pay.transactionType,
@@ -12325,6 +12347,7 @@ Escribi CERRAR para confirmar:`
     if (!job) return false;
     const nuevo: CommissionPayment = {
       id: newId(),
+      ...firma(),
       paymentDate: pago.date,
       amount: Number(pago.amount) || 0,
       cuentaId: pago.cuentaId || undefined,
@@ -12351,6 +12374,7 @@ Escribi CERRAR para confirmar:`
     setCostEntries((prev) => [
       {
         id: newId(),
+        ...firma(),
         company: g.company as CompanyName,
         date: g.date,
         group: g.group,
@@ -12424,6 +12448,7 @@ Escribi CERRAR para confirmar:`
                 ...r,
                 ...(patch.amount !== undefined ? { monto: Number(patch.amount) || 0 } : {}),
                 ...(patch.date ? { fecha: patch.date } : {}),
+                ...firma(),
                 ...(patch.administration ? { administration: patch.administration } : {}),
               }
         )
@@ -12461,6 +12486,7 @@ Escribi CERRAR para confirmar:`
                 ...v,
                 ...(patch.amount !== undefined ? { monto: Number(patch.amount) || 0 } : {}),
                 ...(patch.date ? { fecha: patch.date } : {}),
+                ...firma(),
                 ...(patch.administration ? { administration: patch.administration } : {}),
               }
         )
@@ -12480,6 +12506,7 @@ Escribi CERRAR para confirmar:`
                 ...t,
                 ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
                 ...(patch.date ? { date: patch.date } : {}),
+                ...firma(),
                 ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
               }
         )
@@ -12497,6 +12524,7 @@ Escribi CERRAR para confirmar:`
                 ...c,
                 ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
                 ...(patch.date ? { date: patch.date } : {}),
+                ...firma(),
                 ...(patch.administration ? { color: patch.administration } : {}),
                 ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
               }
@@ -12546,6 +12574,7 @@ Escribi CERRAR para confirmar:`
                     ...cp,
                     ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
                     ...(patch.date ? { paymentDate: patch.date } : {}),
+                    ...firma(),
                     ...(patch.administration ? { administration: patch.administration } : {}),
                   }
             ),
@@ -12568,6 +12597,7 @@ Escribi CERRAR para confirmar:`
                 ...g,
                 ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
                 ...(patch.date ? { date: patch.date } : {}),
+                ...firma(),
                 ...(patch.company ? { company: patch.company as CompanyName } : {}),
                 ...(patch.administration ? { administration: patch.administration } : {}),
                 ...(patch.conceptKey !== undefined ? { conceptKey: patch.conceptKey || undefined } : {}),
@@ -12594,7 +12624,14 @@ Escribi CERRAR para confirmar:`
           administration: patch.administration,
         });
         if (!siguiente) return false;
-        setApprovedJobs(siguiente);
+        const refId = espejo!.sourceRefId;
+        setApprovedJobs(
+          refId != null
+            ? siguiente.map((j) =>
+                j.id !== espejo!.sourceJobId ? j : { ...j, payments: (j.payments || []).map((p) => (p.id === refId ? { ...p, ...firma() } : p)) }
+              )
+            : siguiente
+        );
         return true;
       }
       setFinancialItems((prev) =>
@@ -12604,6 +12641,7 @@ Escribi CERRAR para confirmar:`
                 ...item,
                 ...(patch.amount !== undefined ? { amount: Number(patch.amount) || 0 } : {}),
                 ...(patch.date ? { date: patch.date } : {}),
+                ...firma(),
                 ...(patch.company ? { company: patch.company as CompanyName } : {}),
                 ...(patch.administration ? { administration: patch.administration } : {}),
                 ...(patch.conceptKey !== undefined ? { conceptKey: patch.conceptKey || undefined } : {}),
@@ -13099,6 +13137,7 @@ Escribi CERRAR para confirmar:`
         supplier: d.acreedor || d.concept,
         notes: "Pago de cuota (Desendeudamiento)",
         paymentMethod: f.metodo,
+        ...firma(),
       };
       setCostEntries((prev) => [pago, ...prev]);
     }
@@ -13117,6 +13156,7 @@ Escribi CERRAR para confirmar:`
     setCapitalEntries((prev) => [
       {
         id: newId(),
+        ...firma(),
         company: budget.company,
         date: todayIso(),
         origin: "",
@@ -13138,6 +13178,7 @@ Escribi CERRAR para confirmar:`
     setCashHoldings((prev) => [
       {
         id: newId(),
+        ...firma(),
         company: budget.company,
         date: todayIso(),
         description: "",
@@ -13159,6 +13200,7 @@ Escribi CERRAR para confirmar:`
     setInternalTransfers((prev) => [
       {
         id: newId(),
+        ...firma(),
         company: budget.company,
         date: todayIso(),
         direction: "efectivo_a_banco",
@@ -13183,6 +13225,7 @@ Escribi CERRAR para confirmar:`
     setPersonLedgerEntries((prev) => [
       {
         id: newId(),
+        ...firma(),
         company: budget.company,
         person: "",
         date: todayIso(),
@@ -13205,6 +13248,7 @@ Escribi CERRAR para confirmar:`
     setIvaVepPayments((prev) => [
       {
         id: newId(),
+        ...firma(),
         company: budget.company,
         date: todayIso(),
         period: "",
@@ -13221,7 +13265,7 @@ Escribi CERRAR para confirmar:`
     value: string | number
   ) => {
     setIvaVepPayments((prev) =>
-      prev.map((item) => (item.id === entryId ? { ...item, [field]: value } : item))
+      prev.map((item) => (item.id === entryId ? { ...item, [field]: value, ...firma() } : item))
     );
   };
 
@@ -16205,6 +16249,40 @@ Escribi CERRAR para confirmar:`
     return salida;
   }, [cashFlowEntries, costEntries, purchaseInvoices, suppliers, costGroups, pettyCashExpenses]);
 
+  // RESPONSABLE / FIRMANTE de cada numero de la planilla: se busca en la solapa duena del movimiento por
+  // el prefijo del id. Solo para mostrarlo (click derecho sobre el numero); no cambia ningun monto.
+  const cashFlowEntriesConFirmante = useMemo(() => {
+    const num = (id: string, pre: string) => Number(id.slice(pre.length).split("-")[0]);
+    const pagosDeTrabajo = new Map<number, string | undefined>();
+    const comisiones = new Map<number, string | undefined>();
+    approvedJobs.forEach((j) => {
+      [...(j.payments || []), ...(j.cobrosPrevistos || [])].forEach((p) => pagosDeTrabajo.set(p.id, p.firmante));
+      (j.commissionPayments || []).forEach((c) => comisiones.set(c.id, c.firmante));
+    });
+    const deFinanciero = (id: number) => {
+      const f = financialItems.find((x) => x.id === id);
+      if (!f) return undefined;
+      return f.firmante || (f.sourceRefId != null ? pagosDeTrabajo.get(f.sourceRefId) : undefined);
+    };
+    const firmanteDe = (id: string): string | undefined => {
+      if (id.startsWith("financial-")) return deFinanciero(num(id, "financial-"));
+      if (id.startsWith("comm-")) return comisiones.get(num(id, "comm-"));
+      if (id.startsWith("cost-")) return costEntries.find((x) => x.id === num(id, "cost-"))?.firmante;
+      if (id.startsWith("petty-cash-")) return pettyCashExpenses.find((x) => x.id === num(id, "petty-cash-"))?.firmante;
+      if (id.startsWith("petty-fund-return-")) return pettyCashFunds.find((x) => x.id === num(id, "petty-fund-return-"))?.firmante;
+      if (id.startsWith("petty-fund-")) return pettyCashFunds.find((x) => x.id === num(id, "petty-fund-"))?.firmante;
+      if (id.startsWith("viatico-")) return viaticos.find((x) => x.id === num(id, "viatico-"))?.firmante;
+      if (id.startsWith("retiro-")) return retirosSocietarios.find((x) => x.id === num(id, "retiro-"))?.firmante;
+      if (id.startsWith("movint-pase-")) return internalTransfers.find((x) => x.id === num(id, "movint-pase-"))?.firmante;
+      if (id.startsWith("movint-cap-")) return capitalEntries.find((x) => x.id === num(id, "movint-cap-"))?.firmante;
+      return undefined;
+    };
+    return cashFlowEntriesPlanilla.map((e: any) => {
+      const firmante = firmanteDe(String(e.id));
+      return firmante ? { ...e, firmante } : e;
+    });
+  }, [cashFlowEntriesPlanilla, approvedJobs, financialItems, costEntries, pettyCashExpenses, pettyCashFunds, viaticos, retirosSocietarios, internalTransfers, capitalEntries]);
+
   // F/V del TIPO DE GASTO (renglon), con o sin candado. kind null = se lo saca.
   const setFVRenglon = (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => {
     if (!conceptKey) return;
@@ -16653,7 +16731,7 @@ Escribi CERRAR para confirmar:`
         notes: f.notas || "",
         source: "manual",
         aCuenta: true,
-        firmante: f.firmante || undefined,
+        ...firma(),
         pagadoPor: f.metodo === "efectivo" && f.administration === "negro" ? f.pagadoPor || undefined : undefined,
       } as CostEntry,
       ...prev,
@@ -17443,6 +17521,7 @@ Escribi CERRAR para confirmar:`
       ...prev,
       {
         id: newId(),
+        ...firma(),
         company: costsCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : costsCompanyScope,
         date: `${costsMonths[0]}-01`,
         group: firstManualGroup,
@@ -17507,7 +17586,7 @@ Escribi CERRAR para confirmar:`
         if (entry.id !== id) return entry;
         // Nunca se deja mandar un gasto manual a un grupo automatico: se contaria dos veces.
         if (field === "group" && isAutoCostGroup(String(value))) return entry;
-        return { ...entry, [field]: value };
+        return { ...entry, [field]: value, ...firma() };
       })
     );
     // MEMORIA: clasificar a mano un gasto también aprende la regla (para el próximo similar).
@@ -18929,7 +19008,7 @@ Escribi CERRAR para confirmar:`
           notes={calendarNotes}
           onSetNote={setCalendarCellNote}
           billeteraDiaria={billeteraDiariaConCuentas}
-          entries={cashFlowEntriesPlanilla}
+          entries={cashFlowEntriesConFirmante}
           gruposCosto={gruposCostoLista}
           proveedoresSugeridos={visibleSuppliers.map((x) => x.name).filter(Boolean)}
           onRenombrarGrupo={(clave, nuevo) => {
@@ -18992,6 +19071,7 @@ Escribi CERRAR para confirmar:`
                 cuentaId: m.cuentaId || undefined,
                 motivo: m.notes || "",
                 origen: "manual",
+                ...firma(),
               },
               ...prev,
             ]);
@@ -19055,6 +19135,7 @@ Escribi CERRAR para confirmar:`
                   bank: "",
                   description: m.notes || "",
                   notes: "Cargado desde el Calendario anual",
+                  ...firma(),
                 },
                 ...prev,
               ]);
@@ -19072,6 +19153,7 @@ Escribi CERRAR para confirmar:`
                 amount: m.amount,
                 cuentaId: m.cuentaDesdeId || m.cuentaHaciaId || undefined,
                 notes: m.notes || "Cargado desde el Calendario anual",
+                ...firma(),
               },
               ...prev,
             ]);
@@ -19290,7 +19372,7 @@ Escribi CERRAR para confirmar:`
             description: `Factura ${f.receiptLetter} ${f.invoiceNumber}`.trim(),
             // Quien pago: solo para efectivo negro (informativo, se cuenta en Movimientos internos).
             pagadoPor: f.pago.metodo === "efectivo" && f.pago.administration === "negro" ? f.pago.pagadoPor || undefined : undefined,
-            firmante: f.pago.firmante || undefined,
+            ...firma(),
           };
           const previo = existente?.paidByCostEntryId != null ? costEntries.find((c) => c.id === existente.paidByCostEntryId) : undefined;
           if (previo) {
@@ -19391,6 +19473,7 @@ Escribi CERRAR para confirmar:`
         description: exp.description || "",
         invoiceNumber: exp.invoiceNumber || "",
         notes: exp.notes || "",
+        firmante: exp.firmante,
         ...(() => {
           const inv = purchaseInvoices.find((i) => i.pettyCashExpenseId === exp.id);
           return inv ? { receiptLetter: inv.receiptLetter, net21: inv.net21, vat: inv.vat, taxId: inv.taxId || prov?.taxId || "" } : {};
@@ -19437,6 +19520,7 @@ Escribi CERRAR para confirmar:`
         notes: g.notes,
         costGroup: grupo?.nombre || "",
         costGroupKind: grupo?.tipo,
+        ...firma(),
         ...(g.attachmentName ? { attachmentName: g.attachmentName } : {}),
       };
       return previo ? prev.map((x) => (x.id === id ? gasto : x)) : [gasto, ...prev];
@@ -19664,6 +19748,7 @@ Escribi CERRAR para confirmar:`
       cuentaId: f.cuentaId,
       cuentaDevolucionId: f.cuentaDevolucionId,
       notes: f.notes || "",
+      firmante: f.firmante,
     });
   };
   const guardarCaja = (c: CajaForm) => {
@@ -19681,6 +19766,7 @@ Escribi CERRAR para confirmar:`
       cuentaId: c.cuentaId,
       cuentaDevolucionId: c.cuentaDevolucionId,
       notes: c.notes,
+      ...firma(),
     };
     if (c.id != null) {
       setPettyCashFunds((prev) => prev.map((f) => (f.id === c.id ? { ...f, ...datos } : f)));
@@ -19867,6 +19953,7 @@ Escribi CERRAR para confirmar:`
   );
 
   return (
+    <UsuarioFirmanteContext.Provider value={usuarioFirmante}>
     <div style={{ ...styles.page, background: workspaceTheme.pageBackground }}>
       <style>{`
         table th, table td { border-bottom: 1px solid #e2e8f0; padding: 8px 10px; vertical-align: top; }
@@ -20613,7 +20700,7 @@ Escribi CERRAR para confirmar:`
             }}
             personas={visibleEmployees.filter((e) => !isEmployeeTerminated(e)).map((e) => String(e.name || "").trim()).filter(Boolean).sort((a, b) => a.localeCompare(b))}
             onResolverSinFactura={(pagoId, res) =>
-              setCostEntries((prev) => prev.map((c) => (c.id === pagoId ? { ...c, resolucionSinFactura: res, firmante: c.firmante || res.firmante } : c)))
+              setCostEntries((prev) => prev.map((c) => (c.id === pagoId ? { ...c, resolucionSinFactura: { ...res, firmante: usuarioFirmante }, ...firma() } : c)))
             }
             onCargarFacturaDePago={(pagoId) => {
               const pago = costEntries.find((c) => c.id === pagoId);
@@ -20709,6 +20796,7 @@ Escribi CERRAR para confirmar:`
                   setRetirosSocietarios((prev) => [
                     {
                       id: newId(),
+                      ...firma(),
                       company: (balanceCompanyScope !== "__ALL__" ? balanceCompanyScope : budget.company) as CompanyName,
                       fecha: todayIso(),
                       socio: "",
@@ -20722,7 +20810,7 @@ Escribi CERRAR para confirmar:`
                   ])
                 }
                 onUpdate={(id, field, value) =>
-                  setRetirosSocietarios((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)))
+                  setRetirosSocietarios((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value, ...firma() } : r)))
                 }
                 onRemove={(id) => setRetirosSocietarios((prev) => prev.filter((r) => r.id !== id))}
               />
@@ -21119,7 +21207,7 @@ Escribi CERRAR para confirmar:`
           setCompanyScope={setInternalCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
-          updateArrayItem={updateArrayItem}
+          updateArrayItem={updateArrayItemFirmado}
           internalTransfers={visibleInternalTransfers}
           setInternalTransfers={setInternalTransfers}
           addInternalTransfer={addInternalTransfer}
@@ -22511,6 +22599,7 @@ Escribi CERRAR para confirmar:`
         </table>
       </PrintReport>
     </div>
+    </UsuarioFirmanteContext.Provider>
   );
 }
 

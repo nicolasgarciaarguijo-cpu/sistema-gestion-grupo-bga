@@ -3,6 +3,7 @@
 // que resta, blanco y negro aparte) para decidir cuanto dar. La caja NO va al cash flow: van sus gastos.
 import React, { useMemo, useState } from "react";
 import { mismaPersona, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
+import { FirmanteFijo } from "./FirmanteSelect";
 
 export type CajaForm = {
   id?: number;
@@ -17,6 +18,7 @@ export type CajaForm = {
   cuentaId?: string;
   cuentaDevolucionId?: string;
   notes: string;
+  firmante?: string; // ultimo usuario que firmo la asignacion (solo para mostrar; lo graba App)
 };
 
 const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600 };
@@ -107,6 +109,7 @@ export function CajaChicaModal({
             <label style={lbl}>Responsable
               <input style={input} list="cc-personas" value={f.responsible} onChange={(e) => set({ responsible: e.target.value })} />
             </label>
+            <FirmanteFijo previo={f.firmante} labelStyle={lbl} />
             <label style={lbl}>Tipo de caja chica
               <select style={input} value={f.tipo} onChange={(e) => set({ tipo: e.target.value })}>
                 {Array.from(new Set([...tipos, f.tipo])).filter(Boolean).map((t) => (

@@ -19,6 +19,7 @@ import type { PersonLedgerSummary } from "../domain/personLedger";
 import type { CapitalEntry } from "../domain/contributions";
 import { summarizeContributions } from "../domain/contributions";
 import { buildLoanLines, sameLender, type CalendarLoan } from "../domain/loanLines";
+import { FirmanteCelda } from "../ui/FirmanteSelect";
 
 // MOVIMIENTOS INTERNOS
 //
@@ -324,6 +325,7 @@ export function MovimientosInternosTab({
                     </td>
                     <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
+                        <FirmanteCelda value={item.firmante} firmadoEn={item.firmadoEn} />
                         <select
                           style={{ ...inputCelda, width: "auto" }}
                           value={item.direction}
@@ -504,6 +506,7 @@ export function MovimientosInternosTab({
                   </td>
                   <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
+                      <FirmanteCelda value={item.firmante} firmadoEn={item.firmadoEn} />
                       <select
                         style={{ ...inputCelda, width: "auto" }}
                         value={item.currency}
@@ -736,6 +739,7 @@ export function MovimientosInternosTab({
                   </td>
                   <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
+                      <FirmanteCelda value={item.firmante} firmadoEn={item.firmadoEn} />
                       <select
                         style={{ ...inputCelda, width: "auto" }}
                         value={item.kind}
@@ -1001,6 +1005,9 @@ export function MovimientosInternosTab({
                               >
                                 {esHaber ? "HABER" : "DEBE"}
                               </span>
+                              {entry ? (
+                                <FirmanteCelda value={entry.firmante} firmadoEn={entry.firmadoEn} />
+                              ) : null}
                               <span style={{ fontSize: 11, color: "#94a3b8" }}>
                                 {mov.source === "factura"
                                   ? "de Compras"

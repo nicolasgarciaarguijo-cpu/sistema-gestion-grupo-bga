@@ -8,10 +8,11 @@
 import React, { useMemo, useRef, useState } from "react";
 import { QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "./primitives";
 import { gastosPorGrupo, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
+import { textoFirmante } from "./FirmanteSelect";
 import { DesbalanceCaja } from "./DesbalanceCaja";
 import { getFundSemaphore } from "../domain/pettyCash";
 
-export type GastoFicha = GastoLike & { company: string; invoiceNumber?: string; attachmentName?: string; notes?: string };
+export type GastoFicha = GastoLike & { company: string; invoiceNumber?: string; attachmentName?: string; notes?: string; firmante?: string };
 type ViaticoFicha = { id: number; company: string; fecha: string; monto: number; administration: "blanco" | "negro"; motivo: string; rendido?: boolean };
 type DeudaFicha = { id: number; supplier: string; invoiceNumber: string; invoiceDate: string; total: number };
 
@@ -210,6 +211,7 @@ export function FichaCajaChica({
                   return (
                     <tr
                       key={f.id}
+                      title={textoFirmante((f as any).firmante)}
                       onClick={() => setFiltroCaja(marcada ? "todas" : f.id)}
                       onContextMenu={(ev) => {
                         ev.preventDefault();
@@ -288,6 +290,7 @@ export function FichaCajaChica({
                   return (
                     <tr
                       key={g.id}
+                      title={textoFirmante(g.firmante)}
                       onDoubleClick={() => onAbrirGasto(g.id)}
                       onContextMenu={(ev) => {
                         ev.preventDefault();

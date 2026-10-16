@@ -1016,6 +1016,13 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "La planilla de cash flow del sistema: cada renglón está vinculado con su solapa, y lo que se carga en un lado aparece en el otro.",
     sections: [
       {
+        heading: "Responsable / firmante de cada movimiento",
+        blocks: [
+          { type: "p", text: "Regla del sistema: cada movimiento de plata tiene a alguien que responde por él, y ese alguien es SIEMPRE el usuario que lo carga o lo corrige (no se puede elegir a otro). Al guardar, el sistema graba el usuario con la sesión iniciada y la fecha y hora: queda el último responsable del movimiento. Vale acá y en cada solapa (gastos, pagos de facturas, pagos sin factura, cobros, comisiones, caja chica, pases, aportes, cuenta con la gente, retiros, VEP, cuotas)." },
+          { type: "bullets", items: ["En la ventana de carga se ve 'Responsable / firmante: ✍ tu nombre'; click derecho sobre un número muestra quién firmó.", "En las planillas que se editan en el lugar, cada cambio en una fila la vuelve a firmar con el usuario que la tocó.", "Lo cargado antes de la regla no se borra ni se bloquea: aparece en ámbar ('✍ sin firmante') hasta que alguien lo edite.", "El extracto del banco no lleva firmante: lo trae el banco."] },
+        ],
+      },
+      {
         heading: "Proveedores y grupos de costos",
         blocks: [
           { type: "p", text: "Los pagos a proveedores van a EGRESOS · CUENTAS CORRIENTES · PROVEEDORES HABITUALES (si el proveedor tiene cuenta corriente) o a EGRESOS · PROVEEDORES. Los renglones son los grupos de costos (con su F o V) y debajo va cada proveedor. Bancos, tarjetas, seguros y caja chica también son proveedores." },
