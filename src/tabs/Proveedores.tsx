@@ -99,6 +99,7 @@ function ProveedorModal({
 export function ProveedoresPanel({
   proveedores,
   ledgers,
+  pagosSinFactura = [],
   empresaPorDefecto,
   companyOptions,
   money,
@@ -109,6 +110,8 @@ export function ProveedoresPanel({
 }: {
   proveedores: Proveedor[];
   ledgers: Array<{ key: string; supplier: string; taxId: string; esCuentaCorriente: boolean; comprado: number; pagado: number; saldo: number; facturasSinPago: number; movimientos: Array<{ type: string }> }>;
+  // Pagos a cuenta que esperan su factura (domain/pagosACuenta), con la llave del proveedor.
+  pagosSinFactura?: Array<{ id: number; key: string; supplier: string; date: string; amount: number; dias: number; company: string }>;
   empresaPorDefecto: string;
   companyOptions: Array<{ value: string; label?: string; short?: string }>;
   money: (n: number) => string;
@@ -135,6 +138,45 @@ export function ProveedoresPanel({
     .filter((p) => !q || `${p.name} ${p.taxId} ${p.contacto || ""}`.toLowerCase().includes(q))
     .sort((a, b) => a.name.localeCompare(b.name));
   const conCuenta = ledgers.filter((l) => l.esCuentaCorriente);
+  // Sin convenio pero con algo abierto: deuda, saldo a favor o un pago esperando su factura.
+  const sinFacturaDe = (key: string) => pagosSinFactura.filter((p) => p.key === key);
+  const abiertosSinConvenio = ledgers.filter((l) => !l.esCuentaCorriente && (Math.abs(l.saldo) > 1 || l.facturasSinPago > 0 || sinFacturaDe(l.key).length > 0));
+  const tablaCuentas = (filas: typeof ledgers) => (
+    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+      <thead>
+        <tr>
+          <th style={th}>Proveedor</th>
+          <th style={{ ...th, textAlign: "right" }}>Facturas</th>
+          <th style={{ ...th, textAlign: "right" }}>Comprado</th>
+          <th style={{ ...th, textAlign: "right" }}>Pagado</th>
+          <th style={{ ...th, textAlign: "right" }}>Situación</th>
+          <th style={{ ...th, textAlign: "right" }}>Facturas sin pago</th>
+          <th style={{ ...th, textAlign: "right" }}>Pagos sin factura</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filas.map((l) => {
+          const sf = sinFacturaDe(l.key);
+          const sfTotal = sf.reduce((a, p) => a + p.amount, 0);
+          return (
+            <tr key={l.key} style={{ cursor: "pointer", background: sf.length ? "#fff7ed" : undefined }} onClick={() => onAbrirFicha(l.supplier, l.taxId)} title="Abrir la ficha del proveedor">
+              <td style={{ ...td, fontWeight: 700 }}>{l.supplier}</td>
+              <td style={{ ...td, textAlign: "right" }}>{l.movimientos.filter((m) => m.type === "compra").length}</td>
+              <td style={{ ...td, textAlign: "right" }}>{money(l.comprado)}</td>
+              <td style={{ ...td, textAlign: "right" }}>{money(l.pagado)}</td>
+              <td style={{ ...td, textAlign: "right", fontWeight: 800, color: l.saldo > 1 ? "#b45309" : "#16a34a" }}>
+                {l.saldo > 1 ? `Debemos ${money(l.saldo)}` : l.saldo < -1 ? `A favor ${money(Math.abs(l.saldo))}` : "Al día"}
+              </td>
+              <td style={{ ...td, textAlign: "right", color: l.facturasSinPago ? "#b45309" : "#94a3b8" }}>{l.facturasSinPago || "—"}</td>
+              <td style={{ ...td, textAlign: "right", color: sf.length ? "#b45309" : "#94a3b8", fontWeight: sf.length ? 800 : 400 }}>
+                {sf.length ? `⏳ ${money(sfTotal)} (${sf.length})` : "—"}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
 
   return (
     <>
@@ -231,39 +273,40 @@ export function ProveedoresPanel({
         </div>
       </Panel>
 
-      <Panel span="full" title={`Cuenta corriente · proveedores con convenio (${conCuenta.length})`}>
-        {conCuenta.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#64748b" }}>Ningún proveedor está marcado con cuenta corriente.</div>
-        ) : (
+      {pagosSinFactura.length > 0 && (
+        <Panel span="full" title={`⏳ Pagos sin factura (${pagosSinFactura.length}) · ${money(pagosSinFactura.reduce((x, p) => x + p.amount, 0))}`}>
+          <div style={{ fontSize: 12.5, color: "#7c2d12", marginBottom: 6 }}>
+            Se pagaron y la factura todavía no llegó: el proveedor queda a favor. Click para abrir su ficha; al cargar la factura, vinculale el pago.
+          </div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
-            <thead>
-              <tr>
-                <th style={th}>Proveedor</th>
-                <th style={{ ...th, textAlign: "right" }}>Facturas</th>
-                <th style={{ ...th, textAlign: "right" }}>Comprado</th>
-                <th style={{ ...th, textAlign: "right" }}>Pagado</th>
-                <th style={{ ...th, textAlign: "right" }}>Situación</th>
-                <th style={{ ...th, textAlign: "right" }}>Sin pago vinculado</th>
-              </tr>
-            </thead>
             <tbody>
-              {conCuenta.map((l) => (
-                <tr key={l.key} style={{ cursor: "pointer" }} onClick={() => onAbrirFicha(l.supplier, l.taxId)} title="Abrir la ficha del proveedor">
-                  <td style={{ ...td, fontWeight: 700 }}>{l.supplier}</td>
-                  <td style={{ ...td, textAlign: "right" }}>{l.movimientos.filter((m) => m.type === "compra").length}</td>
-                  <td style={{ ...td, textAlign: "right" }}>{money(l.comprado)}</td>
-                  <td style={{ ...td, textAlign: "right" }}>{money(l.pagado)}</td>
-                  <td style={{ ...td, textAlign: "right", fontWeight: 800, color: l.saldo > 1 ? "#b45309" : "#16a34a" }}>
-                    {l.saldo > 1 ? `Debemos ${money(l.saldo)}` : l.saldo < -1 ? `A favor ${money(Math.abs(l.saldo))}` : "Al día"}
-                  </td>
-                  <td style={{ ...td, textAlign: "right", color: l.facturasSinPago ? "#b45309" : "#94a3b8" }}>{l.facturasSinPago || "—"}</td>
+              {pagosSinFactura.map((p) => (
+                <tr key={p.id} style={{ cursor: "pointer", background: "#fff7ed" }} onClick={() => onAbrirFicha(p.supplier, "")}>
+                  <td style={{ ...td, fontWeight: 700 }}>{p.supplier}</td>
+                  <td style={td}>{p.date ? `${p.date.slice(8, 10)}/${p.date.slice(5, 7)}/${p.date.slice(0, 4)}` : "—"}</td>
+                  <td style={td}>{shortDe(p.company)}</td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{money(p.amount)}</td>
+                  <td style={{ ...td, color: p.dias > 30 ? "#b91c1c" : "#b45309", fontWeight: 700 }}>hace {p.dias} día{p.dias === 1 ? "" : "s"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </Panel>
+      )}
+      <Panel span="full" title={`Cuenta corriente · proveedores con convenio (${conCuenta.length})`}>
+        {conCuenta.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#64748b" }}>Ningún proveedor está marcado con cuenta corriente.</div>
+        ) : (
+          tablaCuentas(conCuenta)
         )}
       </Panel>
-
+      <Panel span="full" title={`Cuentas abiertas · proveedores sin convenio (${abiertosSinConvenio.length})`}>
+        {abiertosSinConvenio.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#64748b" }}>Ningún proveedor sin convenio tiene deuda, saldo a favor ni pagos esperando factura.</div>
+        ) : (
+          tablaCuentas(abiertosSinConvenio)
+        )}
+      </Panel>
       {menu && (
         <QuickMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
           <QuickMenuTitle>{menu.p.name}</QuickMenuTitle>

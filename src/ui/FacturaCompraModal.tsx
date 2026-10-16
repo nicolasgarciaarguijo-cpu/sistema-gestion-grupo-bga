@@ -34,6 +34,7 @@ export type FacturaForm = {
     porBanco?: string; // solo lectura: "pagada por un debito del banco del dd/mm"
     pagadoPor?: string; // efectivo negro: quien de la nomina hizo el pago (informativo)
     empresa?: string; // empresa que PAGA (ausente = la de la factura). Distinta = pago cruzado.
+    firmante?: string; // responsable del pago (obligatorio en un pago nuevo)
   };
   // MATERIAL (Fase 5): los remitos de recepcion que respaldan esta factura (el stock ya entro con
   // ellos) o, si no vino remito, cargar sus renglones como recepcion al guardar.
@@ -130,6 +131,7 @@ export function FacturaCompraModal({
   if (f.pago.estado === "pagada" && !f.pago.porBanco) {
     if (f.pago.modo === "vincular" && !f.pago.costEntryId) faltan.push("el pago a vincular");
     if (f.pago.modo === "nuevo" && (!f.pago.fecha || !(Number(f.pago.monto) > 0))) faltan.push("la fecha y el monto del pago");
+    if (f.pago.modo === "nuevo" && !String(f.pago.firmante || "").trim()) faltan.push("el responsable del pago");
   }
 
   return (
@@ -305,6 +307,19 @@ export function FacturaCompraModal({
                         <select style={input} value={f.pago.administration} onChange={(e) => setPago({ administration: e.target.value as any })}>
                           <option value="blanco">Blanco</option>
                           <option value="negro">Negro</option>
+                        </select>
+                      </label>
+                      <label style={lbl} title="Persona que responde por este pago: queda como firmante.">
+                        Responsable / firmante *
+                        <select
+                          style={{ ...input, ...(!f.pago.firmante ? { borderColor: "#f59e0b", background: "#fffbeb" } : {}) }}
+                          value={f.pago.firmante || ""}
+                          onChange={(e) => setPago({ firmante: e.target.value || undefined })}
+                        >
+                          <option value="">— elegí quién responde —</option>
+                          {Array.from(new Set([...(f.pago.firmante ? [f.pago.firmante] : []), ...personas])).map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
                         </select>
                       </label>
                       {f.pago.metodo === "efectivo" && f.pago.administration === "negro" && (

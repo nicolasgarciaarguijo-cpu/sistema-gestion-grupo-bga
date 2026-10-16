@@ -42,6 +42,8 @@ export type PlataDisponibleCompany = {
   // tercero y todavia no se le reintegraron. Se quiere saldar rapido, por eso sube aca arriba.
   deudaConLaGente: number;
   deudaConLaGenteCount: number;
+  // Pagos a cuenta que todavia esperan su factura (ver domain/pagosACuenta).
+  pagosSinFactura?: { cantidad: number; total: number; masViejo: number };
   // Saldo de las cuentas corrientes con proveedores: lo que le debemos a la gente que nos vende. Va
   // aca arriba para no olvidarse (regla del usuario 2026-08-26). Ver domain/purchaseLedger.ts.
   deudaProveedores: number;
@@ -275,6 +277,15 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                       title="Saldo de las cuentas corrientes: lo comprado menos lo pagado, por proveedor. Se ve en detalle en Compras."
                     >
                       Proveedores: <b style={{ color: "#fca5a5" }}>{money(c.deudaProveedores)}</b>
+                    </span>
+                  )}
+                  {c.pagosSinFactura && c.pagosSinFactura.cantidad > 0 && (
+                    <span
+                      style={pagarTag}
+                      title={`Pagos a proveedores hechos sin la factura (a cuenta). El más viejo tiene ${c.pagosSinFactura.masViejo} días. Se resuelven cargando la factura y vinculándole el pago (Pago a proveedores → ficha).`}
+                    >
+                      ⏳ Pagos sin factura: <b style={{ color: "#fca5a5" }}>{money(c.pagosSinFactura.total)}</b>
+                      <span style={{ color: "#94a3b8" }}> ({c.pagosSinFactura.cantidad})</span>
                     </span>
                   )}
                   {c.deudaConLaGente > 1 && (

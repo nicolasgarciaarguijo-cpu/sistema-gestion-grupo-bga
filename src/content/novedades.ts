@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-16a",
+    fecha: "16/10/2026",
+    titulo: "Pagos sin factura y responsable de cada pago",
+    items: [
+      {
+        titulo: "Pago sin factura desde la ficha del proveedor",
+        que: "Se puede cargar un pago aunque todavía no esté la factura. Va al cash flow y el proveedor queda A FAVOR hasta que llegue la factura. Mientras tanto avisa: en la ficha, arriba de Pago a proveedores y en la barra de arriba ('⏳ Pagos sin factura').",
+        como: "Ficha del proveedor → '+ Pago sin factura'. Para resolverlo, click derecho sobre el pago: cargar la factura (queda vinculada), o si es un gasto en negro cargar su comprobante, o que un responsable asuma la falta de la factura y firme.",
+        tab: "costos",
+      },
+      {
+        titulo: "Responsable / firmante obligatorio",
+        que: "Todo pago que se carga con una factura o sin factura pide quién responde por él: queda como firmante.",
+        como: "Campo 'Responsable / firmante' en el pago.",
+        tab: "costos",
+      },
+      {
+        titulo: "Cuentas abiertas separadas",
+        que: "En Pago a proveedores las cuentas corrientes se ven en dos listas: los proveedores con convenio y los demás que tienen algo abierto (deuda, saldo a favor o pagos esperando factura).",
+        como: "Click en un proveedor abre su ficha.",
+        tab: "costos",
+      },
+    ],
+  },
+  {
     id: "2026-10-15e",
     fecha: "15/10/2026",
     titulo: "Pagos: quién pagó y qué empresa paga",

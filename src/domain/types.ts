@@ -1055,6 +1055,15 @@ export type CostEntry = {
   // la empresa de la FACTURA, cuando es otra. No deberia pasar; si pasa, queda a la vista en Movimientos
   // internos (domain/pagosCruzados). Ausente = la misma.
   empresaFactura?: string;
+  // PAGO A CUENTA SIN FACTURA (domain/pagosACuenta): se pago y la factura todavia no llego. Mientras ninguna
+  // factura lo tenga vinculado, el proveedor queda a favor y se avisa.
+  aCuenta?: boolean;
+  // RESPONSABLE / FIRMANTE del pago (Nicolas, 2026-10-16): "cada movimiento de dinero o pago debe exigir un
+  // responsable o firmante". Persona de la nomina que responde por ese pago.
+  firmante?: string;
+  // Pago sin factura RESUELTO sin factura: es un gasto en negro con su comprobante, o un responsable asume la
+  // falta de la factura y queda como firmante de esa aprobacion. Con esto deja de estar pendiente.
+  resolucionSinFactura?: { tipo: "comprobante" | "responsable"; firmante: string; detalle: string; fecha: string };
   // Renglon del Calendario anual al que se imputa este pago. Con esto el gasto ALIMENTA el calendario
   // (regla del usuario 2026-08-26). Ausente = cae en "Sin clasificar" con la pill D hasta asignarlo.
   // OJO: solo llegan al calendario los pagos que NO pasan por el banco (efectivo / negro); los que

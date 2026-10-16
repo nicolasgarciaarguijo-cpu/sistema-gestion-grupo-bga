@@ -22,6 +22,11 @@ export function FichaProveedor({
   facturas = [],
   onCargarFactura,
   onAbrirFactura,
+  pagosSinFactura = [],
+  onPagoSinFactura,
+  personas = [],
+  onResolverSinFactura,
+  onCargarFacturaDePago,
 }: {
   nombre: string;
   taxId: string;
@@ -51,7 +56,16 @@ export function FichaProveedor({
   facturas?: Array<{ id: number; invoiceDate: string; receiptLetter: string; invoiceNumber: string; total: number; pagada: boolean; pagoTexto: string; fechaPrevista?: string; company: string }>;
   onCargarFactura?: () => void;
   onAbrirFactura?: (id: number) => void;
+  // Pagos a cuenta que todavia esperan su factura, y la ventana para cargar uno nuevo.
+  pagosSinFactura?: Array<{ id: number; date: string; amount: number; dias: number; company: string; administration: "blanco" | "negro" }>;
+  onPagoSinFactura?: () => void;
+  personas?: string[];
+  // Resolver un pago sin factura sin la factura: comprobante (gasto en negro) o un responsable que asume.
+  onResolverSinFactura?: (pagoId: number, res: { tipo: "comprobante" | "responsable"; firmante: string; detalle: string; fecha: string }) => void;
+  onCargarFacturaDePago?: (pagoId: number) => void;
 }) {
+  const [menuPago, setMenuPago] = React.useState<null | { x: number; y: number; id: number }>(null);
+  const [resolver, setResolver] = React.useState<null | { id: number; tipo: "comprobante" | "responsable"; firmante: string; detalle: string }>(null);
   const cond = proveedor?.condicionPago;
   const fv = proveedor?.grupoCosto ? { kind: proveedor.grupoCosto.startsWith("fijo|") ? "fijo" : "variable", locked: false } : undefined;
   void fvPorRenglon;
@@ -83,6 +97,11 @@ export function FichaProveedor({
             </div>
           </div>
           <span style={{ display: "inline-flex", gap: 6 }}>
+            {onPagoSinFactura && (
+              <button type="button" onClick={onPagoSinFactura} style={{ ...input, cursor: "pointer", fontWeight: 800, background: "#fff7ed", color: "#b45309", borderColor: "#fdba74" }} title="Se pagó algo y todavía no está la factura">
+                + Pago sin factura
+              </button>
+            )}
             {onCargarFactura && (
               <button type="button" onClick={onCargarFactura} style={{ ...input, cursor: "pointer", fontWeight: 800, background: "#16a34a", color: "#fff", borderColor: "#15803d" }}>
                 + Cargar factura
@@ -175,6 +194,40 @@ export function FichaProveedor({
             <label style={{ fontSize: 12, color: "#475569", fontWeight: 600, display: "grid", gap: 3 }}>Contacto
               <input style={input} value={proveedor.contacto || ""} onChange={(e) => onUpdateProveedor(proveedor.id, "contacto", e.target.value)} />
             </label>
+          </div>
+        )}
+
+        {pagosSinFactura.length > 0 && (
+          <div style={{ ...caja, marginTop: 12, background: "#fff7ed", borderColor: "#fdba74" }}>
+            <div style={{ ...titulo, color: "#b45309" }}>
+              ⏳ Pagos sin factura · a favor {money(pagosSinFactura.reduce((a, p) => a + p.amount, 0))}
+            </div>
+            <div style={{ fontSize: 12.5, color: "#7c2d12", marginBottom: 6 }}>
+              Se pagó y la factura todavía no llegó: hace falta una explicación. Click derecho sobre el pago: cargar la
+              factura, o si es un gasto en negro cargar su comprobante, o que un responsable asuma la falta de la factura
+              (queda como firmante).
+            </div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+              <tbody>
+                {pagosSinFactura.map((p) => (
+                  <tr
+                    key={p.id}
+                    style={{ borderBottom: "1px solid #fed7aa", cursor: "context-menu" }}
+                    title="Click derecho: cargar la factura, comprobante o lo asume un responsable"
+                    onContextMenu={(ev) => {
+                      ev.preventDefault();
+                      ev.stopPropagation();
+                      setMenuPago({ x: ev.clientX, y: ev.clientY, id: p.id });
+                    }}
+                  >
+                    <td style={{ padding: "3px 6px", whiteSpace: "nowrap" }}>{p.date ? `${p.date.slice(8, 10)}/${p.date.slice(5, 7)}/${p.date.slice(0, 4)}` : "—"}</td>
+                    <td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700 }}>{money(p.amount)}</td>
+                    <td style={{ padding: "3px 6px", textAlign: "center" }}>{p.administration === "negro" ? "N" : "B"}</td>
+                    <td style={{ padding: "3px 6px", color: p.dias > 30 ? "#b91c1c" : "#b45309", fontWeight: 700 }}>hace {p.dias} día{p.dias === 1 ? "" : "s"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
 
@@ -271,6 +324,63 @@ export function FichaProveedor({
             </div>
           )}
         </div>
+      {menuPago && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 4100 }} onClick={(e) => { e.stopPropagation(); setMenuPago(null); }} onContextMenu={(e) => { e.preventDefault(); setMenuPago(null); }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ position: "fixed", left: menuPago.x, top: menuPago.y, background: "#fff", border: "1px solid #e2e8f0", borderRadius: 8, boxShadow: "0 10px 30px rgba(0,0,0,0.18)", padding: 4, minWidth: 260 }}>
+            {[
+              { label: "📄 Cargar la factura (y vincular este pago)", run: () => onCargarFacturaDePago?.(menuPago.id) },
+              { label: "🧾 Es gasto en negro: cargar comprobante…", run: () => setResolver({ id: menuPago.id, tipo: "comprobante", firmante: "", detalle: "" }) },
+              { label: "✍️ Lo asume un responsable (sin factura)…", run: () => setResolver({ id: menuPago.id, tipo: "responsable", firmante: "", detalle: "" }) },
+            ].map((o) => (
+              <button key={o.label} type="button" style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", border: "none", background: "transparent", cursor: "pointer", fontSize: 13, borderRadius: 6 }}
+                onClick={() => { setMenuPago(null); o.run(); }}>
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {resolver && (
+        <div onClick={(e) => { e.stopPropagation(); setResolver(null); }} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.4)", zIndex: 4200, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "80px 12px" }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(480px, 100%)", padding: 16, display: "grid", gap: 10 }}>
+            <div style={{ fontSize: 16, fontWeight: 800 }}>
+              {resolver.tipo === "comprobante" ? "Gasto en negro · comprobante" : "Un responsable asume la falta de la factura"}
+            </div>
+            <label style={{ fontSize: 12, color: "#475569", fontWeight: 600, display: "grid", gap: 3 }}>
+              {resolver.tipo === "comprobante" ? "Comprobante (número, recibo, ticket, qué es)" : "Por qué no hay factura"}
+              <input style={input} value={resolver.detalle} onChange={(e) => setResolver({ ...resolver, detalle: e.target.value })} autoFocus />
+            </label>
+            <label style={{ fontSize: 12, color: "#475569", fontWeight: 600, display: "grid", gap: 3 }}>
+              Responsable / firmante *
+              <select style={input} value={resolver.firmante} onChange={(e) => setResolver({ ...resolver, firmante: e.target.value })}>
+                <option value="">— elegí quién firma —</option>
+                {personas.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </label>
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              {resolver.tipo === "comprobante"
+                ? "El pago queda respaldado por el comprobante y deja de pedir factura. El firmante responde por él."
+                : "El firmante aprueba el gasto sin factura y queda registrado como responsable de esa aprobación."}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button type="button" style={{ ...input, cursor: "pointer" }} onClick={() => setResolver(null)}>Cancelar</button>
+              <button
+                type="button"
+                disabled={!resolver.firmante || !resolver.detalle.trim()}
+                style={{ ...input, cursor: resolver.firmante && resolver.detalle.trim() ? "pointer" : "not-allowed", fontWeight: 800, background: resolver.firmante && resolver.detalle.trim() ? "#16a34a" : "#bbf7d0", color: "#fff", borderColor: "#15803d" }}
+                onClick={() => {
+                  onResolverSinFactura?.(resolver.id, { tipo: resolver.tipo, firmante: resolver.firmante, detalle: resolver.detalle.trim(), fecha: new Date().toISOString().slice(0, 10) });
+                  setResolver(null);
+                }}
+              >
+                Firmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
     </div>
   );
