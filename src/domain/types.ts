@@ -1509,6 +1509,9 @@ export type Employee = {
   // seccion "Bajas": el registro no se borra (queda su ficha, asistencia, recibos y liquidaciones).
   // `terminationReason` es uno de los motivos de `src/domain/employeeStatus.ts`.
   terminationDate?: string;
+  // RELOJ DE ASISTENCIA: si la persona esta dada de alta en el reloj (lo escribe el sync de Dahua cada
+  // corrida). Con baja y todavia en el reloj => el SISTEMA avisa que hay que retirarla del equipo.
+  reloj?: { userId: string; nombre: string; desde?: string };
   terminationReason?: string;
   terminationNotes?: string;
   // Quien y cuando cargo la baja (auditoria del legajo historico).

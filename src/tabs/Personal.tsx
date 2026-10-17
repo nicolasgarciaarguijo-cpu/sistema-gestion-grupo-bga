@@ -289,6 +289,20 @@ export function PersonalTab(props: PersonalTabProps) {
 
   return (
         <div style={styles.personalStack}>
+          {/* BAJAS QUE SIGUEN EN EL RELOJ (Nicolas, 2026-10-17): ocupan lugar en el equipo y no deberian.
+              El sync del reloj anota quien esta dado de alta; la persona con baja hay que retirarla del equipo. */}
+          {(() => {
+            const enRelojConBaja = (formerEmployees || []).filter((e: any) => e.reloj?.userId);
+            if (enRelojConBaja.length === 0) return null;
+            return (
+              <div style={{ order: 0, gridColumn: "1 / -1", border: "1px solid #fdba74", background: "#fff7ed", borderRadius: 10, padding: "10px 14px", color: "#7c2d12", fontSize: 13 }}>
+                <strong>⚠ Hay {enRelojConBaja.length === 1 ? "una persona dada de baja que sigue" : `${enRelojConBaja.length} personas dadas de baja que siguen`} en el reloj de asistencia.</strong>{" "}
+                Retiralas del equipo para que no ocupen lugar ni puedan fichar:{" "}
+                {enRelojConBaja.map((e: any) => `${e.name} (n.º ${e.reloj.userId} en el reloj)`).join(", ")}.
+                <span style={{ color: "#9a3412" }}> El aviso se va solo en la próxima sincronización, cuando ya no figuren en el reloj.</span>
+              </div>
+            );
+          })()}
           {/* Alta de la baja: fecha y motivo. Sin fecha no hay baja (es la que define de que mes en
               adelante deja de pesar en la nomina). */}
           {bajaDraft && (
@@ -306,6 +320,14 @@ export function PersonalTab(props: PersonalTabProps) {
                     “Bajas” con su ficha, su asistencia y sus liquidaciones. Hasta el mes de la
                     baja inclusive sigue contando en el costo de ese mes.
                   </div>
+                  {(() => {
+                    const emp = (employees || []).find((e: any) => e.id === bajaDraft.id);
+                    return emp?.reloj?.userId ? (
+                      <div style={{ marginTop: 8, color: "#b45309", fontWeight: 700, fontSize: 13 }}>
+                        ⚠ Está dado de alta en el reloj (n.º {emp.reloj.userId}): después de la baja, retiralo del equipo.
+                      </div>
+                    ) : null;
+                  })()}
                   <TwoCol>
                     <Field label="Fecha de baja">
                       <input

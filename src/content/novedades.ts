@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-17b",
+    fecha: "17/10/2026",
+    titulo: "Bajas que siguen en el reloj",
+    items: [
+      {
+        titulo: "Aviso para retirar del reloj a quien se dio de baja",
+        que: "La sincronización del reloj anota quién está dado de alta en el equipo. Si alguien tiene la baja (en todas sus empresas) y sigue en el reloj, arriba de Personal aparece un aviso para retirarlo del equipo, así no ocupa lugar ni puede fichar. También lo recuerda la ventana de dar de baja.",
+        como: "Se retira desde el menú del reloj (gestión de usuarios). El aviso desaparece solo en la próxima sincronización.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-10-17a",
     fecha: "17/10/2026",
     titulo: "El reloj registra a todos",
