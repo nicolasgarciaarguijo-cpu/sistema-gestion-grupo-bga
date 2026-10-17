@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-17a",
+    fecha: "17/10/2026",
+    titulo: "El reloj registra a todos",
+    items: [
+      {
+        titulo: "Fichadas de todo el personal, socios incluidos",
+        que: "El reloj ahora carga las fichadas de todas las personas que están en Personal, también los socios y los de fuera de convenio. Si alguien está en las dos empresas, sus fichadas figuran en las dos fichas. La sincronización diaria corre para las dos empresas (antes BGA solo se sincronizaba con el botón).",
+        como: "Se ven en la solapa Asistencia y en la planilla de fichajes. A los de fuera de convenio las fichadas les quedan como registro: no les cambian las horas de la liquidación (cobran lo acordado).",
+        tab: "asistencia",
+      },
+    ],
+  },
+  {
     id: "2026-10-16e",
     fecha: "16/10/2026",
     titulo: "Haberes: ficha de pago por persona",

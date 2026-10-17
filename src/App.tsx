@@ -15584,6 +15584,10 @@ Escribi CERRAR para confirmar:`
         // Con la precarga APAGADA tambien se apaga el CONTADOR: las horas de la liquidacion del mes no se
         // suman solas desde el calendario; se cargan a mano en la liquidacion (segun los recibos).
         if (!calcularHoras) return { ...employee, attendance: attendanceFinal };
+        // FUERA DE CONVENIO (socios, administrativos con acuerdo): sus fichadas son REGISTRO (Nicolas,
+        // 2026-10-17: "que figuren las fichadas de todos"). Cobran lo acordado: el reloj NO les cambia
+        // las horas de la liquidacion (siguen las que tenian, ej. las nominales).
+        if (employee.employmentType === "fuera_convenio") return { ...employee, attendance: attendanceFinal };
         const monthPayrollFromAttendance = recalcMonthPayroll(attendanceFinal);
         const existsPayroll = employee.payrolls.some((item) => item.month === month);
         const nextPayrolls = existsPayroll
