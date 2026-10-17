@@ -203,7 +203,7 @@ import { CashflowTab } from "./tabs/Cashflow";
 import { CalendarioAnualTab } from "./tabs/CalendarioAnual";
 import { segurosPrevisionMensual } from "./domain/segurosCalendar";
 import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocuments";
-import { workingDaysInMonth, reciboNegroAmount, paymentDateForPeriod } from "./domain/recibo";
+import { workingDaysInMonth, paymentDateForPeriod, negroDelMes } from "./domain/recibo";
 import { buscarFacturaCargada } from "./domain/arcaCruce";
 import { esNotaDeCredito, creditoAplicadoPorFactura, saldoDeFactura, type NotaCreditoCompra } from "./domain/notasCredito";
 import { NotaCreditoModal } from "./ui/NotaCreditoModal";
@@ -9301,36 +9301,43 @@ Escribi CERRAR para confirmar:`
     window.setTimeout(() => exportPrint("recibo-blanco"), 0);
   };
 
-  const exportReciboNegro = (employee: Employee) => {
-    const { company, logo } = buildReciboContext(employee);
-    const monthKey = payrollMonth;
+  // LO QUE SE ENTREGA EN NEGRO en un mes (domain/recibo negroDelMes): la MISMA cuenta para el recibo negro y
+  // para la ficha de pago de haberes. El acuerdo se prorratea por dias trabajados; el premio va entero.
+  const negroDeEmpleado = (employee: Employee, monthKey: string, payroll?: EmployeePayroll) => {
+    const pr = payroll || (employee.payrolls || []).find((p) => p.month === monthKey);
     const workingDays = workingDaysInMonth(monthKey);
     const daysWorked = (employee.attendance || []).filter(
       (a) => a.date?.startsWith(monthKey) && (a.status === "presente" || !!a.checkIn)
     ).length;
-    // Temporal por dia: el monto ya sale de tarifa x dias trabajados (effectiveAgreedSalary), asi que
-    // NO se prorratea de nuevo. Temporal mensual: el acordado es del mes y se prorratea por dias.
-    const temporalDiario =
-      employee.employmentType === "temporal" && employee.temporalAgreementMode === "diario";
-    const totalBlack =
+    // Temporal por dia: ya sale de tarifa x dias trabajados (effectiveAgreedSalary): no se prorratea de nuevo.
+    const temporalDiario = employee.employmentType === "temporal" && employee.temporalAgreementMode === "diario";
+    const acordadoPorTipo =
       employee.employmentType === "fuera_convenio"
         ? Number(employee.agreedBlack || 0)
         : employee.employmentType === "temporal"
         ? effectiveAgreedSalary(employee, monthKey)
-        : Number(getCurrentPayroll(employee)?.cashBonus || 0);
-    // Socio / socio gerente y temporal por dia: el monto va entero, sin prorratear por dias trabajados.
-    const negroAmount = reciboNegroAmount({
-      totalBlack,
+        : 0;
+    const n = negroDelMes({
+      acordadoPorTipo,
+      acuerdoDelMes: Number(pr?.cashBonus || 0),
+      premio: Number(pr?.blackPrize || 0),
       workingDays,
       daysWorked,
-      sinProrrateo:
-        temporalDiario ||
-        (employee.employmentType === "fuera_convenio" && isPartnerCategory(employee.category)),
+      // Socio / socio gerente y temporal por dia: entero, sin prorratear.
+      sinProrrateo: temporalDiario || (employee.employmentType === "fuera_convenio" && isPartnerCategory(employee.category)),
     });
-    // PREMIO en negro: monto fijo, va ENTERO en su propio renglon (no mira los dias trabajados).
-    const premio = Math.max(0, Number(getCurrentPayroll(employee)?.blackPrize || 0));
-    const acuerdoAmount = negroAmount;
-    const totalEntregar = Math.round((acuerdoAmount + premio) * 100) / 100;
+    return { ...n, workingDays, daysWorked };
+  };
+
+  const exportReciboNegro = (employee: Employee) => {
+    const { company, logo } = buildReciboContext(employee);
+    const monthKey = payrollMonth;
+    const n = negroDeEmpleado(employee, monthKey, getCurrentPayroll(employee) || undefined);
+    const { workingDays, daysWorked } = n;
+    const totalBlack = n.acuerdoTotal;
+    const premio = n.premio;
+    const acuerdoAmount = n.acuerdoAEntregar;
+    const totalEntregar = n.total;
     setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, workingDays, daysWorked, negroAmount: totalEntregar, acuerdoAmount, premio } });
     void guardarReciboEnCarpeta(
       employee,
@@ -16838,14 +16845,9 @@ Escribi CERRAR para confirmar:`
           : Number(recibo?.neto || 0) > 0
           ? Number(recibo!.neto)
           : Number(payrollSummaryFor(emp, pr.month).net || 0);
-      const negro = monthlyBlackPay({
-        cashBonus: Number(pr.cashBonus || 0),
-        blackPrize: Number(pr.blackPrize || 0),
-        isTemporal: emp.employmentType === "temporal",
-        agreedSalary: effectiveAgreedSalary(emp, pr.month),
-        isFueraConvenio: emp.employmentType === "fuera_convenio",
-        agreedBlack: Number(emp.agreedBlack || 0),
-      });
+      // Negro: lo que se ENTREGA en el mes, igual que el recibo negro (acuerdo prorrateado por dias
+      // trabajados + premio entero).
+      const negro = negroDeEmpleado(emp, pr.month, pr).total;
       porPeriodo.set(pr.month, {
         ...base(pr.month),
         blanco: Math.round(blanco * 100) / 100,

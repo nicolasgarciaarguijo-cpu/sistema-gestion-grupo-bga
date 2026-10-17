@@ -125,3 +125,30 @@ export function numeroALetras(value: number): string {
 
   return `${parts.join(" ").trim()} CON ${cent}/100`;
 }
+
+// LO QUE SE ENTREGA EN NEGRO EN EL MES (Nicolas, 2026-10-16): la MISMA regla para el recibo negro y para la
+// ficha de pago de haberes, asi no dicen montos distintos.
+//   - ACUERDO = lo acordado por el tipo de empleado (fuera de convenio: su negro acordado; temporal: su
+//     sueldo) + el acuerdo del mes (cashBonus). Se PRORRATEA por dias trabajados, salvo el socio / socio
+//     gerente y el temporal por dia (ese ya sale de tarifa x dias).
+//   - PREMIO = monto fijo, va entero.
+export function negroDelMes({
+  acordadoPorTipo,
+  acuerdoDelMes,
+  premio,
+  workingDays,
+  daysWorked,
+  sinProrrateo,
+}: {
+  acordadoPorTipo: number;
+  acuerdoDelMes: number;
+  premio: number;
+  workingDays: number;
+  daysWorked: number;
+  sinProrrateo?: boolean;
+}): { acuerdoTotal: number; acuerdoAEntregar: number; premio: number; total: number } {
+  const acuerdoTotal = Math.round((Math.max(0, Number(acordadoPorTipo || 0)) + Math.max(0, Number(acuerdoDelMes || 0))) * 100) / 100;
+  const acuerdoAEntregar = reciboNegroAmount({ totalBlack: acuerdoTotal, workingDays, daysWorked, sinProrrateo });
+  const p = Math.max(0, Number(premio || 0));
+  return { acuerdoTotal, acuerdoAEntregar, premio: p, total: Math.round((acuerdoAEntregar + p) * 100) / 100 };
+}

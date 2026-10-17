@@ -1,4 +1,4 @@
-import { workingDaysInMonth, reciboNegroAmount, numeroALetras } from "./recibo";
+import { workingDaysInMonth, reciboNegroAmount, numeroALetras, negroDelMes } from "./recibo";
 
 describe("workingDaysInMonth", () => {
   it("julio 2026 (L-S, sin domingos)", () => {
@@ -61,5 +61,22 @@ describe("reciboNegroAmount · socio", () => {
 
   it("sin el flag sigue prorrateando igual que siempre", () => {
     expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: 0 })).toBe(0);
+  });
+});
+
+describe("negroDelMes (recibo negro y ficha de pago, misma regla)", () => {
+  it("el acuerdo se prorratea por dias trabajados y el premio va entero", () => {
+    const r = negroDelMes({ acordadoPorTipo: 0, acuerdoDelMes: 260000, premio: 50000, workingDays: 26, daysWorked: 13 });
+    expect(r).toEqual({ acuerdoTotal: 260000, acuerdoAEntregar: 130000, premio: 50000, total: 180000 });
+  });
+
+  it("fuera de convenio: su negro acordado + el acuerdo del mes, prorrateados", () => {
+    const r = negroDelMes({ acordadoPorTipo: 500000, acuerdoDelMes: 20000, premio: 0, workingDays: 26, daysWorked: 26 });
+    expect(r.total).toBe(520000);
+  });
+
+  it("socio o temporal por dia: sin prorrateo", () => {
+    const r = negroDelMes({ acordadoPorTipo: 800000, acuerdoDelMes: 0, premio: 0, workingDays: 26, daysWorked: 3, sinProrrateo: true });
+    expect(r.total).toBe(800000);
   });
 });
