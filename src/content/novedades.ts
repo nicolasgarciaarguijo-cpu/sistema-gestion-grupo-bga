@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-17c",
+    fecha: "17/10/2026",
+    titulo: "Regularizar el conteo de blanqueo",
+    items: [
+      {
+        titulo: "Dos formas de regularizar",
+        que: "Lo blanqueado se puede dar por regularizado: con una factura emitida (baja el conteo por su total y su IVA queda una sola vez, en el débito) o con una regularización manual (monto, fecha y motivo). Las dos quedan firmadas por quien las carga. Así la posición REAL de IVA muestra cuánto IVA queda desbalanceado de verdad.",
+        como: "Factura: Facturación → click derecho sobre la factura emitida → 'Regulariza blanqueo'. Manual: Balance → Posición de IVA → '+ Regularización manual' (click derecho para quitarla).",
+        tab: "cashflow",
+      },
+    ],
+  },
+  {
     id: "2026-10-17b",
     fecha: "17/10/2026",
     titulo: "Bajas que siguen en el reloj",

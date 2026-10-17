@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Semaforo, ButtonLike, Field, AmountInput, ColorTagToggle, MiniMetric, FileDropButton } from "../ui/primitives";
+import { Panel, Semaforo, ButtonLike, Field, AmountInput, ColorTagToggle, MiniMetric, FileDropButton, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija, inputCelda,
@@ -17,6 +17,8 @@ type FacturacionTabProps = {
   // de facturas, que es donde se las mira.
   issuedInvoices: any[];
   updateIssuedInvoice: (id: number, field: any, value: any) => void;
+  // Marca / desmarca una factura emitida como REGULARIZACION del blanqueo (la firma el usuario que opera).
+  onRegularizaBlanqueo?: (id: number, regulariza: boolean) => void;
   onImportArca: (files: FileList | File[] | null) => void;
   approvedJobsForLink: { budgetNumber: string; client: string; company: string }[];
   financialSemaphoreSummary: any;
@@ -48,6 +50,7 @@ export function FacturacionTab({
   calendarioCobranzasSlot,
   issuedInvoices,
   updateIssuedInvoice,
+  onRegularizaBlanqueo,
   onImportArca,
   approvedJobsForLink,
   financialSemaphoreSummary,
@@ -74,6 +77,7 @@ export function FacturacionTab({
   removeFinancialItem,
   exportPrint,
 }: FacturacionTabProps) {
+  const [menuEmitida, setMenuEmitida] = React.useState<null | { x: number; y: number; id: number; regulariza: boolean; label: string }>(null);
   const anchosArca = usePlanillaWidths("facturacion.arca", { label: 300, col: 124, colCompact: 94 });
 
   // Colapso por mes del calendario anual. Sin entrada explicita: los meses vacios nacen minimizados.
@@ -298,7 +302,16 @@ export function FacturacionTab({
                         {[...issuedInvoices]
                           .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
                           .map((inv) => (
-                            <tr key={inv.id}>
+                            <tr
+                              key={inv.id}
+                              onContextMenu={(ev) => {
+                                if (!onRegularizaBlanqueo) return;
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                setMenuEmitida({ x: ev.clientX, y: ev.clientY, id: inv.id, regulariza: !!inv.regularizaBlanqueo, label: `${inv.pointOfSale}-${inv.number}` });
+                              }}
+                              title={inv.regularizaBlanqueo ? `Regulariza blanqueo · firmó ${inv.regularizaBlanqueo.firmante}` : "Click derecho: marcar que regulariza el blanqueo"}
+                            >
                               <td
                                 style={{
                                   ...tdNombre, fontWeight: 400,
@@ -313,6 +326,11 @@ export function FacturacionTab({
                                   }}
                                 />
                                 {inv.pointOfSale}-{inv.number}
+                                {inv.regularizaBlanqueo && (
+                                  <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, color: "#7c3aed", background: "#ede9fe", borderRadius: 999, padding: "0 6px" }}>
+                                    regulariza
+                                  </span>
+                                )}
                               </td>
                               <td style={{ ...tdDato, color: "#475569" }}>{inv.date}</td>
                               <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(inv.total)}</td>
@@ -343,6 +361,20 @@ export function FacturacionTab({
                           ))}
                       </tbody>
                     </table>
+                    {menuEmitida && (
+                      <QuickMenu x={menuEmitida.x} y={menuEmitida.y} onClose={() => setMenuEmitida(null)}>
+                        <QuickMenuTitle>Factura {menuEmitida.label}</QuickMenuTitle>
+                        <button
+                          style={quickMenuItem}
+                          onClick={() => {
+                            onRegularizaBlanqueo?.(menuEmitida.id, !menuEmitida.regulariza);
+                            setMenuEmitida(null);
+                          }}
+                        >
+                          {menuEmitida.regulariza ? "Quitar: ya no regulariza el blanqueo" : "Regulariza blanqueo (baja el conteo de IVA)"}
+                        </button>
+                      </QuickMenu>
+                    )}
                   </div>
                 </details>
               </>

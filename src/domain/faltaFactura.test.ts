@@ -33,6 +33,15 @@ describe("conteo de blanqueo frente al IVA", () => {
     expect(c).toMatchObject({ sube: 0, baja: 10, saldo: -10, faltaFacturar: 0, ivaFaltante: 0, margen: 10 });
   });
 
+  it("una factura que regulariza o una regularizacion manual bajan el conteo", () => {
+    const c = conteoBlanqueo({
+      company: DR,
+      ...EJ,
+      movimientos: [mov("deposito_negro", 1210000), mov("factura_regulariza", 605000), mov("regularizacion_manual", 605000)],
+    });
+    expect(c).toMatchObject({ saldo: 0, ivaFaltante: 0 });
+  });
+
   it("arranca de cero cada ejercicio fiscal y no mezcla empresas", () => {
     const c = conteoBlanqueo({
       company: DR,

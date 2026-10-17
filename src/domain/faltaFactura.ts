@@ -28,7 +28,9 @@ export type TipoMovFisco =
   | "blanco_a_negro" // baja
   | "caja_blanco_sin_factura" // baja
   | "caja_negro_con_factura" // baja
-  | "factura_pagada_negro"; // baja
+  | "factura_pagada_negro" // baja
+  | "factura_regulariza" // baja: factura emitida para regularizar lo blanqueado
+  | "regularizacion_manual"; // baja: regularizado sin factura (firmado)
 
 export const SUBE: TipoMovFisco[] = ["deposito_negro", "prestamo_negro"];
 
@@ -39,6 +41,8 @@ export const ETIQUETA_MOV_FISCO: Record<TipoMovFisco, string> = {
   caja_blanco_sin_factura: "Caja chica: plata blanca gastada sin factura",
   caja_negro_con_factura: "Caja chica: compras con factura pagadas con plata negra",
   factura_pagada_negro: "Facturas de compra pagadas con efectivo negro",
+  factura_regulariza: "Facturas emitidas que regularizan el blanqueo",
+  regularizacion_manual: "Regularizaciones manuales (firmadas)",
 };
 
 export type MovFisco = { company: string; date: string; amount: number; tipo: TipoMovFisco };
@@ -66,6 +70,8 @@ export function conteoBlanqueo(params: { company: string; desde: string; hasta: 
     caja_blanco_sin_factura: 0,
     caja_negro_con_factura: 0,
     factura_pagada_negro: 0,
+    factura_regulariza: 0,
+    regularizacion_manual: 0,
   } as Record<TipoMovFisco, number>;
   params.movimientos
     .filter((m) => m.company === company && !!m.date && m.date >= desde && m.date <= hasta)

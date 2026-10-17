@@ -183,6 +183,10 @@ type CashflowTabProps = {
     posicionReal?: number;
   }[];
   ivaVepPayments: any[];
+  // Regularizaciones manuales del conteo de blanqueo (firmadas por quien las carga).
+  regularizacionesBlanqueo?: Array<{ id: number; company: string; date: string; amount: number; motivo: string; firmante?: string }>;
+  onAddRegularizacion?: (company: string, datos: { date: string; amount: number; motivo: string }) => void;
+  onRemoveRegularizacion?: (id: number) => void;
   addIvaVepPayment: () => void;
   updateIvaVepPayment: (entryId: number, field: string, value: string | number) => void;
   removeIvaVepPayment: (entryId: number) => void;
@@ -220,6 +224,9 @@ export function CashflowTab({
   loanLines = [],
   vatPositionByCompany,
   ivaVepPayments,
+  regularizacionesBlanqueo = [],
+  onAddRegularizacion,
+  onRemoveRegularizacion,
   addIvaVepPayment,
   updateIvaVepPayment,
   removeIvaVepPayment,
@@ -817,6 +824,8 @@ export function CashflowTab({
                           {linea("caja_blanco_sin_factura", "−")}
                           {linea("caja_negro_con_factura", "−")}
                           {linea("factura_pagada_negro", "−")}
+                          {linea("factura_regulariza", "−")}
+                          {linea("regularizacion_manual", "−")}
                         </div>
                         <div style={balanceGrid}>
                           <BalanceTile
@@ -831,6 +840,13 @@ export function CashflowTab({
                             tone={real > 1 ? "warn" : "strong"}
                           />
                         </div>
+                        <RegularizacionManual
+                          company={v.company}
+                          lista={regularizacionesBlanqueo.filter((r) => r.company === v.company && r.date >= f.desde && r.date <= f.hasta)}
+                          money={money}
+                          onAdd={onAddRegularizacion}
+                          onRemove={onRemoveRegularizacion}
+                        />
                         {f.saldo > 0.5 && (
                           <div style={{ fontSize: 12.5, color: "#b45309", fontWeight: 700, marginTop: 4 }}>
                             Para cerrar el ejercicio en cero: sacar {money(f.saldo)} de plata blanca para pagar en negro, o comprar
@@ -956,5 +972,70 @@ export function CashflowTab({
           </Panel>
 
         </div>
+  );
+}
+
+// REGULARIZACION MANUAL del conteo de blanqueo: monto, fecha y motivo; firma el usuario que la carga.
+function RegularizacionManual({
+  company,
+  lista,
+  money,
+  onAdd,
+  onRemove,
+}: {
+  company: string;
+  lista: Array<{ id: number; date: string; amount: number; motivo: string; firmante?: string }>;
+  money: (n: number) => string;
+  onAdd?: (company: string, datos: { date: string; amount: number; motivo: string }) => void;
+  onRemove?: (id: number) => void;
+}) {
+  const [abierto, setAbierto] = React.useState(false);
+  const [d, setD] = React.useState({ date: new Date().toISOString().slice(0, 10), amount: 0, motivo: "" });
+  if (!onAdd) return null;
+  const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px", fontSize: 13 };
+  return (
+    <div style={{ marginTop: 6, fontSize: 12.5 }}>
+      {lista.map((r) => (
+        <div
+          key={r.id}
+          style={{ display: "flex", gap: 8, alignItems: "center", color: "#475569", cursor: onRemove ? "context-menu" : undefined }}
+          title="Click derecho: quitar esta regularización"
+          onContextMenu={(ev) => {
+            if (!onRemove) return;
+            ev.preventDefault();
+            if (window.confirm("¿Quitar esta regularización manual? (el conteo vuelve a subir)")) onRemove(r.id);
+          }}
+        >
+          <span>{r.date.slice(8, 10)}/{r.date.slice(5, 7)}/{r.date.slice(0, 4)}</span>
+          <strong>{money(r.amount)}</strong>
+          <span>{r.motivo}</span>
+          {r.firmante && <span style={{ color: "#94a3b8" }}>✍ {r.firmante}</span>}
+        </div>
+      ))}
+      {abierto ? (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
+          <input style={input} type="date" value={d.date} onChange={(e) => setD({ ...d, date: e.target.value })} />
+          <input style={{ ...input, width: 130 }} type="number" placeholder="Monto (con IVA)" value={d.amount || ""} onChange={(e) => setD({ ...d, amount: Number(e.target.value) || 0 })} />
+          <input style={{ ...input, minWidth: 240 }} placeholder="Motivo (cómo se regularizó)" value={d.motivo} onChange={(e) => setD({ ...d, motivo: e.target.value })} />
+          <button
+            type="button"
+            style={{ ...input, cursor: d.amount > 0 && d.motivo.trim() ? "pointer" : "not-allowed", fontWeight: 800, background: "#16a34a", color: "#fff", borderColor: "#15803d" }}
+            disabled={!(d.amount > 0 && d.motivo.trim())}
+            onClick={() => {
+              onAdd(company, { date: d.date, amount: d.amount, motivo: d.motivo.trim() });
+              setD({ date: new Date().toISOString().slice(0, 10), amount: 0, motivo: "" });
+              setAbierto(false);
+            }}
+          >
+            Firmar regularización
+          </button>
+          <button type="button" style={{ ...input, cursor: "pointer" }} onClick={() => setAbierto(false)}>Cancelar</button>
+        </div>
+      ) : (
+        <button type="button" style={{ ...input, cursor: "pointer", marginTop: 4, fontWeight: 700 }} onClick={() => setAbierto(true)}>
+          + Regularización manual
+        </button>
+      )}
+    </div>
   );
 }

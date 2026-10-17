@@ -1218,6 +1218,20 @@ export type IssuedInvoice = {
   // Trabajo aprobado al que corresponde esta factura (por número de presupuesto). Ausente = sin
   // vincular. Se puede setear desde Costos o desde Trabajos Aprobados: es el MISMO array, queda sincronizado.
   jobBudgetNumber?: string;
+  // Factura emitida para REGULARIZAR plata blanqueada (Nicolas, 2026-10-17): baja el conteo de blanqueo por
+  // su total. Su IVA ya esta en el debito de siempre, asi no se cuenta dos veces. Firma quien la marco.
+  regularizaBlanqueo?: { firmante: string; firmadoEn: string } | null;
+};
+
+// REGULARIZACION MANUAL del conteo de blanqueo (sin factura: se arreglo de otra forma). Baja el conteo.
+export type RegularizacionBlanqueo = {
+  id: number;
+  company: CompanyName;
+  date: string;
+  amount: number; // monto con IVA que se da por regularizado
+  motivo: string;
+  firmante?: string;
+  firmadoEn?: string;
 };
 
 // Proveedor: listado propio para vincular los pagos y poder cotejarlos contra el extracto.

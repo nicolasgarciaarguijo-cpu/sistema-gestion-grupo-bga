@@ -293,6 +293,7 @@ import type {
   CalendarFlag,
   PaymentMethod,
   IvaVepPayment,
+  RegularizacionBlanqueo,
   BankStatementEntry,
   StockItem,
   CompanyAsset,
@@ -1790,6 +1791,7 @@ type PersistedAppStateData = {
   // Cuenta corriente con la gente: lo cargado a mano (el resto se deriva). Ver domain/personLedger.ts.
   personLedgerEntries: PersonLedgerEntry[];
   ivaVepPayments: IvaVepPayment[];
+  regularizacionesBlanqueo?: RegularizacionBlanqueo[];
   // Cierres de ejercicio: la foto de cada ano cerrado. Es lo que le da al ejercicio nuevo su saldo
   // de apertura, y lo que traba que se edite un ano ya cerrado.
   fiscalClosings: CierreEjercicio[];
@@ -1930,7 +1932,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "cash-flow",
     label: "Balance, cash flow y resultados",
-    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "fiscalClosings", "retirosSocietarios", "calendarRowConfig", "calendarFlags", "calendarMarks", "calendarNotes"] as const,
+    fields: ["financialItems", "debtPlans", "bankStatementEntries", "capitalEntries", "cashHoldings", "ivaVepPayments", "regularizacionesBlanqueo", "fiscalClosings", "retirosSocietarios", "calendarRowConfig", "calendarFlags", "calendarMarks", "calendarNotes"] as const,
   },
   {
     key: "movimientos-internos",
@@ -3023,6 +3025,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>(defaultCalendarNotes);
   const [internalCompanyScope, setInternalCompanyScope] = useState<CompanyScope | "__ALL__">("__ALL__");
   const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
+  const [regularizacionesBlanqueo, setRegularizacionesBlanqueo] = useState<RegularizacionBlanqueo[]>([]);
   const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
   const [costAnalysisGroups, setCostAnalysisGroups] = useState<CostAnalysisGroup[]>(
     defaultCostAnalysisGroups
@@ -4034,6 +4037,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     prune(internalTransfers, setInternalTransfers);
     prune(personLedgerEntries, setPersonLedgerEntries);
     prune(ivaVepPayments, setIvaVepPayments);
+    prune(regularizacionesBlanqueo, setRegularizacionesBlanqueo);
     prune(creditCards, setCreditCards);
     prune(creditCardStatements, setCreditCardStatements);
     prune(creditCardConsumptions, setCreditCardConsumptions);
@@ -4072,6 +4076,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     calendarMarks,
     calendarNotes,
     ivaVepPayments,
+    regularizacionesBlanqueo,
     creditCards,
     creditCardStatements,
     creditCardConsumptions,
@@ -9521,6 +9526,7 @@ Escribi CERRAR para confirmar:`
     calendarMarks: calendarMarks.map((item) => ({ ...item })),
     calendarNotes: calendarNotes.map((item) => ({ ...item })),
     ivaVepPayments: ivaVepPayments.map((item) => ({ ...item, date: stampDate(item.date) })),
+    regularizacionesBlanqueo: regularizacionesBlanqueo.map((item) => ({ ...item })),
     fiscalClosings: fiscalClosings.map((item) => ({ ...item })),
     retirosSocietarios: retirosSocietarios.map((item) => ({ ...item })),
     calendarRowConfig: {
@@ -9814,6 +9820,7 @@ Escribi CERRAR para confirmar:`
         notes: item.notes || "",
       }))
     );
+    setRegularizacionesBlanqueo(keepAccessibleByCompany((data.regularizacionesBlanqueo || []) as RegularizacionBlanqueo[]).map((item) => ({ ...item })));
     setIvaVepPayments(
       keepAccessibleByCompany(data.ivaVepPayments || defaultIvaVepPayments).map((item) => ({
         ...item,
@@ -12143,6 +12150,7 @@ Escribi CERRAR para confirmar:`
     calendarMarks,
     calendarNotes,
     ivaVepPayments,
+    regularizacionesBlanqueo,
     calendarRowConfig,
     creditCards,
     creditCardStatements,
@@ -14404,6 +14412,15 @@ Escribi CERRAR para confirmar:`
       if (!pago || pago.administration !== "negro") return;
       movimientos.push({ company: String(inv.company), date: pago.date || inv.invoiceDate, amount: Number(pago.amount || 0), tipo: "factura_pagada_negro" });
     });
+    // REGULARIZAN: facturas emitidas marcadas y regularizaciones manuales (bajan el conteo).
+    issuedInvoices.forEach((inv) => {
+      if (!inv.regularizaBlanqueo || !canAccessCompany(inv.company)) return;
+      movimientos.push({ company: String(inv.company), date: inv.date, amount: Number(inv.total || 0), tipo: "factura_regulariza" });
+    });
+    regularizacionesBlanqueo.forEach((r) => {
+      if (!canAccessCompany(r.company)) return;
+      movimientos.push({ company: String(r.company), date: r.date, amount: Number(r.amount || 0), tipo: "regularizacion_manual" });
+    });
     const out = new Map<string, ConteoBlanqueo>();
     COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General").forEach((c) => {
       const company = String(c.value);
@@ -14412,7 +14429,7 @@ Escribi CERRAR para confirmar:`
       out.set(company, conteoBlanqueo({ company, desde: startIso, hasta: endIso, movimientos }));
     });
     return out;
-  }, [visibleInternalTransfers, visibleCapitalEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visiblePurchaseInvoices, costEntries, companyCatalog, COMPANY_OPTIONS]);
+  }, [visibleInternalTransfers, visibleCapitalEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visiblePurchaseInvoices, costEntries, companyCatalog, COMPANY_OPTIONS, issuedInvoices, regularizacionesBlanqueo]);
 
   const plataDisponibleByCompany = useMemo(() => {
     const realCompanies = COMPANY_OPTIONS.filter(
@@ -21084,6 +21101,11 @@ Escribi CERRAR para confirmar:`
           loanLines={loanLines}
           vatPositionByCompany={vatPositionByCompany}
           ivaVepPayments={scopedIvaVepPayments}
+          regularizacionesBlanqueo={regularizacionesBlanqueo.filter((r) => canAccessCompany(r.company))}
+          onAddRegularizacion={(company, datos) =>
+            setRegularizacionesBlanqueo((prev) => [{ id: newId(), company: company as CompanyName, ...datos, ...firma() }, ...prev])
+          }
+          onRemoveRegularizacion={(id) => setRegularizacionesBlanqueo((prev) => prev.filter((r) => r.id !== id))}
           addIvaVepPayment={addIvaVepPayment}
           updateIvaVepPayment={updateIvaVepPayment}
           removeIvaVepPayment={removeIvaVepPayment}
@@ -21664,6 +21686,9 @@ Escribi CERRAR para confirmar:`
           calendarioCobranzasSlot={renderCalendarioAnual("cobranzas")}
           issuedInvoices={visibleIssuedInvoices}
           updateIssuedInvoice={updateIssuedInvoice}
+          onRegularizaBlanqueo={(id, on) =>
+            setIssuedInvoices((prev) => prev.map((inv) => (inv.id === id ? { ...inv, regularizaBlanqueo: on ? { firmante: usuarioFirmante, firmadoEn: new Date().toISOString() } : null } : inv)))
+          }
           onImportArca={importArcaFiles}
           approvedJobsForLink={visibleApprovedJobs.map((j) => ({
             budgetNumber: j.budgetNumber,
