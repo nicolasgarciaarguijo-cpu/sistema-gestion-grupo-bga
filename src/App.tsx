@@ -89,6 +89,7 @@ import {
 import { computeVatPosition } from "./domain/vatBalance";
 import { conteoBlanqueo, type ConteoBlanqueo, type MovFisco } from "./domain/faltaFactura";
 import { conteoPagosPorPersona, pagosCruzadosEntreEmpresas } from "./domain/pagosPorPersona";
+import { armarPreCierre, type PreCierre } from "./domain/preCierre";
 import { pagosSinFactura, resumenPagosSinFactura } from "./domain/pagosACuenta";
 import { PagoACuentaModal, type PagoACuentaForm } from "./ui/PagoACuentaModal";
 import { UsuarioFirmanteContext } from "./ui/FirmanteSelect";
@@ -16975,6 +16976,70 @@ Escribi CERRAR para confirmar:`
     [cashFlowEntriesPlanilla, agendaInamoviblesItems]
   );
   const alertasInamovibles = useMemo(() => alertasActivas(agendaInamoviblesItems), [agendaInamoviblesItems]);
+
+  // PRE-CIERRE (domain/preCierre): por empresa, al fin del ejercicio EN CURSO, lo que pasa al ejercicio nuevo
+  // (cobros, pagos, cuentas, cajas) y lo que queda guardado. Solo se arma en la solapa de Balance.
+  const preCierrePorEmpresa = useMemo(() => {
+    if (activeTab !== "cashflow") return [] as Array<{ company: string; short: string; primary: string; fin: string; data: PreCierre }>;
+    const hoy = todayIso();
+    return COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General" && canAccessCompany(c.value as CompanyName)).map((c) => {
+      const company = String(c.value);
+      const startMonth = getFiscalYearStartMonth(companyCatalog.find((x) => x.value === company));
+      const fin = fiscalYearBounds(startMonth, currentFiscalStartYear(startMonth, new Date())).endIso;
+      // Cobros: trabajos con saldo a cobrar (blanco facturado pendiente y negro no cobrado).
+      const cobros = approvedJobsSummary
+        .filter((j: any) => String(j.company) === company)
+        .map((j: any) => {
+          const negroCobrado = (j.payments || [])
+            .filter((p: any) => p.administration === "negro" && p.currency !== "USD")
+            .reduce((a: number, p: any) => a + Number(p.amount || 0), 0);
+          return {
+            id: `job-${j.id}`,
+            titulo: `${j.budgetNumber ? j.budgetNumber + " · " : ""}${j.client || j.project || "Trabajo"}`,
+            blanco: Math.max(0, Number(j.remainingToPay || 0)),
+            negro: Math.max(0, Number(j.blackNet || 0) - negroCobrado),
+          };
+        });
+      // Pagos: todo lo de Pagos programados sin pagar (facturas, cuotas, tarjetas, seguros, haberes, a mano).
+      const ORIGEN: Record<string, string> = { manual: "A mano", deuda: "Cuota", tarjeta: "Tarjeta", cashflow: "Cash flow", seguro: "Seguro", sueldos: "Haberes", factura: "Factura" };
+      const pagos = agendaInamoviblesItems
+        .filter((i) => String(i.company) === company && !i.pagado)
+        .map((i) => ({
+          id: i.clave,
+          origen: ORIGEN[i.origen] || i.origen,
+          titulo: i.titulo,
+          fecha: i.fechaConfirmada || i.fechaLimite,
+          monto: Number(i.monto || 0),
+          vencido: (i.fechaConfirmada || i.fechaLimite) < hoy,
+          currency: i.currency,
+        }));
+      // Cuentas: proveedores con saldo (le debemos / a favor) y pagos esperando su factura.
+      const { ledgers } = computeSupplierLedgers({
+        invoices: purchaseLedgerInvoices,
+        payments: purchaseLedgerPayments,
+        creditNotes: visibleCreditNotes as any,
+        companyScope: company,
+      });
+      const cuentas = [
+        ...ledgers.map((l) => ({ id: `prov-${l.key}`, tipo: "proveedor" as const, nombre: l.supplier, saldo: l.saldo })),
+        ...pendientesSinFactura
+          .filter((p) => p.company === company)
+          .map((p) => ({ id: `psf-${p.id}`, tipo: "pago_sin_factura" as const, nombre: `${p.supplier} (pago sin factura)`, saldo: -p.amount })),
+      ];
+      const cajas = visiblePettyCashFunds
+        .filter((f) => String(f.company) === company && !f.closed)
+        .map((f) => ({ id: `caja-${f.id}`, responsable: f.responsible || "Sin responsable", resta: resumenCaja(f as any, visiblePettyCashExpenses as any).resta }));
+      const plan = planDelCierre(company as CompanyName, fin);
+      return {
+        company,
+        short: c.short || company,
+        primary: (getCompanyMeta(company as CompanyName) as any)?.primary || "#475569",
+        fin,
+        data: armarPreCierre({ cobros, pagos, cuentas, cajas, archivo: plan.resumen.detalle }),
+      };
+    });
+    // planDelCierre usa casi todo el estado: se recalcula al entrar a Balance y cuando cambian las fuentes.
+  }, [activeTab, approvedJobsSummary, agendaInamoviblesItems, purchaseLedgerInvoices, purchaseLedgerPayments, visibleCreditNotes, pendientesSinFactura, visiblePettyCashFunds, visiblePettyCashExpenses, companyCatalog, costEntries, bankStatementEntries, financialItems, issuedInvoices, purchaseInvoices]);
   const pagosVencidosAReclamar = useMemo(() => pagosAReclamar(agendaInamoviblesItems), [agendaInamoviblesItems]);
 
   // Marca de un pago de la agenda (por clave): se fusiona con la que ya hubiera.
@@ -21083,6 +21148,7 @@ Escribi CERRAR para confirmar:`
           balanceFiscalYearOptions={balanceFiscalYearOptions}
           updateCompanyFiscalStartMonth={updateCompanyFiscalStartMonth}
           fiscalClosings={fiscalClosings}
+          preCierre={preCierrePorEmpresa}
           onCerrarEjercicio={cerrarEjercicio}
           onReabrirEjercicio={reabrirEjercicio}
           cierreBusy={cierreBusy}

@@ -1,4 +1,5 @@
 import React from "react";
+import type { PreCierre } from "../domain/preCierre";
 import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, moneyToneColor } from "../ui/primitives";
 import {
@@ -149,6 +150,8 @@ type CashflowTabProps = {
   updateCompanyFiscalStartMonth: (companyValue: string, month: number) => void;
   // Cierre de ejercicio: la foto del año cerrado y el saldo con el que arranca el siguiente.
   fiscalClosings: CierreEjercicio[];
+  // Pre-cierre: por empresa, lo que pasa al ejercicio nuevo y lo que queda guardado (domain/preCierre).
+  preCierre?: Array<{ company: string; short: string; primary: string; fin: string; data: PreCierre }>;
   onCerrarEjercicio: (company: CompanyName, fiscalStartYear: number) => void;
   onReabrirEjercicio: (cierreId: number) => void;
   cierreBusy: boolean;
@@ -252,6 +255,7 @@ export function CashflowTab({
   balanceFiscalYearOptions,
   updateCompanyFiscalStartMonth,
   fiscalClosings,
+  preCierre = [],
   onCerrarEjercicio,
   onReabrirEjercicio,
   cierreBusy,
@@ -469,6 +473,8 @@ export function CashflowTab({
               de solo lectura. Los datos NO se borran; lo único que sale del sistema son las
               imágenes, que es donde está el peso. Vive acá, junto al balance, porque es la foto con
               la que arranca el año siguiente. */}
+          {preCierre.length > 0 && <PreCierrePanel preCierre={preCierre} />}
+
           <Panel title="Cierre de ejercicio" span="full">
             <div style={{ ...styles.sectionNote, marginBottom: 10 }}>
               El cierre <strong>guarda todo el ejercicio en la carpeta</strong> y deja el año{" "}
@@ -1037,5 +1043,101 @@ function RegularizacionManual({
         </button>
       )}
     </div>
+  );
+}
+
+// PRE-CIERRE: la foto del punto cero (lo que sigue y lo que se guarda), una tarjeta por empresa.
+function PreCierrePanel({ preCierre }: { preCierre: Array<{ company: string; short: string; primary: string; fin: string; data: PreCierre }> }) {
+  const [abierto, setAbierto] = React.useState<Record<string, boolean>>({});
+  const fecha = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
+  const fila: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 10, fontSize: 12.5, padding: "1px 0" };
+  const titulo: React.CSSProperties = { fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, margin: "10px 0 4px" };
+  const LIMITE = 8;
+  const lista = <T,>(key: string, items: T[], render: (x: T) => React.ReactNode) => {
+    const todo = !!abierto[key];
+    const vis = todo ? items : items.slice(0, LIMITE);
+    return (
+      <>
+        {vis.map(render)}
+        {items.length > LIMITE && (
+          <button type="button" onClick={() => setAbierto((a) => ({ ...a, [key]: !todo }))} style={{ border: "none", background: "transparent", color: "#2563eb", cursor: "pointer", fontSize: 12, padding: 0 }}>
+            {todo ? "ver menos" : `ver los ${items.length}`}
+          </button>
+        )}
+      </>
+    );
+  };
+  return (
+    <Panel title="Pre-cierre · el punto cero del ejercicio nuevo" span="full">
+      <div style={{ ...styles.sectionNote, marginBottom: 10 }}>
+        Antes de cerrar: qué <strong>pasa al ejercicio nuevo</strong> (lo vigente: cobros, pagos, cuentas con saldo, cajas
+        abiertas) y qué <strong>queda guardado</strong> (lo que terminó). Revisalo y limpiá lo que sea de prueba antes de
+        apretar el cierre: lo que esté acá el 31/10 es con lo que arranca el sistema.
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+        {preCierre.map(({ company, short, primary, fin, data }) => {
+          const t = data.totales;
+          return (
+            <div key={company} style={{ flex: "1 1 420px", minWidth: 320, border: "1px solid #e2e8f0", borderLeft: `4px solid ${primary}`, borderRadius: 10, padding: "10px 12px", background: "#fff" }}>
+              <div style={{ color: primary, fontWeight: 800 }}>{short}</div>
+              <div style={{ fontSize: 12, color: "#64748b" }}>Cierra el {fecha(fin)} · arranca el ejercicio nuevo al día siguiente</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 6, marginTop: 8 }}>
+                <div style={{ background: "#f0fdf4", borderRadius: 8, padding: "6px 8px", fontSize: 12 }}>
+                  A cobrar<br /><b style={{ fontSize: 15, color: "#166534" }}>{money(t.aCobrarBlanco + t.aCobrarNegro)}</b>
+                  <div style={{ color: "#64748b" }}>B {money(t.aCobrarBlanco)} · N {money(t.aCobrarNegro)}</div>
+                </div>
+                <div style={{ background: "#fef2f2", borderRadius: 8, padding: "6px 8px", fontSize: 12 }}>
+                  A pagar<br /><b style={{ fontSize: 15, color: "#b91c1c" }}>{money(t.aPagar)}</b>
+                  {t.aPagarUsd > 0 && <div style={{ color: "#64748b" }}>+ {money(t.aPagarUsd, "USD")}</div>}
+                  {t.vencido > 0.5 && <div style={{ color: "#b91c1c", fontWeight: 700 }}>vencido {money(t.vencido)}</div>}
+                </div>
+                <div style={{ background: "#f8fafc", borderRadius: 8, padding: "6px 8px", fontSize: 12 }}>
+                  Proveedores<br /><b style={{ fontSize: 15, color: "#b45309" }}>{money(t.debemosProveedores)}</b>
+                  {t.aFavorProveedores > 0.5 && <div style={{ color: "#1e40af" }}>a favor {money(t.aFavorProveedores)}</div>}
+                </div>
+                <div style={{ background: "#f8fafc", borderRadius: 8, padding: "6px 8px", fontSize: 12 }}>
+                  En cajas chicas<br /><b style={{ fontSize: 15 }}>{money(t.enCajas)}</b>
+                </div>
+              </div>
+
+              <div style={titulo}>Cobros que siguen ({data.cobros.length})</div>
+              {data.cobros.length === 0 ? <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Nada pendiente de cobro.</div> : lista(`${company}-cobros`, data.cobros, (c) => (
+                <div key={c.id} style={fila}><span>{c.titulo}</span><span>{c.blanco > 0.5 ? `B ${money(c.blanco)}` : ""}{c.blanco > 0.5 && c.negro > 0.5 ? " · " : ""}{c.negro > 0.5 ? `N ${money(c.negro)}` : ""}</span></div>
+              ))}
+
+              <div style={titulo}>Pagos que siguen ({data.pagos.length})</div>
+              {data.pagos.length === 0 ? <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Nada pendiente de pago.</div> : lista(`${company}-pagos`, data.pagos, (p) => (
+                <div key={p.id} style={{ ...fila, color: p.vencido ? "#b91c1c" : undefined }}>
+                  <span>{fecha(p.fecha)} · <span style={{ color: "#64748b" }}>{p.origen}</span> · {p.titulo}{p.vencido ? " · VENCIDO" : ""}</span>
+                  <span>{money(p.monto, p.currency === "USD" ? "USD" : undefined)}</span>
+                </div>
+              ))}
+
+              <div style={titulo}>Cuentas con saldo ({data.cuentas.length})</div>
+              {data.cuentas.length === 0 ? <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Todas al día.</div> : lista(`${company}-cuentas`, data.cuentas, (c) => (
+                <div key={c.id} style={fila}><span>{c.nombre}</span><span style={{ color: c.saldo > 0 ? "#b45309" : "#1e40af" }}>{c.saldo > 0 ? `le debemos ${money(c.saldo)}` : `a favor ${money(-c.saldo)}`}</span></div>
+              ))}
+
+              {data.cajas.length > 0 && (
+                <>
+                  <div style={titulo}>Cajas chicas abiertas ({data.cajas.length})</div>
+                  {data.cajas.map((c) => (
+                    <div key={c.id} style={fila}><span>{c.responsable}</span><span>{money(c.resta)}</span></div>
+                  ))}
+                </>
+              )}
+
+              <div style={titulo}>Lo que queda guardado (terminó en el ejercicio)</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 2 }}>
+                {t.seGuarda} registros se guardan en la carpeta y quedan de solo lectura · {t.sigue} siguen vigentes.
+              </div>
+              {data.archivo.filter((b) => b.archivar || b.quedan).map((b) => (
+                <div key={b.nombre} style={fila}><span>{b.nombre}</span><span style={{ color: "#64748b" }}>{b.archivar} se guardan · {b.quedan} siguen</span></div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
   );
 }

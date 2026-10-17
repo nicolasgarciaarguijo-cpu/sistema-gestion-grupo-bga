@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-17d",
+    fecha: "17/10/2026",
+    titulo: "Pre-cierre: el punto cero del 1/11",
+    items: [
+      {
+        titulo: "Qué pasa al ejercicio nuevo y qué queda guardado",
+        que: "Antes de cerrar el ejercicio, por empresa: lo que sigue vigente (cobros de trabajos con saldo, pagos por hacer —facturas, cuotas, tarjetas, seguros, haberes—, proveedores con saldo, pagos sin factura y cajas chicas abiertas) y cuánto queda guardado porque terminó. Lo vencido aparece en rojo.",
+        como: "Balance → 'Pre-cierre', arriba del Cierre de ejercicio. Revisalo y limpiá lo que sea de prueba antes del 31/10: con eso arranca el sistema.",
+        tab: "cashflow",
+      },
+    ],
+  },
+  {
     id: "2026-10-17c",
     fecha: "17/10/2026",
     titulo: "Regularizar el conteo de blanqueo",
