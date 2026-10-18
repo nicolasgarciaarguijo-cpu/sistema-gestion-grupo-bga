@@ -62,7 +62,7 @@ import {
   type ItemInamovible,
   type VencimientoMarca,
 } from "./domain/agendaInamovibles";
-import { allSectionsWith } from "./domain/calendarStructure";
+import { allSectionsWith, extraRowsOf } from "./domain/calendarStructure";
 import { PagosInamovibles } from "./tabs/PagosInamovibles";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
 import { ReclamoPagosVencidos } from "./ui/ReclamoPagosVencidos";
@@ -90,6 +90,7 @@ import { computeVatPosition } from "./domain/vatBalance";
 import { conteoBlanqueo, type ConteoBlanqueo, type MovFisco } from "./domain/faltaFactura";
 import { conteoPagosPorPersona, pagosCruzadosEntreEmpresas } from "./domain/pagosPorPersona";
 import { armarPreCierre, type PreCierre } from "./domain/preCierre";
+import { cargasDePlanilla, type FilaCarga } from "./domain/cargasPlanilla";
 import { pagosSinFactura, resumenPagosSinFactura } from "./domain/pagosACuenta";
 import { PagoACuentaModal, type PagoACuentaForm } from "./ui/PagoACuentaModal";
 import { UsuarioFirmanteContext } from "./ui/FirmanteSelect";
@@ -16979,6 +16980,38 @@ Escribi CERRAR para confirmar:`
 
   // PRE-CIERRE (domain/preCierre): por empresa, al fin del ejercicio EN CURSO, lo que pasa al ejercicio nuevo
   // (cobros, pagos, cuentas, cajas) y lo que queda guardado. Solo se arma en la solapa de Balance.
+  // CARGAS VIEJAS DE LA PLANILLA (domain/cargasPlanilla): lo que se cargo a mano en el cash flow antes de
+  // que fuera solo para ver, por empresa, con la solapa a la que tiene que pasar.
+  const cargasPlanillaPorEmpresa = useMemo(() => {
+    if (activeTab !== "cashflow") return [] as Array<{ company: string; short: string; primary: string; filas: FilaCarga[] }>;
+    const hoy = todayIso();
+    const nombreEmp = new Map(employees.map((e) => [e.id, e.name]));
+    const seccionDe = (ck: string) => {
+      const it = CALENDAR_ITEM_INDEX[ck];
+      return it ? { seccion: it.sectionKey, label: it.label } : undefined;
+    };
+    return COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General" && canAccessCompany(c.value as CompanyName)).map((c) => {
+      const company = String(c.value);
+      const startMonth = getFiscalYearStartMonth(companyCatalog.find((x) => x.value === company));
+      const desde = fiscalYearBounds(startMonth, currentFiscalStartYear(startMonth, new Date())).startIso;
+      const deEsta = costEntries.filter((ce) => String(ce.company) === company);
+      const filas = cargasDePlanilla({
+        items: financialItems.filter((f) => String(f.company) === company) as any,
+        seccionDe,
+        hoy,
+        corte: "2026-08-29",
+        desde,
+        haberesPagados: deEsta
+          .filter((ce) => ce.employeeId != null)
+          .map((ce) => ({ company, date: ce.date, amount: Number(ce.amount || 0), nombre: nombreEmp.get(ce.employeeId!) || "" })),
+        pagosProveedores: deEsta
+          .filter((ce) => ce.employeeId == null)
+          .map((ce) => ({ company, date: ce.date, amount: Math.abs(Number(ce.amount || 0)), nombre: ce.supplier || ce.description || "" })),
+      });
+      return { company, short: String(c.short || company), primary: String((c as any).primary || "#334155"), filas };
+    });
+  }, [activeTab, financialItems, costEntries, employees, companyCatalog]);
+
   const preCierrePorEmpresa = useMemo(() => {
     if (activeTab !== "cashflow") return [] as Array<{ company: string; short: string; primary: string; fin: string; data: PreCierre }>;
     const hoy = todayIso();
@@ -21150,6 +21183,9 @@ Escribi CERRAR para confirmar:`
           updateCompanyFiscalStartMonth={updateCompanyFiscalStartMonth}
           fiscalClosings={fiscalClosings}
           preCierre={preCierrePorEmpresa}
+          cargasPlanilla={cargasPlanillaPorEmpresa}
+          onIrASolapa={(tab) => setActiveTab(tab as TabKey)}
+          onBorrarCargaPlanilla={removeFinancialItem}
           onCerrarEjercicio={cerrarEjercicio}
           onReabrirEjercicio={reabrirEjercicio}
           cierreBusy={cierreBusy}
@@ -21491,6 +21527,17 @@ Escribi CERRAR para confirmar:`
             paid: i.paidByCostEntryId != null || i.paidByBankEntryId != null,
             paidByBankEntryId: i.paidByBankEntryId,
           }))}
+          renglones={allSectionsWith(calendarRowConfig).map((s) => ({
+            key: s.key,
+            label: s.label,
+            items: [
+              ...s.items
+                .filter((it) => !(calendarRowConfig.hidden || []).includes(it.key))
+                .map((it) => ({ key: it.key, label: (calendarRowConfig.labels || {})[it.key] || it.label })),
+              ...extraRowsOf(calendarRowConfig, s.key).map((nombre) => ({ key: `custom:${s.key}:${nombre}`, label: `${nombre} (propio)` })),
+            ],
+          }))}
+          onAssignConcept={assignBankConcept}
           onLinkInvoice={(bankId, invoiceId) => {
             const b = bankStatementEntries.find((x) => x.id === bankId);
             if (b && bloqueadoPorCierre(b.company, b.date)) return;

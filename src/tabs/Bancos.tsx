@@ -27,7 +27,8 @@ import {
   inputCelda,
 } from "../ui/planilla";
 import { bankEntryMissingInfo } from "../domain/bankAssignment";
-import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
+import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX } from "../domain/calendarStructure";
+import { suggestCalendarConcept } from "../domain/calendarBankRules";
 import { money, todayIso } from "../lib/format";
 import { modoDelBanco } from "../domain/calendarFeeds";
 import { verificarExtractos } from "../domain/verificacionExtracto";
@@ -89,6 +90,11 @@ type BancosTabProps = {
   // del banco con la factura de compra se hace aca). null = soltar: la factura vuelve a ser deuda.
   purchaseInvoices?: LinkableInvoice[];
   onLinkInvoice?: (bankId: number, invoiceId: number | null) => void;
+  // RENGLONES DE LA PLANILLA para clasificar (los fijos con su nombre, sin los ocultos, mas las secciones y
+  // renglones propios). Antes solo se podia elegir un renglon propio desde la planilla, que ahora es solo para ver.
+  renglones?: Array<{ key: string; label: string; items: Array<{ key: string; label: string }> }>;
+  // Clasificar de una la mecanica bancaria conocida (impuestos, comisiones, IVA...): el "🧠" de la planilla.
+  onAssignConcept?: (bankIds: number[], conceptKey: string) => void;
   // Costo real de bancos y tarjetas por empresa: va arriba de todo.
   costoSlot?: React.ReactNode;
 };
@@ -137,7 +143,19 @@ export function BancosTab({
   costoSlot,
   purchaseInvoices = [],
   onLinkInvoice,
+  renglones,
+  onAssignConcept,
 }: BancosTabProps) {
+  const opcionesRenglon =
+    renglones || CALENDAR_SECTIONS.filter((s) => s.items.length > 0).map((s) => ({ key: s.key, label: s.label, items: s.items }));
+  const etiquetaRenglon = (key: string) =>
+    key === "__interno__"
+      ? "Cuenta corriente · movimiento interno"
+      : opcionesRenglon.flatMap((s) => s.items).find((it) => it.key === key)?.label || CALENDAR_ITEM_INDEX[key]?.label || key;
+  // Sugerencia solo para lo que todavia no tiene renglon ni trabajo.
+  const sugerencia = (entry: any): string | null =>
+    !entry.conceptKey && !entry.assignedJobBudget ? suggestCalendarConcept(entry.concept || "") : null;
+  const sugeridosDelMes = monthBankStatementEntries.filter((e: any) => sugerencia(e));
   const anchosExtracto = usePlanillaWidths("bancos.extracto", { label: 340, col: 124, colCompact: 94 });
   const anchosEspejo = usePlanillaWidths("bancos.espejo", { label: 340, col: 124, colCompact: 94 });
   const anchosBanco = usePlanillaWidths("bancos.banco", { label: 260, col: 104, colCompact: 78 });
@@ -536,6 +554,25 @@ export function BancosTab({
         {monthBankStatementEntries.length === 0 ? (
           <div style={styles.empty}>No hay movimientos bancarios en {monthLabel(operationalMonth)}.</div>
         ) : (
+          <>
+          {onAssignConcept && sugeridosDelMes.length > 0 && (
+            <div style={{ margin: "6px 0" }}>
+              <button
+                style={{ ...styles.smallBtn, borderColor: "#a78bfa", background: "#f5f3ff", color: "#5b21b6" }}
+                title="Clasifica la mecánica bancaria conocida del mes (impuestos, IVA, comisiones, sellos, intereses, tarjeta)"
+                onClick={() => {
+                  const porClave = new Map<string, number[]>();
+                  sugeridosDelMes.forEach((e: any) => {
+                    const k = sugerencia(e)!;
+                    porClave.set(k, [...(porClave.get(k) || []), e.id]);
+                  });
+                  porClave.forEach((ids, k) => onAssignConcept(ids, k));
+                }}
+              >
+                🧠 Clasificar {sugeridosDelMes.length} sugeridos
+              </button>
+            </div>
+          )}
           <div style={{ ...planillaWrap, ...anchosBanco.vars }}>
             <datalist id="bank-assign-jobs">
               {approvedJobsForLink.map((j) => (
@@ -749,7 +786,11 @@ export function BancosTab({
                               onChange={(e) => updateBankStatementEntry(entry.id, "conceptKey", e.target.value)}
                             >
                               <option value="">— Sin clasificar —</option>
-                              {CALENDAR_SECTIONS.filter((s) => s.items.length > 0).map((s) => (
+                              <option value="__interno__">↔ CUENTA CORRIENTE · movimiento interno (no cuenta)</option>
+                              {entry.conceptKey && !opcionesRenglon.some((s) => s.items.some((it) => it.key === entry.conceptKey)) && entry.conceptKey !== "__interno__" && (
+                                <option value={entry.conceptKey}>{etiquetaRenglon(entry.conceptKey)}</option>
+                              )}
+                              {opcionesRenglon.filter((s) => s.items.length > 0).map((s) => (
                                 <optgroup key={s.key} label={s.label}>
                                   {s.items.map((it) => (
                                     <option key={it.key} value={it.key}>{it.label}</option>
@@ -758,6 +799,15 @@ export function BancosTab({
                               ))}
                             </select>
                           </Field>
+                          {sugerencia(entry) && (
+                            <button
+                              style={{ ...styles.smallBtn, borderColor: "#a78bfa", background: "#f5f3ff", color: "#5b21b6" }}
+                              title="Aplicar la clasificación sugerida"
+                              onClick={() => updateBankStatementEntry(entry.id, "conceptKey", sugerencia(entry)!)}
+                            >
+                              🧠 → {etiquetaRenglon(sugerencia(entry)!)}
+                            </button>
+                          )}
                           <Field label="Nota (opcional)">
                             <input
                               style={{ ...styles.input, minWidth: 180 }}
@@ -782,6 +832,7 @@ export function BancosTab({
               </tbody>
             </table>
           </div>
+          </>
         )}
       </Panel>
 

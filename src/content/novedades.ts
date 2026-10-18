@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-17f",
+    fecha: "17/10/2026",
+    titulo: "Pasar las cargas viejas de la planilla a su solapa",
+    items: [
+      {
+        titulo: "Cargas hechas a mano en la planilla",
+        que: "Listado, por empresa, de lo que se cargó a mano en el cash flow y no vive en su solapa (sueldos, pagos a proveedores, cuotas de planes, aportes...). Dice a qué solapa va cada uno, marca lo futuro y avisa 'posible doble' cuando parece estar ya cargado (por ejemplo, un sueldo que también se pagó desde la ficha de haberes).",
+        como: "Balance → 'Cargas hechas a mano en la planilla', debajo del Pre-cierre. Click derecho: ir a la solapa, o borrarlo de la planilla una vez que está cargado allá.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Bancos: todos los renglones y la clasificación sugerida",
+        que: "Al asignar un movimiento del banco ahora aparecen los renglones con su nombre, las secciones y renglones propios y la cuenta corriente (movimiento interno). Y vuelve el 🧠: clasifica sola la mecánica bancaria conocida.",
+        como: "Bancos y tarjetas → 'Asignar' en el movimiento, o '🧠 Clasificar N sugeridos' arriba de la lista del mes.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-10-17e",
     fecha: "17/10/2026",
     titulo: "El cash flow es solo para ver",

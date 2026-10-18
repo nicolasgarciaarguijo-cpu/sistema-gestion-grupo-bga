@@ -1,7 +1,8 @@
 import React from "react";
 import type { PreCierre } from "../domain/preCierre";
+import { DESTINO_LABEL, DESTINO_TAB, type DestinoCarga, type FilaCarga } from "../domain/cargasPlanilla";
 import { styles } from "../ui/styles";
-import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, moneyToneColor } from "../ui/primitives";
+import { Panel, MiniMetric, ButtonLike, Field, AmountInput, ColorTag, moneyToneColor, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
@@ -152,6 +153,10 @@ type CashflowTabProps = {
   fiscalClosings: CierreEjercicio[];
   // Pre-cierre: por empresa, lo que pasa al ejercicio nuevo y lo que queda guardado (domain/preCierre).
   preCierre?: Array<{ company: string; short: string; primary: string; fin: string; data: PreCierre }>;
+  // Cargas hechas a mano en la planilla, para pasarlas a su solapa (domain/cargasPlanilla).
+  cargasPlanilla?: Array<{ company: string; short: string; primary: string; filas: FilaCarga[] }>;
+  onIrASolapa?: (tab: string) => void;
+  onBorrarCargaPlanilla?: (id: number) => void;
   onCerrarEjercicio: (company: CompanyName, fiscalStartYear: number) => void;
   onReabrirEjercicio: (cierreId: number) => void;
   cierreBusy: boolean;
@@ -256,6 +261,9 @@ export function CashflowTab({
   updateCompanyFiscalStartMonth,
   fiscalClosings,
   preCierre = [],
+  cargasPlanilla = [],
+  onIrASolapa,
+  onBorrarCargaPlanilla,
   onCerrarEjercicio,
   onReabrirEjercicio,
   cierreBusy,
@@ -474,6 +482,9 @@ export function CashflowTab({
               imágenes, que es donde está el peso. Vive acá, junto al balance, porque es la foto con
               la que arranca el año siguiente. */}
           {preCierre.length > 0 && <PreCierrePanel preCierre={preCierre} />}
+          {cargasPlanilla.some((e) => e.filas.length > 0) && (
+            <CargasPlanillaPanel empresas={cargasPlanilla} onIr={onIrASolapa} onBorrar={onBorrarCargaPlanilla} />
+          )}
 
           <Panel title="Cierre de ejercicio" span="full">
             <div style={{ ...styles.sectionNote, marginBottom: 10 }}>
@@ -1138,6 +1149,132 @@ function PreCierrePanel({ preCierre }: { preCierre: Array<{ company: string; sho
           );
         })}
       </div>
+    </Panel>
+  );
+}
+
+// CARGAS VIEJAS DE LA PLANILLA: lo que se cargo a mano en el cash flow y no vive en su solapa. Se pasa a
+// mano (cargarlo en la solapa que dice) y despues se borra de aca. Toda accion sale del click derecho.
+function CargasPlanillaPanel({
+  empresas,
+  onIr,
+  onBorrar,
+}: {
+  empresas: Array<{ company: string; short: string; primary: string; filas: FilaCarga[] }>;
+  onIr?: (tab: string) => void;
+  onBorrar?: (id: number) => void;
+}) {
+  const [filtro, setFiltro] = React.useState<"corte" | "dobles" | "todo">("corte");
+  const [destino, setDestino] = React.useState<DestinoCarga | "">("");
+  const [menu, setMenu] = React.useState<null | { x: number; y: number; fila: FilaCarga }>(null);
+  const [ver, setVer] = React.useState<Record<string, number>>({});
+  const fecha = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : "—");
+  const pasa = (f: FilaCarga) =>
+    (filtro === "todo" || (filtro === "corte" ? f.desdeCorte || f.futura || !!f.posibleDoble : !!f.posibleDoble)) &&
+    (!destino || f.destino === destino);
+  const chip = (activo: boolean): React.CSSProperties => ({
+    border: `1px solid ${activo ? "#0f172a" : "#cbd5e1"}`, background: activo ? "#0f172a" : "#fff", color: activo ? "#fff" : "#334155",
+    borderRadius: 999, padding: "2px 10px", fontSize: 12, cursor: "pointer",
+  });
+  const td: React.CSSProperties = { padding: "3px 6px", borderBottom: "1px solid #f1f5f9", fontSize: 12.5, whiteSpace: "nowrap" };
+  return (
+    <Panel title="Cargas hechas a mano en la planilla" span="full">
+      <div style={{ ...styles.sectionNote, marginBottom: 8 }}>
+        El cash flow ya no se carga: estos movimientos se cargaron a mano en la planilla y <strong>no viven en su solapa</strong>{" "}
+        (un pago a un proveedor cargado acá no está en su cuenta corriente). Para cada uno: cargalo en la solapa que dice y
+        después borralo de acá. Los marcados <strong>“posible doble”</strong> parecen estar ya cargados: revisá y borrá este.
+        Click derecho sobre una fila.
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
+        <button type="button" style={chip(filtro === "corte")} onClick={() => setFiltro("corte")}>Desde el corte 29/08, futuras y dobles</button>
+        <button type="button" style={chip(filtro === "dobles")} onClick={() => setFiltro("dobles")}>Solo posibles dobles</button>
+        <button type="button" style={chip(filtro === "todo")} onClick={() => setFiltro("todo")}>Todo el ejercicio</button>
+        <span style={{ width: 12 }} />
+        <select style={{ ...styles.input, width: "auto", fontSize: 12 }} value={destino} onChange={(e) => setDestino(e.target.value as any)}>
+          <option value="">Todas las solapas</option>
+          {(Object.keys(DESTINO_LABEL) as DestinoCarga[]).map((k) => (
+            <option key={k} value={k}>{DESTINO_LABEL[k]}</option>
+          ))}
+        </select>
+      </div>
+      {empresas.map(({ company, short, primary, filas }) => {
+        const vis = filas.filter(pasa);
+        const limite = ver[company] || 40;
+        const total = vis.reduce((a, f) => a + f.monto, 0);
+        return (
+          <div key={company} style={{ marginBottom: 14 }}>
+            <div style={{ fontWeight: 800, color: primary, marginBottom: 4 }}>
+              {short} · {vis.length} de {filas.length} · {money(total)}
+            </div>
+            {vis.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: "#16a34a" }}>✓ Nada que pasar con este filtro.</div>
+            ) : (
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                  <thead>
+                    <tr style={{ color: "#64748b", fontSize: 11.5, textAlign: "left" }}>
+                      <th style={td}>Fecha</th><th style={td}>Renglón</th><th style={td}>Detalle</th>
+                      <th style={{ ...td, textAlign: "right" }}>Monto</th><th style={td}>Va a</th><th style={td}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {vis.slice(0, limite).map((f) => (
+                      <tr
+                        key={f.id}
+                        style={{ cursor: "context-menu", background: f.posibleDoble ? "#fff7ed" : undefined }}
+                        onContextMenu={(ev) => {
+                          ev.preventDefault();
+                          setMenu({ x: ev.clientX, y: ev.clientY, fila: f });
+                        }}
+                      >
+                        <td style={td}>{fecha(f.date)}{f.futura ? " ⏭" : ""}</td>
+                        <td style={{ ...td, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis" }} title={f.renglon}>{f.renglon || "—"}</td>
+                        <td style={{ ...td, maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis" }} title={f.titulo}>{f.titulo}</td>
+                        <td style={{ ...td, textAlign: "right" }}>
+                          <ColorTag color={f.administration} /> {money(f.monto)}
+                        </td>
+                        <td style={td}>{DESTINO_LABEL[f.destino]}</td>
+                        <td style={{ ...td, color: "#c2410c", fontSize: 11.5 }} title={f.posibleDoble}>{f.posibleDoble ? "posible doble" : ""}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {vis.length > limite && (
+                  <button type="button" style={{ border: "none", background: "transparent", color: "#2563eb", cursor: "pointer", fontSize: 12, padding: "4px 0" }} onClick={() => setVer((v) => ({ ...v, [company]: limite + 100 }))}>
+                    ver más ({vis.length - limite} quedan)
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {menu && (
+        <QuickMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
+          <QuickMenuTitle>{menu.fila.titulo} · {money(menu.fila.monto)}</QuickMenuTitle>
+          {menu.fila.posibleDoble && (
+            <div style={{ fontSize: 11.5, color: "#c2410c", padding: "2px 8px 4px", maxWidth: 300 }}>{menu.fila.posibleDoble}</div>
+          )}
+          {onIr && (
+            <button style={quickMenuItem} onClick={() => { onIr(DESTINO_TAB[menu.fila.destino]); setMenu(null); }}>
+              Ir a {DESTINO_LABEL[menu.fila.destino]}
+            </button>
+          )}
+          {onBorrar && (
+            <button
+              style={{ ...quickMenuItem, color: "#b91c1c" }}
+              onClick={() => {
+                const f = menu.fila;
+                setMenu(null);
+                if (window.confirm(`¿Borrar "${f.titulo}" (${money(f.monto)}) de la planilla?\n\nBorralo solo si ya está cargado en ${DESTINO_LABEL[f.destino]}: si no, esa plata deja de verse.`))
+                  onBorrar(f.id);
+              }}
+            >
+              Borrar de la planilla (ya está en su solapa)
+            </button>
+          )}
+        </QuickMenu>
+      )}
     </Panel>
   );
 }
