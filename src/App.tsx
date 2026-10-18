@@ -19462,6 +19462,7 @@ Escribi CERRAR para confirmar:`
           onDeleteEntry={deleteCalendarEntry}
           rowConfig={calendarRowConfig}
           onRowConfigChange={setCalendarRowConfig}
+          soloLectura
     />
   );
 
@@ -21479,6 +21480,23 @@ Escribi CERRAR para confirmar:`
           commitBankMirrorDraft={commitBankMirrorDraft}
           discardBankMirrorDraft={discardBankMirrorDraft}
           knownBanks={knownBanks}
+          purchaseInvoices={purchaseInvoicesWithBankLink.map((i) => ({
+            id: i.id,
+            company: i.company,
+            supplier: i.supplier,
+            taxId: i.taxId,
+            invoiceNumber: i.invoiceNumber,
+            invoiceDate: i.invoiceDate,
+            total: Number(i.total || 0),
+            paid: i.paidByCostEntryId != null || i.paidByBankEntryId != null,
+            paidByBankEntryId: i.paidByBankEntryId,
+          }))}
+          onLinkInvoice={(bankId, invoiceId) => {
+            const b = bankStatementEntries.find((x) => x.id === bankId);
+            if (b && bloqueadoPorCierre(b.company, b.date)) return;
+            if (invoiceId == null) unlinkBankInvoice([bankId]);
+            else assignBankToSupplier([bankId], { supplier: b?.assignedParty || "", conceptKey: "", invoiceId });
+          }}
           costoSlot={
             <CostoBancosTarjetas
               bancos={visibleBankStatementEntries as any}

@@ -1,4 +1,4 @@
-import { permisoDeRenglon, porQueNoSePuede } from "./calendarWriteback";
+import { dondeSeEdita, permisoDeRenglon, porQueNoSePuede } from "./calendarWriteback";
 
 describe("permisoDeRenglon", () => {
   it("banco y cargas manuales se editan y se borran", () => {
@@ -62,5 +62,16 @@ describe("haberes desde la planilla", () => {
   it("el sueldo blanco y el negro de un empleado se editan y se borran desde la planilla", () => {
     expect(permisoDeRenglon("payroll-white-12-2026-09")).toMatchObject({ editable: true, borrable: true });
     expect(permisoDeRenglon("payroll-black-12-2026-09")).toMatchObject({ editable: true, borrable: true });
+  });
+});
+
+describe("dondeSeEdita (planilla solo para ver)", () => {
+  it("manda cada movimiento a su solapa", () => {
+    expect(dondeSeEdita("bank-12")).toBe("Bancos y tarjetas");
+    expect(dondeSeEdita("cost-3")).toBe("Pago a proveedores");
+    expect(dondeSeEdita("payroll-viatico-9")).toContain("haberes");
+    expect(dondeSeEdita("purchase-invoice-4")).toBe("Compras");
+    expect(dondeSeEdita("debt-1-2")).toBe("Desendeudamiento");
+    expect(dondeSeEdita("raro-1")).toBe("su solapa de origen");
   });
 });

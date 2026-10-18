@@ -103,7 +103,7 @@ import { mapaDeFeriados, esFinDeSemana } from "../domain/feriadosArgentina";
 import { destinoInversion } from "../domain/inversionesCalendario";
 import { parseRenglonProveedor, renglonProveedor, parseClaveGrupo } from "../domain/gruposProveedores";
 import { destinoEnSolapa } from "../domain/movimientosInternosCalendario";
-import { permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
+import { dondeSeEdita, permisoDeRenglon, porQueNoSePuede } from "../domain/calendarWriteback";
 import { estadoDePrevision, previsionPorConceptoYDia, previsionPorConceptoYMes } from "../domain/segurosCalendar";
 import { PAYMENT_METHOD_OPTIONS, type PaymentMethod } from "../domain/types";
 import type { Cuenta } from "../domain/cuentas";
@@ -164,6 +164,7 @@ export function CalendarioAnualTab({
   previsiones = [],
   programados = [],
   cuentas = [],
+  soloLectura = false,
 }: {
   entries: Entry[];
   // PREVISION (hoy: los seguros). Lo que se VIENE, mes a mes: no es plata gastada, asi que entra por
@@ -173,6 +174,10 @@ export function CalendarioAnualTab({
   // un bloque propio de PREVISION que NO suma al neto (el neto lo mueve el pago real cuando se carga).
   // Cuentas (bancos, efectivo, cajas por persona) para elegir de donde sale / a donde entra la plata.
   cuentas?: Cuenta[];
+  // SOLO PARA VER (Nicolas, 2026-10-17): la planilla muestra lo que se carga en el resto del sistema y no
+  // deja cargar, editar, borrar ni mover. Quedan las marcas, notas y banderitas (son del que lee), el
+  // nombre y el ocultar de los renglones fijos (es la vista) y los atajos a la ficha de origen.
+  soloLectura?: boolean;
   programados?: Array<{
     clave: string;
     company: string;
@@ -776,6 +781,7 @@ export function CalendarioAnualTab({
     return n;
   }, [agg]);
   const applyBankSuggestions = () => {
+    if (soloLectura) return;
     const byKey = new Map<string, number[]>();
     agg.unclBankIds.forEach((ids, title) => {
       const sug = suggestCalendarConcept(title);
@@ -841,6 +847,7 @@ export function CalendarioAnualTab({
   // Abre el vinculador para esos movimientos. El tipo arranca según el signo (entró = cobro, salió =
   // pago) y el proveedor viene pre-cargado si el texto del banco lo nombra (nombre, alias o CUIT).
   const openLink = (list: Entry[], title: string) => {
+    if (soloLectura) return;
     const bankIds = bankIdsOf(list);
     if (bankIds.length === 0) return;
     const total = signedTotal(list);
@@ -982,7 +989,7 @@ export function CalendarioAnualTab({
   }, [jobs, cobrosPrevistos, companyScope, agg, visibleDayCols]);
 
   const openAdd = (sectionKey: string, itemKey: string, iso: string, presetLabel = "", presetCompany = "") =>
-    setAddForm({
+    soloLectura ? undefined : setAddForm({
       date: iso,
       company: presetCompany || (companyScope !== "__ALL__" ? companyScope : companyOptions[0]?.value || ""),
       sectionKey,
@@ -1287,6 +1294,7 @@ export function CalendarioAnualTab({
 
   // Abre el modal con los datos del movimiento cargados (mismo formulario que para cargar).
   const openEdit = (e: Entry) => {
+    if (soloLectura) return;
     const ck = e.conceptKey || "";
     let sectionKey = "";
     let itemKey = "";
@@ -1379,7 +1387,7 @@ export function CalendarioAnualTab({
   // realidad no creaba nada: te pedía un movimiento. Ahora el renglón se declara en rowConfig.extra
   // (estado del sistema, lo ve todo el mundo) y se muestra vacío, listo para cargarle.
   const addExtraRow = (sectionKey: string) => {
-    if (!onRowConfigChange) return;
+    if (!onRowConfigChange || soloLectura) return;
     pedirTexto("Nombre del renglón nuevo", "", (nombre) => {
       if (!nombre) return;
       const yaEsta = (rowConfig.extra || []).some(
@@ -1410,7 +1418,7 @@ export function CalendarioAnualTab({
   };
   // ---- SECCIONES propias: los títulos grandes que no están en la estructura fija ----------------
   const addSection = () => {
-    if (!onRowConfigChange) return;
+    if (!onRowConfigChange || soloLectura) return;
     // La dirección define si la plata suma como ingreso o como egreso, así que se elige en el mismo
     // cuadro. Antes era un window.confirm con "Aceptar = INGRESO / Cancelar = EGRESO": confuso, y
     // encima no aparece si el navegador tiene los diálogos bloqueados.
@@ -1446,6 +1454,7 @@ export function CalendarioAnualTab({
     );
   };
   const renameSection = (sectionKey: string, nuevo: string) => {
+    if (soloLectura) return;
     guardarConfig({
       sections: (rowConfig.sections || []).map((x) =>
         x.key === sectionKey ? { ...x, label: nuevo } : x
@@ -1453,6 +1462,7 @@ export function CalendarioAnualTab({
     });
   };
   const removeSection = (sectionKey: string) => {
+    if (soloLectura) return;
     guardarConfig({
       sections: (rowConfig.sections || []).filter((x) => x.key !== sectionKey),
       extra: (rowConfig.extra || []).filter((x) => x.sectionKey !== sectionKey),
@@ -1519,7 +1529,7 @@ export function CalendarioAnualTab({
   // Aplica un cambio a TODO el renglón. Los que viven en otra solapa quedan como estaban y se avisa.
   const patchRow = (match: (e: Entry) => boolean, build: (e: Entry) => Parameters<NonNullable<typeof onEditEntry>>[1]) => {
     const list = entriesOfRow(match);
-    if (!onEditEntry || list.length === 0) return;
+    if (!onEditEntry || list.length === 0 || soloLectura) return;
     const fail = list.filter((e) => !onEditEntry(e.id, build(e))).length;
     if (fail) {
       avisar(
@@ -1570,12 +1580,12 @@ export function CalendarioAnualTab({
       : "otra solapa";
 
   const toggleAdmin = (e: Entry) => {
-    if (!onEditEntry) return;
+    if (!onEditEntry || soloLectura) return;
     onEditEntry(e.id, { administration: e.administration === "negro" ? "blanco" : "negro" });
     setCellMenu(null);
   };
   const removeEntry = (e: Entry) => {
-    if (!onDeleteEntry) return;
+    if (!onDeleteEntry || soloLectura) return;
     // Si el renglón es el reflejo de un pago del trabajo, borrarlo acá borra EL PAGO. Hay que
     // decirlo antes: el vínculo va en los dos sentidos y eso incluye borrar.
     const ppto = (e.title || "").split("·")[0].trim();
@@ -1971,7 +1981,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
             >
               {allCollapsed ? "Expandir todo" : "Minimizar todo"}
             </button>
-            {onRowConfigChange && (
+            {onRowConfigChange && !soloLectura && (
               <button
                 style={btnSecondary}
                 title="Agrega un título grande nuevo a la planilla (ingreso o egreso). Después le ponés renglones con “+ renglón”."
@@ -2521,7 +2531,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                       openCellMenu(ev, itLabel, c.iso, section.key, it.key, (e) => e.conceptKey === it.key)
                                     }
                                     title={
-                                      [tituloPrev, emp.detalle, "Click: cargar en este día · Click derecho: editar / borrar"]
+                                      [tituloPrev, emp.detalle, (soloLectura ? "Click derecho: ver de dónde sale" : "Click: cargar en este día · Click derecho: editar / borrar")]
                                         .filter(Boolean)
                                         .join(" · ")
                                     }
@@ -2537,7 +2547,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                           );
                         })
                     )}
-                    {!isCol && isCob && (
+                    {!isCol && isCob && !soloLectura && (
                       <tr>
                         <td style={{ ...tdStickyLabel, paddingLeft: 20, color: "#065f46" }}>
                           <button style={miniAdd} onClick={() => openAdd(section.key, "", visibleDayCols[0]?.iso || "")}>+ cargar cobranza</button>
@@ -2567,7 +2577,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                 style={{ ...tdStickyLabel, paddingLeft: 20, fontWeight: 600 }}
                                 title={`${g ? g.nombre : "Sin grupo"} — click derecho: renombrar el grupo (se renombra en Grupos de costos)`}
                                 onContextMenu={(ev) => {
-                                  if (!onRenombrarGrupo || !g) return;
+                                  if (!onRenombrarGrupo || !g || soloLectura) return;
                                   ev.preventDefault();
                                   const nuevo = window.prompt(`Nuevo nombre para el grupo "${g.nombre}" (${g.tipo}):`, g.nombre);
                                   if (nuevo && nuevo.trim() && nuevo.trim() !== g.nombre) onRenombrarGrupo(clave, nuevo.trim());
@@ -2585,7 +2595,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                   key={`${k}-${c.iso}`}
                                   onClick={() => openAdd(section.key, renglon, c.iso)}
                                   onContextMenu={(ev) => openCellMenu(ev, g ? g.nombre : "Sin grupo", c.iso, section.key, renglon, (e) => e.conceptKey === renglon)}
-                                  title="Click: cargar un pago a un proveedor de este grupo · Click derecho: editar / borrar"
+                                  title={soloLectura ? "Click derecho: ver de dónde sale" : "Click: cargar un pago a un proveedor de este grupo · Click derecho: editar / borrar"}
                                   style={{ ...tdCell, cursor: "pointer", fontWeight: 600, ...fondoNoHabil(c.iso), ...hi(c.iso), ...estiloCelda(section.key, renglon, c.iso) }}
                                 >
                                   {marcasDeCelda(section.key, renglon, c.iso)}
@@ -2638,7 +2648,9 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                               <td
                                 key={`hab-${emp.name}-${c.iso}`}
                                 onClick={() =>
-                                  !v && (onPagoHaber ? onPagoHaber(emp.name, emp.company, c.iso) : openAdd("haberes", "__custom__", c.iso, emp.name, emp.company))
+                                  soloLectura
+                                    ? onFichaPagoHaberes?.(emp.name, emp.company)
+                                    : !v && (onPagoHaber ? onPagoHaber(emp.name, emp.company, c.iso) : openAdd("haberes", "__custom__", c.iso, emp.name, emp.company))
                                 }
                                 onContextMenu={(ev) => openCellMenu(ev, emp.name, c.iso, "haberes", "__custom__", deEsta)}
                                 title={
@@ -2694,7 +2706,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         .filter(Boolean)}
                     {/* Agregar un renglón propio a esta sección. Solo pide el NOMBRE: el renglón queda
                         creado y vacío, y la plata se carga tocando el día que corresponda. */}
-                    {!isCol && !isCob && onRowConfigChange && (
+                    {!isCol && !isCob && onRowConfigChange && !soloLectura && (
                       <tr>
                         <td style={{ ...tdStickyLabel, paddingLeft: 20 }}>
                           <button style={miniAdd} title="Crea un renglón nuevo en esta sección (vacío). Después tocás el día para cargarle plata." onClick={() => addExtraRow(section.key)}>+ renglón</button>
@@ -2789,7 +2801,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                       <span style={{ cursor: "pointer" }} onClick={() => toggle("uncl")}>
                         {expanded.has("uncl") ? "▾ " : "▸ "}SIN CLASIFICAR · falta ubicar (D)
                       </span>
-                      {suggestedCount > 0 && (
+                      {suggestedCount > 0 && !soloLectura && (
                         <button
                           style={{ ...miniAdd, marginLeft: 8, borderColor: "#a78bfa", background: "#f5f3ff", color: "#5b21b6" }}
                           title="Clasifica automáticamente la mecánica bancaria conocida (impuestos, IVA, comisiones, sellos, intereses, tarjeta)"
@@ -2836,7 +2848,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                               {ids.length > 0 && (() => {
                                 const sug = suggestCalendarConcept(title);
                                 const label = sug === "__interno__" ? "Cuenta corriente (no cuenta como ingreso/egreso)" : CALENDAR_ITEM_INDEX[sug || ""]?.label;
-                                return sug && label ? (
+                                return sug && label && !soloLectura ? (
                                   <button
                                     style={{ ...miniAdd, borderColor: "#a78bfa", background: "#f5f3ff", color: "#5b21b6", textAlign: "left" }}
                                     title="Aplicar la clasificación sugerida"
@@ -3139,7 +3151,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 </>
               );
             })()}
-            {rowMenu.kind === "uncl" && bankIdsOf(list).length > 0 && (
+            {rowMenu.kind === "uncl" && bankIdsOf(list).length > 0 && !soloLectura && (
               <>
                 <button style={{ ...quickMenuItem, fontWeight: 700 }} onClick={() => openLink(list, rowMenu.label)}>
                   Vincular… <span style={{ color: "#94a3b8", fontSize: 11 }}>(trabajo / proveedor / renglon)</span>
@@ -3147,7 +3159,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 <QuickMenuSep />
               </>
             )}
-            {rowMenu.kind === "seccion" && (
+            {rowMenu.kind === "seccion" && !soloLectura && (
               esSeccionPropia(rowMenu.sectionKey) ? (
                 <>
                   <button
@@ -3190,7 +3202,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 </div>
               )
             )}
-            {rowMenu.kind === "custom" && (
+            {rowMenu.kind === "custom" && !soloLectura && (
               <>
                 <button
                   style={quickMenuItem}
@@ -3285,7 +3297,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 </>
               );
             })()}
-            {rowMenu.kind === "cobranza" && (
+            {rowMenu.kind === "cobranza" && !soloLectura && (
               <button
                 style={quickMenuItem}
                 onClick={() => {
@@ -3312,7 +3324,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 Corregir presupuesto / cliente…
               </button>
             )}
-            {rowMenu.kind === "texto" || rowMenu.kind === "uncl" ? (
+            {!soloLectura && (rowMenu.kind === "texto" || rowMenu.kind === "uncl") ? (
               <button
                 style={quickMenuItem}
                 onClick={() => {
@@ -3379,7 +3391,23 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 El nombre del empleado sale de la solapa Personal.
               </div>
             )}
-            {rowMenu.sectionKey && (
+            {soloLectura && rowMenu.kind === "haberes" && onFichaPagoHaberes && (() => {
+              const emp = employeesInScope.find((x) => x.name === rowMenu.label);
+              if (!emp) return null;
+              return (
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    onFichaPagoHaberes(emp.name, emp.company);
+                    close();
+                  }}
+                >
+                  Abrir la ficha de pago de haberes
+                </button>
+              );
+            })()}
+            {soloLectura && <SoloParaVer />}
+            {rowMenu.sectionKey && !soloLectura && (
               <>
                 <QuickMenuSep />
                 <button
@@ -3503,7 +3531,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 ✍ Firmante: {Array.from(new Set(list.map((e) => e.firmante || "sin firmante"))).join(", ")}
               </div>
             )}
-            {onSetCobroEstado && (() => {
+            {onSetCobroEstado && !soloLectura && (() => {
               // Cobros PREVISTOS de esta celda (renglon del trabajo, este dia).
               const budget = cellMenu.label.split("·")[0].trim();
               const pvs = cobrosPrevistos.filter(
@@ -3543,7 +3571,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 </>
               );
             })()}
-            {onEditEntry && (() => {
+            {onEditEntry && !soloLectura && (() => {
               const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
               // Paso 2: ya hay algo agarrado y esta celda puede recibirlo.
               if (movingFrom && movingFrom.key !== k) {
@@ -3753,7 +3781,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                       <div style={{ fontSize: 11, color: "#166534", padding: "2px 8px" }}>
                         Paga la factura {inv.invoiceNumber || "de compra"} de {inv.supplier} ({money(inv.total)})
                       </div>
-                      {onUnlinkInvoice && (
+                      {onUnlinkInvoice && !soloLectura && (
                         <button
                           style={quickMenuItem}
                           onClick={() => {
@@ -3768,7 +3796,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     </>
                   );
                 })()}
-                {picked.id.startsWith("bank-") && !picked.conceptKey && !isCobranzaEntry(picked) && (
+                {picked.id.startsWith("bank-") && !picked.conceptKey && !isCobranzaEntry(picked) && !soloLectura && (
                   <>
                     <button style={{ ...quickMenuItem, fontWeight: 700 }} onClick={() => openLink([picked], cellMenu.label)}>
                       Vincular… <span style={{ color: "#94a3b8", fontSize: 11 }}>(trabajo / proveedor / renglon)</span>
@@ -3776,7 +3804,12 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     <QuickMenuSep />
                   </>
                 )}
-                {editable(picked) && (
+                {soloLectura && (
+                  <div style={{ fontSize: 11.5, color: "#475569", padding: "4px 8px", lineHeight: 1.4 }}>
+                    Se carga y se corrige en <strong>{dondeSeEdita(picked.id)}</strong>.
+                  </div>
+                )}
+                {!soloLectura && editable(picked) && (
                   <>
                     <button style={quickMenuItem} onClick={() => openEdit(picked)}>
                       Editar… <span style={{ color: "#94a3b8", fontSize: 11 }}>(monto, día, renglón)</span>
@@ -3786,7 +3819,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     </button>
                   </>
                 )}
-                {borrable(picked) && (
+                {!soloLectura && borrable(picked) && (
                   <>
                     <QuickMenuSep />
                     <button style={{ ...quickMenuItem, color: "#b91c1c" }} onClick={() => removeEntry(picked)}>
@@ -3796,7 +3829,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 )}
                 {/* Cuando algo NO se puede, se dice POR QUE y donde se hace. Un menu que simplemente
                     no muestra la opcion se lee como que el sistema esta roto. */}
-                {(!editable(picked) || !borrable(picked)) && (
+                {!soloLectura && (!editable(picked) || !borrable(picked)) && (
                   <div style={{ fontSize: 11, color: "#b45309", padding: "4px 8px", lineHeight: 1.4 }}>
                     {!editable(picked) && porQueNoSePuede(picked.id, "editar")}
                     {!editable(picked) && !borrable(picked) ? " " : ""}
@@ -3808,7 +3841,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 )}
               </>
             )}
-            {cellMenu.sectionKey && (
+            {soloLectura && <SoloParaVer />}
+            {cellMenu.sectionKey && !soloLectura && (
               <>
                 <QuickMenuSep />
                 <button
@@ -4489,6 +4523,15 @@ const bnPill: React.CSSProperties = {
 };
 // Bandera roja dibujada, NO un caracter: el emoji depende de la fuente del sistema y el glifo
 // U+2691 que habia antes era fino y monocromo, no se veia en una celda de dia.
+// Pie de los menus cuando la planilla es solo para ver: dice donde se carga, para que no parezca roto.
+function SoloParaVer() {
+  return (
+    <div style={{ fontSize: 11, color: "#94a3b8", padding: "6px 8px 2px", lineHeight: 1.4, borderTop: "1px solid #f1f5f9", marginTop: 4 }}>
+      La planilla es solo para ver: lo que muestra se carga y se edita en su solapa.
+    </div>
+  );
+}
+
 function BanderaRoja({ size = 11 }: { size?: number }) {
   return (
     <svg

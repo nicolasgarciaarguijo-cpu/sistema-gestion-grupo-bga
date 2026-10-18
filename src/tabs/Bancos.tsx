@@ -31,6 +31,7 @@ import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
 import { money, todayIso } from "../lib/format";
 import { modoDelBanco } from "../domain/calendarFeeds";
 import { verificarExtractos } from "../domain/verificacionExtracto";
+import { invoiceCandidates, type LinkableInvoice } from "../domain/bankLinking";
 import type { CostGroup, CostKind, Supplier, CompanyName } from "../domain/types";
 import type { CostStatementDraftRow } from "./Costos";
 
@@ -84,6 +85,10 @@ type BancosTabProps = {
   knownBanks: string[];
   // Bloque de Tarjetas: se renderiza DENTRO de esta solapa, debajo del banco.
   tarjetasSlot?: React.ReactNode;
+  // FACTURA QUE CANCELA un debito (Nicolas, 2026-10-17: la planilla es solo para ver, asi que el vinculo
+  // del banco con la factura de compra se hace aca). null = soltar: la factura vuelve a ser deuda.
+  purchaseInvoices?: LinkableInvoice[];
+  onLinkInvoice?: (bankId: number, invoiceId: number | null) => void;
   // Costo real de bancos y tarjetas por empresa: va arriba de todo.
   costoSlot?: React.ReactNode;
 };
@@ -130,6 +135,8 @@ export function BancosTab({
   knownBanks,
   tarjetasSlot,
   costoSlot,
+  purchaseInvoices = [],
+  onLinkInvoice,
 }: BancosTabProps) {
   const anchosExtracto = usePlanillaWidths("bancos.extracto", { label: 340, col: 124, colCompact: 94 });
   const anchosEspejo = usePlanillaWidths("bancos.espejo", { label: 340, col: 124, colCompact: 94 });
@@ -690,6 +697,38 @@ export function BancosTab({
                               />
                             </Field>
                           )}
+                          {kind === "pago" && entry.movementType === "debito" && onLinkInvoice && (() => {
+                            const actual = purchaseInvoices.find((i) => i.paidByBankEntryId === entry.id);
+                            const prov = suppliers.find(
+                              (sp) => (sp.name || "").trim().toLowerCase() === (entry.assignedParty || "").trim().toLowerCase()
+                            );
+                            const candidatas = invoiceCandidates(
+                              { company: entry.company, date: entry.date, amount: Number(entry.amount) || 0 },
+                              prov ? { name: prov.name, taxId: prov.taxId } : entry.assignedParty ? { name: entry.assignedParty } : null,
+                              purchaseInvoices
+                            ).slice(0, 25);
+                            const etiqueta = (i: LinkableInvoice, igual?: boolean) =>
+                              `${igual ? "= " : ""}${i.invoiceNumber || "s/n"} · ${i.supplier} · ${i.invoiceDate ? i.invoiceDate.slice(8, 10) + "/" + i.invoiceDate.slice(5, 7) : ""} · ${money(i.total)}`;
+                            return (
+                              <Field label="Factura que paga">
+                                <select
+                                  style={{ ...styles.input, minWidth: 260 }}
+                                  value={actual ? String(actual.id) : ""}
+                                  onChange={(e) => onLinkInvoice(entry.id, e.target.value ? Number(e.target.value) : null)}
+                                >
+                                  <option value="">{candidatas.length || actual ? "— Ninguna (queda a cuenta) —" : "— No hay facturas impagas que coincidan —"}</option>
+                                  {actual && <option value={String(actual.id)}>{etiqueta(actual)}</option>}
+                                  {candidatas
+                                    .filter((c) => c.invoice.id !== actual?.id)
+                                    .map((c) => (
+                                      <option key={c.invoice.id} value={String(c.invoice.id)}>
+                                        {etiqueta(c.invoice, c.sameAmount)}
+                                      </option>
+                                    ))}
+                                </select>
+                              </Field>
+                            );
+                          })()}
                           {isCobroPago && (
                             <Field label="Circuito">
                               <select
@@ -790,6 +829,27 @@ export function BancosTab({
                   <ColorTag color={entry.administration === "negro" ? "blanco" : "negro"} /> Cambiar a{" "}
                   {entry.administration === "negro" ? "BLANCO (B)" : "NEGRO (N)"}
                 </button>
+                {onLinkInvoice && (() => {
+                  const inv = purchaseInvoices.find((i) => i.paidByBankEntryId === entry.id);
+                  if (!inv) return null;
+                  return (
+                    <>
+                      <QuickMenuSep />
+                      <div style={{ fontSize: 11, color: "#166534", padding: "2px 8px" }}>
+                        Paga la factura {inv.invoiceNumber || "de compra"} de {inv.supplier} ({money(inv.total)})
+                      </div>
+                      <button
+                        style={quickMenuItem}
+                        onClick={() => {
+                          onLinkInvoice(entry.id, null);
+                          close();
+                        }}
+                      >
+                        Soltar la factura <span style={{ color: "#94a3b8", fontSize: 11 }}>(vuelve a ser deuda)</span>
+                      </button>
+                    </>
+                  );
+                })()}
                 {assigned && (
                   <>
                     <QuickMenuSep />

@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-17e",
+    fecha: "17/10/2026",
+    titulo: "El cash flow es solo para ver",
+    items: [
+      {
+        titulo: "La planilla muestra, no se carga",
+        que: "El Calendario anual ya no deja cargar, editar, borrar ni mover plata. Todo lo que muestra se carga y se corrige en su solapa: pagos en Pago a proveedores, sueldos en la ficha de pago de haberes, el banco en Bancos y tarjetas, pases en Movimientos internos, etc. Siguen las marcas de color, las notas, las banderitas y renombrar u ocultar renglones.",
+        como: "Click derecho sobre un número: te dice en qué solapa se edita. En Haberes, el click sobre la persona abre su ficha de pago.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Pagos programados, solo para ver",
+        que: "Se sacó '+ Vencimiento': las fechas salen solas de Desendeudamiento, del cierre de cada tarjeta y del plazo de pago de cada proveedor. Marcar pagado se hace donde se paga.",
+        como: "Click derecho sobre un pago → 'Ir a donde se carga'.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Débito del banco ↔ factura de compra, en Bancos y tarjetas",
+        que: "Vincular un débito con la factura que cancela (y soltarla) pasó de la planilla a Bancos y tarjetas.",
+        como: "Asignar el movimiento como 'Pago' a un proveedor → elegir 'Factura que paga'. Para soltarla: click derecho → 'Soltar la factura'.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-10-17d",
     fecha: "17/10/2026",
     titulo: "Pre-cierre: el punto cero del 1/11",

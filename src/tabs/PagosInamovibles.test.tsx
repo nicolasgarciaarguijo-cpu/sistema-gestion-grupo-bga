@@ -71,12 +71,16 @@ describe("PagosInamovibles", () => {
     div.remove();
   });
 
-  it("click derecho -> Marcar como pagado llama al handler con ese pago", () => {
+  // SOLO PARA VER (Nicolas, 2026-10-17): el pago se marca donde se paga, no aca. Tampoco hay "+ Vencimiento".
+  it("click derecho ya no ofrece marcar pagado ni editar; no hay '+ Vencimiento'", () => {
     const onSetPagado = jest.fn();
     const { div, root } = montar(onSetPagado);
+    expect(botonDelMenu("+ Vencimiento")).toBeUndefined();
     clickDerecho(filaDe(div, "VEP IVA"));
-    act(() => botonDelMenu("Marcar como pagado").click());
-    expect(onSetPagado).toHaveBeenCalledWith(expect.objectContaining({ titulo: "VEP IVA" }), true);
+    expect(botonDelMenu("Marcar como pagado")).toBeUndefined();
+    expect(botonDelMenu("Editar el vencimiento")).toBeUndefined();
+    expect(botonDelMenu("Confirmar la fecha")).toBeUndefined();
+    expect(onSetPagado).not.toHaveBeenCalled();
     act(() => root.unmount());
     div.remove();
   });

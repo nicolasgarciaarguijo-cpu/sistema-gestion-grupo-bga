@@ -122,6 +122,29 @@ export function permisoDeRenglon(entryId: string): PermisoDeRenglon {
   };
 }
 
+// PLANILLA SOLO PARA VER (Nicolas, 2026-10-17): "el cash flow muestra lo que se edita en el resto del
+// sistema, pero no permite edicion". Para cada movimiento, la solapa donde se carga y se corrige.
+const DONDE_SE_EDITA: Array<{ prefijo: string; donde: string }> = [
+  { prefijo: "bank-", donde: "Bancos y tarjetas" },
+  { prefijo: "financial-", donde: "Facturación y cobranzas (calendario financiero)" },
+  { prefijo: "payroll-", donde: "la ficha de pago de haberes (Personal)" },
+  { prefijo: "viatico-", donde: "Caja chica y viáticos" },
+  { prefijo: "comm-", donde: "la ficha del trabajo (comisiones)" },
+  { prefijo: "job-", donde: "la ficha del trabajo (Trabajos aprobados)" },
+  { prefijo: "cost-", donde: "Pago a proveedores" },
+  { prefijo: "movint-", donde: "Movimientos internos" },
+  { prefijo: "inv-", donde: "Inversiones" },
+  { prefijo: "retiro-", donde: "Balance (retiros societarios)" },
+  { prefijo: "petty-", donde: "Caja chica" },
+  { prefijo: "purchase-", donde: "Compras" },
+  { prefijo: "debt-", donde: "Desendeudamiento" },
+];
+
+export function dondeSeEdita(entryId: string): string {
+  const id = String(entryId || "");
+  return DONDE_SE_EDITA.find((d) => id.startsWith(d.prefijo))?.donde || "su solapa de origen";
+}
+
 /** El texto que ve el usuario cuando no se puede hacer algo desde la planilla. */
 export function porQueNoSePuede(entryId: string, accion: "editar" | "borrar"): string {
   const p = permisoDeRenglon(entryId);
