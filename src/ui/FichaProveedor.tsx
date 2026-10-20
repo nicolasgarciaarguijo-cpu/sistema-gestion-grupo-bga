@@ -33,6 +33,7 @@ export function FichaProveedor({
   onCargarFacturaDePago,
   onEditarPago,
   onQuitarPago,
+  onEditarDatos,
 }: {
   nombre: string;
   taxId: string;
@@ -75,6 +76,8 @@ export function FichaProveedor({
   // Todo se puede corregir (Nicolas, 2026-10-16): editar o quitar un pago cargado (CostEntry).
   onEditarPago?: (pagoId: number) => void;
   onQuitarPago?: (pagoId: number) => void;
+  // Corregir los datos del proveedor (nombre, CUIT, condicion de IVA...): la misma ventana del listado.
+  onEditarDatos?: () => void;
 }) {
   const [menuPago, setMenuPago] = React.useState<null | { x: number; y: number; id: number }>(null);
   // Click derecho sobre un renglon del historial: abrir la factura, editar o quitar el pago, abrir la nota.
@@ -116,6 +119,11 @@ export function FichaProveedor({
             </div>
           </div>
           <span style={{ display: "inline-flex", gap: 6 }}>
+            {onEditarDatos && (
+              <button type="button" onClick={onEditarDatos} style={{ ...input, cursor: "pointer", fontWeight: 800 }} title="Corregir los datos del proveedor">
+                ✎ Editar datos
+              </button>
+            )}
             {onPagoSinFactura && (
               <button type="button" onClick={onPagoSinFactura} style={{ ...input, cursor: "pointer", fontWeight: 800, background: "#fff7ed", color: "#b45309", borderColor: "#fdba74" }} title="Se pagó algo y todavía no está la factura">
                 + Pago sin factura

@@ -3,6 +3,7 @@
 // sus datos, y el resumen de los que tienen cuenta corriente. Cada proveedor abre su FICHA, que vive aca.
 import React, { useState } from "react";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
+import { CONDICION_IVA_LABEL, type CondicionIva } from "../domain/types";
 
 export type ProveedorForm = {
   id?: number;
@@ -14,6 +15,7 @@ export type ProveedorForm = {
   currentAccount: boolean;
   aliases: string;
   notes: string;
+  condicionIva?: CondicionIva;
 };
 
 type Proveedor = {
@@ -26,14 +28,23 @@ type Proveedor = {
   direccion?: string;
   contacto?: string;
   currentAccount?: boolean;
+  condicionIva?: CondicionIva;
 };
+
+// Proveedor del listado -> formulario de edicion (lo usa tambien la ficha del proveedor).
+export const formDeProveedor = (p: Proveedor): ProveedorForm => ({
+  id: p.id, company: p.company, name: p.name, taxId: p.taxId || "", direccion: p.direccion || "", contacto: p.contacto || "",
+  currentAccount: !!p.currentAccount, aliases: p.aliases || "", notes: p.notes || "", condicionIva: p.condicionIva,
+});
 
 const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600 };
 const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 8px", fontSize: 13, width: "100%", boxSizing: "border-box", fontWeight: 400, color: "#0f172a" };
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 600, padding: "6px 6px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "5px 6px", borderBottom: "1px solid #f1f5f9", verticalAlign: "middle" };
 
-function ProveedorModal({
+// Agregar o EDITAR un proveedor (Nicolas, 2026-10-20: "necesito poder modificar los parametros de cada uno
+// por si hubo algun error en la carga"). Se abre desde el listado (boton Editar) y desde su ficha.
+export function ProveedorModal({
   inicial,
   companyOptions,
   onGuardar,
@@ -49,7 +60,12 @@ function ProveedorModal({
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4600, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(620px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
-        <div style={{ fontSize: 18, fontWeight: 800 }}>{p.id ? "Datos del proveedor" : "Agregar proveedor"}</div>
+        <div style={{ fontSize: 18, fontWeight: 800 }}>{p.id ? "Editar proveedor" : "Agregar proveedor"}</div>
+        {p.id && p.name.trim() && p.name.trim() !== inicial.name.trim() && (
+          <div style={{ fontSize: 12, color: "#92400e", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "6px 8px" }}>
+            Cambia el nombre: sus facturas y pagos ya cargados pasan al nombre nuevo (no se pierde el vínculo).
+          </div>
+        )}
         <label style={lbl}>Nombre o razón social
           <input style={input} value={p.name} onChange={(e) => set({ name: e.target.value })} autoFocus />
         </label>
@@ -71,14 +87,27 @@ function ProveedorModal({
         <label style={lbl}>Contacto (nombre, teléfono, mail)
           <input style={input} value={p.contacto} onChange={(e) => set({ contacto: e.target.value })} />
         </label>
-        <label style={lbl}>Tipo de proveedor
-          <select style={input} value={p.currentAccount ? "cc" : "sin"} onChange={(e) => set({ currentAccount: e.target.value === "cc" })}>
-            <option value="sin">Sin cuenta corriente</option>
-            <option value="cc">Con cuenta corriente</option>
-          </select>
-        </label>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <label style={lbl}>Condición frente al IVA
+            <select style={input} value={p.condicionIva || ""} onChange={(e) => set({ condicionIva: (e.target.value || undefined) as CondicionIva | undefined })}>
+              <option value="">— sin dato —</option>
+              {(Object.keys(CONDICION_IVA_LABEL) as CondicionIva[]).map((k) => (
+                <option key={k} value={k}>{CONDICION_IVA_LABEL[k]}</option>
+              ))}
+            </select>
+          </label>
+          <label style={lbl}>Tipo de proveedor
+            <select style={input} value={p.currentAccount ? "cc" : "sin"} onChange={(e) => set({ currentAccount: e.target.value === "cc" })}>
+              <option value="sin">Sin cuenta corriente</option>
+              <option value="cc">Con cuenta corriente</option>
+            </select>
+          </label>
+        </div>
         <label style={lbl}>Cómo figura en el banco (alias, separados por coma)
           <input style={input} value={p.aliases} onChange={(e) => set({ aliases: e.target.value })} />
+        </label>
+        <label style={lbl}>Notas
+          <textarea style={{ ...input, minHeight: 50, resize: "vertical", fontFamily: "inherit" }} value={p.notes} onChange={(e) => set({ notes: e.target.value })} />
         </label>
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 4 }}>
           <button type="button" onClick={onCerrar} style={{ ...input, width: "auto", cursor: "pointer" }}>Cancelar</button>
@@ -124,10 +153,7 @@ export function ProveedoresPanel({
   const [menu, setMenu] = useState<null | { x: number; y: number; p: Proveedor }>(null);
   const [buscar, setBuscar] = useState("");
   const nuevo = (): ProveedorForm => ({ company: empresaPorDefecto, name: "", taxId: "", direccion: "", contacto: "", currentAccount: false, aliases: "", notes: "" });
-  const editar = (p: Proveedor): ProveedorForm => ({
-    id: p.id, company: p.company, name: p.name, taxId: p.taxId || "", direccion: p.direccion || "", contacto: p.contacto || "",
-    currentAccount: !!p.currentAccount, aliases: p.aliases || "", notes: p.notes || "",
-  });
+  const editar = formDeProveedor;
   const digits = (v: string) => String(v || "").replace(/\D/g, "");
   const norm = (v: string) => String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
   const ledgerDe = (p: Proveedor) =>
@@ -217,7 +243,7 @@ export function ProveedoresPanel({
               value={buscar}
               onChange={(e) => setBuscar(e.target.value)}
             />
-            <span style={{ fontSize: 12, color: "#64748b" }}>Click en un proveedor: su ficha · click derecho: editar o quitar · click derecho en el espacio vacío: agregar.</span>
+            <span style={{ fontSize: 12, color: "#64748b" }}>Click en un proveedor: su ficha · ✎ Editar: corregir sus datos · click derecho: más opciones · click derecho en el espacio vacío: agregar.</span>
           </div>
           {lista.length === 0 ? (
             <div style={{ fontSize: 13, color: "#64748b", padding: "10px 0" }}>
@@ -235,6 +261,7 @@ export function ProveedoresPanel({
                     <th style={th}>Empresa</th>
                     <th style={{ ...th, textAlign: "right" }}>Facturas</th>
                     <th style={{ ...th, textAlign: "right" }}>Debemos</th>
+                    <th style={th}></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -263,6 +290,19 @@ export function ProveedoresPanel({
                         <td style={td}>{shortDe(p.company)}</td>
                         <td style={{ ...td, textAlign: "right" }}>{facturas || "—"}</td>
                         <td style={{ ...td, textAlign: "right", fontWeight: 700, color: l && l.saldo > 1 ? "#b45309" : "#16a34a" }}>{l && l.saldo > 1 ? money(l.saldo) : "—"}</td>
+                        <td style={{ ...td, textAlign: "right" }}>
+                          <button
+                            type="button"
+                            title="Corregir los datos del proveedor"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              setModal(editar(p));
+                            }}
+                            style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#334155" }}
+                          >
+                            ✎ Editar
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}

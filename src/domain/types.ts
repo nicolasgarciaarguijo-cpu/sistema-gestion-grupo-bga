@@ -1264,6 +1264,16 @@ export type Supplier = {
   // Datos de contacto (ventana de proveedor, 14/10/2026).
   direccion?: string;
   contacto?: string;
+  // Condicion frente al IVA (2026-10-20): sugiere la letra de sus facturas (RI -> A, monotributo -> C).
+  condicionIva?: CondicionIva;
+};
+
+export type CondicionIva = "responsable_inscripto" | "monotributo" | "exento" | "consumidor_final";
+export const CONDICION_IVA_LABEL: Record<CondicionIva, string> = {
+  responsable_inscripto: "Responsable inscripto",
+  monotributo: "Monotributista",
+  exento: "Exento",
+  consumidor_final: "Consumidor final",
 };
 
 export type RemitoDraftRow = {

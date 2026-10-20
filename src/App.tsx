@@ -365,7 +365,7 @@ import { AnalisisGastos } from "./tabs/AnalisisGastos";
 import { FichaProveedor } from "./ui/FichaProveedor";
 import { FacturaCompraModal, type FacturaForm } from "./ui/FacturaCompraModal";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
-import { ProveedoresPanel } from "./tabs/Proveedores";
+import { ProveedoresPanel, ProveedorModal, formDeProveedor, type ProveedorForm } from "./tabs/Proveedores";
 import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
 import { programadosEnRenglones } from "./domain/programadosEnRenglones";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
@@ -16678,6 +16678,8 @@ Escribi CERRAR para confirmar:`
     [purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes]
   );
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
+  // Editar los datos de un proveedor desde su ficha (la misma ventana del listado).
+  const [editProveedor, setEditProveedor] = useState<ProveedorForm | null>(null);
   const [pagoACuentaModal, setPagoACuentaModal] = useState<PagoACuentaForm | null>(null);
   const [notaCreditoModal, setNotaCreditoModal] = useState<NotaCreditoCompra | null>(null);
   // FICHA DE PAGO DE HABERES (una persona en su empresa) y la ventana del pago.
@@ -20166,6 +20168,39 @@ Escribi CERRAR para confirmar:`
       onImportarArca={importArcaFiles}
     />
   );
+  // ALTA / EDICION DE UN PROVEEDOR (listado y ficha). Si se corrige el NOMBRE, lo ya cargado a su nombre
+  // (facturas, pagos, gastos de caja chica, notas de credito) pasa al nombre nuevo: el vinculo es por
+  // CUIT o por nombre, y sin esto la correccion dejaba la cuenta corriente partida en dos.
+  const guardarProveedor = (p: ProveedorForm) => {
+    const datos = {
+      company: p.company as any,
+      name: p.name.trim(),
+      taxId: p.taxId.trim(),
+      direccion: p.direccion,
+      contacto: p.contacto,
+      currentAccount: p.currentAccount,
+      aliases: p.aliases,
+      notes: p.notes,
+      condicionIva: p.condicionIva,
+    };
+    if (!p.id) {
+      setSuppliers((prev) => [...prev, { id: newId(), active: true, ...datos } as Supplier]);
+      return;
+    }
+    const viejo = suppliers.find((x) => x.id === p.id);
+    setSuppliers((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...datos } : x)));
+    if (!viejo) return;
+    const cambiaNombre = viejo.name.trim() !== datos.name;
+    const cambiaCuit = (viejo.taxId || "").trim() !== datos.taxId;
+    if (!cambiaNombre && !cambiaCuit) return;
+    const esDeEl = (nombre: string, taxId?: string) => !!buscarProveedor([viejo] as any, nombre || "", taxId || "");
+    const renombrar = <T extends { supplier: string; taxId?: string }>(x: T): T =>
+      esDeEl(x.supplier, x.taxId) ? { ...x, supplier: datos.name, ...("taxId" in x && datos.taxId ? { taxId: datos.taxId } : {}) } : x;
+    setPurchaseInvoices((prev) => prev.map(renombrar));
+    setCostEntries((prev) => prev.map((x) => (x.supplier && esDeEl(x.supplier) ? { ...x, supplier: datos.name } : x)));
+    setPettyCashExpenses((prev) => prev.map((x) => (x.supplier && esDeEl(x.supplier) ? { ...x, supplier: datos.name } : x)));
+    setCreditNotes((prev) => prev.map(renombrar as any));
+  };
   const renderProveedores = () => (
     <ProveedoresPanel
       proveedores={visibleSuppliers as any}
@@ -20174,20 +20209,7 @@ Escribi CERRAR para confirmar:`
       empresaPorDefecto={String(budget.company)}
       companyOptions={COMPANY_OPTIONS as any}
       money={money}
-      onGuardar={(p) => {
-        const datos = {
-          company: p.company as any,
-          name: p.name.trim(),
-          taxId: p.taxId.trim(),
-          direccion: p.direccion,
-          contacto: p.contacto,
-          currentAccount: p.currentAccount,
-          aliases: p.aliases,
-          notes: p.notes,
-        };
-        if (p.id) setSuppliers((prev) => prev.map((x) => (x.id === p.id ? { ...x, ...datos } : x)));
-        else setSuppliers((prev) => [...prev, { id: newId(), active: true, ...datos } as Supplier]);
-      }}
+      onGuardar={guardarProveedor}
       onQuitar={(id) => removeSupplier(id)}
       onVaciar={() => {
         // Solo el LISTADO: facturas, pagos y gastos conservan el nombre del proveedor (el cash flow no
@@ -20962,6 +20984,21 @@ Escribi CERRAR para confirmar:`
           onCerrar={() => setFacturaModal(null)}
         />
       )}
+      {editProveedor && (
+        <div style={{ position: "relative", zIndex: 4700 }}>
+          <ProveedorModal
+            inicial={editProveedor}
+            companyOptions={COMPANY_OPTIONS as any}
+            onGuardar={(p) => {
+              guardarProveedor(p);
+              // La ficha abierta sigue al proveedor aunque se le haya corregido el nombre.
+              setFichaProveedor((f) => (f ? { nombre: p.name.trim(), taxId: p.taxId.trim() } : f));
+              setEditProveedor(null);
+            }}
+            onCerrar={() => setEditProveedor(null)}
+          />
+        </div>
+      )}
       {arqueoPendiente && (
         <ArqueoCierre
           empresa={arqueoPendiente.empresa}
@@ -21001,6 +21038,7 @@ Escribi CERRAR para confirmar:`
               setPurchaseInvoices((prev) => prev.map((f) => (f.id === invoiceId ? { ...f, fechaPagoPrevista: fecha } : f)))
             }
             onCerrar={() => setFichaProveedor(null)}
+            onEditarDatos={prov ? () => setEditProveedor(formDeProveedor(prov as any)) : undefined}
             facturas={filasFacturas.filter(
               (f) => buscarProveedor(prov ? [prov] : [], f.supplier, f.taxId) || supplierKey(f.supplier, f.taxId) === supplierKey(fichaProveedor.nombre, fichaProveedor.taxId)
             )}
