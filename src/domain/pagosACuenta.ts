@@ -42,10 +42,15 @@ const diasEntre = (desde: string, hasta: string) => {
 
 export function pagosSinFactura(
   pagos: PagoACuentaLike[],
-  facturas: Array<{ paidByCostEntryId?: number | null }>,
+  facturas: Array<{ paidByCostEntryId?: number | null; pagosIds?: number[] }>,
   hoy: string
 ): PagoSinFactura[] {
-  const vinculados = new Set(facturas.map((f) => f.paidByCostEntryId).filter((x): x is number => x != null));
+  // Cualquier pago de una factura (tambien un pago parcial) ya tiene su factura.
+  const vinculados = new Set<number>();
+  facturas.forEach((f) => {
+    (f.pagosIds || []).forEach((id) => vinculados.add(id));
+    if (f.paidByCostEntryId != null) vinculados.add(f.paidByCostEntryId);
+  });
   return pagos
     // Pendiente hasta que: se le vincule una factura, o se resuelva con comprobante (gasto en negro) o con
     // un responsable que asume la falta de la factura (queda como firmante).

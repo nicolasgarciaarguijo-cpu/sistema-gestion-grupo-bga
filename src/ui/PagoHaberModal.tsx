@@ -5,13 +5,14 @@ import React, { useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
 import NumInput from "./NumInput";
+import { OPCIONES_MEDIO_PAGO } from "../domain/types";
 export type PagoHaberForm = {
   id?: number;
   periodo: string; // yyyy-mm al que corresponde
   fecha: string;
   monto: number;
   administration: "blanco" | "negro";
-  metodo: "transferencia" | "efectivo" | "cheque" | "debito";
+  metodo: "transferencia" | "efectivo" | "cheque" | "debito" | "tarjeta_debito" | "tarjeta_credito";
   cuentaId?: string;
   notas: string;
   comprobante?: File | null; // el archivo nuevo a subir (el ya cargado se ve abajo)
@@ -64,8 +65,8 @@ export function PagoHaberModal({
           <label style={lbl}>Fecha del pago
             <input style={input} type="date" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
           </label>
-          <label style={lbl}>Circuito
-            <select style={{ ...input, background: f.administration === "negro" ? "#1f2937" : "#fff", color: f.administration === "negro" ? "#fff" : "#0f172a" }} value={f.administration} onChange={(e) => set({ administration: e.target.value as any })}>
+          <label style={lbl}>Administración
+            <select style={{ ...input, background: f.administration === "negro" ? "#1f2937" : "#fff", color: f.administration === "negro" ? "#fff" : "#0f172a" }} value={f.administration} onChange={(e) => set(e.target.value === "negro" ? { administration: "negro", metodo: "efectivo" } : { administration: e.target.value as any })}>
               <option value="blanco">Blanco</option>
               <option value="negro">Negro</option>
             </select>
@@ -73,12 +74,11 @@ export function PagoHaberModal({
           <label style={lbl}>Monto
             <NumInput style={input} value={f.monto || ""} onChange={(e) => set({ monto: Number(e.target.value) || 0 })} autoFocus />
           </label>
-          <label style={lbl}>Cómo se pagó
-            <select style={input} value={f.metodo} onChange={(e) => set({ metodo: e.target.value as any })}>
-              <option value="transferencia">Transferencia</option>
-              <option value="efectivo">Efectivo</option>
-              <option value="cheque">Cheque</option>
-              <option value="debito">Débito</option>
+          <label style={lbl}>Medio de pago
+            <select style={input} value={f.metodo} disabled={f.administration === "negro"} onChange={(e) => set({ metodo: e.target.value as any })}>
+              {OPCIONES_MEDIO_PAGO.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </select>
           </label>
           <label style={lbl}>De qué cuenta salió

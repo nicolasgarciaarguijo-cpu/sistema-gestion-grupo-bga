@@ -1,48 +1,78 @@
 // VENTANA DE FACTURA DE COMPRA (Nicolas, 2026-10-14): los datos de la factura, el PROVEEDOR (de la
-// lista de habituales o uno nuevo) y el PAGO (si se pago, como y de que cuenta; si no, para cuando y
-// con que estado). El pago queda asentado en el cash flow; lo que falta pagar va a Pagos programados.
+// lista de habituales o uno nuevo) y sus PAGOS (2026-10-20: varios pagos parciales sobre la misma factura,
+// cada uno con empresa, administracion blanco/negro y medio de pago; lo que falta es el saldo, que va a
+// Pagos programados con su fecha). Los pagos quedan asentados en el cash flow.
+// Los datos de la factura son los que pide el estudio contable (tipo de comprobante, letra, numero,
+// exento, neto, IVA con su alicuota, otros impuestos, IIBB, total): el IVA y el total se calculan solos.
 // Es la misma ventana desde Compras y desde la ficha del proveedor.
 import React, { useMemo, useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
 import NumInput from "./NumInput";
+
+export type MedioPago = "efectivo" | "transferencia" | "cheque" | "tarjeta_debito" | "tarjeta_credito" | "debito";
+export const MEDIOS_PAGO: Array<{ value: MedioPago; label: string }> = [
+  { value: "efectivo", label: "Efectivo" },
+  { value: "transferencia", label: "Transferencia" },
+  { value: "cheque", label: "Cheque" },
+  { value: "tarjeta_debito", label: "Tarjeta de débito" },
+  { value: "tarjeta_credito", label: "Tarjeta de crédito" },
+];
+
+// Un pago de la factura. Con costEntryId es uno ya cargado (se edita); sin, se crea al guardar.
+export type PagoFactura = {
+  key: string;
+  costEntryId?: number;
+  fecha: string;
+  monto: number;
+  metodo: MedioPago;
+  cuentaId?: string;
+  administration: "blanco" | "negro";
+  empresa?: string; // empresa que PAGA (ausente = la de la factura). Distinta = pago cruzado.
+  pagadoPor?: string; // efectivo negro: quien de la nomina hizo el pago (informativo)
+  firmante?: string; // ultimo firmante (solo para mostrar: al guardar firma el usuario que opera)
+};
+
+export const TIPOS_COMPROBANTE = ["Factura", "Nota de débito", "Ticket factura", "Recibo", "Otro"];
+export const ALICUOTAS_IVA = [21, 10.5, 27, 5, 2.5, 0];
+
 export type FacturaForm = {
   id?: number;
   company: string;
   supplier: string;
   taxId: string;
   altaProveedor: boolean; // proveedor nuevo: darlo de alta en el listado
+  receiptKind: string; // tipo de comprobante
   receiptLetter: string;
   invoiceNumber: string;
   invoiceDate: string;
-  net21: number;
+  net21: number; // neto gravado
+  vatRate: number; // alicuota de IVA (21 por defecto)
+  vatManual?: boolean; // el IVA se corrigio a mano: ya no se recalcula con el neto
   exemptAmount: number;
   vat: number;
+  otrosImpuestos: number;
+  iibb: number;
   total: number;
   administration: "blanco" | "negro";
   grupoCosto?: string; // "tipo|nombre"
   notes: string;
-  pago: {
-    estado: "pagada" | "impaga";
-    modo: "nuevo" | "vincular";
-    costEntryId?: number; // vincular un pago ya cargado
-    fecha: string;
-    monto: number;
-    metodo: "transferencia" | "efectivo" | "cheque" | "debito";
-    cuentaId?: string;
-    administration: "blanco" | "negro";
-    fechaPrevista?: string;
-    estadoPrevisto: "programado" | "estimado" | "inamovible";
-    porBanco?: string; // solo lectura: "pagada por un debito del banco del dd/mm"
-    pagadoPor?: string; // efectivo negro: quien de la nomina hizo el pago (informativo)
-    empresa?: string; // empresa que PAGA (ausente = la de la factura). Distinta = pago cruzado.
-    firmante?: string; // ultimo firmante del pago (solo para mostrar: al guardar firma el usuario que opera)
-  };
+  pagos: PagoFactura[];
+  // Lo que falta pagar: para cuando y con que estado (Pagos programados).
+  saldo: { fechaPrevista?: string; estadoPrevisto: "programado" | "estimado" | "inamovible" };
+  porBanco?: string; // solo lectura: "pagada por un debito del banco"
   // MATERIAL (Fase 5): los remitos de recepcion que respaldan esta factura (el stock ya entro con
   // ellos) o, si no vino remito, cargar sus renglones como recepcion al guardar.
   remitoIds?: number[];
   cargarRenglones?: boolean;
 };
+
+// IVA y total a partir de los importes. Puro, para la ventana y para quien cargue una factura.
+export const ivaDe = (neto: number, alicuota: number) => Math.round(Number(neto || 0) * Number(alicuota || 0)) / 100;
+export const totalDe = (f: Pick<FacturaForm, "net21" | "exemptAmount" | "vat" | "otrosImpuestos" | "iibb">) =>
+  Math.round(
+    (Number(f.net21 || 0) + Number(f.exemptAmount || 0) + Number(f.vat || 0) + Number(f.otrosImpuestos || 0) + Number(f.iibb || 0)) * 100
+  ) / 100;
 
 type ProveedorOpt = {
   id: number;
@@ -52,6 +82,7 @@ type ProveedorOpt = {
   currentAccount?: boolean;
   grupoCosto?: string;
   tipoGastoLocked?: boolean;
+  condicionIva?: string;
 };
 
 const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600 };
@@ -81,7 +112,10 @@ export function FacturaCompraModal({
   cuentas: Array<{ id: string; company: string; nombre: string; moneda?: string; activa?: boolean }>;
   companyOptions: Array<{ value: string; label?: string; short?: string }>;
   renglonesEgreso: Array<{ key: string; label: string }>; // grupos de costo: key "tipo|nombre"
-  pagosVinculables: (company: string, supplier: string) => Array<{ id: number; date: string; amount: number; description: string }>;
+  pagosVinculables: (company: string, supplier: string) => Array<{
+    id: number; date: string; amount: number; description: string;
+    company?: string; paymentMethod?: string; administration?: "blanco" | "negro"; cuentaId?: string; firmante?: string;
+  }>;
   fechaSegunCondicion: (supplier: string, taxId: string, fechaFactura: string) => string | undefined;
   money: (n: number) => string;
   onGuardar: (f: FacturaForm) => void;
@@ -95,7 +129,57 @@ export function FacturaCompraModal({
 }) {
   const [f, setF] = useState<FacturaForm>(inicial);
   const set = (patch: Partial<FacturaForm>) => setF((p) => ({ ...p, ...patch }));
-  const setPago = (patch: Partial<FacturaForm["pago"]>) => setF((p) => ({ ...p, pago: { ...p.pago, ...patch } }));
+  const setPagoN = (key: string, patch: Partial<PagoFactura>) =>
+    setF((x) => ({ ...x, pagos: x.pagos.map((p) => (p.key === key ? { ...p, ...patch } : p)) }));
+  const pagado = Math.round(f.pagos.reduce((a, p) => a + Number(p.monto || 0), 0) * 100) / 100;
+  const saldo = f.porBanco ? 0 : Math.max(0, Math.round((Number(f.total || 0) - pagado) * 100) / 100);
+  const claveNueva = () => `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
+  // Un pago nuevo arranca con lo que falta, la empresa y la administracion de la factura.
+  const agregarPago = () =>
+    setF((x) => ({
+      ...x,
+      pagos: [
+        ...x.pagos,
+        {
+          key: claveNueva(),
+          fecha: new Date().toISOString().slice(0, 10),
+          monto: saldo,
+          metodo: x.administration === "negro" ? "efectivo" : "transferencia",
+          administration: x.administration,
+        },
+      ],
+    }));
+  const vincularPago = (pv: ReturnType<typeof pagosVinculables>[number]) =>
+    setF((x) => ({
+      ...x,
+      pagos: [
+        ...x.pagos,
+        {
+          key: `c${pv.id}`,
+          costEntryId: pv.id,
+          fecha: pv.date,
+          monto: Number(pv.amount || 0),
+          metodo: ((pv.paymentMethod as MedioPago) || "transferencia"),
+          administration: pv.administration === "negro" ? "negro" : "blanco",
+          cuentaId: pv.cuentaId,
+          empresa: pv.company && pv.company !== x.company ? pv.company : undefined,
+          firmante: pv.firmante,
+        },
+      ],
+    }));
+  // Importes: el IVA sale del neto y la alicuota (salvo que se haya corregido a mano) y el total, de la suma.
+  const importes = (patch: Partial<FacturaForm>) =>
+    setF((x) => {
+      const n = { ...x, ...patch };
+      if (!n.vatManual) n.vat = ivaDe(n.net21, n.vatRate);
+      n.total = totalDe(n);
+      return n;
+    });
+  // Letra C (monotributo) o X: el IVA no se discrimina.
+  const elegirLetra = (letra: string) =>
+    letra === "C" || letra === "X"
+      ? importes({ receiptLetter: letra, vatRate: 0, vatManual: false })
+      : importes({ receiptLetter: letra, vatRate: f.vatRate === 0 ? 21 : f.vatRate, vatManual: false });
 
   const delaEmpresa = useMemo(
     () => proveedores.filter((p) => p.company === f.company || p.company === "General").sort((a, b) => a.name.localeCompare(b.name)),
@@ -103,7 +187,8 @@ export function FacturaCompraModal({
   );
   const elegido = delaEmpresa.find((p) => p.name.trim().toLowerCase() === f.supplier.trim().toLowerCase());
   const esNuevo = !!f.supplier.trim() && !elegido;
-  const vinculables = pagosVinculables(f.company, f.supplier);
+  const yaEnLaFactura = new Set(f.pagos.map((p) => p.costEntryId).filter((x) => x != null));
+  const vinculables = pagosVinculables(f.company, f.supplier).filter((p) => !yaEnLaFactura.has(p.id));
 
   const elegirProveedor = (nombre: string) => {
     const p = delaEmpresa.find((x) => x.name === nombre);
@@ -113,27 +198,27 @@ export function FacturaCompraModal({
     }
     const patch: Partial<FacturaForm> = { supplier: p.name, taxId: p.taxId || "", altaProveedor: false };
     if (!f.grupoCosto && p.grupoCosto) patch.grupoCosto = p.grupoCosto;
+    // Un monotributista factura C (sin IVA discriminado); un responsable inscripto, A.
+    if (!f.id && p.condicionIva === "monotributo") Object.assign(patch, { receiptLetter: "C", vatRate: 0, vatManual: false });
+    if (!f.id && p.condicionIva === "responsable_inscripto" && f.receiptLetter === "C") Object.assign(patch, { receiptLetter: "A", vatRate: 21, vatManual: false });
     setF((prev) => {
       const next = { ...prev, ...patch };
+      if (!next.vatManual) next.vat = ivaDe(next.net21, next.vatRate);
+      next.total = totalDe(next);
       const prevista = fechaSegunCondicion(p.name, p.taxId, prev.invoiceDate);
-      if (prevista && !prev.pago.fechaPrevista) next.pago = { ...next.pago, fechaPrevista: prevista };
+      if (prevista && !prev.saldo.fechaPrevista) next.saldo = { ...next.saldo, fechaPrevista: prevista };
       return next;
     });
   };
 
-  const recalcularTotal = (patch: Partial<FacturaForm>) => {
-    const n = { ...f, ...patch };
-    set({ ...patch, total: Math.round((Number(n.net21 || 0) + Number(n.exemptAmount || 0) + Number(n.vat || 0)) * 100) / 100 });
-  };
+
 
   const faltan: string[] = [];
   if (!f.supplier.trim()) faltan.push("el proveedor");
   if (!f.invoiceDate) faltan.push("la fecha de la factura");
   if (!(Number(f.total) > 0)) faltan.push("el total");
-  if (f.pago.estado === "pagada" && !f.pago.porBanco) {
-    if (f.pago.modo === "vincular" && !f.pago.costEntryId) faltan.push("el pago a vincular");
-    if (f.pago.modo === "nuevo" && (!f.pago.fecha || !(Number(f.pago.monto) > 0))) faltan.push("la fecha y el monto del pago");
-  }
+  if (f.pagos.some((p) => !p.fecha || !(Number(p.monto) > 0))) faltan.push("la fecha y el monto de cada pago");
+  if (pagado > Number(f.total || 0) + 1) faltan.push(`que los pagos no pasen el total (sobran ${money(pagado - Number(f.total || 0))})`);
 
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4600, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "30px 12px" }}>
@@ -185,9 +270,16 @@ export function FacturaCompraModal({
         <div style={caja}>
           <div style={titulo}>2 · Factura</div>
           <div style={grid}>
-            <label style={lbl}>Letra
-              <select style={input} value={f.receiptLetter} onChange={(e) => set({ receiptLetter: e.target.value })}>
-                {["A", "B", "C", "M", "X (sin factura)"].map((l) => (
+            <label style={lbl}>Tipo de comprobante
+              <select style={input} value={f.receiptKind} onChange={(e) => set({ receiptKind: e.target.value })}>
+                {Array.from(new Set([...TIPOS_COMPROBANTE, f.receiptKind].filter(Boolean))).map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </label>
+            <label style={lbl}>Tipo (letra)
+              <select style={input} value={f.receiptLetter} onChange={(e) => elegirLetra(e.target.value)}>
+                {["A", "B", "C", "M", "E", "X (sin factura)"].map((l) => (
                   <option key={l} value={l.charAt(0)}>{l}</option>
                 ))}
               </select>
@@ -195,22 +287,47 @@ export function FacturaCompraModal({
             <label style={lbl}>Número
               <input style={input} value={f.invoiceNumber} placeholder="0001-00001234" onChange={(e) => set({ invoiceNumber: e.target.value })} />
             </label>
-            <label style={lbl}>Fecha
+            <label style={lbl}>Fecha de la factura
               <input style={input} type="date" value={f.invoiceDate} onChange={(e) => set({ invoiceDate: e.target.value })} />
             </label>
+          </div>
+          <div style={{ ...grid, marginTop: 10 }}>
             <label style={lbl}>Neto gravado
-              <NumInput style={input} value={f.net21 || ""} onChange={(e) => recalcularTotal({ net21: Number(e.target.value) || 0 })} />
+              <NumInput style={input} value={f.net21 || ""} onChange={(e) => importes({ net21: Number(e.target.value) || 0 })} />
             </label>
-            <label style={lbl}>No gravado / exento
-              <NumInput style={input} value={f.exemptAmount || ""} onChange={(e) => recalcularTotal({ exemptAmount: Number(e.target.value) || 0 })} />
+            <label style={lbl}>Alícuota IVA
+              <select style={input} value={String(f.vatRate)} onChange={(e) => importes({ vatRate: Number(e.target.value), vatManual: false })}>
+                {Array.from(new Set([...ALICUOTAS_IVA, f.vatRate])).map((a) => (
+                  <option key={a} value={String(a)}>{String(a).replace(".", ",")} %</option>
+                ))}
+              </select>
             </label>
-            <label style={lbl}>IVA
-              <NumInput style={input} value={f.vat || ""} onChange={(e) => recalcularTotal({ vat: Number(e.target.value) || 0 })} />
+            <label style={lbl} title="Se calcula solo con el neto y la alícuota. Si la factura dice otra cosa, corregilo.">
+              IVA {f.vatManual ? <span style={{ color: "#b45309", fontWeight: 700 }}>· a mano</span> : <span style={{ color: "#94a3b8", fontWeight: 400 }}>· automático</span>}
+              <NumInput style={input} value={f.vat || ""} onChange={(e) => importes({ vat: Number(e.target.value) || 0, vatManual: true })} />
             </label>
-            <label style={lbl}>Total
+            <label style={lbl}>Exento / no gravado
+              <NumInput style={input} value={f.exemptAmount || ""} onChange={(e) => importes({ exemptAmount: Number(e.target.value) || 0 })} />
+            </label>
+            <label style={lbl}>Otros impuestos
+              <NumInput style={input} value={f.otrosImpuestos || ""} onChange={(e) => importes({ otrosImpuestos: Number(e.target.value) || 0 })} />
+            </label>
+            <label style={lbl}>Percepción IIBB
+              <NumInput style={input} value={f.iibb || ""} onChange={(e) => importes({ iibb: Number(e.target.value) || 0 })} />
+            </label>
+            <label style={lbl} title="Neto + IVA + exento + otros impuestos + IIBB">
+              Total
               <NumInput style={{ ...input, fontWeight: 800 }} value={f.total || ""} onChange={(e) => set({ total: Number(e.target.value) || 0 })} />
             </label>
-            <label style={lbl}>Circuito
+          </div>
+          {Math.abs(totalDe(f) - Number(f.total || 0)) > 1 && (
+            <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700, marginTop: 6 }}>
+              ⚠ El total ({money(f.total)}) no coincide con la suma de los importes ({money(totalDe(f))}).{" "}
+              <button type="button" style={{ ...input, width: "auto", padding: "1px 8px", cursor: "pointer" }} onClick={() => set({ total: totalDe(f) })}>Usar la suma</button>
+            </div>
+          )}
+          <div style={{ ...grid, marginTop: 10 }}>
+            <label style={lbl}>Administración de la factura
               <select
                 style={{ ...input, background: f.administration === "negro" ? "#1f2937" : "#fff", color: f.administration === "negro" ? "#fff" : "#0f172a" }}
                 value={f.administration}
@@ -235,119 +352,151 @@ export function FacturaCompraModal({
         </div>
 
         <div style={caja}>
-          <div style={titulo}>3 · Pago</div>
-          {f.pago.porBanco ? (
-            <div style={{ fontSize: 13, color: "#166534", fontWeight: 700 }}>✓ {f.pago.porBanco}</div>
-          ) : (
-            <>
-              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 10, fontSize: 13 }}>
-                <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontWeight: 700 }}>
-                  <input type="radio" checked={f.pago.estado === "pagada"} onChange={() => setPago({ estado: "pagada", monto: f.pago.monto || f.total })} />
-                  Pagada
-                </label>
-                <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontWeight: 700 }}>
-                  <input type="radio" checked={f.pago.estado === "impaga"} onChange={() => setPago({ estado: "impaga" })} />
-                  Sin pagar todavía
-                </label>
-              </div>
-              {f.pago.estado === "pagada" ? (
-                <>
-                  <div style={{ display: "flex", gap: 14, flexWrap: "wrap", marginBottom: 8, fontSize: 12.5 }}>
-                    <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                      <input type="radio" checked={f.pago.modo === "nuevo"} onChange={() => setPago({ modo: "nuevo" })} />
-                      Registrar el pago
-                    </label>
-                    <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                      <input type="radio" checked={f.pago.modo === "vincular"} onChange={() => setPago({ modo: "vincular" })} />
-                      Vincular un pago ya cargado
-                    </label>
-                  </div>
-                  {f.pago.modo === "vincular" ? (
-                    <select style={input} value={f.pago.costEntryId || ""} onChange={(e) => setPago({ costEntryId: Number(e.target.value) || undefined })}>
-                      <option value="">{vinculables.length ? "Elegí el pago" : "No hay pagos cargados de este proveedor"}</option>
-                      {vinculables.map((p) => (
-                        <option key={p.id} value={p.id}>{p.date} · {money(p.amount)} · {p.description}</option>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+            <div style={titulo}>3 · Pagos</div>
+            <div style={{ fontSize: 12.5, display: "flex", gap: 12 }}>
+              <span>Total <strong>{money(f.total)}</strong></span>
+              <span style={{ color: "#166534" }}>Pagado <strong>{money(pagado)}</strong></span>
+              <span style={{ color: saldo > 1 ? "#b45309" : "#166534" }}>{saldo > 1 ? <>Falta <strong>{money(saldo)}</strong></> : <strong>✓ Pagada</strong>}</span>
+            </div>
+          </div>
+          {f.porBanco && <div style={{ fontSize: 13, color: "#166534", fontWeight: 700, marginBottom: 8 }}>✓ {f.porBanco}</div>}
+          {f.pagos.length === 0 && !f.porBanco && (
+            <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>Sin pagos todavía. Se le pueden cargar varios (pagos parciales) hasta completar el total.</div>
+          )}
+          {f.pagos.map((p, i) => {
+            const empresaPaga = p.empresa || f.company;
+            const cruzado = empresaPaga !== f.company;
+            const cruceAdm = p.administration !== f.administration;
+            return (
+              <div key={p.key} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: 10, background: "#fff", marginBottom: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <strong style={{ fontSize: 12.5 }}>Pago {i + 1}{p.costEntryId ? "" : " · nuevo"}</strong>
+                  <button
+                    type="button"
+                    onClick={() => setF((x) => ({ ...x, pagos: x.pagos.filter((y) => y.key !== p.key) }))}
+                    style={{ ...input, width: "auto", padding: "1px 8px", cursor: "pointer", color: "#b91c1c", borderColor: "#fecaca" }}
+                    title={p.costEntryId ? "Lo suelta de la factura (si se cargó con la factura, se borra)" : "Sacar este pago"}
+                  >
+                    Quitar
+                  </button>
+                </div>
+                <div style={grid}>
+                  <label style={lbl}>Fecha del pago
+                    <input style={input} type="date" value={p.fecha} onChange={(e) => setPagoN(p.key, { fecha: e.target.value })} />
+                  </label>
+                  <label style={lbl}>Monto
+                    <NumInput style={input} value={p.monto || ""} onChange={(e) => setPagoN(p.key, { monto: Number(e.target.value) || 0 })} />
+                  </label>
+                  <label style={lbl}>Empresa que paga
+                    <select
+                      style={{ ...input, ...(cruzado ? { borderColor: "#f59e0b", background: "#fffbeb", color: "#b45309", fontWeight: 700 } : {}) }}
+                      value={empresaPaga}
+                      onChange={(e) => setPagoN(p.key, { empresa: e.target.value === f.company ? undefined : e.target.value, cuentaId: undefined })}
+                    >
+                      {companyOptions.filter((c) => c.value !== "General").map((c) => (
+                        <option key={c.value} value={c.value}>{c.short || c.label || c.value}</option>
                       ))}
                     </select>
-                  ) : (
-                    <div style={grid}>
-                      <label style={lbl}>Fecha del pago
-                        <input style={input} type="date" value={f.pago.fecha} onChange={(e) => setPago({ fecha: e.target.value })} />
-                      </label>
-                      <label style={lbl}>Monto pagado
-                        <NumInput style={input} value={f.pago.monto || ""} onChange={(e) => setPago({ monto: Number(e.target.value) || 0 })} />
-                      </label>
-                      <label style={lbl}>Cómo se pagó
-                        <select style={input} value={f.pago.metodo} onChange={(e) => setPago({ metodo: e.target.value as any })}>
-                          <option value="transferencia">Transferencia</option>
-                          <option value="efectivo">Efectivo</option>
-                          <option value="cheque">Cheque</option>
-                          <option value="debito">Débito</option>
-                        </select>
-                      </label>
-                      <label style={lbl}>Empresa que paga
-                        <select
-                          style={{ ...input, ...((f.pago.empresa || f.company) !== f.company ? { borderColor: "#f59e0b", background: "#fffbeb", color: "#b45309", fontWeight: 700 } : {}) }}
-                          value={f.pago.empresa || f.company}
-                          onChange={(e) => setPago({ empresa: e.target.value === f.company ? undefined : e.target.value, cuentaId: undefined })}
-                        >
-                          {companyOptions.filter((c) => c.value !== "General").map((c) => (
-                            <option key={c.value} value={c.value}>{c.short || c.label || c.value}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label style={lbl}>De qué cuenta salió
-                        <select style={input} value={f.pago.cuentaId || ""} onChange={(e) => setPago({ cuentaId: e.target.value || undefined })}>
-                          <option value="">Cuenta por defecto</option>
-                          {cuentas.filter((c) => c.company === (f.pago.empresa || f.company) && c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (
-                            <option key={c.id} value={c.id}>{c.nombre}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label style={lbl}>Circuito del pago
-                        <select style={input} value={f.pago.administration} onChange={(e) => setPago({ administration: e.target.value as any })}>
-                          <option value="blanco">Blanco</option>
-                          <option value="negro">Negro</option>
-                        </select>
-                      </label>
-                      <FirmanteFijo previo={f.pago.firmante} labelStyle={lbl} />
-                      {f.pago.metodo === "efectivo" && f.pago.administration === "negro" && (
-                        <label style={lbl} title="Quién de la nómina hizo el pago (si no salió de una caja chica). Solo se cuenta en Movimientos internos; no suma ni resta.">
-                          Quién pagó
-                          <select style={input} value={f.pago.pagadoPor || ""} onChange={(e) => setPago({ pagadoPor: e.target.value || undefined })}>
-                            <option value="">— la empresa (sin persona) —</option>
-                            {Array.from(new Set([...(f.pago.pagadoPor ? [f.pago.pagadoPor] : []), ...personas])).map((p) => (
-                              <option key={p} value={p}>{p}</option>
-                            ))}
-                          </select>
-                        </label>
-                      )}
-                    </div>
-                  )}
-                  {f.pago.modo === "nuevo" && (f.pago.empresa || f.company) !== f.company && (
-                    <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700, marginTop: 6 }}>
-                      ⚠ Pago cruzado: la factura es de una empresa y la paga otra. Queda a la vista en Movimientos internos.
-                    </div>
-                  )}
-                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 6 }}>El pago queda asentado en el cash flow y baja la cuenta de donde salió.</div>
-                </>
-              ) : (
-                <div style={grid}>
-                  <label style={lbl}>Fecha de pago prevista
-                    <input style={input} type="date" value={f.pago.fechaPrevista || ""} onChange={(e) => setPago({ fechaPrevista: e.target.value || undefined })} />
                   </label>
-                  <label style={lbl}>Estado del pago
-                    <select style={input} value={f.pago.estadoPrevisto} onChange={(e) => setPago({ estadoPrevisto: e.target.value as any })}>
-                      <option value="programado">Programado</option>
-                      <option value="estimado">Estimado</option>
-                      <option value="inamovible">Inamovible</option>
+                  <label style={lbl}>Administración
+                    <select
+                      style={{ ...input, background: p.administration === "negro" ? "#1f2937" : "#fff", color: p.administration === "negro" ? "#fff" : "#0f172a" }}
+                      value={p.administration}
+                      onChange={(e) => {
+                        const adm = e.target.value as "blanco" | "negro";
+                        // Negro es efectivo: no pasa por ninguna cuenta del banco.
+                        setPagoN(p.key, adm === "negro" ? { administration: adm, metodo: "efectivo" } : { administration: adm });
+                      }}
+                    >
+                      <option value="blanco">Blanco</option>
+                      <option value="negro">Negro</option>
                     </select>
                   </label>
-                  <div style={{ fontSize: 11.5, color: "#64748b", alignSelf: "end" }}>Con fecha, aparece en Pagos programados y en el Calendario como pago que viene.</div>
+                  <label style={lbl}>Medio de pago
+                    <select style={input} value={p.metodo} disabled={p.administration === "negro"} onChange={(e) => setPagoN(p.key, { metodo: e.target.value as MedioPago })}>
+                      {MEDIOS_PAGO.map((m) => (
+                        <option key={m.value} value={m.value}>{m.label}</option>
+                      ))}
+                      {p.metodo === "debito" && <option value="debito">Débito automático</option>}
+                    </select>
+                  </label>
+                  <label style={lbl}>De qué cuenta salió
+                    <select style={input} value={p.cuentaId || ""} onChange={(e) => setPagoN(p.key, { cuentaId: e.target.value || undefined })}>
+                      <option value="">Cuenta por defecto</option>
+                      {cuentas.filter((c) => c.company === empresaPaga && c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (
+                        <option key={c.id} value={c.id}>{c.nombre}</option>
+                      ))}
+                    </select>
+                  </label>
+                  {p.metodo === "efectivo" && p.administration === "negro" && (
+                    <label style={lbl} title="Quién de la nómina hizo el pago (si no salió de una caja chica). Solo se cuenta en Movimientos internos; no suma ni resta.">
+                      Quién pagó
+                      <select style={input} value={p.pagadoPor || ""} onChange={(e) => setPagoN(p.key, { pagadoPor: e.target.value || undefined })}>
+                        <option value="">— la empresa (sin persona) —</option>
+                        {Array.from(new Set([...(p.pagadoPor ? [p.pagadoPor] : []), ...personas])).map((x) => (
+                          <option key={x} value={x}>{x}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <FirmanteFijo previo={p.firmante} labelStyle={lbl} />
                 </div>
+                {cruzado && (
+                  <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700, marginTop: 6 }}>
+                    ⚠ Pago cruzado: la factura es de una empresa y la paga otra. Queda a la vista en Movimientos internos.
+                  </div>
+                )}
+                {cruceAdm && (
+                  <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700, marginTop: 6 }}>
+                    ⚠ Se cruzan las administraciones: factura {f.administration === "negro" ? "NEGRA" : "BLANCA"} pagada en {p.administration === "negro" ? "NEGRO" : "BLANCO"}. Suma al desbalance de cuentas.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {!f.porBanco && (
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <button
+                type="button"
+                onClick={agregarPago}
+                style={{ ...input, width: "auto", cursor: "pointer", fontWeight: 800, background: "#16a34a", color: "#fff", borderColor: "#15803d" }}
+              >
+                + Agregar pago{saldo > 1 && f.pagos.length > 0 ? ` (falta ${money(saldo)})` : ""}
+              </button>
+              {vinculables.length > 0 && (
+                <select
+                  style={{ ...input, width: "auto", maxWidth: 380 }}
+                  value=""
+                  onChange={(e) => {
+                    const pv = vinculables.find((x) => x.id === Number(e.target.value));
+                    if (pv) vincularPago(pv);
+                  }}
+                >
+                  <option value="">Vincular un pago ya cargado…</option>
+                  {vinculables.map((pv) => (
+                    <option key={pv.id} value={pv.id}>{pv.date} · {money(pv.amount)} · {pv.description}</option>
+                  ))}
+                </select>
               )}
-            </>
+            </div>
           )}
+          {saldo > 1 && !f.porBanco && (
+            <div style={{ ...grid, marginTop: 10 }}>
+              <label style={lbl}>Fecha prevista del saldo
+                <input style={input} type="date" value={f.saldo.fechaPrevista || ""} onChange={(e) => setF((x) => ({ ...x, saldo: { ...x.saldo, fechaPrevista: e.target.value || undefined } }))} />
+              </label>
+              <label style={lbl}>Estado del pago
+                <select style={input} value={f.saldo.estadoPrevisto} onChange={(e) => setF((x) => ({ ...x, saldo: { ...x.saldo, estadoPrevisto: e.target.value as any } }))}>
+                  <option value="programado">Programado</option>
+                  <option value="estimado">Estimado</option>
+                  <option value="inamovible">Inamovible</option>
+                </select>
+              </label>
+              <div style={{ fontSize: 11.5, color: "#64748b", alignSelf: "end" }}>Con fecha, lo que falta aparece en Pagos programados y en el cash flow, en el renglón del proveedor.</div>
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 6 }}>Cada pago queda asentado en el cash flow y baja la cuenta de donde salió.</div>
         </div>
 
         {esMateriales && recepciones && esMateriales(f.grupoCosto || elegido?.grupoCosto) && (() => {

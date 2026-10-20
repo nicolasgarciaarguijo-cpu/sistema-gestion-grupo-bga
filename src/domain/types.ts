@@ -619,6 +619,13 @@ export type PurchaseInvoice = {
   fechaPagoPrevista?: string;
   // Grupo de costo de ESTA factura ("tipo|nombre"); si no, el del proveedor.
   grupoCosto?: string;
+  // TODOS los pagos de la factura (varios pagos parciales, 2026-10-20). Ver domain/pagosDeFactura.ts.
+  pagosIds?: number[];
+  // Datos para el estudio contable (2026-10-20): alicuota de IVA (21 por defecto), otros impuestos y la
+  // percepcion de IIBB. Total = neto + exento + IVA + otros impuestos + IIBB.
+  vatRate?: number;
+  otrosImpuestos?: number;
+  iibb?: number;
 };
 
 // VIATICO EVENTUAL: anticipo a una persona por un viaje o un trabajo (solapa Caja chica y viaticos).
@@ -1120,7 +1127,8 @@ export type CostEntry = {
   groupKind?: "fijo" | "variable";
 };
 
-export type PaymentMethod = "transferencia" | "cheque" | "efectivo" | "debito";
+// "debito" = debito automatico de la cuenta (lo viejo). Tarjeta de debito y de credito se suman el 2026-10-20.
+export type PaymentMethod = "transferencia" | "cheque" | "efectivo" | "debito" | "tarjeta_debito" | "tarjeta_credito";
 
 // TARJETAS DE CRÉDITO. El itemizado de consumos sirve para IDENTIFICAR costos fijos/variables para
 // COTIZAR y preparar los marcadores. NO suma al estado de resultados (el resultado sale de los pagos
@@ -1190,11 +1198,17 @@ export type CostRule = {
 };
 
 export const PAYMENT_METHOD_OPTIONS: { value: PaymentMethod; label: string }[] = [
+  { value: "efectivo", label: "Efectivo" },
   { value: "transferencia", label: "Transferencia" },
   { value: "cheque", label: "Cheque / echeq" },
-  { value: "efectivo", label: "Efectivo" },
-  { value: "debito", label: "Debito automatico" },
+  { value: "tarjeta_debito", label: "Tarjeta de débito" },
+  { value: "tarjeta_credito", label: "Tarjeta de crédito" },
+  { value: "debito", label: "Débito automático" },
 ];
+
+// Las opciones de MEDIO DE PAGO de todas las ventanas de pago (Nicolas, 2026-10-20): efectivo, transferencia,
+// cheque, tarjeta de debito y de credito. El debito automatico queda para lo que ya estaba cargado asi.
+export const OPCIONES_MEDIO_PAGO = PAYMENT_METHOD_OPTIONS;
 
 // Lo unico que se paga fuera del banco es el efectivo. Todo lo demas tiene que aparecer en el
 // extracto: por eso se puede cotejar.

@@ -5,6 +5,7 @@ import React, { useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
 import NumInput from "./NumInput";
+import { OPCIONES_MEDIO_PAGO } from "../domain/types";
 export type PagoACuentaForm = {
   // Si viene, la ventana EDITA ese pago (CostEntry) en vez de crear uno nuevo. aCuenta: si es un pago sin factura.
   id?: number;
@@ -14,7 +15,7 @@ export type PagoACuentaForm = {
   company: string; // empresa que paga
   fecha: string;
   monto: number;
-  metodo: "transferencia" | "efectivo" | "cheque" | "debito";
+  metodo: "transferencia" | "efectivo" | "cheque" | "debito" | "tarjeta_debito" | "tarjeta_credito";
   cuentaId?: string;
   administration: "blanco" | "negro";
   pagadoPor?: string;
@@ -72,12 +73,11 @@ export function PagoACuentaModal({
               ))}
             </select>
           </label>
-          <label style={lbl}>Cómo se pagó
-            <select style={input} value={f.metodo} onChange={(e) => set({ metodo: e.target.value as any })}>
-              <option value="transferencia">Transferencia</option>
-              <option value="efectivo">Efectivo</option>
-              <option value="cheque">Cheque</option>
-              <option value="debito">Débito</option>
+          <label style={lbl}>Medio de pago
+            <select style={input} value={f.metodo} disabled={f.administration === "negro"} onChange={(e) => set({ metodo: e.target.value as any })}>
+              {OPCIONES_MEDIO_PAGO.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
             </select>
           </label>
           <label style={lbl}>De qué cuenta salió
@@ -88,8 +88,8 @@ export function PagoACuentaModal({
               ))}
             </select>
           </label>
-          <label style={lbl}>Circuito
-            <select style={input} value={f.administration} onChange={(e) => set({ administration: e.target.value as any })}>
+          <label style={lbl}>Administración
+            <select style={input} value={f.administration} onChange={(e) => set(e.target.value === "negro" ? { administration: "negro", metodo: "efectivo" } : { administration: e.target.value as any })}>
               <option value="blanco">Blanco</option>
               <option value="negro">Negro</option>
             </select>

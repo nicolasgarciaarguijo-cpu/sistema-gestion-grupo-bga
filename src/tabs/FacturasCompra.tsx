@@ -49,6 +49,7 @@ export function FacturasCompraPanel({
   onFichaProveedor,
   onEliminar,
   onImportarArca,
+  onExportarEstudio,
 }: {
   filas: FilaFactura[];
   companyOptions: Array<{ value: string; short?: string }>;
@@ -61,6 +62,8 @@ export function FacturasCompraPanel({
   onEliminar: (id: number, conPago: boolean) => void;
   // Importa el listado "Mis comprobantes recibidos" de ARCA. Devuelve el resumen para mostrar.
   onImportarArca: (files: FileList | null) => Promise<string>;
+  // EXCEL PARA EL ESTUDIO CONTABLE: las facturas de la empresa entre dos fechas. Devuelve cuantas salieron.
+  onExportarEstudio?: (args: { empresa: string; desde: string; hasta: string }) => number;
 }) {
   const archivoArca = useRef<HTMLInputElement>(null);
   const [avisoArca, setAvisoArca] = useState("");
@@ -71,6 +74,12 @@ export function FacturasCompraPanel({
   const [buscar, setBuscar] = useState("");
   const [y, m] = mes.split("-").map(Number);
   const mover = (d: number) => setMes(new Date(Date.UTC(y, m - 1 + d, 1)).toISOString().slice(0, 7));
+  // Exportar para el estudio: el mes que se esta viendo o un rango de fechas elegido.
+  const [exportar, setExportar] = useState<null | { modo: "mes" | "rango"; desde: string; hasta: string; empresa: string; aviso: string }>(null);
+  const finDeMes = (ym: string) => {
+    const [yy, mm] = ym.split("-").map(Number);
+    return `${ym}-${String(new Date(yy, mm, 0).getDate()).padStart(2, "0")}`;
+  };
 
   const visibles = useMemo(() => {
     const q = buscar.trim().toLowerCase();
@@ -103,6 +112,18 @@ export function FacturasCompraPanel({
           </label>
           <ButtonLike onClick={onNueva}>+ Agregar factura</ButtonLike>
           <ButtonLike onClick={() => archivoArca.current?.click()}>Importar listado de ARCA</ButtonLike>
+          {onExportarEstudio && (
+            <ButtonLike
+              secondary
+              onClick={() =>
+                setExportar((x) =>
+                  x ? null : { modo: "mes", desde: `${mes}-01`, hasta: finDeMes(mes), empresa: companyOptions.find((c) => c.value !== "General")?.value || "__ALL__", aviso: "" }
+                )
+              }
+            >
+              ⬇ Excel para el estudio
+            </ButtonLike>
+          )}
           <input
             ref={archivoArca}
             type="file"
@@ -120,6 +141,51 @@ export function FacturasCompraPanel({
         </span>
       }
     >
+      {exportar && onExportarEstudio && (() => {
+        const desde = exportar.modo === "mes" ? `${mes}-01` : exportar.desde;
+        const hasta = exportar.modo === "mes" ? finDeMes(mes) : exportar.hasta;
+        const caja: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 8px", fontSize: 13 };
+        return (
+          <div style={{ border: "1px solid #bbf7d0", background: "#f0fdf4", borderRadius: 8, padding: "10px 12px", marginBottom: 10, display: "grid", gap: 8 }}>
+            <div style={{ fontWeight: 800, color: "#166534" }}>Facturas de compra para el estudio contable (Excel)</div>
+            <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", fontSize: 13 }}>
+              <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                <input type="radio" checked={exportar.modo === "mes"} onChange={() => setExportar({ ...exportar, modo: "mes", aviso: "" })} />
+                El mes: <strong>{NOMBRE_MES[m - 1]} {y}</strong>
+              </label>
+              <label style={{ display: "inline-flex", gap: 5, alignItems: "center" }}>
+                <input type="radio" checked={exportar.modo === "rango"} onChange={() => setExportar({ ...exportar, modo: "rango", aviso: "" })} />
+                Un rango de fechas:
+              </label>
+              <input style={caja} type="date" value={exportar.desde} disabled={exportar.modo !== "rango"} onChange={(e) => setExportar({ ...exportar, desde: e.target.value, aviso: "" })} />
+              <span>al</span>
+              <input style={caja} type="date" value={exportar.hasta} disabled={exportar.modo !== "rango"} onChange={(e) => setExportar({ ...exportar, hasta: e.target.value, aviso: "" })} />
+              <select style={caja} value={exportar.empresa} onChange={(e) => setExportar({ ...exportar, empresa: e.target.value, aviso: "" })}>
+                {companyOptions.filter((c) => c.value !== "General").map((c) => (
+                  <option key={c.value} value={c.value}>{c.short || c.value}</option>
+                ))}
+                <option value="__ALL__">Las dos empresas</option>
+              </select>
+              <ButtonLike
+                onClick={() => {
+                  if (!desde || !hasta || desde > hasta) {
+                    setExportar({ ...exportar, aviso: "Elegí un rango de fechas válido." });
+                    return;
+                  }
+                  const n = onExportarEstudio({ empresa: exportar.empresa, desde, hasta });
+                  setExportar({ ...exportar, aviso: n ? `Listo: ${n} comprobante(s) en el Excel.` : "No hay facturas blancas en ese período." });
+                }}
+              >
+                Descargar Excel
+              </ButtonLike>
+            </div>
+            <div style={{ fontSize: 11.5, color: "#475569" }}>
+              Proveedor / razón social · CUIT · fecha · tipo de factura · tipo (A, B, C…) · número · exento · neto · IVA · otros impuestos · IIBB · total. Van las facturas en blanco (las negras no tienen comprobante) y las notas de crédito en negativo.
+            </div>
+            {exportar.aviso && <div style={{ fontSize: 12.5, fontWeight: 700, color: /^Listo/.test(exportar.aviso) ? "#166534" : "#b45309" }}>{exportar.aviso}</div>}
+          </div>
+        );
+      })()}
       {avisoArca && (
         <div style={{ fontSize: 12.5, color: /^Error/.test(avisoArca) ? "#b91c1c" : "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 6, padding: "6px 10px", marginBottom: 8, display: "flex", justifyContent: "space-between", gap: 8 }}>
           <span>{avisoArca}</span>

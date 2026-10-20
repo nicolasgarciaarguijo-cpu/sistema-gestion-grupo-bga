@@ -20,11 +20,12 @@ import {
 } from "../domain/desendeudamiento";
 
 import NumInput from "../ui/NumInput";
+import { OPCIONES_MEDIO_PAGO } from "../domain/types";
 export type PagoCuotaForm = {
   modo: "nuevo" | "vincular";
   fecha: string;
   monto: number;
-  metodo: "transferencia" | "efectivo" | "cheque" | "debito";
+  metodo: "transferencia" | "efectivo" | "cheque" | "debito" | "tarjeta_debito" | "tarjeta_credito";
   cuentaId?: string;
   administration: "blanco" | "negro";
   costEntryId?: number;
@@ -424,12 +425,11 @@ export function DesendeudamientoTab({
                 <label style={lbl}>Monto
                   <NumInput style={input} value={pago.form.monto || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, monto: Number(e.target.value) || 0 } })} />
                 </label>
-                <label style={lbl}>Cómo se pagó
+                <label style={lbl}>Medio de pago
                   <select style={input} value={pago.form.metodo} onChange={(e) => setPago({ ...pago, form: { ...pago.form, metodo: e.target.value as any } })}>
-                    <option value="transferencia">Transferencia</option>
-                    <option value="debito">Débito automático</option>
-                    <option value="cheque">Cheque</option>
-                    <option value="efectivo">Efectivo</option>
+                    {OPCIONES_MEDIO_PAGO.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
                   </select>
                 </label>
                 <label style={lbl}>De qué cuenta

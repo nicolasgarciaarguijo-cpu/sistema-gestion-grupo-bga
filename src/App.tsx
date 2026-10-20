@@ -363,7 +363,10 @@ import { summarizeContributions, type CapitalEntry } from "./domain/contribution
 import { egresoDeEntrada, egresoDePrevisto, fvEfectivo, type Egreso } from "./domain/analisisGastos";
 import { AnalisisGastos } from "./tabs/AnalisisGastos";
 import { FichaProveedor } from "./ui/FichaProveedor";
-import { FacturaCompraModal, type FacturaForm } from "./ui/FacturaCompraModal";
+import { FacturaCompraModal, ALICUOTAS_IVA, ivaDe, type FacturaForm, type MedioPago, type PagoFactura } from "./ui/FacturaCompraModal";
+import { estadoDePagos, pagosDeFactura, pagosVinculados, vinculoDePagos } from "./domain/pagosDeFactura";
+import { filasParaEstudio, ANCHOS_ESTUDIO } from "./domain/facturasParaEstudio";
+import { libroXlsx, descargarXlsx } from "./lib/xlsx";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { ProveedoresPanel, ProveedorModal, formDeProveedor, type ProveedorForm } from "./tabs/Proveedores";
 import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
@@ -12919,7 +12922,7 @@ Escribi CERRAR para confirmar:`
       removePettyCashExpense(inv.pettyCashExpenseId);
       return;
     }
-    if (conPago && inv.paidByCostEntryId != null) removeCostEntry(inv.paidByCostEntryId);
+    if (conPago) pagosDeFactura(inv).forEach((pid) => removeCostEntry(pid));
     removePurchaseInvoice(invoiceId);
     setFacturaModal(null);
   };
@@ -16170,9 +16173,7 @@ Escribi CERRAR para confirmar:`
   const cashFlowEntriesPlanilla = useMemo(() => {
     const costById = new Map(costEntries.map((c) => [c.id, c]));
     const facturaDePago = new Map<number, any>();
-    purchaseInvoices.forEach((i) => {
-      if (i.paidByCostEntryId != null) facturaDePago.set(i.paidByCostEntryId, i);
-    });
+    purchaseInvoices.forEach((i) => pagosDeFactura(i).forEach((pid) => facturaDePago.set(pid, i)));
     const tipoDeGrupo = (nombre: string) => (costGroups.find((g) => g.name === nombre)?.kind === "fijo" ? "fijo" : "variable");
     const pettyById = new Map(pettyCashExpenses.map((p) => [p.id, p]));
     // Candado del proveedor: con el tilde puesto, TODO lo suyo va a su grupo (le gana a lo elegido al cargar).
@@ -16664,7 +16665,16 @@ Escribi CERRAR para confirmar:`
           const aplicado = creditoAplicadoPorFactura(visibleCreditNotes);
           return purchaseInvoicesWithBankLink
             .filter((i) => canAccessCompany(i.company))
-            .map((i) => (aplicado.has(i.id) ? { ...i, total: saldoDeFactura(Number(i.total || 0), aplicado.get(i.id) || 0) } : i));
+            .map((i) => (aplicado.has(i.id) ? { ...i, total: saldoDeFactura(Number(i.total || 0), aplicado.get(i.id) || 0) } : i))
+            // A medio pagar (varios pagos): lo que se programa es lo que FALTA, no el total.
+            .map((i) => {
+              if (i.paidByCostEntryId != null || !(i.pagosIds || []).length) return i;
+              const e = estadoDePagos(i, (id) => {
+                const c = costEntries.find((x) => x.id === id);
+                return c ? Number(c.amount || 0) : undefined;
+              });
+              return { ...i, total: e.saldo };
+            });
         })() as any,
         suppliers as any
       ).map((f) => {
@@ -16675,7 +16685,7 @@ Escribi CERRAR para confirmar:`
           conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, inv?.grupoCosto || prov?.grupoCosto || "|Sin grupo"),
         };
       }),
-    [purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes]
+    [purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes, costEntries]
   );
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
   // Editar los datos de un proveedor desde su ficha (la misma ventana del listado).
@@ -17815,8 +17825,14 @@ Escribi CERRAR para confirmar:`
     setCostEntries((prev) => prev.filter((entry) => entry.id !== id));
     // Que no quede nada colgado de un pago que ya no existe: la factura vuelve a impaga y la cuota de la
     // deuda vuelve a pendiente.
-    if (purchaseInvoices.some((i) => i.paidByCostEntryId === id)) {
-      setPurchaseInvoices((prev) => prev.map((i) => (i.paidByCostEntryId === id ? { ...i, paidByCostEntryId: null } : i)));
+    if (purchaseInvoices.some((i) => pagosDeFactura(i).includes(id))) {
+      setPurchaseInvoices((prev) =>
+        prev.map((i) =>
+          pagosDeFactura(i).includes(id)
+            ? { ...i, paidByCostEntryId: i.paidByCostEntryId === id ? null : i.paidByCostEntryId, pagosIds: (i.pagosIds || []).filter((x) => x !== id) }
+            : i
+        )
+      );
     }
     if (debtPlans.some((d) => (d.cuotas || []).some((c) => c.pagoCostEntryId === id))) {
       setDebtPlans((prev) =>
@@ -19579,7 +19595,7 @@ Escribi CERRAR para confirmar:`
   // El "tipo de gasto" de una factura o un proveedor es un GRUPO DE COSTO con su tipo (fijo/variable).
   const renglonesEgreso = gruposCostoLista.map((g) => ({ key: g.clave, label: etiquetaGrupo(g.clave) }));
   const fmtCorta = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : "");
-  const METODO_TEXTO: Record<string, string> = { transferencia: "transferencia", efectivo: "efectivo", cheque: "cheque", debito: "débito" };
+  const METODO_TEXTO: Record<string, string> = { transferencia: "transferencia", efectivo: "efectivo", cheque: "cheque", debito: "débito automático", tarjeta_debito: "tarjeta de débito", tarjeta_credito: "tarjeta de crédito" };
   const filasFacturas: FilaFactura[] = useMemo(() => purchaseInvoicesWithBankLink
     .filter((inv) => canAccessCompany(inv.company))
     .map((inv) => {
@@ -19596,6 +19612,12 @@ Escribi CERRAR para confirmar:`
       const prov = buscarProveedor(suppliers as any, inv.supplier, inv.taxId) as any;
       const prevista = facturasAPagar.find((x) => x.id === inv.id);
       const marca = vencimientoMarcas.find((m) => m.clave === `factura:${inv.id}`);
+      // VARIOS PAGOS: a medio pagar se dice cuanto se pago y cuanto falta.
+      const estadoPagos = estadoDePagos(inv, (id) => {
+        const c = costEntries.find((x) => x.id === id);
+        return c ? Number(c.amount || 0) : undefined;
+      });
+      const parcial = !pagada && estadoPagos.ids.length > 0;
       return {
         id: inv.id,
         company: String(inv.company),
@@ -19608,7 +19630,11 @@ Escribi CERRAR para confirmar:`
         administration: inv.administration === "negro" ? "negro" : "blanco",
         source: inv.source,
         pagada,
-        pagoTexto: inv.source === "caja_chica"
+        pagoTexto: parcial
+          ? `pago parcial ${money(estadoPagos.pagado)} (${estadoPagos.ids.length}) · falta ${money(estadoPagos.saldo)}`
+          : estadoPagos.ids.length > 1 && pagada
+          ? `${estadoPagos.ids.length} pagos · último ${fmtCorta(pago?.date || "")}`
+          : inv.source === "caja_chica"
           ? `${fmtCorta(gastoCaja?.date || inv.invoiceDate)} · caja chica${cajaResponsable ? " de " + cajaResponsable : ""}`
           : pago
           ? `${fmtCorta(pago.date)} · ${METODO_TEXTO[pago.paymentMethod || ""] || "sin medio"}` +
@@ -19623,117 +19649,146 @@ Escribi CERRAR para confirmar:`
         estadoPrevisto: marca?.estadoPago,
         tipoProveedor: prov ? (prov.currentAccount ? "ctacte" : "habitual") : "nuevo",
         cajaResponsable: cajaResponsable || undefined,
-        tienePagoCargado: inv.paidByCostEntryId != null && !!pago,
+        tienePagoCargado: estadoPagos.ids.length > 0,
         arca: purchaseInvoiceOrigin(inv) === "arca" ? "importada" : inv.arcaCruzada ? "cruzada" : undefined,
       } as FilaFactura;
     }), [purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas, pettyCashExpenses, pettyCashFunds]);
-  const facturaVacia = (supplier = "", taxId = "", company = ""): FacturaForm => ({
-    company: company || (budget.company as string),
-    supplier,
-    taxId,
-    altaProveedor: false,
-    receiptLetter: "A",
-    invoiceNumber: "",
-    invoiceDate: todayIso(),
-    net21: 0,
-    exemptAmount: 0,
-    vat: 0,
-    total: 0,
-    administration: "blanco",
-    grupoCosto: (buscarProveedor(suppliers as any, supplier, taxId) as any)?.grupoCosto,
-    notes: "",
-    pago: { estado: "impaga", modo: "nuevo", fecha: todayIso(), monto: 0, metodo: "transferencia", administration: "blanco", estadoPrevisto: "programado" },
+  const facturaVacia = (supplier = "", taxId = "", company = ""): FacturaForm => {
+    const prov = buscarProveedor(suppliers as any, supplier, taxId) as any;
+    const mono = prov?.condicionIva === "monotributo";
+    return {
+      company: company || (budget.company as string),
+      supplier,
+      taxId,
+      altaProveedor: false,
+      receiptKind: "Factura",
+      receiptLetter: mono ? "C" : "A",
+      invoiceNumber: "",
+      invoiceDate: todayIso(),
+      net21: 0,
+      vatRate: mono ? 0 : 21,
+      exemptAmount: 0,
+      vat: 0,
+      otrosImpuestos: 0,
+      iibb: 0,
+      total: 0,
+      administration: "blanco",
+      grupoCosto: prov?.grupoCosto,
+      notes: "",
+      pagos: [],
+      saldo: { estadoPrevisto: "programado" },
+    };
+  };
+  // Un pago cargado (CostEntry) como renglon de la ventana de la factura.
+  const pagoDeFacturaForm = (c: CostEntry, companyFactura: string): PagoFactura => ({
+    key: `c${c.id}`,
+    costEntryId: c.id,
+    fecha: c.date,
+    monto: Number(c.amount || 0),
+    metodo: ((c.paymentMethod as any) || "transferencia") as MedioPago,
+    cuentaId: c.cuentaId,
+    administration: c.administration === "negro" ? "negro" : "blanco",
+    empresa: String(c.company) !== String(companyFactura) ? String(c.company) : undefined,
+    pagadoPor: c.pagadoPor,
+    firmante: c.firmante,
   });
   const facturaDeId = (id: number): FacturaForm | null => {
     const inv = purchaseInvoicesWithBankLink.find((i) => i.id === id);
     if (!inv) return null;
-    const pago = inv.paidByCostEntryId != null ? costEntries.find((c) => c.id === inv.paidByCostEntryId) : undefined;
     const prevista = facturasAPagar.find((x) => x.id === id);
     const marca = vencimientoMarcas.find((m) => m.clave === `factura:${id}`);
+    const pagos = pagosDeFactura(inv)
+      .map((pid) => costEntries.find((c) => c.id === pid))
+      .filter((c): c is CostEntry => !!c)
+      .sort((x, y) => (x.date || "").localeCompare(y.date || ""))
+      .map((c) => pagoDeFacturaForm(c, String(inv.company)));
+    const net = Number(inv.net21 || 0);
+    const vat = Number(inv.vat || 0);
+    // Facturas de antes no tenian la alicuota: se deduce del IVA cargado (21 si no se puede).
+    const rate = inv.vatRate ?? (net > 0 ? ALICUOTAS_IVA.find((r) => Math.abs((net * r) / 100 - vat) <= 1) ?? 21 : 21);
     return {
       id,
       company: String(inv.company),
       supplier: inv.supplier || "",
       taxId: inv.taxId || "",
       altaProveedor: false,
+      receiptKind: inv.receiptKind || "Factura",
       receiptLetter: inv.receiptLetter || "A",
       invoiceNumber: inv.invoiceNumber || "",
       invoiceDate: inv.invoiceDate || "",
-      net21: Number(inv.net21 || 0),
+      net21: net,
+      vatRate: rate,
+      vatManual: Math.abs(ivaDe(net, rate) - vat) > 1,
       exemptAmount: Number(inv.exemptAmount || 0),
-      vat: Number(inv.vat || 0),
+      vat,
+      otrosImpuestos: Number(inv.otrosImpuestos || 0),
+      iibb: Number(inv.iibb || 0),
       total: Number(inv.total || 0),
       administration: inv.administration === "negro" ? "negro" : "blanco",
       grupoCosto: inv.grupoCosto,
       notes: inv.notes || "",
       remitoIds: remitos.filter((r) => r.purchaseInvoiceId === id).map((r) => r.id),
-      pago: {
-        estado: inv.paidByCostEntryId != null || inv.paidByBankEntryId != null ? "pagada" : "impaga",
-        modo: "nuevo",
-        costEntryId: inv.paidByCostEntryId ?? undefined,
-        fecha: pago?.date || todayIso(),
-        monto: Number(pago?.amount ?? inv.total ?? 0),
-        metodo: (pago?.paymentMethod as any) || "transferencia",
-        cuentaId: pago?.cuentaId,
-        administration: pago?.administration === "negro" ? "negro" : "blanco",
-        pagadoPor: pago?.pagadoPor,
-        firmante: pago?.firmante,
-        empresa: pago && String(pago.company) !== String(inv.company) ? String(pago.company) : undefined,
-        fechaPrevista: inv.fechaPagoPrevista || prevista?.fechaPago,
-        estadoPrevisto: marca?.estadoPago || "programado",
-        porBanco: inv.paidByBankEntryId != null && inv.paidByCostEntryId == null ? "Pagada por un débito del banco (conciliado en Bancos y tarjetas)." : undefined,
-      },
+      pagos,
+      saldo: { fechaPrevista: inv.fechaPagoPrevista || prevista?.fechaPago, estadoPrevisto: marca?.estadoPago || "programado" },
+      porBanco: inv.paidByBankEntryId != null && pagos.length === 0 ? "Pagada por un débito del banco (conciliado en Bancos y tarjetas)." : undefined,
     };
   };
   const guardarFacturaCompra = (f: FacturaForm) => {
     const existente = f.id ? purchaseInvoices.find((i) => i.id === f.id) : undefined;
     const id = existente?.id || newId();
     const prov = buscarProveedor(suppliers as any, f.supplier, f.taxId) as any;
-    let paidByCostEntryId: number | null = existente?.paidByCostEntryId ?? null;
-    if (!f.pago.porBanco) {
-      if (f.pago.estado === "pagada") {
-        if (f.pago.modo === "vincular") {
-          paidByCostEntryId = f.pago.costEntryId ?? null;
-        } else {
-          // El PAGO es el gasto: queda en el cash flow y baja la cuenta de donde salio.
-          // La empresa que PAGA (de su cuenta sale la plata). Si no es la de la factura, es un pago cruzado.
-          const empresaPaga = (f.pago.empresa || f.company) as CompanyName;
-          const datosPago = {
-            company: empresaPaga,
-            empresaFactura: empresaPaga !== f.company ? f.company : undefined,
-            date: f.pago.fecha,
-            amount: Number(f.pago.monto) || 0,
-            paymentMethod: f.pago.metodo,
-            cuentaId: f.pago.cuentaId,
-            administration: f.pago.administration,
-            supplier: f.supplier,
-            supplierId: prov?.id,
-            invoiceRef: f.invoiceNumber,
-            // Grupo del pago = el de la factura (o el del proveedor): va a su renglon en el cash flow.
-            group: parseClaveGrupo(f.grupoCosto || prov?.grupoCosto)?.nombre || "",
-            groupKind: parseClaveGrupo(f.grupoCosto || prov?.grupoCosto)?.tipo,
-            description: `Factura ${f.receiptLetter} ${f.invoiceNumber}`.trim(),
-            // Quien pago: solo para efectivo negro (informativo, se cuenta en Movimientos internos).
-            pagadoPor: f.pago.metodo === "efectivo" && f.pago.administration === "negro" ? f.pago.pagadoPor || undefined : undefined,
-            ...firma(),
-          };
-          const previo = existente?.paidByCostEntryId != null ? costEntries.find((c) => c.id === existente.paidByCostEntryId) : undefined;
-          if (previo) {
-            setCostEntries((prev) => prev.map((c) => (c.id === previo.id ? { ...c, ...datosPago } : c)));
-            paidByCostEntryId = previo.id;
-          } else {
-            const ceId = newId();
-            setCostEntries((prev) => [
-              { id: ceId, source: "manual", notes: "Cargado con la factura (Compras)", ...datosPago } as CostEntry,
-              ...prev,
-            ]);
-            paidByCostEntryId = ceId;
-          }
-        }
+    // LOS PAGOS (varios, 2026-10-20). Cada pago es un gasto: queda en el cash flow y baja la cuenta de
+    // donde salio. Los que tienen costEntryId se actualizan; los nuevos se crean. El que se saco de la
+    // ventana se suelta (y si se habia cargado con la factura, se borra: no queda un pago huerfano).
+    const grupo = parseClaveGrupo(f.grupoCosto || prov?.grupoCosto);
+    const NOTA_CON_FACTURA = "Cargado con la factura (Compras)";
+    const guardados: Array<{ id: number; monto: number }> = [];
+    const nuevos: CostEntry[] = [];
+    const cambios = new Map<number, Partial<CostEntry>>();
+    f.pagos.forEach((pg) => {
+      const empresaPaga = (pg.empresa || f.company) as CompanyName;
+      const datosPago = {
+        company: empresaPaga,
+        empresaFactura: empresaPaga !== f.company ? f.company : undefined,
+        date: pg.fecha,
+        amount: Number(pg.monto) || 0,
+        // Negro es efectivo (no pasa por el banco).
+        paymentMethod: (pg.administration === "negro" ? "efectivo" : pg.metodo) as PaymentMethod,
+        cuentaId: pg.cuentaId,
+        administration: pg.administration,
+        supplier: f.supplier,
+        supplierId: prov?.id,
+        invoiceRef: f.invoiceNumber,
+        // Grupo del pago = el de la factura (o el del proveedor): va a su renglon en el cash flow.
+        group: grupo?.nombre || "",
+        groupKind: grupo?.tipo,
+        description: `${f.receiptKind || "Factura"} ${f.receiptLetter} ${f.invoiceNumber}`.trim(),
+        // Quien pago: solo para efectivo negro (informativo, se cuenta en Movimientos internos).
+        pagadoPor: pg.metodo === "efectivo" && pg.administration === "negro" ? pg.pagadoPor || undefined : undefined,
+        // Ya tiene su factura: deja de ser un pago a cuenta.
+        aCuenta: false,
+        ...firma(),
+      };
+      if (pg.costEntryId != null && costEntries.some((c) => c.id === pg.costEntryId)) {
+        cambios.set(pg.costEntryId, datosPago);
+        guardados.push({ id: pg.costEntryId, monto: datosPago.amount });
       } else {
-        paidByCostEntryId = null;
+        const ceId = newId();
+        nuevos.push({ id: ceId, source: "manual", notes: NOTA_CON_FACTURA, ...datosPago } as CostEntry);
+        guardados.push({ id: ceId, monto: datosPago.amount });
       }
+    });
+    const quedan = new Set(guardados.map((g) => g.id));
+    const sacados = existente ? pagosDeFactura(existente).filter((pid) => !quedan.has(pid)) : [];
+    const borrar = new Set(sacados.filter((pid) => costEntries.find((c) => c.id === pid)?.notes === NOTA_CON_FACTURA));
+    if (nuevos.length || cambios.size || borrar.size) {
+      setCostEntries((prev) => [
+        ...nuevos,
+        ...prev.filter((c) => !borrar.has(c.id)).map((c) => (cambios.has(c.id) ? { ...c, ...cambios.get(c.id) } : c)),
+      ]);
     }
+    const vinculo = f.porBanco ? { pagosIds: [], paidByCostEntryId: null } : vinculoDePagos(Number(f.total) || 0, guardados);
+    const paidByCostEntryId = vinculo.paidByCostEntryId;
     const factura: PurchaseInvoice = {
       ...(existente || ({} as PurchaseInvoice)),
       id,
@@ -19742,7 +19797,7 @@ Escribi CERRAR para confirmar:`
       source: existente?.source || "compras",
       supplier: f.supplier.trim(),
       taxId: f.taxId.trim(),
-      receiptKind: existente?.receiptKind || "Factura",
+      receiptKind: f.receiptKind || "Factura",
       receiptLetter: f.receiptLetter,
       invoiceNumber: f.invoiceNumber.trim(),
       invoiceDate: f.invoiceDate,
@@ -19751,21 +19806,25 @@ Escribi CERRAR para confirmar:`
       net21: Number(f.net21) || 0,
       subtotal: (Number(f.net21) || 0) + (Number(f.exemptAmount) || 0),
       vat: Number(f.vat) || 0,
+      vatRate: Number(f.vatRate),
+      otrosImpuestos: Number(f.otrosImpuestos) || 0,
+      iibb: Number(f.iibb) || 0,
       total: Number(f.total) || 0,
       notes: f.notes,
       extractedAutomatically: existente?.extractedAutomatically ?? false,
       grupoCosto: f.grupoCosto,
-      fechaPagoPrevista: f.pago.estado === "impaga" ? f.pago.fechaPrevista : existente?.fechaPagoPrevista,
+      fechaPagoPrevista: paidByCostEntryId == null ? f.saldo.fechaPrevista : existente?.fechaPagoPrevista,
+      pagosIds: vinculo.pagosIds,
       paidByCostEntryId,
     };
     delete (factura as any).paidByBankEntryId; // derivado: no se guarda
     setPurchaseInvoices((prev) => (existente ? prev.map((i) => (i.id === id ? factura : i)) : [factura, ...prev]));
-    if (f.pago.estado === "impaga") {
+    if (paidByCostEntryId == null && !f.porBanco) {
       const clave = `factura:${id}`;
       setVencimientoMarcas((prev) => {
         const previa = prev.find((m) => m.clave === clave);
         const resto = prev.filter((m) => m.clave !== clave);
-        return [...resto, { id: previa?.id || newId(), company: f.company, clave, pagado: false, ...previa, estadoPago: f.pago.estadoPrevisto, at: todayIso() }];
+        return [...resto, { id: previa?.id || newId(), company: f.company, clave, pagado: false, ...previa, estadoPago: f.saldo.estadoPrevisto, at: todayIso() }];
       });
     }
     if (f.altaProveedor && !prov && f.supplier.trim()) {
@@ -20146,8 +20205,23 @@ Escribi CERRAR para confirmar:`
   const renderFacturasCompra = () => (
     <FacturasCompraPanel
       filas={filasFacturas}
-      companyOptions={COMPANY_OPTIONS as any}
+      companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
       money={money}
+      onExportarEstudio={({ empresa, desde, hasta }) => {
+        const filas = filasParaEstudio({
+          facturas: visiblePurchaseInvoices.map((i) => ({ ...i, company: String(i.company) })),
+          notasCredito: visibleCreditNotes.map((n: any) => ({ ...n, company: String(n.company) })),
+          empresa,
+          desde,
+          hasta,
+        });
+        // Titulos + comprobantes + renglon en blanco + totales.
+        const n = Math.max(0, filas.length - 3);
+        if (!n) return 0;
+        const corto = empresa === "__ALL__" ? "BGA y De Raiz" : COMPANY_OPTIONS.find((c) => c.value === empresa)?.short || empresa;
+        descargarXlsx(`Facturas de compra ${corto} ${desde} a ${hasta}`, libroXlsx("Facturas de compra", filas, ANCHOS_ESTUDIO));
+        return n;
+      }}
       onNueva={() => setFacturaModal(facturaVacia())}
       onAbrir={(id) => {
         // La factura de un gasto de CAJA CHICA se edita desde el gasto (un solo lugar de carga).
@@ -20161,7 +20235,15 @@ Escribi CERRAR para confirmar:`
       }}
       onAsignarPago={(id) => {
         const f = facturaDeId(id);
-        if (f) setFacturaModal({ ...f, pago: { ...f.pago, estado: "pagada", monto: f.pago.monto || f.total } });
+        if (!f) return;
+        const yaPagado = f.pagos.reduce((a, p) => a + Number(p.monto || 0), 0);
+        setFacturaModal({
+          ...f,
+          pagos: [
+            ...f.pagos,
+            { key: `n${newId()}`, fecha: todayIso(), monto: Math.max(0, Number(f.total || 0) - yaPagado), metodo: f.administration === "negro" ? "efectivo" : "transferencia", administration: f.administration },
+          ],
+        });
       }}
       onFichaProveedor={abrirFichaProveedor}
       onEliminar={eliminarFacturaCompra}
@@ -20949,9 +21031,7 @@ Escribi CERRAR para confirmar:`
           companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
           renglonesEgreso={renglonesEgreso}
           pagosVinculables={(company, supplier) => {
-            const yaVinculados = new Set(
-              purchaseInvoices.filter((i) => i.id !== facturaModal.id && i.paidByCostEntryId != null).map((i) => i.paidByCostEntryId)
-            );
+            const yaVinculados = pagosVinculados(purchaseInvoices.filter((i) => i.id !== facturaModal.id));
             const n = supplier.trim().toLowerCase();
             return costEntries
               .filter((c) => c.company === company && !yaVinculados.has(c.id) && (!n || !c.supplier || c.supplier.trim().toLowerCase() === n))
@@ -20963,6 +21043,11 @@ Escribi CERRAR para confirmar:`
                 date: c.date,
                 amount: Number(c.amount || 0),
                 description: `${c.aCuenta ? "⏳ PAGO A CUENTA (espera factura) · " : ""}${c.description || c.supplier || "Pago"}`,
+                company: String(c.company),
+                paymentMethod: c.paymentMethod,
+                administration: c.administration === "negro" ? ("negro" as const) : ("blanco" as const),
+                cuentaId: c.cuentaId,
+                firmante: c.firmante,
               }));
           }}
           fechaSegunCondicion={(supplier, taxId, fecha) => fechaDePago(fecha, (buscarProveedor(suppliers as any, supplier, taxId) as any)?.condicionPago)}
@@ -20972,12 +21057,12 @@ Escribi CERRAR para confirmar:`
             // Si tiene un PAGO cargado, se pregunta si se va tambien: la factura no mueve plata, el pago
             // si (si queda, sigue en el cash flow). Mismo camino que el click derecho del listado.
             const inv = purchaseInvoices.find((i) => i.id === id);
-            const pago = inv?.paidByCostEntryId != null ? costEntries.find((c) => c.id === inv.paidByCostEntryId) : undefined;
+            const pagos = inv ? pagosDeFactura(inv).map((pid) => costEntries.find((c) => c.id === pid)).filter((c): c is CostEntry => !!c) : [];
             const conPago =
-              !!pago &&
+              pagos.length > 0 &&
               window.confirm(
-                `Esta factura tiene un pago cargado (${money(Number(pago.amount || 0))} del ${fmtCorta(pago.date)}).\n\n` +
-                  "¿Borrar TAMBIÉN el pago? (sale del cash flow)\n\nAceptar = borrar el pago · Cancelar = el pago queda"
+                `Esta factura tiene ${pagos.length === 1 ? "un pago cargado" : `${pagos.length} pagos cargados`} (${pagos.map((pg) => `${money(Number(pg.amount || 0))} del ${fmtCorta(pg.date)}`).join(", ")}).\n\n` +
+                  `¿Borrar TAMBIÉN ${pagos.length === 1 ? "el pago" : "los pagos"}? (sale del cash flow)\n\nAceptar = borrar · Cancelar = quedan`
               );
             eliminarFacturaCompra(id, conPago);
           }}
@@ -21090,7 +21175,7 @@ Escribi CERRAR para confirmar:`
               setFacturaModal({
                 ...base,
                 total: Number(pago.amount || 0),
-                pago: { ...base.pago, estado: "pagada", modo: "vincular", costEntryId: pagoId, monto: Number(pago.amount || 0), fecha: pago.date },
+                pagos: [pagoDeFacturaForm(pago, base.company)],
               });
             }}
             onPagoSinFactura={() =>
