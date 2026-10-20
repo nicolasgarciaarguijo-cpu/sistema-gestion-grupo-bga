@@ -36,6 +36,7 @@ import { reglasDeLiquidacion } from "../domain/reglasLiquidacion";
 import type { DayAttendance } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
+import NumInput from "../ui/NumInput";
 type PersonalTabProps = {
   employees: any[];
   onPayrollMonthReport: (month: string, employeeIds?: number[]) => void;
@@ -929,8 +930,7 @@ export function PersonalTab(props: PersonalTabProps) {
                     </Field>
                   )}
                   <Field label="Horas nominales / mes">
-                    <input
-                      type="number"
+                    <NumInput
                       style={styles.input}
                       value={newEmployeeDraft.nominalHours}
                       onChange={(e) =>
@@ -2044,9 +2044,8 @@ export function PersonalTab(props: PersonalTabProps) {
                             </Field>
                           )}
                           <Field label="Horas nominales">
-                            <input
+                            <NumInput
                               style={styles.input}
-                              type="number"
                               value={selectedEmployee.nominalHours}
                               onChange={(e) =>
                                 updateEmployeeField(
@@ -2231,9 +2230,8 @@ export function PersonalTab(props: PersonalTabProps) {
                                       <input style={styles.inputReadOnly} value={item.kind} readOnly />
                                     </Field>
                                     <Field label="Cantidad entregada">
-                                      <input
+                                      <NumInput
                                         style={styles.input}
-                                        type="number"
                                         value={item.quantity}
                                         onChange={(e) =>
                                           updateEmployeeProvisionItem(selectedEmployee.id, item.id, "quantity", Number(e.target.value))
@@ -2400,9 +2398,8 @@ export function PersonalTab(props: PersonalTabProps) {
                                     >
                                       {label}
                                     </span>
-                                    <input
+                                    <NumInput
                                       style={cInput}
-                                      type="number"
                                       min={0}
                                       step={0.5}
                                       value={val}
@@ -2634,9 +2631,8 @@ export function PersonalTab(props: PersonalTabProps) {
                           </details>
                           <div style={styles.liquidationColumn}>
                             <Field label={precargaAuto ? "Horas normales (desde calendario)" : "Horas normales (a mano)"}>
-                              <input
+                              <NumInput
                                 style={precargaAuto ? styles.inputReadOnly : styles.input}
-                                type="number"
                                 value={payroll.normalHours}
                                 readOnly={precargaAuto}
                                 onChange={(e) =>
@@ -2646,9 +2642,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label={precargaAuto ? "Horas extra 50 (desde calendario)" : "Horas extra 50 (a mano)"}>
-                              <input
+                              <NumInput
                                 style={precargaAuto ? styles.inputReadOnly : styles.input}
-                                type="number"
                                 value={payroll.extra50Hours}
                                 readOnly={precargaAuto}
                                 onChange={(e) =>
@@ -2658,9 +2653,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label={precargaAuto ? "Horas extra 100 (desde calendario)" : "Horas extra 100 (a mano)"}>
-                              <input
+                              <NumInput
                                 style={precargaAuto ? styles.inputReadOnly : styles.input}
-                                type="number"
                                 value={payroll.extra100Hours}
                                 readOnly={precargaAuto}
                                 onChange={(e) =>
@@ -2670,9 +2664,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label={precargaAuto ? "Hs feriado trabajadas al 100% (desde calendario)" : "Hs feriado trabajadas al 100% (a mano)"}>
-                              <input
+                              <NumInput
                                 style={precargaAuto ? styles.inputReadOnly : styles.input}
-                                type="number"
                                 value={Number(payroll.holidayWorkedHours || 0)}
                                 readOnly={precargaAuto}
                                 onChange={(e) =>
@@ -2682,9 +2675,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label={precargaAuto ? "Hs nocturnas al 100% (desde calendario)" : "Hs nocturnas al 100% (a mano)"}>
-                              <input
+                              <NumInput
                                 style={precargaAuto ? styles.inputReadOnly : styles.input}
-                                type="number"
                                 value={Number(payroll.night100Hours || 0)}
                                 readOnly={precargaAuto}
                                 onChange={(e) =>
@@ -2694,9 +2686,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Hs nocturnas al 50% (+13,33%)">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.night50Hours}
                                 onChange={(e) =>
                                   updateEmployeePayrollManual(
@@ -2709,9 +2700,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Hs nocturnas (+13,33%)">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.nightHours}
                                 onChange={(e) =>
                                   updateEmployeePayrollManual(
@@ -2724,9 +2714,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Horas feriado pago NO trabajado">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.holidayHours}
                                 onChange={(e) =>
                                   updateEmployeePayrollManual(
@@ -2739,9 +2728,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Ausencias injustificadas (hs)">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.unjustifiedAbsenceHours}
                                 onChange={(e) =>
                                   updateEmployeePayrollManual(
@@ -2754,9 +2742,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Ausencias justificadas (hs)">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.justifiedAbsenceHours}
                                 onChange={(e) =>
                                   updateEmployeePayrollManual(
@@ -2769,9 +2756,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Vacaciones (dias)">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.vacationsDays}
                                 onChange={(e) =>
                                   updateEmployeePayrollManual(
@@ -2784,9 +2770,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Presentismo % (cuánto representa)">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.presentismoPctOverride ?? 0}
                                 onChange={(e) =>
                                   updateEmployeePayrollManual(
@@ -2908,9 +2893,8 @@ export function PersonalTab(props: PersonalTabProps) {
                               />
                             </Field>
                             <Field label="Impacto empresa %">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={payroll.employerExtraPct}
                                 onChange={(e) =>
                                   updateEmployeePayrollManual(

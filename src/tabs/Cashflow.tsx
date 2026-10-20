@@ -18,6 +18,7 @@ import type { CierreEjercicio } from "../domain/cierreEjercicio";
 import { DEFAULT_FISCAL_START_MONTH, currentFiscalStartYear, fiscalYearLabel } from "../domain/fiscalYear";
 import { ETIQUETA_MOV_FISCO, type ConteoBlanqueo, type TipoMovFisco } from "../domain/faltaFactura";
 
+import NumInput from "../ui/NumInput";
 // Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
 // queda en el title (hover). Evita que un numero largo rompa una columna de ~80px.
 const compactAr = (n: number): string => {
@@ -1032,7 +1033,7 @@ function RegularizacionManual({
       {abierto ? (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
           <input style={input} type="date" value={d.date} onChange={(e) => setD({ ...d, date: e.target.value })} />
-          <input style={{ ...input, width: 130 }} type="number" placeholder="Monto (con IVA)" value={d.amount || ""} onChange={(e) => setD({ ...d, amount: Number(e.target.value) || 0 })} />
+          <NumInput style={{ ...input, width: 130 }} placeholder="Monto (con IVA)" value={d.amount || ""} onChange={(e) => setD({ ...d, amount: Number(e.target.value) || 0 })} />
           <input style={{ ...input, minWidth: 240 }} placeholder="Motivo (cómo se regularizó)" value={d.motivo} onChange={(e) => setD({ ...d, motivo: e.target.value })} />
           <button
             type="button"

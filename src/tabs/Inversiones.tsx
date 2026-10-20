@@ -16,6 +16,7 @@ import {
 import type { CompanyName, Inversion } from "../domain/types";
 import { FirmanteCelda } from "../ui/FirmanteSelect";
 
+import NumInput from "../ui/NumInput";
 type InversionesTabProps = {
   inversiones: Inversion[];
   companyScope: string;
@@ -195,16 +196,14 @@ export function InversionesTab({
                       </select>
                     </td>
                     <td>
-                      <input
-                        type="number"
+                      <NumInput
                         style={{ ...styles.input, textAlign: "right" }}
                         value={i.montoInvertido}
                         onChange={(e) => updateInversion(i.id, "montoInvertido", Number(e.target.value || 0))}
                       />
                     </td>
                     <td>
-                      <input
-                        type="number"
+                      <NumInput
                         style={{ ...styles.input, textAlign: "right" }}
                         value={i.valorActual}
                         onChange={(e) => updateInversion(i.id, "valorActual", Number(e.target.value || 0))}
@@ -261,8 +260,7 @@ export function InversionesTab({
                       </select>
                     </td>
                     <td>
-                      <input
-                        type="number"
+                      <NumInput
                         style={{ ...styles.input, textAlign: "right" }}
                         disabled={!cerrada}
                         title={cerrada ? "Lo que volvió al rescatarla (si queda vacío, se toma el valor actual)" : "Se carga al cerrarla"}

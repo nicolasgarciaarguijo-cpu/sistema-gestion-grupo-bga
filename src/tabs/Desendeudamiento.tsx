@@ -19,6 +19,7 @@ import {
   type EstadoCuota,
 } from "../domain/desendeudamiento";
 
+import NumInput from "../ui/NumInput";
 export type PagoCuotaForm = {
   modo: "nuevo" | "vincular";
   fecha: string;
@@ -187,10 +188,10 @@ export function DesendeudamientoTab({
                   </select>
                 </label>
                 <label style={lbl}>Capital original
-                  <input style={input} type="number" value={d.capital || ""} onChange={(e) => onActualizar(d.id, { capital: Number(e.target.value) || 0 })} />
+                  <NumInput style={input} value={d.capital || ""} onChange={(e) => onActualizar(d.id, { capital: Number(e.target.value) || 0 })} />
                 </label>
                 <label style={lbl}>U$S por cuota (referencia)
-                  <input style={input} type="number" value={d.usdValuePerInstallment || ""} onChange={(e) => onActualizar(d.id, { usdValuePerInstallment: Number(e.target.value) || 0 })} />
+                  <NumInput style={input} value={d.usdValuePerInstallment || ""} onChange={(e) => onActualizar(d.id, { usdValuePerInstallment: Number(e.target.value) || 0 })} />
                 </label>
               </div>
               <label style={lbl}>Notas
@@ -246,9 +247,8 @@ export function DesendeudamientoTab({
                           />
                         </td>
                         <td style={td}>
-                          <input
+                          <NumInput
                             style={{ ...input, padding: "2px 5px", textAlign: "right" }}
-                            type="number"
                             value={c.monto || ""}
                             disabled={pagada}
                             onChange={(e) => setCuotas(d, (cs) => cs.map((x) => (x.id === c.id ? { ...x, monto: Number(e.target.value) || 0 } : x)))}
@@ -278,10 +278,10 @@ export function DesendeudamientoTab({
                   <input style={input} type="date" value={est.fecha} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, fecha: e.target.value } }))} />
                 </label>
                 <label style={lbl}>Cantidad
-                  <input style={{ ...input, width: 80 }} type="number" value={est.cantidad} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, cantidad: Number(e.target.value) || 0 } }))} />
+                  <NumInput style={{ ...input, width: 80 }} value={est.cantidad} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, cantidad: Number(e.target.value) || 0 } }))} />
                 </label>
                 <label style={lbl}>Monto por cuota
-                  <input style={{ ...input, width: 130 }} type="number" value={est.monto || ""} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, monto: Number(e.target.value) || 0 } }))} />
+                  <NumInput style={{ ...input, width: 130 }} value={est.monto || ""} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, monto: Number(e.target.value) || 0 } }))} />
                 </label>
                 <ButtonLike
                   onClick={() => {
@@ -422,7 +422,7 @@ export function DesendeudamientoTab({
                   <input style={input} type="date" value={pago.form.fecha} onChange={(e) => setPago({ ...pago, form: { ...pago.form, fecha: e.target.value } })} />
                 </label>
                 <label style={lbl}>Monto
-                  <input style={input} type="number" value={pago.form.monto || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, monto: Number(e.target.value) || 0 } })} />
+                  <NumInput style={input} value={pago.form.monto || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, monto: Number(e.target.value) || 0 } })} />
                 </label>
                 <label style={lbl}>Cómo se pagó
                   <select style={input} value={pago.form.metodo} onChange={(e) => setPago({ ...pago, form: { ...pago.form, metodo: e.target.value as any } })}>

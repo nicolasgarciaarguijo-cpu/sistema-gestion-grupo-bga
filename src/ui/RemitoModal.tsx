@@ -7,6 +7,7 @@
 import React, { useMemo, useState } from "react";
 import { TIPOS_REMITO, type Remito, type RenglonRemito } from "../domain/remitos";
 
+import NumInput from "./NumInput";
 export type StockOpt = { id: number; company: string; code: string; description: string; unit: string; unitPrice: number; quantity: number; group: string };
 export type TrabajoOpt = { id: number; company: string; label: string; client: string; destino: string; materiales: Array<{ descripcion: string; cantidad: number; unidad: string; stockCode?: string }> };
 export type FacturaOpt = { id: number; label: string };
@@ -229,14 +230,14 @@ export function RemitoModal({
                       )}
                     </td>
                     <td style={td}>
-                      <input style={{ ...celda, textAlign: "right" }} type="number" value={g.cantidad || ""} onChange={(e) => setRenglon(g.id, { cantidad: Number(e.target.value) || 0 })} />
+                      <NumInput style={{ ...celda, textAlign: "right" }} value={g.cantidad || ""} onChange={(e) => setRenglon(g.id, { cantidad: Number(e.target.value) || 0 })} />
                     </td>
                     <td style={td}>
                       <input style={celda} value={g.unidad} onChange={(e) => setRenglon(g.id, { unidad: e.target.value })} />
                     </td>
                     {r.tipo !== "entrega" && (
                       <td style={td}>
-                        <input style={{ ...celda, textAlign: "right" }} type="number" value={g.precioUnitario || ""} onChange={(e) => setRenglon(g.id, { precioUnitario: Number(e.target.value) || 0 })} />
+                        <NumInput style={{ ...celda, textAlign: "right" }} value={g.precioUnitario || ""} onChange={(e) => setRenglon(g.id, { precioUnitario: Number(e.target.value) || 0 })} />
                       </td>
                     )}
                     {r.tipo === "recepcion" && (

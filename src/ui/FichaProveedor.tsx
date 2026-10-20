@@ -5,6 +5,7 @@ import React from "react";
 import { textoCondicion, type CondicionPago, type FacturaPorPagar } from "../domain/proveedores";
 import { FirmanteFijo } from "./FirmanteSelect";
 
+import NumInput from "./NumInput";
 type Movimiento = { key: string; type: "compra" | "pago" | "nota_credito"; date: string; detail: string; amount: number; saldo: number; administration: "blanco" | "negro"; invoiceId?: number; paymentId?: number };
 
 export function FichaProveedor({
@@ -184,13 +185,13 @@ export function FichaProveedor({
               {cond?.tipo === "dias" && (
                 <label style={{ display: "block", marginTop: 8, fontSize: 13 }}>
                   Días:{" "}
-                  <input style={{ ...input, width: 70 }} type="number" min={0} value={cond.dias} onChange={(e) => setCond({ tipo: "dias", dias: Number(e.target.value) || 0 })} />
+                  <NumInput style={{ ...input, width: 70 }} min={0} value={cond.dias} onChange={(e) => setCond({ tipo: "dias", dias: Number(e.target.value) || 0 })} />
                 </label>
               )}
               {cond?.tipo === "diaDelMes" && (
                 <label style={{ display: "block", marginTop: 8, fontSize: 13 }}>
                   Día del mes:{" "}
-                  <input style={{ ...input, width: 70 }} type="number" min={1} max={31} value={cond.dia} onChange={(e) => setCond({ tipo: "diaDelMes", dia: Number(e.target.value) || 1 })} />
+                  <NumInput style={{ ...input, width: 70 }} min={1} max={31} value={cond.dia} onChange={(e) => setCond({ tipo: "diaDelMes", dia: Number(e.target.value) || 1 })} />
                 </label>
               )}
               <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>

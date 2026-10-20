@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import type { NotaCreditoCompra } from "../domain/notasCredito";
 
+import NumInput from "./NumInput";
 const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600 };
 const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 8px", fontSize: 13, width: "100%", boxSizing: "border-box", fontWeight: 400, color: "#0f172a" };
 
@@ -65,13 +66,13 @@ export function NotaCreditoModal({
             <input style={input} type="date" value={n.date} onChange={(e) => set({ date: e.target.value })} />
           </label>
           <label style={lbl}>Neto
-            <input style={input} type="number" value={n.net || ""} onChange={(e) => setImporte({ net: Number(e.target.value) || 0 })} />
+            <NumInput style={input} value={n.net || ""} onChange={(e) => setImporte({ net: Number(e.target.value) || 0 })} />
           </label>
           <label style={lbl}>IVA
-            <input style={input} type="number" value={n.vat || ""} onChange={(e) => setImporte({ vat: Number(e.target.value) || 0 })} />
+            <NumInput style={input} value={n.vat || ""} onChange={(e) => setImporte({ vat: Number(e.target.value) || 0 })} />
           </label>
           <label style={lbl}>Total
-            <input style={input} type="number" value={n.total || ""} onChange={(e) => set({ total: Number(e.target.value) || 0 })} />
+            <NumInput style={input} value={n.total || ""} onChange={(e) => set({ total: Number(e.target.value) || 0 })} />
           </label>
           <label style={lbl}>Circuito
             <select style={input} value={n.administration} onChange={(e) => set({ administration: e.target.value as any })}>

@@ -21,6 +21,7 @@ import { summarizeContributions } from "../domain/contributions";
 import { buildLoanLines, sameLender, type CalendarLoan } from "../domain/loanLines";
 import { FirmanteCelda } from "../ui/FirmanteSelect";
 
+import NumInput from "../ui/NumInput";
 // MOVIMIENTOS INTERNOS
 //
 // La solapa donde la plata cambia de bolsillo sin entrar ni salir de la empresa. Nace de un problema
@@ -773,10 +774,9 @@ export function MovimientosInternosTab({
                         ))}
                       </select>
                       <span style={{ color: "#94a3b8" }}>U$S</span>
-                      <input
+                      <NumInput
                         style={{ ...inputCelda, width: 72, textAlign: "right" }}
                         {...focoCelda}
-                        type="number"
                         placeholder="opcional"
                         value={item.usdValue ?? ""}
                         onChange={(e) =>

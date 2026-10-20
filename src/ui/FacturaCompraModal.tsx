@@ -5,6 +5,7 @@
 import React, { useMemo, useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
+import NumInput from "./NumInput";
 export type FacturaForm = {
   id?: number;
   company: string;
@@ -198,16 +199,16 @@ export function FacturaCompraModal({
               <input style={input} type="date" value={f.invoiceDate} onChange={(e) => set({ invoiceDate: e.target.value })} />
             </label>
             <label style={lbl}>Neto gravado
-              <input style={input} type="number" value={f.net21 || ""} onChange={(e) => recalcularTotal({ net21: Number(e.target.value) || 0 })} />
+              <NumInput style={input} value={f.net21 || ""} onChange={(e) => recalcularTotal({ net21: Number(e.target.value) || 0 })} />
             </label>
             <label style={lbl}>No gravado / exento
-              <input style={input} type="number" value={f.exemptAmount || ""} onChange={(e) => recalcularTotal({ exemptAmount: Number(e.target.value) || 0 })} />
+              <NumInput style={input} value={f.exemptAmount || ""} onChange={(e) => recalcularTotal({ exemptAmount: Number(e.target.value) || 0 })} />
             </label>
             <label style={lbl}>IVA
-              <input style={input} type="number" value={f.vat || ""} onChange={(e) => recalcularTotal({ vat: Number(e.target.value) || 0 })} />
+              <NumInput style={input} value={f.vat || ""} onChange={(e) => recalcularTotal({ vat: Number(e.target.value) || 0 })} />
             </label>
             <label style={lbl}>Total
-              <input style={{ ...input, fontWeight: 800 }} type="number" value={f.total || ""} onChange={(e) => set({ total: Number(e.target.value) || 0 })} />
+              <NumInput style={{ ...input, fontWeight: 800 }} value={f.total || ""} onChange={(e) => set({ total: Number(e.target.value) || 0 })} />
             </label>
             <label style={lbl}>Circuito
               <select
@@ -274,7 +275,7 @@ export function FacturaCompraModal({
                         <input style={input} type="date" value={f.pago.fecha} onChange={(e) => setPago({ fecha: e.target.value })} />
                       </label>
                       <label style={lbl}>Monto pagado
-                        <input style={input} type="number" value={f.pago.monto || ""} onChange={(e) => setPago({ monto: Number(e.target.value) || 0 })} />
+                        <NumInput style={input} value={f.pago.monto || ""} onChange={(e) => setPago({ monto: Number(e.target.value) || 0 })} />
                       </label>
                       <label style={lbl}>Cómo se pagó
                         <select style={input} value={f.pago.metodo} onChange={(e) => setPago({ metodo: e.target.value as any })}>

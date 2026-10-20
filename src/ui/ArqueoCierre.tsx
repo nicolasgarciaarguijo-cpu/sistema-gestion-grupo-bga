@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { diferencia, faltantesDelArqueo, TOLERANCIA_ARQUEO, type FilaArqueo } from "../domain/arqueoCierre";
 
+import NumInput from "./NumInput";
 const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px", fontSize: 13, boxSizing: "border-box" };
 
 export function ArqueoCierre({
@@ -62,9 +63,8 @@ export function ArqueoCierre({
                       </td>
                       <td style={{ padding: 6, textAlign: "right" }}>{money(f.sistema, f.moneda)}</td>
                       <td style={{ padding: 6, textAlign: "right" }}>
-                        <input
+                        <NumInput
                           style={{ ...input, width: 140, textAlign: "right" }}
-                          type="number"
                           value={Number.isFinite(f.real) ? f.real : ""}
                           onChange={(e) => set(i, { real: Number(e.target.value) || 0 })}
                         />

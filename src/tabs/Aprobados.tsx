@@ -42,6 +42,7 @@ const jobInvoicingSem = (job: any) => {
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 import { FirmanteCelda } from "../ui/FirmanteSelect";
 
+import NumInput from "../ui/NumInput";
 // Tono del semaforo de planos -> nivel del componente Semaforo del sistema.
 const PLANO_TONE_LEVEL: Record<PlanoTone, SemaphoreLevel> = {
   red: "rojo",
@@ -802,9 +803,8 @@ export function AprobadosTab({
                       />
                     </Field>
                     <Field label="% facturado">
-                      <input
+                      <NumInput
                         style={styles.input}
-                        type="number"
                         value={selectedApprovedJob.billedPct}
                         onChange={(e) =>
                           updateApprovedJob(selectedApprovedJob.id, "billedPct", Number(e.target.value))
@@ -812,9 +812,8 @@ export function AprobadosTab({
                       />
                     </Field>
                     <Field label="% anticipo">
-                      <input
+                      <NumInput
                         style={styles.input}
-                        type="number"
                         value={resolveAdvancePct(
                           selectedApprovedJob.advancePct,
                           selectedApprovedJob.snapshot?.budget?.paymentTerms || ""
@@ -1406,9 +1405,8 @@ export function AprobadosTab({
                             />
                           </Field>
                           <Field label="Alicuota %">
-                            <input
+                            <NumInput
                               style={styles.input}
-                              type="number"
                               value={invoice.vatRate ?? 21}
                               onChange={(e) =>
                                 updateInvoice(selectedApprovedJob.id, invoice.id, "vatRate", Number(e.target.value))
@@ -1800,9 +1798,8 @@ export function AprobadosTab({
                           </Field>
                           {(item.administration || "blanco") === "blanco" ? (
                             <Field label="IVA %">
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 min={0}
                                 step={0.5}
                                 value={item.vatRate ?? 21}

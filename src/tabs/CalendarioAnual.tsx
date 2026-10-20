@@ -110,6 +110,7 @@ import type { Cuenta } from "../domain/cuentas";
 import { SelectorCuenta } from "./CuentasPanel";
 import { FirmanteFijo } from "../ui/FirmanteSelect";
 
+import NumInput from "../ui/NumInput";
 export function CalendarioAnualTab({
   entries,
   companyScope,
@@ -4231,7 +4232,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   </>
                 )}
                 <label style={lblStyle}>Monto ($)
-                  <input style={styles.input} type="number" value={addForm.amount || ""} onChange={(e) => setAddForm({ ...addForm, amount: Number(e.target.value) })} />
+                  <NumInput style={styles.input} value={addForm.amount || ""} onChange={(e) => setAddForm({ ...addForm, amount: Number(e.target.value) })} />
                 </label>
                 <label style={lblStyle}>Circuito
                   <select style={styles.input} value={addForm.administration} onChange={(e) => setAddForm({ ...addForm, administration: e.target.value as "blanco" | "negro" })}>

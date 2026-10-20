@@ -23,6 +23,7 @@ import { CALENDAR_SECTIONS } from "../domain/calendarStructure";
 import { monthKeyLabel } from "../domain/costs";
 import type { CompanyName, Seguro } from "../domain/types";
 
+import NumInput from "../ui/NumInput";
 type SegurosTabProps = {
   seguros: Seguro[];
   hoyIso: string;
@@ -271,8 +272,7 @@ export function SegurosTab({
                       />
                     </td>
                     <td>
-                      <input
-                        type="number"
+                      <NumInput
                         style={{ ...styles.input, textAlign: "right" }}
                         value={s.costoMensual}
                         onChange={(e) => updateSeguro(s.id, "costoMensual", Number(e.target.value || 0))}
@@ -298,8 +298,7 @@ export function SegurosTab({
                       </div>
                     </td>
                     <td>
-                      <input
-                        type="number"
+                      <NumInput
                         min={1}
                         max={31}
                         style={{ ...styles.input, width: 56, textAlign: "right" }}

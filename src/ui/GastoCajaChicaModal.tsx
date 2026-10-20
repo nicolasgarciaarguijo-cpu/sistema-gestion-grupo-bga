@@ -6,6 +6,7 @@
 import React, { useMemo, useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
+import NumInput from "./NumInput";
 export type GastoCajaForm = {
   id?: number;
   fundId: number | null;
@@ -157,7 +158,7 @@ export function GastoCajaChicaModal({
               <input style={input} type="date" value={g.date} onChange={(e) => set({ date: e.target.value })} />
             </label>
             <label style={lbl}>Monto
-              <input style={{ ...input, fontWeight: 800 }} type="number" value={g.amount || ""} onChange={(e) => set({ amount: Number(e.target.value) || 0 })} />
+              <NumInput style={{ ...input, fontWeight: 800 }} value={g.amount || ""} onChange={(e) => set({ amount: Number(e.target.value) || 0 })} />
             </label>
             <label style={lbl}>Circuito
               <select
@@ -182,10 +183,10 @@ export function GastoCajaChicaModal({
                   <input style={input} value={g.invoiceNumber} placeholder="0001-00001234" onChange={(e) => set({ invoiceNumber: e.target.value })} />
                 </label>
                 <label style={lbl}>Neto gravado
-                  <input style={input} type="number" value={g.net21 || ""} onChange={(e) => set({ net21: Number(e.target.value) || 0 })} />
+                  <NumInput style={input} value={g.net21 || ""} onChange={(e) => set({ net21: Number(e.target.value) || 0 })} />
                 </label>
                 <label style={lbl}>IVA
-                  <input style={input} type="number" value={g.vat || ""} onChange={(e) => set({ vat: Number(e.target.value) || 0 })} />
+                  <NumInput style={input} value={g.vat || ""} onChange={(e) => set({ vat: Number(e.target.value) || 0 })} />
                 </label>
               </>
             )}

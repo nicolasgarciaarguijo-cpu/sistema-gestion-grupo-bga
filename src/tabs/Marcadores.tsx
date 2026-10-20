@@ -18,6 +18,7 @@ import type {
   PersonalProvisionKind,
 } from "../domain/types";
 
+import NumInput from "../ui/NumInput";
 // Mismos colores que la grilla de Costos: fijo indigo, variable ámbar. El grupo se reconoce por
 // el color antes que por el texto, y tiene que ser el mismo en las dos solapas.
 const SECCIONES_COSTOS = [
@@ -241,27 +242,27 @@ export function MarcadoresTab({
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
               <Field label="Markup / ganancia (%)">
-                <input style={styles.input} type="number" value={markupPct}
+                <NumInput style={styles.input} value={markupPct}
                   onChange={(e) => setMarkupPct(Number(e.target.value))} />
               </Field>
               <Field label="Desvio de costos (%)">
-                <input style={styles.input} type="number" value={deviationPct}
+                <NumInput style={styles.input} value={deviationPct}
                   onChange={(e) => setDeviationPct(Number(e.target.value))} />
               </Field>
               <Field label="Desvio mano de obra (%)">
-                <input style={styles.input} type="number" value={laborDeviationPct}
+                <NumInput style={styles.input} value={laborDeviationPct}
                   onChange={(e) => setLaborDeviationPct(Number(e.target.value))} />
               </Field>
               <Field label="IVA (%)">
-                <input style={styles.input} type="number" value={vatPct}
+                <NumInput style={styles.input} value={vatPct}
                   onChange={(e) => setVatPct(Number(e.target.value))} />
               </Field>
               <Field label="Comision (%)">
-                <input style={styles.input} type="number" value={commissionPct}
+                <NumInput style={styles.input} value={commissionPct}
                   onChange={(e) => setCommissionPct(Number(e.target.value))} />
               </Field>
               <Field label="Aumento de stock (%)">
-                <input style={styles.input} type="number" value={stockIncreasePct}
+                <NumInput style={styles.input} value={stockIncreasePct}
                   onChange={(e) => setStockIncreasePct(Number(e.target.value))} />
               </Field>
               <Field label="Asignacion de costos fijos">
@@ -273,7 +274,7 @@ export function MarcadoresTab({
               </Field>
               {allocationMode === "manual" && (
                 <Field label="Asignacion manual (%)">
-                  <input style={styles.input} type="number" value={manualAllocationPct}
+                  <NumInput style={styles.input} value={manualAllocationPct}
                     onChange={(e) => setManualAllocationPct(Number(e.target.value))} />
                 </Field>
               )}
@@ -708,10 +709,9 @@ export function MarcadoresTab({
                     </td>
                     <td style={{ ...tdDato, padding: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
-                        <input
+                        <NumInput
                           style={inputCeldaDerecha}
                           {...focoCelda}
-                          type="number"
                           value={item.qty}
                           onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "qty", Number(e.target.value))}
                         />
@@ -868,19 +868,17 @@ export function MarcadoresTab({
                       </span>
                     </td>
                     <td style={{ ...tdDato, padding: 0 }}>
-                      <input
+                      <NumInput
                         style={inputCeldaDerecha}
                         {...focoCelda}
-                        type="number"
                         value={item.employees}
                         onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "employees", Number(e.target.value))}
                       />
                     </td>
                     <td style={{ ...tdDato, padding: 0 }}>
-                      <input
+                      <NumInput
                         style={inputCeldaDerecha}
                         {...focoCelda}
-                        type="number"
                         value={item.monthlyHoursPerEmployee}
                         onChange={(e) =>
                           updateArrayItem(setLaborMarkers, item.id, "monthlyHoursPerEmployee", Number(e.target.value))
@@ -898,10 +896,9 @@ export function MarcadoresTab({
                     <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
                         <span style={{ color: "#94a3b8" }}>hs base</span>
-                        <input
+                        <NumInput
                           style={{ ...inputCelda, width: 70, textAlign: "right" }}
                           {...focoCelda}
-                          type="number"
                           value={item.hoursBase}
                           onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "hoursBase", Number(e.target.value))}
                         />
@@ -1035,10 +1032,9 @@ export function MarcadoresTab({
                         />
                       </td>
                       <td style={{ ...tdDato, padding: 0 }}>
-                        <input
+                        <NumInput
                           style={inputCeldaDerecha}
                           {...focoCelda}
-                          type="number"
                           value={item.periodicityMonths}
                           onChange={(e) =>
                             updateArrayItem(setPersonalProvisionMarkers, item.id, "periodicityMonths", Number(e.target.value))

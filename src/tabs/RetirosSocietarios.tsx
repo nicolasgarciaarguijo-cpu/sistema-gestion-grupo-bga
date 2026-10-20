@@ -7,6 +7,7 @@ import { resumenRetiros } from "../domain/retirosSocietarios";
 import type { RetiroSocietario } from "../domain/types";
 import { FirmanteCelda } from "../ui/FirmanteSelect";
 
+import NumInput from "../ui/NumInput";
 const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px", fontSize: 12.5, width: "100%", boxSizing: "border-box" };
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 600, padding: "6px 6px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "4px 6px", borderBottom: "1px solid #f1f5f9", verticalAlign: "middle" };
@@ -139,7 +140,7 @@ export function RetirosSocietariosPanel({
                       <input style={input} disabled={traba} list="retiros-socios" value={r.socio} placeholder="Nombre del socio" onChange={(e) => onUpdate(r.id, "socio", e.target.value)} />
                     </td>
                     <td style={{ ...td, width: 120 }}>
-                      <input style={{ ...input, textAlign: "right" }} disabled={traba} type="number" value={r.monto || ""} onChange={(e) => onUpdate(r.id, "monto", Number(e.target.value) || 0)} />
+                      <NumInput style={{ ...input, textAlign: "right" }} disabled={traba} value={r.monto || ""} onChange={(e) => onUpdate(r.id, "monto", Number(e.target.value) || 0)} />
                     </td>
                     <td style={{ ...td, width: 80 }}>
                       <select style={input} disabled={traba} value={r.moneda || "ARS"} onChange={(e) => onUpdate(r.id, "moneda", e.target.value)}>

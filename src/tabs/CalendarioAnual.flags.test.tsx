@@ -225,7 +225,7 @@ describe("la celda marcada se ve", () => {
     expect(selComo).toBeTruthy();
     setSel(selComo, "efectivo");
 
-    const inputMonto = Array.from(document.querySelectorAll("input")).find((i) => i.type === "number")!;
+    const inputMonto = Array.from(document.querySelectorAll("input")).find((i) => i.inputMode === "decimal")!;
     act(() => {
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
       setter.call(inputMonto, "50000");

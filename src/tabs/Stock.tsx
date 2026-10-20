@@ -10,6 +10,7 @@ import { PERSONAL_PROVISION_KINDS } from "../domain/types";
 import { matchStockForMaterial } from "../domain/stockMatch";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
+import NumInput from "../ui/NumInput";
 type StockTabProps = {
   stockSemaphoreSummary: any;
   approvedJobsSummary: any[];
@@ -301,9 +302,8 @@ export function StockTab({
                   {anchosStock.esCompacto ? "Ancho normal" : "Compacto"}
                 </ButtonLike>
                 <span style={styles.muted}>Aumento %</span>
-                <input
+                <NumInput
                   style={{ ...styles.input, width: 120 }}
-                  type="number"
                   value={stockIncreasePct}
                   onChange={(e) => setStockIncreasePct(Number(e.target.value))}
                 />
@@ -958,9 +958,8 @@ export function StockTab({
                             />
                           </td>
                           <td>
-                            <input
+                            <NumInput
                               style={styles.input}
-                              type="number"
                               value={row.quantity}
                               onChange={(e) =>
                                 updateRemitoDraftRow(
@@ -1072,9 +1071,8 @@ export function StockTab({
                 </select>
               </Field>
               <Field label="Cantidad">
-                <input
+                <NumInput
                   style={styles.input}
-                  type="number"
                   value={movQty}
                   onChange={(e) => setMovQty(Number(e.target.value))}
                 />

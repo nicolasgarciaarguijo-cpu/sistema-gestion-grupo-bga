@@ -5,6 +5,7 @@ import React, { useMemo, useState } from "react";
 import { mismaPersona, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
 import { FirmanteFijo } from "./FirmanteSelect";
 
+import NumInput from "./NumInput";
 export type CajaForm = {
   id?: number;
   company: string; // de que empresa SALE la plata
@@ -146,10 +147,10 @@ export function CajaChicaModal({
               <input style={input} type="date" value={f.deliveredDate} onChange={(e) => set({ deliveredDate: e.target.value })} />
             </label>
             <label style={lbl}>Monto en BLANCO
-              <input style={input} type="number" value={f.assignedWhite || ""} onChange={(e) => set({ assignedWhite: Number(e.target.value) || 0 })} />
+              <NumInput style={input} value={f.assignedWhite || ""} onChange={(e) => set({ assignedWhite: Number(e.target.value) || 0 })} />
             </label>
             <label style={lbl}>Monto en NEGRO
-              <input style={{ ...input, background: "#1f2937", color: "#fff" }} type="number" value={f.assignedBlack || ""} onChange={(e) => set({ assignedBlack: Number(e.target.value) || 0 })} />
+              <NumInput style={{ ...input, background: "#1f2937", color: "#fff" }} value={f.assignedBlack || ""} onChange={(e) => set({ assignedBlack: Number(e.target.value) || 0 })} />
             </label>
             <label style={lbl}>Sale de la cuenta
               <select style={input} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>

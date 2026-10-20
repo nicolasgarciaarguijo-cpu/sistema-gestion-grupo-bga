@@ -14,6 +14,7 @@ import { WORK_TYPE_OPTIONS } from "../domain/types";
 import type { CompanyName, WorkTypeName } from "../domain/types";
 import type { PriceChange } from "../domain/budgetPriceRefresh";
 
+import NumInput from "../ui/NumInput";
 // Buscador de clientes del CRM: reemplaza al <datalist> nativo (que en varios navegadores no abre al
 // clickear, solo al tipear). Este SIEMPRE abre al enfocar, filtra por nombre y se elige con un clic.
 const pickerDropdown: React.CSSProperties = {
@@ -521,9 +522,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   />
                 </Field>
                 <Field label="% anticipo">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={resolveAdvancePct(budget.advancePct, budget.paymentTerms)}
                     onChange={(e) =>
                       setBudget({
@@ -534,9 +534,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   />
                 </Field>
                 <Field label="% facturado / blanco">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={budget.billedPct}
                     onChange={(e) =>
                       setBudget({
@@ -709,10 +708,9 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         </td>
                         <td style={{ ...tdDato, padding: 0 }}>
                           <span style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
-                            <input
+                            <NumInput
                               style={inputCeldaDerecha}
                               {...focoCelda}
-                              type="number"
                               value={item.qty}
                               onChange={(e) => updateArrayItem(setMaterials, item.id, "qty", Number(e.target.value))}
                             />
@@ -926,33 +924,29 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
             >
               <TwoCol>
                 <Field label="Desvio %">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={deviationPct}
                     onChange={(e) => setDeviationPct(Number(e.target.value))}
                   />
                 </Field>
                 <Field label="Markup %">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={markupPct}
                     onChange={(e) => setMarkupPct(Number(e.target.value))}
                   />
                 </Field>
                 <Field label="IVA %">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={vatPct}
                     onChange={(e) => setVatPct(Number(e.target.value))}
                   />
                 </Field>
                 <Field label="Desvio mano de obra %">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={laborDeviationPct}
                     onChange={(e) => setLaborDeviationPct(Number(e.target.value))}
                   />
@@ -969,9 +963,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 </Field>
                 {allocationMode === "manual" && (
                   <Field label="% costo fijo manual">
-                    <input
+                    <NumInput
                       style={styles.input}
-                      type="number"
                       value={manualAllocationPct}
                       onChange={(e) => setManualAllocationPct(Number(e.target.value))}
                     />
@@ -1004,9 +997,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               )}
               <TwoCol>
                 <Field label="Comision % sobre neto">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={commissionPct}
                     onChange={(e) => setCommissionPct(Number(e.target.value))}
                   />
@@ -1063,10 +1055,9 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                           />
                         </td>
                         <td style={{ ...tdDato, padding: 0 }}>
-                          <input
+                          <NumInput
                             style={inputCeldaDerecha}
                             {...focoCelda}
-                            type="number"
                             value={item.pct}
                             onChange={(e) => updateArrayItem(setBudgetIncreases, item.id, "pct", Number(e.target.value))}
                           />
@@ -1148,10 +1139,9 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         </td>
                         <td style={{ ...tdDato, padding: 0 }}>
                           {item.mode === "porcentaje" ? (
-                            <input
+                            <NumInput
                               style={inputCeldaDerecha}
                               {...focoCelda}
-                              type="number"
                               value={item.pct ?? 0}
                               onChange={(e) => updateArrayItem(setBudgetDiscounts, item.id, "pct", Number(e.target.value))}
                             />
@@ -1288,10 +1278,9 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       </td>
                       <td style={{ ...tdDato, padding: 0 }}>
                         <span style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
-                          <input
+                          <NumInput
                             style={inputCeldaDerecha}
                             {...focoCelda}
-                            type="number"
                             value={item.qty}
                             onChange={(e) => updateArrayItem(setBasicSupplies, item.id, "qty", Number(e.target.value))}
                           />
@@ -1415,10 +1404,9 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         />
                       </td>
                       <td style={{ ...tdDato, padding: 0 }}>
-                        <input
+                        <NumInput
                           style={inputCeldaDerecha}
                           {...focoCelda}
-                          type="number"
                           value={item.employees}
                           onChange={(e) => updateArrayItem(setLabor, item.id, "employees", Number(e.target.value))}
                         />
@@ -1432,10 +1420,9 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         />
                       </td>
                       <td style={{ ...tdDato, padding: 0 }}>
-                        <input
+                        <NumInput
                           style={inputCeldaDerecha}
                           {...focoCelda}
-                          type="number"
                           value={item.jobHours}
                           onChange={(e) => updateArrayItem(setLabor, item.id, "jobHours", Number(e.target.value))}
                         />
@@ -1792,9 +1779,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 )}
               </Field>
               <Field label="Cantidad cotizada (× unidades)">
-                <input
+                <NumInput
                   style={styles.input}
-                  type="number"
                   min={1}
                   step={1}
                   value={subBudgetQuantity}
@@ -1966,33 +1952,29 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
             >
               <TwoCol>
                 <Field label="Desvio %">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={deviationPct}
                     onChange={(e) => setDeviationPct(Number(e.target.value))}
                   />
                 </Field>
                 <Field label="Markup %">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={markupPct}
                     onChange={(e) => setMarkupPct(Number(e.target.value))}
                   />
                 </Field>
                 <Field label="IVA %">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={vatPct}
                     onChange={(e) => setVatPct(Number(e.target.value))}
                   />
                 </Field>
                 <Field label="Desvio mano de obra %">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={laborDeviationPct}
                     onChange={(e) => setLaborDeviationPct(Number(e.target.value))}
                   />
@@ -2009,9 +1991,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 </Field>
                 {allocationMode === "manual" && (
                   <Field label="% costo fijo manual">
-                    <input
+                    <NumInput
                       style={styles.input}
-                      type="number"
                       value={manualAllocationPct}
                       onChange={(e) => setManualAllocationPct(Number(e.target.value))}
                     />
@@ -2044,9 +2025,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               )}
               <TwoCol>
                 <Field label="Comision % sobre neto">
-                  <input
+                  <NumInput
                     style={styles.input}
-                    type="number"
                     value={commissionPct}
                     onChange={(e) => setCommissionPct(Number(e.target.value))}
                   />
@@ -2080,9 +2060,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                           />
                         </td>
                         <td>
-                          <input
+                          <NumInput
                             style={styles.input}
-                            type="number"
                             value={item.pct}
                             onChange={(e) =>
                               updateArrayItem(setBudgetIncreases, item.id, "pct", Number(e.target.value))
@@ -2141,9 +2120,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                               <option value="porcentaje">%</option>
                             </select>
                             {item.mode === "porcentaje" ? (
-                              <input
+                              <NumInput
                                 style={styles.input}
-                                type="number"
                                 value={item.pct ?? 0}
                                 onChange={(e) =>
                                   updateArrayItem(

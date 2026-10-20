@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
+import NumInput from "./NumInput";
 export type PagoACuentaForm = {
   // Si viene, la ventana EDITA ese pago (CostEntry) en vez de crear uno nuevo. aCuenta: si es un pago sin factura.
   id?: number;
@@ -62,7 +63,7 @@ export function PagoACuentaModal({
             <input style={input} type="date" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
           </label>
           <label style={lbl}>Monto
-            <input style={input} type="number" value={f.monto || ""} onChange={(e) => set({ monto: Number(e.target.value) || 0 })} autoFocus />
+            <NumInput style={input} value={f.monto || ""} onChange={(e) => set({ monto: Number(e.target.value) || 0 })} autoFocus />
           </label>
           <label style={lbl}>Empresa que paga
             <select style={input} value={f.company} onChange={(e) => set({ company: e.target.value, cuentaId: undefined })}>

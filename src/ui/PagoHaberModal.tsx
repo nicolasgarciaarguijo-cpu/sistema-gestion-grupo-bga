@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
+import NumInput from "./NumInput";
 export type PagoHaberForm = {
   id?: number;
   periodo: string; // yyyy-mm al que corresponde
@@ -70,7 +71,7 @@ export function PagoHaberModal({
             </select>
           </label>
           <label style={lbl}>Monto
-            <input style={input} type="number" value={f.monto || ""} onChange={(e) => set({ monto: Number(e.target.value) || 0 })} autoFocus />
+            <NumInput style={input} value={f.monto || ""} onChange={(e) => set({ monto: Number(e.target.value) || 0 })} autoFocus />
           </label>
           <label style={lbl}>Cómo se pagó
             <select style={input} value={f.metodo} onChange={(e) => set({ metodo: e.target.value as any })}>
