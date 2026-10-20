@@ -19745,6 +19745,22 @@ Escribi CERRAR para confirmar:`
       porBanco: inv.paidByBankEntryId != null && pagos.length === 0 ? "Pagada por un débito del banco (conciliado en Bancos y tarjetas)." : undefined,
     };
   };
+  // BORRAR UNA FACTURA DE COMPRA desde la ventana o desde la ficha del proveedor. Si tiene pagos cargados,
+  // pregunta si se van tambien.
+  const borrarFacturaPreguntando = (id: number, confirmar: boolean) => {
+    if (confirmar && !window.confirm("¿Borrar esta factura?")) return;
+    // Si tiene un PAGO cargado, se pregunta si se va tambien: la factura no mueve plata, el pago
+    // si (si queda, sigue en el cash flow). Mismo camino que el click derecho del listado.
+    const inv = purchaseInvoices.find((i) => i.id === id);
+    const pagos = inv ? pagosDeFactura(inv).map((pid) => costEntries.find((c) => c.id === pid)).filter((c): c is CostEntry => !!c) : [];
+    const conPago =
+      pagos.length > 0 &&
+      window.confirm(
+        `Esta factura tiene ${pagos.length === 1 ? "un pago cargado" : `${pagos.length} pagos cargados`} (${pagos.map((pg) => `${money(Number(pg.amount || 0))} del ${fmtCorta(pg.date)}`).join(", ")}).\n\n` +
+          `¿Borrar TAMBIÉN ${pagos.length === 1 ? "el pago" : "los pagos"}? (sale del cash flow)\n\nAceptar = borrar · Cancelar = quedan`
+      );
+    eliminarFacturaCompra(id, conPago);
+  };
   const guardarFacturaCompra = (f: FacturaForm) => {
     const existente = f.id ? purchaseInvoices.find((i) => i.id === f.id) : undefined;
     const id = existente?.id || newId();
@@ -21226,19 +21242,7 @@ Escribi CERRAR para confirmar:`
           fechaSegunCondicion={(supplier, taxId, fecha) => fechaDePago(fecha, (buscarProveedor(suppliers as any, supplier, taxId) as any)?.condicionPago)}
           money={money}
           onGuardar={guardarFacturaCompra}
-          onBorrar={(id) => {
-            // Si tiene un PAGO cargado, se pregunta si se va tambien: la factura no mueve plata, el pago
-            // si (si queda, sigue en el cash flow). Mismo camino que el click derecho del listado.
-            const inv = purchaseInvoices.find((i) => i.id === id);
-            const pagos = inv ? pagosDeFactura(inv).map((pid) => costEntries.find((c) => c.id === pid)).filter((c): c is CostEntry => !!c) : [];
-            const conPago =
-              pagos.length > 0 &&
-              window.confirm(
-                `Esta factura tiene ${pagos.length === 1 ? "un pago cargado" : `${pagos.length} pagos cargados`} (${pagos.map((pg) => `${money(Number(pg.amount || 0))} del ${fmtCorta(pg.date)}`).join(", ")}).\n\n` +
-                  `¿Borrar TAMBIÉN ${pagos.length === 1 ? "el pago" : "los pagos"}? (sale del cash flow)\n\nAceptar = borrar · Cancelar = quedan`
-              );
-            eliminarFacturaCompra(id, conPago);
-          }}
+          onBorrar={(id) => borrarFacturaPreguntando(id, false)}
           onCerrar={() => setFacturaModal(null)}
         />
       )}
@@ -21297,6 +21301,8 @@ Escribi CERRAR para confirmar:`
             }
             onCerrar={() => setFichaProveedor(null)}
             onEditarDatos={prov ? () => setEditProveedor(formDeProveedor(prov as any)) : undefined}
+            onBorrarFactura={(id) => borrarFacturaPreguntando(id, true)}
+            onSoltarDebito={(bankId) => unlinkBankInvoice([bankId])}
             facturas={filasFacturas.filter(
               (f) => buscarProveedor(prov ? [prov] : [], f.supplier, f.taxId) || supplierKey(f.supplier, f.taxId) === supplierKey(fichaProveedor.nombre, fichaProveedor.taxId)
             )}

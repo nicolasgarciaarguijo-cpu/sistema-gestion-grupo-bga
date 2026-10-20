@@ -34,6 +34,8 @@ export function FichaProveedor({
   onEditarPago,
   onQuitarPago,
   onEditarDatos,
+  onBorrarFactura,
+  onSoltarDebito,
 }: {
   nombre: string;
   taxId: string;
@@ -78,6 +80,9 @@ export function FichaProveedor({
   onQuitarPago?: (pagoId: number) => void;
   // Corregir los datos del proveedor (nombre, CUIT, condicion de IVA...): la misma ventana del listado.
   onEditarDatos?: () => void;
+  // Borrar una factura (pregunta si se lleva tambien sus pagos) y soltar un debito del banco del proveedor.
+  onBorrarFactura?: (id: number) => void;
+  onSoltarDebito?: (bankEntryId: number) => void;
 }) {
   const [menuPago, setMenuPago] = React.useState<null | { x: number; y: number; id: number }>(null);
   // Click derecho sobre un renglon del historial: abrir la factura, editar o quitar el pago, abrir la nota.
@@ -95,6 +100,21 @@ export function FichaProveedor({
   const caja: React.CSSProperties = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 12px" };
   const titulo: React.CSSProperties = { fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 };
   const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px", fontSize: 13 };
+  // EDITAR Y BORRAR A LA VISTA en cada renglon (Nicolas, 2026-10-20: "asi como poder acceder a una edicion
+  // debo poder borrar tambien"). El click derecho sigue andando igual.
+  const btnFila = (rojo = false): React.CSSProperties => ({
+    border: `1px solid ${rojo ? "#fecaca" : "#cbd5e1"}`, background: "#fff", color: rojo ? "#b91c1c" : "#334155",
+    borderRadius: 5, padding: "1px 6px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", marginLeft: 4, whiteSpace: "nowrap",
+  });
+  const acciones = (items: Array<{ texto: string; titulo: string; rojo?: boolean; run?: () => void }>) => (
+    <td style={{ padding: "2px 4px", textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+      {items.filter((i) => i.run).map((i) => (
+        <button key={i.texto} type="button" title={i.titulo} style={btnFila(i.rojo)} onClick={(e) => { e.stopPropagation(); i.run!(); }}>
+          {i.texto}
+        </button>
+      ))}
+    </td>
+  );
 
   return (
     <div
@@ -251,6 +271,10 @@ export function FichaProveedor({
                     <td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700 }}>{money(p.amount)}</td>
                     <td style={{ padding: "3px 6px", textAlign: "center" }}>{p.administration === "negro" ? "N" : "B"}</td>
                     <td style={{ padding: "3px 6px", color: p.dias > 30 ? "#b91c1c" : "#b45309", fontWeight: 700 }}>hace {p.dias} día{p.dias === 1 ? "" : "s"}</td>
+                    {acciones([
+                      { texto: "✎ Editar", titulo: "Corregir el pago", run: onEditarPago ? () => onEditarPago(p.id) : undefined },
+                      { texto: "🗑 Borrar", titulo: "Quitar el pago (sale del cash flow)", rojo: true, run: onQuitarPago ? () => quitarPago(p.id, p.amount, p.date) : undefined },
+                    ])}
                   </tr>
                 ))}
               </tbody>
@@ -274,6 +298,10 @@ export function FichaProveedor({
                       <td style={{ padding: "3px 6px", color: f.pagada ? "#166534" : "#b45309", fontWeight: 700 }}>
                         {f.pagada ? `✓ Pagada · ${f.pagoTexto}` : f.fechaPrevista ? `Sin pagar · vence ${f.fechaPrevista.slice(8, 10)}/${f.fechaPrevista.slice(5, 7)}` : "Sin pagar"}
                       </td>
+                      {acciones([
+                        { texto: "✎ Editar", titulo: "Abrir la factura para corregirla", run: onAbrirFactura ? () => onAbrirFactura(f.id) : undefined },
+                        { texto: "🗑 Borrar", titulo: "Borrar la factura", rojo: true, run: onBorrarFactura ? () => onBorrarFactura(f.id) : undefined },
+                      ])}
                     </tr>
                   ))}
                 </tbody>
@@ -302,6 +330,7 @@ export function FichaProveedor({
                     <td style={{ padding: "3px 6px" }}>NC {n.receiptLetter} {n.number || "—"}{n.source === "arca" ? " · ARCA" : ""}</td>
                     <td style={{ padding: "3px 6px", color: "#475569" }}>{n.aplicaA ? `aplica a ${n.aplicaA}` : "a la cuenta"}{n.motivo ? ` · ${n.motivo}` : ""}</td>
                     <td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700, color: "#166534" }}>−{money(n.total)}</td>
+                    {acciones([{ texto: "✎ Editar / borrar", titulo: "Abrir la nota de crédito (ahí se corrige o se elimina)", run: onNotaCredito ? () => onNotaCredito(n.id) : undefined }])}
                   </tr>
                 ))}
               </tbody>
@@ -381,6 +410,31 @@ export function FichaProveedor({
                         {m.type === "compra" ? "+" : "−"}{money(Math.abs(m.amount))}
                       </td>
                       <td style={{ padding: "3px 6px", textAlign: "right", color: "#475569" }}>{money(m.saldo)}</td>
+                      {(() => {
+                        const bankId = m.type === "pago" && m.key.startsWith("pay-banco-") ? Number(m.key.slice("pay-banco-".length)) : NaN;
+                        if (m.type === "compra")
+                          return acciones([
+                            { texto: "✎ Editar", titulo: "Abrir la factura", run: m.invoiceId != null && onAbrirFactura ? () => onAbrirFactura(m.invoiceId!) : undefined },
+                            { texto: "🗑 Borrar", titulo: "Borrar la factura", rojo: true, run: m.invoiceId != null && onBorrarFactura ? () => onBorrarFactura(m.invoiceId!) : undefined },
+                          ]);
+                        if (m.type === "nota_credito") {
+                          const ncId = Number(m.key.slice(3));
+                          return acciones([{ texto: "✎ Editar / borrar", titulo: "Abrir la nota de crédito", run: onNotaCredito && Number.isFinite(ncId) ? () => onNotaCredito(ncId) : undefined }]);
+                        }
+                        if (Number.isFinite(bankId))
+                          return acciones([
+                            {
+                              texto: "Soltar",
+                              titulo: "Es un débito del banco: lo suelta de la factura (el movimiento del banco queda)",
+                              rojo: true,
+                              run: onSoltarDebito ? () => window.confirm("¿Soltar este débito del banco de la factura? El movimiento del banco queda, la factura vuelve a quedar sin pagar.") && onSoltarDebito(bankId) : undefined,
+                            },
+                          ]);
+                        return acciones([
+                          { texto: "✎ Editar", titulo: "Corregir el pago", run: m.paymentId != null && onEditarPago ? () => onEditarPago(m.paymentId!) : undefined },
+                          { texto: "🗑 Borrar", titulo: "Quitar el pago (sale del cash flow)", rojo: true, run: m.paymentId != null && onQuitarPago ? () => quitarPago(m.paymentId!, m.amount, m.date) : undefined },
+                        ]);
+                      })()}
                     </tr>
                   ))}
                 </tbody>
