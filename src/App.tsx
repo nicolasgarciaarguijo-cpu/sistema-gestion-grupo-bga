@@ -13133,10 +13133,11 @@ Escribi CERRAR para confirmar:`
   };
 
   const addDebtPlan = () => {
+    const id = newId();
     setDebtPlans((prev) => [
       ...prev,
       {
-        id: newId(),
+        id,
         company: budget.company,
         concept: "",
         dueDay: 1,
@@ -13150,6 +13151,7 @@ Escribi CERRAR para confirmar:`
         cuotas: [],
       },
     ]);
+    return id;
   };
 
   const removeDebtPlan = (debtId: number) => {
@@ -21697,12 +21699,22 @@ Escribi CERRAR para confirmar:`
           pagosVinculables={(company, acreedor) => {
             const usados = new Set<number>();
             debtPlans.forEach((d) => (d.cuotas || []).forEach((c) => c.pagoCostEntryId != null && usados.add(c.pagoCostEntryId)));
-            const n = acreedor.trim().toLowerCase();
+            // Tampoco los que ya pagan una factura. Primero los del acreedor (por nombre, parecido alcanza); despues
+            // el resto de los pagos de la empresa, para poder asignar uno cargado con otro nombre (2026-10-20).
+            pagosVinculados(purchaseInvoices).forEach((id) => usados.add(id));
+            const norm = (x: string) => x.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+            const n = norm(acreedor || "");
+            const esDelAcreedor = (c: CostEntry) => !!n && (norm(c.supplier || "").includes(n) || n.includes(norm(c.supplier || "") || " "));
             return costEntries
-              .filter((c) => c.company === company && !usados.has(c.id) && (!n || (c.supplier || "").trim().toLowerCase() === n))
-              .sort((a, b) => b.date.localeCompare(a.date))
-              .slice(0, 80)
-              .map((c) => ({ id: c.id, date: c.date, amount: Number(c.amount || 0), description: c.description || c.supplier || "Pago" }));
+              .filter((c) => c.company === company && !usados.has(c.id) && c.employeeId == null)
+              .sort((a, b) => Number(esDelAcreedor(b)) - Number(esDelAcreedor(a)) || b.date.localeCompare(a.date))
+              .slice(0, 120)
+              .map((c) => ({
+                id: c.id,
+                date: c.date,
+                amount: Number(c.amount || 0),
+                description: `${esDelAcreedor(c) ? "" : "(otro proveedor) "}${c.supplier ? c.supplier + " · " : ""}${c.description || "Pago"}`,
+              }));
           }}
           otrasDeudas={(() => {
             const out: OtraDeuda[] = [];

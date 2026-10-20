@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-20h",
+    fecha: "20/10/2026",
+    titulo: "Desendeudamiento: cada deuda con su ficha",
+    items: [
+      {
+        titulo: "Listado de deudas y ficha de cada una",
+        que: "La solapa muestra un listado de las deudas (total, pagado, pendiente, próxima cuota y vencidas). Cada una abre su ficha, como la del proveedor: los datos, las cuotas, el armado de cuotas y el historial de pagos. Al agregar una deuda nueva se abre su ficha directo.",
+        como: "Desendeudamiento → click en la deuda (o ✎ Abrir ficha).",
+        tab: "desendeudamiento",
+      },
+      {
+        titulo: "Asignar el pago a cada cuota a la vista",
+        que: "Cada cuota tiene '💸 Asignar pago' (cargar uno nuevo o vincular uno ya cargado) y, si está pagada, '↩' para desvincularlo. Arriba está '💸 Pagar la próxima cuota'. Para vincular aparecen primero los pagos del acreedor y después el resto de los pagos de la empresa.",
+        como: "En la ficha de la deuda, en el renglón de la cuota.",
+        tab: "desendeudamiento",
+      },
+    ],
+  },
+  {
     id: "2026-10-20g",
     fecha: "20/10/2026",
     titulo: "Precarga de cobros y suma estimada",
