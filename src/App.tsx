@@ -373,6 +373,7 @@ import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { ProveedoresPanel, ProveedorModal, formDeProveedor, type ProveedorForm } from "./tabs/Proveedores";
 import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
 import { programadosEnRenglones } from "./domain/programadosEnRenglones";
+import { precargaCobros } from "./domain/precargaCobros";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
 import { entradasRetiros, RENGLON_RETIROS } from "./domain/retirosSocietarios";
@@ -5260,6 +5261,21 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           )
           .reduce((acc, item) => acc + item.amount, 0);
         const financialCollected = paymentsTotal + retentionsTotal + calendarCollected;
+        // PRECARGA de cobros (anticipo y saldo, blanco y negro) segun lo acordado. Ver domain/precargaCobros.
+        const enPesos = (item: Payment) => (isUsdPesified(item) ? Number(item.amount || 0) * Number(item.exchangeRate || 0) : item.currency === "USD" ? 0 : Number(item.amount || 0));
+        const porCircuito = (lista: Payment[], adm: "blanco" | "negro") =>
+          lista.filter((item) => (item.administration === "negro" ? "negro" : "blanco") === adm).reduce((acc, item) => acc + enPesos(item), 0);
+        const precarga = precargaCobros({
+          neto: job.soldNetPrice,
+          facturadoPct: Number(job.billedPct || 0),
+          anticipoPct: anticipoPctResolved,
+          adicionalesBlancos: additionalsWhiteNet,
+          valorACobrar: valueToCollect,
+          cobradoBlanco: porCircuito(job.payments, "blanco") + retentionsTotal,
+          cobradoNegro: porCircuito(job.payments, "negro"),
+          programadoBlanco: porCircuito(job.cobrosPrevistos || [], "blanco"),
+          programadoNegro: porCircuito(job.cobrosPrevistos || [], "negro"),
+        });
 
         return {
           ...job,
@@ -5298,6 +5314,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           anticipoPctResolved,
           anticipoToCharge,
           saldoToCharge,
+          precarga,
           estimatedProductionDays,
           estimatedDeliveryDate: job.deliveryDate,
         };
@@ -11027,15 +11044,20 @@ Escribi CERRAR para confirmar:`
     );
   };
 
-  const addPayment = (jobId: number, estado: "realizado" | "estimado" | "inamovible" = "realizado") => {
+  const addPayment = (
+    jobId: number,
+    estado: "realizado" | "estimado" | "inamovible" = "realizado",
+    // PRECARGA (anticipo / saldo): monto y circuito ya puestos; el negro es efectivo.
+    precargado?: { amount: number; administration: "blanco" | "negro"; paymentNumber?: string }
+  ) => {
     const nuevo: Payment = {
       id: newId(),
       ...firma(),
-      paymentNumber: "",
-      paymentDate: "",
-      transactionType: "transferencia",
-      administration: "blanco",
-      amount: 0,
+      paymentNumber: precargado?.paymentNumber || "",
+      paymentDate: precargado ? todayIso() : "",
+      transactionType: precargado?.administration === "negro" ? "efectivo" : "transferencia",
+      administration: precargado?.administration || "blanco",
+      amount: precargado ? Number(precargado.amount || 0) : 0,
     };
     setApprovedJobs((prev) =>
       prev.map((job) =>
@@ -19423,6 +19445,7 @@ Escribi CERRAR para confirmar:`
                   amount: Number(p.amount || 0),
                   currency: (p.currency === "USD" ? "USD" : "ARS") as "ARS" | "USD",
                   estado: (p.estado === "inamovible" ? "inamovible" : "estimado") as "estimado" | "inamovible",
+                  administration: (p.administration === "negro" ? "negro" : "blanco") as "blanco" | "negro",
                 }))
             )}
           onSetCobroEstado={setPaymentEstado}

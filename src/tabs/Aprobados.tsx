@@ -95,7 +95,11 @@ type AprobadosTabProps = {
   emitInvoiceAfip: (jobId: number, invoiceId: number) => void;
   canEmitFacturas: boolean;
   updateInvoice: (jobId: number, invoiceId: number, field: string, value: string | number) => void;
-  addPayment: (jobId: number, estado?: "realizado" | "estimado" | "inamovible") => void;
+  addPayment: (
+    jobId: number,
+    estado?: "realizado" | "estimado" | "inamovible",
+    precargado?: { amount: number; administration: "blanco" | "negro"; paymentNumber?: string }
+  ) => void;
   setPaymentEstado: (jobId: number, paymentId: number, estado: "realizado" | "estimado" | "inamovible") => void;
   // Guardar YA este trabajo en el servidor y verificarlo releyendolo.
   onGuardarTrabajo?: (jobId: number) => Promise<{ ok: boolean; texto: string }>;
@@ -1516,6 +1520,39 @@ export function AprobadosTab({
                     </>
                   }
                 >
+                  {/* PRECARGA segun lo acordado (Nicolas, 2026-10-20): anticipo blanco y negro, y despues el
+                      saldo de cada circuito. Entran como cobro ESTIMADO (violeta) con el monto puesto: se
+                      ajusta la fecha y, cuando entra la plata, se pasa a Realizado. */}
+                  {(() => {
+                    const p = selectedApprovedJob.precarga as { anticipoBlanco: number; anticipoNegro: number; saldoBlanco: number; saldoNegro: number } | undefined;
+                    if (!p) return null;
+                    const opciones = [
+                      { texto: "Anticipo blanco", monto: p.anticipoBlanco, adm: "blanco" as const },
+                      { texto: "Anticipo negro", monto: p.anticipoNegro, adm: "negro" as const },
+                      { texto: "Saldo blanco", monto: p.saldoBlanco, adm: "blanco" as const },
+                      { texto: "Saldo negro", monto: p.saldoNegro, adm: "negro" as const },
+                    ].filter((o) => o.monto > 0.5);
+                    if (opciones.length === 0) return null;
+                    return (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 10, fontSize: 12.5 }}>
+                        <span style={{ color: "#64748b", fontWeight: 700 }}>Precargar según lo acordado:</span>
+                        {opciones.map((o) => (
+                          <button
+                            key={o.texto}
+                            type="button"
+                            title={`Carga un cobro estimado de ${money(o.monto)} en ${o.adm}. Después ajustás la fecha y lo pasás a Realizado cuando entra.`}
+                            onClick={() => addPayment(selectedApprovedJob.id, "estimado", { amount: o.monto, administration: o.adm, paymentNumber: o.texto })}
+                            style={{
+                              border: "1px solid #c4b5fd", borderRadius: 999, padding: "3px 10px", fontWeight: 700, cursor: "pointer",
+                              background: o.adm === "negro" ? "#1f2937" : "#f5f3ff", color: o.adm === "negro" ? "#fff" : "#5b21b6",
+                            }}
+                          >
+                            + {o.texto} · {money(o.monto)}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {/* Arriba los cobros PREVISTOS (violeta = estimado, rojo = inamovible): no suman en el
                       cobrado ni en la planilla hasta pasarlos a "Realizado". */}
                   {selectedApprovedJob.payments.length === 0 && (selectedApprovedJob.cobrosPrevistos || []).length === 0 ? (

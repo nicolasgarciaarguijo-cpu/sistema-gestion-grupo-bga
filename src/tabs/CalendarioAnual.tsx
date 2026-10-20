@@ -192,6 +192,7 @@ export function CalendarioAnualTab({
     // detalle (el proveedor dentro de su grupo); sin, al renglon entero. `estado` le da el color.
     titulo?: string;
     estado?: string;
+    administration?: "blanco" | "negro";
   }>;
   // Ver SOLO una seccion de la planilla (ej. "cobranzas" para el reflejo en Facturacion y cobranzas).
   // Es el MISMO componente con los mismos datos y los mismos handlers: por eso las dos vistas quedan
@@ -236,6 +237,7 @@ export function CalendarioAnualTab({
   cobrosPrevistos?: Array<{
     jobId: number; paymentId: number; budgetNumber: string; client: string; company: string;
     date: string; amount: number; currency: "ARS" | "USD"; estado: "estimado" | "inamovible";
+    administration?: "blanco" | "negro";
   }>;
   onSetCobroEstado?: (jobId: number, paymentId: number, estado: "realizado" | "estimado" | "inamovible", fecha?: string) => void;
   // Fijo / variable del TIPO DE GASTO (renglon), con candado: todos sus pagos quedan asi.
@@ -792,6 +794,84 @@ export function CalendarioAnualTab({
     });
     return { porDia, porMes, realPorMes, detalle, estadoDia, titulosPorRenglon, empresaDia };
   }, [previsiones, companyScope, dayCols, agg]);
+
+  // SUMA ESTIMADA (Nicolas, 2026-10-20): "si bien no suma en el valor real, una fila con la suma estimada
+  // para ver realmente como quedan los numeros y si cierran o no". Lo PROGRAMADO que todavia no paso
+  // (pagos "≈" pendientes y cobros estimados / inamovibles de los trabajos), por dia: por seccion, por
+  // circuito y por empresa. Los egresos van en negativo. No toca ningun total real: solo se dibuja aparte.
+  const estim = useMemo(() => {
+    const firstIso = dayCols[0]?.iso || "";
+    const lastIso = dayCols[dayCols.length - 1]?.iso || "";
+    const enVista = (company: string, date: string) =>
+      (companyScope === "__ALL__" || company === companyScope) && !!date && date >= firstIso && date <= lastIso;
+    const porSeccion = new Map<string, Map<string, number>>(); // con signo
+    const incB = new Map<string, number>();
+    const incN = new Map<string, number>();
+    const egrB = new Map<string, number>();
+    const egrN = new Map<string, number>();
+    const porEmpresa = new Map<string, Array<{ date: string; monto: number; negro: boolean }>>(); // con signo
+    const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
+    const seccionDe = (ck: string) => {
+      const pv = parseRenglonProveedor(ck);
+      if (pv) return pv.seccion as string;
+      if (ck.startsWith("custom:")) return ck.slice(7).split(":")[0];
+      return CALENDAR_ITEM_INDEX[ck]?.sectionKey || "";
+    };
+    // Pagos programados: solo los PENDIENTES (si el pago real del mes ya se cargo en su fila, no cuenta).
+    (previsiones || []).forEach((p) => {
+      if (!p.conceptKey || !enVista(p.company, p.date)) return;
+      const fila = p.titulo ? `${p.conceptKey}|${p.titulo}` : p.conceptKey;
+      const mes = p.date.slice(0, 7);
+      const real = prev.realPorMes.get(fila)?.get(mes) || 0;
+      if (real > 0) return;
+      const monto = Number(p.amount || 0);
+      if (!(monto > 0)) return;
+      const negro = p.administration === "negro";
+      const sec = seccionDe(p.conceptKey);
+      if (!porSeccion.has(sec)) porSeccion.set(sec, new Map());
+      add(porSeccion.get(sec)!, p.date, -monto);
+      add(negro ? egrN : egrB, p.date, monto);
+      porEmpresa.set(p.company, [...(porEmpresa.get(p.company) || []), { date: p.date, monto: -monto, negro }]);
+    });
+    // Cobros previstos de los trabajos (en pesos).
+    (cobrosPrevistos || []).forEach((c) => {
+      if (c.currency === "USD" || !enVista(c.company, c.date)) return;
+      const monto = Number(c.amount || 0);
+      if (!(monto > 0)) return;
+      const negro = c.administration === "negro";
+      if (!porSeccion.has("cobranzas")) porSeccion.set("cobranzas", new Map());
+      add(porSeccion.get("cobranzas")!, c.date, monto);
+      add(negro ? incN : incB, c.date, monto);
+      porEmpresa.set(c.company, [...(porEmpresa.get(c.company) || []), { date: c.date, monto, negro }]);
+    });
+    return { porSeccion, incB, incN, egrB, egrN, porEmpresa };
+  }, [previsiones, cobrosPrevistos, companyScope, dayCols, prev]);
+
+  // Lo programado que ya habria impactado la plata disponible de una empresa al cierre del dia `iso`:
+  // desde hoy, todo lo pendiente con fecha hasta ese dia (lo vencido sin pagar se toma como de hoy).
+  const hoyCal = todayIso();
+  const impactoAcumulado = (company: string, iso: string, negro: boolean) => {
+    if (iso < hoyCal) return 0;
+    return (estim.porEmpresa.get(company) || []).reduce((a, x) => (x.negro === negro && x.date <= iso ? a + x.monto : a), 0);
+  };
+
+  // La celda con SUMA ESTIMADA: el numero real tachado en violeta y debajo, en violeta, como quedaria con
+  // lo programado. Sin nada programado que impacte, la celda queda como siempre.
+  const conEstimado = (normal: React.ReactNode, real: number, delta: number, titulo?: string) => {
+    if (!delta || Math.abs(delta) < 0.5) return normal;
+    const total = real + delta;
+    return (
+      <div
+        style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", lineHeight: 1.15 }}
+        title={titulo || `Con lo programado (${delta > 0 ? "+" : "−"}${money(Math.abs(delta))}) quedaría ${money(total)}. Es una estimación: no suma en el real.`}
+      >
+        {Math.abs(real) >= 0.5 && (
+          <span style={{ textDecoration: "line-through", textDecorationColor: VIOLETA_ESTIMADO, textDecorationThickness: 2, opacity: 0.75 }}>{normal}</span>
+        )}
+        <span style={{ color: VIOLETA_ESTIMADO, fontWeight: 800, fontStyle: "italic", whiteSpace: "nowrap" }}>≈ {money(total)}</span>
+      </div>
+    );
+  };
 
   // Una celda de PAGO PROGRAMADO en su fila: "≈ $X" con el color de su estado mientras el pago real del
   // mes no se cargo. Cuando se carga, manda el real y lo programado queda conciliado (✓). Nunca los dos:
@@ -2421,6 +2501,13 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                 const v = cuenta
                                   ? dia?.bancos?.find((b) => b.bank === cuenta)?.saldo || 0
                                   : dia?.[linea.campo] || 0;
+                                // Lo programado blanco pega en el primer banco; lo negro, en el efectivo negro.
+                                const delta =
+                                  linea.campo === "banco" && cuenta === filasBanco[0]?.cuenta
+                                    ? impactoAcumulado(emp.company, c.iso, false)
+                                    : linea.campo === "efectivoNegro"
+                                      ? impactoAcumulado(emp.company, c.iso, true)
+                                      : 0;
                                 return (
                                   <td
                                     key={`${kp}-${c.iso}`}
@@ -2438,7 +2525,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                     }
                                   >
                                     {marcasDeCelda("billetera", kp, c.iso)}
-                                    {v ? money(v) : "\u00b7"}
+                                    {conEstimado(v ? money(v) : "\u00b7", v, delta, `Plata disponible si se cobra y se paga lo programado hasta este día. Es una estimación.`)}
                                   </td>
                                 );
                               })}
@@ -2447,8 +2534,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         });
                       })}
                     {([
-                      { lbl: "NETO DÍA · BLANCO", inc: agg.incB, egr: agg.egrB, bg: "#e2e8f0", kp: "ndb" },
-                      { lbl: "NETO DÍA · NEGRO", inc: agg.incN, egr: agg.egrN, bg: "#cbd5e1", kp: "ndn" },
+                      { lbl: "NETO DÍA · BLANCO", inc: agg.incB, egr: agg.egrB, bg: "#e2e8f0", kp: "ndb", pInc: estim.incB, pEgr: estim.egrB },
+                      { lbl: "NETO DÍA · NEGRO", inc: agg.incN, egr: agg.egrN, bg: "#cbd5e1", kp: "ndn", pInc: estim.incN, pEgr: estim.egrN },
                     ] as const).map((row) => {
                       const top = nextTop();
                       return (
@@ -2456,7 +2543,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                           <td style={{ ...labelSticky(top, row.bg), fontWeight: 900 }}>{row.lbl}</td>
                           {visibleDayCols.map((c) => {
                             const v = (row.inc.get(c.iso) || 0) - (row.egr.get(c.iso) || 0);
-                            return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, ...rowSticky(top), fontWeight: 900, background: row.bg, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#94a3b8", ...hi(c.iso) }}>{v ? money(v) : "·"}</td>;
+                            const delta = (row.pInc.get(c.iso) || 0) - (row.pEgr.get(c.iso) || 0);
+                            return <td key={`${row.kp}-${c.iso}`} style={{ ...tdCell, ...rowSticky(top), fontWeight: 900, background: row.bg, color: v > 0 ? "#0f172a" : v < 0 ? "#dc2626" : "#94a3b8", ...hi(c.iso) }}>{conEstimado(v ? money(v) : "·", v, delta)}</td>;
                           })}
                         </tr>
                       );
@@ -2475,8 +2563,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   miran cuando uno llega hasta ellos, no todo el tiempo. */}
               <>
                     {([
-                      { lbl: "TOTAL INGRESOS", b: agg.incB, n: agg.incN, compB: agg.compIncB, compN: agg.compIncN, isOut: false, bg: "#ecfdf5", kp: "ti" },
-                      { lbl: "TOTAL EGRESOS", b: agg.egrB, n: agg.egrN, compB: agg.compEgrB, compN: agg.compEgrN, isOut: true, bg: "#fef2f2", kp: "te" },
+                      { lbl: "TOTAL INGRESOS", b: agg.incB, n: agg.incN, compB: agg.compIncB, compN: agg.compIncN, isOut: false, bg: "#ecfdf5", kp: "ti", pB: estim.incB, pN: estim.incN },
+                      { lbl: "TOTAL EGRESOS", b: agg.egrB, n: agg.egrN, compB: agg.compEgrB, compN: agg.compEgrN, isOut: true, bg: "#fef2f2", kp: "te", pB: estim.egrB, pN: estim.egrN },
                     ] as const).map((row) => {
                       return (
                         <React.Fragment key={row.kp}>
@@ -2490,7 +2578,11 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                   onContextMenu={(ev) => openCellMenu(ev, row.lbl, c.iso, "total", row.kp, () => false)}
                                 >
                                   {marcasDeCelda("total", row.kp, c.iso)}
-                                  {bnCell(row.b, row.n, c.iso, row.isOut)}
+                                  {conEstimado(
+                                    bnCell(row.b, row.n, c.iso, row.isOut),
+                                    (row.b.get(c.iso) || 0) + (row.n.get(c.iso) || 0),
+                                    (row.pB.get(c.iso) || 0) + (row.pN.get(c.iso) || 0)
+                                  )}
                                 </td>
                               );
                             })}
@@ -2549,7 +2641,10 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         {isCol ? "▸ " : "▾ "}{section.label}
                       </td>
                       {visibleDayCols.map((c) => {
+                        const realSec = (agg.secB.get(section.key)?.get(c.iso) || 0) + (agg.secN.get(section.key)?.get(c.iso) || 0);
+                        const deltaSec = Math.abs(estim.porSeccion.get(section.key)?.get(c.iso) || 0);
                         const t = totalConEmpresa(agg.secCompany, section.key, c.iso, bnCell(agg.secB.get(section.key), agg.secN.get(section.key), c.iso, isOut));
+                        t.contenido = conEstimado(t.contenido, realSec, deltaSec);
                         return (
                           <td key={`sh-${section.key}-${c.iso}`} title={t.titulo} style={{ ...tdCell, fontWeight: 700, background: isOut ? "#fee2e2" : "#dcfce7", ...t.style, ...hi(c.iso) }}>
                             {t.contenido}
@@ -4626,6 +4721,8 @@ const costChip: React.CSSProperties = {
 };
 // Celda con PREVISION y sin debito todavia: se ve que se viene, pero en gris y en cursiva para que
 // nunca se confunda con plata que ya se movio (la prevision no suma al neto).
+// Violeta de lo ESTIMADO (lo programado sumado al real).
+const VIOLETA_ESTIMADO = "#7c3aed";
 // Color de un pago programado segun su estado (los mismos que tenia el bloque Pagos programados).
 const COLOR_PROGRAMADO: Record<string, string> = {
   vencido: "#b91c1c",

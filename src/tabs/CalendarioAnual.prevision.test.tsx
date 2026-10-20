@@ -75,7 +75,8 @@ const celdas = (host: HTMLElement) => Array.from(host.querySelectorAll("td"));
 describe("la previsión de seguros en la planilla", () => {
   it("sin débito todavía, se ve el ≈ en el día previsto", () => {
     const host = render({ previsiones: [prevision] });
-    const conPrevision = celdas(host).filter((td) => (td.textContent || "").includes("≈ 5000"));
+    // La celda del renglon (los totales de arriba muestran ademas la SUMA ESTIMADA, 2026-10-20).
+    const conPrevision = celdas(host).filter((td) => (td.textContent || "").includes("≈ 5000") && (td.getAttribute("title") || "").startsWith("Previsión"));
     expect(conPrevision).toHaveLength(1);
     // En gris y en cursiva: no puede leerse como plata que ya se movió.
     expect((conPrevision[0] as HTMLElement).style.fontStyle).toBe("italic");

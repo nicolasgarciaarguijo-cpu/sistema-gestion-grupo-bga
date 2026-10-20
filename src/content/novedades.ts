@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-20g",
+    fecha: "20/10/2026",
+    titulo: "Precarga de cobros y suma estimada",
+    items: [
+      {
+        titulo: "Precargar anticipo y saldo, blanco y negro",
+        que: "En Cobranzas de cada trabajo hay botones para precargar el anticipo blanco y el negro según lo acordado (% de anticipo sobre la parte facturada con IVA y sobre la parte en negro), y después el saldo de cada circuito (lo que falta, sin contar lo cobrado ni lo ya programado). Entran como cobro estimado (violeta).",
+        como: "Trabajos aprobados → detalle → Cobranzas → '+ Anticipo blanco', '+ Anticipo negro', '+ Saldo blanco', '+ Saldo negro'. Ajustá la fecha y pasalo a Realizado cuando entra la plata.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Suma estimada en violeta en el cash flow",
+        que: "Donde un cobro o pago programado impacta (total de la sección, total de ingresos y egresos, neto del día y la plata disponible de esa empresa), el número real queda tachado en violeta y debajo aparece, en violeta, cómo quedaría con lo programado. En la plata disponible el efecto se arrastra desde el día del cobro o pago en adelante: lo blanco en el primer banco, lo negro en el efectivo negro. Es una estimación: el real no cambia.",
+        como: "Pasá el mouse por el número violeta para ver cuánto suma o resta lo programado.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-20f",
     fecha: "20/10/2026",
     titulo: "Editar y borrar a la vista en todo el sistema",

@@ -20,6 +20,7 @@ export type ProgramadoParaRenglon = {
   monto: number;
   currency: "ARS" | "USD";
   estado: string;
+  administration?: "blanco" | "negro";
 };
 
 export type PrevisionDeRenglon = {
@@ -30,6 +31,7 @@ export type PrevisionDeRenglon = {
   amount: number;
   estado: string;
   descripcion: string;
+  administration: "blanco" | "negro";
 };
 
 const FINANCIEROS = renglonProveedor(SECCION_PROVEEDORES, SECCIONES_REEMPLAZADAS.bancos);
@@ -59,6 +61,7 @@ export function programadosEnRenglones(
       amount: Number(i.monto) || 0,
       estado: i.estado,
       descripcion: i.titulo,
+      administration: i.administration === "negro" ? "negro" : "blanco",
     });
   });
   return out;
