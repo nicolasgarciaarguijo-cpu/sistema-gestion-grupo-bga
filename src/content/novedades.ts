@@ -16,6 +16,54 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-20",
+    fecha: "20/10/2026",
+    titulo: "Cash flow solo con lo vinculado, varios pagos por factura y Excel para el estudio",
+    items: [
+      {
+        titulo: "El cash flow muestra solo lo cargado en las solapas",
+        que: "Lo cargado a mano en la planilla y lo importado de la planilla vieja (incluida la carga histórica) ya no se ve: queda guardado, pero no figura. Los renglones de la planilla vieja que no alimenta ninguna solapa tampoco aparecen.",
+        como: "Si falta algo en el cash flow, se carga en su solapa (Pago a proveedores, Haberes, Caja chica, Movimientos internos...).",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Pagos programados en su renglón",
+        que: "Se fue el bloque violeta del fondo. Cada pago que viene aparece en el renglón de su proveedor (o en Financieros / Impuestos) con '≈' y el color de su estado: violeta por venir, naranja próximo, rojo vencido. Cuando se carga el pago real, lo reemplaza (✓).",
+        como: "Mirá el renglón del proveedor en EGRESOS. No suma al neto hasta que se paga.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Click derecho → Abrir la ficha",
+        que: "Desde cualquier número del cash flow se abre la ficha de donde salió: el proveedor, la persona, el trabajo o la solapa.",
+        como: "Click derecho sobre el monto → 'Abrir la ficha'.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Miles mientras escribís",
+        que: "Todos los campos de números muestran los puntos de miles y millones mientras se escribe (1.250.000,50).",
+        como: "Escribí normal: la coma es el decimal (el punto del teclado numérico también).",
+      },
+      {
+        titulo: "Editar proveedores",
+        que: "Botón ✎ Editar en cada proveedor del listado y en su ficha: nombre, CUIT, condición de IVA, empresa, contacto, notas. Si corregís el nombre, sus facturas y pagos pasan al nombre nuevo.",
+        como: "Pago a proveedores → Proveedores → ✎ Editar.",
+        tab: "costos",
+      },
+      {
+        titulo: "Factura con los datos del estudio y varios pagos",
+        que: "La factura pide tipo de comprobante, letra, número, neto, alícuota de IVA (21% por defecto, se puede cambiar), exento, otros impuestos e IIBB; el IVA y el total se calculan solos. Y se le pueden cargar varios pagos: muestra lo pagado y lo que falta, y queda pagada al completarse. Cada pago pide empresa, administración (blanco/negro) y medio: efectivo, transferencia, cheque, tarjeta de débito o de crédito.",
+        como: "Abrí o agregá una factura → sección 3 '+ Agregar pago' (o 'Vincular un pago ya cargado').",
+        tab: "compras",
+      },
+      {
+        titulo: "Excel de facturas para el estudio contable",
+        que: "Las facturas de compra del mes o de un rango de fechas, por empresa, en Excel: proveedor, CUIT, fecha, tipo, letra, número, exento, neto, IVA, otros impuestos, IIBB y total. Las notas de crédito van en negativo.",
+        como: "Facturas de compra → '⬇ Excel para el estudio' → elegí el mes o el rango y la empresa → Descargar Excel.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-10-17f",
     fecha: "17/10/2026",
     titulo: "Pasar las cargas viejas de la planilla a su solapa",
