@@ -148,7 +148,13 @@ export type FuentesInamovibles = {
   // Facturas de proveedores SIN pagar con fecha de pago (elegida o por la condicion del proveedor).
   facturas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
   real: RealPorRenglonMes;
+  // PUESTA AL DIA (Nicolas, 2026-10-20): lo que vence ANTES de esta fecha y sigue sin pagar se da por pagado
+  // ("todo lo vencido antes del 1/10 figure como pagado"). Ausente = no se aplica.
+  pagadoAntesDe?: string;
 };
+
+// La fecha de la puesta al dia: lo vencido antes del 1/10/2026 figura como pagado.
+export const PUESTA_AL_DIA_PAGADO_ANTES_DE = "2026-10-01";
 
 /**
  * La agenda completa entre `desde` y `hasta`, con el estado de hoy, ordenada por fecha limite.
@@ -382,7 +388,17 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
     return conEstado(nueva, hoy);
   });
 
-  return conMarcas.sort((a, b) => a.fechaLimite.localeCompare(b.fechaLimite) || a.titulo.localeCompare(b.titulo));
+  // Puesta al dia: lo viejo impago se da por pagado (no suena, no se reclama, no baja al cash flow).
+  const corte = f.pagadoAntesDe;
+  const alDia = !corte
+    ? conMarcas
+    : conMarcas.map((i) => {
+        if (i.pagado || !(i.fechaLimite < corte)) return i;
+        const { estado: _e, diasRestantes: _d, alerta: _a, texto: _t, ...base } = i;
+        return conEstado({ ...base, pagado: true, pagadoComo: "puesta al día (vencía antes del 1/10)" }, hoy);
+      });
+
+  return alDia.sort((a, b) => a.fechaLimite.localeCompare(b.fechaLimite) || a.titulo.localeCompare(b.titulo));
 }
 
 // Desde cuando el reclamo es BLOQUEANTE. Lo vencido antes de que existiera el reclamo sigue avisando en

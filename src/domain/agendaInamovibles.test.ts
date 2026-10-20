@@ -132,3 +132,32 @@ describe("reclamo de pagos vencidos", () => {
   });
 });
 
+
+describe("puesta al dia (2026-10-20)", () => {
+  it("lo vencido antes del 1/10 figura como pagado; lo de despues sigue igual", () => {
+    const items = agendaInamovibles(
+      {
+        vencimientos: [],
+        marcas: [],
+        debtPlans: [],
+        tarjetas: [
+          { id: 1, company: "BGA", dueDate: "2026-09-20", totalArs: 100, totalUsd: 0, paid: false, nombre: "Visa" },
+          { id: 2, company: "BGA", dueDate: "2026-10-05", totalArs: 100, totalUsd: 0, paid: false, nombre: "Master" },
+        ],
+        pagosCashflow: [],
+        seguros: [],
+        sueldos: [],
+        real: new Map(),
+        pagadoAntesDe: "2026-10-01",
+      },
+      "2026-07-01",
+      "2026-12-31",
+      "2026-10-20"
+    );
+    const visa = items.find((i) => i.titulo === "Tarjeta Visa")!;
+    const master = items.find((i) => i.titulo === "Tarjeta Master")!;
+    expect(visa.estado).toBe("pagado");
+    expect(visa.pagadoComo).toMatch(/puesta al día/);
+    expect(master.estado).toBe("vencido");
+  });
+});

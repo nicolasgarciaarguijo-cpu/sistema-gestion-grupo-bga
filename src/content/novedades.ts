@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-20c",
+    fecha: "20/10/2026",
+    titulo: "Puesta al día: lo vencido antes del 1/10 figura pagado",
+    items: [
+      {
+        titulo: "Pagos programados al día",
+        que: "Todo lo que vencía antes del 1/10/2026 y seguía sin pagar figura como pagado ('puesta al día'): no suena, no se reclama y no aparece como '≈' en el cash flow. Lo que vence del 1/10 en adelante sigue igual.",
+        como: "Calendario anual → Pagos programados: en la lista de vencidos quedan solo los de octubre en adelante.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-20b",
     fecha: "20/10/2026",
     titulo: "Más pantalla, vencidos a la vista y borrar que no vuelva",

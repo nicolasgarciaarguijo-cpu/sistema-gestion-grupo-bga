@@ -63,6 +63,7 @@ import {
   pagosAReclamar,
   type ItemInamovible,
   type VencimientoMarca,
+  PUESTA_AL_DIA_PAGADO_ANTES_DE,
 } from "./domain/agendaInamovibles";
 import { allSectionsWith, extraRowsOf } from "./domain/calendarStructure";
 import { PagosInamovibles } from "./tabs/PagosInamovibles";
@@ -16978,6 +16979,7 @@ Escribi CERRAR para confirmar:`
         sueldos,
         facturas: facturasAPagar,
         real: realPorRenglon,
+        pagadoAntesDe: PUESTA_AL_DIA_PAGADO_ANTES_DE,
       },
       desde,
       hasta,
@@ -17221,7 +17223,8 @@ Escribi CERRAR para confirmar:`
         hasta
       ),
       ...programadosEnRenglones(agendaInamoviblesItems, filaDeFactura).filter((p) => p.date >= desde && p.date <= hasta),
-    ];
+      // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
+    ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
   }, [segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers]);
 
   // Marcar pagado: si el origen tiene su propio "pagado", se usa ESE (queda vinculado en las dos
