@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-20e",
+    fecha: "20/10/2026",
+    titulo: "Cada monto con el color de su empresa",
+    items: [
+      {
+        titulo: "Cash flow: sombreado por empresa en todo",
+        que: "Además de los pagos, ahora tienen el sombreado de su empresa (azul BGA, mostaza De Raíz) los pagos programados '≈', los totales de cada sección y los de cada grupo de proveedores. Si en un total hay plata de las dos empresas, se ve un renglón por empresa con su color. El estado de un pago programado va en el color de la letra.",
+        como: "Pasá el mouse por un total para ver cuánto es de cada empresa.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Pagos programados: el fondo dice la empresa",
+        que: "En el almanaque y en la lista de vencidos, el fondo de cada pago es el color de su empresa y la letra dice el estado (rojo vencido, naranja próximo, azul por venir, verde pagado).",
+        como: "Calendario anual → Pagos programados: arriba del almanaque está la referencia de colores.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-20d",
     fecha: "20/10/2026",
     titulo: "Grupos plegados como los dejaste",

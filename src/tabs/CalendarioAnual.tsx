@@ -545,6 +545,10 @@ export function CalendarioAnualTab({
     const compEgrB = new Map<string, Map<string, number>>();
     const compEgrN = new Map<string, Map<string, number>>();
     const companiesSeen = new Set<string>();
+    // De QUE EMPRESA es la plata de cada total de seccion y de cada grupo de proveedores, dia por dia
+    // (Nicolas, 2026-10-20: "es imprescindible saber de que empresa se trata").
+    const secCompany = new Map<string, Map<string, Map<string, number>>>();
+    const grupoCompany = new Map<string, Map<string, Map<string, number>>>();
     const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
     const addDeep = (m: Map<string, Map<string, number>>, a: string, d: string, v: number) => {
       if (!m.has(a)) m.set(a, new Map());
@@ -553,6 +557,7 @@ export function CalendarioAnualTab({
     // Registra el movimiento (ya firmado por dirección) en los mapas por sección y por empresa.
     const track = (sectionKey: string, dir: "in" | "out", neg: boolean, company: string, date: string, amt: number) => {
       addDeep(neg ? secN : secB, sectionKey, date, amt);
+      marcarEmpresa(secCompany, sectionKey, date, company, amt);
       if (company) {
         companiesSeen.add(company);
         const cm = dir === "in" ? (neg ? compIncN : compIncB) : (neg ? compEgrN : compEgrB);
@@ -605,6 +610,7 @@ export function CalendarioAnualTab({
         if (!porProv.has(title)) porProv.set(title, new Map());
         add(porProv.get(title)!, e.date, amt);
         addDeep(neg ? provN : provB, k, e.date, amt);
+        marcarEmpresa(grupoCompany, k, e.date, e.company, amt);
         marcarEmpresa(detailCompany, `${k}|${title}`, e.date, e.company, amt);
         add(egresoByDate, e.date, amt);
         add(neg ? egrN : egrB, e.date, amt);
@@ -713,7 +719,7 @@ export function CalendarioAnualTab({
         }
       }
     });
-    return { haberesPorEmpresa, haberesPorEmpresaB, haberesPorEmpresaN, provDetail, provB, provN, byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, customRowsB, customRowsN, internoDetail, internoByDate, facturaDetail, facturaByDate };
+    return { haberesPorEmpresa, haberesPorEmpresaB, haberesPorEmpresaN, provDetail, provB, provN, byConcept, conceptCompany, detailCompany, cobranzaDetail, cobranzaDetailB, cobranzaDetailN, cobranzaByDate, cobranzaByDateB, cobranzaByDateN, unclDetail, unclByDate, unclTitleTotal, unclBankIds, incomeByDate, egresoByDate, incB, incN, egrB, egrN, usdDetail, usdTitleTotal, usdByDate, comisionDetail, comisionByDate, secB, secN, compIncB, compIncN, compEgrB, compEgrN, companiesSeen, fijoByDate, varByDate, conceptCostKind, customRows, customRowsB, customRowsN, internoDetail, internoByDate, facturaDetail, facturaByDate, secCompany, grupoCompany };
   }, [entries, companyScope, dayCols, sectionByKey]);
 
   // CARRIL DE PREVISION (hoy lo alimenta la solapa Seguros). Va aparte de `agg` a proposito: aca no
@@ -736,6 +742,14 @@ export function CalendarioAnualTab({
     // El peor estado del dia en cada fila (vencido > hoy > proximo > el resto), para el color.
     const PESO: Record<string, number> = { vencido: 4, hoy: 3, proximo: 2, en_ventana: 1 };
     const estadoDia = new Map<string, string>();
+    // De que empresa es cada "≈" (para el sombreado de la empresa).
+    const empresaDia = new Map<string, Map<string, number>>();
+    porFila.forEach((p) => {
+      const k = `${p.conceptKey}|${p.date}`;
+      if (!empresaDia.has(k)) empresaDia.set(k, new Map());
+      const m = empresaDia.get(k)!;
+      m.set(p.company, (m.get(p.company) || 0) + Number(p.amount || 0));
+    });
     porFila.forEach((p) => {
       if (!p.estado) return;
       const k = `${p.conceptKey}|${p.date}`;
@@ -776,7 +790,7 @@ export function CalendarioAnualTab({
       if (!titulosPorRenglon.has(p.conceptKey)) titulosPorRenglon.set(p.conceptKey, new Set());
       titulosPorRenglon.get(p.conceptKey)!.add(p.titulo);
     });
-    return { porDia, porMes, realPorMes, detalle, estadoDia, titulosPorRenglon };
+    return { porDia, porMes, realPorMes, detalle, estadoDia, titulosPorRenglon, empresaDia };
   }, [previsiones, companyScope, dayCols, agg]);
 
   // Una celda de PAGO PROGRAMADO en su fila: "≈ $X" con el color de su estado mientras el pago real del
@@ -795,7 +809,7 @@ export function CalendarioAnualTab({
       return {
         texto: `≈ ${money(previstoDia)}`,
         titulo: `Programado ${money(previstoDia)}${que ? " · " + que : ""} — todavía no se pagó, no suma al neto.`,
-        estilo: { ...previstaCell, color: COLOR_PROGRAMADO[est] || COLOR_PROGRAMADO.futuro } as React.CSSProperties,
+        estilo: { ...previstaCell, color: COLOR_PROGRAMADO[est] || COLOR_PROGRAMADO.futuro, ...fondoProgramado(fila, iso) } as React.CSSProperties,
         ok: false,
       };
     }
@@ -836,6 +850,44 @@ export function CalendarioAnualTab({
     return { style: bg ? { background: bg } : undefined, detalle: partes.join(" · ") };
   };
   const selectedColor = companyScope !== "__ALL__" ? companyMeta.get(companyScope)?.color : undefined;
+  // Fondo de un pago programado: el color suave de la empresa que lo tiene que pagar.
+  const fondoProgramado = (fila: string, iso: string): React.CSSProperties => {
+    const porEmp = prev.empresaDia.get(`${fila}|${iso}`);
+    if (!porEmp || porEmp.size === 0) return {};
+    const ganadora = Array.from(porEmp.entries()).sort((a, b) => b[1] - a[1])[0][0];
+    const bg = tinteDeEmpresa(ganadora);
+    return bg ? { background: bg } : {};
+  };
+  // Celda de un TOTAL (seccion o grupo de proveedores) con el color de la empresa. De una sola empresa:
+  // la celda entera con su sombreado. De las dos: un renglon por empresa, cada uno con el suyo.
+  const totalConEmpresa = (
+    mapa: Map<string, Map<string, Map<string, number>>>,
+    clave: string,
+    iso: string,
+    normal: React.ReactNode
+  ): { style: React.CSSProperties; contenido: React.ReactNode; titulo?: string } => {
+    const porEmp = mapa.get(clave)?.get(iso);
+    if (!porEmp || porEmp.size === 0) return { style: {}, contenido: normal };
+    const partes = Array.from(porEmp.entries()).sort((a, b) => b[1] - a[1]);
+    const titulo = partes.map(([emp, m]) => `${companyMeta.get(emp)?.short || emp} ${money(m)}`).join(" · ");
+    if (partes.length === 1) {
+      const bg = tinteDeEmpresa(partes[0][0]);
+      return { style: bg ? { background: bg } : {}, contenido: normal, titulo };
+    }
+    return {
+      style: {},
+      titulo,
+      contenido: (
+        <div style={{ display: "flex", flexDirection: "column", gap: 1, alignItems: "stretch" }}>
+          {partes.map(([emp, m]) => (
+            <span key={emp} style={{ background: tinteDeEmpresa(emp) || "transparent", borderRadius: 3, padding: "0 3px", whiteSpace: "nowrap", textAlign: "right" }}>
+              {money(m)}
+            </span>
+          ))}
+        </div>
+      ),
+    };
+  };
 
   // Sugerencia de renglón para los movimientos del banco sin clasificar (mecánica bancaria).
   const suggestedCount = useMemo(() => {
@@ -2496,11 +2548,14 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                       >
                         {isCol ? "▸ " : "▾ "}{section.label}
                       </td>
-                      {visibleDayCols.map((c) => (
-                        <td key={`sh-${section.key}-${c.iso}`} style={{ ...tdCell, fontWeight: 700, background: isOut ? "#fee2e2" : "#dcfce7", ...hi(c.iso) }}>
-                          {bnCell(agg.secB.get(section.key), agg.secN.get(section.key), c.iso, isOut)}
-                        </td>
-                      ))}
+                      {visibleDayCols.map((c) => {
+                        const t = totalConEmpresa(agg.secCompany, section.key, c.iso, bnCell(agg.secB.get(section.key), agg.secN.get(section.key), c.iso, isOut));
+                        return (
+                          <td key={`sh-${section.key}-${c.iso}`} title={t.titulo} style={{ ...tdCell, fontWeight: 700, background: isOut ? "#fee2e2" : "#dcfce7", ...t.style, ...hi(c.iso) }}>
+                            {t.contenido}
+                          </td>
+                        );
+                      })}
                     </tr>
                     {!isCol && (isCob
                       ? cobranzaRows.map(({ title, drowB, drowN, falta, company, prevs }) => {
@@ -2596,6 +2651,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                 const previstoDia = prev.porDia.get(it.key)?.get(c.iso) || 0;
                                 const mostrarPrev = !v && previstoDia > 0 && estadoPrev === "pendiente";
                                 const colorPrev = mostrarPrev ? COLOR_PROGRAMADO[prev.estadoDia.get(`${it.key}|${c.iso}`) || ""] : undefined;
+                                const fondoPrev = mostrarPrev ? fondoProgramado(it.key, c.iso) : {};
                                 const quePrev = prev.detalle.get(`${it.key}|${c.iso}`) || "";
                                 const tituloPrev = mostrarPrev
                                   ? `Previsión ${money(previstoDia)}${quePrev ? " · " + quePrev : ""} — lo que se viene, todavía sin débito. No suma al neto.`
@@ -2618,7 +2674,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                         .filter(Boolean)
                                         .join(" · ")
                                     }
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...fondoNoHabil(c.iso), ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso), ...(mostrarPrev ? { ...previstaCell, ...(colorPrev ? { color: colorPrev } : {}) } : null) }}
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...fondoNoHabil(c.iso), ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso), ...(mostrarPrev ? { ...previstaCell, ...(colorPrev ? { color: colorPrev } : {}), ...fondoPrev } : null) }}
                                   >
                                     {marcasDeCelda(section.key, it.key, c.iso)}
                                     {v ? money(v) : mostrarPrev ? `≈ ${money(previstoDia)}` : "+"}
@@ -2675,18 +2731,22 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                   </span>
                                 )}
                               </td>
-                              {visibleDayCols.map((c) => (
+                              {visibleDayCols.map((c) => {
+                                const hayPlata = !!(agg.provB.get(k)?.get(c.iso) || agg.provN.get(k)?.get(c.iso));
+                                const t = totalConEmpresa(agg.grupoCompany, k, c.iso, hayPlata ? bnCell(agg.provB.get(k), agg.provN.get(k), c.iso, true) : <span style={{ color: "#cbd5e1" }}>+</span>);
+                                return (
                                 <td
                                   key={`${k}-${c.iso}`}
                                   onClick={() => openAdd(section.key, renglon, c.iso)}
                                   onContextMenu={(ev) => openCellMenu(ev, g ? g.nombre : "Sin grupo", c.iso, section.key, renglon, (e) => e.conceptKey === renglon)}
                                   title={soloLectura ? "Click derecho: ver de dónde sale" : "Click: cargar un pago a un proveedor de este grupo · Click derecho: editar / borrar"}
-                                  style={{ ...tdCell, cursor: "pointer", fontWeight: 600, ...fondoNoHabil(c.iso), ...hi(c.iso), ...estiloCelda(section.key, renglon, c.iso) }}
+                                  style={{ ...tdCell, cursor: "pointer", fontWeight: 600, ...fondoNoHabil(c.iso), ...t.style, ...hi(c.iso), ...estiloCelda(section.key, renglon, c.iso) }}
                                 >
                                   {marcasDeCelda(section.key, renglon, c.iso)}
-                                  {agg.provB.get(k)?.get(c.iso) || agg.provN.get(k)?.get(c.iso) ? bnCell(agg.provB.get(k), agg.provN.get(k), c.iso, true) : <span style={{ color: "#cbd5e1" }}>+</span>}
+                                  {t.contenido}
                                 </td>
-                              ))}
+                                );
+                              })}
                             </tr>
                             {provs.map(([titulo, drow]) =>
                               detailRow(titulo, drow, `${k}|${titulo}`, true, {

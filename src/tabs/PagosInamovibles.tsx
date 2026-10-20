@@ -146,6 +146,12 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
         </span>
       </div>
 
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12, color: "#475569", marginBottom: 6 }}>
+        {companyOptions.map((c) => (
+          <span key={c.value} style={{ background: c.soft || "#f1f5f9", borderRadius: 4, padding: "1px 8px", fontWeight: 700 }}>{c.short || c.value}</span>
+        ))}
+        <span>· el color de la letra es el estado: <strong style={{ color: ESTADO_COLOR.vencido.fg }}>vencido</strong>, <strong style={{ color: ESTADO_COLOR.proximo.fg }}>próximo</strong>, <strong style={{ color: ESTADO_COLOR.en_ventana.fg }}>por venir</strong>, <strong style={{ color: ESTADO_COLOR.pagado.fg }}>pagado</strong></span>
+      </div>
       <div style={{ display: "grid", gap: 14, alignItems: "start" }}>
         {/* Almanaque del mes: a todo el ancho */}
         <div>
@@ -182,9 +188,10 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                         style={{
                           fontSize: 11.5,
                           lineHeight: 1.3,
-                          background: c.bg,
+                          // EMPRESA = el fondo (azul BGA, mostaza De Raiz); el ESTADO = el color de la letra.
+                          background: meta(i.company)?.soft || c.bg,
                           color: c.fg,
-                          borderLeft: `3px solid ${meta(i.company)?.primary || c.fg}`,
+                          fontWeight: i.estado === "vencido" || i.estado === "hoy" ? 700 : 500,
                           borderRadius: 3,
                           padding: "1px 3px",
                           marginTop: 2,
@@ -254,7 +261,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                           <div style={{ fontSize: 10, color: "#94a3b8" }}>límite de la ventana</div>
                         )}
                       </td>
-                      <td style={{ padding: "4px 6px", boxShadow: `inset 3px 0 0 ${m?.primary || "#cbd5e1"}` }}>
+                      <td style={{ padding: "4px 6px", background: m?.soft || undefined }}>
                         <strong>{i.titulo}</strong>
                         {!i.pagado && (
                           <span
