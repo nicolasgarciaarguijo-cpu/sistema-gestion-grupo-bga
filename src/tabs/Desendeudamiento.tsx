@@ -450,8 +450,8 @@ export function DesendeudamientoTab({
                   </select>
                 </label>
                 <label style={lbl}>De qué cuenta
-                  <select style={input} value={pago.form.cuentaId || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, cuentaId: e.target.value || undefined } })}>
-                    <option value="">— La por defecto —</option>
+                  <select style={{ ...input, ...(pago.form.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={pago.form.cuentaId || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, cuentaId: e.target.value || undefined } })}>
+                    <option value="">— Elegí la cuenta —</option>
                     {cuentas
                       .filter((c) => c.company === pago.deuda.company && c.activa !== false)
                       .map((c) => (
@@ -489,6 +489,7 @@ export function DesendeudamientoTab({
                 onClick={() => {
                   const f = pago.form;
                   if (f.modo === "nuevo" && (!f.fecha || !(f.monto > 0))) return window.alert("Falta la fecha o el monto del pago.");
+                  if (f.modo === "nuevo" && !f.cuentaId) return window.alert("Elegí de qué cuenta sale el pago.");
                   if (f.modo === "vincular" && f.costEntryId == null) return window.alert("Elegí el pago a vincular.");
                   onRegistrarPago(pago.deuda.id, pago.cuota.id, f);
                   setPago(null);

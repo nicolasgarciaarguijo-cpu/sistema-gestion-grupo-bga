@@ -48,7 +48,7 @@ export function PagoACuentaModal({
 }) {
   const [f, setF] = useState<PagoACuentaForm>(inicial);
   const set = (patch: Partial<PagoACuentaForm>) => setF((p) => ({ ...p, ...patch }));
-  const ok = !!f.fecha && Number(f.monto) > 0 && !!f.company;
+  const ok = !!f.fecha && Number(f.monto) > 0 && !!f.company && !!f.cuentaId;
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(640px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
@@ -84,8 +84,8 @@ export function PagoACuentaModal({
             </select>
           </label>
           <label style={lbl}>De qué cuenta salió
-            <select style={input} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
-              <option value="">Cuenta por defecto</option>
+            <select style={{ ...input, ...(f.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
+              <option value="">— Elegí la cuenta —</option>
               {cuentas.filter((c) => c.company === f.company && c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (
                 <option key={c.id} value={c.id}>{c.nombre}</option>
               ))}

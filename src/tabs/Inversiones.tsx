@@ -250,8 +250,8 @@ export function InversionesTab({
                       </select>
                     </td>
                     <td>
-                      <select style={styles.input} value={i.cuentaId || ""} onChange={(e) => updateInversion(i.id, "cuentaId", e.target.value || undefined)}>
-                        <option value="">Por defecto</option>
+                      <select style={{ ...styles.input, ...(i.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={i.cuentaId || ""} onChange={(e) => updateInversion(i.id, "cuentaId", e.target.value || undefined)}>
+                        <option value="">— Elegí la cuenta —</option>
                         {cuentas
                           .filter((c) => c.company === i.company && c.activa !== false && (!c.moneda || c.moneda === i.moneda))
                           .map((c) => (

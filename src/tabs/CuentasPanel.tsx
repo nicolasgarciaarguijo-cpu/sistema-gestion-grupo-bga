@@ -310,7 +310,8 @@ export function CuentasPanel({
   );
 }
 
-// Selector de cuenta para los formularios de carga. Vacio = la cuenta por defecto (segun como se pago).
+// Selector de cuenta para los formularios de carga. SIN cuenta por defecto (Nicolas, 2026-10-20: "prefiero
+// tener que cargarla a mano cada vez"): vacio queda marcado en rojo hasta que se elige.
 export function SelectorCuenta({
   cuentas,
   company,
@@ -318,7 +319,7 @@ export function SelectorCuenta({
   value,
   onChange,
   label = "Cuenta",
-  vacio = "Por defecto (según cómo se pagó)",
+  vacio = "— Elegí la cuenta —",
 }: {
   cuentas: Cuenta[];
   company: string;
@@ -334,7 +335,7 @@ export function SelectorCuenta({
   return (
     <label style={{ display: "block", fontSize: 12, color: "#475569" }}>
       {label}
-      <select style={styles.input} value={value || ""} onChange={(e) => onChange(e.target.value)}>
+      <select style={{ ...styles.input, ...(value ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={value || ""} onChange={(e) => onChange(e.target.value)}>
         <option value="">{vacio}</option>
         {opciones.map((c) => (
           <option key={c.id} value={c.id}>

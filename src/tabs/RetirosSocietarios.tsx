@@ -160,8 +160,8 @@ export function RetirosSocietariosPanel({
                       </select>
                     </td>
                     <td style={{ ...td, width: 150 }}>
-                      <select style={input} disabled={traba} value={r.cuentaId || ""} onChange={(e) => onUpdate(r.id, "cuentaId", e.target.value || undefined)}>
-                        <option value="">Cuenta por defecto</option>
+                      <select style={{ ...input, ...(r.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} disabled={traba} value={r.cuentaId || ""} onChange={(e) => onUpdate(r.id, "cuentaId", e.target.value || undefined)}>
+                        <option value="">— Elegí la cuenta —</option>
                         {cuentas
                           .filter((c) => c.company === r.company && c.activa !== false && (!c.moneda || c.moneda === (r.moneda || "ARS")))
                           .map((c) => (

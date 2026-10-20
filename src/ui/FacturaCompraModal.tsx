@@ -218,6 +218,8 @@ export function FacturaCompraModal({
   if (!f.invoiceDate) faltan.push("la fecha de la factura");
   if (!(Number(f.total) > 0)) faltan.push("el total");
   if (f.pagos.some((p) => !p.fecha || !(Number(p.monto) > 0))) faltan.push("la fecha y el monto de cada pago");
+  if (f.pagos.some((p) => !p.cuentaId)) faltan.push("la cuenta de cada pago");
+  if (!f.porBanco && saldo > 1 && f.saldo.fechaPrevista && !f.saldo.cuentaId) faltan.push("de qué cuenta sale lo que falta");
   if (pagado > Number(f.total || 0) + 1) faltan.push(`que los pagos no pasen el total (sobran ${money(pagado - Number(f.total || 0))})`);
 
   return (
@@ -422,8 +424,8 @@ export function FacturaCompraModal({
                     </select>
                   </label>
                   <label style={lbl}>De qué cuenta salió
-                    <select style={input} value={p.cuentaId || ""} onChange={(e) => setPagoN(p.key, { cuentaId: e.target.value || undefined })}>
-                      <option value="">Cuenta por defecto</option>
+                    <select style={{ ...input, ...(p.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={p.cuentaId || ""} onChange={(e) => setPagoN(p.key, { cuentaId: e.target.value || undefined })}>
+                      <option value="">— Elegí la cuenta —</option>
                       {cuentas.filter((c) => c.company === empresaPaga && c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (
                         <option key={c.id} value={c.id}>{c.nombre}</option>
                       ))}
@@ -495,8 +497,8 @@ export function FacturaCompraModal({
               </label>
               <label style={lbl} title="Para la suma estimada del cash flow: de qué banco o efectivo va a salir">
                 Sale de
-                <select style={input} value={f.saldo.cuentaId || ""} onChange={(e) => setF((x) => ({ ...x, saldo: { ...x.saldo, cuentaId: e.target.value || undefined } }))}>
-                  <option value="">{f.administration === "negro" ? "Efectivo negro" : "Banco principal"}</option>
+                <select style={{ ...input, ...(f.saldo.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={f.saldo.cuentaId || ""} onChange={(e) => setF((x) => ({ ...x, saldo: { ...x.saldo, cuentaId: e.target.value || undefined } }))}>
+                  <option value="">— Elegí la cuenta —</option>
                   {cuentas
                     .filter((c) => c.company === f.company && c.activa !== false && (!c.moneda || c.moneda === "ARS"))
                     .map((c) => (

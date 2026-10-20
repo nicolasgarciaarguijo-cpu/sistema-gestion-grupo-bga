@@ -78,6 +78,7 @@ export function CajaChicaModal({
   if (!f.responsible.trim()) faltan.push("el responsable");
   if (!f.deliveredDate) faltan.push("la fecha de asignación");
   if (!(total > 0)) faltan.push("el monto (blanco y/o negro)");
+  if (!f.cuentaId) faltan.push("de qué cuenta sale");
   const cuentasEmpresa = cuentas.filter((c) => c.company === f.company && c.activa !== false);
 
   return (
@@ -153,8 +154,8 @@ export function CajaChicaModal({
               <NumInput style={{ ...input, background: "#1f2937", color: "#fff" }} value={f.assignedBlack || ""} onChange={(e) => set({ assignedBlack: Number(e.target.value) || 0 })} />
             </label>
             <label style={lbl}>Sale de la cuenta
-              <select style={input} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
-                <option value="">— La por defecto —</option>
+              <select style={{ ...input, ...(f.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
+                <option value="">— Elegí la cuenta —</option>
                 {cuentasEmpresa.map((c) => (
                   <option key={c.id} value={c.id}>{c.nombre}</option>
                 ))}

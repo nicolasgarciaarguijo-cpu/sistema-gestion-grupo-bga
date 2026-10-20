@@ -47,7 +47,7 @@ export function PagoHaberModal({
 }) {
   const [f, setF] = useState<PagoHaberForm>(inicial);
   const set = (patch: Partial<PagoHaberForm>) => setF((x) => ({ ...x, ...patch }));
-  const ok = !!f.fecha && !!f.periodo && Number(f.monto) > 0;
+  const ok = !!f.fecha && !!f.periodo && Number(f.monto) > 0 && !!f.cuentaId;
   const falta = sugerido(f.periodo, f.administration);
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }}>
@@ -82,8 +82,8 @@ export function PagoHaberModal({
             </select>
           </label>
           <label style={lbl}>De qué cuenta salió
-            <select style={input} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
-              <option value="">Cuenta por defecto</option>
+            <select style={{ ...input, ...(f.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
+              <option value="">— Elegí la cuenta —</option>
               {cuentas.filter((c) => c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (
                 <option key={c.id} value={c.id}>{c.nombre}</option>
               ))}

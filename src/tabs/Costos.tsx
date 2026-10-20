@@ -1605,7 +1605,7 @@ export function CostosTab({
                           setCtxMenu(null);
                         }}
                       >
-                        <option value="">Por defecto (según cómo se pagó)</option>
+                        <option value="">— Elegí la cuenta —</option>
                         {(cuentas || [])
                           .filter((c: any) => c.company === entry.company && c.activa !== false && c.moneda === "ARS")
                           .map((c: any) => (
