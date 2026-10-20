@@ -14287,7 +14287,9 @@ Escribi CERRAR para confirmar:`
         kind: "gasto" as const,
         company: String(entry.company),
         supplier: entry.supplier || "",
-        taxId: entry.supplierId ? taxIdBySupplierId.get(entry.supplierId) || "" : "",
+        // Sin supplierId (o con uno viejo, despues de vaciar la lista) el pago quedaba en una cuenta aparte
+        // por NOMBRE y la ficha no lo mostraba (el saldo "a favor" de DAC, 2026-10-20): se busca por nombre.
+        taxId: (entry.supplierId ? taxIdBySupplierId.get(entry.supplierId) : "") || (buscarProveedor(suppliers as any, entry.supplier || "", "") as any)?.taxId || "",
         date: entry.date || "",
         amount: Number(entry.amount || 0),
         administration: entry.administration,
@@ -14387,7 +14389,12 @@ Escribi CERRAR para confirmar:`
     return pagosSinFactura(
       costEntries
         .filter((c) => canAccessCompany(c.company))
-        .map((c) => ({ ...c, company: String(c.company), taxId: c.supplierId ? taxIdDe.get(c.supplierId) || "" : "" })),
+        .map((c) => ({
+          ...c,
+          company: String(c.company),
+          // Igual que en la cuenta corriente: sin supplierId valido, el proveedor se busca por nombre.
+          taxId: (c.supplierId ? taxIdDe.get(c.supplierId) : "") || (buscarProveedor(suppliers as any, c.supplier || "", "") as any)?.taxId || "",
+        })),
       purchaseInvoices,
       todayIso()
     );
@@ -16787,7 +16794,12 @@ Escribi CERRAR para confirmar:`
   // surgio algun error"). Usa la misma ventana que el pago sin factura.
   const abrirEditarPago = (pagoId: number) => {
     const c = costEntries.find((x) => x.id === pagoId);
-    if (!c) return;
+    if (!c) {
+      // Un pago con CAJA CHICA (en el historial del proveedor): se edita el gasto de la caja.
+      const gasto = pettyCashExpenses.find((x) => x.id === pagoId);
+      if (gasto) abrirGastoCaja(gasto.fundId, gasto.id);
+      return;
+    }
     if (bloqueadoPorCierre(c.company, c.date)) {
       window.alert("Ese pago es de un ejercicio cerrado: no se puede editar.");
       return;
@@ -17823,6 +17835,11 @@ Escribi CERRAR para confirmar:`
 
   const removeCostEntry = (id: number) => {
     const actual = costEntries.find((e) => e.id === id);
+    // Un pago con CAJA CHICA (historial del proveedor): se quita el gasto de la caja (y su factura con el).
+    if (!actual && pettyCashExpenses.some((g) => g.id === id)) {
+      removePettyCashExpense(id);
+      return;
+    }
     if (actual && bloqueadoPorCierre(actual.company, actual.date)) {
       window.alert("Ese pago es de un ejercicio cerrado: no se puede quitar.");
       return;
@@ -19318,6 +19335,8 @@ Escribi CERRAR para confirmar:`
       const emp = ce?.employeeId != null ? visibleEmployees.find((e) => e.id === ce.employeeId) : undefined;
       if (emp) return abrirFichaHaberes(emp.name, String(emp.company));
       if (ce?.supplier) return abrirFichaProveedor(ce.supplier);
+      // Sin proveedor ni persona: la ventana del pago, para corregirlo o borrarlo.
+      if (ce) return abrirEditarPago(ce.id);
       return irA("costos");
     }
     if (id.startsWith("petty-cash-")) {
@@ -21441,7 +21460,7 @@ Escribi CERRAR para confirmar:`
             money={money}
             onGuardar={(f) => guardarPagoHaber({ ...f, empId: emp.id })}
             onBorrar={(id) => {
-              setCostEntries((prev) => prev.filter((x) => x.id !== id));
+              removeCostEntry(id);
               setPagoHaber(null);
             }}
             onCerrar={() => setPagoHaber(null)}
@@ -21481,6 +21500,10 @@ Escribi CERRAR para confirmar:`
           personas={visibleEmployees.filter((e) => !isEmployeeTerminated(e)).map((e) => String(e.name || "").trim()).filter(Boolean).sort((a, b) => a.localeCompare(b))}
           money={money}
           onGuardar={guardarPagoACuenta}
+          onBorrar={(id) => {
+            removeCostEntry(id);
+            setPagoACuentaModal(null);
+          }}
           onCerrar={() => setPagoACuentaModal(null)}
         />
       )}

@@ -34,6 +34,7 @@ export function PagoACuentaModal({
   money,
   onGuardar,
   onCerrar,
+  onBorrar,
 }: {
   inicial: PagoACuentaForm;
   companyOptions: Array<{ value: string; label?: string; short?: string }>;
@@ -42,6 +43,8 @@ export function PagoACuentaModal({
   money: (n: number) => string;
   onGuardar: (f: PagoACuentaForm) => void;
   onCerrar: () => void;
+  // Borrar el pago (sale del cash flow y de la cuenta de donde salio).
+  onBorrar?: (id: number) => void;
 }) {
   const [f, setF] = useState<PagoACuentaForm>(inicial);
   const set = (patch: Partial<PagoACuentaForm>) => setF((p) => ({ ...p, ...patch }));
@@ -112,6 +115,15 @@ export function PagoACuentaModal({
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>{Number(f.monto) > 0 && (!f.id || f.aCuenta) ? `Queda a favor ${money(Number(f.monto))} hasta la factura` : ""}</span>
           <span style={{ display: "inline-flex", gap: 8 }}>
+            {f.id && onBorrar && (
+              <button
+                type="button"
+                onClick={() => window.confirm(`¿Borrar este pago de ${money(Number(f.monto) || 0)}? Sale del cash flow y de la cuenta de donde salió.`) && onBorrar(f.id!)}
+                style={{ ...input, width: "auto", cursor: "pointer", color: "#b91c1c", borderColor: "#fecaca" }}
+              >
+                🗑 Borrar pago
+              </button>
+            )}
             <button type="button" onClick={onCerrar} style={{ ...input, width: "auto", cursor: "pointer" }}>Cancelar</button>
             <button
               type="button"
