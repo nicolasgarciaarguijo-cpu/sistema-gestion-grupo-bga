@@ -25,15 +25,15 @@ const items = agendaInamovibles(
   HOY
 );
 
-function montar(onSetPagado = jest.fn(), onIrAlOrigen = jest.fn()) {
+function montar(onSetPagado = jest.fn(), onIrAlOrigen = jest.fn(), hoy = HOY, lista = items) {
   const div = document.createElement("div");
   document.body.appendChild(div);
   const root = createRoot(div);
   act(() => {
     root.render(
       <PagosInamovibles
-        items={items}
-        hoy={HOY}
+        items={lista}
+        hoy={hoy}
         vencimientos={[]}
         companyOptions={[{ value: "BGA", short: "BGA", primary: "#14213d" }]}
         sections={[]}
@@ -50,8 +50,10 @@ function montar(onSetPagado = jest.fn(), onIrAlOrigen = jest.fn()) {
   return { div, root };
 }
 
+// La fila de la lista de vencidos o, si no esta vencido, su marca en el almanaque.
 const filaDe = (div: HTMLElement, texto: string) =>
-  Array.from(div.querySelectorAll("tbody tr")).find((tr) => tr.textContent?.includes(texto)) as HTMLElement;
+  (Array.from(div.querySelectorAll("tbody tr")).find((tr) => tr.textContent?.includes(texto)) ||
+    Array.from(div.querySelectorAll("div[title]")).find((d) => d.getAttribute("title")?.startsWith(texto))) as HTMLElement;
 
 const clickDerecho = (el: HTMLElement) =>
   act(() => {
@@ -62,11 +64,47 @@ const botonDelMenu = (texto: string) =>
   Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.includes(texto)) as HTMLButtonElement;
 
 describe("PagosInamovibles", () => {
-  it("lista el vencimiento con su cuenta regresiva y la cuota de deuda del mes", () => {
+  it("el almanaque muestra lo del mes; la lista, solo lo vencido; sin vencidos no hay lista", () => {
     const { div, root } = montar();
     expect(div.textContent).toContain("VEP IVA");
-    expect(div.textContent).toContain("Faltan 4 días"); // limite 12/10
-    expect(div.textContent).toContain("Echeq enchapadora");
+    expect(div.textContent).toContain("Echeq enchapadora"); // en el almanaque
+    const filas = Array.from(div.querySelectorAll("tbody tr")).map((tr) => tr.textContent || "");
+    expect(filas.length).toBeGreaterThan(0);
+    expect(filas.every((t) => t.includes("Vencido"))).toBe(true);
+    expect(filas.some((t) => t.includes("Echeq"))).toBe(false);
+    act(() => root.unmount());
+    div.remove();
+    const vacio = montar(jest.fn(), jest.fn(), HOY, items.filter((i) => i.estado !== "vencido"));
+    expect(vacio.div.querySelector("table")).toBeNull();
+    expect(vacio.div.textContent).toContain("No hay pagos vencidos sin pagar");
+    act(() => vacio.root.unmount());
+    vacio.div.remove();
+  });
+
+  // Nicolas, 2026-10-20: la lista es solo para ver lo que se tendria que haber pagado.
+  it("la lista muestra solo lo vencido sin pagar", () => {
+    const hoy = "2026-10-15";
+    const vencidos = agendaInamovibles(
+      {
+        vencimientos: [
+          { id: 1, company: "BGA", titulo: "VEP IVA", tipo: "impuesto", monto: 250000, administration: "blanco", conceptKey: "imp_iva_mensual", recurrencia: "mensual", diaDesde: 8, diaHasta: 12, avisoDias: 5, activo: true, notas: "" },
+        ],
+        marcas: [],
+        debtPlans: [{ id: 7, company: "BGA", concept: "Echeq enchapadora", nextInstallmentAmount: 500000, remainingInstallments: 2, nextDueDate: "2026-10-20", active: true }],
+        tarjetas: [],
+        pagosCashflow: [],
+        seguros: [],
+        sueldos: [],
+        real: new Map(),
+      },
+      "2026-07-01",
+      "2027-06-30",
+      hoy
+    );
+    const { div, root } = montar(jest.fn(), jest.fn(), hoy, vencidos);
+    const filas = Array.from(div.querySelectorAll("tbody tr")).map((tr) => tr.textContent || "");
+    expect(filas.some((t) => t.includes("VEP IVA") && t.includes("Vencido"))).toBe(true);
+    expect(filas.some((t) => t.includes("Echeq enchapadora"))).toBe(false);
     act(() => root.unmount());
     div.remove();
   });

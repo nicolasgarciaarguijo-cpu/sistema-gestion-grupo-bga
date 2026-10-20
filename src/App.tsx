@@ -3264,7 +3264,6 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     obs.observe(node);
     stickyHeaderObs.current = obs;
   }, []);
-  const [isCommunicationExpanded, setIsCommunicationExpanded] = useState(false);
   const lastSupabaseSnapshotSavedAtRef = useRef("");
   const lastMarkerSourceKeyRef = useRef("");
   // Marca que se exporto el PDF de un presupuesto ANTES de guardarlo: al guardar esa revision se
@@ -19583,6 +19582,12 @@ Escribi CERRAR para confirmar:`
           rowConfig={calendarRowConfig}
           onRowConfigChange={setCalendarRowConfig}
           onAbrirOrigen={abrirOrigenDeMovimiento}
+          onAbrirProgramado={(fila, titulo) => {
+            // La factura de un proveedor: su ficha (ahi se ve la factura para pagarla o borrarla).
+            if (fila.startsWith("prov:") && !/^(Tarjeta|Cr[eé]dito|Plan)/i.test(titulo)) return abrirFichaProveedor(titulo);
+            if (/^Tarjeta/i.test(titulo)) return setActiveTab("bancos" as TabKey);
+            setActiveTab("desendeudamiento" as TabKey);
+          }}
           soloLectura
     />
   );
@@ -20662,6 +20667,167 @@ Escribi CERRAR para confirmar:`
                   </span>
                 )}
               </button>
+              <div style={{ display: "grid", gap: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,0.12)", color: "#ffffff" }}>
+
+          <div style={styles.communicationSection}>
+            <button
+              type="button"
+              style={{
+                ...styles.communicationSectionButton,
+                justifyContent: isSidebarExpanded ? "space-between" : "center",
+                padding: isSidebarExpanded ? "12px 14px" : "12px 10px",
+              }}
+              onClick={() => setNotificationsOpen((prev) => !prev)}
+            >
+              <span>{isSidebarExpanded ? "🔔 Notificaciones" : "🔔"}</span>
+              {unreadNotificationCount > 0 && (
+                <span style={styles.workspaceWidgetBadge}>{unreadNotificationCount}</span>
+              )}
+              </button>
+              {isSidebarExpanded && notificationsOpen && (
+                <div style={styles.communicationCard}>
+                  <div style={styles.workspaceWidgetTitle}>Cambios del sistema</div>
+                  <div style={styles.chatStatus}>
+                    Solo avisos de cambios guardados en el sistema compartido.
+                  </div>
+                  <div style={styles.notificationsList}>
+                    {notifications.length === 0 ? (
+                      <div style={styles.empty}>Todavia no hay notificaciones.</div>
+                    ) : (
+                      notifications.map((notification) => (
+                        <div
+                          key={`notification-${notification.id}`}
+                          style={{
+                            ...styles.notificationItem,
+                            ...(notification.read ? {} : styles.notificationItemUnread),
+                          }}
+                        >
+                          <div>{notification.text}</div>
+                          <div style={styles.chatTimestamp}>
+                            {formatDateTimeDisplay(notification.created_at)}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
+          <div style={styles.communicationSection}>
+            <button
+              type="button"
+              style={{
+                ...styles.communicationSectionButton,
+                justifyContent: isSidebarExpanded ? "space-between" : "center",
+                padding: isSidebarExpanded ? "12px 14px" : "12px 10px",
+              }}
+              onClick={() => {
+                setSelectedChatRecipientId(null);
+                setSelectedChatRecipientName("Canal general");
+                setWorkspaceWidgetMode("chat");
+                setWorkspaceWidgetOpen(true);
+              }}
+            >
+              <span>{isSidebarExpanded ? "💬 Chats" : "💬"}</span>
+              {(groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)) > 0 && (
+                <span style={styles.workspaceWidgetBadge}>
+                  {groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)}
+                  </span>
+                )}
+              </button>
+
+              {isSidebarExpanded && (
+                <div className="communication-contacts-list" style={styles.communicationContactsList}>
+                  <button
+                    type="button"
+                    style={{
+                      ...styles.chatContactBubble,
+                      ...(selectedChatRecipientId === null ? styles.chatContactBubbleActive : {}),
+                    }}
+                    onClick={() => {
+                      setSelectedChatRecipientId(null);
+                      setSelectedChatRecipientName("Canal general");
+                      void markGroupChatAsRead().then(() => {
+                        void loadSupabaseChatMessages();
+                      });
+                      setWorkspaceWidgetMode("chat");
+                      setWorkspaceWidgetOpen(true);
+                      setShowChatContacts(true);
+                    }}
+                    title="Canal general"
+                  >
+                    <span style={styles.chatContactAvatar}>GR</span>
+                    <span style={styles.chatContactLabel}>Canal general</span>
+                    {groupUnreadCount > 0 && (
+                      <span style={styles.chatContactUnread}>{groupUnreadCount}</span>
+                    )}
+                  </button>
+                  {chatPeers.length === 0 && (
+                    <div style={styles.chatContactGroupLabel}>No hay otros usuarios cargados.</div>
+                  )}
+                  {chatPeers.map((peer, index) => {
+                    const unreadCount = privateUnreadByUser[peer.user_id] || 0;
+                    const initials = (peer.full_name || peer.email || "U")
+                      .split(" ")
+                      .map((item) => item[0] || "")
+                      .join("")
+                      .slice(0, 2)
+                      .toUpperCase();
+                    // Encabezados de grupo: el primer conectado abre "Conectados ahora"; el primer
+                    // no-conectado abre "Directorio (todos)". chatPeers ya viene ordenado activos primero.
+                    const prev = chatPeers[index - 1];
+                    const showConnectedHeader = peer.isActive && (index === 0 || !prev.isActive);
+                    const showDirectoryHeader = !peer.isActive && (index === 0 || prev.isActive);
+                    return (
+                      <React.Fragment key={`peer-bubble-${peer.user_id}`}>
+                        {showConnectedHeader && (
+                          <div style={styles.chatContactGroupLabel}>🟢 Conectados ahora</div>
+                        )}
+                        {showDirectoryHeader && (
+                          <div style={styles.chatContactGroupLabel}>👥 Directorio (todos)</div>
+                        )}
+                        <button
+                          type="button"
+                          style={{
+                            ...styles.chatContactBubble,
+                            ...(selectedChatRecipientId === peer.user_id
+                              ? styles.chatContactBubbleActive
+                              : {}),
+                          }}
+                          onClick={() => {
+                            setSelectedChatRecipientId(peer.user_id);
+                            setSelectedChatRecipientName(peer.full_name || peer.email || "Usuario");
+                            void markChatThreadAsRead(peer.user_id).then(() => {
+                              void loadSupabaseChatMessages();
+                            });
+                            setWorkspaceWidgetMode("chat");
+                            setWorkspaceWidgetOpen(true);
+                            setShowChatContacts(true);
+                          }}
+                          title={
+                            (peer.full_name || peer.email || "Usuario") +
+                            (peer.isActive ? " · conectado" : "")
+                          }
+                        >
+                          <span style={{ position: "relative", display: "inline-flex" }}>
+                            <span style={styles.chatContactAvatar}>{initials}</span>
+                            {peer.isActive && <span style={styles.chatContactOnlineDot} />}
+                          </span>
+                          <span style={styles.chatContactLabel}>
+                            {peer.full_name || peer.email || "Usuario"}
+                          </span>
+                          {unreadCount > 0 && (
+                            <span style={styles.chatContactUnread}>{unreadCount}</span>
+                          )}
+                        </button>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+              </div>
             </div>
           )}
         </aside>
@@ -22233,182 +22399,8 @@ Escribi CERRAR para confirmar:`
 
         </div>
 
-        {isSupabaseLoggedIn && (
-        <aside
-          style={{
-            ...styles.communicationRail,
-            top: stickyHeaderHeight + 12,
-            minHeight: `calc(100vh - ${stickyHeaderHeight + 40}px)`,
-            width: isCommunicationExpanded ? 252 : 88,
-            background: workspaceTheme.sidebarGradient,
-          }}
-          onMouseEnter={() => setIsCommunicationExpanded(true)}
-          onMouseLeave={() => setIsCommunicationExpanded(false)}
-        >
-          <div style={styles.communicationRailTitle}>
-            {isCommunicationExpanded ? "💬" : "💬"}
-          </div>
-
-          <div style={styles.communicationSection}>
-            <button
-              type="button"
-              style={{
-                ...styles.communicationSectionButton,
-                justifyContent: isCommunicationExpanded ? "space-between" : "center",
-                padding: isCommunicationExpanded ? "12px 14px" : "12px 10px",
-              }}
-              onClick={() => setNotificationsOpen((prev) => !prev)}
-            >
-              <span>{isCommunicationExpanded ? "🔔 Notificaciones" : "🔔"}</span>
-              {unreadNotificationCount > 0 && (
-                <span style={styles.workspaceWidgetBadge}>{unreadNotificationCount}</span>
-              )}
-              </button>
-              {isCommunicationExpanded && notificationsOpen && (
-                <div style={styles.communicationCard}>
-                  <div style={styles.workspaceWidgetTitle}>Cambios del sistema</div>
-                  <div style={styles.chatStatus}>
-                    Solo avisos de cambios guardados en el sistema compartido.
-                  </div>
-                  <div style={styles.notificationsList}>
-                    {notifications.length === 0 ? (
-                      <div style={styles.empty}>Todavia no hay notificaciones.</div>
-                    ) : (
-                      notifications.map((notification) => (
-                        <div
-                          key={`notification-${notification.id}`}
-                          style={{
-                            ...styles.notificationItem,
-                            ...(notification.read ? {} : styles.notificationItemUnread),
-                          }}
-                        >
-                          <div>{notification.text}</div>
-                          <div style={styles.chatTimestamp}>
-                            {formatDateTimeDisplay(notification.created_at)}
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-          <div style={styles.communicationSection}>
-            <button
-              type="button"
-              style={{
-                ...styles.communicationSectionButton,
-                justifyContent: isCommunicationExpanded ? "space-between" : "center",
-                padding: isCommunicationExpanded ? "12px 14px" : "12px 10px",
-              }}
-              onClick={() => {
-                setSelectedChatRecipientId(null);
-                setSelectedChatRecipientName("Canal general");
-                setWorkspaceWidgetMode("chat");
-                setWorkspaceWidgetOpen(true);
-              }}
-            >
-              <span>{isCommunicationExpanded ? "💬 Chats" : "💬"}</span>
-              {(groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)) > 0 && (
-                <span style={styles.workspaceWidgetBadge}>
-                  {groupUnreadCount + Object.values(privateUnreadByUser).reduce((acc, value) => acc + value, 0)}
-                  </span>
-                )}
-              </button>
-
-              {isCommunicationExpanded && (
-                <div className="communication-contacts-list" style={styles.communicationContactsList}>
-                  <button
-                    type="button"
-                    style={{
-                      ...styles.chatContactBubble,
-                      ...(selectedChatRecipientId === null ? styles.chatContactBubbleActive : {}),
-                    }}
-                    onClick={() => {
-                      setSelectedChatRecipientId(null);
-                      setSelectedChatRecipientName("Canal general");
-                      void markGroupChatAsRead().then(() => {
-                        void loadSupabaseChatMessages();
-                      });
-                      setWorkspaceWidgetMode("chat");
-                      setWorkspaceWidgetOpen(true);
-                      setShowChatContacts(true);
-                    }}
-                    title="Canal general"
-                  >
-                    <span style={styles.chatContactAvatar}>GR</span>
-                    <span style={styles.chatContactLabel}>Canal general</span>
-                    {groupUnreadCount > 0 && (
-                      <span style={styles.chatContactUnread}>{groupUnreadCount}</span>
-                    )}
-                  </button>
-                  {chatPeers.length === 0 && (
-                    <div style={styles.chatContactGroupLabel}>No hay otros usuarios cargados.</div>
-                  )}
-                  {chatPeers.map((peer, index) => {
-                    const unreadCount = privateUnreadByUser[peer.user_id] || 0;
-                    const initials = (peer.full_name || peer.email || "U")
-                      .split(" ")
-                      .map((item) => item[0] || "")
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase();
-                    // Encabezados de grupo: el primer conectado abre "Conectados ahora"; el primer
-                    // no-conectado abre "Directorio (todos)". chatPeers ya viene ordenado activos primero.
-                    const prev = chatPeers[index - 1];
-                    const showConnectedHeader = peer.isActive && (index === 0 || !prev.isActive);
-                    const showDirectoryHeader = !peer.isActive && (index === 0 || prev.isActive);
-                    return (
-                      <React.Fragment key={`peer-bubble-${peer.user_id}`}>
-                        {showConnectedHeader && (
-                          <div style={styles.chatContactGroupLabel}>🟢 Conectados ahora</div>
-                        )}
-                        {showDirectoryHeader && (
-                          <div style={styles.chatContactGroupLabel}>👥 Directorio (todos)</div>
-                        )}
-                        <button
-                          type="button"
-                          style={{
-                            ...styles.chatContactBubble,
-                            ...(selectedChatRecipientId === peer.user_id
-                              ? styles.chatContactBubbleActive
-                              : {}),
-                          }}
-                          onClick={() => {
-                            setSelectedChatRecipientId(peer.user_id);
-                            setSelectedChatRecipientName(peer.full_name || peer.email || "Usuario");
-                            void markChatThreadAsRead(peer.user_id).then(() => {
-                              void loadSupabaseChatMessages();
-                            });
-                            setWorkspaceWidgetMode("chat");
-                            setWorkspaceWidgetOpen(true);
-                            setShowChatContacts(true);
-                          }}
-                          title={
-                            (peer.full_name || peer.email || "Usuario") +
-                            (peer.isActive ? " · conectado" : "")
-                          }
-                        >
-                          <span style={{ position: "relative", display: "inline-flex" }}>
-                            <span style={styles.chatContactAvatar}>{initials}</span>
-                            {peer.isActive && <span style={styles.chatContactOnlineDot} />}
-                          </span>
-                          <span style={styles.chatContactLabel}>
-                            {peer.full_name || peer.email || "Usuario"}
-                          </span>
-                          {unreadCount > 0 && (
-                            <span style={styles.chatContactUnread}>{unreadCount}</span>
-                          )}
-                        </button>
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </aside>
-        )}
+        {/* El chat interno y las notificaciones viven DEBAJO DEL MENU (Nicolas, 2026-10-20): se saco la
+            columna de la derecha para que la pantalla de trabajo quede mas ancha. */}
       </div>
 
       {isSupabaseLoggedIn && (

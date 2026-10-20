@@ -166,6 +166,7 @@ export function CalendarioAnualTab({
   cuentas = [],
   soloLectura = false,
   onAbrirOrigen,
+  onAbrirProgramado,
 }: {
   entries: Entry[];
   // PREVISION (hoy: los seguros). Lo que se VIENE, mes a mes: no es plata gastada, asi que entra por
@@ -243,6 +244,8 @@ export function CalendarioAnualTab({
   onOpenJob?: (jobId: number) => void;
   // Click derecho sobre un monto -> la ficha de donde salio (proveedor, persona, trabajo o solapa).
   onAbrirOrigen?: (entryId: string) => void;
+  // Click derecho sobre un pago programado (≈): la ficha donde se paga o se borra (proveedor, deuda...).
+  onAbrirProgramado?: (fila: string, titulo: string) => void;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
   // Proveedores y facturas de COMPRA del sistema: con esto un débito sin clasificar se vincula a
   // quién le pagamos y, si corresponde, a la factura que cancela.
@@ -3756,9 +3759,33 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 </>
               );
             })()}
-            {!picked && list.length === 0 && (
-              <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 8px" }}>Sin movimientos este día</div>
-            )}
+            {!picked && list.length === 0 && (() => {
+              // Un PAGO PROGRAMADO (≈) no es un movimiento: se dice que es y se abre su ficha (ahi se paga o se borra).
+              const fila = [`${cellMenu.itemKey}|${cellMenu.label}`, cellMenu.itemKey, `custom:${cellMenu.sectionKey}:${cellMenu.label}`].find(
+                (k) => (prev.porDia.get(k)?.get(cellMenu.iso) || 0) > 0
+              );
+              if (!fila) return <div style={{ fontSize: 12, color: "#94a3b8", padding: "4px 8px" }}>Sin movimientos este día</div>;
+              const monto = prev.porDia.get(fila)?.get(cellMenu.iso) || 0;
+              const que = prev.detalle.get(`${fila}|${cellMenu.iso}`) || "";
+              return (
+                <>
+                  <div style={{ fontSize: 11.5, color: "#5b21b6", padding: "4px 8px", lineHeight: 1.4 }}>
+                    Pago programado ≈ {money(monto)}{que ? ` · ${que}` : ""}. Todavía no se pagó: no suma.
+                  </div>
+                  {onAbrirProgramado && (
+                    <button
+                      style={{ ...quickMenuItem, fontWeight: 700 }}
+                      onClick={() => {
+                        onAbrirProgramado(fila, cellMenu.label);
+                        close();
+                      }}
+                    >
+                      Abrir la ficha <span style={{ color: "#94a3b8", fontSize: 11 }}>(para pagarlo o borrarlo)</span>
+                    </button>
+                  )}
+                </>
+              );
+            })()}
             {/* Más de un movimiento en el mismo número: primero se elige cuál. */}
             {!picked &&
               list.map((e) => (

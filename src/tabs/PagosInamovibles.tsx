@@ -62,10 +62,11 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
     () => items.filter((i) => empresa === "__ALL__" || i.company === empresa),
     [items, empresa]
   );
-  // La lista: lo que esta sonando (vencido impago, hoy, proximo, en ventana) + todo lo del mes elegido.
+  // La lista: SOLO lo vencido sin pagar (Nicolas, 2026-10-20: "quiero que sirva para ver algo pendiente de
+  // pago y que se deberia haber pagado"). Lo que viene se ve en el almanaque.
   const lista = useMemo(
-    () => filtrados.filter((i) => i.alerta || i.fechaLimite.startsWith(mes)),
-    [filtrados, mes]
+    () => filtrados.filter((i) => i.estado === "vencido" && !i.pagado).sort((a, b) => a.fechaLimite.localeCompare(b.fechaLimite)),
+    [filtrados]
   );
   const alertas = filtrados.filter((i) => i.alerta);
   const porDia = useMemo(() => {
@@ -145,8 +146,8 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
         </span>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(320px, 1fr) minmax(360px, 1.4fr)", gap: 14, alignItems: "start" }}>
-        {/* Almanaque del mes */}
+      <div style={{ display: "grid", gap: 14, alignItems: "start" }}>
+        {/* Almanaque del mes: a todo el ancho */}
         <div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
             {DIAS.map((d) => (
@@ -163,7 +164,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                 <div
                   key={isoDia}
                   style={{
-                    minHeight: 54,
+                    minHeight: 96,
                     border: esHoy ? "2px solid #0f172a" : "1px solid #e2e8f0",
                     borderRadius: 6,
                     padding: 3,
@@ -179,8 +180,8 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                         title={`${i.titulo} · ${money(i.monto, i.currency)} · ${i.texto}`}
                         onContextMenu={(ev) => abrirMenu(ev, i)}
                         style={{
-                          fontSize: 10,
-                          lineHeight: 1.25,
+                          fontSize: 11.5,
+                          lineHeight: 1.3,
                           background: c.bg,
                           color: c.fg,
                           borderLeft: `3px solid ${meta(i.company)?.primary || c.fg}`,
@@ -195,6 +196,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                         }}
                       >
                         {i.titulo}
+                        {i.monto > 0 && <span style={{ fontWeight: 700 }}> · {money(i.monto, i.currency)}</span>}
                       </div>
                     );
                   })}
@@ -204,8 +206,12 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
           </div>
         </div>
 
-        {/* Agenda: lo que suena + el mes */}
+        {/* VENCIDOS SIN PAGAR: lo que se tendria que haber pagado. Sin nada vencido, no hay lista. */}
+        {lista.length > 0 && (
         <div style={{ ...styles.calendarScroll, maxHeight: 420 }}>
+          <div style={{ fontWeight: 800, color: "#b91c1c", margin: "2px 0 6px" }}>
+            ⚠ Vencidos sin pagar ({lista.length}) · {money(lista.filter((i) => i.currency !== "USD").reduce((a, i) => a + i.monto, 0))}
+          </div>
           <table className="planilla" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead>
               <tr>
@@ -219,7 +225,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
               {lista.length === 0 ? (
                 <tr>
                   <td colSpan={4} style={{ padding: 8, color: "#94a3b8" }}>
-                    No hay pagos programados en {MESES[mo - 1].toLowerCase()} ni avisos pendientes.
+                    No hay pagos vencidos sin pagar.
                   </td>
                 </tr>
               ) : (
@@ -279,6 +285,10 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
             </tbody>
           </table>
         </div>
+        )}
+        {lista.length === 0 && (
+          <div style={{ fontSize: 13, color: "#166534", fontWeight: 700 }}>✓ No hay pagos vencidos sin pagar.</div>
+        )}
       </div>
 
       {menu && (

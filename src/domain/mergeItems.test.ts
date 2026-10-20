@@ -35,10 +35,10 @@ describe("mergeItemsById", () => {
     expect(merged.map((i) => i.id).sort()).toEqual([1, 2]);
   });
 
-  it("si nosotros mantenemos un item y otro lo borro, sobrevive nuestra version (no se pierde dato)", () => {
-    // baseline [A,B]; nosotros seguimos con B; la DB ya no tiene B (otro lo borro).
+  it("si otro lo borro y nosotros no lo tocamos, queda borrado (2026-10-20: lo borrado volvia)", () => {
+    // baseline [A,B]; nosotros seguimos con B sin cambios; la DB ya no tiene B (otro lo borro).
     const merged = mergeItemsById([A, B], [A, B], [A]);
-    expect(merged.map((i) => i.id).sort()).toEqual([1, 2]);
+    expect(merged.map((i) => i.id).sort()).toEqual([1]);
   });
 
   it("items sin id: los nuestros se mantienen, los ajenos sin id se ignoran", () => {
@@ -137,5 +137,21 @@ describe("caso real: la sesion vieja normalizo el trabajo al cargarlo", () => {
     expect(m.invoices).toEqual([{ id: 381, total: 2023953.91 }]);
     expect(m.payments).toEqual([{ id: 1, amount: 100 }]);
     expect(m.sourceType).toBe("from_budget");
+  });
+});
+
+describe("lo borrado por otra sesion no vuelve (2026-10-20)", () => {
+  const pago = { id: 7, supplier: "DAC", amount: 2000000 };
+  const otro = { id: 8, supplier: "X", amount: 10 };
+  it("una sesion vieja que no toco el pago no lo vuelve a escribir", () => {
+    expect(mergeItemsById([pago, otro], [pago, otro], [otro])).toEqual([otro]);
+  });
+  it("si la sesion vieja lo edito despues, se conserva", () => {
+    const editado = { ...pago, amount: 1 };
+    expect(mergeItemsById([pago, otro], [editado, otro], [otro])).toEqual([editado, otro]);
+  });
+  it("una lista de la DB vacia o que no vino no cuenta como borrado", () => {
+    expect(mergeItemsById([pago], [pago], [])).toEqual([pago]);
+    expect(mergeModuleSlice(["costEntries"], { costEntries: [pago] }, { costEntries: [pago] }, {})).toEqual({ costEntries: [pago] });
   });
 });

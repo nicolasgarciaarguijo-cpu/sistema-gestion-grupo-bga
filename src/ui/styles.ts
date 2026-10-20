@@ -36,7 +36,8 @@ export const styles: Record<string, CSSProperties> = {
   },
   workspaceShell: {
     display: "grid",
-    gridTemplateColumns: "auto minmax(0, 1fr) auto",
+    // Menu (con el chat abajo) + la pantalla de trabajo. Ya no hay columna de comunicacion a la derecha.
+    gridTemplateColumns: "auto minmax(0, 1fr)",
     gap: 14,
     alignItems: "start",
   },
@@ -976,7 +977,7 @@ export const styles: Record<string, CSSProperties> = {
     display: "grid",
     gap: 8,
     paddingRight: 0,
-    maxHeight: "calc(100vh - 220px)",
+    maxHeight: "45vh",
     overflowY: "auto",
     overflowX: "hidden",
     scrollbarWidth: "none",

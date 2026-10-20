@@ -64,7 +64,9 @@ export function mergeItemsById<T extends WithId>(
   baseline: readonly T[],
   ours: readonly T[],
   theirs: readonly T[],
-  idKey: string = "id"
+  idKey: string = "id",
+  // false = el campo no vino en la fila de la DB (no se puede saber que borro otro).
+  theirsLeida: boolean = true
 ): T[] {
   const baselineIds = new Set(baseline.map((it) => idOf(it, idKey)));
   const ourIds = new Set(ours.map((it) => idOf(it, idKey)));
@@ -85,6 +87,11 @@ export function mergeItemsById<T extends WithId>(
     //  - nosotros no lo tocamos (ours == base) y en la DB cambio -> manda la DB. Es el caso de una
     //    sesion vieja abierta en otra maquina: ya no pisa lo que cargo otro.
     //  - cambiamos los dos -> se fusiona campo por campo (y facturas/pagos/adicionales, por id).
+    // Lo BORRO otra sesion: estaba en la base, ya no esta en la DB y nosotros no lo tocamos. Una sesion
+    // vieja abierta en otra maquina lo volvia a escribir (Nicolas, 2026-10-20: "lo borre y sigue
+    // figurando"). Si lo cambiamos nosotros despues, se conserva (no se pierde una edicion).
+    // Solo con la lista de la DB a la vista y no vacia: una lista que falta o viene vacia no es un borrado.
+    if (b && !t && id != null && theirsLeida && theirs.length > 0 && sameContent(it, b)) continue;
     let elegido: T = it;
     if (b && t && !sameContent(t, b)) {
       if (sameContent(it, b)) elegido = t;
@@ -120,7 +127,7 @@ export function mergeModuleSlice(
     // Solo fusiona si alguno de los dos trae el campo como array (evita crear/pisar por omision).
     if (oursArr || theirsArr) {
       const baseArr = Array.isArray(baseline[field]) ? (baseline[field] as WithId[]) : [];
-      out[field] = mergeItemsById(baseArr, oursArr || [], theirsArr || []);
+      out[field] = mergeItemsById(baseArr, oursArr || [], theirsArr || [], "id", !!theirsArr);
     }
   }
   return out;

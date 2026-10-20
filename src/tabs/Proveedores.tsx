@@ -243,7 +243,7 @@ export function ProveedoresPanel({
               value={buscar}
               onChange={(e) => setBuscar(e.target.value)}
             />
-            <span style={{ fontSize: 12, color: "#64748b" }}>Click en un proveedor: su ficha · ✎ Editar: corregir sus datos · click derecho: más opciones · click derecho en el espacio vacío: agregar.</span>
+            <span style={{ fontSize: 12, color: "#64748b" }}>Click en un proveedor: su ficha · ✎ Editar: corregir sus datos · Quitar: sacarlo del listado · click derecho: más opciones · click derecho en el espacio vacío: agregar.</span>
           </div>
           {lista.length === 0 ? (
             <div style={{ fontSize: 13, color: "#64748b", padding: "10px 0" }}>
@@ -301,6 +301,17 @@ export function ProveedoresPanel({
                             style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#334155" }}
                           >
                             ✎ Editar
+                          </button>{" "}
+                          <button
+                            type="button"
+                            title="Sacar al proveedor del listado (sus facturas y pagos quedan cargados)"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              if (window.confirm(`¿Quitar a ${p.name} del listado? Sus facturas y pagos quedan cargados.`)) onQuitar(p.id);
+                            }}
+                            style={{ border: "1px solid #fecaca", background: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer", color: "#b91c1c" }}
+                          >
+                            Quitar
                           </button>
                         </td>
                       </tr>

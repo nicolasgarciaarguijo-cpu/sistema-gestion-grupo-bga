@@ -16,6 +16,41 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-20b",
+    fecha: "20/10/2026",
+    titulo: "Más pantalla, vencidos a la vista y borrar que no vuelva",
+    items: [
+      {
+        titulo: "El chat, debajo del menú",
+        que: "El chat interno y las notificaciones pasaron abajo del menú de la izquierda. Se sacó la columna de la derecha: la pantalla de trabajo queda más ancha.",
+        como: "Pasá el mouse por el menú: abajo están 🔔 Notificaciones y 💬 Chats con los contactos.",
+      },
+      {
+        titulo: "Pagos programados: el almanaque grande y solo los vencidos",
+        que: "El almanaque ocupa todo el ancho y cada pago muestra su monto. La lista de abajo ahora es solo de lo VENCIDO sin pagar; si no hay nada vencido, no aparece.",
+        como: "Calendario anual → Pagos programados.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Lo que se borra queda borrado",
+        que: "Si alguien tenía el sistema abierto desde antes (otra máquina o una pestaña vieja), al guardar podía volver a escribir algo que ya se había borrado. Ya no pasa.",
+        como: "Si algo que borraste volvió a aparecer, borralo de nuevo: ahora queda borrado.",
+      },
+      {
+        titulo: "Proveedores: botón Quitar",
+        que: "Cada proveedor del listado tiene su botón Quitar al lado de ✎ Editar. Sus facturas y pagos quedan cargados.",
+        como: "Pago a proveedores → Proveedores → Quitar.",
+        tab: "costos",
+      },
+      {
+        titulo: "Click derecho sobre un pago programado",
+        que: "En el cash flow, el click derecho sobre un '≈' dice qué pago es y abre su ficha (el proveedor con la factura, o la deuda), para pagarlo o borrarlo.",
+        como: "Click derecho sobre el ≈ → 'Abrir la ficha'.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-20",
     fecha: "20/10/2026",
     titulo: "Cash flow solo con lo vinculado, varios pagos por factura y Excel para el estudio",
