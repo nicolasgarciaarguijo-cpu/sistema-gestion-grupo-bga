@@ -125,3 +125,10 @@ export function financieroAlimentaCashFlow(item: FinancieroParaCashFlow): boolea
   if (item.sourceJobId != null) return true;
   return item.origen === "facturacion";
 }
+
+// EL BANCO YA NO ALIMENTA EL CASH FLOW (Nicolas, 2026-10-20: "el banco de antes del 29/08 tambien se va").
+// Tampoco en el ejercicio de puesta al dia: el extracto solo corrobora. Se usa como fecha de corte en
+// las dos reglas de arriba, asi el cash flow queda en modo CORROBORA para cualquier fecha: el movimiento
+// del banco no suma y cada pago cargado en su solapa suma siempre (aunque haya salido por el banco),
+// sin contar el mismo peso dos veces. bankLoadsUntil sigue valiendo para los saldos de las cuentas.
+export const CASHFLOW_BANCO_CARGA_HASTA = "0000-00-00";

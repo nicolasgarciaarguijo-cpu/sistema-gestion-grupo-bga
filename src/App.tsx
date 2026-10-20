@@ -35,6 +35,7 @@ import {
   repartoDelFondo,
   movimientoBancarioAlimenta,
   financieroAlimentaCashFlow,
+  CASHFLOW_BANCO_CARGA_HASTA,
 } from "./domain/calendarFeeds";
 import {
   computeSupplierLedgers,
@@ -14941,7 +14942,8 @@ Escribi CERRAR para confirmar:`
       // Ya vino por el banco: importado del extracto, o conciliado contra un débito, o pagado por un
       // medio que pasa por la cuenta (transferencia, cheque, débito). La regla, con tests, vive en
       // domain/calendarFeeds.ts: es lo que impide contar el mismo peso dos veces.
-      if (!pagoAlimentaCalendario(item, item.date, bankLoadsUntil)) return;
+      // Desde el 2026-10-20 el banco no alimenta el cash flow en ninguna fecha: todo pago cargado suma.
+      if (!pagoAlimentaCalendario(item, item.date, CASHFLOW_BANCO_CARGA_HASTA)) return;
       const comoSePago = item.paymentMethod
         ? PAYMENT_METHOD_OPTIONS.find((o) => o.value === item.paymentMethod)?.label || item.paymentMethod
         : "(D) falta cómo se pagó";
@@ -15026,7 +15028,8 @@ Escribi CERRAR para confirmar:`
       // EL BANCO CORROBORA, NO CARGA. Pasado el ejercicio de puesta al dia, el movimiento del extracto
       // NO suma al calendario: esa plata ya esta cargada a mano. El extracto sigue estando para
       // verificar que asi sea (solapa Costos, bloque del banco). Ver domain/calendarFeeds.ts.
-      if (!movimientoBancarioAlimenta(item.date, bankLoadsUntil)) return;
+      // Y desde el 2026-10-20 tampoco antes del 29/08: el extracto solo corrobora (ver CASHFLOW_BANCO_CARGA_HASTA).
+      if (!movimientoBancarioAlimenta(item.date, CASHFLOW_BANCO_CARGA_HASTA)) return;
       // Si el movimiento se asignó a la cobranza de un trabajo, el título es ppto·cliente (así se agrupa
       // en Cobranzas junto al resto del trabajo); si no, el título crudo del banco.
       const bankRawTitle = `${item.bank || "Banco"} · ${item.concept || "Movimiento"}`;

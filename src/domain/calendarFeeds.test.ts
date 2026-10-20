@@ -5,6 +5,7 @@ import {
   modoDelBanco,
   movimientoBancarioAlimenta,
   financieroAlimentaCashFlow,
+  CASHFLOW_BANCO_CARGA_HASTA,
 } from "./calendarFeeds";
 import { monthlyBlackPay } from "./payroll";
 
@@ -162,5 +163,13 @@ describe("financieroAlimentaCashFlow", () => {
   });
   it("lo cargado en la solapa Facturacion y cobranzas se ve", () => {
     expect(financieroAlimentaCashFlow({ origen: "facturacion" })).toBe(true);
+  });
+});
+
+describe("el banco ya no alimenta el cash flow (2026-10-20)", () => {
+  it("con el corte del cash flow, ningun movimiento del banco suma y el pago por banco si", () => {
+    expect(movimientoBancarioAlimenta("2026-05-10", CASHFLOW_BANCO_CARGA_HASTA)).toBe(false);
+    expect(pagoAlimentaCalendario({ paymentMethod: "transferencia", bankEntryId: 4 }, "2026-05-10", CASHFLOW_BANCO_CARGA_HASTA)).toBe(true);
+    expect(pagoAlimentaCalendario({ source: "extracto" }, "2026-05-10", CASHFLOW_BANCO_CARGA_HASTA)).toBe(false);
   });
 });

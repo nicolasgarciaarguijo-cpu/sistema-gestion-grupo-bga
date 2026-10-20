@@ -22,7 +22,7 @@ export const NOVEDADES: TandaNovedades[] = [
     items: [
       {
         titulo: "El cash flow muestra solo lo cargado en las solapas",
-        que: "Lo cargado a mano en la planilla y lo importado de la planilla vieja (incluida la carga histórica) ya no se ve: queda guardado, pero no figura. Los renglones de la planilla vieja que no alimenta ninguna solapa tampoco aparecen.",
+        que: "Lo cargado a mano en la planilla y lo importado de la planilla vieja (incluida la carga histórica) ya no se ve: queda guardado, pero no figura. Los renglones de la planilla vieja que no alimenta ninguna solapa tampoco aparecen. El banco tampoco suma en ninguna fecha (ni antes del 29/08): el extracto solo corrobora, y cada pago cargado en su solapa suma aunque haya salido por el banco.",
         como: "Si falta algo en el cash flow, se carga en su solapa (Pago a proveedores, Haberes, Caja chica, Movimientos internos...).",
         tab: "calendarioAnual",
       },
