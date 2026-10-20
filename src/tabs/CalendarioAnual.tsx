@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { styles } from "../ui/styles";
 import { Panel, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { todayIso } from "../lib/format";
+import { ResumenMovimientos, type FilaResumen } from "../ui/ResumenMovimientos";
 import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, allSectionsWith, esCobranzaReal, esSeccionPropia, extraRowsOf, sectionKeyFromLabel, type CalendarRowConfig } from "../domain/calendarStructure";
 import { suggestCalendarConcept } from "../domain/calendarBankRules";
 import { findSupplierInText } from "../domain/suppliers";
@@ -168,6 +169,7 @@ export function CalendarioAnualTab({
   onAbrirOrigen,
   onAbrirProgramado,
   arrancaPlegado = false,
+  movimientosCuentas = [],
 }: {
   entries: Entry[];
   // PREVISION (hoy: los seguros). Lo que se VIENE, mes a mes: no es plata gastada, asi que entra por
@@ -193,6 +195,7 @@ export function CalendarioAnualTab({
     titulo?: string;
     estado?: string;
     administration?: "blanco" | "negro";
+    cuentaId?: string; // de que cuenta sale (si se eligio)
   }>;
   // Ver SOLO una seccion de la planilla (ej. "cobranzas" para el reflejo en Facturacion y cobranzas).
   // Es el MISMO componente con los mismos datos y los mismos handlers: por eso las dos vistas quedan
@@ -238,6 +241,7 @@ export function CalendarioAnualTab({
     jobId: number; paymentId: number; budgetNumber: string; client: string; company: string;
     date: string; amount: number; currency: "ARS" | "USD"; estado: "estimado" | "inamovible";
     administration?: "blanco" | "negro";
+    cuentaId?: string; // a que cuenta entra (si se eligio)
   }>;
   onSetCobroEstado?: (jobId: number, paymentId: number, estado: "realizado" | "estimado" | "inamovible", fecha?: string) => void;
   // Fijo / variable del TIPO DE GASTO (renglon), con candado: todos sus pagos quedan asi.
@@ -251,6 +255,8 @@ export function CalendarioAnualTab({
   onAbrirProgramado?: (fila: string, titulo: string) => void;
   // Arrancar con todas las secciones minimizadas (la planilla del sistema).
   arrancaPlegado?: boolean;
+  // Movimientos de cada cuenta (bancos, efectivo, cajas): para el resumen de la plata disponible.
+  movimientosCuentas?: Array<{ cuentaId: string; date: string; amount: number; origen: string; detalle: string; refId: string }>;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
   // Proveedores y facturas de COMPRA del sistema: con esto un débito sin clasificar se vincula a
   // quién le pagamos y, si corresponde, a la factura que cancela.
@@ -809,8 +815,18 @@ export function CalendarioAnualTab({
     const incN = new Map<string, number>();
     const egrB = new Map<string, number>();
     const egrN = new Map<string, number>();
-    const porEmpresa = new Map<string, Array<{ date: string; monto: number; negro: boolean }>>(); // con signo
+    const porEmpresa = new Map<string, Array<{ date: string; monto: number; destino: string }>>(); // con signo
     const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) || 0) + v);
+    // La fila de la plata disponible donde pega: el banco elegido (por nombre), o el efectivo de su color.
+    // Sin cuenta elegida: lo blanco al banco principal de la empresa y lo negro al efectivo negro.
+    const destinoDe = (company: string, negro: boolean, cuentaId?: string) => {
+      const c = cuentaId ? cuentas.find((x) => x.id === cuentaId) : undefined;
+      if (c) return c.tipo === "banco" ? `banco:${c.banco || c.nombre}` : c.color === "negro" ? "efectivoNegro" : "efectivoBlanco";
+      if (negro) return "efectivoNegro";
+      const bancos = cuentas.filter((x) => x.tipo === "banco" && x.company === company && x.moneda === "ARS" && x.activa !== false);
+      const principal = bancos.find((x) => x.principal) || bancos.sort((a, b) => a.nombre.localeCompare(b.nombre))[0];
+      return principal ? `banco:${principal.banco || principal.nombre}` : "banco:";
+    };
     const seccionDe = (ck: string) => {
       const pv = parseRenglonProveedor(ck);
       if (pv) return pv.seccion as string;
@@ -831,7 +847,7 @@ export function CalendarioAnualTab({
       if (!porSeccion.has(sec)) porSeccion.set(sec, new Map());
       add(porSeccion.get(sec)!, p.date, -monto);
       add(negro ? egrN : egrB, p.date, monto);
-      porEmpresa.set(p.company, [...(porEmpresa.get(p.company) || []), { date: p.date, monto: -monto, negro }]);
+      porEmpresa.set(p.company, [...(porEmpresa.get(p.company) || []), { date: p.date, monto: -monto, destino: destinoDe(p.company, negro, p.cuentaId) }]);
     });
     // Cobros previstos de los trabajos (en pesos).
     (cobrosPrevistos || []).forEach((c) => {
@@ -842,17 +858,17 @@ export function CalendarioAnualTab({
       if (!porSeccion.has("cobranzas")) porSeccion.set("cobranzas", new Map());
       add(porSeccion.get("cobranzas")!, c.date, monto);
       add(negro ? incN : incB, c.date, monto);
-      porEmpresa.set(c.company, [...(porEmpresa.get(c.company) || []), { date: c.date, monto, negro }]);
+      porEmpresa.set(c.company, [...(porEmpresa.get(c.company) || []), { date: c.date, monto, destino: destinoDe(c.company, negro, c.cuentaId) }]);
     });
     return { porSeccion, incB, incN, egrB, egrN, porEmpresa };
-  }, [previsiones, cobrosPrevistos, companyScope, dayCols, prev]);
+  }, [previsiones, cobrosPrevistos, companyScope, dayCols, prev, cuentas]);
 
   // Lo programado que ya habria impactado la plata disponible de una empresa al cierre del dia `iso`:
   // desde hoy, todo lo pendiente con fecha hasta ese dia (lo vencido sin pagar se toma como de hoy).
   const hoyCal = todayIso();
-  const impactoAcumulado = (company: string, iso: string, negro: boolean) => {
+  const impactoAcumulado = (company: string, iso: string, destino: string) => {
     if (iso < hoyCal) return 0;
-    return (estim.porEmpresa.get(company) || []).reduce((a, x) => (x.negro === negro && x.date <= iso ? a + x.monto : a), 0);
+    return (estim.porEmpresa.get(company) || []).reduce((a, x) => (x.destino === destino && x.date <= iso ? a + x.monto : a), 0);
   };
 
   // La celda con SUMA ESTIMADA: el numero real tachado en violeta y debajo, en violeta, como quedaria con
@@ -1467,6 +1483,10 @@ export function CalendarioAnualTab({
   };
 
   const [cellMenu, setCellMenu] = useState<CellMenu | null>(null);
+  // RESUMEN de movimientos del mes hasta el dia tocado (click derecho sobre un monto).
+  const [resumen, setResumen] = useState<null | { titulo: string; subtitulo?: string; saldoInicial?: number; filas: FilaResumen[] }>(null);
+  // Que es cada fila de la plata disponible (empresa, banco / efectivo): se llena al dibujarla.
+  const filasBilletera = useRef(new Map<string, { company: string; campo: string; cuenta?: string; short: string; sub: string }>());
   const openCellMenu = (
     ev: React.MouseEvent,
     label: string,
@@ -1485,6 +1505,52 @@ export function CalendarioAnualTab({
       (e) => e.date === m.iso && (companyScope === "__ALL__" || e.company === companyScope) && m.match(e)
     );
   const sameTitle = (e: Entry, title: string) => (e.title || "—").trim() === title.trim();
+  const nombreMes = (iso: string) => new Date(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, 1).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
+  // Los movimientos del renglon desde el 1 del mes hasta el dia tocado, con el acumulado.
+  const abrirResumen = (m: CellMenu) => {
+    const desde = `${m.iso.slice(0, 7)}-01`;
+    const fila = filasBilletera.current.get(m.itemKey);
+    if (m.sectionKey === "billetera" && fila) {
+      // PLATA DISPONIBLE: los movimientos de la(s) cuenta(s) de esa fila y el saldo con el que arranco el mes.
+      const ids = new Set(
+        cuentas
+          .filter((c) => c.company === fila.company && c.moneda === "ARS")
+          .filter((c) =>
+            fila.campo === "banco"
+              ? c.tipo === "banco" && (!fila.cuenta || (c.banco || c.nombre) === fila.cuenta)
+              : c.tipo !== "banco" && c.color === (fila.campo === "efectivoNegro" ? "negro" : "blanco")
+          )
+          .map((c) => c.id)
+      );
+      const movs = movimientosCuentas.filter((x) => ids.has(x.cuentaId) && x.date >= desde && x.date <= m.iso);
+      const emp = (billeteraDiaria || []).find((e) => e.company === fila.company);
+      const dia = emp?.byDay[m.iso];
+      const saldoDia = !dia ? 0 : fila.campo === "banco" ? (fila.cuenta ? dia.bancos?.find((b) => b.bank === fila.cuenta)?.saldo || 0 : dia.banco) : (dia as any)[fila.campo] || 0;
+      const movido = movs.reduce((a, x) => a + x.amount, 0);
+      setResumen({
+        titulo: `${fila.short} · ${fila.sub}`,
+        subtitulo: `Movimientos de ${nombreMes(m.iso)} hasta el ${m.iso.slice(8, 10)}/${m.iso.slice(5, 7)}`,
+        saldoInicial: saldoDia - movido,
+        filas: movs.map((x) => ({ fecha: x.date, detalle: x.detalle, origen: x.origen, monto: x.amount })),
+      });
+      return;
+    }
+    const lista = entries.filter(
+      (e) => e.date >= desde && e.date <= m.iso && (companyScope === "__ALL__" || e.company === companyScope) && m.match(e)
+    );
+    setResumen({
+      titulo: m.label,
+      subtitulo: `Movimientos de ${nombreMes(m.iso)} hasta el ${m.iso.slice(8, 10)}/${m.iso.slice(5, 7)} · se corrigen en su solapa`,
+      filas: lista.map((e) => ({
+        fecha: e.date,
+        detalle: e.title,
+        origen: dondeSeEdita(e.id),
+        empresa: companyMeta.get(e.company)?.short || e.company,
+        monto: Number(e.amount || 0),
+        abrir: onAbrirOrigen ? () => { setResumen(null); onAbrirOrigen(e.id); } : undefined,
+      })),
+    });
+  };
   const isCobranzaEntry = (e: Entry) => e.kind === "cobranza" || e.conceptKey === "cobranzas";
 
   // Abre el modal con los datos del movimiento cargados (mismo formulario que para cargar).
@@ -2141,6 +2207,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
 
   return (
     <div style={styles.column}>
+      {resumen && <ResumenMovimientos {...resumen} money={(n) => money(n)} onCerrar={() => setResumen(null)} />}
       <Panel
         title="Calendario anual · la planilla de cash flow"
         abierto
@@ -2501,13 +2568,13 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                 const v = cuenta
                                   ? dia?.bancos?.find((b) => b.bank === cuenta)?.saldo || 0
                                   : dia?.[linea.campo] || 0;
-                                // Lo programado blanco pega en el primer banco; lo negro, en el efectivo negro.
+                                // Lo programado pega en la cuenta elegida (o la de por defecto). Sin bancos
+                                // cargados, lo blanco de banco va a la unica fila "Banco".
+                                const destinoFila = linea.campo === "banco" ? `banco:${cuentas.length ? cuenta : ""}` : linea.campo;
                                 const delta =
-                                  linea.campo === "banco" && cuenta === filasBanco[0]?.cuenta
-                                    ? impactoAcumulado(emp.company, c.iso, false)
-                                    : linea.campo === "efectivoNegro"
-                                      ? impactoAcumulado(emp.company, c.iso, true)
-                                      : 0;
+                                  impactoAcumulado(emp.company, c.iso, destinoFila) +
+                                  (linea.campo === "banco" && cuenta === filasBanco[0]?.cuenta && destinoFila !== "banco:" ? impactoAcumulado(emp.company, c.iso, "banco:") : 0);
+                                filasBilletera.current.set(kp, { company: emp.company, campo: linea.campo, cuenta, short: emp.short, sub: linea.sub });
                                 return (
                                   <td
                                     key={`${kp}-${c.iso}`}
@@ -3890,6 +3957,15 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 </>
               );
             })()}
+            <button
+              style={{ ...quickMenuItem, fontWeight: 700 }}
+              onClick={() => {
+                abrirResumen(cellMenu);
+                close();
+              }}
+            >
+              📋 Movimientos del mes hasta este día
+            </button>
             {onSetMark && (() => {
               const k = flagKey(cellMenu.sectionKey, cellMenu.itemKey, cellMenu.iso);
               const actual = markMap.get(k) || "";

@@ -29,7 +29,13 @@ export const NOVEDADES: TandaNovedades[] = [
       {
         titulo: "Suma estimada en violeta en el cash flow",
         que: "Donde un cobro o pago programado impacta (total de la sección, total de ingresos y egresos, neto del día y la plata disponible de esa empresa), el número real queda tachado en violeta y debajo aparece, en violeta, cómo quedaría con lo programado. En la plata disponible el efecto se arrastra desde el día del cobro o pago en adelante: lo blanco en el primer banco, lo negro en el efectivo negro. Es una estimación: el real no cambia.",
-        como: "Pasá el mouse por el número violeta para ver cuánto suma o resta lo programado.",
+        como: "Pasá el mouse por el número violeta para ver cuánto suma o resta lo programado. Lo programado pega en la cuenta elegida: en el cobro ('A qué cuenta entró') y en la factura ('Sale de'); si no se eligió, lo blanco va al banco principal y lo negro al efectivo negro.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Movimientos del mes detrás de cada número",
+        que: "Click derecho sobre cualquier monto del cash flow → '📋 Movimientos del mes hasta este día': cada movimiento del 1 del mes hasta ese día, con el acumulado (en la plata disponible, con el saldo del principio del mes y cómo fue cambiando). Lo mismo tocando un banco o el efectivo en el tablero de Plata disponible de arriba.",
+        como: "Desde el listado, 'Abrir' lleva a donde se cargó cada movimiento.",
         tab: "calendarioAnual",
       },
     ],

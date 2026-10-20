@@ -32,6 +32,7 @@ export type PrevisionDeRenglon = {
   estado: string;
   descripcion: string;
   administration: "blanco" | "negro";
+  cuentaId?: string;
 };
 
 const FINANCIEROS = renglonProveedor(SECCION_PROVEEDORES, SECCIONES_REEMPLAZADAS.bancos);
@@ -40,13 +41,13 @@ const ES_IMPUESTO = /\b(iva|ccss|afip|arca|ganancias|cargas sociales|seg(uridad)
 export function programadosEnRenglones(
   items: ProgramadoParaRenglon[],
   // La fila de una factura de proveedor: su renglon (prov:<seccion>:<grupo>) y el nombre del proveedor.
-  filaDeFactura: (refId: number | string) => { conceptKey: string; titulo: string } | null
+  filaDeFactura: (refId: number | string) => { conceptKey: string; titulo: string; cuentaId?: string } | null
 ): PrevisionDeRenglon[] {
   const out: PrevisionDeRenglon[] = [];
   items.forEach((i) => {
     // Pagado: ya esta el pago real. En dolares: la planilla de pesos no lo suma (se ve en su ficha).
     if (i.estado === "pagado" || i.currency === "USD" || !(Number(i.monto) > 0) || !i.fechaLimite) return;
-    let fila: { conceptKey: string; titulo?: string } | null = null;
+    let fila: { conceptKey: string; titulo?: string; cuentaId?: string } | null = null;
     if (i.origen === "factura") fila = filaDeFactura(i.refId);
     else if (i.origen === "tarjeta") fila = { conceptKey: FINANCIEROS, titulo: i.titulo };
     else if (i.origen === "deuda")

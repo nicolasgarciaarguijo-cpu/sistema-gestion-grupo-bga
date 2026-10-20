@@ -626,6 +626,8 @@ export type PurchaseInvoice = {
   vatRate?: number;
   otrosImpuestos?: number;
   iibb?: number;
+  // De que cuenta se va a pagar lo que falta (banco o efectivo): para la suma estimada del cash flow.
+  cuentaPrevista?: string;
 };
 
 // VIATICO EVENTUAL: anticipo a una persona por un viaje o un trabajo (solapa Caja chica y viaticos).

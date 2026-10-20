@@ -59,7 +59,7 @@ export type FacturaForm = {
   notes: string;
   pagos: PagoFactura[];
   // Lo que falta pagar: para cuando y con que estado (Pagos programados).
-  saldo: { fechaPrevista?: string; estadoPrevisto: "programado" | "estimado" | "inamovible" };
+  saldo: { fechaPrevista?: string; estadoPrevisto: "programado" | "estimado" | "inamovible"; cuentaId?: string };
   porBanco?: string; // solo lectura: "pagada por un debito del banco"
   // MATERIAL (Fase 5): los remitos de recepcion que respaldan esta factura (el stock ya entro con
   // ellos) o, si no vino remito, cargar sus renglones como recepcion al guardar.
@@ -491,6 +491,17 @@ export function FacturaCompraModal({
                   <option value="programado">Programado</option>
                   <option value="estimado">Estimado</option>
                   <option value="inamovible">Inamovible</option>
+                </select>
+              </label>
+              <label style={lbl} title="Para la suma estimada del cash flow: de qué banco o efectivo va a salir">
+                Sale de
+                <select style={input} value={f.saldo.cuentaId || ""} onChange={(e) => setF((x) => ({ ...x, saldo: { ...x.saldo, cuentaId: e.target.value || undefined } }))}>
+                  <option value="">{f.administration === "negro" ? "Efectivo negro" : "Banco principal"}</option>
+                  {cuentas
+                    .filter((c) => c.company === f.company && c.activa !== false && (!c.moneda || c.moneda === "ARS"))
+                    .map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
                 </select>
               </label>
               <div style={{ fontSize: 11.5, color: "#64748b", alignSelf: "end" }}>Con fecha, lo que falta aparece en Pagos programados y en el cash flow, en el renglón del proveedor.</div>

@@ -374,6 +374,7 @@ import { ProveedoresPanel, ProveedorModal, formDeProveedor, type ProveedorForm }
 import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
 import { programadosEnRenglones } from "./domain/programadosEnRenglones";
 import { precargaCobros } from "./domain/precargaCobros";
+import { ResumenMovimientos, type FilaResumen } from "./ui/ResumenMovimientos";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
 import { entradasRetiros, RENGLON_RETIROS } from "./domain/retirosSocietarios";
@@ -16720,6 +16721,8 @@ Escribi CERRAR para confirmar:`
     [purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes, costEntries]
   );
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
+  // Movimientos del mes de una cuenta, abiertos desde el tablero de plata disponible.
+  const [resumenTablero, setResumenTablero] = useState<null | { titulo: string; subtitulo?: string; saldoInicial?: number; filas: FilaResumen[] }>(null);
   // Editar los datos de un proveedor desde su ficha (la misma ventana del listado).
   const [editProveedor, setEditProveedor] = useState<ProveedorForm | null>(null);
   const [pagoACuentaModal, setPagoACuentaModal] = useState<PagoACuentaForm | null>(null);
@@ -17247,6 +17250,7 @@ Escribi CERRAR para confirmar:`
       return {
         conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, grupo),
         titulo: inv.supplier || "proveedor",
+        cuentaId: inv.cuentaPrevista,
       };
     };
     return [
@@ -19446,6 +19450,7 @@ Escribi CERRAR para confirmar:`
                   currency: (p.currency === "USD" ? "USD" : "ARS") as "ARS" | "USD",
                   estado: (p.estado === "inamovible" ? "inamovible" : "estimado") as "estimado" | "inamovible",
                   administration: (p.administration === "negro" ? "negro" : "blanco") as "blanco" | "negro",
+                  cuentaId: p.cuentaId,
                 }))
             )}
           onSetCobroEstado={setPaymentEstado}
@@ -19628,6 +19633,7 @@ Escribi CERRAR para confirmar:`
           onRowConfigChange={setCalendarRowConfig}
           onAbrirOrigen={abrirOrigenDeMovimiento}
           arrancaPlegado={!onlySection}
+          movimientosCuentas={movimientosDeCuentas}
           onAbrirProgramado={(fila, titulo) => {
             // La factura de un proveedor: su ficha (ahi se ve la factura para pagarla o borrarla).
             if (fila.startsWith("prov:") && !/^(Tarjeta|Cr[eé]dito|Plan)/i.test(titulo)) return abrirFichaProveedor(titulo);
@@ -19783,7 +19789,7 @@ Escribi CERRAR para confirmar:`
       notes: inv.notes || "",
       remitoIds: remitos.filter((r) => r.purchaseInvoiceId === id).map((r) => r.id),
       pagos,
-      saldo: { fechaPrevista: inv.fechaPagoPrevista || prevista?.fechaPago, estadoPrevisto: marca?.estadoPago || "programado" },
+      saldo: { fechaPrevista: inv.fechaPagoPrevista || prevista?.fechaPago, estadoPrevisto: marca?.estadoPago || "programado", cuentaId: inv.cuentaPrevista },
       porBanco: inv.paidByBankEntryId != null && pagos.length === 0 ? "Pagada por un débito del banco (conciliado en Bancos y tarjetas)." : undefined,
     };
   };
@@ -19886,6 +19892,7 @@ Escribi CERRAR para confirmar:`
       fechaPagoPrevista: paidByCostEntryId == null ? f.saldo.fechaPrevista : existente?.fechaPagoPrevista,
       pagosIds: vinculo.pagosIds,
       paidByCostEntryId,
+      cuentaPrevista: paidByCostEntryId == null ? f.saldo.cuentaId : existente?.cuentaPrevista,
     };
     delete (factura as any).paidByBankEntryId; // derivado: no se guarda
     setPurchaseInvoices((prev) => (existente ? prev.map((i) => (i.id === id ? factura : i)) : [factura, ...prev]));
@@ -20536,7 +20543,36 @@ Escribi CERRAR para confirmar:`
             primary={workspaceTheme.primary}
             pettyCash={pettyCashHeader}
           />
-          {canSeePlataDisponible && <PlataDisponible companies={plataDisponibleConCuentas as any} />}
+          {canSeePlataDisponible && (
+            <PlataDisponible
+              companies={plataDisponibleConCuentas as any}
+              onVerMovimientos={(company, cual) => {
+                // Los movimientos del MES hasta hoy de esa cuenta (o de todas las del tipo) y su saldo.
+                const hoy = todayIso();
+                const desde = `${hoy.slice(0, 7)}-01`;
+                const elegidas = saldosCuentasHoy.filter(
+                  (c) =>
+                    c.company === company &&
+                    c.moneda === "ARS" &&
+                    (cual.tipo === "banco"
+                      ? c.tipo === "banco" && (!cual.bank || (c.banco || c.nombre) === cual.bank)
+                      : c.tipo === "efectivo" && c.color === cual.color)
+                );
+                const ids = new Set(elegidas.map((c) => c.id));
+                const movs = movimientosDeCuentas.filter((m) => ids.has(m.cuentaId) && m.date >= desde && m.date <= hoy);
+                const saldoHoy = elegidas.reduce((a, c) => a + c.saldo, 0);
+                const movido = movs.reduce((a, m) => a + m.amount, 0);
+                const corto = COMPANY_OPTIONS.find((o) => o.value === company)?.short || company;
+                setResumenTablero({
+                  titulo: `${corto} · ${cual.tipo === "banco" ? cual.bank || "Banco" : cual.color === "negro" ? "Efectivo negro" : "Efectivo blanco"}`,
+                  subtitulo: `Movimientos de este mes hasta hoy`,
+                  saldoInicial: saldoHoy - movido,
+                  filas: movs.map((m) => ({ fecha: m.date, detalle: m.detalle, origen: m.origen, monto: m.amount })),
+                });
+              }}
+            />
+          )}
+          {resumenTablero && <ResumenMovimientos {...resumenTablero} money={money} onCerrar={() => setResumenTablero(null)} />}
           {canSeeInamovibles && pagosVencidosAReclamar.length > 0 && (
             <ReclamoPagosVencidos
               items={pagosVencidosAReclamar}

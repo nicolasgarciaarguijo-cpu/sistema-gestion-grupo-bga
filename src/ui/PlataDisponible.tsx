@@ -145,8 +145,17 @@ const pagarTag: React.CSSProperties = {
   color: "#cbd5e1",
 };
 
-export function PlataDisponible({ companies }: { companies: PlataDisponibleCompany[] }) {
+export function PlataDisponible({
+  companies,
+  onVerMovimientos,
+}: {
+  companies: PlataDisponibleCompany[];
+  // Click sobre un valor: los movimientos del mes de esa cuenta, para ver su evolucion (2026-10-20).
+  onVerMovimientos?: (company: string, cual: { tipo: "banco"; bank?: string } | { tipo: "efectivo"; color: "blanco" | "negro" }) => void;
+}) {
   const [open, setOpen] = useState(true);
+  const clickable = (fn: () => void): React.HTMLAttributes<HTMLDivElement> =>
+    onVerMovimientos ? { onClick: fn, title: "Click: los movimientos del mes y cómo evolucionó el saldo", style: { cursor: "pointer" } } : {};
   if (!companies.length) return null;
 
   const negativa = (n: number) => (n < 0 ? { color: "#fca5a5" } : undefined);
@@ -178,7 +187,7 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                 <div style={bigGrid}>
                   {arsBanks.length > 0 ? (
                     arsBanks.map((b) => (
-                      <div key={b.bank} style={bigStat}>
+                      <div key={b.bank} {...clickable(() => onVerMovimientos?.(String(c.company), { tipo: "banco", bank: b.bank }))} style={{ ...bigStat, ...(onVerMovimientos ? { cursor: "pointer" } : {}) }}>
                         <div style={bigLabel} title={b.bank}>🏦 {b.bank}</div>
                         <div style={{ ...bigValue, ...negativa(b.balance) }}>{money(b.balance)}</div>
                         {b.control && (
@@ -196,16 +205,16 @@ export function PlataDisponible({ companies }: { companies: PlataDisponibleCompa
                       </div>
                     ))
                   ) : (
-                    <div style={bigStat}>
+                    <div {...clickable(() => onVerMovimientos?.(String(c.company), { tipo: "banco" }))} style={{ ...bigStat, ...(onVerMovimientos ? { cursor: "pointer" } : {}) }}>
                       <div style={bigLabel}>🏦 Banco</div>
                       <div style={{ ...bigValue, ...negativa(c.bancoArs) }}>{money(c.bancoArs)}</div>
                     </div>
                   )}
-                  <div style={bigStat}>
+                  <div {...clickable(() => onVerMovimientos?.(String(c.company), { tipo: "efectivo", color: "blanco" }))} style={{ ...bigStat, ...(onVerMovimientos ? { cursor: "pointer" } : {}) }}>
                     <div style={bigLabel}>💵 Efectivo blanco</div>
                     <div style={bigValue}>{money(c.efectivoBlancoArs)}</div>
                   </div>
-                  <div style={{ ...bigStat, background: "#3f2d0d", border: "1px solid #7c5e1e" }}>
+                  <div {...clickable(() => onVerMovimientos?.(String(c.company), { tipo: "efectivo", color: "negro" }))} style={{ ...bigStat, background: "#3f2d0d", border: "1px solid #7c5e1e", ...(onVerMovimientos ? { cursor: "pointer" } : {}) }}>
                     <div style={{ ...bigLabel, color: "#fbbf24" }}>🔒 Negro</div>
                     <div style={{ ...bigValue, color: "#fde68a" }}>{money(c.efectivoNegroArs)}</div>
                   </div>
