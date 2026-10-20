@@ -167,6 +167,7 @@ export function CalendarioAnualTab({
   soloLectura = false,
   onAbrirOrigen,
   onAbrirProgramado,
+  arrancaPlegado = false,
 }: {
   entries: Entry[];
   // PREVISION (hoy: los seguros). Lo que se VIENE, mes a mes: no es plata gastada, asi que entra por
@@ -246,6 +247,8 @@ export function CalendarioAnualTab({
   onAbrirOrigen?: (entryId: string) => void;
   // Click derecho sobre un pago programado (≈): la ficha donde se paga o se borra (proveedor, deuda...).
   onAbrirProgramado?: (fila: string, titulo: string) => void;
+  // Arrancar con todas las secciones minimizadas (la planilla del sistema).
+  arrancaPlegado?: boolean;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
   // Proveedores y facturas de COMPRA del sistema: con esto un débito sin clasificar se vincula a
   // quién le pagamos y, si corresponde, a la factura que cancela.
@@ -456,6 +459,15 @@ export function CalendarioAnualTab({
     return onlySection ? todas.filter((sec) => sec.key === onlySection) : todas;
   }, [rowConfig, onlySection]);
   const sectionByKey = useMemo(() => new Map(sections.map((x) => [x.key, x])), [sections]);
+
+  // CASH FLOW MINIMIZADO AL ENTRAR (Nicolas, 2026-10-20): todas las secciones arrancan plegadas (solo el
+  // total); si hace falta, se abre una o "expandir todo". Lo pide el App (prop arrancaPlegado).
+  const plegadoInicial = useRef(false);
+  useEffect(() => {
+    if (!arrancaPlegado || plegadoInicial.current || sections.length === 0) return;
+    plegadoInicial.current = true;
+    setCollapsed(new Set([...sections.map((x) => x.key), "uncl"]));
+  }, [arrancaPlegado, sections]);
 
   const agg = useMemo(() => {
     const firstIso = dayCols[0]?.iso || "";
@@ -1999,6 +2011,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
     <div style={styles.column}>
       <Panel
         title="Calendario anual · la planilla de cash flow"
+        abierto
         span="full"
         actions={
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>

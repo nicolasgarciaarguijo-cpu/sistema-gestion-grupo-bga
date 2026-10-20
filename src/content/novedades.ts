@@ -16,6 +16,24 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-20d",
+    fecha: "20/10/2026",
+    titulo: "Grupos plegados como los dejaste",
+    items: [
+      {
+        titulo: "Cada grupo recuerda si lo dejaste abierto o cerrado",
+        que: "En todas las solapas los grupos (los recuadros con − / +) arrancan minimizados la primera vez, y después quedan abiertos o cerrados como los dejaste la última vez en esa computadora.",
+        como: "Tocá el título del grupo para abrirlo o cerrarlo: la próxima vez aparece igual.",
+      },
+      {
+        titulo: "El cash flow arranca minimizado",
+        que: "Al entrar al Calendario anual todas las secciones están plegadas (se ve solo el total de cada una).",
+        como: "Abrí la sección que necesites tocando su nombre, o usá el botón de expandir todo.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-20c",
     fecha: "20/10/2026",
     titulo: "Puesta al día: lo vencido antes del 1/10 figura pagado",

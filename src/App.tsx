@@ -19585,6 +19585,7 @@ Escribi CERRAR para confirmar:`
           rowConfig={calendarRowConfig}
           onRowConfigChange={setCalendarRowConfig}
           onAbrirOrigen={abrirOrigenDeMovimiento}
+          arrancaPlegado={!onlySection}
           onAbrirProgramado={(fila, titulo) => {
             // La factura de un proveedor: su ficha (ahi se ve la factura para pagarla o borrarla).
             if (fila.startsWith("prov:") && !/^(Tarjeta|Cr[eé]dito|Plan)/i.test(titulo)) return abrirFichaProveedor(titulo);

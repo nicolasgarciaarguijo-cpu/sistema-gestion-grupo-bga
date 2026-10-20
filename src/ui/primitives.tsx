@@ -62,6 +62,30 @@ function PrintReport({
   );
 }
 
+// Clave del grupo: el titulo sin contadores ni montos ("Proveedores (12)" y "Proveedores (13)" son el mismo).
+const clavePanel = (title: string) =>
+  `panel-plegado:${String(title || "")
+    .replace(/\([^)]*\)/g, "")
+    .replace(/[\d.,$]+/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase()}`;
+const leerPlegado = (clave: string): boolean | null => {
+  try {
+    const v = window.localStorage.getItem(clave);
+    return v === "1" ? true : v === "0" ? false : null;
+  } catch {
+    return null;
+  }
+};
+const guardarPlegado = (clave: string, plegado: boolean) => {
+  try {
+    window.localStorage.setItem(clave, plegado ? "1" : "0");
+  } catch {
+    // sin almacenamiento: la proxima vez arranca como por defecto
+  }
+};
+
 function Panel({
   title,
   children,
@@ -69,6 +93,7 @@ function Panel({
   nested = false,
   green = false,
   span = "auto",
+  abierto = false,
 }: {
   title: string;
   children: React.ReactNode;
@@ -76,8 +101,23 @@ function Panel({
   nested?: boolean;
   green?: boolean;
   span?: "auto" | "half" | "wide" | "full" | "third";
+  // Abierto la primera vez (sin uso guardado). Lo normal es arrancar plegado.
+  abierto?: boolean;
 }) {
-  const [collapsed, setCollapsed] = useState(false);
+  // PLEGADO SEGUN EL ULTIMO USO (Nicolas, 2026-10-20): cada grupo arranca minimizado y despues queda
+  // abierto o cerrado como lo dejo la ultima vez, en este navegador. En los tests arranca abierto.
+  const clave = clavePanel(title);
+  const [collapsed, setCollapsedState] = useState<boolean>(() => {
+    const guardado = leerPlegado(clave);
+    if (guardado !== null) return guardado;
+    return process.env.NODE_ENV === "test" ? false : !abierto;
+  });
+  const setCollapsed = (fn: (prev: boolean) => boolean) =>
+    setCollapsedState((prev) => {
+      const next = fn(prev);
+      guardarPlegado(clave, next);
+      return next;
+    });
 
   return (
     <div
