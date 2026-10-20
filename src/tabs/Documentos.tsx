@@ -16,6 +16,8 @@ type DocumentosTabProps = {
   onSync: () => void;
   onOpen: (doc: LinkedDocument) => void;
   onRemove: (id: number) => void;
+  // Corregir donde quedo clasificado un documento: tipo, mes y persona (Nicolas, 2026-10-20).
+  onEdit?: (id: number, cambio: { docType: LinkedDocumentType; month: string; employee?: string }) => void;
   onExportManuals: () => void;
   onExportBudgets: () => void;
   onExportCrm: () => void;
@@ -79,6 +81,7 @@ export function DocumentosTab({
   onSync,
   onOpen,
   onRemove,
+  onEdit,
   onExportManuals,
   onExportBudgets,
   onExportCrm,
@@ -94,6 +97,7 @@ export function DocumentosTab({
   onExportSummary,
   onExportAll,
 }: DocumentosTabProps) {
+  const [editando, setEditando] = React.useState<null | { id: number; docType: LinkedDocumentType; month: string; employee: string }>(null);
   const grouped = React.useMemo(() => {
     const byType = new Map<LinkedDocumentType, LinkedDocument[]>();
     for (const doc of linkedDocuments) {
@@ -277,12 +281,36 @@ export function DocumentosTab({
                 </span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {group.docs.map((doc) => (
+                {group.docs.map((doc) => editando?.id === doc.id ? (
+                  <div key={doc.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "7px 10px", border: "1px solid #93c5fd", borderRadius: 8, fontSize: 13, background: "#f8fafc" }}>
+                    <strong style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{doc.fileName}</strong>
+                    <select style={{ ...styles.input, width: "auto" }} value={editando.docType} onChange={(e) => setEditando({ ...editando, docType: e.target.value as LinkedDocumentType })}>
+                      {DOC_TYPE_ORDER.map((t) => (
+                        <option key={t} value={t}>{DOC_TYPE_LABELS[t]}</option>
+                      ))}
+                    </select>
+                    <input type="month" style={{ ...styles.input, width: "auto" }} value={editando.month} onChange={(e) => setEditando({ ...editando, month: e.target.value })} />
+                    {editando.docType === "personal" && (
+                      <input style={{ ...styles.input, width: 180 }} placeholder="Persona" value={editando.employee} onChange={(e) => setEditando({ ...editando, employee: e.target.value })} />
+                    )}
+                    <ButtonLike
+                      onClick={() => {
+                        onEdit?.(doc.id, { docType: editando.docType, month: editando.month, employee: editando.docType === "personal" ? editando.employee.trim() || undefined : doc.employee });
+                        setEditando(null);
+                      }}
+                    >
+                      Guardar
+                    </ButtonLike>
+                    <ButtonLike onClick={() => setEditando(null)} secondary>
+                      Cancelar
+                    </ButtonLike>
+                  </div>
+                ) : (
                   <div
                     key={doc.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "auto 1fr auto auto",
+                      gridTemplateColumns: onEdit ? "auto 1fr auto auto auto" : "auto 1fr auto auto",
                       alignItems: "center",
                       gap: 10,
                       padding: "7px 10px",
@@ -305,7 +333,12 @@ export function DocumentosTab({
                     <ButtonLike onClick={() => onOpen(doc)} secondary>
                       Abrir
                     </ButtonLike>
-                    <ButtonLike onClick={() => onRemove(doc.id)} secondary>
+                    {onEdit && (
+                      <ButtonLike onClick={() => setEditando({ id: doc.id, docType: doc.docType, month: doc.month || "", employee: doc.employee || "" })} secondary>
+                        ✎ Editar
+                      </ButtonLike>
+                    )}
+                    <ButtonLike onClick={() => window.confirm(`¿Quitar ${doc.fileName} del listado?`) && onRemove(doc.id)} secondary>
                       Quitar
                     </ButtonLike>
                   </div>

@@ -16,6 +16,29 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-20f",
+    fecha: "20/10/2026",
+    titulo: "Editar y borrar a la vista en todo el sistema",
+    items: [
+      {
+        titulo: "✎ y 🗑 en cada renglón",
+        que: "Las listas que solo se podían corregir o borrar con click derecho ahora tienen sus botones a la vista: ficha del proveedor, Movimientos internos, Bancos, Desendeudamiento (cuotas), Tarjetas (tarjetas, resúmenes y consumos), Grupos de costo, Marcadores, CRM, Stock, Presupuesto, Personal y Cuentas. El click derecho sigue funcionando igual.",
+        como: "✎ corrige (o abre las opciones del renglón), 🗑 borra después de confirmar.",
+      },
+      {
+        titulo: "Lo que antes no se podía",
+        que: "Ahora se puede borrar un trabajo aprobado (con sus pagos y facturas; pide escribir BORRAR), una factura emitida y una cuenta sin movimientos (con movimientos se desactiva). Y se pueden corregir los viáticos (fecha, monto, blanco/negro, motivo) y los documentos (tipo, mes, persona). La ventana de un pago tiene '🗑 Borrar pago'.",
+        como: "Trabajos aprobados → '🗑 Borrar trabajo' en el detalle o con click derecho. Viáticos: ✎ en Caja chica y viáticos.",
+      },
+      {
+        titulo: "Pagos que no aparecían en la ficha del proveedor",
+        que: "Un pago cargado cuando el proveedor no estaba en la lista (o después de vaciarla) quedaba en una cuenta aparte y no se podía borrar. Ahora aparece en la ficha de su proveedor.",
+        como: "Abrí la ficha del proveedor: el pago está en 'Pagos sin factura' o en el Historial, con ✎ y 🗑.",
+        tab: "costos",
+      },
+    ],
+  },
+  {
     id: "2026-10-20e",
     fecha: "20/10/2026",
     titulo: "Cada monto con el color de su empresa",

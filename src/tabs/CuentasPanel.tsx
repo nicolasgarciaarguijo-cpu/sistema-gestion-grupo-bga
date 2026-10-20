@@ -17,11 +17,14 @@ export function CuentasPanel({
   control,
   companyOptions,
   onSave,
+  onBorrar,
 }: {
   saldos: SaldoCuenta[];
   control: Control[];
   companyOptions: Array<{ value: string; short?: string; primary?: string }>;
   onSave: (cuenta: Cuenta) => void;
+  // Borrar una cuenta SIN movimientos (con movimientos se desactiva: si no, sus saldos se moverian solos).
+  onBorrar?: (id: string) => void;
 }) {
   const [menu, setMenu] = useState<null | { x: number; y: number; c: SaldoCuenta }>(null);
   const [nueva, setNueva] = useState<null | { company: string; tipo: "banco" | "persona"; nombre: string; moneda: "ARS" | "USD"; color: "blanco" | "negro" }>(null);
@@ -71,6 +74,7 @@ export function CuentasPanel({
               <th style={{ ...td, textAlign: "right" }}>Apertura</th>
               <th style={{ ...td, textAlign: "right" }}>Saldo hoy (sistema)</th>
               <th style={{ ...td, textAlign: "left" }}>Control con el extracto</th>
+              <th style={td}></th>
             </tr>
           </thead>
           <tbody>
@@ -116,6 +120,37 @@ export function CuentasPanel({
                       <span style={{ color: "#b91c1c", fontWeight: 700 }} title={`Resumen: ${money(ctrl.saldoExtracto)} · Sistema: ${money(ctrl.saldoSistema)}`}>
                         ≠ al {fmt(ctrl.fecha)}: diferencia {money(ctrl.diferencia)}
                       </span>
+                    )}
+                  </td>
+                  {/* Editar y borrar a la vista (Nicolas, 2026-10-20); el click derecho sigue igual. */}
+                  <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+                    <button
+                      type="button"
+                      title="Editar: saldo y fecha de apertura, nombre, principal, desactivar"
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setMenu({ x: ev.clientX, y: ev.clientY, c });
+                      }}
+                      style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 5, padding: "1px 6px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", color: "#334155" }}
+                    >
+                      ✎
+                    </button>
+                    {onBorrar && (
+                      <button
+                        type="button"
+                        title="Borrar"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          if (c.movimientos > 0) {
+                            window.alert(`${c.nombre} tiene ${c.movimientos} movimiento(s): no se puede borrar sin mover sus saldos. Desactivala (✎ → Desactivar) y deja de ofrecerse al cargar.`);
+                            return;
+                          }
+                          if (window.confirm(`¿Borrar la cuenta ${c.nombre}?`)) onBorrar(c.id);
+                        }}
+                        style={{ marginLeft: 4, border: "1px solid #fecaca", background: "#fff", borderRadius: 5, padding: "1px 6px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", color: "#b91c1c" }}
+                      >
+                        🗑
+                      </button>
                     )}
                   </td>
                 </tr>

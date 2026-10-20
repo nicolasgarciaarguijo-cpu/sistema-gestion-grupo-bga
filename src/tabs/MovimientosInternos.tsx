@@ -47,6 +47,20 @@ const balanceSection: React.CSSProperties = {
   margin: "4px 0 6px",
 };
 
+// Botón chico de borrar al final de cada fila: lo mismo que el click derecho, pero a la vista.
+const botonBorrarFila: React.CSSProperties = {
+  marginLeft: "auto",
+  padding: "0 6px",
+  fontSize: 12,
+  lineHeight: "18px",
+  color: "#b91c1c",
+  background: "#fff",
+  border: "1px solid #fecaca",
+  borderRadius: 4,
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
 // Fila compacta etiqueta -> valor. Igual que la de Balance, de donde vino el bloque de aportes.
 function StatRow({
   label,
@@ -381,6 +395,19 @@ export function MovimientosInternosTab({
                           placeholder="notas"
                           onChange={(e) => updateArrayItem(setInternalTransfers, item.id, "notes", e.target.value)}
                         />
+                        <button
+                          type="button"
+                          style={botonBorrarFila}
+                          title="Borrar"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            if (window.confirm("Quitar este pase de " + money(item.amount) + "?")) {
+                              removeInternalTransfer(item.id);
+                            }
+                          }}
+                        >
+                          🗑
+                        </button>
                       </span>
                     </td>
                   </tr>
@@ -547,6 +574,19 @@ export function MovimientosInternosTab({
                         placeholder="notas"
                         onChange={(e) => updateArrayItem(setCashHoldings, item.id, "notes", e.target.value)}
                       />
+                      <button
+                        type="button"
+                        style={botonBorrarFila}
+                        title="Borrar"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          if (window.confirm(`¿Quitar "${item.description}" del efectivo fuera del banco?`)) {
+                            removeCashHolding(item.id);
+                          }
+                        }}
+                      >
+                        🗑
+                      </button>
                     </span>
                   </td>
                 </tr>
@@ -795,6 +835,17 @@ export function MovimientosInternosTab({
                         placeholder="notas"
                         onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "notes", e.target.value)}
                       />
+                      <button
+                        type="button"
+                        style={botonBorrarFila}
+                        title="Borrar"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          if (window.confirm(`¿Quitar "${item.origin}" de aportes y préstamos?`)) removeCapitalEntry(item.id);
+                        }}
+                      >
+                        🗑
+                      </button>
                     </span>
                   </td>
                 </tr>
@@ -1071,6 +1122,22 @@ export function MovimientosInternosTab({
                                   {getCompanyMeta(mov.company as CompanyName)?.short || mov.company}
                                 </span>
                               )}
+                              {/* Solo lo cargado a mano se borra acá; lo de Compras/Caja chica se corrige allá. */}
+                              {manual && mov.entryId ? (
+                                <button
+                                  type="button"
+                                  style={botonBorrarFila}
+                                  title="Borrar"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    if (window.confirm("Quitar este movimiento de " + money(mov.amount) + "?")) {
+                                      removePersonLedgerEntry(mov.entryId as number);
+                                    }
+                                  }}
+                                >
+                                  🗑
+                                </button>
+                              ) : null}
                             </span>
                           </td>
                         </tr>

@@ -92,6 +92,36 @@ export function TarjetasTab({
     ev.stopPropagation();
     setMenu({ x: ev.clientX, y: ev.clientY, id });
   };
+  // Celda de acciones visible de cada consumo: el lapiz abre el mismo menu del click derecho
+  // (ahi estan editar descripcion, monto, grupo y recurrente) y el tachito borra igual que el menu.
+  const accionesConsumo = (c: CreditCardConsumption) => (
+    <td style={{ ...tdDato, ...tdAcciones }}>
+      <button
+        type="button"
+        title="Editar"
+        style={btnFila}
+        onClick={(e) => {
+          e.stopPropagation();
+          abrirMenu(e, c.id);
+        }}
+      >
+        ✎
+      </button>
+      <button
+        type="button"
+        title="Borrar"
+        style={btnBorrar}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (window.confirm(`¿Borrar "${c.description}" por ${money(c.amount, c.currency)}?`)) {
+            removeCreditCardConsumption(c.id);
+          }
+        }}
+      >
+        🗑
+      </button>
+    </td>
+  );
   // Los cargos que pone el banco en el cierre, no una compra: van aparte al pie de cada resumen.
   const esCargoDelResumen = (c: CreditCardConsumption) =>
     /^(IMPUESTO DE SELLOS|COMISION|DB IVA|PERCEP|INTERES|SEGURO DE VIDA)/i.test(c.description || "");
@@ -262,6 +292,7 @@ export function TarjetasTab({
               <col style={colLabel} />
               <col style={colDato} />
               <col style={colFlexible} />
+              <col style={colAcciones} />
             </colgroup>
             <thead>
               <tr>
@@ -280,6 +311,7 @@ export function TarjetasTab({
                   />
                 </th>
                 <th style={thFlexible}>Banco · empresa · notas</th>
+                <th style={thColumna} />
               </tr>
             </thead>
             <tbody>
@@ -348,6 +380,20 @@ export function TarjetasTab({
                       />
                     </span>
                   </td>
+                  {/* Se edita en la misma fila; el tachito hace lo mismo que el click derecho. */}
+                  <td style={{ ...tdDato, ...tdAcciones }}>
+                    <button
+                      type="button"
+                      title="Borrar"
+                      style={btnBorrar}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`¿Quitar la tarjeta "${c.name}"?`)) removeCreditCard(c.id);
+                      }}
+                    >
+                      🗑
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -378,6 +424,7 @@ export function TarjetasTab({
               <col style={colDato} />
               <col style={colDato} />
               <col style={colFlexible} />
+              <col style={colAcciones} />
             </colgroup>
             <thead>
               <tr>
@@ -397,6 +444,7 @@ export function TarjetasTab({
                 </th>
                 <th style={thColumna}>Vencimiento</th>
                 <th style={thFlexible}>Total U$S · pago mínimo</th>
+                <th style={thColumna} />
               </tr>
             </thead>
             <tbody>
@@ -472,6 +520,19 @@ export function TarjetasTab({
                       />
                     </span>
                   </td>
+                  <td style={{ ...tdDato, ...tdAcciones }}>
+                    <button
+                      type="button"
+                      title="Borrar"
+                      style={btnBorrar}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm("¿Quitar este resumen?")) removeCreditCardStatement(s.id);
+                      }}
+                    >
+                      🗑
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -515,6 +576,7 @@ export function TarjetasTab({
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colFlexible} />
+                  <col style={colAcciones} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -536,6 +598,7 @@ export function TarjetasTab({
                     <th style={thColumna}>Grupo (fijo/var)</th>
                     <th style={thColumna}>Cuota</th>
                     <th style={thFlexible}>Tarjeta</th>
+                    <th style={thColumna} />
                   </tr>
                 </thead>
                 <tbody>
@@ -561,6 +624,7 @@ export function TarjetasTab({
                         <td style={{ ...tdFlexible, color: "#64748b" }} title={c.notes}>
                           {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "—"}
                         </td>
+                        {accionesConsumo(c)}
                       </tr>
                     );
                     return (
@@ -579,7 +643,7 @@ export function TarjetasTab({
                           <td style={{ ...tdDato, background: "#e0f2fe", textAlign: "right", fontWeight: 800, color: "#075985" }}>
                             {money(total)}
                           </td>
-                          <td colSpan={3} style={{ ...tdDato, background: "#e0f2fe", color: difiere ? "#b45309" : "#166534" }}>
+                          <td colSpan={4} style={{ ...tdDato, background: "#e0f2fe", color: difiere ? "#b45309" : "#166534" }}>
                             {difiere
                               ? `⚠ el resumen dice ${money(st.totalArs)} · difiere ${money(Math.abs(total - Number(st.totalArs || 0)))}`
                               : `✓ coincide con el resumen (${money(st.totalArs)})`}
@@ -591,7 +655,7 @@ export function TarjetasTab({
                             <td style={{ ...tdNombre, paddingLeft: 24, background: "#f8fafc", fontWeight: 500, color: "#64748b" }}>
                               Cargos del resumen
                             </td>
-                            <td colSpan={5} style={{ ...tdDato, background: "#f8fafc", color: "#94a3b8" }}>
+                            <td colSpan={6} style={{ ...tdDato, background: "#f8fafc", color: "#94a3b8" }}>
                               sellos, comisiones e IVA del cierre
                             </td>
                           </tr>
@@ -603,7 +667,7 @@ export function TarjetasTab({
                   {bloques.sueltos.length > 0 && (
                     <>
                       <tr>
-                        <td colSpan={6} style={{ ...tdNombre, background: "#fef9c3", fontWeight: 800, color: "#854d0e", width: "auto", maxWidth: "none" }}>
+                        <td colSpan={7} style={{ ...tdNombre, background: "#fef9c3", fontWeight: 800, color: "#854d0e", width: "auto", maxWidth: "none" }}>
                           Sin resumen asignado
                         </td>
                       </tr>
@@ -623,6 +687,7 @@ export function TarjetasTab({
                           <td style={{ ...tdFlexible, color: "#64748b" }} title={c.notes}>
                             {(c.notes || "").match(/Tarjeta (\d{4})/)?.[1] || "—"}
                           </td>
+                          {accionesConsumo(c)}
                         </tr>
                       ))}
                     </>
@@ -740,6 +805,16 @@ const pillFalta: React.CSSProperties = {
   display: "inline-block", background: "#fef3c7", color: "#92400e", fontWeight: 800,
   fontSize: 10, borderRadius: 999, padding: "1px 7px", verticalAlign: "middle",
 };
+
+// Botones visibles de cada fila (editar / borrar): hacen lo mismo que el click derecho, para que
+// nadie tenga que adivinar que el menu existe.
+const colAcciones: React.CSSProperties = { width: 58 };
+const tdAcciones: React.CSSProperties = { whiteSpace: "nowrap", textAlign: "center", padding: "0 4px" };
+const btnFila: React.CSSProperties = {
+  border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 4,
+  padding: "0 5px", fontSize: 11, lineHeight: "16px", cursor: "pointer", marginLeft: 2,
+};
+const btnBorrar: React.CSSProperties = { ...btnFila, color: "#b91c1c", borderColor: "#fecaca" };
 
 // ---- VERIFICACION DE RESUMENES DE TARJETA ------------------------------------------------------
 // La tarjeta no tiene cadena de saldos: tiene un TOTAL por cierre. La pregunta que contesta este

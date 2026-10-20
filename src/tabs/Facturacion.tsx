@@ -19,6 +19,8 @@ type FacturacionTabProps = {
   updateIssuedInvoice: (id: number, field: any, value: any) => void;
   // Marca / desmarca una factura emitida como REGULARIZACION del blanqueo (la firma el usuario que opera).
   onRegularizaBlanqueo?: (id: number, regulariza: boolean) => void;
+  // Borrar una factura emitida (la importada de ARCA por error o repetida). Es registro: no mueve plata.
+  onBorrarEmitida?: (id: number) => void;
   onImportArca: (files: FileList | File[] | null) => void;
   approvedJobsForLink: { budgetNumber: string; client: string; company: string }[];
   financialSemaphoreSummary: any;
@@ -51,6 +53,7 @@ export function FacturacionTab({
   issuedInvoices,
   updateIssuedInvoice,
   onRegularizaBlanqueo,
+  onBorrarEmitida,
   onImportArca,
   approvedJobsForLink,
   financialSemaphoreSummary,
@@ -355,6 +358,19 @@ export function FacturacionTab({
                                     {" · "}{inv.kind}
                                     {" · "}{getCompanyMeta(inv.company)?.short || inv.company}
                                   </span>
+                                  {onBorrarEmitida && (
+                                    <button
+                                      type="button"
+                                      title="Borrar"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (window.confirm(`¿Borrar la factura emitida ${inv.pointOfSale}-${inv.number}? Es registro: no mueve plata.`)) onBorrarEmitida(inv.id);
+                                      }}
+                                      style={{ marginLeft: "auto", border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", borderRadius: 5, padding: "1px 6px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}
+                                    >
+                                      🗑
+                                    </button>
+                                  )}
                                 </span>
                               </td>
                             </tr>

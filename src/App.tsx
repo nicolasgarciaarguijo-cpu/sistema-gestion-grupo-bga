@@ -21688,6 +21688,7 @@ Escribi CERRAR para confirmar:`
           onEditarCaja={abrirEditarCaja}
           onEliminarCaja={eliminarCajaChica}
           onQuitarViatico={(id) => setViaticos((prev) => prev.filter((v) => v.id !== id))}
+          onEditarViatico={(id, cambio) => setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, ...cambio, ...firma() } : v)))}
           onAgregarTipo={(nombre) => {
             if (tiposCaja.some((t) => t.toLowerCase() === nombre.toLowerCase())) return;
             setPettyCashTypes((prev) => [...prev, { id: newId(), company: budget.company, nombre }]);
@@ -21864,6 +21865,7 @@ Escribi CERRAR para confirmar:`
           onSave={(cuenta) =>
             setCuentasGuardadas((prev) => [...prev.filter((c) => c.id !== cuenta.id), cuenta])
           }
+          onBorrar={(id) => setCuentasGuardadas((prev) => prev.filter((c) => c.id !== id))}
         />
         <BancosTab
           bankLoadsUntil={bankLoadsUntil}
@@ -22024,6 +22026,7 @@ Escribi CERRAR para confirmar:`
           onSync={syncDocumentsFolder}
           onOpen={openLinkedDocument}
           onRemove={removeLinkedDocument}
+          onEdit={(id, cambio) => setLinkedDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...cambio } : d)))}
           onExportManuals={exportManualsToFolder}
           onExportBudgets={exportBudgetsToFolder}
           onExportCrm={exportCrmToFolder}
@@ -22140,6 +22143,25 @@ Escribi CERRAR para confirmar:`
       {activeTab === "aprobados" && (
         <AprobadosTab
           cuentas={cuentasSistema}
+          onBorrarTrabajo={(jobId) => {
+            // BORRAR UN TRABAJO (Nicolas, 2026-10-20: "asi como poder editar, debo poder borrar"). Se van con el
+            // sus pagos, facturas y comisiones (salen del cash flow). El presupuesto guardado queda en Historial.
+            const job = approvedJobs.find((j) => j.id === jobId);
+            if (!job) return;
+            const pagos = (job.payments || []).length;
+            const r = window.prompt(
+              `Borrar el trabajo ${job.budgetNumber} · ${job.client}.
+
+` +
+                `Se van con él ${pagos} pago(s), sus facturas y comisiones: salen del cash flow. El presupuesto guardado queda en Historial.
+
+` +
+                "Escribí BORRAR para confirmar:"
+            );
+            if ((r || "").trim().toUpperCase() !== "BORRAR") return;
+            setApprovedJobs((prev) => prev.filter((j) => j.id !== jobId));
+            if (selectedApprovedJobId === jobId) setSelectedApprovedJobId(null);
+          }}
           companyOptions={COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General")}
           jobSemaphoreSummary={jobSemaphoreSummary}
           canEmitFacturas={canEmitFacturas}
@@ -22210,6 +22232,7 @@ Escribi CERRAR para confirmar:`
           calendarioCobranzasSlot={renderCalendarioAnual("cobranzas")}
           issuedInvoices={visibleIssuedInvoices}
           updateIssuedInvoice={updateIssuedInvoice}
+          onBorrarEmitida={(id) => setIssuedInvoices((prev) => prev.filter((inv) => inv.id !== id))}
           onRegularizaBlanqueo={(id, on) =>
             setIssuedInvoices((prev) => prev.map((inv) => (inv.id === id ? { ...inv, regularizaBlanqueo: on ? { firmante: usuarioFirmante, firmadoEn: new Date().toISOString() } : null } : inv)))
           }

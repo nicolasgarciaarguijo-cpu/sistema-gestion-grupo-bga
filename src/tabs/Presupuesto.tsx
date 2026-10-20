@@ -652,6 +652,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colFlexible} />
+                  <col style={colAcciones} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -672,6 +673,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
                     <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
                     <th style={thFlexible}>Stock · grupo · ubicación</th>
+                    <th style={thAcciones} />
                   </tr>
                 </thead>
                 <tbody>
@@ -746,6 +748,18 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                             {" · "}{stockMatch?.location || item.stockLocation || "sin ubicación"}
                           </span>
                         </td>
+                        <AccionesFila
+                          tituloEditar="Más opciones (grupo, orden, stock)"
+                          onEditar={(x, y) => {
+                            marcaMateriales.marcar(String(item.id));
+                            setMenuMateriales({ x, y, id: item.id });
+                          }}
+                          onBorrar={() => {
+                            if (window.confirm(`¿Borrar "${item.description || "este material"}" del presupuesto?`)) {
+                              removeMaterial(item.id);
+                            }
+                          }}
+                        />
                       </tr>
                     );
                   })}
@@ -1016,6 +1030,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     <col style={colLabel} />
                     <col style={colDato} />
                     <col style={colFlexible} />
+                    <col style={colAcciones} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -1034,6 +1049,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         />
                       </th>
                       <th style={{ ...thFlexible, textAlign: "right" }}>Resultado</th>
+                      <th style={thAcciones} />
                     </tr>
                   </thead>
                   <tbody>
@@ -1065,6 +1081,13 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         <td style={{ ...tdFlexible, textAlign: "right", fontWeight: 700 }}>
                           {money(preDiscountNetPrice * (Number(item.pct || 0) / 100))}
                         </td>
+                        <AccionesFila
+                          onBorrar={() => {
+                            if (window.confirm(`¿Borrar el aumento "${item.description || "sin descripción"}"?`)) {
+                              removeBudgetIncrease(item.id);
+                            }
+                          }}
+                        />
                       </tr>
                     ))}
                   </tbody>
@@ -1099,6 +1122,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     <col style={colLabel} />
                     <col style={colDato} />
                     <col style={colFlexible} />
+                    <col style={colAcciones} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -1117,6 +1141,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         />
                       </th>
                       <th style={thFlexible}>Tipo</th>
+                      <th style={thAcciones} />
                     </tr>
                   </thead>
                   <tbody>
@@ -1157,6 +1182,15 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         <td style={{ ...tdFlexible, color: "#64748b" }}>
                           {item.mode === "porcentaje" ? "porcentaje (%)" : "monto fijo ($)"}
                         </td>
+                        <AccionesFila
+                          tituloEditar="Cambiar tipo (% / $)"
+                          onEditar={(x, y) => setMenuDescuentos({ x, y, id: item.id })}
+                          onBorrar={() => {
+                            if (window.confirm(`¿Borrar el descuento "${item.description || "sin descripción"}"?`)) {
+                              removeBudgetDiscount(item.id);
+                            }
+                          }}
+                        />
                       </tr>
                     ))}
                   </tbody>
@@ -1231,6 +1265,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colFlexible} />
+                  <col style={colAcciones} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -1250,6 +1285,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     </th>
                     <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
                     <th style={thFlexible}>Subtotal · origen</th>
+                    <th style={thAcciones} />
                   </tr>
                 </thead>
                 <tbody>
@@ -1306,6 +1342,13 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                           <span style={{ color: "#94a3b8" }}> · {getCompanyMeta(item.sourceCompany).short}</span>
                         ) : null}
                       </td>
+                      <AccionesFila
+                        onBorrar={() => {
+                          if (window.confirm(`¿Borrar "${item.description || "este insumo"}" del presupuesto?`)) {
+                            removeBasicSupply(item.id);
+                          }
+                        }}
+                      />
                     </tr>
                   ))}
                 </tbody>
@@ -1356,6 +1399,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colFlexible} />
+                  <col style={colAcciones} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -1377,6 +1421,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     <th style={{ ...thColumna, textAlign: "right" }}>Hs trabajo</th>
                     <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
                     <th style={thFlexible}>$ Hora final · capacidad · origen</th>
+                    <th style={thAcciones} />
                   </tr>
                 </thead>
                 <tbody>
@@ -1439,6 +1484,13 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                           <span style={{ color: "#94a3b8" }}> · {getCompanyMeta(item.sourceCompany).short}</span>
                         ) : null}
                       </td>
+                      <AccionesFila
+                        onBorrar={() => {
+                          if (window.confirm(`¿Borrar "${item.category || "esta mano de obra"}" del presupuesto?`)) {
+                            removeLabor(item.id);
+                          }
+                        }}
+                      />
                     </tr>
                   ))}
                 </tbody>
@@ -1552,6 +1604,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   <col style={colLabel} />
                   <col style={colDato} />
                   <col style={colFlexible} />
+                  <col style={colAcciones} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -1570,6 +1623,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       />
                     </th>
                     <th style={thFlexible}>Origen</th>
+                    <th style={thAcciones} />
                   </tr>
                 </thead>
                 <tbody>
@@ -1607,6 +1661,13 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       <td style={{ ...tdFlexible, color: "#94a3b8" }}>
                         {item.sourceCompany ? getCompanyMeta(item.sourceCompany).short : "manual"}
                       </td>
+                      <AccionesFila
+                        onBorrar={() => {
+                          if (window.confirm(`¿Borrar "${item.description || "este costo fijo"}" del presupuesto?`)) {
+                            removeFixedCost(item.id);
+                          }
+                        }}
+                      />
                     </tr>
                   ))}
                 </tbody>
@@ -1669,6 +1730,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       <col style={colDato} />
                       <col style={colDato} />
                       <col style={colFlexible} />
+                      <col style={colAcciones} />
                     </colgroup>
                     <thead>
                       <tr>
@@ -1688,6 +1750,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         </th>
                         <th style={thColumna}>Estado</th>
                         <th style={thFlexible}>Proyecto</th>
+                        <th style={thAcciones} />
                       </tr>
                     </thead>
                     <tbody>
@@ -1717,6 +1780,11 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                             <td style={{ ...tdDato, color: "#475569" }}>{formatDateDisplay(item.date)}</td>
                             <td style={{ ...tdDato, color: "#475569" }}>{item.status}</td>
                             <td style={{ ...tdFlexible, color: "#64748b" }} title={item.project}>{item.project}</td>
+                            {/* El CRM no se borra desde acá: el ✎ hace lo mismo que "Cargar para editar". */}
+                            <AccionesFila
+                              tituloEditar="Cargar para editar"
+                              onEditar={() => loadBudgetFromSnapshot(item.snapshot, item.id)}
+                            />
                           </tr>
                         );
                       })}
@@ -2397,5 +2465,66 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
           </div>
         </div>
     </>
+  );
+}
+
+// Columna de acciones visibles al final de cada fila. El click derecho sigue igual;
+// esto es para que editar y borrar no queden escondidos. ✎ abre el MISMO menú del click
+// derecho (o hace su única acción) y 🗑 borra preguntando antes. Estas tablas son el editor:
+// el PDF del cliente sale de otro bloque (#client-budget-pdf), así que no se imprimen.
+const ANCHO_ACCIONES = 64;
+const colAcciones: React.CSSProperties = { width: ANCHO_ACCIONES };
+const thAcciones: React.CSSProperties = {
+  ...thColumna, width: ANCHO_ACCIONES, minWidth: ANCHO_ACCIONES, maxWidth: ANCHO_ACCIONES,
+};
+const tdAcciones: React.CSSProperties = {
+  padding: "2px 4px", borderBottom: "1px solid #f1f5f9", textAlign: "center", whiteSpace: "nowrap",
+  width: ANCHO_ACCIONES, minWidth: ANCHO_ACCIONES, maxWidth: ANCHO_ACCIONES,
+};
+const btnFila: React.CSSProperties = {
+  border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 6,
+  padding: "1px 6px", fontSize: 12, lineHeight: 1.4, cursor: "pointer",
+};
+const btnBorrarFila: React.CSSProperties = { ...btnFila, color: "#b91c1c", border: "1px solid #fecaca" };
+
+function AccionesFila({
+  onEditar,
+  tituloEditar = "Editar",
+  onBorrar,
+}: {
+  onEditar?: (x: number, y: number) => void;
+  tituloEditar?: string;
+  onBorrar?: () => void;
+}) {
+  return (
+    <td style={tdAcciones}>
+      {onEditar ? (
+        <button
+          type="button"
+          title={tituloEditar}
+          style={btnFila}
+          onClick={(e) => {
+            e.stopPropagation();
+            const r = e.currentTarget.getBoundingClientRect();
+            onEditar(r.left, r.bottom);
+          }}
+        >
+          ✎
+        </button>
+      ) : null}
+      {onBorrar ? (
+        <button
+          type="button"
+          title="Borrar"
+          style={{ ...btnBorrarFila, marginLeft: onEditar ? 4 : 0 }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBorrar();
+          }}
+        >
+          🗑
+        </button>
+      ) : null}
+    </td>
   );
 }

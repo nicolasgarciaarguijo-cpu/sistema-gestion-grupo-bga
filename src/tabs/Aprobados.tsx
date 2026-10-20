@@ -65,6 +65,8 @@ const planoDaysText = (days: number | null): string =>
 type AprobadosTabProps = {
   // Cuentas para elegir a donde entro cada cobro (ver domain/cuentas.ts).
   cuentas?: any[];
+  // Borrar el trabajo entero (con sus pagos, facturas y comisiones). Pide confirmacion fuerte.
+  onBorrarTrabajo?: (jobId: number) => void;
   jobSemaphoreSummary: any;
   approvedJobsSummary: any[];
   companyApprovedSections: any[];
@@ -182,6 +184,7 @@ export function AprobadosTab({
   onClientSummary,
   onMaterialsSummary,
   remitosDelTrabajo,
+  onBorrarTrabajo,
 }: AprobadosTabProps) {
   // Menú contextual (click derecho) del cliente: resumen económico (falta facturar/cobrar/comisión).
   const [ctxMenu, setCtxMenu] = React.useState<null | { x: number; y: number; job: any }>(null);
@@ -253,6 +256,15 @@ export function AprobadosTab({
                 <ButtonLike onClick={() => { setSelectedApprovedJobId(ctxMenu.job.id); setCtxMenu(null); }} secondary>
                   Abrir ficha
                 </ButtonLike>
+                {onBorrarTrabajo && (
+                  <button
+                    type="button"
+                    onClick={() => { const id = ctxMenu.job.id; setCtxMenu(null); onBorrarTrabajo(id); }}
+                    style={{ marginTop: 6, width: "100%", border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", borderRadius: 8, padding: "6px 10px", fontWeight: 700, cursor: "pointer" }}
+                  >
+                    🗑 Borrar trabajo
+                  </button>
+                )}
               </div>
             </>
           )}
@@ -675,6 +687,16 @@ export function AprobadosTab({
                   <ButtonLike onClick={() => onClientSummary(selectedApprovedJob)}>
                     Resumen para el cliente
                   </ButtonLike>
+                  {onBorrarTrabajo && (
+                    <button
+                      type="button"
+                      title="Borrar el trabajo con sus pagos, facturas y comisiones"
+                      onClick={() => onBorrarTrabajo(selectedApprovedJob.id)}
+                      style={{ border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", borderRadius: 8, padding: "6px 10px", fontWeight: 700, cursor: "pointer" }}
+                    >
+                      🗑 Borrar trabajo
+                    </button>
+                  )}
                   <ButtonLike onClick={() => setSelectedApprovedJobId(null)} secondary>
                     Cerrar detalle
                   </ButtonLike>

@@ -365,6 +365,7 @@ export function StockTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -386,12 +387,13 @@ export function StockTab({
                   <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Valor stock</th>
                   <th style={thFlexible}>Grupo · ubicacion · empresa</th>
+                  <th style={thAcciones} />
                 </tr>
               </thead>
               <tbody>
                 {filteredGeneralStock.length === 0 && (
                   <tr>
-                    <td colSpan={6} style={{ ...styles.muted, textAlign: "center", padding: 12 }}>
+                    <td colSpan={7} style={{ ...styles.muted, textAlign: "center", padding: 12 }}>
                       No hay materiales que coincidan con el filtro.
                     </td>
                   </tr>
@@ -434,6 +436,17 @@ export function StockTab({
                         <span title="Empresa">{item.company}</span>
                       </span>
                     </td>
+                    <AccionesFila
+                      onEditar={(x, y) => {
+                        marcaStock.marcar(String(item.id));
+                        setMenuStock({ x, y, id: item.id });
+                      }}
+                      onBorrar={() => {
+                        if (window.confirm(`¿Quitar "${item.description}" del inventario?`)) {
+                          removeStockItem(item.id);
+                        }
+                      }}
+                    />
                   </tr>
                 ))}
               </tbody>
@@ -542,6 +555,7 @@ export function StockTab({
                 <col style={colLabel} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -560,6 +574,7 @@ export function StockTab({
                     />
                   </th>
                   <th style={thFlexible}>Notas</th>
+                  <th style={thAcciones} />
                 </tr>
               </thead>
               <tbody>
@@ -591,6 +606,17 @@ export function StockTab({
                     </td>
                     <td style={{ ...tdDato, color: "#475569" }}>{getCompanyScopeLabel(group.company)}</td>
                     <td style={{ ...tdFlexible, color: "#64748b" }} title={group.notes}>{group.notes}</td>
+                    <AccionesFila
+                      onEditar={(x, y) => {
+                        marcaGrupos.marcar(String(group.id));
+                        setMenuGrupos({ x, y, id: group.id });
+                      }}
+                      onBorrar={() => {
+                        if (window.confirm(`¿Quitar el grupo "${group.name}"?`)) {
+                          removeCostAnalysisGroup(group.id);
+                        }
+                      }}
+                    />
                   </tr>
                 ))}
               </tbody>
@@ -668,6 +694,7 @@ export function StockTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -688,6 +715,7 @@ export function StockTab({
                   <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
                   <th style={thFlexible}>Grupo · empresa · notas</th>
+                  <th style={thAcciones} />
                 </tr>
               </thead>
               <tbody>
@@ -731,6 +759,17 @@ export function StockTab({
                       <span style={{ color: "#94a3b8" }}>· {getCompanyScopeLabel(entry.company)}</span>
                       {entry.notes ? <span style={{ color: "#94a3b8" }}> · {entry.notes}</span> : null}
                     </td>
+                    <AccionesFila
+                      onEditar={(x, y) => {
+                        marcaCostos.marcar(String(entry.id));
+                        setMenuCostos({ x, y, id: entry.id });
+                      }}
+                      onBorrar={() => {
+                        if (window.confirm(`¿Quitar "${entry.description}" del análisis?`)) {
+                          removeCostAnalysisEntry(entry.id);
+                        }
+                      }}
+                    />
                   </tr>
                   );
                 })}
@@ -1169,6 +1208,7 @@ export function StockTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -1189,6 +1229,7 @@ export function StockTab({
                   <th style={{ ...thColumna, textAlign: "right" }}>$ por entrega</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Valor stock</th>
                   <th style={thFlexible}>Tipo · empresa · ubicación</th>
+                  <th style={thAcciones} />
                 </tr>
               </thead>
               <tbody>
@@ -1232,6 +1273,17 @@ export function StockTab({
                       {item.shared ? <span style={{ color: "#94a3b8" }}> · compartido</span> : null}
                       {item.location ? <span style={{ color: "#94a3b8" }}> · {item.location}</span> : null}
                     </td>
+                    <AccionesFila
+                      onEditar={(x, y) => {
+                        marcaEpp.marcar(String(item.id));
+                        setMenuEpp({ x, y, id: item.id });
+                      }}
+                      onBorrar={() => {
+                        if (window.confirm(`¿Quitar "${item.description}" del listado?`)) {
+                          removeStockItem(item.id);
+                        }
+                      }}
+                    />
                   </tr>
                 ))}
               </tbody>
@@ -1414,6 +1466,7 @@ export function StockTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -1434,6 +1487,7 @@ export function StockTab({
                   <th style={{ ...thColumna, textAlign: "right" }}>Vida útil</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Amortización</th>
                   <th style={thFlexible}>Categoría · empresa · notas</th>
+                  <th style={thAcciones} />
                 </tr>
               </thead>
               <tbody>
@@ -1475,6 +1529,17 @@ export function StockTab({
                       <span style={{ color: "#94a3b8" }}> · {getCompanyScopeLabel(asset.company)}</span>
                       {asset.notes ? <span style={{ color: "#94a3b8" }}> · {asset.notes}</span> : null}
                     </td>
+                    <AccionesFila
+                      onEditar={(x, y) => {
+                        marcaActivos.marcar(String(asset.id));
+                        setMenuActivos({ x, y, id: asset.id });
+                      }}
+                      onBorrar={() => {
+                        if (window.confirm(`¿Quitar "${asset.description}" de activos?`)) {
+                          removeCompanyAsset(asset.id);
+                        }
+                      }}
+                    />
                   </tr>
                 ))}
               </tbody>
@@ -1625,5 +1690,59 @@ export function StockTab({
             )}
           </Panel>
         </div>
+  );
+}
+
+// Columna de acciones visibles al final de cada fila. El click derecho sigue igual;
+// esto es para que editar y borrar no queden escondidos. ✎ abre el MISMO menú del
+// click derecho (ahí están todas las ediciones) y 🗑 borra con la misma confirmación.
+const ANCHO_ACCIONES = 64;
+const colAcciones: React.CSSProperties = { width: ANCHO_ACCIONES };
+const thAcciones: React.CSSProperties = {
+  ...thColumna, width: ANCHO_ACCIONES, minWidth: ANCHO_ACCIONES, maxWidth: ANCHO_ACCIONES,
+};
+const tdAcciones: React.CSSProperties = {
+  padding: "2px 4px", borderBottom: "1px solid #f1f5f9", textAlign: "center", whiteSpace: "nowrap",
+  width: ANCHO_ACCIONES, minWidth: ANCHO_ACCIONES, maxWidth: ANCHO_ACCIONES,
+};
+const btnFila: React.CSSProperties = {
+  border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 6,
+  padding: "1px 6px", fontSize: 12, lineHeight: 1.4, cursor: "pointer",
+};
+const btnBorrarFila: React.CSSProperties = { ...btnFila, color: "#b91c1c", border: "1px solid #fecaca", marginLeft: 4 };
+
+function AccionesFila({
+  onEditar,
+  onBorrar,
+}: {
+  onEditar: (x: number, y: number) => void;
+  onBorrar: () => void;
+}) {
+  return (
+    <td style={tdAcciones}>
+      <button
+        type="button"
+        title="Editar"
+        style={btnFila}
+        onClick={(e) => {
+          e.stopPropagation();
+          const r = e.currentTarget.getBoundingClientRect();
+          onEditar(r.left, r.bottom);
+        }}
+      >
+        ✎
+      </button>
+      <button
+        type="button"
+        title="Borrar"
+        style={btnBorrarFila}
+        onClick={(e) => {
+          e.stopPropagation();
+          onBorrar();
+        }}
+      >
+        🗑
+      </button>
+    </td>
   );
 }

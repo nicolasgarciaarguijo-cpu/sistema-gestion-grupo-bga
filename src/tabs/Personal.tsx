@@ -581,6 +581,7 @@ export function PersonalTab(props: PersonalTabProps) {
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -606,13 +607,14 @@ export function PersonalTab(props: PersonalTabProps) {
                   <th style={thColumna}>Documentación</th>
                   <th style={thColumna}>EPP · insumos</th>
                   <th style={thFlexible}>Impacto mensual</th>
+                  <th style={thAcciones} />
                 </tr>
               </thead>
               <tbody>
                 {empleadosPorEmpresa.map((grupo) => (
                   <React.Fragment key={`grupo-${grupo.company}`}>
                     <tr>
-                      <td colSpan={10} style={styles.sectionCell}>
+                      <td colSpan={11} style={styles.sectionCell}>
                         <div
                           style={{
                             ...styles.sectionHeader,
@@ -754,6 +756,18 @@ export function PersonalTab(props: PersonalTabProps) {
                           </span>
                         )}
                       </td>
+                      <AccionesFila
+                        tituloEditar={selectedEmployeeId === employee.id ? "Cerrar ficha" : "Abrir ficha de personal"}
+                        onEditar={() => setSelectedEmployeeId(selectedEmployeeId === employee.id ? null : employee.id)}
+                        onBorrar={() => {
+                          if (
+                            window.confirm(
+                              `¿Borrar el registro de ${employee.name}? Se pierden ficha, asistencia y liquidaciones. Si dejó de trabajar, usá "Dar de baja".`
+                            )
+                          )
+                            removeEmployee(employee.id);
+                        }}
+                      />
                     </tr>
                   );
                     })}
@@ -1502,6 +1516,7 @@ export function PersonalTab(props: PersonalTabProps) {
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colFlexible} />
+                  <col style={colAcciones} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -1524,6 +1539,7 @@ export function PersonalTab(props: PersonalTabProps) {
                     <th style={thColumna}>Baja</th>
                     <th style={thColumna}>Antigüedad</th>
                     <th style={thFlexible}>Motivo</th>
+                    <th style={thAcciones} />
                   </tr>
                 </thead>
                 <tbody>
@@ -1577,6 +1593,18 @@ export function PersonalTab(props: PersonalTabProps) {
                             <span style={{ color: "#94a3b8" }}>{` · cargó ${emp.terminatedBy}`}</span>
                           ) : null}
                         </td>
+                        <AccionesFila
+                          tituloEditar="Abrir ficha"
+                          onEditar={() => setSelectedEmployeeId(selectedEmployeeId === emp.id ? null : emp.id)}
+                          onBorrar={() => {
+                            if (
+                              window.confirm(
+                                `¿Borrar definitivamente el registro de ${emp.name}? Se pierden ficha, asistencia y liquidaciones.`
+                              )
+                            )
+                              removeEmployee(emp.id);
+                          }}
+                        />
                       </tr>
                     );
                   })}
@@ -3033,5 +3061,60 @@ export function PersonalTab(props: PersonalTabProps) {
             </div>
           )}
         </div>
+  );
+}
+
+// Columna de acciones visibles al final de cada fila de Empleados y Bajas. El click derecho
+// sigue igual; esto es para que abrir la ficha y borrar no queden escondidos. Llaman a lo
+// mismo que el menú (el borrado con la misma confirmación).
+const ANCHO_ACCIONES = 64;
+const colAcciones: React.CSSProperties = { width: ANCHO_ACCIONES };
+const thAcciones: React.CSSProperties = {
+  ...thColumna, width: ANCHO_ACCIONES, minWidth: ANCHO_ACCIONES, maxWidth: ANCHO_ACCIONES,
+};
+const tdAcciones: React.CSSProperties = {
+  padding: "2px 4px", borderBottom: "1px solid #f1f5f9", textAlign: "center", whiteSpace: "nowrap",
+  verticalAlign: "middle", width: ANCHO_ACCIONES, minWidth: ANCHO_ACCIONES, maxWidth: ANCHO_ACCIONES,
+};
+const btnFila: React.CSSProperties = {
+  border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 6,
+  padding: "1px 6px", fontSize: 12, lineHeight: 1.4, cursor: "pointer",
+};
+const btnBorrarFila: React.CSSProperties = { ...btnFila, color: "#b91c1c", border: "1px solid #fecaca", marginLeft: 4 };
+
+function AccionesFila({
+  onEditar,
+  tituloEditar = "Editar",
+  onBorrar,
+}: {
+  onEditar: () => void;
+  tituloEditar?: string;
+  onBorrar: () => void;
+}) {
+  return (
+    <td style={tdAcciones}>
+      <button
+        type="button"
+        title={tituloEditar}
+        style={btnFila}
+        onClick={(e) => {
+          e.stopPropagation();
+          onEditar();
+        }}
+      >
+        ✎
+      </button>
+      <button
+        type="button"
+        title="Borrar"
+        style={btnBorrarFila}
+        onClick={(e) => {
+          e.stopPropagation();
+          onBorrar();
+        }}
+      >
+        🗑
+      </button>
+    </td>
   );
 }

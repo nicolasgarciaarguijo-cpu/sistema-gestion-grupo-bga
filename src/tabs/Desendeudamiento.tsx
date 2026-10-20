@@ -215,12 +215,13 @@ export function DesendeudamientoTab({
                     <th style={{ ...th, width: 150, textAlign: "right" }}>Monto</th>
                     <th style={{ ...th, width: 110 }}>Estado</th>
                     <th style={th}>Pago</th>
+                    <th style={{ ...th, width: 40 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {cuotas.length === 0 && (
                     <tr>
-                      <td style={{ ...td, color: "#94a3b8" }} colSpan={5}>Sin cuotas: estipulalas abajo.</td>
+                      <td style={{ ...td, color: "#94a3b8" }} colSpan={6}>Sin cuotas: estipulalas abajo.</td>
                     </tr>
                   )}
                   {cuotas.map((c) => {
@@ -265,6 +266,22 @@ export function DesendeudamientoTab({
                             <span style={{ color: vencida ? "#b91c1c" : "#64748b" }}>
                               {vencida ? "Vencida sin pago" : "Pendiente"} · click derecho para asignar el pago
                             </span>
+                          )}
+                        </td>
+                        <td style={{ ...td, textAlign: "center" }}>
+                          {/* Quitar a la vista: igual que el menú, solo si la cuota no está pagada. */}
+                          {!pagada && (
+                            <button
+                              type="button"
+                              title="Borrar"
+                              style={{ padding: "0 6px", fontSize: 12, lineHeight: "18px", color: "#b91c1c", background: "#fff", border: "1px solid #fecaca", borderRadius: 4, cursor: "pointer" }}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                if (window.confirm(`¿Borrar la cuota ${c.numero}?`)) setCuotas(d, (cs) => cs.filter((x) => x.id !== c.id));
+                              }}
+                            >
+                              🗑
+                            </button>
                           )}
                         </td>
                       </tr>

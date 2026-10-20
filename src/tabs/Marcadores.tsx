@@ -506,6 +506,7 @@ export function MarcadoresTab({
                 <col style={colLabel} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -524,6 +525,7 @@ export function MarcadoresTab({
                     />
                   </th>
                   <th style={thFlexible}>Grupo · tipo de trabajo · empresa · observación</th>
+                  <th style={thColumna} />
                 </tr>
               </thead>
               <tbody>
@@ -625,6 +627,19 @@ export function MarcadoresTab({
                         />
                       </span>
                     </td>
+                    <td style={{ ...tdDato, ...tdAcciones }}>
+                      <button
+                        type="button"
+                        title="Borrar"
+                        style={btnBorrar}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`¿Quitar el marcador "${item.description}"?`)) removeFixedMarker(item.id);
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </td>
                   </tr>
                 )})}
               </tbody>
@@ -648,6 +663,7 @@ export function MarcadoresTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -668,6 +684,7 @@ export function MarcadoresTab({
                   <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
                   <th style={thFlexible}>Subtipo · tipo de trabajo · empresa</th>
+                  <th style={thColumna} />
                 </tr>
               </thead>
               <tbody>
@@ -771,6 +788,19 @@ export function MarcadoresTab({
                         </select>
                       </span>
                     </td>
+                    <td style={{ ...tdDato, ...tdAcciones }}>
+                      <button
+                        type="button"
+                        title="Borrar"
+                        style={btnBorrar}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`¿Quitar el marcador "${item.description}"?`)) removeSupplyMarker(item.id);
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </td>
                   </tr>
                 )})}
               </tbody>
@@ -808,6 +838,7 @@ export function MarcadoresTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -828,6 +859,7 @@ export function MarcadoresTab({
                   <th style={{ ...thColumna, textAlign: "right" }}>Hs/mes c/u</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>$ Hora</th>
                   <th style={thFlexible}>Hs base · subtotal · tipo de trabajo · empresa</th>
+                  <th style={thColumna} />
                 </tr>
               </thead>
               <tbody>
@@ -927,6 +959,19 @@ export function MarcadoresTab({
                         </select>
                       </span>
                     </td>
+                    <td style={{ ...tdDato, ...tdAcciones }}>
+                      <button
+                        type="button"
+                        title="Borrar"
+                        style={btnBorrar}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (window.confirm(`¿Quitar el marcador "${item.category}"?`)) removeLaborMarker(item.id);
+                        }}
+                      >
+                        🗑
+                      </button>
+                    </td>
                   </tr>
                 )})}
               </tbody>
@@ -964,6 +1009,7 @@ export function MarcadoresTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colFlexible} />
+                <col style={colAcciones} />
               </colgroup>
               <thead>
                 <tr>
@@ -984,6 +1030,7 @@ export function MarcadoresTab({
                   <th style={{ ...thColumna, textAlign: "right" }}>Cada (meses)</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Costo mensual</th>
                   <th style={thFlexible}>Tipo · empresa · observación</th>
+                  <th style={thColumna} />
                 </tr>
               </thead>
               <tbody>
@@ -1091,6 +1138,19 @@ export function MarcadoresTab({
                           />
                         </span>
                       </td>
+                      <td style={{ ...tdDato, ...tdAcciones }}>
+                        <button
+                          type="button"
+                          title="Borrar"
+                          style={btnBorrar}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`¿Quitar el marcador "${item.description}"?`)) removePersonalProvisionMarker(item.id);
+                          }}
+                        >
+                          🗑
+                        </button>
+                      </td>
                     </tr>
                   );
                 })}
@@ -1113,3 +1173,12 @@ export function MarcadoresTab({
         </div>
   );
 }
+
+// Boton visible de borrar en cada fila: hace lo mismo que el click derecho, para que nadie tenga
+// que adivinar que el menu existe.
+const colAcciones: React.CSSProperties = { width: 40 };
+const tdAcciones: React.CSSProperties = { whiteSpace: "nowrap", textAlign: "center", padding: "0 4px" };
+const btnBorrar: React.CSSProperties = {
+  border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", borderRadius: 4,
+  padding: "0 5px", fontSize: 11, lineHeight: "16px", cursor: "pointer",
+};

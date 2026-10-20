@@ -8,6 +8,7 @@ import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuIt
 import { porTipoDeCaja, posicionCajaChica, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
 import { getFundSemaphore } from "../domain/pettyCash";
 import { DesbalanceCaja } from "../ui/DesbalanceCaja";
+import NumInput from "../ui/NumInput";
 
 export type ViaticoFila = { id: number; company: string; persona: string; fecha: string; monto: number; administration: "blanco" | "negro"; motivo: string; rendido?: boolean };
 
@@ -49,6 +50,7 @@ export function CajaChicaListado({
   onEditarCaja,
   onEliminarCaja,
   onQuitarViatico,
+  onEditarViatico,
   onAgregarTipo,
   onRenombrarTipo,
   onQuitarTipo,
@@ -64,6 +66,8 @@ export function CajaChicaListado({
   onEditarCaja: (fundId: number) => void;
   onEliminarCaja: (fundId: number, conGastos: boolean) => void;
   onQuitarViatico?: (id: number) => void;
+  // Corregir un viatico: fecha, monto, administracion y motivo (Nicolas, 2026-10-20).
+  onEditarViatico?: (id: number, cambio: { fecha: string; monto: number; administration: "blanco" | "negro"; motivo: string }) => void;
   onAgregarTipo: (nombre: string) => void;
   onRenombrarTipo: (viejo: string, nuevo: string) => void;
   onQuitarTipo: (nombre: string) => void;
@@ -72,6 +76,8 @@ export function CajaChicaListado({
   const [nuevoTipo, setNuevoTipo] = useState("");
   const [menuTipo, setMenuTipo] = useState<null | { x: number; y: number; tipo: string }>(null);
   const [menuCaja, setMenuCaja] = useState<null | { x: number; y: number; id: number }>(null);
+  // Viatico que se esta corrigiendo en su renglon.
+  const [editViatico, setEditViatico] = useState<null | { id: number; fecha: string; monto: number; administration: "blanco" | "negro"; motivo: string }>(null);
 
   const filas = useMemo(
     () =>
@@ -289,7 +295,35 @@ export function CajaChicaListado({
                   </tr>
                 );
               })}
-              {viaticosVisibles.map((v) => (
+              {viaticosVisibles.map((v) => editViatico?.id === v.id ? (
+                <tr key={`viatico-${v.id}`} style={{ background: "#f8fafc" }}>
+                  <td style={td} colSpan={11}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12.5 }}>
+                      <strong>{v.persona || "sin persona"} · viático</strong>
+                      <input type="date" style={{ ...styles.input, width: "auto" }} value={editViatico.fecha} onChange={(e) => setEditViatico({ ...editViatico, fecha: e.target.value })} />
+                      <NumInput style={{ ...styles.input, width: 130 }} value={editViatico.monto || ""} onChange={(e) => setEditViatico({ ...editViatico, monto: Number(e.target.value) || 0 })} />
+                      <select style={{ ...styles.input, width: "auto" }} value={editViatico.administration} onChange={(e) => setEditViatico({ ...editViatico, administration: e.target.value as "blanco" | "negro" })}>
+                        <option value="blanco">Blanco</option>
+                        <option value="negro">Negro</option>
+                      </select>
+                      <input style={{ ...styles.input, width: 220 }} placeholder="Motivo" value={editViatico.motivo} onChange={(e) => setEditViatico({ ...editViatico, motivo: e.target.value })} />
+                      <button
+                        type="button"
+                        style={{ ...botonAccion, color: "#166534" }}
+                        disabled={!editViatico.fecha || !(editViatico.monto > 0)}
+                        onClick={() => {
+                          const { id, ...cambio } = editViatico;
+                          onEditarViatico?.(id, cambio);
+                          setEditViatico(null);
+                        }}
+                      >
+                        Guardar
+                      </button>
+                      <button type="button" style={botonAccion} onClick={() => setEditViatico(null)}>Cancelar</button>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
                 <tr key={`viatico-${v.id}`}>
                   {nombreResponsable(v.persona, v.motivo ? <div style={{ fontSize: 11.5, color: "#64748b", fontWeight: 400 }}>{v.motivo}</div> : null)}
                   <td style={td}>Viáticos <span style={{ fontSize: 11, color: "#94a3b8" }}>(anticipo)</span></td>
@@ -303,7 +337,17 @@ export function CajaChicaListado({
                   <td style={num}>—</td>
                   <td style={num}>—</td>
                   <td style={{ ...td, fontSize: 12 }}>{v.rendido ? "Rendido" : "Sin rendir"}</td>
-                  <td style={td}>
+                  <td style={{ ...td, whiteSpace: "nowrap" }}>
+                    {onEditarViatico && (
+                      <button
+                        type="button"
+                        style={{ ...botonAccion, marginRight: 4 }}
+                        title="Corregir el viático"
+                        onClick={() => setEditViatico({ id: v.id, fecha: v.fecha, monto: v.monto, administration: v.administration, motivo: v.motivo || "" })}
+                      >
+                        ✎
+                      </button>
+                    )}
                     {onQuitarViatico && (
                       <button
                         type="button"

@@ -128,6 +128,7 @@ export function HistorialTab({
                   <col style={colLabel} />
                   <col style={colDato} />
                   <col style={colFlexible} />
+                  <col style={colAcciones} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -146,6 +147,7 @@ export function HistorialTab({
                       />
                     </th>
                     <th style={thFlexible}>Contacto · teléfono · email · empresa · notas</th>
+                    <th style={thColumna} />
                   </tr>
                 </thead>
                 <tbody>
@@ -217,6 +219,20 @@ export function HistorialTab({
                             onChange={(e) => updateCrmClient(client.id, "notes", e.target.value)}
                           />
                         </span>
+                      </td>
+                      {/* La ficha se edita en la misma fila; el tachito hace lo mismo que el click derecho. */}
+                      <td style={{ ...tdDato, ...tdAcciones }}>
+                        <button
+                          type="button"
+                          title="Borrar"
+                          style={btnBorrar}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm(`¿Quitar la ficha de "${client.name}"?`)) removeCrmClient(client.id);
+                          }}
+                        >
+                          🗑
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -463,3 +479,12 @@ export function HistorialTab({
         </div>
   );
 }
+
+// Boton visible de borrar en cada fila: hace lo mismo que el click derecho, para que nadie tenga
+// que adivinar que el menu existe.
+const colAcciones: React.CSSProperties = { width: 40 };
+const tdAcciones: React.CSSProperties = { whiteSpace: "nowrap", textAlign: "center", padding: "0 4px" };
+const btnBorrar: React.CSSProperties = {
+  border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", borderRadius: 4,
+  padding: "0 5px", fontSize: 11, lineHeight: "16px", cursor: "pointer",
+};

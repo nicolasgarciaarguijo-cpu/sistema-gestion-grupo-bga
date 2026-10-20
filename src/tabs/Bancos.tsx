@@ -691,6 +691,18 @@ export function BancosTab({
                           onChange={(e) => uploadBankStatementFile(entry.id, e.target.files?.[0] || null)}
                         />
                       </label>
+                      {/* Borrar a la vista: lo mismo que "Borrar movimiento" del click derecho. */}
+                      <button
+                        type="button"
+                        style={{ ...styles.smallBtn, marginLeft: 6, color: "#b91c1c", borderColor: "#fecaca" }}
+                        title="Borrar"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          if (window.confirm("¿Borrar este movimiento del banco?")) removeBankStatementEntry(entry.id);
+                        }}
+                      >
+                        🗑
+                      </button>
                     </td>
                   </tr>
                   {open && (
