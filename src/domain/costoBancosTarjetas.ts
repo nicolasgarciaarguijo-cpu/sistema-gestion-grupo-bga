@@ -63,7 +63,7 @@ export type LineaCosto = {
 // renglon de comision / impuesto / interes del banco probablemente esta mal clasificado.
 export function debitoSospechoso(concepto: string): boolean {
   const d = sinAcentos(concepto);
-  if (/imp|imp\.|impuesto|iva|percep|comision|com\.|ley|sello|interes|int\.|mantenim|db\/cr|25413|retenc/.test(d)) return false;
+  if (/\bimp\b|imp\.|impuesto|iva|percep|comision|com\.|ley|sello|interes|int\.|mantenim|db\/cr|25413|retenc/.test(d)) return false;
   return /sueldo|acreditac|transf|pago de servicio|tarjeta|credito por|debito automatico|haberes|proveedor|cheque/.test(d);
 }
 

@@ -17224,6 +17224,52 @@ Escribi CERRAR para confirmar:`
     const pendientes = novedadesPendientes(visto, puedeVerNovedad);
     if (pendientes.length > 0) setNovedadesAbiertas(pendientes);
   }, [isSupabaseLoggedIn, supabaseSession?.user?.id, supabaseHydratedTick, effectiveIsAdmin, supabaseAllowedTabs.length]);
+  // LIMPIEZA PUNTUAL (Nicolas, 2026-10-20): "quitame el egreso de DAC de 2.000.000 del 11/10, que no puedo
+  // quitarlo" (era una prueba). Se busca ese registro exacto en todo lo que puede ser un egreso o su factura
+  // y se pregunta antes de borrar. Una vez respondido no vuelve a preguntar. Despues de esta limpieza se
+  // puede sacar este bloque.
+  const limpiezaDacRef = useRef(false);
+  useEffect(() => {
+    if (!isSupabaseLoggedIn || !supabaseHydratedTick || limpiezaDacRef.current) return;
+    const CLAVE = "limpieza.dac-2000000-2026-10-11";
+    try {
+      if (window.localStorage.getItem(CLAVE)) return;
+    } catch {
+      // sin almacenamiento: igual se pregunta
+    }
+    limpiezaDacRef.current = true;
+    const esDac = (...textos: Array<string | undefined>) => textos.some((t) => /(^|[^a-z])dac([^a-z]|$)/i.test(String(t || "")));
+    const es2M = (n: unknown) => Math.abs(Number(n || 0) - 2000000) < 1;
+    const FECHA = "2026-10-11";
+    const pagos = costEntries.filter((c) => c.date === FECHA && es2M(c.amount) && esDac(c.supplier, c.description));
+    const gastos = pettyCashExpenses.filter((g) => g.date === FECHA && es2M(g.amount) && esDac(g.supplier, g.description));
+    const facturas = purchaseInvoices.filter((i) => i.invoiceDate === FECHA && es2M(i.total) && esDac(i.supplier) && i.source !== "caja_chica");
+    const sueltos = financialItems.filter((f) => f.date === FECHA && es2M(f.amount) && esDac(f.title, f.client));
+    const banco = bankStatementEntries.filter((b) => b.date === FECHA && es2M(b.amount) && esDac(b.concept, b.assignedParty));
+    const total = pagos.length + gastos.length + facturas.length + sueltos.length + banco.length;
+    if (total === 0) return;
+    const lineas = [
+      ...pagos.map((c) => `• Pago ${c.supplier || ""} · ${c.description || ""}`),
+      ...gastos.map((g) => `• Gasto de caja chica ${g.supplier || ""}`),
+      ...facturas.map((i) => `• Factura ${i.receiptLetter || ""} ${i.invoiceNumber || ""} de ${i.supplier}`),
+      ...sueltos.map((f) => `• Movimiento de la planilla vieja · ${f.title || ""}`),
+      ...banco.map((b) => `• Movimiento del banco · ${b.concept || ""}`),
+    ];
+    const ok = window.confirm(
+      `Se encontró el egreso de prueba de DAC de $ 2.000.000 del 11/10/2026:\n\n${lineas.join("\n")}\n\n¿Borrarlo? (Aceptar = borrar · Cancelar = dejarlo)`
+    );
+    try {
+      window.localStorage.setItem(CLAVE, ok ? "borrado" : "dejado");
+    } catch {
+      // nada
+    }
+    if (!ok) return;
+    pagos.forEach((c) => removeCostEntry(c.id));
+    gastos.forEach((g) => removePettyCashExpense(g.id));
+    facturas.forEach((i) => removePurchaseInvoice(i.id));
+    if (sueltos.length) setFinancialItems((prev) => prev.filter((f) => !sueltos.some((x) => x.id === f.id)));
+    if (banco.length) setBankStatementEntries((prev) => prev.filter((b) => !banco.some((x) => x.id === b.id)));
+  }, [isSupabaseLoggedIn, supabaseHydratedTick, costEntries, pettyCashExpenses, purchaseInvoices, financialItems, bankStatementEntries]);
   const cerrarNovedades = () => {
     try {
       window.localStorage.setItem(claveNovedades, ultimaNovedad());
@@ -19638,7 +19684,7 @@ Escribi CERRAR para confirmar:`
           movimientosCuentas={movimientosDeCuentas}
           onAbrirProgramado={(fila, titulo) => {
             // La factura de un proveedor: su ficha (ahi se ve la factura para pagarla o borrarla).
-            if (fila.startsWith("prov:") && !/^(Tarjeta|Cr[eé]dito|Plan)/i.test(titulo)) return abrirFichaProveedor(titulo);
+            if (fila.startsWith("prov:") && !/^(Tarjeta|Cr[eé]dito|Plan)\b/i.test(titulo)) return abrirFichaProveedor(titulo);
             if (/^Tarjeta/i.test(titulo)) return setActiveTab("bancos" as TabKey);
             setActiveTab("desendeudamiento" as TabKey);
           }}
@@ -21704,7 +21750,7 @@ Escribi CERRAR para confirmar:`
             pagosVinculados(purchaseInvoices).forEach((id) => usados.add(id));
             const norm = (x: string) => x.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
             const n = norm(acreedor || "");
-            const esDelAcreedor = (c: CostEntry) => !!n && (norm(c.supplier || "").includes(n) || n.includes(norm(c.supplier || "") || " "));
+            const esDelAcreedor = (c: CostEntry) => !!n && (norm(c.supplier || "").includes(n) || n.includes(norm(c.supplier || "") || "\u0000"));
             return costEntries
               .filter((c) => c.company === company && !usados.has(c.id) && c.employeeId == null)
               .sort((a, b) => Number(esDelAcreedor(b)) - Number(esDelAcreedor(a)) || b.date.localeCompare(a.date))
