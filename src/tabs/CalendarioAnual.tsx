@@ -162,9 +162,9 @@ export function CalendarioAnualTab({
   onSetNote,
   billeteraDiaria,
   previsiones = [],
-  programados = [],
   cuentas = [],
   soloLectura = false,
+  onAbrirOrigen,
 }: {
   entries: Entry[];
   // PREVISION (hoy: los seguros). Lo que se VIENE, mes a mes: no es plata gastada, asi que entra por
@@ -178,17 +178,6 @@ export function CalendarioAnualTab({
   // deja cargar, editar, borrar ni mover. Quedan las marcas, notas y banderitas (son del que lee), el
   // nombre y el ocultar de los renglones fijos (es la vista) y los atajos a la ficha de origen.
   soloLectura?: boolean;
-  programados?: Array<{
-    clave: string;
-    company: string;
-    titulo: string;
-    origen: string;
-    fechaLimite: string;
-    monto: number;
-    currency: "ARS" | "USD";
-    estado: string;
-    texto: string;
-  }>;
   previsiones?: Array<{
     conceptKey: string;
     company: string;
@@ -196,6 +185,10 @@ export function CalendarioAnualTab({
     amount: number;
     tipo?: string;
     descripcion?: string;
+    // PAGOS PROGRAMADOS en su renglon (Nicolas, 2026-10-20): con `titulo` la prevision va a la fila de
+    // detalle (el proveedor dentro de su grupo); sin, al renglon entero. `estado` le da el color.
+    titulo?: string;
+    estado?: string;
   }>;
   // Ver SOLO una seccion de la planilla (ej. "cobranzas" para el reflejo en Facturacion y cobranzas).
   // Es el MISMO componente con los mismos datos y los mismos handlers: por eso las dos vistas quedan
@@ -247,6 +240,8 @@ export function CalendarioAnualTab({
   onFVRenglon?: (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => void;
   // Abrir la ficha del trabajo en la solapa Trabajos aprobados.
   onOpenJob?: (jobId: number) => void;
+  // Click derecho sobre un monto -> la ficha de donde salio (proveedor, persona, trabajo o solapa).
+  onAbrirOrigen?: (entryId: string) => void;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
   // Proveedores y facturas de COMPRA del sistema: con esto un débito sin clasificar se vincula a
   // quién le pagamos y, si corresponde, a la factura que cancela.
@@ -718,29 +713,81 @@ export function CalendarioAnualTab({
         (companyScope === "__ALL__" || p.company === companyScope) &&
         !!p.date && p.date >= firstIso && p.date <= lastIso
     );
-    const porDia = previsionPorConceptoYDia(enVista);
-    const porMes = previsionPorConceptoYMes(enVista);
+    // La clave de la fila: el renglon, o renglon|titulo para la fila de un proveedor.
+    const porFila = enVista.map((p) => ({ ...p, conceptKey: p.titulo ? `${p.conceptKey}|${p.titulo}` : p.conceptKey }));
+    const porDia = previsionPorConceptoYDia(porFila);
+    const porMes = previsionPorConceptoYMes(porFila);
+    // El peor estado del dia en cada fila (vencido > hoy > proximo > el resto), para el color.
+    const PESO: Record<string, number> = { vencido: 4, hoy: 3, proximo: 2, en_ventana: 1 };
+    const estadoDia = new Map<string, string>();
+    porFila.forEach((p) => {
+      if (!p.estado) return;
+      const k = `${p.conceptKey}|${p.date}`;
+      const previo = estadoDia.get(k);
+      if (!previo || (PESO[p.estado] || 0) > (PESO[previo] || 0)) estadoDia.set(k, p.estado);
+    });
     // Lo que de verdad cayo en cada renglon, mes a mes: es contra esto que se concilia la prevision.
     const realPorMes = new Map<string, Map<string, number>>();
-    agg.byConcept.forEach((porFecha, conceptKey) => {
+    const sumarReal = (fila: string, porFecha: Map<string, number>) =>
       porFecha.forEach((monto, iso) => {
-        if (!realPorMes.has(conceptKey)) realPorMes.set(conceptKey, new Map());
-        const m = realPorMes.get(conceptKey)!;
+        if (!realPorMes.has(fila)) realPorMes.set(fila, new Map());
+        const m = realPorMes.get(fila)!;
         const mes = iso.slice(0, 7);
         m.set(mes, (m.get(mes) || 0) + monto);
       });
+    agg.byConcept.forEach((porFecha, conceptKey) => sumarReal(conceptKey, porFecha));
+    // Filas de proveedor ("prov:<seccion>:<grupo>|<proveedor>") y renglones de solapa ("custom:<seccion>:<nombre>").
+    agg.provDetail.forEach((porProv, k) => {
+      const sep = k.indexOf("|");
+      const renglon = renglonProveedor(k.slice(0, sep) as any, k.slice(sep + 1));
+      porProv.forEach((porFecha, titulo) => sumarReal(`${renglon}|${titulo}`, porFecha));
     });
+    agg.customRows.forEach((porLabel, sec) => porLabel.forEach((porFecha, label) => sumarReal(`custom:${sec}:${label}`, porFecha)));
     // Que seguros componen cada celda prevista, para decirlo en el tooltip.
     const detalle = new Map<string, string>();
-    enVista.forEach((p) => {
+    porFila.forEach((p) => {
       const k = `${p.conceptKey}|${p.date}`;
       const texto = [p.tipo, p.descripcion].filter(Boolean).join(" · ");
       if (!texto) return;
       const previo = detalle.get(k);
       detalle.set(k, previo ? `${previo} + ${texto}` : texto);
     });
-    return { porDia, porMes, realPorMes, detalle };
+    // Titulos con prevision por renglon: un proveedor con una factura por pagar tiene su fila aunque
+    // todavia no tenga ningun pago (y no se repite si ya la tiene).
+    const titulosPorRenglon = new Map<string, Set<string>>();
+    enVista.forEach((p) => {
+      if (!p.titulo) return;
+      if (!titulosPorRenglon.has(p.conceptKey)) titulosPorRenglon.set(p.conceptKey, new Set());
+      titulosPorRenglon.get(p.conceptKey)!.add(p.titulo);
+    });
+    return { porDia, porMes, realPorMes, detalle, estadoDia, titulosPorRenglon };
   }, [previsiones, companyScope, dayCols, agg]);
+
+  // Una celda de PAGO PROGRAMADO en su fila: "≈ $X" con el color de su estado mientras el pago real del
+  // mes no se cargo. Cuando se carga, manda el real y lo programado queda conciliado (✓). Nunca los dos:
+  // seria el mismo pago dos veces.
+  const celdaPrevista = (fila: string, iso: string, real: number) => {
+    const mes = iso.slice(0, 7);
+    const previstoMes = prev.porMes.get(fila)?.get(mes) || 0;
+    if (!(previstoMes > 0)) return null;
+    const realMes = prev.realPorMes.get(fila)?.get(mes) || 0;
+    const estado = estadoDePrevision(previstoMes, realMes);
+    const previstoDia = prev.porDia.get(fila)?.get(iso) || 0;
+    const que = prev.detalle.get(`${fila}|${iso}`) || "";
+    if (!real && previstoDia > 0 && estado === "pendiente") {
+      const est = prev.estadoDia.get(`${fila}|${iso}`) || "";
+      return {
+        texto: `≈ ${money(previstoDia)}`,
+        titulo: `Programado ${money(previstoDia)}${que ? " · " + que : ""} — todavía no se pagó, no suma al neto.`,
+        estilo: { ...previstaCell, color: COLOR_PROGRAMADO[est] || COLOR_PROGRAMADO.futuro } as React.CSSProperties,
+        ok: false,
+      };
+    }
+    if (real && estado === "conciliado") return { texto: "", titulo: `✓ cubre lo programado del mes (${money(previstoMes)})`, estilo: {}, ok: true };
+    if (real && (estado === "parcial" || estado === "excedido"))
+      return { texto: "", titulo: `Se programó ${money(previstoMes)} y en el mes se pagó ${money(realMes)}`, estilo: {}, ok: false };
+    return null;
+  };
 
   // Color y sigla por empresa para el desglose cuando scope=Todas.
   const companyMeta = useMemo(() => {
@@ -1477,7 +1524,9 @@ export function CalendarioAnualTab({
   // que existieran los declarados, o cargados desde "Otro renglón" en el modal). Sin repetidos.
   const customRowsOfSection = (sectionKey: string): Array<{ label: string; declarado: boolean }> => {
     const declarados = extraRowsOf(rowConfig, sectionKey);
-    const conPlata = Array.from(agg.customRows.get(sectionKey)?.keys() || []);
+    const prefijo = `custom:${sectionKey}:`;
+    const conPrevision = Array.from(prev.porMes.keys()).filter((k) => k.startsWith(prefijo)).map((k) => k.slice(prefijo.length));
+    const conPlata = Array.from(new Set([...Array.from(agg.customRows.get(sectionKey)?.keys() || []), ...conPrevision]));
     const vistos = new Set(declarados);
     const sueltos = conPlata.filter((label) => !vistos.has(label));
     return [
@@ -1853,6 +1902,18 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
   // Así un cliente que terminó su trabajo no ocupa espacio en los meses siguientes; si vuelve a comprar
   // (nueva cobranza), reaparece solo en el mes en que se mueve.
   const activeInView = (drow: Map<string, number>) => visibleDayCols.some((c) => (drow.get(c.iso) || 0) !== 0);
+  // ¿La fila tiene un pago programado en lo que se ve?
+  const previstoEnVista = (fila: string) => {
+    const porDia = prev.porDia.get(fila);
+    return !!porDia && visibleDayCols.some((c) => (porDia.get(c.iso) || 0) > 0);
+  };
+  // SOLO LO VINCULADO (Nicolas, 2026-10-20): un renglon fijo de la planilla vieja se ve solo si alguna
+  // solapa lo alimenta en el ejercicio (plata cargada o un pago programado). Vacio = era de la planilla.
+  const renglonConVinculo = (key: string) => {
+    const porFecha = agg.byConcept.get(key);
+    const conPlata = !!porFecha && Array.from(porFecha.values()).some((v) => v !== 0);
+    return conPlata || prev.porMes.has(key);
+  };
 
   // Contenido de una celda de TOTAL para un día: el blanco y el negro con su pill B/N.
   // Si el día tiene los dos, se ven los dos números (uno debajo del otro), cada uno con su pill.
@@ -1888,7 +1949,9 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
       itemKey: string;
       match: (e: Entry) => boolean;
       rowKind?: "custom" | "texto";
-    }
+    },
+    // Fila en el carril de prevision (pagos programados), para dibujar el "≈" hasta que se pague.
+    filaPrev?: string
   ) => {
     // Si el título trae el marcador "(D) falta ...", lo mostramos como pill D (falta completar).
     const dMatch = label.match(/·?\s*\(D\)\s*(.*)$/i);
@@ -1910,15 +1973,17 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
       {visibleDayCols.map((c) => {
         const v = drow.get(c.iso) || 0;
         const empDet = v ? fondoEmpresa(label, c.iso) : { style: undefined, detalle: "" };
+        const pv = filaPrev ? celdaPrevista(filaPrev, c.iso, v) : null;
         return (
           <td
             key={`${key}-${c.iso}`}
             onContextMenu={menu ? (ev) => openCellMenu(ev, menu.label, c.iso, menu.sectionKey, menu.itemKey, menu.match) : undefined}
-            title={empDet.detalle || undefined}
-            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...fondoNoHabil(c.iso), ...(empDet.style || {}), ...hi(c.iso), ...estiloCelda(menu?.sectionKey || "", menu?.itemKey || "", c.iso) }}
+            title={[pv?.titulo, empDet.detalle].filter(Boolean).join(" · ") || undefined}
+            style={{ ...tdCell, color: v ? (isOut ? "#dc2626" : "#334155") : "#e2e8f0", ...fondoNoHabil(c.iso), ...(empDet.style || {}), ...hi(c.iso), ...estiloCelda(menu?.sectionKey || "", menu?.itemKey || "", c.iso), ...(pv && !v ? pv.estilo : {}) }}
           >
             {marcasDeCelda(menu?.sectionKey || "", menu?.itemKey || "", c.iso)}
-            {v ? money(v) : "·"}
+            {v ? money(v) : pv?.texto || "·"}
+            {v && pv?.ok ? <span style={prevOkChip} title={pv.titulo}>✓</span> : null}
           </td>
         );
       })}
@@ -2484,7 +2549,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                           </tr>
                           );
                         })
-                      : section.items.filter((it) => !hiddenRows.has(it.key)).map((it) => {
+                      : section.items.filter((it) => !hiddenRows.has(it.key) && (!soloLectura || renglonConVinculo(it.key))).map((it) => {
                           const itLabel = labelOf(it.key, it.label);
                           const drow = agg.byConcept.get(it.key);
                           const ck = agg.conceptCostKind.get(it.key);
@@ -2513,6 +2578,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                 const estadoPrev = previstoMes > 0 ? estadoDePrevision(previstoMes, realMes) : null;
                                 const previstoDia = prev.porDia.get(it.key)?.get(c.iso) || 0;
                                 const mostrarPrev = !v && previstoDia > 0 && estadoPrev === "pendiente";
+                                const colorPrev = mostrarPrev ? COLOR_PROGRAMADO[prev.estadoDia.get(`${it.key}|${c.iso}`) || ""] : undefined;
                                 const quePrev = prev.detalle.get(`${it.key}|${c.iso}`) || "";
                                 const tituloPrev = mostrarPrev
                                   ? `Previsión ${money(previstoDia)}${quePrev ? " · " + quePrev : ""} — lo que se viene, todavía sin débito. No suma al neto.`
@@ -2535,7 +2601,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                         .filter(Boolean)
                                         .join(" · ")
                                     }
-                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...fondoNoHabil(c.iso), ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso), ...(mostrarPrev ? previstaCell : null) }}
+                                    style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? (isOut ? "#dc2626" : "#0f172a") : "#cbd5e1", ...fondoNoHabil(c.iso), ...(emp.style || {}), ...hi(c.iso), ...estiloCelda(section.key, it.key, c.iso), ...(mostrarPrev ? { ...previstaCell, ...(colorPrev ? { color: colorPrev } : {}) } : null) }}
                                   >
                                     {marcasDeCelda(section.key, it.key, c.iso)}
                                     {v ? money(v) : mostrarPrev ? `≈ ${money(previstoDia)}` : "+"}
@@ -2567,8 +2633,10 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         const g = parseClaveGrupo(clave);
                         const k = `${prefijo}${clave}`;
                         const renglon = renglonProveedor(section.key as any, clave);
-                        const provs = Array.from((agg.provDetail.get(k) || new Map()).entries())
-                          .filter(([, drow]) => activeInView(drow))
+                        const conPago = agg.provDetail.get(k) || new Map<string, Map<string, number>>();
+                        const provs = Array.from(new Set([...Array.from(conPago.keys()), ...Array.from(prev.titulosPorRenglon.get(renglon) || [])]))
+                          .map((titulo) => [titulo, conPago.get(titulo) || new Map<string, number>()] as [string, Map<string, number>])
+                          .filter(([titulo, drow]) => activeInView(drow) || previstoEnVista(`${renglon}|${titulo}`))
                           .sort((a, b) => a[0].localeCompare(b[0]));
                         return (
                           <React.Fragment key={k}>
@@ -2609,7 +2677,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                 sectionKey: section.key,
                                 itemKey: renglon,
                                 match: (e) => e.conceptKey === renglon && sameTitle(e, titulo),
-                              })
+                              }, `${renglon}|${titulo}`)
                             )}
                           </React.Fragment>
                         );
@@ -2690,6 +2758,19 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                         )
                         .map((fila) => {
                           const drow = agg.customRows.get(section.key)?.get(fila.label) || new Map<string, number>();
+                          const filaCk = `custom:${section.key}:${fila.label}`;
+                          // SOLO PARA VER: el renglon existe porque una solapa lo alimenta (plata o pago
+                          // programado). Uno declarado y vacio era de la planilla vieja: no se ve.
+                          if (soloLectura) {
+                            if (!activeInView(drow) && !previstoEnVista(filaCk)) return null;
+                            return detailRow(fila.label, drow, `cst-${section.key}-${fila.label}`, isOut, {
+                              label: fila.label,
+                              sectionKey: section.key,
+                              itemKey: "__custom__",
+                              match: (e) => e.conceptKey === filaCk,
+                              rowKind: "custom",
+                            }, filaCk);
+                          }
                           // Un renglón declarado se muestra SIEMPRE (aunque no tenga movimientos este
                           // mes): es el lugar donde el usuario quiere cargar. Uno suelto, solo si tiene.
                           if (!fila.declarado && !activeInView(drow)) return null;
@@ -2718,81 +2799,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 );
               })}
 
-              {/* PAGOS PROGRAMADOS · previsión. Lo que se viene a pagar (deudas, tarjetas, seguros,
-                  vencimientos). NO suma: es aviso, igual que el bloque de arriba de la planilla. */}
-              {!onlySection && (() => {
-                const firstIso = visibleDayCols[0]?.iso || "";
-                const lastIso = visibleDayCols[visibleDayCols.length - 1]?.iso || "";
-                const enVista = (programados || []).filter(
-                  (p) =>
-                    (companyScope === "__ALL__" || p.company === companyScope) &&
-                    p.fechaLimite >= firstIso &&
-                    p.fechaLimite <= lastIso
-                );
-                if (enVista.length === 0) return null;
-                const filas = new Map<string, typeof enVista>();
-                enVista.forEach((p) => {
-                  const k = `${p.company}|${p.titulo}`;
-                  filas.set(k, [...(filas.get(k) || []), p]);
-                });
-                const colorDe = (estado: string) =>
-                  estado === "pagado" ? "#16a34a" : estado === "vencido" || estado === "hoy" ? "#b91c1c" : estado === "proximo" ? "#b45309" : "#64748b";
-                const abierto = expanded.has("programados");
-                return (
-                  <>
-                    <tr>
-                      <td
-                        style={{ ...tdStickyLabel, background: "#ede9fe", fontWeight: 800, color: "#5b21b6", cursor: "pointer" }}
-                        onClick={() => toggle("programados")}
-                        title="Pagos que se vienen. Es previsión: no suma al neto. Se cargan y se resuelven en el bloque Pagos programados."
-                      >
-                        {abierto ? "▾ " : "▸ "}PAGOS PROGRAMADOS · previsión (no suma)
-                      </td>
-                      {visibleDayCols.map((c) => {
-                        const delDia = enVista.filter((p) => p.fechaLimite === c.iso && p.currency !== "USD" && p.estado !== "pagado");
-                        const total = delDia.reduce((a, p) => a + p.monto, 0);
-                        return (
-                          <td key={`prg-${c.iso}`} style={{ ...tdCell, background: "#ede9fe", fontStyle: "italic", color: "#5b21b6", ...hi(c.iso) }}>
-                            {total ? `≈ ${money(total)}` : delDia.length ? "≈" : ""}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                    {abierto &&
-                      Array.from(filas.entries())
-                        .sort((a, b) => a[0].localeCompare(b[0]))
-                        .map(([k, ps]) => {
-                          const meta = companyMeta.get(ps[0].company);
-                          return (
-                            <tr key={`prg-${k}`}>
-                              <td style={{ ...tdStickyLabel, paddingLeft: 24, fontWeight: 500, color: "#4c1d95", boxShadow: `inset 3px 0 0 ${meta?.color || "#a78bfa"}` }} title={`${ps[0].titulo} · ${ps[0].origen}`}>
-                                {ps[0].titulo}
-                              </td>
-                              {visibleDayCols.map((c) => {
-                                const p = ps.find((x) => x.fechaLimite === c.iso);
-                                return (
-                                  <td
-                                    key={`prg-${k}-${c.iso}`}
-                                    title={p ? `${p.titulo} · ${p.texto}` : undefined}
-                                    style={{
-                                      ...tdCell,
-                                      fontStyle: "italic",
-                                      color: p ? colorDe(p.estado) : "#e2e8f0",
-                                      textDecoration: p?.estado === "pagado" ? "line-through" : undefined,
-                                      ...hi(c.iso),
-                                    }}
-                                  >
-                                    {p ? `≈ ${p.monto > 0 ? money(p.monto, p.currency) : "?"}` : "·"}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          );
-                        })}
-                  </>
-                );
-              })()}
-
+              {/* PAGOS PROGRAMADOS: ya no tienen bloque propio (Nicolas, 2026-10-20). Cada uno va en el renglon de su
+                  proveedor o de su seccion, con el color de su estado (carril de prevision: no suma). */}
               {/* SIN CLASIFICAR */}
               {!onlySection && agg.unclDetail.size > 0 && (
                 <>
@@ -3804,6 +3812,17 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                     <QuickMenuSep />
                   </>
                 )}
+                {soloLectura && onAbrirOrigen && (
+                  <button
+                    style={{ ...quickMenuItem, fontWeight: 700 }}
+                    onClick={() => {
+                      onAbrirOrigen(picked.id);
+                      close();
+                    }}
+                  >
+                    Abrir la ficha <span style={{ color: "#94a3b8", fontSize: 11 }}>({dondeSeEdita(picked.id)})</span>
+                  </button>
+                )}
                 {soloLectura && (
                   <div style={{ fontSize: 11.5, color: "#475569", padding: "4px 8px", lineHeight: 1.4 }}>
                     Se carga y se corrige en <strong>{dondeSeEdita(picked.id)}</strong>.
@@ -4506,6 +4525,14 @@ const costChip: React.CSSProperties = {
 };
 // Celda con PREVISION y sin debito todavia: se ve que se viene, pero en gris y en cursiva para que
 // nunca se confunda con plata que ya se movio (la prevision no suma al neto).
+// Color de un pago programado segun su estado (los mismos que tenia el bloque Pagos programados).
+const COLOR_PROGRAMADO: Record<string, string> = {
+  vencido: "#b91c1c",
+  hoy: "#b91c1c",
+  proximo: "#b45309",
+  en_ventana: "#7c3aed",
+  futuro: "#7c3aed",
+};
 const previstaCell: React.CSSProperties = {
   color: "#94a3b8", fontStyle: "italic", fontWeight: 500,
 };

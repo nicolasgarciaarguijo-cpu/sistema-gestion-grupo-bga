@@ -34,6 +34,7 @@ import {
   devolucionDeCajaChica,
   repartoDelFondo,
   movimientoBancarioAlimenta,
+  financieroAlimentaCashFlow,
 } from "./domain/calendarFeeds";
 import {
   computeSupplierLedgers,
@@ -366,6 +367,7 @@ import { FacturaCompraModal, type FacturaForm } from "./ui/FacturaCompraModal";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { ProveedoresPanel } from "./tabs/Proveedores";
 import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
+import { programadosEnRenglones } from "./domain/programadosEnRenglones";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
 import { entradasRetiros, RENGLON_RETIROS } from "./domain/retirosSocietarios";
@@ -12792,6 +12794,7 @@ Escribi CERRAR para confirmar:`
       client: "",
       amount: 0,
       notes: "",
+      origen: "facturacion",
     };
     setFinancialItems((prev) => [item, ...prev]);
     setSelectedFinancialItemId(item.id);
@@ -14822,6 +14825,8 @@ Escribi CERRAR para confirmar:`
 
     visibleFinancialItems.forEach((item) => {
       if (!item.date || !item.date.startsWith(String(analysisYear))) return;
+      // SOLO LO VINCULADO (2026-10-20): lo cargado en la planilla o importado de la planilla vieja ya no se ve.
+      if (!financieroAlimentaCashFlow(item)) return;
       // Solo es cobranza si NO se clasificó en otro renglón de la planilla: un préstamo o un rescate se
       // cargan como "cobranza" (es plata que entra) pero pertenecen a SU sección, no a Cobranzas.
       const isCobranza = esCobranzaReal(item.type, item.conceptKey);
@@ -17174,11 +17179,26 @@ Escribi CERRAR para confirmar:`
   };
 
   // Lo que baja a la planilla por el carril de previsiones (no suma al neto): los seguros y los
-  // vencimientos cargados a mano con fecha CONFIRMADA y renglon.
+  // vencimientos cargados a mano con fecha CONFIRMADA y renglon. Y desde el 2026-10-20 los PAGOS
+  // PROGRAMADOS (facturas por pagar, tarjetas, cuotas de deuda), cada uno en el renglon de su proveedor o
+  // de su seccion: ya no tienen bloque propio (domain/programadosEnRenglones.ts).
   const previsionesPlanilla = useMemo(() => {
     const meses = fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear);
     const desde = `${meses[0]}-01`;
     const hasta = `${meses[meses.length - 1]}-31`;
+    const facturaPorId = new Map(purchaseInvoices.map((i) => [i.id, i]));
+    // La fila de la factura es la MISMA que va a tener su pago (ver cashFlowEntriesPlanilla): el grupo del
+    // candado del proveedor, el de la factura o el del proveedor, y la cuenta corriente si la tiene.
+    const filaDeFactura = (refId: number | string) => {
+      const inv = facturaPorId.get(Number(refId));
+      if (!inv) return null;
+      const prov = buscarProveedor(suppliers as any, inv.supplier || "", inv.taxId || "") as any;
+      const grupo = (prov?.tipoGastoLocked && prov?.grupoCosto) || inv.grupoCosto || prov?.grupoCosto || "|Sin grupo";
+      return {
+        conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, grupo),
+        titulo: inv.supplier || "proveedor",
+      };
+    };
     return [
       ...segurosPrevisiones,
       ...previsionesDeVencimientos(
@@ -17186,8 +17206,9 @@ Escribi CERRAR para confirmar:`
         desde,
         hasta
       ),
+      ...programadosEnRenglones(agendaInamoviblesItems, filaDeFactura).filter((p) => p.date >= desde && p.date <= hasta),
     ];
-  }, [segurosPrevisiones, vencimientos, balanceFiscalStartYear]);
+  }, [segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers]);
 
   // Marcar pagado: si el origen tiene su propio "pagado", se usa ESE (queda vinculado en las dos
   // solapas); si no, se guarda una marca.
@@ -19263,6 +19284,52 @@ Escribi CERRAR para confirmar:`
     setCalendarFlags((prev) => prev.map((f) => (f.id === id ? { ...f, note } : f)));
   };
 
+  // CLICK DERECHO SOBRE UN MONTO DEL CASH FLOW -> la ficha de donde salio (Nicolas, 2026-10-20): el
+  // proveedor, la persona, el trabajo o la solapa. El cash flow no se edita: se trabaja desde ahi.
+  const abrirOrigenDeMovimiento = (entryId: string) => {
+    const id = String(entryId || "");
+    const num = (pre: string) => Number(id.slice(pre.length).split("-")[0]);
+    const irA = (tab: string) => setActiveTab(tab as TabKey);
+    if (id.startsWith("cost-")) {
+      const ce = costEntries.find((x) => x.id === num("cost-"));
+      const emp = ce?.employeeId != null ? visibleEmployees.find((e) => e.id === ce.employeeId) : undefined;
+      if (emp) return abrirFichaHaberes(emp.name, String(emp.company));
+      if (ce?.supplier) return abrirFichaProveedor(ce.supplier);
+      return irA("costos");
+    }
+    if (id.startsWith("petty-cash-")) {
+      const pe = pettyCashExpenses.find((x) => x.id === num("petty-cash-"));
+      if (pe?.supplier) return abrirFichaProveedor(pe.supplier);
+      return irA("cajaChica");
+    }
+    if (id.startsWith("comm-")) {
+      const job = approvedJobs.find((j) => (j.commissionPayments || []).some((c) => c.id === num("comm-")));
+      if (job) {
+        setSelectedApprovedJobId(job.id);
+        return irA("aprobados");
+      }
+    }
+    if (id.startsWith("financial-")) {
+      const f = financialItems.find((x) => x.id === num("financial-"));
+      if (f?.sourceJobId != null) {
+        setSelectedApprovedJobId(f.sourceJobId);
+        return irA("aprobados");
+      }
+      return irA("facturacion");
+    }
+    if (id.startsWith("job-")) {
+      setSelectedApprovedJobId(num("job-"));
+      return irA("aprobados");
+    }
+    if (id.startsWith("bank-")) return irA("bancos");
+    if (id.startsWith("movint-")) return irA("movimientosInternos");
+    if (id.startsWith("inv-")) return irA("inversiones");
+    if (id.startsWith("viatico-") || id.startsWith("petty-")) return irA("cajaChica");
+    if (id.startsWith("retiro-")) return irA("cashflow");
+    if (id.startsWith("debt-")) return irA("desendeudamiento");
+    if (id.startsWith("purchase-")) return irA("compras");
+  };
+
   const renderCalendarioAnual = (onlySection?: string) => (
     <CalendarioAnualTab
       onlySection={onlySection}
@@ -19288,7 +19355,6 @@ Escribi CERRAR para confirmar:`
             if (grupo) updateCostGroup(grupo.id, "name", nuevo);
           }}
           previsiones={previsionesPlanilla}
-          programados={agendaInamoviblesItems.filter((i) => i.origen !== "sueldos" && i.origen !== "cashflow")}
           cuentas={cuentasSistema}
           companyScope={balanceCompanyScope}
           setCompanyScope={setBalanceCompanyScope}
@@ -19495,9 +19561,11 @@ Escribi CERRAR para confirmar:`
           onDeleteEntry={deleteCalendarEntry}
           rowConfig={calendarRowConfig}
           onRowConfigChange={setCalendarRowConfig}
+          onAbrirOrigen={abrirOrigenDeMovimiento}
           soloLectura
     />
   );
+
 
   // FICHA DEL PROVEEDOR: vive en Pago a proveedores; se abre desde cualquier lado y lleva ahi.
   const abrirFichaProveedor = (nombre: string, taxId?: string) => {
