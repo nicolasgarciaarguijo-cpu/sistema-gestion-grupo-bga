@@ -31,7 +31,7 @@ import {
   terminationReasonLabel,
 } from "../domain/employeeStatus";
 import type { CompanyName } from "../domain/types";
-import { computeMonthAttendance, dayHoursTotal, deriveConvenioHours } from "../domain/attendance";
+import { computeMonthAttendance, dayHoursTotal, deriveConvenioHours, horasTrabajadasEnMes } from "../domain/attendance";
 import { reglasDeLiquidacion } from "../domain/reglasLiquidacion";
 import type { DayAttendance } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
@@ -1919,9 +1919,33 @@ export function PersonalTab(props: PersonalTabProps) {
                                 >
                                   <option value="mensual">Sueldo mensual fijo</option>
                                   <option value="diario">Acuerdo por día</option>
+                                  <option value="hora">Acuerdo por valor hora</option>
                                 </select>
                               </Field>
-                              {(selectedEmployee.temporalAgreementMode || "mensual") === "diario" ? (
+                              {selectedEmployee.temporalAgreementMode === "hora" ? (
+                                <Field label="Valor hora ($, negro)">
+                                  <AmountInput
+                                    style={styles.input}
+                                    value={selectedEmployee.agreedHourlyRate ?? 0}
+                                    onChange={(n) =>
+                                      updateEmployeeField(selectedEmployee.id, "agreedHourlyRate", n)
+                                    }
+                                    placeholder="Monto por hora"
+                                  />
+                                  {(() => {
+                                    // ACUERDO POR HORA (2026-10-21): valor hora x horas trabajadas del mes.
+                                    const horas = horasTrabajadasEnMes(selectedEmployee.attendance || [], payrollMonth);
+                                    const tarifa = Number(selectedEmployee.agreedHourlyRate || 0);
+                                    return (
+                                      <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                                        {horas.toLocaleString("es-AR")} hora(s) trabajada(s) este mes × {money(tarifa)} ={" "}
+                                        <strong>{money(Math.round(tarifa * horas * 100) / 100)}</strong>. Las horas salen de la
+                                        asistencia (las que precarga la fichada).
+                                      </div>
+                                    );
+                                  })()}
+                                </Field>
+                              ) : (selectedEmployee.temporalAgreementMode || "mensual") === "diario" ? (
                                 <Field label="Tarifa por día ($, negro)">
                                   <AmountInput
                                     style={styles.input}

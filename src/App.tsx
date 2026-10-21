@@ -48,7 +48,7 @@ import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./
 import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
 import { porcentajePorAsistencia } from "./domain/presentismo";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
-import { classifyFichada, dayHoursTotal, deriveConvenioHours, summarizeMonthAttendance } from "./domain/attendance";
+import { classifyFichada, dayHoursTotal, deriveConvenioHours, horasTrabajadasEnMes, summarizeMonthAttendance } from "./domain/attendance";
 import { esFeriado } from "./domain/feriadosArgentina";
 import { leerIdHaber, sacarHaberesDuplicados } from "./domain/haberes";
 import { leerReciboDeEmpleado } from "./domain/reciboOficial";
@@ -2970,9 +2970,12 @@ const countDaysWorkedInMonth = (employee: Employee, monthKey: string): number =>
 // diaria por los dias trabajados del mes; si es mensual, es el sueldo acordado fijo. Todo lo demas
 // del sistema (recibo, resumen por empresa, resultados, costos, calendario de haberes) usa este
 // mismo numero, asi el temporal por dia queda consistente en todos lados.
+// Acuerdo por HORA (2026-10-21): el valor hora por las horas trabajadas del mes (asistencia).
 const effectiveAgreedSalary = (employee: Employee, monthKey: string): number =>
   employee.employmentType === "temporal" && employee.temporalAgreementMode === "diario"
     ? Number(employee.agreedDailyRate || 0) * countDaysWorkedInMonth(employee, monthKey)
+    : employee.employmentType === "temporal" && employee.temporalAgreementMode === "hora"
+    ? Math.round(Number(employee.agreedHourlyRate || 0) * horasTrabajadasEnMes(employee.attendance || [], monthKey) * 100) / 100
     : Number(employee.agreedSalary || 0);
 
 export default function App() {
@@ -9375,7 +9378,9 @@ Escribi CERRAR para confirmar:`
       (a) => a.date?.startsWith(monthKey) && (a.status === "presente" || !!a.checkIn)
     ).length;
     // Temporal por dia: ya sale de tarifa x dias trabajados (effectiveAgreedSalary): no se prorratea de nuevo.
-    const temporalDiario = employee.employmentType === "temporal" && employee.temporalAgreementMode === "diario";
+    // Por dia y por hora: ya sale de lo trabajado; no se prorratea de nuevo.
+    const temporalDiario =
+      employee.employmentType === "temporal" && (employee.temporalAgreementMode === "diario" || employee.temporalAgreementMode === "hora");
     const acordadoPorTipo =
       employee.employmentType === "fuera_convenio"
         ? Number(employee.agreedBlack || 0)
@@ -16168,6 +16173,8 @@ Escribi CERRAR para confirmar:`
       presentismoAsistenciaPct: 100,
     };
     const temporalPorDia = employee.employmentType === "temporal" && employee.temporalAgreementMode === "diario";
+    // Por hora: para cotizar, el valor hora por las horas de un mes completo.
+    const temporalPorHora = employee.employmentType === "temporal" && employee.temporalAgreementMode === "hora";
     return getPayrollSummaryForScenario({
       company: employee.company,
       category: employee.category,
@@ -16176,7 +16183,11 @@ Escribi CERRAR para confirmar:`
       hourlyGrossManual: employee.hourlyGrossManual,
       payroll,
       isTemporal: employee.employmentType === "temporal",
-      agreedSalary: temporalPorDia ? Number(employee.agreedDailyRate || 0) * WORK_DAYS_PER_MONTH : Number(employee.agreedSalary || 0),
+      agreedSalary: temporalPorDia
+        ? Number(employee.agreedDailyRate || 0) * WORK_DAYS_PER_MONTH
+        : temporalPorHora
+        ? Number(employee.agreedHourlyRate || 0) * Number(employeeBaseConfig.normalHoursDefault || 198)
+        : Number(employee.agreedSalary || 0),
       isFueraConvenio: employee.employmentType === "fuera_convenio",
       agreedWhite: Number(employee.agreedWhite || 0),
       agreedBlack: Number(employee.agreedBlack || 0),

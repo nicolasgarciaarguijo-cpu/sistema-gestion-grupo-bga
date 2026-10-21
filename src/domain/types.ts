@@ -1537,10 +1537,13 @@ export type Employee = {
   agreedSalary?: number;
   // Temporal: forma del acuerdo. "mensual" (default) = agreedSalary fijo por mes; "diario" = se paga
   // agreedDailyRate x dias trabajados del mes (a veces el acuerdo es por dia). Opcional/compat.
-  temporalAgreementMode?: "mensual" | "diario";
+  // "hora" (2026-10-21) = agreedHourlyRate x horas trabajadas del mes (las de la asistencia).
+  temporalAgreementMode?: "mensual" | "diario" | "hora";
   // Tarifa acordada POR DIA (temporal en modo "diario"). El mensual sale de multiplicar por los dias
   // efectivamente trabajados (asistencia: dias con status "presente" o con fichada de entrada).
   agreedDailyRate?: number;
+  // Valor HORA acordado (temporal en modo "hora").
+  agreedHourlyRate?: number;
   // Fuera de convenio: sueldo bruto acordado repartido por administracion. Cada uno funciona en su
   // circuito (blanco/negro). Fijo por defecto; el mes puede variar con los adicionales blanco/negro.
   agreedWhite?: number;

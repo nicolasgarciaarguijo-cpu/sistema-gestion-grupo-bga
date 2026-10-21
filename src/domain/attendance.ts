@@ -411,3 +411,13 @@ export const summarizeMonthAttendance = (
   });
   return summary;
 };
+
+// HORAS TRABAJADAS EN EL MES (Nicolas, 2026-10-21: acuerdo por VALOR HORA para un temporal). Las horas
+// cargadas en la asistencia de cada dia del mes, de todas las categorias (las precarga la fichada).
+export const horasTrabajadasEnMes = (
+  attendance: ReadonlyArray<{ date?: string } & Partial<Record<keyof ConvenioHours, number | undefined>>>,
+  monthKey: string
+): number =>
+  Math.round(
+    (attendance || []).filter((a) => a.date?.startsWith(monthKey)).reduce((acc, a) => acc + dayHoursTotal(a), 0) * 100
+  ) / 100;

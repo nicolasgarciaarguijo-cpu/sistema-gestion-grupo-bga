@@ -314,3 +314,19 @@ describe("classifyFichada / fichadas incompletas del reloj", () => {
     expect(h.normalHours + h.extra50Hours + h.extra100Hours + h.night50Hours).toBeCloseTo(8, 2);
   });
 });
+
+describe("horasTrabajadasEnMes (acuerdo por hora, 2026-10-21)", () => {
+  const { horasTrabajadasEnMes } = require("./attendance");
+  it("suma las horas cargadas de cada dia del mes, de todas las categorias", () => {
+    expect(
+      horasTrabajadasEnMes(
+        [
+          { date: "2026-10-01", normalHours: 9 },
+          { date: "2026-10-02", normalHours: 8, extra50Hours: 1.5 },
+          { date: "2026-09-30", normalHours: 9 },
+        ],
+        "2026-10"
+      )
+    ).toBe(18.5);
+  });
+});

@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-21c",
+    fecha: "21/10/2026",
+    titulo: "Personal: acuerdo por valor hora",
+    items: [
+      {
+        titulo: "Tercera forma de acuerdo para el temporal",
+        que: "Además del sueldo mensual fijo y del acuerdo por día, ahora se puede acordar un VALOR HORA: se paga el valor hora por las horas trabajadas del mes, que salen de la asistencia (las que precarga la fichada). Para cotizar se toma un mes completo de horas.",
+        como: "Personal → ficha del empleado temporal → Forma del acuerdo → 'Acuerdo por valor hora' y cargá el valor hora.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-10-21b",
     fecha: "21/10/2026",
     titulo: "Facturas pagadas con la caja chica",
