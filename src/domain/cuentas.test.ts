@@ -121,3 +121,14 @@ describe("control contra el extracto", () => {
     expect(mal[0]).toMatchObject({ cierra: false, diferencia: -30000, saldoSistema: 900000 });
   });
 });
+
+describe("movimiento anterior a la apertura (2026-10-21)", () => {
+  const cuenta = { id: "banco|BGA|galicia|ARS", company: "BGA", tipo: "banco" as const, nombre: "Galicia", moneda: "ARS" as const, color: "blanco" as const, saldoApertura: 1000, fechaApertura: "2026-10-10", activa: true };
+  it("no cuenta, salvo que se haya pedido que cuente igual", () => {
+    const viejo = { cuentaId: cuenta.id, date: "2026-10-01", amount: -300, refId: "g-1", origen: "x", detalle: "y" };
+    expect(saldosDeCuentas([cuenta], [viejo], "2026-10-20")[0].saldo).toBe(1000);
+    expect(saldosDeCuentas([cuenta], [{ ...viejo, forzarSaldo: true }], "2026-10-20")[0].saldo).toBe(700);
+    const serie = saldosDiarios([cuenta], [{ ...viejo, forzarSaldo: true }], ["2026-10-11", "2026-10-20"]);
+    expect(serie.get("2026-10-11")?.get(cuenta.id)).toBe(700);
+  });
+});

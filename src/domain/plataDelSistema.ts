@@ -9,6 +9,8 @@ import type { PlataMovida, Moneda, Color } from "./cuentas";
 const color = (v?: string): Color => (v === "negro" ? "negro" : "blanco");
 const moneda = (v?: string): Moneda => (v === "USD" ? "USD" : "ARS");
 const cuenta = (x: any) => (x && typeof x.cuentaId === "string" && x.cuentaId ? x.cuentaId : undefined);
+// Cargado con fecha ANTERIOR a la apertura de la cuenta y el usuario dijo que cuente igual (2026-10-21).
+const forzar = (x: any) => (x && x.antesDeApertura === "suma" ? true : undefined);
 
 export type FuentesDePlata = {
   jobs: Array<{
@@ -54,6 +56,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
         color: color(p.administration),
         metodo: p.transactionType,
         cuentaId: cuenta(p),
+        forzarSaldo: forzar(p),
       })
     );
     (j.commissionPayments || []).forEach((c) =>
@@ -68,6 +71,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
         moneda: "ARS",
         color: color(c.administration),
         cuentaId: cuenta(c),
+        forzarSaldo: forzar(c),
       })
     );
   });
@@ -88,6 +92,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
         color: color(c.administration),
         metodo: c.paymentMethod,
         cuentaId: cuenta(c),
+        forzarSaldo: forzar(c),
       })
     );
 
@@ -106,6 +111,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
         moneda: "ARS",
         color: color(i.administration),
         cuentaId: cuenta(i),
+        forzarSaldo: forzar(i),
       })
     );
 
@@ -123,6 +129,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       color: color(h.administration),
       metodo: color(h.administration) === "negro" ? "efectivo" : "transferencia",
       cuentaId: cuenta(h),
+        forzarSaldo: forzar(h),
     })
   );
 
@@ -147,6 +154,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
         color: c,
         desde: "efectivo",
         cuentaId: cuenta(fund),
+        forzarSaldo: forzar(fund),
         // Sin responsable cargado la plata igual sale de la caja de la empresa: va a una caja aparte
         // para que se vea (si no, el pase no tendria destino).
         personaDestino: fund.responsible || "Sin responsable",
@@ -208,6 +216,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       desde: puntaDesde === "banco" ? "banco" : "efectivo",
       hacia: puntaHacia === "efectivo" ? "efectivo" : "banco",
       cuentaId: cuenta(t),
+        forzarSaldo: forzar(t),
       cuentaDestinoId: t.cuentaDestinoId,
     });
   });
@@ -226,6 +235,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       color: color(h.color),
       metodo: "efectivo",
       cuentaId: cuenta(h),
+        forzarSaldo: forzar(h),
     })
   );
 
@@ -245,6 +255,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
         color: color(p.color),
         metodo: p.paymentMethod || "efectivo",
         cuentaId: cuenta(p),
+        forzarSaldo: forzar(p),
       })
     );
 
@@ -261,6 +272,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       moneda: "ARS",
       color: color(c.color),
       cuentaId: cuenta(c),
+        forzarSaldo: forzar(c),
     })
   );
 
@@ -278,6 +290,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       color: "blanco",
       metodo: "transferencia",
       cuentaId: cuenta(v),
+        forzarSaldo: forzar(v),
     })
   );
 
@@ -293,6 +306,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       moneda: moneda(r.moneda),
       color: color(r.administration),
       cuentaId: cuenta(r),
+        forzarSaldo: forzar(r),
     })
   );
 
@@ -308,6 +322,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       moneda: moneda(i.currency),
       color: color(i.administration),
       cuentaId: cuenta(i),
+        forzarSaldo: forzar(i),
     })
   );
 

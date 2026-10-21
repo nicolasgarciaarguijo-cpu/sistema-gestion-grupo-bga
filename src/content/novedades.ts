@@ -16,6 +16,18 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-21",
+    fecha: "21/10/2026",
+    titulo: "Pagos con fecha anterior a la apertura de la cuenta",
+    items: [
+      {
+        titulo: "El sistema pregunta si tiene que sumar o restar",
+        que: "El saldo de cada cuenta es su saldo de apertura más lo cargado DESPUÉS de la fecha de apertura. Si cargás un pago (o una caja chica) con fecha igual o anterior a la apertura de la cuenta elegida, el sistema pregunta: Aceptar = que cuente igual en el saldo; Cancelar = no, ya estaba dentro del saldo de apertura. Lo que elegís queda guardado en el pago.",
+        como: "Pasa solo al guardar pagos de facturas, pagos sin factura, haberes, cuotas de deuda y cajas chicas. En la ventana de movimientos, lo que no cuenta aparece en gris.",
+      },
+    ],
+  },
+  {
     id: "2026-10-20h",
     fecha: "20/10/2026",
     titulo: "Desendeudamiento: cada deuda con su ficha",

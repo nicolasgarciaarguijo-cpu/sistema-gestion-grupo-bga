@@ -64,6 +64,8 @@ export type PlataMovida = {
   // regla "negro va al efectivo": un pase de efectivo negro al banco tiene destino banco igual.
   desde?: "banco" | "efectivo";
   hacia?: "banco" | "efectivo";
+  // Fecha ANTERIOR a la apertura de la cuenta y el usuario eligio que cuente igual en el saldo.
+  forzarSaldo?: boolean;
 };
 
 export type MovimientoCuenta = {
@@ -73,6 +75,8 @@ export type MovimientoCuenta = {
   refId: string;
   origen: string;
   detalle: string;
+  // Cuenta en el saldo aunque sea anterior a la apertura de la cuenta (lo eligio el usuario al cargarlo).
+  forzarSaldo?: boolean;
 };
 
 /** Cuenta bancaria principal de una empresa en una moneda (la marcada; si no, la primera activa). */
@@ -109,7 +113,7 @@ export function movimientosPorCuenta(plata: PlataMovida[], cuentas: Cuenta[]): M
   plata.forEach((p) => {
     const monto = Math.abs(Number(p.amount || 0));
     if (!(monto > 0) || !p.date) return;
-    const base = { date: p.date, refId: p.refId, origen: p.origen, detalle: p.detalle };
+    const base = { date: p.date, refId: p.refId, origen: p.origen, detalle: p.detalle, ...(p.forzarSaldo ? { forzarSaldo: true } : {}) };
     const punta =
       elegida(p.cuentaId) || cuentaPorDefecto(cuentas, { ...p, tipo: p.sentido === "entra" ? p.hacia : p.desde });
     if (p.sentido === "entra") out.push({ ...base, cuentaId: punta, amount: monto });
@@ -141,7 +145,8 @@ export function saldosDeCuentas(cuentas: Cuenta[], movimientos: MovimientoCuenta
       c = { ...cuentaImplicita(m.cuentaId), saldo: 0, movimientos: 0, ultimoMovimiento: "" };
       porId.set(m.cuentaId, c);
     }
-    if (m.date <= c.fechaApertura) return;
+    // Lo de antes de la apertura ya esta en el saldo de apertura; salvo que se haya pedido que cuente igual.
+    if (m.date <= c.fechaApertura && !m.forzarSaldo) return;
     c.saldo += m.amount;
     c.movimientos += 1;
     if (m.date > c.ultimoMovimiento) c.ultimoMovimiento = m.date;
@@ -246,7 +251,7 @@ export function saldosDiarios(
   dias.forEach((dia) => {
     while (i < ordenados.length && ordenados[i].date <= dia) {
       const m = ordenados[i++];
-      if (m.date <= (apertura.get(m.cuentaId) || "")) continue;
+      if (m.date <= (apertura.get(m.cuentaId) || "") && !m.forzarSaldo) continue;
       saldo.set(m.cuentaId, (saldo.get(m.cuentaId) || 0) + m.amount);
     }
     out.set(dia, new Map(saldo));

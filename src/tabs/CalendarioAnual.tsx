@@ -256,7 +256,7 @@ export function CalendarioAnualTab({
   // Arrancar con todas las secciones minimizadas (la planilla del sistema).
   arrancaPlegado?: boolean;
   // Movimientos de cada cuenta (bancos, efectivo, cajas): para el resumen de la plata disponible.
-  movimientosCuentas?: Array<{ cuentaId: string; date: string; amount: number; origen: string; detalle: string; refId: string }>;
+  movimientosCuentas?: Array<{ cuentaId: string; date: string; amount: number; origen: string; detalle: string; refId: string; forzarSaldo?: boolean }>;
   onAssignToJob?: (bankIds: number[], budgetNumber: string, client: string) => void;
   // Proveedores y facturas de COMPRA del sistema: con esto un débito sin clasificar se vincula a
   // quién le pagamos y, si corresponde, a la factura que cancela.
@@ -1525,7 +1525,7 @@ export function CalendarioAnualTab({
       const aperturaDe = new Map(cuentas.map((c) => [c.id, c.fechaApertura || ""]));
       const movsTodos = movimientosCuentas.filter((x) => ids.has(x.cuentaId) && x.date >= desde && x.date <= m.iso);
       // Lo de antes de la apertura de la cuenta ya esta en el saldo de apertura: se ve, pero no suma.
-      const antes = (x: { cuentaId: string; date: string }) => x.date <= (aperturaDe.get(x.cuentaId) || "");
+      const antes = (x: { cuentaId: string; date: string; forzarSaldo?: boolean }) => !x.forzarSaldo && x.date <= (aperturaDe.get(x.cuentaId) || "");
       const movs = movsTodos.filter((x) => !antes(x));
       const emp = (billeteraDiaria || []).find((e) => e.company === fila.company);
       const dia = emp?.byDay[m.iso];

@@ -13219,6 +13219,7 @@ Escribi CERRAR para confirmar:`
         supplier: d.acreedor || d.concept,
         notes: "Pago de cuota (Desendeudamiento)",
         paymentMethod: f.metodo,
+        antesDeApertura: decidirAntesDeApertura(undefined, f.cuentaId, f.fecha, Number(f.monto) || 0, `El pago de la cuota ${cuota.numero}`),
         ...firma(),
       };
       setCostEntries((prev) => [pago, ...prev]);
@@ -16794,6 +16795,30 @@ Escribi CERRAR para confirmar:`
       firmanteAnterior: (c as any).firmante,
     });
   };
+  // ANTERIOR A LA APERTURA (Nicolas, 2026-10-21): "que me pregunte si quiero que sumen o resten las cosas
+  // cuando las cargo anterior a la apertura". Si la fecha cae en o antes de la apertura de la cuenta, por
+  // regla no cuenta (ya esta en el saldo de apertura); aca se pregunta. "suma" = cuenta igual, "no" = no.
+  // Si ya se habia contestado y no cambiaron ni la cuenta ni la fecha, no se vuelve a preguntar.
+  const decidirAntesDeApertura = (
+    previo: { cuentaId?: string; date?: string; antesDeApertura?: "suma" | "no" } | undefined,
+    cuentaId: string | undefined,
+    fecha: string,
+    monto: number,
+    que: string
+  ): "suma" | "no" | undefined => {
+    const c = cuentaId ? cuentasSistema.find((x) => x.id === cuentaId) : undefined;
+    if (!c || !c.fechaApertura || !fecha || fecha > c.fechaApertura) return undefined;
+    if (previo?.antesDeApertura && previo.cuentaId === cuentaId && previo.date === fecha) return previo.antesDeApertura;
+    const f = (iso: string) => iso.split("-").reverse().join("/");
+    return window.confirm(
+      `${que} del ${f(fecha)} por ${money(Math.abs(monto))} es ANTERIOR a la apertura de ${c.nombre} ` +
+        `(${f(c.fechaApertura)}, saldo de apertura ${money(Number(c.saldoApertura || 0))}).\n\n` +
+        "¿Querés que sume o reste igual en el saldo de la cuenta?\n\n" +
+        "Aceptar = SÍ, que cuente en el saldo\nCancelar = NO, ya estaba dentro del saldo de apertura"
+    )
+      ? "suma"
+      : "no";
+  };
   const guardarPagoHaber = async (f: PagoHaberForm & { empId: number }) => {
     const emp = employees.find((x) => x.id === f.empId);
     if (!emp) return;
@@ -16828,6 +16853,7 @@ Escribi CERRAR para confirmar:`
       employeeId: emp.id,
       periodoHaber: f.periodo,
       comprobante,
+      antesDeApertura: decidirAntesDeApertura(previo as any, f.cuentaId, f.fecha, Number(f.monto) || 0, `El pago de haberes de ${emp.name}`),
       ...firma(),
     };
     setCostEntries((prev) =>
@@ -16900,6 +16926,7 @@ Escribi CERRAR para confirmar:`
                 administration: f.administration,
                 notes: f.notas || "",
                 pagadoPor: f.metodo === "efectivo" && f.administration === "negro" ? f.pagadoPor || undefined : undefined,
+                antesDeApertura: decidirAntesDeApertura(actual as any, f.cuentaId, f.fecha, Number(f.monto) || 0, "El pago"),
                 ...firma(),
               }
         )
@@ -16924,6 +16951,7 @@ Escribi CERRAR para confirmar:`
         notes: f.notas || "",
         source: "manual",
         aCuenta: true,
+        antesDeApertura: decidirAntesDeApertura(undefined, f.cuentaId, f.fecha, Number(f.monto) || 0, "El pago sin factura"),
         ...firma(),
         pagadoPor: f.metodo === "efectivo" && f.administration === "negro" ? f.pagadoPor || undefined : undefined,
       } as CostEntry,
@@ -19933,6 +19961,13 @@ Escribi CERRAR para confirmar:`
         pagadoPor: pg.metodo === "efectivo" && pg.administration === "negro" ? pg.pagadoPor || undefined : undefined,
         // Ya tiene su factura: deja de ser un pago a cuenta.
         aCuenta: false,
+        antesDeApertura: decidirAntesDeApertura(
+          pg.costEntryId != null ? (costEntries.find((c) => c.id === pg.costEntryId) as any) : undefined,
+          pg.cuentaId,
+          pg.fecha,
+          Number(pg.monto) || 0,
+          `El pago de la factura ${f.invoiceNumber || ""} de ${f.supplier}`.replace(/\s+/g, " ")
+        ),
         ...firma(),
       };
       if (pg.costEntryId != null && costEntries.some((c) => c.id === pg.costEntryId)) {
@@ -20335,6 +20370,16 @@ Escribi CERRAR para confirmar:`
       cuentaId: c.cuentaId,
       cuentaDevolucionId: c.cuentaDevolucionId,
       notes: c.notes,
+      antesDeApertura: (() => {
+        const previa = c.id != null ? pettyCashFunds.find((x) => x.id === c.id) : undefined;
+        return decidirAntesDeApertura(
+          previa ? ({ cuentaId: previa.cuentaId, date: previa.deliveredDate, antesDeApertura: (previa as any).antesDeApertura } as any) : undefined,
+          c.cuentaId,
+          c.deliveredDate,
+          Number(c.assignedWhite || 0) + Number(c.assignedBlack || 0),
+          `La caja chica de ${c.responsible.trim() || "sin responsable"}`
+        );
+      })(),
       ...firma(),
     };
     if (c.id != null) {
@@ -20650,7 +20695,7 @@ Escribi CERRAR para confirmar:`
                 );
                 const ids = new Set(elegidas.map((c) => c.id));
                 const aperturaDe = new Map(elegidas.map((c) => [c.id, c.fechaApertura || ""]));
-                const antes = (m: { cuentaId: string; date: string }) => m.date <= (aperturaDe.get(m.cuentaId) || "");
+                const antes = (m: { cuentaId: string; date: string; forzarSaldo?: boolean }) => !m.forzarSaldo && m.date <= (aperturaDe.get(m.cuentaId) || "");
                 const movs = movimientosDeCuentas.filter((m) => ids.has(m.cuentaId) && m.date >= desde && m.date <= hoy);
                 const saldoHoy = elegidas.reduce((a, c) => a + c.saldo, 0);
                 // Lo de antes de la apertura de la cuenta no suma (ya esta en el saldo de apertura).

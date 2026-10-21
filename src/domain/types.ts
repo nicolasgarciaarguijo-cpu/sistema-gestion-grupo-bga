@@ -361,6 +361,9 @@ export type Invoice = {
 };
 
 export type Payment = {
+  // Fecha ANTERIOR a la apertura de su cuenta: "suma" = cuenta igual en el saldo; "no" (o ausente) = ya estaba
+  // dentro del saldo de apertura. Se pregunta al guardar (2026-10-21). Ver domain/cuentas.ts.
+  antesDeApertura?: "suma" | "no";
   id: number;
   paymentNumber: string;
   paymentDate: string;
@@ -675,6 +678,9 @@ export type PettyCashType = {
 };
 
 export type PettyCashFund = {
+  // Fecha ANTERIOR a la apertura de su cuenta: "suma" = cuenta igual en el saldo; "no" (o ausente) = ya estaba
+  // dentro del saldo de apertura. Se pregunta al guardar (2026-10-21). Ver domain/cuentas.ts.
+  antesDeApertura?: "suma" | "no";
   id: number;
   company: CompanyName;
   description: string;
@@ -1075,6 +1081,9 @@ export type CostGroup = {
 // Gasto cargado en la solapa Costos: lo que NO vive ya en otra solapa
 // (alquiler, servicios, impuestos...). Compras/caja chica/personal no se cargan aca.
 export type CostEntry = {
+  // Fecha ANTERIOR a la apertura de su cuenta: "suma" = cuenta igual en el saldo; "no" (o ausente) = ya estaba
+  // dentro del saldo de apertura. Se pregunta al guardar (2026-10-21). Ver domain/cuentas.ts.
+  antesDeApertura?: "suma" | "no";
   id: number;
   company: CompanyName;
   date: string; // ISO yyyy-mm-dd
