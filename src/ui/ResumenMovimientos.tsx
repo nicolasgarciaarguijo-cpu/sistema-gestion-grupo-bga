@@ -11,6 +11,8 @@ export type FilaResumen = {
   empresa?: string;
   monto: number; // con signo: + entra / suma, - sale / resta
   abrir?: () => void;
+  // Anterior a la APERTURA de la cuenta: ya esta dentro del saldo de apertura, no vuelve a sumar (texto = por que).
+  noSuma?: string;
 };
 
 const fmt = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
@@ -33,7 +35,7 @@ export function ResumenMovimientos({
 }) {
   const ordenadas = [...filas].sort((a, b) => a.fecha.localeCompare(b.fecha));
   let acumulado = Number(saldoInicial || 0);
-  const total = ordenadas.reduce((a, f) => a + f.monto, 0);
+  const total = ordenadas.reduce((a, f) => (f.noSuma ? a : a + f.monto), 0);
   const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 600, padding: "6px 8px", borderBottom: "1px solid #e2e8f0", position: "sticky", top: 0, background: "#fff" };
   const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #f1f5f9", fontSize: 12.5, verticalAlign: "top" };
   return (
@@ -71,20 +73,21 @@ export function ResumenMovimientos({
                   </tr>
                 )}
                 {ordenadas.map((f, i) => {
-                  acumulado += f.monto;
+                  if (!f.noSuma) acumulado += f.monto;
                   return (
-                    <tr key={i}>
+                    <tr key={i} style={f.noSuma ? { opacity: 0.55, background: "#f8fafc" } : undefined} title={f.noSuma}>
                       <td style={{ ...td, whiteSpace: "nowrap", color: "#475569" }}>{fmt(f.fecha)}</td>
                       <td style={td}>
                         {f.detalle || "—"}
                         {(f.origen || f.empresa) && (
                           <div style={{ fontSize: 11, color: "#94a3b8" }}>{[f.origen, f.empresa].filter(Boolean).join(" · ")}</div>
                         )}
+                        {f.noSuma && <div style={{ fontSize: 11, color: "#b45309", fontWeight: 700 }}>⚠ {f.noSuma}</div>}
                       </td>
                       <td style={{ ...td, textAlign: "right", fontWeight: 700, whiteSpace: "nowrap", color: f.monto < 0 ? "#b91c1c" : "#166534" }}>
                         {f.monto < 0 ? "−" : "+"}{money(Math.abs(f.monto))}
                       </td>
-                      <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap", color: acumulado < 0 ? "#b91c1c" : "#0f172a" }}>{money(acumulado)}</td>
+                      <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap", color: acumulado < 0 ? "#b91c1c" : "#0f172a" }}>{f.noSuma ? "—" : money(acumulado)}</td>
                       <td style={{ ...td, textAlign: "right" }}>
                         {f.abrir && (
                           <button type="button" onClick={f.abrir} title="Abrir donde se cargó" style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 5, padding: "1px 6px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>

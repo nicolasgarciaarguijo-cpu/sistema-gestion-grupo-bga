@@ -1522,7 +1522,11 @@ export function CalendarioAnualTab({
           )
           .map((c) => c.id)
       );
-      const movs = movimientosCuentas.filter((x) => ids.has(x.cuentaId) && x.date >= desde && x.date <= m.iso);
+      const aperturaDe = new Map(cuentas.map((c) => [c.id, c.fechaApertura || ""]));
+      const movsTodos = movimientosCuentas.filter((x) => ids.has(x.cuentaId) && x.date >= desde && x.date <= m.iso);
+      // Lo de antes de la apertura de la cuenta ya esta en el saldo de apertura: se ve, pero no suma.
+      const antes = (x: { cuentaId: string; date: string }) => x.date <= (aperturaDe.get(x.cuentaId) || "");
+      const movs = movsTodos.filter((x) => !antes(x));
       const emp = (billeteraDiaria || []).find((e) => e.company === fila.company);
       const dia = emp?.byDay[m.iso];
       const saldoDia = !dia ? 0 : fila.campo === "banco" ? (fila.cuenta ? dia.bancos?.find((b) => b.bank === fila.cuenta)?.saldo || 0 : dia.banco) : (dia as any)[fila.campo] || 0;
@@ -1531,7 +1535,13 @@ export function CalendarioAnualTab({
         titulo: `${fila.short} · ${fila.sub}`,
         subtitulo: `Movimientos de ${nombreMes(m.iso)} hasta el ${m.iso.slice(8, 10)}/${m.iso.slice(5, 7)}`,
         saldoInicial: saldoDia - movido,
-        filas: movs.map((x) => ({ fecha: x.date, detalle: x.detalle, origen: x.origen, monto: x.amount })),
+        filas: movsTodos.map((x) => ({
+          fecha: x.date,
+          detalle: x.detalle,
+          origen: x.origen,
+          monto: x.amount,
+          noSuma: antes(x) ? `Anterior a la apertura de la cuenta (${(aperturaDe.get(x.cuentaId) || "").split("-").reverse().join("/")}): ya está dentro del saldo de apertura, no vuelve a restar.` : undefined,
+        })),
       });
       return;
     }

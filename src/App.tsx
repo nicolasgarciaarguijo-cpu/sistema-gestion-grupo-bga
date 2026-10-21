@@ -20649,15 +20649,24 @@ Escribi CERRAR para confirmar:`
                       : c.tipo === "efectivo" && c.color === cual.color)
                 );
                 const ids = new Set(elegidas.map((c) => c.id));
+                const aperturaDe = new Map(elegidas.map((c) => [c.id, c.fechaApertura || ""]));
+                const antes = (m: { cuentaId: string; date: string }) => m.date <= (aperturaDe.get(m.cuentaId) || "");
                 const movs = movimientosDeCuentas.filter((m) => ids.has(m.cuentaId) && m.date >= desde && m.date <= hoy);
                 const saldoHoy = elegidas.reduce((a, c) => a + c.saldo, 0);
-                const movido = movs.reduce((a, m) => a + m.amount, 0);
+                // Lo de antes de la apertura de la cuenta no suma (ya esta en el saldo de apertura).
+                const movido = movs.filter((m) => !antes(m)).reduce((a, m) => a + m.amount, 0);
                 const corto = COMPANY_OPTIONS.find((o) => o.value === company)?.short || company;
                 setResumenTablero({
                   titulo: `${corto} · ${cual.tipo === "banco" ? cual.bank || "Banco" : cual.color === "negro" ? "Efectivo negro" : "Efectivo blanco"}`,
                   subtitulo: `Movimientos de este mes hasta hoy`,
                   saldoInicial: saldoHoy - movido,
-                  filas: movs.map((m) => ({ fecha: m.date, detalle: m.detalle, origen: m.origen, monto: m.amount })),
+                  filas: movs.map((m) => ({
+                    fecha: m.date,
+                    detalle: m.detalle,
+                    origen: m.origen,
+                    monto: m.amount,
+                    noSuma: antes(m) ? `Anterior a la apertura de la cuenta (${(aperturaDe.get(m.cuentaId) || "").split("-").reverse().join("/")}): ya está dentro del saldo de apertura, no vuelve a restar.` : undefined,
+                  })),
                 });
               }}
             />
