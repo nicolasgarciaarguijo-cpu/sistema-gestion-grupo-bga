@@ -16703,7 +16703,8 @@ Escribi CERRAR para confirmar:`
     () =>
       segurosPrevisionMensual(
         seguros.filter((s) => canAccessCompany(s.company)),
-        fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear)
+        // Este ejercicio y el siguiente: la planilla se corre mas alla de octubre.
+        [...fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear), ...fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear + 1)]
       ),
     [seguros, balanceFiscalStartYear]
   );
@@ -17344,7 +17345,10 @@ Escribi CERRAR para confirmar:`
   const previsionesPlanilla = useMemo(() => {
     const meses = fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear);
     const desde = `${meses[0]}-01`;
-    const hasta = `${meses[meses.length - 1]}-31`;
+    // Hasta el cierre del ejercicio SIGUIENTE (2026-10-21): la planilla se corre mas alla de octubre y las
+    // cuotas de noviembre en adelante tienen que verse en los meses que vienen.
+    const mesesSiguiente = fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear + 1);
+    const hasta = `${mesesSiguiente[mesesSiguiente.length - 1]}-31`;
     const facturaPorId = new Map(purchaseInvoices.map((i) => [i.id, i]));
     // La fila de la factura es la MISMA que va a tener su pago (ver cashFlowEntriesPlanilla): el grupo del
     // candado del proveedor, el de la factura o el del proveedor, y la cuenta corriente si la tiene.
