@@ -1,4 +1,4 @@
-import { mergeItemsById, mergeModuleSlice, mergeObjects3 } from "./mergeItems";
+import { mergeItemsById, mergeModuleSlice, mergeObjects3, sinIdsRepetidos } from "./mergeItems";
 
 const A = { id: 1, v: "a" };
 const B = { id: 2, v: "b" };
@@ -153,5 +153,31 @@ describe("lo borrado por otra sesion no vuelve (2026-10-20)", () => {
   it("una lista de la DB vacia o que no vino no cuenta como borrado", () => {
     expect(mergeItemsById([pago], [pago], [])).toEqual([pago]);
     expect(mergeModuleSlice(["costEntries"], { costEntries: [pago] }, { costEntries: [pago] }, {})).toEqual({ costEntries: [pago] });
+  });
+});
+
+describe("una sola copia por id (2026-10-21)", () => {
+  it("de dos copias se queda con la mas completa", () => {
+    const vacia = { id: 5, company: "BGA", concept: "", cuotas: [] };
+    const llena = { id: 5, company: "De Raíz", concept: "Préstamo", capital: 30000000, cuotas: [{ id: "a", monto: 1 }] };
+    const otra = { id: 6, concept: "Otra" };
+    expect(sinIdsRepetidos([vacia, otra, llena])).toEqual([otra, llena]);
+  });
+  it("sin repetidos devuelve lo mismo", () => {
+    const xs = [{ id: 1 }, { id: 2 }];
+    expect(sinIdsRepetidos(xs)).toBe(xs);
+  });
+  it("al guardar no escribe dos copias del mismo id", () => {
+    const a = { id: 1, v: "x" };
+    expect(mergeItemsById([], [a, { id: 1, v: "y" }], [])).toEqual([a]);
+  });
+});
+
+describe("la copia vieja en la fila de otra empresa no se conserva (2026-10-21)", () => {
+  it("un item que ahora es de otra empresa (o que borramos) no queda en esta fila", () => {
+    const viejo = { id: 7, company: "BGA", capital: 0 };
+    const ajeno = { id: 8, company: "BGA", concept: "de otro usuario" };
+    // En la DB, la fila de BGA todavia tiene la copia vieja del 7 y algo nuevo de otro usuario (8).
+    expect(mergeItemsById([], [], [viejo, ajeno], "id", true, new Set([7]))).toEqual([ajeno]);
   });
 });

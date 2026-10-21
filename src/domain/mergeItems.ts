@@ -17,6 +17,26 @@
 
 export type WithId = Record<string, unknown> & { id?: unknown };
 
+// DOS COPIAS CON EL MISMO ID (Nicolas, 2026-10-21: "al borrar el credito en cero se borran los 2"). Si un
+// item quedo guardado dos veces -- por ejemplo en la fila de la empresa vieja y en la nueva, tras cambiarle
+// la empresa -- borrar uno borra los dos (se borra por id). Se deja UNA sola copia por id: la mas completa
+// (la que tiene mas datos; a igual tamano, la ultima). Los items sin id quedan como estan.
+export function sinIdsRepetidos<T>(items: readonly T[], idKey: string = "id"): T[] {
+  const mejor = new Map<unknown, { i: number; peso: number }>();
+  items.forEach((it, i) => {
+    const id = (it as any)?.[idKey];
+    if (id == null) return;
+    const peso = JSON.stringify(it ?? "").length;
+    const previo = mejor.get(id);
+    if (!previo || peso >= previo.peso) mejor.set(id, { i, peso });
+  });
+  if (mejor.size === items.filter((it) => (it as any)?.[idKey] != null).length) return items as T[];
+  return items.filter((it, i) => {
+    const id = (it as any)?.[idKey];
+    return id == null || mejor.get(id)?.i === i;
+  });
+}
+
 const idOf = (item: WithId, idKey: string): unknown => (item as any)?.[idKey];
 
 // Igualdad "de contenido": claves ordenadas y sin undefined (la base reordena las claves de los
@@ -66,7 +86,10 @@ export function mergeItemsById<T extends WithId>(
   theirs: readonly T[],
   idKey: string = "id",
   // false = el campo no vino en la fila de la DB (no se puede saber que borro otro).
-  theirsLeida: boolean = true
+  theirsLeida: boolean = true,
+  // Ids que NO pueden quedar en esta fila aunque esten en la DB: los que ahora son de OTRA empresa (se
+  // les cambio la empresa: la copia vieja quedaba y despues volvia) y los que esta sesion borro.
+  fueraDeEstaFila?: ReadonlySet<unknown>
 ): T[] {
   const baselineIds = new Set(baseline.map((it) => idOf(it, idKey)));
   const ourIds = new Set(ours.map((it) => idOf(it, idKey)));
@@ -81,6 +104,7 @@ export function mergeItemsById<T extends WithId>(
   const seen = new Set<unknown>();
   for (const it of ours) {
     const id = idOf(it, idKey);
+    if (id != null && seen.has(id)) continue; // nunca dos copias del mismo id
     const b = id != null ? baseById.get(id) : undefined;
     const t = id != null ? theirsById.get(id) : undefined;
     // Con la base sabemos QUIEN cambio el item:
@@ -104,6 +128,7 @@ export function mergeItemsById<T extends WithId>(
     const id = idOf(it, idKey);
     if (id == null) continue; // sin id no se puede fusionar; manda lo nuestro
     if (seen.has(id)) continue; // ya lo tenemos: nuestra version gana
+    if (fueraDeEstaFila?.has(id)) continue; // es de otra empresa o lo borramos: no se conserva aca
     // Lo borramos nosotros: no resucitar (salvo que otro lo haya cambiado despues: ahi se conserva).
     if (ourDeletes.has(id) && sameContent(it, baseById.get(id))) continue;
     result.push(it); // item nuevo/ajeno: conservar para no pisarlo
@@ -118,7 +143,9 @@ export function mergeModuleSlice(
   perCompanyFields: readonly string[],
   baseline: Record<string, unknown>,
   ours: Record<string, unknown>,
-  theirs: Record<string, unknown>
+  theirs: Record<string, unknown>,
+  // Por campo: ids que no pueden quedar en esta fila (ver mergeItemsById).
+  fueraDeEstaFila?: Record<string, ReadonlySet<unknown>>
 ): Record<string, unknown> {
   const out: Record<string, unknown> = { ...ours };
   for (const field of perCompanyFields) {
@@ -127,7 +154,7 @@ export function mergeModuleSlice(
     // Solo fusiona si alguno de los dos trae el campo como array (evita crear/pisar por omision).
     if (oursArr || theirsArr) {
       const baseArr = Array.isArray(baseline[field]) ? (baseline[field] as WithId[]) : [];
-      out[field] = mergeItemsById(baseArr, oursArr || [], theirsArr || [], "id", !!theirsArr);
+      out[field] = mergeItemsById(baseArr, oursArr || [], theirsArr || [], "id", !!theirsArr, fueraDeEstaFila?.[field]);
     }
   }
   return out;

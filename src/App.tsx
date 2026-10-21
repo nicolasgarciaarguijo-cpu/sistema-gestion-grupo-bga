@@ -18,7 +18,7 @@ import {
   GENERAL_COMPANY,
   PER_COMPANY_MODULE_FIELDS,
 } from "./domain/companyState";
-import { mergeModuleSlice } from "./domain/mergeItems";
+import { mergeModuleSlice, sinIdsRepetidos } from "./domain/mergeItems";
 import { newId } from "./domain/id";
 import { getPettyCashAdministration, getFundSemaphore } from "./domain/pettyCash";
 import { computeBudgetPricing } from "./domain/budgetPricing";
@@ -2739,17 +2739,44 @@ const writeSupabasePersistedAppStateModules = async (
             : {}
         );
       }
+      // Ids de TODO el modulo (todas las empresas), nuestros y de la base: un item que ahora es de otra
+      // empresa, o que borramos, no puede quedar en la fila de la empresa vieja (2026-10-21: la copia vieja
+      // de un credito volvia y al borrar uno se borraban los dos).
+      const idsDe = (data: unknown, field: string) =>
+        new Set(((data as any)?.[field] || []).map((x: any) => x?.id).filter((x: unknown) => x != null));
+      const idsModulo = new Map<string, { ours: Record<string, Set<unknown>>; base: Record<string, Set<unknown>> }>();
+      for (const moduleKey of moduleKeysToReread) {
+        const oursModule = buildPersistedAppStateModules(payload, [moduleKey as AppStateModuleKey])[0];
+        const baseModule = buildPersistedAppStateModules({ ...payload, data: baselineData }, [moduleKey as AppStateModuleKey])[0];
+        const ours: Record<string, Set<unknown>> = {};
+        const base: Record<string, Set<unknown>> = {};
+        (PER_COMPANY_MODULE_FIELDS[moduleKey] || []).forEach((field) => {
+          ours[field] = idsDe(oursModule?.data, field);
+          base[field] = idsDe(baseModule?.data, field);
+        });
+        idsModulo.set(moduleKey, { ours, base });
+      }
       for (const entry of rowsToWrite) {
         const moduleKey = entry.row.module_key;
         const company = entry.row.company;
         const theirs = freshByKey.get(`${moduleKey}|${company}`);
         if (!theirs) continue; // no habia fila previa en la DB: nada que fusionar, se escribe lo nuestro
         const baselineSlice = baselineBucketsByModule.get(moduleKey)?.[company] || {};
+        const todos = idsModulo.get(moduleKey);
+        const fueraDeEstaFila: Record<string, Set<unknown>> = {};
+        (PER_COMPANY_MODULE_FIELDS[moduleKey] || []).forEach((field) => {
+          const deEstaFila = idsDe(entry.row.payload.data, field);
+          const fuera = new Set<unknown>();
+          todos?.ours[field]?.forEach((id) => !deEstaFila.has(id) && fuera.add(id)); // ahora es de otra empresa
+          todos?.base[field]?.forEach((id) => !todos.ours[field]?.has(id) && fuera.add(id)); // lo borramos
+          fueraDeEstaFila[field] = fuera;
+        });
         const merged = mergeModuleSlice(
           PER_COMPANY_MODULE_FIELDS[moduleKey] || [],
           baselineSlice,
           entry.row.payload.data as Record<string, unknown>,
-          theirs
+          theirs,
+          fueraDeEstaFila
         );
         entry.row.payload.data = merged as Partial<PersistedAppStateData>;
       }
@@ -9701,8 +9728,10 @@ Escribi CERRAR para confirmar:`
     // de los defaults sembrados. Asi cualquier render (filtrado o no) queda seguro.
     const restrictByCompany = isSupabaseLoggedIn && !effectiveIsAdmin;
     const keepAccessibleByCompany = <T extends { company?: unknown }>(
-      items: readonly T[]
+      todos: readonly T[]
     ): T[] => {
+      // Una sola copia por id (ver domain/mergeItems.ts `sinIdsRepetidos`).
+      const items = sinIdsRepetidos(todos);
       if (!restrictByCompany) return items as T[];
       return items.filter((item) => {
         const company = item?.company;
