@@ -27,6 +27,9 @@ export type FuentesDePlata = {
   haberes: Array<{ id: string; company: string; date: string; amount: number; title: string; administration?: string; cuentaId?: string }>;
   pettyCashFunds: Array<{ id: number; company: string; responsible: string; assignedAmount: number; assignedWhite?: number; assignedBlack?: number; deliveredDate: string; closed: boolean; closedDate: string; cuentaId?: string; cuentaDevolucionId?: string }>;
   pettyCashExpenses: Array<{ id: number; company: string; fundId: number | null; date: string; amount: number; administration: string; description: string }>;
+  // Pagos de facturas de Compras hechos con la caja chica de una persona: ya son plata movida (como pago),
+  // solo cuentan en lo GASTADO del fondo al cerrarlo (si no, lo que sobra se devolveria de mas).
+  gastosCajaDeCompras?: Array<{ fundId: number; amount: number; administration: string }>;
   internalTransfers: Array<{ id: number; company: string; date: string; direction: string; currency: string; color: string; amount: number; bank: string; description: string; cuentaId?: string; cuentaDestinoId?: string }>;
   cashHoldings: Array<{ id: number; company: string; date: string; currency: string; color: string; kind: string; amount: number; description: string; cuentaId?: string }>;
   personLedgerEntries: Array<{ id: number; company: string; person: string; date: string; kind: string; amount: number; color: string; paymentMethod?: string; description: string; cuentaId?: string }>;
@@ -160,7 +163,7 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
         personaDestino: fund.responsible || "Sin responsable",
       });
       if (fund.closed && fund.closedDate) {
-        const gastado = f.pettyCashExpenses
+        const gastado = [...f.pettyCashExpenses, ...(f.gastosCajaDeCompras || [])]
           .filter((e) => e.fundId === fund.id && color(e.administration) === c)
           .reduce((a, e) => a + Number(e.amount || 0), 0);
         const sobra = monto - gastado;

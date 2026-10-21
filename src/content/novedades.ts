@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-21b",
+    fecha: "21/10/2026",
+    titulo: "Facturas pagadas con la caja chica",
+    items: [
+      {
+        titulo: "Se ven en la rendición de la caja",
+        que: "Si en una factura de Compras elegís que el pago salió de la caja de una persona, ese pago aparece en la ficha de su caja chica como un gasto rendido (con su factura) y cuenta en lo utilizado y en lo que resta. Es el mismo pago: no se suma dos veces en el cash flow.",
+        como: "Caja chica y viáticos → ficha del responsable: el pago figura como '… · cargada en Compras'. Click sobre él abre la factura para corregirlo.",
+        tab: "cajaChica",
+      },
+    ],
+  },
+  {
     id: "2026-10-21",
     fecha: "21/10/2026",
     titulo: "Pagos con fecha anterior a la apertura de la cuenta",

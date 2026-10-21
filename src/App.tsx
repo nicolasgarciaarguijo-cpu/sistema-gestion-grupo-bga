@@ -16387,6 +16387,38 @@ Escribi CERRAR para confirmar:`
     }));
   }, [plataDisponibleByCompany, visiblePettyCashFunds, cuentasGuardadas, bankLoadsUntil, visibleBankStatementEntries, fiscalClosings]);
 
+  // FACTURA PAGADA CON LA CAJA CHICA (Nicolas, 2026-10-21): un pago cargado en Compras cuya cuenta es la caja
+  // de una persona es un gasto de su caja chica: se ve en la rendicion de su caja y cuenta en lo utilizado.
+  // No es un gasto nuevo (el pago ya esta en el cash flow y ya baja la caja de la persona): es la misma
+  // plata vista desde la caja. La caja es la abierta de esa persona en esa empresa a la fecha del pago.
+  const pagosConCajaChica = useMemo(() => {
+    const out: Array<{ id: number; fundId: number; company: string; date: string; amount: number; administration: "blanco" | "negro"; supplier?: string; description?: string; costGroup?: string }> = [];
+    costEntries.forEach((ce) => {
+      if (!ce.cuentaId || !ce.cuentaId.startsWith("persona|") || ce.employeeId != null) return;
+      const cuenta = cuentasSistema.find((c) => c.id === ce.cuentaId);
+      const persona = cuenta?.persona || "";
+      if (!persona) return;
+      const deLaPersona = pettyCashFunds
+        .filter((f) => String(f.company) === String(ce.company) && mismaPersona(f.responsible, persona))
+        .sort((a, b) => (b.deliveredDate || "").localeCompare(a.deliveredDate || ""));
+      const fondo =
+        deLaPersona.find((f) => (f.deliveredDate || "") <= ce.date && (!f.closed || !f.closedDate || f.closedDate >= ce.date)) || deLaPersona[0];
+      if (!fondo) return;
+      out.push({
+        id: ce.id,
+        fundId: fondo.id,
+        company: String(ce.company),
+        date: ce.date,
+        amount: Number(ce.amount || 0),
+        administration: ce.administration === "negro" ? "negro" : "blanco",
+        supplier: ce.supplier,
+        description: `${ce.description || "Pago"} · cargada en Compras`,
+        costGroup: ce.group || undefined,
+      });
+    });
+    return out;
+  }, [costEntries, cuentasSistema, pettyCashFunds]);
+  const idsPagosConCaja = useMemo(() => new Set(pagosConCajaChica.map((p) => p.id)), [pagosConCajaChica]);
   const plataMovidaSistema = useMemo(
     () =>
       plataDelSistema({
@@ -16416,6 +16448,7 @@ Escribi CERRAR para confirmar:`
         haberes: cashFlowEntries.filter((e) => e.id.startsWith("payroll-")) as any,
         pettyCashFunds: visiblePettyCashFunds as any,
         pettyCashExpenses: visiblePettyCashExpenses as any,
+        gastosCajaDeCompras: pagosConCajaChica,
         internalTransfers: visibleInternalTransfers as any,
         cashHoldings: visibleCashHoldings as any,
         personLedgerEntries: visiblePersonLedgerEntries as any,
@@ -21356,13 +21389,15 @@ Escribi CERRAR para confirmar:`
           <FichaCajaChica
             responsable={fichaCaja}
             fondos={fondos as any}
-            gastos={visiblePettyCashExpenses.filter((g) => g.fundId != null && ids.has(g.fundId)) as any}
+            gastos={[...visiblePettyCashExpenses.filter((g) => g.fundId != null && ids.has(g.fundId)), ...pagosConCajaChica.filter((g) => ids.has(g.fundId))] as any}
             viaticos={visibleViaticos.filter((v) => mismaPersona(v.persona, fichaCaja)) as any}
             deudas={(deuda?.invoices || []).map((i: any) => ({ id: i.id, supplier: i.supplier, invoiceNumber: i.invoiceNumber, invoiceDate: i.invoiceDate, total: i.total }))}
             companyShort={(c) => getCompanyMeta(c as CompanyName).short}
             money={money}
             facturaDeGasto={(gid) => {
-              const inv = purchaseInvoices.find((i) => i.pettyCashExpenseId === gid);
+              const inv = idsPagosConCaja.has(gid)
+                ? purchaseInvoices.find((i) => pagosDeFactura(i).includes(gid))
+                : purchaseInvoices.find((i) => i.pettyCashExpenseId === gid);
               return inv ? `Factura ${inv.receiptLetter || ""} ${inv.invoiceNumber}`.replace(/\s+/g, " ").trim() : null;
             }}
             ocrBusy={pettyOcrBusy}
@@ -21378,8 +21413,18 @@ Escribi CERRAR para confirmar:`
             onQuitarCaja={eliminarCajaChica}
             onRendirGasto={(fundId) => abrirGastoCaja(fundId)}
             onLeerTicket={leerTicketCaja}
-            onAbrirGasto={(gid) => abrirGastoCaja(null, gid)}
-            onQuitarGasto={removePettyCashExpense}
+            onAbrirGasto={(gid) => {
+              // Un pago de una factura de Compras: se abre la factura (ahi se corrige el pago).
+              if (idsPagosConCaja.has(gid)) {
+                const inv = purchaseInvoices.find((i) => pagosDeFactura(i).includes(gid));
+                const f = inv ? facturaDeId(inv.id) : null;
+                if (f) setFacturaModal(f);
+                else abrirEditarPago(gid);
+                return;
+              }
+              abrirGastoCaja(null, gid);
+            }}
+            onQuitarGasto={(gid) => (idsPagosConCaja.has(gid) ? removeCostEntry(gid) : removePettyCashExpense(gid))}
             onAdjuntar={uploadPettyCashFile}
             onViaticoRendido={(id, rendido) => setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, rendido } : v)))}
           />
@@ -21394,7 +21439,7 @@ Escribi CERRAR para confirmar:`
             new Set([...visibleEmployees.map((e: any) => String(e.name || "").trim()), ...visiblePettyCashFunds.map((f) => f.responsible.trim())].filter(Boolean))
           ).sort()}
           fondos={visiblePettyCashFunds as any}
-          gastos={visiblePettyCashExpenses as any}
+          gastos={[...visiblePettyCashExpenses, ...pagosConCajaChica] as any}
           cuentas={cuentasSistema as any}
           companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
           money={money}
@@ -21895,7 +21940,7 @@ Escribi CERRAR para confirmar:`
       {activeTab === "cajaChica" && (
         <CajaChicaListado
           fondos={visiblePettyCashFunds as any}
-          gastos={visiblePettyCashExpenses as any}
+          gastos={[...visiblePettyCashExpenses, ...pagosConCajaChica] as any}
           tipos={tiposCaja}
           viaticos={visibleViaticos as any}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
