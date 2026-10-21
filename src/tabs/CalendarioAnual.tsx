@@ -2861,7 +2861,10 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                       // debajo cada proveedor con movimiento en lo que se ve.
                       const prefijo = `${section.key}|`;
                       const conPlata = Array.from(agg.provDetail.keys()).filter((k) => k.startsWith(prefijo)).map((k) => k.slice(prefijo.length));
-                      const claves = Array.from(new Set([...gruposCosto.map((g) => g.clave), ...conPlata]));
+                      // Tambien los grupos que solo tienen pagos PROGRAMADOS (una cuota de un credito en un grupo nuevo).
+                      const prefijoRenglon = `prov:${section.key}:`;
+                      const conPrevision = Array.from(prev.titulosPorRenglon.keys()).filter((k) => k.startsWith(prefijoRenglon)).map((k) => k.slice(prefijoRenglon.length));
+                      const claves = Array.from(new Set([...gruposCosto.map((g) => g.clave), ...conPlata, ...conPrevision]));
                       const tipoDe = (clave: string) => parseClaveGrupo(clave)?.tipo;
                       claves.sort((a, b) => (tipoDe(a) === tipoDe(b) ? (parseClaveGrupo(a)?.nombre || a).localeCompare(parseClaveGrupo(b)?.nombre || b) : tipoDe(a) === "fijo" ? -1 : 1));
                       return claves.map((clave) => {

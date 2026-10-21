@@ -26,6 +26,15 @@ describe("programadosEnRenglones", () => {
       ["custom:impuestos:Plan IVA", undefined],
     ]);
   });
+  it("la cuota de una deuda va a la fila de su pago (grupo de la deuda y acreedor)", () => {
+    const r = programadosEnRenglones(
+      [{ ...base, origen: "deuda", refId: 9, titulo: "Crédito · Santander" }],
+      () => null,
+      (id) => (id === 9 ? { conceptKey: "prov:proveedores_out:fijo|Gastos financieros", titulo: "Santander" } : null)
+    );
+    expect(r.map((x) => [x.conceptKey, x.titulo])).toEqual([["prov:proveedores_out:fijo|Gastos financieros", "Santander"]]);
+  });
+
   it("lo pagado, en dolares, sin monto o de otro carril no se repite", () => {
     const r = programadosEnRenglones(
       [

@@ -41,7 +41,10 @@ const ES_IMPUESTO = /\b(iva|ccss|afip|arca|ganancias|cargas sociales|seg(uridad)
 export function programadosEnRenglones(
   items: ProgramadoParaRenglon[],
   // La fila de una factura de proveedor: su renglon (prov:<seccion>:<grupo>) y el nombre del proveedor.
-  filaDeFactura: (refId: number | string) => { conceptKey: string; titulo: string; cuentaId?: string } | null
+  filaDeFactura: (refId: number | string) => { conceptKey: string; titulo: string; cuentaId?: string } | null,
+  // La fila de una CUOTA de Desendeudamiento: la misma que va a tener su pago (el grupo de costo de la
+  // deuda y el nombre del acreedor), para que el pago real la reemplace (2026-10-21).
+  filaDeDeuda?: (refId: number | string) => { conceptKey: string; titulo: string } | null
 ): PrevisionDeRenglon[] {
   const out: PrevisionDeRenglon[] = [];
   items.forEach((i) => {
@@ -51,7 +54,9 @@ export function programadosEnRenglones(
     if (i.origen === "factura") fila = filaDeFactura(i.refId);
     else if (i.origen === "tarjeta") fila = { conceptKey: FINANCIEROS, titulo: i.titulo };
     else if (i.origen === "deuda")
-      fila = ES_IMPUESTO.test(i.titulo) ? { conceptKey: `custom:impuestos:${i.titulo}` } : { conceptKey: FINANCIEROS, titulo: i.titulo };
+      fila =
+        filaDeDeuda?.(i.refId) ||
+        (ES_IMPUESTO.test(i.titulo) ? { conceptKey: `custom:impuestos:${i.titulo}` } : { conceptKey: FINANCIEROS, titulo: i.titulo });
     // Los vencimientos a mano y los seguros ya bajan por su propio carril (con su renglon); los
     // sueldos tienen la ficha de pago de haberes. Ninguno se repite aca.
     if (!fila) return;

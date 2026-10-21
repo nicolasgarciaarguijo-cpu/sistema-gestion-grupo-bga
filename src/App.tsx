@@ -17009,7 +17009,8 @@ Escribi CERRAR para confirmar:`
           paid: t.paid,
           nombre: tarjetaNombre(t.cardId),
         })),
-        pagosCashflow: visibleFinancialItems,
+        // Solo lo vinculado (2026-10-21): un pago cargado a mano en la planilla vieja ya no se programa.
+        pagosCashflow: visibleFinancialItems.filter((f) => financieroAlimentaCashFlow(f)),
         // Seguros desde el mes en curso: los debitos de meses viejos no tienen que sonar.
         seguros: segurosPrevisionMensual(
           seguros.filter((s) => canAccessCompany(s.company)),
@@ -17301,6 +17302,16 @@ Escribi CERRAR para confirmar:`
         cuentaId: inv.cuentaPrevista,
       };
     };
+    // La cuota de una deuda: el grupo de costo de la deuda (o el del acreedor) y el nombre del acreedor, igual
+    // que el pago que la salda (registrarPagoCuota). Asi el pago real reemplaza a la prevision.
+    const filaDeDeuda = (refId: number | string) => {
+      const d = debtPlans.find((x) => x.id === Number(refId));
+      if (!d) return null;
+      const nombre = (d.acreedor || d.concept || "Deuda").trim();
+      const prov = buscarProveedor(suppliers as any, nombre, "") as any;
+      const grupo = d.grupoCosto || prov?.grupoCosto || "|Sin grupo";
+      return { conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, grupo), titulo: nombre };
+    };
     return [
       ...segurosPrevisiones,
       ...previsionesDeVencimientos(
@@ -17308,10 +17319,10 @@ Escribi CERRAR para confirmar:`
         desde,
         hasta
       ),
-      ...programadosEnRenglones(agendaInamoviblesItems, filaDeFactura).filter((p) => p.date >= desde && p.date <= hasta),
+      ...programadosEnRenglones(agendaInamoviblesItems, filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
       // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
     ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
-  }, [segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers]);
+  }, [segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans]);
 
   // Marcar pagado: si el origen tiene su propio "pagado", se usa ESE (queda vinculado en las dos
   // solapas); si no, se guarda una marca.
@@ -19683,6 +19694,8 @@ Escribi CERRAR para confirmar:`
           arrancaPlegado={!onlySection}
           movimientosCuentas={movimientosDeCuentas}
           onAbrirProgramado={(fila, titulo) => {
+            // La cuota de una deuda (su fila lleva el nombre del acreedor): a Desendeudamiento.
+            if (debtPlans.some((d) => d.active && (d.acreedor || d.concept || "").trim() === titulo.trim())) return setActiveTab("desendeudamiento" as TabKey);
             // La factura de un proveedor: su ficha (ahi se ve la factura para pagarla o borrarla).
             if (fila.startsWith("prov:") && !/^(Tarjeta|Cr[eé]dito|Plan)\b/i.test(titulo)) return abrirFichaProveedor(titulo);
             if (/^Tarjeta/i.test(titulo)) return setActiveTab("bancos" as TabKey);
