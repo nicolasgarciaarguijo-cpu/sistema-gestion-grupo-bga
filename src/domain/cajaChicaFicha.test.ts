@@ -102,3 +102,21 @@ describe("contador B/N de caja chica (por empresa)", () => {
     expect(p).toMatchObject({ neto: -400, recomendacion: "con_factura", cajasSinOrigen: 1, montoSinOrigen: 1000 });
   });
 });
+
+describe("facturas pagadas con la caja chica (2026-10-21)", () => {
+  const { pagosComoGastosDeCaja, personaDeCuenta } = require("./cajaChicaFicha");
+  const fondos = [
+    { id: 1, company: "BGA", responsible: "Joaquín Pérez", assignedAmount: 100, deliveredDate: "2026-09-01", closed: true, closedDate: "2026-09-30" },
+    { id: 2, company: "BGA", responsible: "Joaquín Pérez", assignedAmount: 100, deliveredDate: "2026-10-01", closed: false },
+  ];
+  it("el pago con la caja de la persona va a su caja abierta a esa fecha", () => {
+    const pago = { id: 9, company: "BGA", date: "2026-10-15", amount: 50, cuentaId: "persona|BGA|joaquin perez|blanco", description: "Factura A 1" };
+    expect(personaDeCuenta(pago.cuentaId)).toEqual({ company: "BGA", persona: "joaquin perez" });
+    expect(pagosComoGastosDeCaja([pago], fondos)).toEqual([expect.objectContaining({ id: 9, fundId: 2, amount: 50 })]);
+    expect(pagosComoGastosDeCaja([{ ...pago, date: "2026-09-10" }], fondos)[0].fundId).toBe(1);
+  });
+  it("sin caja de esa persona no hay donde colgarlo; un pago de banco no es de caja", () => {
+    expect(pagosComoGastosDeCaja([{ id: 9, company: "BGA", date: "2026-10-15", amount: 50, cuentaId: "persona|BGA|otro|blanco" }], fondos)).toEqual([]);
+    expect(pagosComoGastosDeCaja([{ id: 9, company: "BGA", date: "2026-10-15", amount: 50, cuentaId: "banco|BGA|galicia|ARS" }], fondos)).toEqual([]);
+  });
+});

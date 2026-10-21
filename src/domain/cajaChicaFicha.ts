@@ -202,3 +202,59 @@ export function posicionCajaChica(fondos: FondoLike[], gastos: GastoLike[]): Pos
     })
     .sort((a, b) => a.company.localeCompare(b.company));
 }
+
+// FACTURAS PAGADAS CON LA CAJA CHICA (Nicolas, 2026-10-21). Un pago de Compras cuya cuenta es la caja de una
+// persona ("persona|<empresa>|<nombre>|<color>") es un gasto de su caja chica: la abierta en esa empresa a la
+// fecha del pago (o, si no hay, la ultima). Sin ninguna caja de esa persona, no hay donde colgarlo: el App la
+// crea en $0 y el gasto queda como deuda con la persona (caja excedida).
+export type PagoConCajaLike = {
+  id: number;
+  company: string;
+  date: string;
+  amount: number;
+  administration?: string;
+  cuentaId?: string;
+  employeeId?: number;
+  supplier?: string;
+  description?: string;
+  group?: string;
+};
+
+/** La persona de una caja ("persona|empresa|nombre|color" -> nombre normalizado). */
+export const personaDeCuenta = (cuentaId?: string): { company: string; persona: string } | null => {
+  if (!cuentaId || !cuentaId.startsWith("persona|")) return null;
+  const [, company, persona] = cuentaId.split("|");
+  return persona ? { company, persona } : null;
+};
+
+export function fondoDelPago(pago: PagoConCajaLike, fondos: FondoLike[]): FondoLike | undefined {
+  const p = personaDeCuenta(pago.cuentaId);
+  if (!p || pago.employeeId != null) return undefined;
+  const deLaPersona = fondos
+    .filter((f) => String(f.company) === String(pago.company) && normalizarPersona(f.responsible) === normalizarPersona(p.persona))
+    .sort((a, b) => (b.deliveredDate || "").localeCompare(a.deliveredDate || ""));
+  return (
+    deLaPersona.find((f) => (f.deliveredDate || "") <= pago.date && (!f.closed || !f.closedDate || f.closedDate >= pago.date)) || deLaPersona[0]
+  );
+}
+
+/** Los pagos de Compras hechos con la caja de una persona, como gastos de su caja chica. */
+export function pagosComoGastosDeCaja(pagos: PagoConCajaLike[], fondos: FondoLike[]): Array<GastoLike & { company: string }> {
+  const out: Array<GastoLike & { company: string }> = [];
+  pagos.forEach((ce) => {
+    const fondo = fondoDelPago(ce, fondos);
+    if (!fondo) return;
+    out.push({
+      id: ce.id,
+      fundId: fondo.id,
+      company: String(ce.company),
+      date: ce.date,
+      amount: Number(ce.amount || 0),
+      administration: ce.administration === "negro" ? "negro" : "blanco",
+      supplier: ce.supplier,
+      description: `${ce.description || "Pago"} · cargada en Compras`,
+      costGroup: ce.group || undefined,
+    });
+  });
+  return out;
+}

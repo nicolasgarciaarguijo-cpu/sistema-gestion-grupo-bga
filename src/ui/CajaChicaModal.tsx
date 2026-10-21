@@ -20,6 +20,8 @@ export type CajaForm = {
   cuentaDevolucionId?: string;
   notes: string;
   firmante?: string; // ultimo usuario que firmo la asignacion (solo para mostrar; lo graba App)
+  // Si el responsable tiene deuda de caja chica: true (o ausente) = esta caja la cancela; false = sigue.
+  cancelaDeuda?: boolean;
 };
 
 const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600 };
@@ -40,6 +42,7 @@ export function CajaChicaModal({
   money,
   onGuardar,
   onCerrar,
+  deudaDe,
 }: {
   inicial: CajaForm;
   tipos: string[];
@@ -51,6 +54,8 @@ export function CajaChicaModal({
   money: (n: number) => string;
   onGuardar: (f: CajaForm) => void;
   onCerrar: () => void;
+  // Lo que la empresa le debe a esta persona por caja chica (para elegir si esta caja lo cancela).
+  deudaDe?: (persona: string) => number;
 }) {
   const [f, setF] = useState<CajaForm>(inicial);
   const set = (p: Partial<CajaForm>) => setF((x) => ({ ...x, ...p }));
@@ -179,6 +184,41 @@ export function CajaChicaModal({
             </label>
           </div>
           <div style={{ marginTop: 8, fontSize: 13 }}>Total de la caja: <b>{money(total)}</b></div>
+          {(() => {
+            // DEUDA DE CAJA CHICA (Nicolas, 2026-10-21): se puede cancelar asignando mas plata (lo que se le debe
+            // se descuenta de esta caja) o seguir debiendola y pagarla aparte desde la ficha de la caja.
+            const deuda = f.responsible.trim() && deudaDe ? deudaDe(f.responsible) : 0;
+            if (!(deuda > 0.5)) return null;
+            const cancela = f.cancelaDeuda !== false;
+            return (
+              <div style={{ marginTop: 8, border: "1px solid #fdba74", background: "#fff7ed", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, display: "grid", gap: 6 }}>
+                <div style={{ color: "#9a3412", fontWeight: 700 }}>
+                  La empresa le debe {money(deuda)} a {f.responsible} por caja chica.
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    onClick={() => set({ cancelaDeuda: true })}
+                    style={{ ...input, width: "auto", cursor: "pointer", fontWeight: 800, background: cancela ? "#16a34a" : "#fff", color: cancela ? "#fff" : "#166534", borderColor: "#86efac" }}
+                  >
+                    {cancela ? "✓ " : ""}Cancelar la deuda con esta caja
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => set({ cancelaDeuda: false })}
+                    style={{ ...input, width: "auto", cursor: "pointer", fontWeight: 800, background: !cancela ? "#b45309" : "#fff", color: !cancela ? "#fff" : "#9a3412", borderColor: "#fdba74" }}
+                  >
+                    {!cancela ? "✓ " : ""}No cancelarla (la pago aparte)
+                  </button>
+                </div>
+                <div style={{ color: "#64748b" }}>
+                  {cancela
+                    ? `De esta caja se descuentan ${money(Math.min(deuda, total))}: le quedan ${money(Math.max(0, total - deuda))} para gastar.`
+                    : "La deuda sigue: se paga desde la ficha de su caja (💸 Pagar la deuda)."}
+                </div>
+              </div>
+            );
+          })()}
           {(f.empresaImputada || f.company) !== f.company && (
             <div style={{ marginTop: 6, fontSize: 12.5, color: "#b45309", fontWeight: 700 }}>
               La plata sale de {f.company} y los gastos son de {f.empresaImputada}: {f.company} le pone la plata a {f.empresaImputada} (queda a la vista en el listado y en la ficha).

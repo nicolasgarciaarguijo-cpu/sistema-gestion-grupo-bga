@@ -32,7 +32,7 @@ export type FuentesDePlata = {
   gastosCajaDeCompras?: Array<{ fundId: number; amount: number; administration: string }>;
   internalTransfers: Array<{ id: number; company: string; date: string; direction: string; currency: string; color: string; amount: number; bank: string; description: string; cuentaId?: string; cuentaDestinoId?: string }>;
   cashHoldings: Array<{ id: number; company: string; date: string; currency: string; color: string; kind: string; amount: number; description: string; cuentaId?: string }>;
-  personLedgerEntries: Array<{ id: number; company: string; person: string; date: string; kind: string; amount: number; color: string; paymentMethod?: string; description: string; cuentaId?: string }>;
+  personLedgerEntries: Array<{ id: number; company: string; person: string; date: string; kind: string; amount: number; color: string; paymentMethod?: string; description: string; cuentaId?: string; cajaChica?: boolean }>;
   capitalEntries: Array<{ id: number; company: string; date: string; origin: string; direction: string; color: string; amount: number; cuentaId?: string }>;
   ivaVepPayments: Array<{ id: number; company: string; date: string; amount: number; period: string; cuentaId?: string }>;
   // Inversiones: la colocacion sale de la cuenta y el rescate vuelve (ver domain/inversionesCalendario).
@@ -253,7 +253,10 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
         company: p.company,
         date: p.date,
         amount: Number(p.amount || 0),
-        sentido: "sale",
+        // Devolucion de la deuda de caja chica: sale de la cuenta elegida y entra a la caja de la persona
+        // (que quedo en negativo cuando pago de su bolsillo). Un reintegro comun, solo sale.
+        sentido: p.cajaChica ? "pase" : "sale",
+        ...(p.cajaChica ? { personaDestino: p.person } : {}),
         moneda: "ARS",
         color: color(p.color),
         metodo: p.paymentMethod || "efectivo",

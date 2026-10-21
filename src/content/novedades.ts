@@ -26,6 +26,12 @@ export const NOVEDADES: TandaNovedades[] = [
         como: "Caja chica y viáticos → ficha del responsable: el pago figura como '… · cargada en Compras'. Click sobre él abre la factura para corregirlo.",
         tab: "cajaChica",
       },
+      {
+        titulo: "Caja automática y deuda con la persona",
+        que: "Si se paga con la caja de alguien que no tiene caja chica en esa empresa, se le crea una sola en $0: lo gastado queda como deuda de la empresa con esa persona. Esa deuda se devuelve de dos formas: con '💸 Pagar la deuda' en la ficha de su caja (fecha, monto y de qué cuenta sale; queda en Movimientos internos como 'Caja chica (persona)'), o asignándole una caja nueva y eligiendo 'Cancelar la deuda con esta caja' (o 'No cancelarla').",
+        como: "Caja chica y viáticos → ficha del responsable → bloque 'Deuda por caja chica'.",
+        tab: "cajaChica",
+      },
     ],
   },
   {

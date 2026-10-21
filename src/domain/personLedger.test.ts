@@ -146,3 +146,15 @@ describe("buildPersonLedger", () => {
     expect(r.accounts[0].movements[0].date).toBe("2026-05-01");
   });
 });
+
+describe("una caja nueva puede no cancelar la deuda (2026-10-21)", () => {
+  const caja1 = { id: 1, company: "BGA", responsible: "Joaquín", assignedAmount: 0, renderedAmount: 500 };
+  it("por defecto la caja nueva la cancela; con cancelaDeuda=false la deuda sigue", () => {
+    const si = carryPettyCashDebt([caja1, { id: 2, company: "BGA", responsible: "Joaquín", assignedAmount: 1000, renderedAmount: 0 }]);
+    expect(si.total).toBe(0);
+    expect(si.byFund.get(2)).toEqual({ ajuste: 500, adjustedRemaining: 500 });
+    const no = carryPettyCashDebt([caja1, { id: 2, company: "BGA", responsible: "Joaquín", assignedAmount: 1000, renderedAmount: 0, cancelaDeuda: false }]);
+    expect(no.total).toBe(500);
+    expect(no.byFund.get(2)).toEqual({ ajuste: 0, adjustedRemaining: 1000 });
+  });
+});

@@ -77,6 +77,8 @@ export type PersonLedgerFundLike = {
   deliveredDate?: string;
   assignedAmount: number;
   renderedAmount: number;
+  // false = esta caja NO cancela la deuda de cajas anteriores (la deuda sigue y se paga aparte).
+  cancelaDeuda?: boolean;
 };
 
 // --- Salidas -------------------------------------------------------------------------------------
@@ -151,7 +153,7 @@ export function carryPettyCashDebt(funds: PersonLedgerFundLike[]): PettyCarryRes
       if (propio < 0) {
         arrastre += -propio;
         byFund.set(fund.id, { ajuste: 0, adjustedRemaining: propio });
-      } else if (arrastre > 0) {
+      } else if (arrastre > 0 && fund.cancelaDeuda !== false) {
         const ajuste = Math.min(propio, arrastre);
         arrastre -= ajuste;
         byFund.set(fund.id, { ajuste, adjustedRemaining: propio - ajuste });

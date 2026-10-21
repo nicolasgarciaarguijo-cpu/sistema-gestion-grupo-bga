@@ -8,7 +8,8 @@
 import React, { useMemo, useRef, useState } from "react";
 import { QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "./primitives";
 import { gastosPorGrupo, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
-import { textoFirmante } from "./FirmanteSelect";
+import { FirmanteFijo, textoFirmante } from "./FirmanteSelect";
+import NumInput from "./NumInput";
 import { DesbalanceCaja } from "./DesbalanceCaja";
 import { getFundSemaphore } from "../domain/pettyCash";
 
@@ -21,6 +22,7 @@ const td: React.CSSProperties = { padding: "5px 8px", borderBottom: "1px solid #
 const num: React.CSSProperties = { ...td, textAlign: "right", fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap" };
 const bloque: React.CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, background: "#fff" };
 const tituloBloque: React.CSSProperties = { fontSize: 12.5, fontWeight: 800, color: "#334155", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" };
+const inputPago: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "5px 8px", fontSize: 13, width: "100%", boxSizing: "border-box", background: "#fff" };
 const boton: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 7, padding: "6px 12px", fontSize: 13, cursor: "pointer", background: "#fff", fontWeight: 700 };
 const stat: React.CSSProperties = { border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", background: "#f8fafc", fontSize: 12 };
 const SEMAFORO: Record<string, string> = { verde: "#16a34a", amarillo: "#f59e0b", rojo: "#dc2626" };
@@ -49,6 +51,9 @@ export function FichaCajaChica({
   onQuitarGasto,
   onAdjuntar,
   onViaticoRendido,
+  deudaCaja = 0,
+  cuentas = [],
+  onPagarDeuda,
 }: {
   responsable: string;
   fondos: FondoLike[];
@@ -72,6 +77,11 @@ export function FichaCajaChica({
   onQuitarGasto: (expenseId: number) => void;
   onAdjuntar: (expenseId: number, file: File) => void;
   onViaticoRendido: (id: number, rendido: boolean) => void;
+  // DEUDA DE CAJA CHICA con la persona (lo que gasto de mas o pago de su bolsillo con su caja) y el pago
+  // que la devuelve: de que cuenta sale la plata y cuando, como un pago comun (Nicolas, 2026-10-21).
+  deudaCaja?: number;
+  cuentas?: Array<{ id: string; company: string; nombre: string; tipo?: string; activa?: boolean }>;
+  onPagarDeuda?: (p: { company: string; fecha: string; monto: number; cuentaId: string }) => void;
 }) {
   const [menuCaja, setMenuCaja] = useState<null | { x: number; y: number; id: number }>(null);
   const [menuGasto, setMenuGasto] = useState<null | { x: number; y: number; id: number }>(null);
@@ -109,6 +119,8 @@ export function FichaCajaChica({
     return f ? `${f.tipo || "General"} · ${fecha(f.deliveredDate)}` : "Sin caja";
   };
   const deudaTotal = deudas.reduce((a, d) => a + Number(d.total || 0), 0);
+  const empresaDeuda = (fondos.find((f) => !f.closed) || fondos[0])?.company || "";
+  const [pagoDeuda, setPagoDeuda] = useState<null | { company: string; fecha: string; monto: number; cuentaId: string }>(null);
 
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4500, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "24px 12px" }}>
@@ -387,6 +399,71 @@ export function FichaCajaChica({
                   ))}
                 </tbody>
               </table>
+            )}
+          </div>
+
+          <div style={{ ...bloque, ...(deudaCaja > 0.5 ? { borderColor: "#fdba74", background: "#fff7ed" } : {}) }}>
+            <div style={tituloBloque}>
+              <span>Deuda por caja chica</span>
+              {deudaCaja > 0.5 && onPagarDeuda && !pagoDeuda && (
+                <button
+                  type="button"
+                  style={{ ...boton, background: "#16a34a", color: "#fff", borderColor: "#15803d" }}
+                  onClick={() => setPagoDeuda({ company: empresaDeuda, fecha: new Date().toISOString().slice(0, 10), monto: Math.round(deudaCaja * 100) / 100, cuentaId: "" })}
+                >
+                  💸 Pagar la deuda
+                </button>
+              )}
+            </div>
+            {deudaCaja > 0.5 ? (
+              <div style={{ fontSize: 13, color: "#9a3412", fontWeight: 700 }}>
+                La empresa le debe {money(deudaCaja)} a {responsable}. Se devuelve con un pago (acá) o asignándole una caja nueva que la cancele.
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: "#94a3b8" }}>No se le debe nada por caja chica.</div>
+            )}
+            {pagoDeuda && (
+              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
+                  <label style={{ display: "grid", gap: 3, fontSize: 12, fontWeight: 600, color: "#475569" }}>Fecha
+                    <input type="date" style={inputPago} value={pagoDeuda.fecha} onChange={(e) => setPagoDeuda({ ...pagoDeuda, fecha: e.target.value })} />
+                  </label>
+                  <label style={{ display: "grid", gap: 3, fontSize: 12, fontWeight: 600, color: "#475569" }}>Monto
+                    <NumInput style={inputPago} value={pagoDeuda.monto || ""} onChange={(e) => setPagoDeuda({ ...pagoDeuda, monto: Number(e.target.value) || 0 })} />
+                  </label>
+                  <label style={{ display: "grid", gap: 3, fontSize: 12, fontWeight: 600, color: "#475569" }}>De qué cuenta sale
+                    <select
+                      style={{ ...inputPago, ...(pagoDeuda.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }}
+                      value={pagoDeuda.cuentaId}
+                      onChange={(e) => setPagoDeuda({ ...pagoDeuda, cuentaId: e.target.value })}
+                    >
+                      <option value="">— Elegí la cuenta —</option>
+                      {cuentas
+                        .filter((c) => c.company === pagoDeuda.company && c.activa !== false && c.tipo !== "persona")
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>{c.nombre}</option>
+                        ))}
+                    </select>
+                  </label>
+                </div>
+                <FirmanteFijo />
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button type="button" style={boton} onClick={() => setPagoDeuda(null)}>Cancelar</button>
+                  <button
+                    type="button"
+                    style={{ ...boton, background: "#16a34a", color: "#fff", borderColor: "#15803d" }}
+                    onClick={() => {
+                      if (!pagoDeuda.fecha || !(pagoDeuda.monto > 0)) return window.alert("Falta la fecha o el monto.");
+                      if (!pagoDeuda.cuentaId) return window.alert("Elegí de qué cuenta sale la plata.");
+                      onPagarDeuda?.(pagoDeuda);
+                      setPagoDeuda(null);
+                    }}
+                  >
+                    Guardar el pago
+                  </button>
+                </div>
+                <div style={{ fontSize: 11.5, color: "#64748b" }}>Queda en Movimientos internos (cuenta corriente con la gente) como "Caja chica ({responsable})".</div>
+              </div>
             )}
           </div>
 

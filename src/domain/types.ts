@@ -678,6 +678,9 @@ export type PettyCashType = {
 };
 
 export type PettyCashFund = {
+  // Al asignar esta caja, si el responsable tenia deuda de cajas anteriores: true (o ausente) = esta caja la
+  // cancela (se descuenta de lo que le queda); false = la deuda sigue y se paga aparte (2026-10-21).
+  cancelaDeuda?: boolean;
   // Fecha ANTERIOR a la apertura de su cuenta: "suma" = cuenta igual en el saldo; "no" (o ausente) = ya estaba
   // dentro del saldo de apertura. Se pregunta al guardar (2026-10-21). Ver domain/cuentas.ts.
   antesDeApertura?: "suma" | "no";
@@ -843,6 +846,8 @@ export type InternalTransfer = {
 // reintegro baja la caja de efectivo (solo si se le pago en efectivo).
 export type PersonLedgerEntry = {
   id: number;
+  // Devolucion de la deuda de CAJA CHICA (2026-10-21): la plata va de la cuenta elegida a la caja de la persona.
+  cajaChica?: boolean;
   company: CompanyName;
   person: string;
   date: string; // "yyyy-mm-dd"

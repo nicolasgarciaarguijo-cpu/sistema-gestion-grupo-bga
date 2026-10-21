@@ -222,7 +222,7 @@ import { GastoCajaChicaModal, type GastoCajaForm } from "./ui/GastoCajaChicaModa
 import { CajaChicaListado } from "./tabs/CajaChicaListado";
 import { FichaCajaChica } from "./ui/FichaCajaChica";
 import { CajaChicaModal, type CajaForm } from "./ui/CajaChicaModal";
-import { TIPOS_CAJA_BASE, mismaPersona } from "./domain/cajaChicaFicha";
+import { TIPOS_CAJA_BASE, mismaPersona, pagosComoGastosDeCaja, personaDeCuenta } from "./domain/cajaChicaFicha";
 import { aplicarRemito, esCompraDeMateriales, proximoNumero, recepcionesSinFactura, costoSalidasDelTrabajo, TIPOS_REMITO, type Remito, type TipoRemito } from "./domain/remitos";
 import { RemitoModal } from "./ui/RemitoModal";
 import { RemitosPanel } from "./tabs/RemitosPanel";
@@ -7958,10 +7958,16 @@ Escribi CERRAR para confirmar:`
     };
   }, [visiblePettyCashFunds, visiblePettyCashExpenses]);
 
+  // Ver domain/cajaChicaFicha.ts `pagosComoGastosDeCaja`. Es la misma plata del pago, vista desde la caja.
+  const pagosConCajaChica = useMemo(
+    () => pagosComoGastosDeCaja(costEntries.filter((c) => canAccessCompany(c.company)) as any, pettyCashFunds as any),
+    [costEntries, pettyCashFunds, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+  const idsPagosConCaja = useMemo(() => new Set(pagosConCajaChica.map((p) => p.id)), [pagosConCajaChica]);
   const pettyCashFundSummaries = useMemo(
     () =>
       visiblePettyCashFunds.map((fund) => {
-        const expenses = visiblePettyCashExpenses
+        const expenses = [...visiblePettyCashExpenses, ...(pagosConCajaChica as any[])]
           .filter((item) => item.fundId === fund.id)
           .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
         const renderedTotal = expenses.reduce((acc, item) => acc + Number(item.amount || 0), 0);
@@ -7980,7 +7986,7 @@ Escribi CERRAR para confirmar:`
           remainingBalance: Number(fund.assignedAmount || 0) - renderedTotal,
         };
       }),
-    [visiblePettyCashExpenses, visiblePettyCashFunds]
+    [visiblePettyCashExpenses, visiblePettyCashFunds, pagosConCajaChica]
   );
 
   // Neteo de deuda por responsable: si una caja se sobregira, la empresa le queda debiendo al
@@ -7999,6 +8005,7 @@ Escribi CERRAR para confirmar:`
         deliveredDate: entry.fund.deliveredDate || "",
         assignedAmount: Number(entry.fund.assignedAmount || 0),
         renderedAmount: entry.renderedTotal,
+        cancelaDeuda: entry.fund.cancelaDeuda,
       })),
     [pettyCashFundSummaries]
   );
@@ -16391,34 +16398,6 @@ Escribi CERRAR para confirmar:`
   // de una persona es un gasto de su caja chica: se ve en la rendicion de su caja y cuenta en lo utilizado.
   // No es un gasto nuevo (el pago ya esta en el cash flow y ya baja la caja de la persona): es la misma
   // plata vista desde la caja. La caja es la abierta de esa persona en esa empresa a la fecha del pago.
-  const pagosConCajaChica = useMemo(() => {
-    const out: Array<{ id: number; fundId: number; company: string; date: string; amount: number; administration: "blanco" | "negro"; supplier?: string; description?: string; costGroup?: string }> = [];
-    costEntries.forEach((ce) => {
-      if (!ce.cuentaId || !ce.cuentaId.startsWith("persona|") || ce.employeeId != null) return;
-      const cuenta = cuentasSistema.find((c) => c.id === ce.cuentaId);
-      const persona = cuenta?.persona || "";
-      if (!persona) return;
-      const deLaPersona = pettyCashFunds
-        .filter((f) => String(f.company) === String(ce.company) && mismaPersona(f.responsible, persona))
-        .sort((a, b) => (b.deliveredDate || "").localeCompare(a.deliveredDate || ""));
-      const fondo =
-        deLaPersona.find((f) => (f.deliveredDate || "") <= ce.date && (!f.closed || !f.closedDate || f.closedDate >= ce.date)) || deLaPersona[0];
-      if (!fondo) return;
-      out.push({
-        id: ce.id,
-        fundId: fondo.id,
-        company: String(ce.company),
-        date: ce.date,
-        amount: Number(ce.amount || 0),
-        administration: ce.administration === "negro" ? "negro" : "blanco",
-        supplier: ce.supplier,
-        description: `${ce.description || "Pago"} · cargada en Compras`,
-        costGroup: ce.group || undefined,
-      });
-    });
-    return out;
-  }, [costEntries, cuentasSistema, pettyCashFunds]);
-  const idsPagosConCaja = useMemo(() => new Set(pagosConCajaChica.map((p) => p.id)), [pagosConCajaChica]);
   const plataMovidaSistema = useMemo(
     () =>
       plataDelSistema({
@@ -16937,6 +16916,7 @@ Escribi CERRAR para confirmar:`
     });
   };
   const guardarPagoACuenta = (f: PagoACuentaForm) => {
+    asegurarCajaDePersona(f.company, f.cuentaId, f.fecha, new Set());
     const prov = buscarProveedor(suppliers as any, f.supplier, f.taxId) as any;
     const grupo = parseClaveGrupo(prov?.grupoCosto);
     if (f.id != null) {
@@ -17592,6 +17572,42 @@ Escribi CERRAR para confirmar:`
       }),
     [purchaseLedgerInvoices, personLedgerFunds, visiblePersonLedgerEntries, internalCompanyScope]
   );
+
+  // DEUDA DE CAJA CHICA de cada persona (2026-10-21): lo gastado de mas sobre sus cajas (incluye los pagos de
+  // Compras hechos con su caja) menos lo que ya se le devolvio (pagos de la deuda y cajas que la cancelaron).
+  const deudaCajaChica = useMemo(() => {
+    const r = buildPersonLedger({
+      pettyCashFunds: personLedgerFunds,
+      entries: visiblePersonLedgerEntries
+        .filter((e) => e.cajaChica)
+        .map((e) => ({ id: e.id, company: String(e.company), person: e.person, date: e.date, kind: e.kind === "haber" ? ("haber" as const) : ("debe" as const), amount: Number(e.amount || 0), description: e.description })),
+    });
+    return r.accounts;
+  }, [personLedgerFunds, visiblePersonLedgerEntries]);
+  const deudaCajaDe = (persona: string) => Math.max(0, deudaCajaChica.find((a) => mismaPersona(a.person, persona))?.saldo || 0);
+  // PAGO DE LA DEUDA de caja chica desde la ficha de la caja: es un reintegro a la persona, sale de la cuenta
+  // elegida y entra a su caja; queda en Movimientos internos (cuenta corriente con la gente).
+  const pagarDeudaCaja = (persona: string, p: { company: string; fecha: string; monto: number; cuentaId: string }) => {
+    const cuenta = cuentasSistema.find((c) => c.id === p.cuentaId);
+    setPersonLedgerEntries((prev) => [
+      {
+        id: newId(),
+        company: p.company as CompanyName,
+        person: persona,
+        date: p.fecha,
+        kind: "haber",
+        amount: Number(p.monto) || 0,
+        cuentaId: p.cuentaId,
+        color: cuenta?.color === "negro" ? "negro" : "blanco",
+        paymentMethod: cuenta?.tipo === "banco" ? "transferencia" : "efectivo",
+        description: `Caja chica (${persona}) · devolución de la deuda`,
+        notes: "",
+        cajaChica: true,
+        ...firma(),
+      } as PersonLedgerEntry,
+      ...prev,
+    ]);
+  };
 
   // Nombres de la gente que puede haber puesto plata de su bolsillo: los empleados y socios del
   // sistema. Es solo una lista de sugerencias -- el campo admite cualquier nombre (un tercero).
@@ -19948,6 +19964,40 @@ Escribi CERRAR para confirmar:`
       porBanco: inv.paidByBankEntryId != null && pagos.length === 0 ? "Pagada por un débito del banco (conciliado en Bancos y tarjetas)." : undefined,
     };
   };
+  // CAJA AUTOMATICA (Nicolas, 2026-10-21): "si la persona no tiene caja asignada, que se asigne una
+  // automaticamente y el gasto quedara como deuda hacia esa persona". Si se paga con la caja de alguien que
+  // no tiene ninguna caja chica en esa empresa, se le crea una en $0: lo gastado la excede y queda como deuda
+  // con la persona (Cuenta corriente con la gente), que se devuelve desde la ficha de su caja.
+  const asegurarCajaDePersona = (company: string, cuentaId: string | undefined, fecha: string, creadas: Set<string>) => {
+    const p = personaDeCuenta(cuentaId);
+    if (!p) return;
+    const clave = `${company}|${p.persona}`;
+    if (creadas.has(clave)) return;
+    const tiene = pettyCashFunds.some((f) => String(f.company) === String(company) && mismaPersona(f.responsible, p.persona));
+    if (tiene) return;
+    creadas.add(clave);
+    const nombre = cuentasSistema.find((c) => c.id === cuentaId)?.persona || p.persona.replace(/\b\w/g, (x) => x.toUpperCase());
+    setPettyCashFunds((prev) => [
+      {
+        id: newId(),
+        company: company as CompanyName,
+        responsible: nombre,
+        tipo: "General",
+        description: `Creada sola: se pagó con la caja de ${nombre} sin tener una asignada`,
+        assignedAmount: 0,
+        assignedWhite: 0,
+        assignedBlack: 0,
+        deliveredDate: fecha,
+        rechargeDate: "",
+        notes: "Lo que se gaste con esta caja queda como deuda de la empresa con la persona.",
+        active: true,
+        closed: false,
+        closedDate: "",
+        ...firma(),
+      } as PettyCashFund,
+      ...prev,
+    ]);
+  };
   // BORRAR UNA FACTURA DE COMPRA desde la ventana o desde la ficha del proveedor. Si tiene pagos cargados,
   // pregunta si se van tambien.
   const borrarFacturaPreguntando = (id: number, confirmar: boolean) => {
@@ -20016,6 +20066,8 @@ Escribi CERRAR para confirmar:`
         guardados.push({ id: ceId, monto: datosPago.amount });
       }
     });
+    const cajasCreadas = new Set<string>();
+    f.pagos.forEach((pg) => asegurarCajaDePersona(pg.empresa || f.company, pg.cuentaId, pg.fecha, cajasCreadas));
     const quedan = new Set(guardados.map((g) => g.id));
     const sacados = existente ? pagosDeFactura(existente).filter((pid) => !quedan.has(pid)) : [];
     const borrar = new Set(sacados.filter((pid) => costEntries.find((c) => c.id === pid)?.notes === NOTA_CON_FACTURA));
@@ -20390,6 +20442,7 @@ Escribi CERRAR para confirmar:`
       cuentaDevolucionId: f.cuentaDevolucionId,
       notes: f.notes || "",
       firmante: f.firmante,
+      cancelaDeuda: f.cancelaDeuda,
     });
   };
   const guardarCaja = (c: CajaForm) => {
@@ -20407,6 +20460,7 @@ Escribi CERRAR para confirmar:`
       cuentaId: c.cuentaId,
       cuentaDevolucionId: c.cuentaDevolucionId,
       notes: c.notes,
+      cancelaDeuda: c.cancelaDeuda === false ? false : undefined,
       antesDeApertura: (() => {
         const previa = c.id != null ? pettyCashFunds.find((x) => x.id === c.id) : undefined;
         return decidirAntesDeApertura(
@@ -21427,6 +21481,9 @@ Escribi CERRAR para confirmar:`
             onQuitarGasto={(gid) => (idsPagosConCaja.has(gid) ? removeCostEntry(gid) : removePettyCashExpense(gid))}
             onAdjuntar={uploadPettyCashFile}
             onViaticoRendido={(id, rendido) => setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, rendido } : v)))}
+            deudaCaja={deudaCajaDe(fichaCaja)}
+            cuentas={cuentasSistema as any}
+            onPagarDeuda={(p) => pagarDeudaCaja(fondos[0]?.responsible || fichaCaja, p)}
           />
         );
       })()}
@@ -21445,6 +21502,7 @@ Escribi CERRAR para confirmar:`
           money={money}
           onGuardar={guardarCaja}
           onCerrar={() => setCajaForm(null)}
+          deudaDe={(persona) => deudaCajaDe(persona) + (cajaForm.id != null ? fundDebtAdjustments.get(cajaForm.id)?.ajuste || 0 : 0)}
         />
       )}
       {gastoCajaModal && (
