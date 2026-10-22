@@ -103,18 +103,17 @@ export function HistorialTab({
             title="Clientes (fuente de verdad)"
             actions={
               <div style={styles.inlineActions}>
-                {crmClients.length === 0 && (
-                  <ButtonLike onClick={generateClientsFromHistory} secondary>
-                    Generar desde historial
-                  </ButtonLike>
-                )}
+                {/* Siempre a la vista (2026-10-22): suma los clientes viejos del historial que falten. */}
+                <ButtonLike onClick={generateClientsFromHistory} secondary>
+                  {crmClients.length === 0 ? "Generar desde historial" : "Sumar los clientes del historial que faltan"}
+                </ButtonLike>
                 <ButtonLike onClick={addCrmClient}>Agregar cliente</ButtonLike>
               </div>
             }
           >
             <div style={styles.noticeBox}>
               Los clientes cargados acá son la base del CRM y se autocompletan al cargar un
-              presupuesto. Podés darlos de alta a mano o generarlos una vez desde el historial.
+              presupuesto. Podés darlos de alta a mano o traer los del historial (presupuestos y trabajos viejos) con el botón de arriba.
             </div>
             {crmClients.length === 0 ? (
               <div style={styles.empty}>

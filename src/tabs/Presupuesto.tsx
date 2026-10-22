@@ -3,7 +3,7 @@ import { styles } from "../ui/styles";
 import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol, AmountInput, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { resolveAdvancePct } from "../domain/budgetTerms";
-import { findClientByName } from "../domain/clients";
+import { filtrarClientes, findClientByName, type ClienteParaCotizar } from "../domain/clients";
 import { matchStockForMaterial } from "../domain/stockMatch";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
@@ -50,8 +50,8 @@ function ClientPicker({
   onType,
 }: {
   value: string;
-  clients: any[];
-  onPick: (client: any) => void;
+  clients: ClienteParaCotizar[];
+  onPick: (client: ClienteParaCotizar) => void;
   onType: (name: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -66,18 +66,17 @@ function ClientPicker({
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
 
-  const norm = (s: string) => (s || "").toLowerCase().trim();
-  const q = norm(query);
-  const filtered = (clients || [])
-    .filter((c) => c && c.name && (q === "" || norm(c.name).includes(q)))
-    .slice(0, 60);
+  // Clientes del CRM + los viejos del historial (domain/clients.ts `clientesParaCotizar`), buscando por
+  // nombre, contacto, CUIT o telefono. Arriba los que se cotizaron hace menos.
+  const filtered = filtrarClientes((clients || []).filter((c) => c && c.name), query).slice(0, 80);
+  const fecha = (iso?: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(2, 4)}` : "");
 
   return (
     <div ref={boxRef} style={{ position: "relative" }}>
       <input
         style={styles.input}
         value={value}
-        placeholder="Buscá o escribí el cliente…"
+        placeholder="Buscá el cliente (nombre, contacto, CUIT o teléfono)…"
         onFocus={() => {
           setQuery("");
           setOpen(true);
@@ -93,13 +92,13 @@ function ClientPicker({
           {filtered.length === 0 ? (
             <div style={pickerEmpty}>
               {clients && clients.length
-                ? "Sin coincidencias."
-                : "No hay clientes en el CRM todavía — cargalos o generalos desde la solapa CRM."}
+                ? "Sin coincidencias: es un cliente nuevo."
+                : "No hay clientes cargados todavía."}
             </div>
           ) : (
             filtered.map((c) => (
               <button
-                key={c.id}
+                key={c.key}
                 type="button"
                 style={pickerItem}
                 onMouseDown={(e) => e.preventDefault()}
@@ -108,10 +107,24 @@ function ClientPicker({
                   setOpen(false);
                 }}
               >
-                <div style={{ fontWeight: 600 }}>{c.name}</div>
-                {(c.taxId || c.contactName) && (
+                <div style={{ fontWeight: 600, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                  {c.name}
+                  {!c.enCrm && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "#92400e", background: "#fef3c7", borderRadius: 999, padding: "0 6px" }} title="Está en presupuestos o trabajos viejos, todavía no en el CRM: se da de alta al guardar">
+                      historial
+                    </span>
+                  )}
+                </div>
+                {(c.contactName || c.contactPhone || c.contactEmail || c.taxId) && (
+                  <div style={{ fontSize: 11, color: "#475569" }}>
+                    {[c.contactName, c.contactPhone && `☎ ${c.contactPhone}`, c.contactEmail, c.taxId && `CUIT ${c.taxId}`].filter(Boolean).join(" · ")}
+                  </div>
+                )}
+                {(c.presupuestos > 0 || c.aprobados > 0) && (
                   <div style={{ fontSize: 11, color: "#64748b" }}>
-                    {[c.taxId, c.contactName].filter(Boolean).join(" · ")}
+                    {c.presupuestos} presupuesto(s)
+                    {c.ultimo ? ` · último ${fecha(c.ultimo.fecha)}${c.ultimo.numero ? ` (${c.ultimo.numero})` : ""}${c.ultimo.proyecto ? ` · ${c.ultimo.proyecto}` : ""}` : ""}
+                    {c.aprobados > 0 ? ` · ${c.aprobados} aprobado(s)` : ""}
                   </div>
                 )}
               </button>
@@ -126,6 +139,8 @@ function ClientPicker({
 type PresupuestoTabProps = {
   budget: any;
   crmClients: any[];
+  // Clientes para el buscador: el CRM mas los viejos del historial (domain/clients.ts).
+  clientesCotizar: ClienteParaCotizar[];
   materials: any[];
   labor: any[];
   fixedCosts: any[];
@@ -249,7 +264,7 @@ function modoOpuesto(modo: string) {
 
 export function PresupuestoTab(props: PresupuestoTabProps) {
   const {
-    budget, crmClients, materials, labor, fixedCosts, basicSupplies, budgetDiscounts,
+    budget, crmClients, clientesCotizar, materials, labor, fixedCosts, basicSupplies, budgetDiscounts,
     budgetIncreases, subBudgets, subBudgetTitle, subBudgetNotes, markupPct,
     subBudgetCurrency, setSubBudgetCurrency, subBudgetQuantity, setSubBudgetQuantity,
     consolidatedBudgetTotalsUsd, hasUsdBudgetSections,
@@ -422,13 +437,14 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 <Field label="Cliente">
                   <ClientPicker
                     value={budget.client}
-                    clients={crmClients}
+                    clients={clientesCotizar}
                     onPick={(match) => {
-                      // Al elegir un cliente existente se traen sus datos y se fija el clientId.
+                      // Al elegir un cliente existente se traen sus datos y se fija el clientId (si ya esta en
+                      // el CRM; uno del historial se da de alta en el CRM al guardar).
                       setBudget({
                         ...budget,
                         client: match.name,
-                        clientId: match.id,
+                        clientId: match.enCrm ? match.id : undefined,
                         clientTaxId: match.taxId || budget.clientTaxId,
                         contactName: match.contactName || budget.contactName,
                         contactPhone: match.contactPhone || budget.contactPhone,
@@ -462,7 +478,11 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     </div>
                   ) : budget.client.trim() ? (
                     <div style={{ marginTop: 6 }}>
-                      <span style={styles.muted}>Cliente nuevo — se registrará en el CRM al guardar</span>
+                      <span style={styles.muted}>
+                        {filtrarClientes(clientesCotizar, budget.client).some((c) => !c.enCrm && c.name.trim().toLowerCase() === budget.client.trim().toLowerCase())
+                          ? "Cliente del historial (presupuestos o trabajos viejos) — se registrará en el CRM al guardar"
+                          : "Cliente nuevo — se registrará en el CRM al guardar"}
+                      </span>
                     </div>
                   ) : null}
                 </Field>

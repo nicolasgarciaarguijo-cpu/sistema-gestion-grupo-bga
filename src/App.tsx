@@ -117,6 +117,7 @@ import {
   buildCrmRows,
   normalizeClientName,
   deriveClientsFromHistory,
+  clientesParaCotizar,
   findClientByName,
 } from "./domain/clients";
 import { buildPersonalReminders } from "./domain/personalReminders";
@@ -7567,17 +7568,16 @@ Escribi CERRAR para confirmar:`
   // Migración manual e idempotente: genera los clientes-entidad desde el historial y
   // backfillea clientId en presupuestos/trabajos por nombre (no destructivo).
   const generateClientsFromHistory = () => {
-    if (crmClients.length > 0) {
-      setStorageMessage("Ya hay clientes cargados; la generación desde historial es para empezar.");
-      return;
-    }
-    const derived = deriveClientsFromHistory(savedBudgets, approvedJobs, newId);
+    // Suma al CRM los clientes del historial que todavia no estan (2026-10-22: antes solo andaba con el CRM
+    // vacio, y los clientes viejos nunca entraban). Los que ya estan no se tocan.
+    const yaEstan = new Set(crmClients.map((c) => normalizeClientName(c.name)));
+    const derived = deriveClientsFromHistory(savedBudgets, approvedJobs, newId).filter((c) => !yaEstan.has(normalizeClientName(c.name)));
     if (derived.length === 0) {
-      setStorageMessage("No hay historial para derivar clientes.");
+      setStorageMessage(crmClients.length ? "Todos los clientes del historial ya están en el CRM." : "No hay historial para derivar clientes.");
       return;
     }
-    setCrmClients(derived);
-    const idByName = new Map(derived.map((c) => [normalizeClientName(c.name), c.id]));
+    setCrmClients((prev) => [...prev, ...derived]);
+    const idByName = new Map([...crmClients, ...derived].map((c) => [normalizeClientName(c.name), c.id]));
     setSavedBudgets((prev) =>
       prev.map((b) =>
         b.clientId != null ? b : { ...b, clientId: idByName.get(normalizeClientName(b.client)) }
@@ -22033,6 +22033,7 @@ Escribi CERRAR para confirmar:`
         <PresupuestoTab
           budget={budget}
           crmClients={crmClients}
+          clientesCotizar={clientesParaCotizar(crmClients, savedBudgets, approvedJobs)}
           materials={materials}
           labor={labor}
           fixedCosts={fixedCosts}

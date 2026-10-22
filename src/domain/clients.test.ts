@@ -143,3 +143,27 @@ describe("buildCrmRows (clientes como fuente de verdad)", () => {
     expect(rows[0].quotes).toHaveLength(1);
   });
 });
+
+describe("clientes para cotizar (2026-10-22)", () => {
+  const { clientesParaCotizar, filtrarClientes } = require("./clients");
+  const crm = [{ id: 1, name: "Estudio Pérez", taxId: "", contactName: "Ana", contactPhone: "", contactEmail: "", notes: "", company: "BGA", createdAt: "" }];
+  const budgets = [
+    { client: "Estudio Pérez", date: "2026-05-01", number: "P-3100", project: "Cocina", snapshot: { budget: { contactPhone: "11 5555-1234" } } },
+    { client: "Carlos Gómez", date: "2025-12-10", number: "P-2900", project: "Placard", snapshot: { budget: { contactName: "Carlos", contactPhone: "11 4444-9999" } } },
+  ];
+  const jobs = [{ client: "Carlos Gómez", company: "De Raíz" }];
+  it("junta el CRM con los clientes viejos del historial, sin repetir, con su historia", () => {
+    const l = clientesParaCotizar(crm, budgets, jobs);
+    expect(l.map((c: any) => [c.name, c.enCrm, c.presupuestos, c.aprobados])).toEqual([
+      ["Estudio Pérez", true, 1, 0],
+      ["Carlos Gómez", false, 1, 1],
+    ]);
+    expect(l[0].contactPhone).toBe("11 5555-1234"); // lo que faltaba en el CRM sale del historial
+    expect(l[1].ultimo).toEqual({ fecha: "2025-12-10", numero: "P-2900", proyecto: "Placard" });
+  });
+  it("busca por nombre sin acentos, por contacto o por telefono", () => {
+    const l = clientesParaCotizar(crm, budgets, jobs);
+    expect(filtrarClientes(l, "perez").map((c: any) => c.name)).toEqual(["Estudio Pérez"]);
+    expect(filtrarClientes(l, "4444").map((c: any) => c.name)).toEqual(["Carlos Gómez"]);
+  });
+});

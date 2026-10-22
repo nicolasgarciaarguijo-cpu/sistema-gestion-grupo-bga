@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-22",
+    fecha: "22/10/2026",
+    titulo: "Clientes viejos al cotizar",
+    items: [
+      {
+        titulo: "El buscador de cliente del presupuesto trae a todos",
+        que: "Al cotizar, el campo Cliente busca en el CRM y también en los clientes viejos (presupuestos guardados y trabajos aprobados de antes del CRM). Busca por nombre, contacto, CUIT o teléfono, y muestra su teléfono, mail, cuántos presupuestos tiene, el último (fecha, número y proyecto) y cuántos se aprobaron. Arriba aparecen los cotizados más recientemente. Al elegirlo se completan sus datos.",
+        como: "Presupuestos → Cliente: empezá a escribir. Los marcados 'historial' se dan de alta en el CRM al guardar.",
+        tab: "presupuesto",
+      },
+      {
+        titulo: "CRM: sumar los clientes del historial",
+        que: "El botón para traer los clientes del historial ahora está siempre: suma los que faltan sin tocar los que ya están.",
+        como: "CRM → Clientes → 'Sumar los clientes del historial que faltan'.",
+        tab: "historial",
+      },
+    ],
+  },
+  {
     id: "2026-10-21c",
     fecha: "21/10/2026",
     titulo: "Personal: acuerdo por valor hora",
