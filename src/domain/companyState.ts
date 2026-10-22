@@ -41,7 +41,7 @@ export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   cuentas: ["cuentas"],
   // Fabricacion · organizacion diaria (2026-10-22): cada dia de cada empleado es de su empresa; el catalogo
   // de tipos de tarea y grupos es global. Modulo nuevo sin datos legacy: no necesita splitter SQL.
-  "organizacion-diaria": ["asignacionesDiarias"],
+  "organizacion-diaria": ["asignacionesDiarias", "planesFabricacion"],
   // Cada factura emitida es de la empresa que la emitio.
   "facturas-emitidas": ["issuedInvoices"],
   "historial-crm": ["savedBudgets"],

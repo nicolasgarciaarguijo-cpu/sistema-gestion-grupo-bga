@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-22b",
+    fecha: "22/10/2026",
+    titulo: "Gantt de fabricación",
+    items: [
+      {
+        titulo: "Trabajos esperando asignación, con sus cantidades",
+        que: "En Fabricación hay una tabla con los trabajos aprobados sin terminar y, por cada uno, sus cantidades por rubro: placas de melamina, enchapadas, MDF, módulos, cajones, puertas, iluminación, laqueado y módulos de instalación. Salen solas de los materiales cotizados en el presupuesto (bloque x unidades). Arriba se ve el total de cada rubro que espera asignación.",
+        como: "Fabricación → Gantt de fabricación. Tocá 'Planificar' en un trabajo: por rubro cargá la cantidad real (si no coincide con lo cotizado), el tipo de tarea, las personas, las horas y desde cuándo. Si el tipo de tarea tiene horas estándar, sugiere las horas; la fecha de fin la calcula con jornadas de 9 h salteando fines de semana y feriados.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Gantt y carga del taller",
+        que: "Cada rubro planificado se ve como una barra en el tiempo, con la fecha de entrega del trabajo marcada. Arriba, cuántas personas hay asignadas cada día, en rojo si se pasa de la gente que hay.",
+        como: "Fabricación → 'Gantt · quién hace qué y cuándo'. Abajo, 'Rubros del Gantt': agregá, renombrá o pausá rubros y cambiá las palabras con las que se buscan en el presupuesto.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-10-22",
     fecha: "22/10/2026",
     titulo: "Clientes sin duplicar y Organización diaria de fabricación",

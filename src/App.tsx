@@ -230,6 +230,8 @@ import { RemitosPanel } from "./tabs/RemitosPanel";
 import { resumirMaterialesDelTrabajo } from "./domain/jobMaterials";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
+import { GanttFabricacion } from "./tabs/GanttFabricacion";
+import { RUBROS_POR_DEFECTO, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
@@ -1833,6 +1835,9 @@ type PersistedAppStateData = {
   asignacionesDiarias: AsignacionDiaria[];
   tiposTarea: TipoTarea[];
   gruposTrabajo: GrupoTrabajo[];
+  // Fabricacion · Gantt: el plan de cada trabajo (por empresa) y los rubros de cantidades (global).
+  planesFabricacion: PlanFabricacion[];
+  rubrosFabricacion: RubroFabricacion[];
   // Cuentas (bancos, efectivo, cajas por persona) corregidas a mano: apertura, nombre, principal.
   cuentas: Cuenta[];
   costRules: CostRule[];
@@ -1905,7 +1910,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "organizacion-diaria",
     label: "Fabricación · organización diaria",
-    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo"] as const,
+    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion"] as const,
   },
   {
     key: "cuentas",
@@ -3098,6 +3103,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [asignacionesDiarias, setAsignacionesDiarias] = useState<AsignacionDiaria[]>([]);
   const [tiposTarea, setTiposTarea] = useState<TipoTarea[]>([]);
   const [gruposTrabajo, setGruposTrabajo] = useState<GrupoTrabajo[]>([]);
+  const [planesFabricacion, setPlanesFabricacion] = useState<PlanFabricacion[]>([]);
+  const [rubrosFabricacion, setRubrosFabricacion] = useState<RubroFabricacion[]>([]);
   const [cuentasGuardadas, setCuentasGuardadas] = useState<Cuenta[]>([]);
   const [inversionesCompanyScope, setInversionesCompanyScope] = useState<string>("__ALL__");
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
@@ -9665,6 +9672,8 @@ Escribi CERRAR para confirmar:`
     })),
     tiposTarea: tiposTarea.map((item) => ({ ...item, pasos: [...(item.pasos || [])] })),
     gruposTrabajo: gruposTrabajo.map((item) => ({ ...item })),
+    planesFabricacion: planesFabricacion.map((item) => ({ ...item, rubros: item.rubros.map((r) => ({ ...r })) })),
+    rubrosFabricacion: rubrosFabricacion.map((item) => ({ ...item, palabras: [...item.palabras], excluir: [...(item.excluir || [])] })),
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
@@ -9998,6 +10007,10 @@ Escribi CERRAR para confirmar:`
     );
     setTiposTarea((data.tiposTarea || []).map((item) => ({ ...item, pasos: [...(item.pasos || [])] })));
     setGruposTrabajo((data.gruposTrabajo || []).map((item) => ({ ...item })));
+    setPlanesFabricacion(
+      keepAccessibleByCompany(data.planesFabricacion || []).map((item) => ({ ...item, rubros: (item.rubros || []).map((r) => ({ ...r })) }))
+    );
+    setRubrosFabricacion((data.rubrosFabricacion || []).map((item) => ({ ...item, palabras: [...(item.palabras || [])], excluir: [...(item.excluir || [])] })));
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -12324,6 +12337,8 @@ Escribi CERRAR para confirmar:`
     asignacionesDiarias,
     tiposTarea,
     gruposTrabajo,
+    planesFabricacion,
+    rubrosFabricacion,
     cuentasGuardadas,
     fiscalClosings,
     inversiones,
@@ -22720,6 +22735,43 @@ Escribi CERRAR para confirmar:`
           }}
           onGuardarTipo={(t) => setTiposTarea((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [...prev, t]))}
           onBorrarTipo={(id) => setTiposTarea((prev) => prev.filter((x) => x.id !== id))}
+          onAbrirTrabajo={(jobId) => {
+            setSelectedApprovedJobId(jobId);
+            setActiveTab("aprobados" as TabKey);
+          }}
+          nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
+        />
+      )}
+      {activeTab === "fabricacion" && (
+        <GanttFabricacion
+          trabajos={visibleApprovedJobs.map((j) => ({
+            id: j.id,
+            company: j.company,
+            budgetNumber: j.budgetNumber,
+            client: j.client,
+            project: j.project,
+            executionStatus: j.executionStatus,
+            maxRequirementDate: j.maxRequirementDate,
+            estimatedJobHours: j.estimatedJobHours,
+            snapshot: j.snapshot,
+          }))}
+          planes={planesFabricacion.filter((p) => canAccessCompany(p.company))}
+          rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
+          tipos={tiposTarea}
+          cantidadEmpleados={visibleEmployees.length}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+          onGuardarPlan={(p) => {
+            const conFirma = { ...p, ...firma() };
+            setPlanesFabricacion((prev) => (prev.some((x) => x.id === p.id) ? prev.map((x) => (x.id === p.id ? conFirma : x)) : [...prev, conFirma]));
+          }}
+          // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
+          onGuardarRubro={(r) =>
+            setRubrosFabricacion((prev) => {
+              const base = prev.length ? prev : RUBROS_POR_DEFECTO;
+              return base.some((x) => x.id === r.id) ? base.map((x) => (x.id === r.id ? r : x)) : [...base, r];
+            })
+          }
+          onBorrarRubro={(id) => setRubrosFabricacion((prev) => (prev.length ? prev : RUBROS_POR_DEFECTO).filter((x) => x.id !== id))}
           onAbrirTrabajo={(jobId) => {
             setSelectedApprovedJobId(jobId);
             setActiveTab("aprobados" as TabKey);
