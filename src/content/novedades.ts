@@ -18,8 +18,26 @@ export const NOVEDADES: TandaNovedades[] = [
   {
     id: "2026-10-22",
     fecha: "22/10/2026",
-    titulo: "Clientes viejos al cotizar",
+    titulo: "Clientes sin duplicar y Organización diaria de fabricación",
     items: [
+      {
+        titulo: "Fabricación: organización diaria",
+        que: "Un calendario del mes: al abrir un día aparece cada empleado con su ficha del día: si está en fábrica o en obra (la obra sale de los trabajos aprobados, con link al mapa y a la ficha del trabajo), los turnos (mañana 07:30-13:30 y tarde 13:30-17:00, editables, con '+ Turno extra' hasta las 21 al 50% y después nocturno; cada turno dice cómo se paga) y las tareas por hora. Cada tarea se tilda como hecha y queda la hora en que se terminó, para tomar tiempos. Avisa si dos tareas se pisan o caen fuera de los turnos. Hay un PDF por empleado y una línea temporal con quién está en cada lugar y cuántos hay juntos.",
+        como: "Fabricación → Organización diaria: elegí el día, abrí '+ Armar el día' en cada empleado. 'Copiar el día anterior' repite lo de ayer. Abajo, 'Tipos de tarea y grupos de trabajo': armá el catálogo una vez (con horas estándar y pasos) y después solo elegís.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Posibles coincidencias al cargar un cliente",
+        que: "Al escribir el cliente en un presupuesto, aparece un cuadro amarillo con los clientes que podrían ser el mismo: nombre parecido, mismo teléfono, CUIT, mail o proyecto, con el motivo de cada uno.",
+        como: "Presupuestos → Cliente: si aparece '¿Es alguno de estos?', tocá 'Es este' o 'No, es nuevo'.",
+        tab: "presupuesto",
+      },
+      {
+        titulo: "CRM: ficha del cliente, datos que faltan y duplicados",
+        que: "Cada cliente tiene su ficha (como la del proveedor): datos editables, qué le falta, cuántos presupuestos y trabajos tiene, lo vendido y el saldo a cobrar. El CRM tiene tres vistas: Lista, Faltan datos y Posibles duplicados, con un botón para unificar dos fichas en una.",
+        como: "CRM → Clientes: botón 'Ficha · falta N' en cada fila, o las vistas de arriba. Desde la ficha, 'Unificar acá' junta el duplicado.",
+        tab: "historial",
+      },
       {
         titulo: "El buscador de cliente del presupuesto trae a todos",
         que: "Al cotizar, el campo Cliente busca en el CRM y también en los clientes viejos (presupuestos guardados y trabajos aprobados de antes del CRM). Busca por nombre, contacto, CUIT o teléfono, y muestra su teléfono, mail, cuántos presupuestos tiene, el último (fecha, número y proyecto) y cuántos se aprobaron. Arriba aparecen los cotizados más recientemente. Al elegirlo se completan sus datos.",

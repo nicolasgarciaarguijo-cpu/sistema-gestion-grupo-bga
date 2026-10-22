@@ -229,6 +229,8 @@ import { RemitoModal } from "./ui/RemitoModal";
 import { RemitosPanel } from "./tabs/RemitosPanel";
 import { resumirMaterialesDelTrabajo } from "./domain/jobMaterials";
 import { FabricacionTab } from "./tabs/Fabricacion";
+import { OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
+import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
 import { EmitirFacturasTab } from "./tabs/EmitirFacturas";
@@ -1827,6 +1829,10 @@ type PersistedAppStateData = {
   vencimientos: Vencimiento[];
   // Marcas de "pagado" de los pagos inamovibles que no tienen su propio pagado (cuotas, sueldos, seguros).
   vencimientoMarcas: VencimientoMarca[];
+  // Fabricacion · organizacion diaria: el dia de cada empleado (por empresa) y el catalogo de tareas (global).
+  asignacionesDiarias: AsignacionDiaria[];
+  tiposTarea: TipoTarea[];
+  gruposTrabajo: GrupoTrabajo[];
   // Cuentas (bancos, efectivo, cajas por persona) corregidas a mano: apertura, nombre, principal.
   cuentas: Cuenta[];
   costRules: CostRule[];
@@ -1895,6 +1901,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "vencimientos",
     label: "Vencimientos (pagos inamovibles)",
     fields: ["vencimientos", "vencimientoMarcas"] as const,
+  },
+  {
+    key: "organizacion-diaria",
+    label: "Fabricación · organización diaria",
+    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo"] as const,
   },
   {
     key: "cuentas",
@@ -2015,7 +2026,7 @@ const TAB_PERSISTENCE_MODULE_KEYS: Partial<Record<TabKey, AppStateModuleKey[]>> 
   // Movimientos internos edita capitalEntries + cashHoldings (viven en cash-flow) y los pases
   // efectivo <-> banco (modulo propio). Lee compras para la deuda con la gente.
   movimientosInternos: ["cash-flow", "movimientos-internos", "compras"],
-  fabricacion: ["mensuales", "trabajos-aprobados", "compras", "stock-costos"],
+  fabricacion: ["mensuales", "trabajos-aprobados", "compras", "stock-costos", "organizacion-diaria", "personal"],
   compras: ["mensuales", "compras", "caja-chica"],
   cajaChica: ["mensuales", "caja-chica", "compras", "cash-flow"],
   presupuesto: ["presupuestos", "historial-crm", "trabajos-aprobados"],
@@ -3084,6 +3095,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [inversiones, setInversiones] = useState<Inversion[]>([]);
   const [vencimientos, setVencimientos] = useState<Vencimiento[]>([]);
   const [vencimientoMarcas, setVencimientoMarcas] = useState<VencimientoMarca[]>([]);
+  const [asignacionesDiarias, setAsignacionesDiarias] = useState<AsignacionDiaria[]>([]);
+  const [tiposTarea, setTiposTarea] = useState<TipoTarea[]>([]);
+  const [gruposTrabajo, setGruposTrabajo] = useState<GrupoTrabajo[]>([]);
   const [cuentasGuardadas, setCuentasGuardadas] = useState<Cuenta[]>([]);
   const [inversionesCompanyScope, setInversionesCompanyScope] = useState<string>("__ALL__");
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
@@ -7565,6 +7579,41 @@ Escribi CERRAR para confirmar:`
     setCrmClients((prev) => prev.filter((c) => c.id !== id));
   };
 
+  // UNIFICAR dos fichas que son el mismo cliente (Nicolas, 2026-10-22: "para no crear varias veces al mismo
+  // cliente"). La que queda completa sus vacios con la otra; los presupuestos y trabajos de la que sale
+  // (por clientId, o por nombre si no tenian) pasan a la que queda; la que sale se quita. No cambia el
+  // nombre impreso en los presupuestos viejos.
+  const unificarCrmClients = (quedaId: number, saleId: number) => {
+    if (quedaId === saleId) return;
+    const queda = crmClients.find((c) => c.id === quedaId);
+    const sale = crmClients.find((c) => c.id === saleId);
+    if (!queda || !sale) return;
+    const nombreSale = normalizeClientName(sale.name);
+    const esDeSale = (item: { clientId?: number; client?: string }) =>
+      item.clientId === saleId || (item.clientId == null && !!nombreSale && normalizeClientName(item.client || "") === nombreSale);
+    const completar = (a: string | undefined, b: string | undefined) => ((a || "").trim() ? a || "" : b || "");
+    setCrmClients((prev) =>
+      prev
+        .filter((c) => c.id !== saleId)
+        .map((c) =>
+          c.id !== quedaId
+            ? c
+            : {
+                ...c,
+                taxId: completar(c.taxId, sale.taxId),
+                contactName: completar(c.contactName, sale.contactName),
+                contactPhone: completar(c.contactPhone, sale.contactPhone),
+                contactEmail: completar(c.contactEmail, sale.contactEmail),
+                direccion: completar(c.direccion, sale.direccion),
+                notes: [c.notes, sale.notes].map((n) => (n || "").trim()).filter(Boolean).filter((n, i, arr) => arr.indexOf(n) === i).join(" · "),
+              }
+        )
+    );
+    setSavedBudgets((prev) => prev.map((b) => (esDeSale(b) ? { ...b, clientId: quedaId } : b)));
+    setApprovedJobs((prev) => prev.map((j) => (esDeSale(j) ? { ...j, clientId: quedaId } : j)));
+    setStorageMessage(`"${sale.name}" quedó unificado dentro de "${queda.name}".`);
+  };
+
   // Migración manual e idempotente: genera los clientes-entidad desde el historial y
   // backfillea clientId en presupuestos/trabajos por nombre (no destructivo).
   const generateClientsFromHistory = () => {
@@ -9609,6 +9658,13 @@ Escribi CERRAR para confirmar:`
     inversiones: inversiones.map((item) => ({ ...item })),
     vencimientos: vencimientos.map((item) => ({ ...item, ocurrencias: { ...(item.ocurrencias || {}) } })),
     vencimientoMarcas: vencimientoMarcas.map((item) => ({ ...item })),
+    asignacionesDiarias: asignacionesDiarias.map((item) => ({
+      ...item,
+      turnos: item.turnos.map((t) => ({ ...t })),
+      tareas: item.tareas.map((t) => ({ ...t })),
+    })),
+    tiposTarea: tiposTarea.map((item) => ({ ...item, pasos: [...(item.pasos || [])] })),
+    gruposTrabajo: gruposTrabajo.map((item) => ({ ...item })),
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
@@ -9933,6 +9989,15 @@ Escribi CERRAR para confirmar:`
     setVencimientoMarcas(
       keepAccessibleByCompany(data.vencimientoMarcas || []).map((item) => ({ ...item }))
     );
+    setAsignacionesDiarias(
+      keepAccessibleByCompany(data.asignacionesDiarias || []).map((item) => ({
+        ...item,
+        turnos: (item.turnos || []).map((t) => ({ ...t })),
+        tareas: (item.tareas || []).map((t) => ({ ...t })),
+      }))
+    );
+    setTiposTarea((data.tiposTarea || []).map((item) => ({ ...item, pasos: [...(item.pasos || [])] })));
+    setGruposTrabajo((data.gruposTrabajo || []).map((item) => ({ ...item })));
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -12256,6 +12321,9 @@ Escribi CERRAR para confirmar:`
     seguros,
     vencimientos,
     vencimientoMarcas,
+    asignacionesDiarias,
+    tiposTarea,
+    gruposTrabajo,
     cuentasGuardadas,
     fiscalClosings,
     inversiones,
@@ -22456,6 +22524,8 @@ Escribi CERRAR para confirmar:`
           updateCrmClient={updateCrmClient}
           removeCrmClient={removeCrmClient}
           generateClientsFromHistory={generateClientsFromHistory}
+          trabajosResumen={approvedJobsSummary}
+          unificarCrmClients={unificarCrmClients}
         />
       )}
 
@@ -22628,6 +22698,33 @@ Escribi CERRAR para confirmar:`
           getCompanyScopeLabel={getCompanyScopeLabel}
           exportPrint={exportPrint}
           updateApprovedJob={updateApprovedJob}
+        />
+      )}
+      {activeTab === "fabricacion" && (
+        <OrganizacionDiaria
+          empleados={visibleEmployees.map((e) => ({ id: e.id, name: e.name, company: e.company }))}
+          trabajos={visibleApprovedJobs.map((j) => ({ id: j.id, budgetNumber: j.budgetNumber, client: j.client, company: j.company, direccion: j.deliveryDestination }))}
+          asignaciones={asignacionesDiarias.filter((a) => canAccessCompany(a.company))}
+          grupos={gruposTrabajo}
+          tipos={tiposTarea}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+          onGuardarAsignacion={(a) => {
+            const conFirma = { ...a, ...firma() };
+            setAsignacionesDiarias((prev) => (prev.some((x) => x.id === a.id) ? prev.map((x) => (x.id === a.id ? conFirma : x)) : [...prev, conFirma]));
+          }}
+          onBorrarAsignacion={(id) => setAsignacionesDiarias((prev) => prev.filter((x) => x.id !== id))}
+          onGuardarGrupo={(g) => setGruposTrabajo((prev) => (prev.some((x) => x.id === g.id) ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]))}
+          onBorrarGrupo={(id) => {
+            setGruposTrabajo((prev) => prev.filter((x) => x.id !== id));
+            setTiposTarea((prev) => prev.map((t) => (t.grupoId === id ? { ...t, grupoId: null } : t)));
+          }}
+          onGuardarTipo={(t) => setTiposTarea((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [...prev, t]))}
+          onBorrarTipo={(id) => setTiposTarea((prev) => prev.filter((x) => x.id !== id))}
+          onAbrirTrabajo={(jobId) => {
+            setSelectedApprovedJobId(jobId);
+            setActiveTab("aprobados" as TabKey);
+          }}
+          nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
         />
       )}
       {activeTab === "fabricacion" && renderCompras("fabricacion")}

@@ -1,0 +1,622 @@
+// FABRICACION · ORGANIZACION DIARIA (Nicolas, 2026-10-22). Un calendario: al abrir un dia aparece el listado
+// de empleados, cada uno con su FICHA del dia (fabrica u obra, turnos con sus horas y como se pagan, tareas por
+// hora con su casilla de hecha), el PDF de cada empleado para pasarle las tareas y la LINEA TEMPORAL de donde
+// esta cada uno (cuantos hay juntos en cada lugar). Abajo, el catalogo de grupos de trabajo y tipos de tarea
+// para no tipear todo cada vez. La logica vive en domain/organizacionDiaria.ts.
+import React, { useMemo, useState } from "react";
+import { Panel, ButtonLike } from "../ui/primitives";
+import {
+  avisosDelDia,
+  comoSePaga,
+  franjasPorLugar,
+  genteJuntaPorLugar,
+  horasDelDia,
+  linkMapa,
+  minutosReales,
+  turnoExtraSiguiente,
+  turnosPorDefecto,
+  type AsignacionDiaria,
+  type GrupoTrabajo,
+  type LugarDelDia,
+  type TareaDelDia,
+  type TipoTarea,
+  type TurnoDia,
+} from "../domain/organizacionDiaria";
+import { timeToMinutes } from "../domain/attendance";
+
+export type EmpleadoOrg = { id: number; name: string; company: string };
+export type TrabajoOrg = { id: number; budgetNumber: string; client: string; company: string; direccion?: string };
+
+const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+const DIAS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const pad = (n: number) => String(n).padStart(2, "0");
+const fmtLargo = (iso: string) => {
+  const d = new Date(`${iso}T12:00:00`);
+  return `${["domingo", "lunes", "martes", "miércoles", "jueves", "viernes", "sábado"][d.getDay()]} ${d.getDate()} de ${MESES[d.getMonth()]}`;
+};
+const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px", fontSize: 13, background: "#fff", boxSizing: "border-box" };
+const caja: React.CSSProperties = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 12px" };
+const titulo: React.CSSProperties = { fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 };
+const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 600, padding: "4px 6px", borderBottom: "1px solid #e2e8f0" };
+const td: React.CSSProperties = { padding: "3px 6px", borderBottom: "1px solid #f1f5f9", fontSize: 13, verticalAlign: "middle" };
+const btn = (rojo = false): React.CSSProperties => ({
+  border: `1px solid ${rojo ? "#fecaca" : "#cbd5e1"}`, background: "#fff", color: rojo ? "#b91c1c" : "#334155",
+  borderRadius: 6, padding: "3px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+});
+const COLOR_LUGAR = { fabrica: "#0f766e", obra: "#b45309" };
+
+export function OrganizacionDiaria({
+  empleados,
+  trabajos,
+  asignaciones,
+  grupos,
+  tipos,
+  companyShort,
+  onGuardarAsignacion,
+  onBorrarAsignacion,
+  onGuardarGrupo,
+  onBorrarGrupo,
+  onGuardarTipo,
+  onBorrarTipo,
+  onAbrirTrabajo,
+  nuevoId,
+}: {
+  empleados: EmpleadoOrg[];
+  trabajos: TrabajoOrg[];
+  asignaciones: AsignacionDiaria[];
+  grupos: GrupoTrabajo[];
+  tipos: TipoTarea[];
+  companyShort: (company: string) => string;
+  onGuardarAsignacion: (a: AsignacionDiaria) => void;
+  onBorrarAsignacion: (id: number) => void;
+  onGuardarGrupo: (g: GrupoTrabajo) => void;
+  onBorrarGrupo: (id: number) => void;
+  onGuardarTipo: (t: TipoTarea) => void;
+  onBorrarTipo: (id: number) => void;
+  onAbrirTrabajo?: (jobId: number) => void;
+  nuevoId: () => number;
+}) {
+  const hoy = new Date();
+  const hoyIso = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}`;
+  const [mes, setMes] = useState(hoyIso.slice(0, 7));
+  const [dia, setDia] = useState<string>(hoyIso);
+  const [abierta, setAbierta] = useState<number | null>(null); // empleadoId con la ficha abierta
+  const [verLinea, setVerLinea] = useState(true);
+
+  const [y, m] = mes.split("-").map(Number);
+  const primerDow = (new Date(y, m - 1, 1).getDay() + 6) % 7;
+  const diasMes = new Date(y, m, 0).getDate();
+  const mover = (n: number) => {
+    const d = new Date(y, m - 1 + n, 1);
+    setMes(`${d.getFullYear()}-${pad(d.getMonth() + 1)}`);
+  };
+  const porDia = useMemo(() => {
+    const mapa = new Map<string, AsignacionDiaria[]>();
+    asignaciones.forEach((a) => mapa.set(a.fecha, [...(mapa.get(a.fecha) || []), a]));
+    return mapa;
+  }, [asignaciones]);
+  const delDia = porDia.get(dia) || [];
+  const trabajoDe = (id?: number | null) => trabajos.find((t) => t.id === id);
+  const nombreObra = (id: number) => {
+    const t = trabajoDe(id);
+    return t ? `${t.budgetNumber} · ${t.client}` : "Obra";
+  };
+  const tipoDe = (id?: number | null) => tipos.find((t) => t.id === id);
+
+  // La asignacion del empleado ese dia (o una nueva, en fabrica, con los turnos de siempre).
+  const asignacionDe = (e: EmpleadoOrg): AsignacionDiaria =>
+    delDia.find((a) => a.empleadoId === e.id) || {
+      id: 0,
+      company: e.company,
+      fecha: dia,
+      empleadoId: e.id,
+      empleado: e.name,
+      lugar: "fabrica",
+      turnos: turnosPorDefecto(dia),
+      tareas: [],
+    };
+  const guardar = (a: AsignacionDiaria) => onGuardarAsignacion(a.id ? a : { ...a, id: nuevoId() });
+
+  // Copiar el dia anterior con asignaciones: lugar, obra, turnos y tareas (sin las marcas de hecha).
+  const copiarDiaAnterior = () => {
+    const anteriores = Array.from(porDia.keys()).filter((f) => f < dia).sort();
+    const desde = anteriores[anteriores.length - 1];
+    if (!desde) return window.alert("No hay un día anterior con tareas cargadas.");
+    const ya = new Set(delDia.map((a) => a.empleadoId));
+    const copiar = (porDia.get(desde) || []).filter((a) => !ya.has(a.empleadoId));
+    if (!copiar.length) return window.alert("Todos los empleados ya tienen el día armado.");
+    if (!window.confirm(`¿Copiar ${copiar.length} ficha(s) del ${desde.split("-").reverse().join("/")} a este día?`)) return;
+    copiar.forEach((a) =>
+      onGuardarAsignacion({
+        ...a,
+        id: nuevoId(),
+        fecha: dia,
+        tareas: a.tareas.map((t) => ({ ...t, id: nuevoId(), hecha: false, hechaEn: undefined })),
+      })
+    );
+  };
+
+  // PDF del dia de un empleado, para pasarle las tareas.
+  const pdfEmpleado = (a: AsignacionDiaria) => {
+    const t = trabajoDe(a.jobId);
+    const filas = [...a.tareas]
+      .sort((x, z) => x.desde.localeCompare(z.desde))
+      .map((tarea) => {
+        const tipo = tipoDe(tarea.tipoTareaId);
+        const pasos = (tipo?.pasos || []).filter(Boolean);
+        return `<tr><td style="white-space:nowrap">${tarea.desde} – ${tarea.hasta}</td><td><b>${esc(tarea.descripcion || tipo?.nombre || "")}</b>${
+          pasos.length ? `<ul style="margin:4px 0 0 16px;padding:0">${pasos.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""
+        }${tarea.notas ? `<div style="color:#475569">${esc(tarea.notas)}</div>` : ""}</td><td style="width:70px;text-align:center">☐</td><td style="width:90px"></td></tr>`;
+      })
+      .join("");
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>Tareas ${esc(a.empleado)} ${a.fecha}</title>
+<style>body{font-family:Arial,sans-serif;margin:24px;color:#0f172a}h1{font-size:20px;margin:0}table{width:100%;border-collapse:collapse;margin-top:12px}td,th{border:1px solid #cbd5e1;padding:6px 8px;font-size:13px;vertical-align:top}th{background:#f1f5f9;text-align:left}.m{color:#475569;font-size:13px;margin-top:4px}</style></head><body>
+<h1>${esc(a.empleado)} · ${fmtLargo(a.fecha)}</h1>
+<div class="m">${a.lugar === "obra" ? `En obra: <b>${esc(t ? `${t.budgetNumber} · ${t.client}` : "Obra")}</b>${t?.direccion ? ` · ${esc(t.direccion)}` : ""}` : "En fábrica"}</div>
+<div class="m">Turnos: ${a.turnos.map((tu) => `${esc(tu.nombre)} ${tu.desde}–${tu.hasta}`).join(" · ") || "—"}</div>
+${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
+<table><thead><tr><th>Horario</th><th>Tarea</th><th>Hecha</th><th>Hora fin</th></tr></thead><tbody>${filas || `<tr><td colspan="4">Sin tareas cargadas.</td></tr>`}</tbody></table>
+<script>window.onload=function(){window.print()}</script></body></html>`;
+    const w = window.open("", "_blank");
+    if (!w) return window.alert("El navegador bloqueó la ventana: habilitá las ventanas emergentes para imprimir.");
+    w.document.write(html);
+    w.document.close();
+  };
+
+  return (
+    <>
+      <Panel
+        span="full"
+        title="Organización diaria"
+        abierto
+        actions={
+          <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+            <button type="button" style={btn()} onClick={() => mover(-1)}>◀</button>
+            <strong style={{ minWidth: 120, textAlign: "center", textTransform: "capitalize" }}>{MESES[m - 1]} {y}</strong>
+            <button type="button" style={btn()} onClick={() => mover(1)}>▶</button>
+            <button type="button" style={btn()} onClick={() => { setMes(hoyIso.slice(0, 7)); setDia(hoyIso); }}>Hoy</button>
+          </span>
+        }
+      >
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 12 }}>
+          {DIAS.map((d) => (
+            <div key={d} style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textAlign: "center" }}>{d}</div>
+          ))}
+          {Array.from({ length: primerDow }, (_, i) => <div key={`v${i}`} />)}
+          {Array.from({ length: diasMes }, (_, i) => {
+            const iso = `${mes}-${pad(i + 1)}`;
+            const lista = porDia.get(iso) || [];
+            const enObra = lista.filter((a) => a.lugar === "obra").length;
+            const tareas = lista.reduce((acc, a) => acc + a.tareas.length, 0);
+            const hechas = lista.reduce((acc, a) => acc + a.tareas.filter((t) => t.hecha).length, 0);
+            const elegido = iso === dia;
+            return (
+              <button
+                key={iso}
+                type="button"
+                onClick={() => { setDia(iso); setAbierta(null); }}
+                style={{
+                  minHeight: 58, textAlign: "left", borderRadius: 6, padding: 4, cursor: "pointer",
+                  border: elegido ? "2px solid #0f172a" : iso === hoyIso ? "2px solid #94a3b8" : "1px solid #e2e8f0",
+                  background: (i + primerDow) % 7 >= 5 ? "#fef2f2" : "#fff",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>{i + 1}</div>
+                {lista.length > 0 && (
+                  <div style={{ fontSize: 10.5, lineHeight: 1.3 }}>
+                    <div style={{ color: COLOR_LUGAR.fabrica, fontWeight: 700 }}>🏭 {lista.length - enObra}</div>
+                    {enObra > 0 && <div style={{ color: COLOR_LUGAR.obra, fontWeight: 700 }}>🏗 {enObra}</div>}
+                    {tareas > 0 && <div style={{ color: hechas === tareas ? "#166534" : "#475569" }}>✓ {hechas}/{tareas}</div>}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
+          <div style={{ fontSize: 17, fontWeight: 800, textTransform: "capitalize" }}>{fmtLargo(dia)}</div>
+          <span style={{ display: "inline-flex", gap: 6 }}>
+            <button type="button" style={btn()} onClick={copiarDiaAnterior}>Copiar el día anterior</button>
+            <button type="button" style={btn()} onClick={() => setVerLinea((v) => !v)}>{verLinea ? "Ocultar" : "Ver"} línea temporal</button>
+          </span>
+        </div>
+
+        {verLinea && delDia.length > 0 && <LineaTemporal asignaciones={delDia} nombreObra={nombreObra} trabajoDe={trabajoDe} />}
+
+        <div style={{ display: "grid", gap: 6 }}>
+          {empleados.length === 0 && <div style={{ fontSize: 13, color: "#64748b" }}>No hay empleados activos en Personal.</div>}
+          {empleados.map((e) => {
+            const a = asignacionDe(e);
+            const existe = !!a.id;
+            const t = trabajoDe(a.jobId);
+            const h = horasDelDia(a);
+            const hechas = a.tareas.filter((x) => x.hecha).length;
+            const open = abierta === e.id;
+            return (
+              <div key={e.id} style={{ border: "1px solid #e2e8f0", borderLeft: `4px solid ${existe ? COLOR_LUGAR[a.lugar] : "#cbd5e1"}`, borderRadius: 8, background: "#fff" }}>
+                <div
+                  onClick={() => setAbierta(open ? null : e.id)}
+                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 10px", cursor: "pointer", flexWrap: "wrap" }}
+                >
+                  <div>
+                    <strong>{e.name}</strong> <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{companyShort(e.company)}</span>
+                    <div style={{ fontSize: 12, color: "#64748b" }}>
+                      {existe
+                        ? `${a.lugar === "obra" ? `🏗 ${t ? `${t.budgetNumber} · ${t.client}` : "Obra sin elegir"}` : "🏭 Fábrica"} · ${a.turnos.map((x) => `${x.desde}-${x.hasta}`).join(" / ") || "sin turnos"} · ${h.total} h · ${a.tareas.length} tarea(s)${a.tareas.length ? ` (${hechas} hechas)` : ""}`
+                        : "Sin armar"}
+                    </div>
+                  </div>
+                  <span style={{ display: "inline-flex", gap: 6 }} onClick={(ev) => ev.stopPropagation()}>
+                    {existe && <button type="button" style={btn()} onClick={() => pdfEmpleado(a)}>🖨 PDF</button>}
+                    <button type="button" style={btn()} onClick={() => setAbierta(open ? null : e.id)}>{open ? "Cerrar" : existe ? "✎ Ficha" : "+ Armar el día"}</button>
+                  </span>
+                </div>
+                {open && (
+                  <FichaDelDia
+                    a={a}
+                    trabajos={trabajos}
+                    tipos={tipos}
+                    grupos={grupos}
+                    onGuardar={guardar}
+                    onBorrar={existe ? () => { if (window.confirm(`¿Borrar el día de ${e.name}?`)) { onBorrarAsignacion(a.id); setAbierta(null); } } : undefined}
+                    onAbrirTrabajo={onAbrirTrabajo}
+                    nuevoId={nuevoId}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Panel>
+
+      <Catalogo grupos={grupos} tipos={tipos} onGuardarGrupo={onGuardarGrupo} onBorrarGrupo={onBorrarGrupo} onGuardarTipo={onGuardarTipo} onBorrarTipo={onBorrarTipo} nuevoId={nuevoId} />
+    </>
+  );
+}
+
+const esc = (s: string) => String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// ---- La ficha del dia de un empleado --------------------------------------------------------------
+function FichaDelDia({
+  a,
+  trabajos,
+  tipos,
+  grupos,
+  onGuardar,
+  onBorrar,
+  onAbrirTrabajo,
+  nuevoId,
+}: {
+  a: AsignacionDiaria;
+  trabajos: TrabajoOrg[];
+  tipos: TipoTarea[];
+  grupos: GrupoTrabajo[];
+  onGuardar: (a: AsignacionDiaria) => void;
+  onBorrar?: () => void;
+  onAbrirTrabajo?: (jobId: number) => void;
+  nuevoId: () => number;
+}) {
+  const set = (patch: Partial<AsignacionDiaria>) => onGuardar({ ...a, ...patch });
+  const setTurno = (id: string, patch: Partial<TurnoDia>) => set({ turnos: a.turnos.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+  const setTarea = (id: number, patch: Partial<TareaDelDia>) => set({ tareas: a.tareas.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+  const t = trabajos.find((x) => x.id === a.jobId);
+  const mapa = linkMapa(t?.direccion);
+  const avisos = avisosDelDia(a);
+  const h = horasDelDia(a);
+  const tareas = [...a.tareas].sort((x, z) => x.desde.localeCompare(z.desde));
+  const tiposActivos = tipos.filter((x) => x.activa !== false);
+  // La proxima tarea arranca donde termino la anterior (o al empezar el primer turno).
+  const siguienteHorario = () => {
+    const ultima = tareas[tareas.length - 1];
+    const desde = ultima?.hasta || a.turnos[0]?.desde || "07:30";
+    const dm = timeToMinutes(desde) ?? 450;
+    const hm = Math.min(dm + 60, 24 * 60 - 1);
+    return { desde, hasta: `${pad(Math.floor(hm / 60))}:${pad(hm % 60)}` };
+  };
+
+  return (
+    <div style={{ padding: "0 10px 10px", display: "grid", gap: 10 }}>
+      <div style={caja}>
+        <div style={titulo}>Dónde está</div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          {(["fabrica", "obra"] as LugarDelDia[]).map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => set({ lugar: l, jobId: l === "fabrica" ? null : a.jobId })}
+              style={{ ...btn(), background: a.lugar === l ? COLOR_LUGAR[l] : "#fff", color: a.lugar === l ? "#fff" : "#334155", borderColor: COLOR_LUGAR[l] }}
+            >
+              {l === "fabrica" ? "🏭 Fábrica" : "🏗 Obra"}
+            </button>
+          ))}
+          {a.lugar === "obra" && (
+            <select style={{ ...input, minWidth: 260 }} value={a.jobId ?? ""} onChange={(e) => set({ jobId: e.target.value ? Number(e.target.value) : null })}>
+              <option value="">— Elegí la obra (trabajo aprobado) —</option>
+              {trabajos.map((x) => (
+                <option key={x.id} value={x.id}>{x.budgetNumber} · {x.client}</option>
+              ))}
+            </select>
+          )}
+          {a.lugar === "obra" && t && (
+            <>
+              {mapa && <a href={mapa} target="_blank" rel="noreferrer" style={{ fontSize: 12.5, fontWeight: 700 }}>📍 Ver en el mapa</a>}
+              {onAbrirTrabajo && <button type="button" style={btn()} onClick={() => onAbrirTrabajo(t.id)}>Abrir la ficha del trabajo</button>}
+            </>
+          )}
+        </div>
+      </div>
+
+      <div style={caja}>
+        <div style={{ ...titulo, display: "flex", justifyContent: "space-between" }}>
+          <span>Turnos · {h.total} h</span>
+          <span style={{ textTransform: "none", letterSpacing: 0, fontWeight: 600, color: "#64748b" }}>
+            {[h.normalHours && `${h.normalHours} normal`, h.extra50Hours && `${h.extra50Hours} al 50%`, h.extra100Hours && `${h.extra100Hours} al 100%`, (h.night50Hours || h.night100Hours) && `${h.night50Hours + h.night100Hours} nocturna`, h.holidayHours && `${h.holidayHours} feriado`].filter(Boolean).join(" · ")}
+          </span>
+        </div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <tbody>
+            {a.turnos.map((tu) => (
+              <tr key={tu.id}>
+                <td style={td}><input style={{ ...input, width: 110 }} value={tu.nombre} onChange={(e) => setTurno(tu.id, { nombre: e.target.value })} /></td>
+                <td style={td}><input style={input} type="time" value={tu.desde} onChange={(e) => setTurno(tu.id, { desde: e.target.value })} /></td>
+                <td style={td}><input style={input} type="time" value={tu.hasta} onChange={(e) => setTurno(tu.id, { hasta: e.target.value })} /></td>
+                <td style={{ ...td, fontSize: 12, color: "#475569" }}>{comoSePaga(a.fecha, tu.desde, tu.hasta)}</td>
+                <td style={{ ...td, textAlign: "right" }}>
+                  <button type="button" style={btn(true)} onClick={() => set({ turnos: a.turnos.filter((x) => x.id !== tu.id) })}>🗑</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+          <button type="button" style={btn()} onClick={() => { const n = turnoExtraSiguiente(a.turnos); set({ turnos: [...a.turnos, { ...n, id: `${n.id}-${Date.now() % 100000}` }] }); }}>+ Turno extra</button>
+          <button type="button" style={btn()} onClick={() => set({ turnos: turnosPorDefecto(a.fecha) })}>Volver a los turnos de siempre</button>
+        </div>
+        <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 4 }}>
+          Se paga con la misma regla que la liquidación: L a V normal 07:30-17:00 (sin la media hora de almuerzo), después al 50% y desde las 21 nocturna; sábado al 50% hasta las 13 y al 100% después; domingo y feriado al 100%.
+        </div>
+      </div>
+
+      <div style={caja}>
+        <div style={titulo}>Tareas del día</div>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={th}>Desde</th>
+              <th style={th}>Hasta</th>
+              <th style={th}>Tipo de tarea</th>
+              <th style={th}>Qué hace</th>
+              <th style={th}>Hecha</th>
+              <th style={th}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {tareas.length === 0 && (
+              <tr><td style={{ ...td, color: "#94a3b8" }} colSpan={6}>Sin tareas. Agregá una abajo.</td></tr>
+            )}
+            {tareas.map((x) => {
+              const real = minutosReales(x, a.fecha);
+              const tipo = tipos.find((tp) => tp.id === x.tipoTareaId);
+              return (
+                <tr key={x.id} style={{ background: x.hecha ? "#f0fdf4" : undefined }}>
+                  <td style={td}><input style={input} type="time" value={x.desde} onChange={(e) => setTarea(x.id, { desde: e.target.value })} /></td>
+                  <td style={td}><input style={input} type="time" value={x.hasta} onChange={(e) => setTarea(x.id, { hasta: e.target.value })} /></td>
+                  <td style={td}>
+                    <select
+                      style={{ ...input, maxWidth: 200 }}
+                      value={x.tipoTareaId ?? ""}
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : null;
+                        const tp = tipos.find((z) => z.id === id);
+                        setTarea(x.id, { tipoTareaId: id, descripcion: x.descripcion || tp?.nombre || "" });
+                      }}
+                    >
+                      <option value="">— Elegí —</option>
+                      {grupos.map((g) => {
+                        const deGrupo = tiposActivos.filter((tp) => tp.grupoId === g.id);
+                        return deGrupo.length ? (
+                          <optgroup key={g.id} label={g.nombre}>
+                            {deGrupo.map((tp) => <option key={tp.id} value={tp.id}>{tp.nombre}</option>)}
+                          </optgroup>
+                        ) : null;
+                      })}
+                      {tiposActivos.filter((tp) => !tp.grupoId || !grupos.some((g) => g.id === tp.grupoId)).map((tp) => (
+                        <option key={tp.id} value={tp.id}>{tp.nombre}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td style={td}>
+                    <input style={{ ...input, width: "100%" }} value={x.descripcion} placeholder={tipo?.nombre || "Descripción"} onChange={(e) => setTarea(x.id, { descripcion: e.target.value })} />
+                    {tipo?.pasos?.length ? <div style={{ fontSize: 11, color: "#64748b" }}>{tipo.pasos.join(" → ")}</div> : null}
+                  </td>
+                  <td style={{ ...td, whiteSpace: "nowrap", fontSize: 12 }}>
+                    <label style={{ display: "inline-flex", gap: 4, alignItems: "center", cursor: "pointer" }}>
+                      <input
+                        type="checkbox"
+                        checked={!!x.hecha}
+                        onChange={(e) => setTarea(x.id, { hecha: e.target.checked, hechaEn: e.target.checked ? new Date().toISOString() : undefined })}
+                      />
+                      {x.hecha && x.hechaEn
+                        ? `${new Date(x.hechaEn).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" })}${real != null ? ` · ${Math.floor(real / 60)}h${pad(real % 60)}` : ""}${tipo?.horasEstimadas ? ` (estándar ${tipo.horasEstimadas} h)` : ""}`
+                        : ""}
+                    </label>
+                  </td>
+                  <td style={{ ...td, textAlign: "right" }}>
+                    <button type="button" style={btn(true)} onClick={() => set({ tareas: a.tareas.filter((z) => z.id !== x.id) })}>🗑</button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <div style={{ display: "flex", gap: 6, marginTop: 6, flexWrap: "wrap" }}>
+          <button type="button" style={btn()} onClick={() => set({ tareas: [...a.tareas, { id: nuevoId(), descripcion: "", ...siguienteHorario() }] })}>+ Tarea</button>
+          {onBorrar && <button type="button" style={btn(true)} onClick={onBorrar}>🗑 Borrar el día</button>}
+        </div>
+        {avisos.length > 0 && (
+          <div style={{ marginTop: 6, fontSize: 12, color: "#b45309", fontWeight: 700 }}>{avisos.map((x) => <div key={x}>⚠ {x}</div>)}</div>
+        )}
+        <label style={{ display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600, marginTop: 8 }}>
+          Notas del día
+          <input style={{ ...input, width: "100%" }} value={a.notas || ""} onChange={(e) => set({ notas: e.target.value })} />
+        </label>
+      </div>
+    </div>
+  );
+}
+
+// ---- Linea temporal: cada lugar con su gente, de 07 a 23 -----------------------------------------
+function LineaTemporal({
+  asignaciones,
+  nombreObra,
+  trabajoDe,
+}: {
+  asignaciones: AsignacionDiaria[];
+  nombreObra: (jobId: number) => string;
+  trabajoDe: (id?: number | null) => TrabajoOrg | undefined;
+}) {
+  const franjas = franjasPorLugar(asignaciones, nombreObra);
+  const lugares = genteJuntaPorLugar(franjas);
+  const INI = 7 * 60;
+  const FIN = 23 * 60;
+  const pos = (hhmm: string) => (((timeToMinutes(hhmm) ?? INI) - INI) / (FIN - INI)) * 100;
+  const horas = Array.from({ length: (FIN - INI) / 60 + 1 }, (_, i) => 7 + i);
+  return (
+    <div style={{ ...caja, marginBottom: 10 }}>
+      <div style={titulo}>Línea temporal · dónde está cada uno</div>
+      <div style={{ position: "relative", height: 16, marginLeft: 190, marginBottom: 4 }}>
+        {horas.map((h) => (
+          <span key={h} style={{ position: "absolute", left: `${((h * 60 - INI) / (FIN - INI)) * 100}%`, fontSize: 10, color: "#94a3b8", transform: "translateX(-50%)" }}>{h}</span>
+        ))}
+      </div>
+      {lugares.map((l) => {
+        const deLugar = franjas.filter((f) => f.lugarKey === l.lugarKey);
+        const personas = Array.from(new Set(deLugar.map((f) => f.empleado)));
+        const color = l.lugarKey === "fabrica" ? COLOR_LUGAR.fabrica : COLOR_LUGAR.obra;
+        const jobId = l.lugarKey.startsWith("obra:") ? Number(l.lugarKey.slice(5)) : null;
+        const mapa = jobId != null ? linkMapa(trabajoDe(jobId)?.direccion) : null;
+        return (
+          <div key={l.lugarKey} style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 800, color }}>
+              {l.lugarKey === "fabrica" ? "🏭" : "🏗"} {l.lugarLabel} · {l.personas.length} persona(s){l.maximoJuntos > 1 ? ` · hasta ${l.maximoJuntos} juntas` : ""}
+              {mapa && <a href={mapa} target="_blank" rel="noreferrer" style={{ marginLeft: 8, fontWeight: 600 }}>📍 mapa</a>}
+            </div>
+            {personas.map((p) => (
+              <div key={p} style={{ display: "flex", alignItems: "center", height: 18 }}>
+                <div style={{ width: 190, fontSize: 12, color: "#334155", overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p}</div>
+                <div style={{ position: "relative", flex: 1, height: 12, background: "#eef2f7", borderRadius: 3 }}>
+                  {deLugar.filter((f) => f.empleado === p).map((f, i) => (
+                    <div
+                      key={i}
+                      title={`${p} · ${f.desde}-${f.hasta}`}
+                      style={{ position: "absolute", left: `${Math.max(0, pos(f.desde))}%`, width: `${Math.max(0.5, pos(f.hasta) - pos(f.desde))}%`, top: 0, bottom: 0, background: color, borderRadius: 3, opacity: 0.85 }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---- Catalogo: grupos de trabajo y tipos de tarea -------------------------------------------------
+function Catalogo({
+  grupos,
+  tipos,
+  onGuardarGrupo,
+  onBorrarGrupo,
+  onGuardarTipo,
+  onBorrarTipo,
+  nuevoId,
+}: {
+  grupos: GrupoTrabajo[];
+  tipos: TipoTarea[];
+  onGuardarGrupo: (g: GrupoTrabajo) => void;
+  onBorrarGrupo: (id: number) => void;
+  onGuardarTipo: (t: TipoTarea) => void;
+  onBorrarTipo: (id: number) => void;
+  nuevoId: () => number;
+}) {
+  const ordenados = [...grupos].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre));
+  const sinGrupo = tipos.filter((t) => !t.grupoId || !grupos.some((g) => g.id === t.grupoId));
+  const filaTipo = (t: TipoTarea) => (
+    <tr key={t.id} style={{ opacity: t.activa === false ? 0.5 : 1 }}>
+      <td style={td}><input style={{ ...input, width: "100%" }} value={t.nombre} onChange={(e) => onGuardarTipo({ ...t, nombre: e.target.value })} /></td>
+      <td style={td}>
+        <select style={input} value={t.grupoId ?? ""} onChange={(e) => onGuardarTipo({ ...t, grupoId: e.target.value ? Number(e.target.value) : null })}>
+          <option value="">— Sin grupo —</option>
+          {ordenados.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
+        </select>
+      </td>
+      <td style={td}>
+        <input
+          style={{ ...input, width: 70 }}
+          type="number"
+          step="0.25"
+          min="0"
+          value={t.horasEstimadas ?? ""}
+          onChange={(e) => onGuardarTipo({ ...t, horasEstimadas: e.target.value === "" ? undefined : Number(e.target.value) })}
+        />
+      </td>
+      <td style={td}>
+        <textarea
+          style={{ ...input, width: "100%", minHeight: 34, fontFamily: "inherit", resize: "vertical" }}
+          placeholder="Un paso por renglón"
+          value={(t.pasos || []).join("\n")}
+          onChange={(e) => onGuardarTipo({ ...t, pasos: e.target.value.split("\n") })}
+        />
+      </td>
+      <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
+        <button type="button" style={btn()} onClick={() => onGuardarTipo({ ...t, activa: t.activa === false })}>{t.activa === false ? "Activar" : "Pausar"}</button>{" "}
+        <button type="button" style={btn(true)} onClick={() => window.confirm(`¿Borrar el tipo de tarea "${t.nombre}"?`) && onBorrarTipo(t.id)}>🗑</button>
+      </td>
+    </tr>
+  );
+  return (
+    <Panel span="full" title="Tipos de tarea y grupos de trabajo">
+      <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
+        Se arma una vez y queda: cada grupo de trabajo con sus tipos de tarea, el tiempo estándar y el desglose en pasos. Al cargar el día se elige el tipo y no hay que tipear todo.
+      </div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+        <ButtonLike onClick={() => onGuardarGrupo({ id: nuevoId(), nombre: "Grupo nuevo", orden: grupos.length + 1 })}>+ Grupo de trabajo</ButtonLike>
+        <ButtonLike secondary onClick={() => onGuardarTipo({ id: nuevoId(), nombre: "Tarea nueva", grupoId: null, pasos: [], activa: true })}>+ Tipo de tarea</ButtonLike>
+      </div>
+      {[...ordenados.map((g) => ({ g, lista: tipos.filter((t) => t.grupoId === g.id) })), ...(sinGrupo.length ? [{ g: null as GrupoTrabajo | null, lista: sinGrupo }] : [])].map(({ g, lista }) => (
+        <div key={g ? g.id : "sin"} style={{ ...caja, marginBottom: 8 }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
+            {g ? (
+              <>
+                <input style={{ ...input, fontWeight: 800, minWidth: 200 }} value={g.nombre} onChange={(e) => onGuardarGrupo({ ...g, nombre: e.target.value })} />
+                <input style={{ ...input, flex: 1, minWidth: 200 }} placeholder="Descripción del grupo" value={g.descripcion || ""} onChange={(e) => onGuardarGrupo({ ...g, descripcion: e.target.value })} />
+                <button type="button" style={btn()} onClick={() => onGuardarTipo({ id: nuevoId(), nombre: "Tarea nueva", grupoId: g.id, pasos: [], activa: true })}>+ Tarea en este grupo</button>
+                <button type="button" style={btn(true)} onClick={() => window.confirm(`¿Borrar el grupo "${g.nombre}"? Sus tareas quedan sin grupo.`) && onBorrarGrupo(g.id)}>🗑</button>
+              </>
+            ) : (
+              <strong style={{ color: "#64748b" }}>Sin grupo</strong>
+            )}
+          </div>
+          {lista.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Sin tareas en este grupo.</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th style={th}>Tarea</th>
+                  <th style={th}>Grupo</th>
+                  <th style={th}>Horas estándar</th>
+                  <th style={th}>Desglose (pasos)</th>
+                  <th style={th}></th>
+                </tr>
+              </thead>
+              <tbody>{lista.map(filaTipo)}</tbody>
+            </table>
+          )}
+        </div>
+      ))}
+    </Panel>
+  );
+}

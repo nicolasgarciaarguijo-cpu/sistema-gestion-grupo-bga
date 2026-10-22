@@ -18,7 +18,9 @@ import {
 } from "../ui/planilla";
 import { money, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
-import type { PrintMode } from "../domain/types";
+import type { PrintMode, CrmClient } from "../domain/types";
+import { faltantesDeCliente, duplicadosEnCrm, duplicadosDeCliente, esDelCliente } from "../domain/clients";
+import { FichaCliente } from "../ui/FichaCliente";
 
 type HistorialTabProps = {
   exportedBudgetsCount: number;
@@ -44,6 +46,10 @@ type HistorialTabProps = {
   updateCrmClient: (id: number, field: string, value: string | number) => void;
   removeCrmClient: (id: number) => void;
   generateClientsFromHistory: () => void;
+  // Trabajos con su saldo (approvedJobsSummary) para la ficha del cliente; si no viene, usa approvedJobs.
+  trabajosResumen?: any[];
+  // Unificar dos fichas del CRM que son el mismo cliente (la segunda se suma a la primera y se quita).
+  unificarCrmClients?: (quedaId: number, saleId: number) => void;
 };
 
 export function HistorialTab({
@@ -70,11 +76,33 @@ export function HistorialTab({
   updateCrmClient,
   removeCrmClient,
   generateClientsFromHistory,
+  trabajosResumen,
+  unificarCrmClients,
 }: HistorialTabProps) {
   const anchosFichas = usePlanillaWidths("historial.fichas", { label: 280, col: 140, colCompact: 106 });
   const anchosCrm = usePlanillaWidths("historial.crm", { label: 280, col: 120, colCompact: 92 });
   const anchosCotiz = usePlanillaWidths("historial.cotizaciones", { label: 240, col: 120, colCompact: 92 });
   const [menuCotiz, setMenuCotiz] = React.useState<null | { x: number; y: number; id: number }>(null);
+  // FICHA DEL CLIENTE + "Faltan datos" + "Posibles duplicados" (Nicolas, 2026-10-22: "que en CRM me prepare la
+  // lista y me haga un detalle de la informacion que estaria faltando a cada cliente creado para completar la ficha").
+  const [fichaId, setFichaId] = React.useState<number | null>(null);
+  const [vistaClientes, setVistaClientes] = React.useState<"lista" | "faltan" | "duplicados">("lista");
+  const clientesCrm = crmClients as CrmClient[];
+  const conFaltantes = React.useMemo(
+    () =>
+      clientesCrm
+        .map((c) => ({ cliente: c, falta: faltantesDeCliente(c) }))
+        .filter((x) => x.falta.length > 0)
+        .sort((a, b) => b.falta.length - a.falta.length || (a.cliente.name || "").localeCompare(b.cliente.name || "")),
+    [clientesCrm]
+  );
+  const paresDuplicados = React.useMemo(() => duplicadosEnCrm(clientesCrm, visibleSavedBudgets), [clientesCrm, visibleSavedBudgets]);
+  const fichaCliente = fichaId != null ? clientesCrm.find((c) => c.id === fichaId) || null : null;
+  const btnVista = (activo: boolean): React.CSSProperties => ({
+    border: `1px solid ${activo ? "#0f172a" : "#cbd5e1"}`, background: activo ? "#0f172a" : "#fff", color: activo ? "#fff" : "#334155",
+    borderRadius: 999, padding: "3px 12px", fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+  });
+  const chipFalta: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: 999, padding: "0 7px", marginRight: 4, whiteSpace: "nowrap" };
 
   return (
         <div style={styles.column}>
@@ -115,7 +143,91 @@ export function HistorialTab({
               Los clientes cargados acá son la base del CRM y se autocompletan al cargar un
               presupuesto. Podés darlos de alta a mano o traer los del historial (presupuestos y trabajos viejos) con el botón de arriba.
             </div>
-            {crmClients.length === 0 ? (
+            {crmClients.length > 0 && (
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
+                <button type="button" style={btnVista(vistaClientes === "lista")} onClick={() => setVistaClientes("lista")}>
+                  Lista ({crmClients.length})
+                </button>
+                <button type="button" style={btnVista(vistaClientes === "faltan")} onClick={() => setVistaClientes("faltan")}>
+                  Faltan datos ({conFaltantes.length})
+                </button>
+                <button type="button" style={btnVista(vistaClientes === "duplicados")} onClick={() => setVistaClientes("duplicados")}>
+                  Posibles duplicados ({paresDuplicados.length})
+                </button>
+              </div>
+            )}
+            {crmClients.length > 0 && vistaClientes === "faltan" ? (
+              conFaltantes.length === 0 ? (
+                <div style={styles.empty}>Todas las fichas están completas.</div>
+              ) : (
+                <div style={{ ...planillaWrap, ...anchosFichas.vars }}>
+                  <table className="planilla" style={planillaTable}>
+                    <colgroup>
+                      <col style={colLabel} />
+                      <col style={colDato} />
+                      <col style={colFlexible} />
+                      <col style={colAcciones} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style={thEsquina}>Cliente</th>
+                        <th style={{ ...thColumna, textAlign: "right" }}>Le faltan</th>
+                        <th style={thFlexible}>Qué falta para completar la ficha</th>
+                        <th style={thColumna} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conFaltantes.map(({ cliente: c, falta }) => (
+                        <tr key={c.id} onClick={() => setFichaId(c.id)} style={{ cursor: "pointer" }} title="Click: abrir la ficha para completarla">
+                          <td style={{ ...tdNombre, fontWeight: 400 }}>{c.name || "(sin nombre)"}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: falta.length >= 4 ? "#b91c1c" : "#b45309" }}>{falta.length}</td>
+                          <td style={tdFlexible}>{falta.map((f) => <span key={f} style={chipFalta}>{f}</span>)}</td>
+                          <td style={{ ...tdDato, ...tdAcciones }}>
+                            <button type="button" style={btnFicha} onClick={(e) => { e.stopPropagation(); setFichaId(c.id); }}>Abrir ficha</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : crmClients.length > 0 && vistaClientes === "duplicados" ? (
+              paresDuplicados.length === 0 ? (
+                <div style={styles.empty}>No se encontraron clientes repetidos en el CRM.</div>
+              ) : (
+                <div style={{ ...planillaWrap, ...anchosFichas.vars }}>
+                  <table className="planilla" style={planillaTable}>
+                    <colgroup>
+                      <col style={colLabel} />
+                      <col style={colLabel} />
+                      <col style={colFlexible} />
+                      <col style={{ width: 150 }} />
+                    </colgroup>
+                    <thead>
+                      <tr>
+                        <th style={thEsquina}>Cliente</th>
+                        <th style={thColumna}>Parece el mismo que</th>
+                        <th style={thFlexible}>Por qué</th>
+                        <th style={thColumna} />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paresDuplicados.map((p) => (
+                        <tr key={`${p.a.id}-${p.b.id}`}>
+                          <td style={{ ...tdNombre, fontWeight: 400 }}>{p.a.name}</td>
+                          <td style={{ ...tdDato, textAlign: "left" }}>{p.b.name}</td>
+                          <td style={{ ...tdFlexible, color: "#7c2d12" }}>{p.motivos.join(" · ")}</td>
+                          <td style={{ ...tdDato, ...tdAcciones }}>
+                            <button type="button" style={btnFicha} onClick={() => setFichaId(p.a.id)} title={`Ficha de ${p.a.name}`}>Ficha 1</button>{" "}
+                            <button type="button" style={btnFicha} onClick={() => setFichaId(p.b.id)} title={`Ficha de ${p.b.name}`}>Ficha 2</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            ) : crmClients.length === 0 ? (
               <div style={styles.empty}>
                 Todavía no hay clientes-entidad. Usá "Generar desde historial" para crearlos a partir
                 de los presupuestos existentes, o "Agregar cliente".
@@ -223,6 +335,17 @@ export function HistorialTab({
                       <td style={{ ...tdDato, ...tdAcciones }}>
                         <button
                           type="button"
+                          title="Abrir la ficha del cliente (datos, presupuestos, trabajos, lo que le falta)"
+                          style={btnFicha}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFichaId(client.id);
+                          }}
+                        >
+                          Ficha{faltantesDeCliente(client).length ? ` · falta ${faltantesDeCliente(client).length}` : ""}
+                        </button>{" "}
+                        <button
+                          type="button"
                           title="Borrar"
                           style={btnBorrar}
                           onClick={(e) => {
@@ -291,7 +414,9 @@ export function HistorialTab({
                         ev.stopPropagation();
                         setSelectedCrmClientKey(selectedCrmClientKey === row.key ? null : row.key);
                       }}
-                      title="Click derecho: abrir o cerrar los presupuestos de este cliente"
+                      onClick={() => typeof row.clientId === "number" && setFichaId(row.clientId)}
+                      style={typeof row.clientId === "number" ? { cursor: "pointer" } : undefined}
+                      title={typeof row.clientId === "number" ? "Click: abrir la ficha · Click derecho: abrir o cerrar los presupuestos de este cliente" : "Click derecho: abrir o cerrar los presupuestos de este cliente"}
                     >
                       <td style={{ ...tdNombre, fontWeight: 400 }} title={row.client}>
                         <span
@@ -475,13 +600,37 @@ export function HistorialTab({
             </Panel>
           )}
 
+          {fichaCliente && (
+            <FichaCliente
+              cliente={fichaCliente}
+              presupuestos={visibleSavedBudgets.filter((b) => esDelCliente(fichaCliente, b))}
+              trabajos={(trabajosResumen || approvedJobs).filter((j) => esDelCliente(fichaCliente, j))}
+              duplicados={duplicadosDeCliente(fichaCliente, paresDuplicados)}
+              companyOptions={COMPANY_OPTIONS}
+              money={money}
+              onGuardar={(cambios) =>
+                Object.entries(cambios).forEach(([k, v]) => updateCrmClient(fichaCliente.id, k, (v ?? "") as string))
+              }
+              onAbrirFicha={(id) => setFichaId(id)}
+              onUnificar={unificarCrmClients}
+              onAbrirPresupuesto={(id) => {
+                setFichaId(null);
+                openBudgetHistoryItem(id);
+              }}
+              onCerrar={() => setFichaId(null)}
+            />
+          )}
         </div>
   );
 }
 
 // Boton visible de borrar en cada fila: hace lo mismo que el click derecho, para que nadie tenga
 // que adivinar que el menu existe.
-const colAcciones: React.CSSProperties = { width: 40 };
+const colAcciones: React.CSSProperties = { width: 118 };
+const btnFicha: React.CSSProperties = {
+  border: "1px solid #cbd5e1", background: "#fff", color: "#334155", borderRadius: 4,
+  padding: "0 6px", fontSize: 11, lineHeight: "16px", fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+};
 const tdAcciones: React.CSSProperties = { whiteSpace: "nowrap", textAlign: "center", padding: "0 4px" };
 const btnBorrar: React.CSSProperties = {
   border: "1px solid #fecaca", background: "#fff", color: "#b91c1c", borderRadius: 4,

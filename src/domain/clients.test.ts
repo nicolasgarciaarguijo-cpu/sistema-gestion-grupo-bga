@@ -167,3 +167,72 @@ describe("clientes para cotizar (2026-10-22)", () => {
     expect(filtrarClientes(l, "4444").map((c: any) => c.name)).toEqual(["Carlos Gómez"]);
   });
 });
+
+describe("posibles coincidencias, faltantes y duplicados (2026-10-22)", () => {
+  const {
+    clientesParaCotizar, posiblesCoincidencias, parecidoNombre, nombreParaComparar,
+    faltantesDeCliente, duplicadosEnCrm, duplicadosDeCliente, esDelCliente,
+  } = require("./clients");
+  const cli = (over: any = {}) => ({ id: 1, name: "", taxId: "", contactName: "", contactPhone: "", contactEmail: "", notes: "", company: "BGA", createdAt: "", ...over });
+  const crm = [
+    cli({ id: 1, name: "Carlos Gómez", contactPhone: "+54 9 11 4444-9999", taxId: "20-12345678-3" }),
+    cli({ id: 2, name: "Estudio Pérez S.R.L.", contactEmail: "info@perez.com" }),
+    cli({ id: 3, name: "Lucía Fernández" }),
+  ];
+  const budgets = [
+    { client: "Lucía Fernández", clientId: 3, date: "2026-03-01", number: "P-1", project: "Casa Nordelta Lote 45", snapshot: { budget: {} } },
+  ];
+  const lista = clientesParaCotizar(crm, budgets, []);
+
+  it("normaliza nombres: sin acentos, sin SRL ni Estudio, sin orden", () => {
+    expect(nombreParaComparar("Estudio Pérez S.R.L.")).toBe("perez");
+    expect(parecidoNombre("Gomez Carlos", "Carlos Gómez")).toBe(1);
+    expect(parecidoNombre("Peres", "Pérez")).toBeGreaterThanOrEqual(0.8);
+    expect(parecidoNombre("Perez", "Juan Perez")).toBeGreaterThan(0.8);
+    expect(parecidoNombre("Martinez", "Gomez")).toBe(0);
+  });
+
+  it("sugiere por nombre parecido y no se sugiere a si mismo", () => {
+    const r = posiblesCoincidencias(lista, { nombre: "Gomez Carlos" });
+    expect(r[0].cliente.name).toBe("Carlos Gómez");
+    expect(r[0].motivos).toContain("mismo nombre");
+    expect(posiblesCoincidencias(lista, { nombre: "carlos gómez" })).toEqual([]);
+    expect(posiblesCoincidencias(lista, { nombre: "Peres" })[0].cliente.name).toBe("Estudio Pérez S.R.L.");
+    expect(posiblesCoincidencias(lista, { nombre: "Gomez", clientId: 1 })).toEqual([]);
+  });
+
+  it("vincula por telefono (ultimos 8), CUIT, mail y proyecto aunque el nombre sea otro", () => {
+    expect(posiblesCoincidencias(lista, { nombre: "Charly", telefono: "4444 9999" })[0]).toMatchObject({ cliente: { id: 1 }, motivos: ["mismo teléfono"] });
+    expect(posiblesCoincidencias(lista, { cuit: "20123456783" })[0].motivos).toEqual(["mismo CUIT"]);
+    expect(posiblesCoincidencias(lista, { email: "INFO@perez.com" })[0].cliente.id).toBe(2);
+    expect(posiblesCoincidencias(lista, { proyecto: "casa nordelta lote 45" })[0]).toMatchObject({ cliente: { id: 3 }, motivos: ["mismo proyecto"] });
+    // Un proyecto generico ("Cocina") no vincula a nadie.
+    expect(posiblesCoincidencias(clientesParaCotizar(crm, [{ client: "Lucía Fernández", project: "Cocina" }], []), { proyecto: "Cocina" })).toEqual([]);
+  });
+
+  it("ordena por puntaje: CUIT + nombre arriba de solo nombre", () => {
+    const l2 = clientesParaCotizar([...crm, cli({ id: 4, name: "Carlos Gomes" })], [], []);
+    const r = posiblesCoincidencias(l2, { nombre: "Carlos Gomez SA", cuit: "20-12345678-3" });
+    expect(r.map((x: any) => x.cliente.id)).toEqual([1, 4]);
+  });
+
+  it("dice lo que le falta a cada ficha", () => {
+    expect(faltantesDeCliente(cli({ name: "X" }))).toEqual(["CUIT", "contacto", "teléfono", "mail", "dirección"]);
+    expect(faltantesDeCliente(cli({ name: "X", taxId: "20-1", contactName: "a", contactPhone: "1", contactEmail: "a@b", direccion: "Calle 1" }))).toEqual(["CUIT incompleto"]);
+  });
+
+  it("encuentra duplicados dentro del CRM y los de un cliente", () => {
+    const c = [...crm, cli({ id: 5, name: "Gomez, Carlos" }), cli({ id: 6, name: "Lu Fernandez" })];
+    const b = [...budgets, { client: "Lu Fernandez", clientId: 6, project: "Casa Nordelta - Lote 45" }];
+    const pares = duplicadosEnCrm(c, b);
+    expect(pares.map((p: any) => [p.a.id, p.b.id])).toEqual(expect.arrayContaining([[1, 5], [3, 6]]));
+    expect(pares.find((p: any) => p.a.id === 3).motivos).toContain("mismo proyecto");
+    expect(duplicadosDeCliente(c[3], pares).map((d: any) => d.cliente.id)).toEqual([1]);
+  });
+
+  it("un presupuesto es del cliente por clientId, o por nombre si no tiene", () => {
+    expect(esDelCliente(crm[0], { clientId: 1, client: "otro" })).toBe(true);
+    expect(esDelCliente(crm[0], { clientId: 9, client: "Carlos Gómez" })).toBe(false);
+    expect(esDelCliente(crm[0], { client: " carlos gómez " })).toBe(true);
+  });
+});

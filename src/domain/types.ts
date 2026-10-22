@@ -307,6 +307,8 @@ export type CrmClient = {
   notes: string;
   company: CompanyName;
   createdAt: string;
+  // Direccion del cliente / de la obra (opcional: datos viejos no la tienen). Se completa en la ficha.
+  direccion?: string;
 };
 
 export type SavedBudget = {

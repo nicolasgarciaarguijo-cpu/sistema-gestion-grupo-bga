@@ -3,7 +3,7 @@ import { styles } from "../ui/styles";
 import { Panel, ButtonLike, Field, MiniMetric, SummaryRow, TwoCol, AmountInput, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { money, pct, formatDateDisplay } from "../lib/format";
 import { resolveAdvancePct } from "../domain/budgetTerms";
-import { filtrarClientes, findClientByName, type ClienteParaCotizar } from "../domain/clients";
+import { filtrarClientes, findClientByName, normalizeClientName, posiblesCoincidencias, type ClienteParaCotizar } from "../domain/clients";
 import { matchStockForMaterial } from "../domain/stockMatch";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
@@ -323,6 +323,37 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
   }>(null);
   React.useEffect(() => setRefreshReport(null), [editingBudgetId]);
   const showRefreshBanner = !!editingBudgetId && (editingBudgetExpired || !!refreshReport);
+  // Elegir un cliente existente (del buscador o de "¿Es alguno de estos?"): trae sus datos y fija el clientId
+  // (si ya esta en el CRM; uno del historial se da de alta en el CRM al guardar).
+  const aplicarCliente = (match: ClienteParaCotizar) => {
+    setBudget({
+      ...budget,
+      client: match.name,
+      clientId: match.enCrm ? match.id : undefined,
+      clientTaxId: match.taxId || budget.clientTaxId,
+      contactName: match.contactName || budget.contactName,
+      contactPhone: match.contactPhone || budget.contactPhone,
+      contactEmail: match.contactEmail || budget.contactEmail,
+      clientNotes: match.notes || budget.clientNotes,
+    });
+  };
+  // Posibles coincidencias con lo que se esta cargando (nombre, telefono, CUIT, mail, proyecto).
+  const coincidencias = React.useMemo(
+    () =>
+      posiblesCoincidencias(clientesCotizar || [], {
+        nombre: budget.client,
+        telefono: budget.contactPhone,
+        cuit: budget.clientTaxId,
+        email: budget.contactEmail,
+        proyecto: budget.project,
+        clientId: budget.clientId,
+      }),
+    [clientesCotizar, budget.client, budget.contactPhone, budget.clientTaxId, budget.contactEmail, budget.project, budget.clientId]
+  );
+  // "No, es nuevo" esconde el aviso para ESTE nombre (si se cambia el nombre, vuelve a mirar).
+  const [coincidenciasDescartadas, setCoincidenciasDescartadas] = React.useState<string | null>(null);
+  const claveCoincidencias = normalizeClientName(budget.client) || "(sin nombre)";
+  const mostrarCoincidencias = coincidencias.length > 0 && coincidenciasDescartadas !== claveCoincidencias;
   return (
     <>
       {showRefreshBanner && (
@@ -438,20 +469,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   <ClientPicker
                     value={budget.client}
                     clients={clientesCotizar}
-                    onPick={(match) => {
-                      // Al elegir un cliente existente se traen sus datos y se fija el clientId (si ya esta en
-                      // el CRM; uno del historial se da de alta en el CRM al guardar).
-                      setBudget({
-                        ...budget,
-                        client: match.name,
-                        clientId: match.enCrm ? match.id : undefined,
-                        clientTaxId: match.taxId || budget.clientTaxId,
-                        contactName: match.contactName || budget.contactName,
-                        contactPhone: match.contactPhone || budget.contactPhone,
-                        contactEmail: match.contactEmail || budget.contactEmail,
-                        clientNotes: match.notes || budget.clientNotes,
-                      });
-                    }}
+                    onPick={aplicarCliente}
                     onType={(name) => {
                       const match = findClientByName(crmClients, name);
                       if (match) {
@@ -485,6 +503,54 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                       </span>
                     </div>
                   ) : null}
+                  {mostrarCoincidencias && (
+                    // POSIBLES COINCIDENCIAS (Nicolas, 2026-10-22): "que me de las alternativas para no crear varias
+                    // veces al mismo cliente". Mira nombre parecido, telefono, CUIT, mail y proyecto.
+                    <div style={{ marginTop: 8, background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "8px 10px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <strong style={{ fontSize: 13, color: "#92400e" }}>¿Es alguno de estos? Para no crear al mismo cliente dos veces</strong>
+                        <button
+                          type="button"
+                          style={{ border: "1px solid #fcd34d", background: "#fff", color: "#92400e", borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                          onClick={() => setCoincidenciasDescartadas(claveCoincidencias)}
+                        >
+                          No, es nuevo
+                        </button>
+                      </div>
+                      {coincidencias.slice(0, 5).map(({ cliente: c, motivos }) => (
+                        <div key={c.key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 0", borderTop: "1px solid #fde68a", marginTop: 6 }}>
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                              {c.name}
+                              {!c.enCrm && (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: "#92400e", background: "#fef3c7", borderRadius: 999, padding: "0 6px" }}>historial</span>
+                              )}
+                              {motivos.map((m) => (
+                                <span key={m} style={{ fontSize: 10.5, fontWeight: 700, color: "#166534", background: "#dcfce7", borderRadius: 999, padding: "0 6px" }}>{m}</span>
+                              ))}
+                            </div>
+                            <div style={{ fontSize: 11.5, color: "#64748b" }}>
+                              {[
+                                c.contactPhone && `☎ ${c.contactPhone}`,
+                                c.taxId && `CUIT ${c.taxId}`,
+                                c.contactEmail,
+                                c.ultimo && `último ${formatDateDisplay(c.ultimo.fecha)}${c.ultimo.numero ? ` (${c.ultimo.numero})` : ""}${c.ultimo.proyecto ? ` · ${c.ultimo.proyecto}` : ""}`,
+                                c.presupuestos > 0 && `${c.presupuestos} presupuesto(s)`,
+                                c.aprobados > 0 && `${c.aprobados} aprobado(s)`,
+                              ].filter(Boolean).join(" · ") || "sin más datos"}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            style={{ border: "1px solid #15803d", background: "#16a34a", color: "#fff", borderRadius: 6, padding: "3px 10px", fontSize: 12, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}
+                            onClick={() => aplicarCliente(c)}
+                          >
+                            Es este
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </Field>
                 <Field label="Contacto">
                   <input
