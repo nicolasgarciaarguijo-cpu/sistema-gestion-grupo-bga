@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { money } from "../lib/format";
 import { ORIGEN_LABEL, type ItemInamovible } from "../domain/agendaInamovibles";
 
@@ -7,6 +7,8 @@ import { ORIGEN_LABEL, type ItemInamovible } from "../domain/agendaInamovibles";
 //   - el COMPROBANTE (ya se pago: se sube el archivo y queda asentado), o
 //   - REPROGRAMARLO (nueva fecha, que tiene que ser de hoy en adelante).
 // No hay "posponer": es a proposito, para que no se olvide nada.
+// ESCAPE (Nicolas, 2026-10-22): cierra el cartel por ahora; vuelve a aparecer la proxima vez que se abre o
+// se recarga el sistema (no se guarda en ningun lado: es solo de esta sesion de la pagina).
 
 const fmt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
@@ -25,7 +27,15 @@ export function ReclamoPagosVencidos({
 }) {
   const [fechas, setFechas] = useState<Record<string, string>>({});
   const [subiendo, setSubiendo] = useState<string>("");
-  if (items.length === 0) return null;
+  const [cerradoPorAhora, setCerradoPorAhora] = useState(false);
+  useEffect(() => {
+    const alApretar = (ev: KeyboardEvent) => {
+      if (ev.key === "Escape") setCerradoPorAhora(true);
+    };
+    window.addEventListener("keydown", alApretar);
+    return () => window.removeEventListener("keydown", alApretar);
+  }, []);
+  if (items.length === 0 || cerradoPorAhora) return null;
   return (
     <div
       role="dialog"
@@ -51,6 +61,9 @@ export function ReclamoPagosVencidos({
           <div style={{ fontSize: 13, color: "#7f1d1d", marginTop: 4 }}>
             Para seguir usando el sistema, cada pago necesita su <strong>comprobante</strong> (si ya se pagó) o una{" "}
             <strong>nueva fecha</strong> (si se reprograma).
+          </div>
+          <div style={{ fontSize: 11.5, color: "#991b1b", marginTop: 6, opacity: 0.8 }}>
+            Tecla <strong>Esc</strong>: cerrar por ahora (vuelve a aparecer al abrir el sistema de nuevo).
           </div>
         </div>
         <div style={{ padding: "8px 20px 16px" }}>
