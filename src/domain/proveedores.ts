@@ -127,6 +127,34 @@ export type FacturaPorPagar = {
   conceptKey?: string;
 };
 
+// Facturas YA PAGADAS que estaban programadas (Nicolas, 2026-10-23: "cuando realizo un pago no quiero que
+// desaparezca el item; quiero que figure tachado para saber que ya lo realice"). Misma fecha que tenian
+// programada; Pagos programados las muestra tachadas. Mismas exclusiones que las por pagar.
+export function facturasPagadasProgramadas(facturas: FacturaLike[], proveedores: ProveedorLike[]): FacturaPorPagar[] {
+  const out: FacturaPorPagar[] = [];
+  facturas.forEach((f) => {
+    if (f.paidByCostEntryId == null && f.paidByBankEntryId == null) return;
+    if (f.source === "caja_chica") return;
+    if (String(f.paidByPerson || "").trim()) return;
+    if (!(Number(f.total || 0) > 0)) return;
+    const prov = buscarProveedor(proveedores, f.supplier, f.taxId);
+    const fecha = f.fechaPagoPrevista || fechaDePago(f.invoiceDate, prov?.condicionPago);
+    if (!fecha) return;
+    out.push({
+      id: f.id,
+      company: f.company,
+      supplier: f.supplier,
+      invoiceNumber: f.invoiceNumber,
+      total: Number(f.total || 0),
+      fechaPago: fecha,
+      fechaElegida: !!f.fechaPagoPrevista,
+      administration: f.administration === "negro" ? "negro" : "blanco",
+      conceptKey: tipoGastoEfectivo(f.conceptKey, prov),
+    });
+  });
+  return out;
+}
+
 // Facturas SIN pago con fecha de pago (la de la factura, o la de la condicion del proveedor).
 // No entran: las ya pagadas, las de caja chica (se pagan con el fondo) y las que puso una persona
 // (son deuda con esa persona, no con el proveedor).

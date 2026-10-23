@@ -15,7 +15,7 @@ import {
   claveReal,
 } from "./vencimientos";
 
-import { cuotasPendientes, type CuotaDeuda } from "./desendeudamiento";
+import { cuotaPagada, cuotasDeDeuda, type CuotaDeuda } from "./desendeudamiento";
 export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos" | "factura" | "cheque";
 
 export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
@@ -148,6 +148,8 @@ export type FuentesInamovibles = {
   sueldos: Array<{ company: string; periodo: string; fecha: string; monto: number; clave?: string; titulo?: string }>;
   // Facturas de proveedores SIN pagar con fecha de pago (elegida o por la condicion del proveedor).
   facturas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
+  // Facturas ya pagadas que estaban programadas: quedan en la agenda, tachadas (no desaparecen).
+  facturasPagadas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
   // CHEQUES ENTREGADOS (Nicolas, 2026-10-23): "el pago ya se hizo, pero ese dia tengo que tener la plata para
   // que el cheque se pueda cobrar". Son los pagos con medio cheque: su fecha es la del cobro (el debito).
   cheques?: Array<{ id: number; company: string; date: string; amount: number; supplier: string; administration: "blanco" | "negro"; conceptKey?: string; cobrado: boolean; detalle?: string }>;
@@ -201,14 +203,19 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
   f.debtPlans
     .filter((p) => p.active && (p.nextDueDate || (p.cuotas || []).length))
     .forEach((p) => {
-      // Las cuotas ESTIPULADAS en Desendeudamiento (o, deuda vieja, una por mes); las pagadas no van.
-      const pendientes = cuotasPendientes(p as any);
+      // Las cuotas ESTIPULADAS en Desendeudamiento (o, deuda vieja, una por mes). Las pagadas QUEDAN, tachadas
+      // (2026-10-23: "no quiero que desaparezca el item").
+      const todas = cuotasDeDeuda(p as any);
+      const pendientes = todas.filter((c) => !cuotaPagada(c));
       const quedan = pendientes.length;
-      for (let i = 0; i < quedan; i++) {
-        const fecha = pendientes[i].fecha;
-        if (fecha > hasta) break;
+      for (let j = 0; j < todas.length; j++) {
+        const cuota = todas[j];
+        const fecha = cuota.fecha;
+        if (!fecha || fecha > hasta) continue;
         if (!enRango(fecha)) continue;
         const clave = `deuda:${p.id}:${fecha}`;
+        const pagada = cuotaPagada(cuota);
+        const i = pendientes.indexOf(cuota);
         out.push(
           conEstado(
             {
@@ -217,14 +224,14 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
               refId: p.id,
               company: p.company,
               titulo: p.acreedor ? `${p.concept} · ${p.acreedor}` : p.concept,
-              detalle: `cuota ${pendientes[i].numero} · ${i + 1} de ${quedan} que quedan`,
+              detalle: pagada ? `cuota ${cuota.numero} · pagada` : `cuota ${cuota.numero} · ${i + 1} de ${quedan} que quedan`,
               ventanaDesde: fecha,
               fechaLimite: fecha,
-              monto: Number(pendientes[i].monto || 0),
+              monto: Number(cuota.monto || 0),
               currency: "ARS",
               avisoDias: AVISO_DEFAULT,
-              pagado: marcado.has(clave),
-              pagadoComo: marcado.has(clave) ? "a mano" : "",
+              pagado: pagada || marcado.has(clave),
+              pagadoComo: pagada ? "pagada en Desendeudamiento" : marcado.has(clave) ? "a mano" : "",
             },
             hoy
           )
@@ -364,6 +371,34 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             avisoDias: AVISO_DEFAULT,
             pagado: marcado.has(clave),
             pagadoComo: marcado.has(clave) ? "a mano" : "",
+          },
+          hoy
+        )
+      );
+    });
+
+  // 7b. Facturas ya pagadas que estaban programadas: en su fecha, tachadas.
+  (f.facturasPagadas || [])
+    .filter((x) => enRango(x.fechaPago))
+    .forEach((x) => {
+      out.push(
+        conEstado(
+          {
+            clave: `factura:${x.id}`,
+            origen: "factura",
+            refId: x.id,
+            company: x.company,
+            titulo: `Factura ${x.supplier || "proveedor"}`,
+            detalle: `${x.invoiceNumber || "sin número"} · pagada`,
+            ventanaDesde: x.fechaPago,
+            fechaLimite: x.fechaPago,
+            monto: Number(x.total || 0),
+            currency: "ARS",
+            administration: x.administration,
+            conceptKey: x.conceptKey,
+            avisoDias: AVISO_DEFAULT,
+            pagado: true,
+            pagadoComo: "pagada",
           },
           hoy
         )

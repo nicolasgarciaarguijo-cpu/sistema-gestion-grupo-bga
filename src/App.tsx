@@ -390,7 +390,7 @@ import { VentanaNovedades } from "./ui/Novedades";
 import { NOVEDADES, novedadesPendientes, ultimaNovedad, type TandaNovedades } from "./content/novedades";
 import { filasDeArqueo, billeterasDesdeArqueo, movimientosDelArqueo, diferencia, TOLERANCIA_ARQUEO, type FilaArqueo } from "./domain/arqueoCierre";
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
-import { buscarProveedor, facturasPorPagar, tipoGastoEfectivo, fechaDePago } from "./domain/proveedores";
+import { buscarProveedor, facturasPorPagar, facturasPagadasProgramadas, tipoGastoEfectivo, fechaDePago } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
@@ -17220,6 +17220,11 @@ Escribi CERRAR para confirmar:`
         ),
         sueldos,
         facturas: facturasAPagar,
+        // Las ya pagadas siguen en el calendario, tachadas (no desaparecen al pagarlas).
+        facturasPagadas: facturasPagadasProgramadas(
+          purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company)) as any,
+          suppliers as any
+        ),
         // Cheques entregados (pagos con medio cheque): inamovibles el dia que se debitan. Cubiertos cuando el
         // debito queda conciliado con el banco o pasa la fecha.
         cheques: costEntries
@@ -17242,7 +17247,7 @@ Escribi CERRAR para confirmar:`
       hasta,
       hoyIso
     );
-  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries]);
+  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries, purchaseInvoicesWithBankLink, suppliers]);
 
   // ANALISIS DE GASTOS (Compras y analisis de gastos): todos los egresos del sistema, los realizados (lo
   // mismo que alimenta el Calendario) y lo que viene (Pagos programados). Ver domain/analisisGastos.

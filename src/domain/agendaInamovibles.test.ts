@@ -179,3 +179,21 @@ describe("agendaInamovibles · cheques entregados", () => {
     expect(pagosAReclamar(a).some((i) => i.origen === "cheque")).toBe(false);
   });
 });
+
+describe("agendaInamovibles · lo pagado no desaparece", () => {
+  it("la cuota pagada y la factura pagada quedan en su fecha, como pagadas (tachadas)", () => {
+    const f = vacio();
+    f.debtPlans = [{
+      id: 9, company: "BGA", concept: "Prestamo", nextInstallmentAmount: 100, remainingInstallments: 2, nextDueDate: "2026-10-10", active: true,
+      cuotas: [
+        { id: "c1", numero: 1, fecha: "2026-10-10", monto: 100, pagoCostEntryId: 55 } as any,
+        { id: "c2", numero: 2, fecha: "2026-11-10", monto: 100 } as any,
+      ],
+    }];
+    f.facturasPagadas = [{ id: 3, company: "BGA", supplier: "DAC", invoiceNumber: "A-1", total: 500, fechaPago: "2026-10-15", fechaElegida: true, administration: "blanco" }];
+    const a = agendaInamovibles(f, ...RANGO, HOY);
+    expect(a.find((i) => i.clave === "deuda:9:2026-10-10")).toMatchObject({ pagado: true, estado: "pagado", pagadoComo: "pagada en Desendeudamiento" });
+    expect(a.find((i) => i.clave === "deuda:9:2026-11-10")).toMatchObject({ pagado: false, detalle: "cuota 2 · 1 de 1 que quedan" });
+    expect(a.find((i) => i.clave === "factura:3")).toMatchObject({ pagado: true, origen: "factura" });
+  });
+});

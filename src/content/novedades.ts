@@ -21,6 +21,12 @@ export const NOVEDADES: TandaNovedades[] = [
     titulo: "Cheques entregados en Pagos programados",
     items: [
       {
+        titulo: "Lo pagado queda tachado en Pagos programados",
+        que: "Las facturas de proveedores y las cuotas de deudas ya no desaparecen del calendario al pagarlas: quedan en su fecha, tachadas, para saber que ya se pagaron.",
+        como: "Cash flow → Pagos programados: lo tachado ya está pagado.",
+        tab: "calendarioAnual",
+      },
+      {
         titulo: "Los cheques entregados figuran en Pagos programados",
         que: "Cada pago cargado con medio 'cheque' aparece en el calendario de Pagos programados como INAMOVIBLE el día que se debita: el pago ya está hecho, pero ese día tiene que haber plata en la cuenta. Avisa como el resto ('faltan N días'). Queda cubierto cuando el débito cae en el banco (conciliado) o cuando pasa la fecha. En el cash flow no se suma dos veces: sigue figurando una sola vez, por su pago.",
         como: "Cash flow → Pagos programados: los cheques salen como 'Cheque a <proveedor>'. Click derecho → 'Ir al origen' abre el pago.",
