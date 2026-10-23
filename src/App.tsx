@@ -17220,6 +17220,21 @@ Escribi CERRAR para confirmar:`
         ),
         sueldos,
         facturas: facturasAPagar,
+        // Cheques entregados (pagos con medio cheque): inamovibles el dia que se debitan. Cubiertos cuando el
+        // debito queda conciliado con el banco o pasa la fecha.
+        cheques: costEntries
+          .filter((c) => c.paymentMethod === "cheque" && canAccessCompany(c.company) && Number(c.amount || 0) > 0)
+          .map((c) => ({
+            id: c.id,
+            company: String(c.company),
+            date: c.date,
+            amount: Number(c.amount || 0),
+            supplier: c.supplier || c.description || "",
+            administration: c.administration,
+            conceptKey: c.conceptKey,
+            cobrado: c.bankEntryId != null,
+            detalle: [c.invoiceRef ? `factura ${c.invoiceRef}` : "", c.description && c.description !== c.supplier ? c.description : "", "pago ya hecho: ese día se debita, tiene que haber plata"].filter(Boolean).join(" · "),
+          })),
         real: realPorRenglon,
         pagadoAntesDe: PUESTA_AL_DIA_PAGADO_ANTES_DE,
       },
@@ -17227,7 +17242,7 @@ Escribi CERRAR para confirmar:`
       hasta,
       hoyIso
     );
-  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar]);
+  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries]);
 
   // ANALISIS DE GASTOS (Compras y analisis de gastos): todos los egresos del sistema, los realizados (lo
   // mismo que alimenta el Calendario) y lo que viene (Pagos programados). Ver domain/analisisGastos.
@@ -17235,7 +17250,8 @@ Escribi CERRAR para confirmar:`
     () =>
       [
         ...cashFlowEntriesPlanilla.map((e: any) => egresoDeEntrada(e as any)),
-        ...agendaInamoviblesItems.map((p) => egresoDePrevisto(p as any)),
+        // El cheque entregado ya es un pago cargado (esta en las entradas): no se suma otra vez.
+        ...agendaInamoviblesItems.filter((p) => p.origen !== "cheque").map((p) => egresoDePrevisto(p as any)),
       ].filter((e): e is Egreso => !!e),
     [cashFlowEntriesPlanilla, agendaInamoviblesItems]
   );
@@ -17297,7 +17313,7 @@ Escribi CERRAR para confirmar:`
           };
         });
       // Pagos: todo lo de Pagos programados sin pagar (facturas, cuotas, tarjetas, seguros, haberes, a mano).
-      const ORIGEN: Record<string, string> = { manual: "A mano", deuda: "Cuota", tarjeta: "Tarjeta", cashflow: "Cash flow", seguro: "Seguro", sueldos: "Haberes", factura: "Factura" };
+      const ORIGEN: Record<string, string> = { manual: "A mano", deuda: "Cuota", tarjeta: "Tarjeta", cashflow: "Cash flow", seguro: "Seguro", sueldos: "Haberes", factura: "Factura", cheque: "Cheque entregado" };
       const pagos = agendaInamoviblesItems
         .filter((i) => String(i.company) === company && !i.pagado)
         .map((i) => ({
@@ -17524,7 +17540,8 @@ Escribi CERRAR para confirmar:`
         desde,
         hasta
       ),
-      ...programadosEnRenglones(agendaInamoviblesItems, filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
+      // El cheque entregado ya figura en la planilla por su pago: no se dibuja otra prevision encima.
+      ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => i.origen !== "cheque"), filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
       // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
     ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
   }, [segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans]);
@@ -17604,6 +17621,7 @@ Escribi CERRAR para confirmar:`
       seguro: "seguros",
       sueldos: "personal",
       factura: "compras",
+      cheque: "costos",
     };
     const tab = destino[item.origen];
     if (tab) setActiveTab(tab);

@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-23b",
+    fecha: "23/10/2026",
+    titulo: "Cheques entregados en Pagos programados",
+    items: [
+      {
+        titulo: "Los cheques entregados figuran en Pagos programados",
+        que: "Cada pago cargado con medio 'cheque' aparece en el calendario de Pagos programados como INAMOVIBLE el día que se debita: el pago ya está hecho, pero ese día tiene que haber plata en la cuenta. Avisa como el resto ('faltan N días'). Queda cubierto cuando el débito cae en el banco (conciliado) o cuando pasa la fecha. En el cash flow no se suma dos veces: sigue figurando una sola vez, por su pago.",
+        como: "Cash flow → Pagos programados: los cheques salen como 'Cheque a <proveedor>'. Click derecho → 'Ir al origen' abre el pago.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-23",
     fecha: "23/10/2026",
     titulo: "Fabricación reordenada y compras pendientes por trabajo",

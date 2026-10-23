@@ -16,7 +16,7 @@ import {
 } from "./vencimientos";
 
 import { cuotasPendientes, type CuotaDeuda } from "./desendeudamiento";
-export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos" | "factura";
+export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos" | "factura" | "cheque";
 
 export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
   manual: "Vencimiento",
@@ -26,6 +26,7 @@ export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
   seguro: "Seguro",
   sueldos: "Sueldos",
   factura: "Factura de proveedor",
+  cheque: "Cheque entregado",
 };
 
 // Marca sobre un pago de la agenda: "pagado" (para los origenes que no tienen el suyo), REPROGRAMADO a
@@ -147,6 +148,9 @@ export type FuentesInamovibles = {
   sueldos: Array<{ company: string; periodo: string; fecha: string; monto: number; clave?: string; titulo?: string }>;
   // Facturas de proveedores SIN pagar con fecha de pago (elegida o por la condicion del proveedor).
   facturas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
+  // CHEQUES ENTREGADOS (Nicolas, 2026-10-23): "el pago ya se hizo, pero ese dia tengo que tener la plata para
+  // que el cheque se pueda cobrar". Son los pagos con medio cheque: su fecha es la del cobro (el debito).
+  cheques?: Array<{ id: number; company: string; date: string; amount: number; supplier: string; administration: "blanco" | "negro"; conceptKey?: string; cobrado: boolean; detalle?: string }>;
   real: RealPorRenglonMes;
   // PUESTA AL DIA (Nicolas, 2026-10-20): lo que vence ANTES de esta fecha y sigue sin pagar se da por pagado
   // ("todo lo vencido antes del 1/10 figure como pagado"). Ausente = no se aplica.
@@ -360,6 +364,38 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             avisoDias: AVISO_DEFAULT,
             pagado: marcado.has(clave),
             pagadoComo: marcado.has(clave) ? "a mano" : "",
+          },
+          hoy
+        )
+      );
+    });
+
+  // 8. Cheques entregados: INAMOVIBLES siempre (el pago ya esta hecho, no se puede mover). Quedan cubiertos
+  // cuando el debito cae en el banco (conciliado) o, si no se concilio, cuando paso su fecha.
+  (f.cheques || [])
+    .filter((x) => enRango(x.date))
+    .forEach((x) => {
+      const clave = `cheque:${x.id}`;
+      const cobrado = x.cobrado || x.date < hoy;
+      out.push(
+        conEstado(
+          {
+            clave,
+            origen: "cheque",
+            refId: x.id,
+            company: x.company,
+            titulo: `Cheque a ${x.supplier || "proveedor"}`,
+            detalle: x.detalle || "Pago ya hecho: ese día se debita, tiene que haber plata en la cuenta",
+            ventanaDesde: x.date,
+            fechaLimite: x.date,
+            monto: Number(x.amount || 0),
+            currency: "ARS",
+            administration: x.administration,
+            conceptKey: x.conceptKey,
+            avisoDias: AVISO_DEFAULT,
+            pagado: cobrado || marcado.has(clave),
+            pagadoComo: x.cobrado ? "cayó en el banco" : cobrado ? "se debitó (fecha pasada)" : marcado.has(clave) ? "a mano" : "",
+            estadoPago: "inamovible",
           },
           hoy
         )

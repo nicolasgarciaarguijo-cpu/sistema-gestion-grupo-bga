@@ -161,3 +161,21 @@ describe("puesta al dia (2026-10-20)", () => {
     expect(master.estado).toBe("vencido");
   });
 });
+
+describe("agendaInamovibles · cheques entregados", () => {
+  it("el cheque es inamovible el dia que se debita; cubierto si cayo en el banco o paso la fecha", () => {
+    const f = vacio();
+    const base = { company: "BGA", supplier: "DAC", administration: "blanco" as const };
+    f.cheques = [
+      { ...base, id: 1, date: "2026-10-20", amount: 1500000, cobrado: false },
+      { ...base, id: 2, date: "2026-10-05", amount: 800000, cobrado: false },
+      { ...base, id: 3, date: "2026-10-09", amount: 700000, cobrado: true },
+    ];
+    const a = agendaInamovibles(f, ...RANGO, HOY);
+    const c1 = a.find((i) => i.clave === "cheque:1")!;
+    expect(c1).toMatchObject({ origen: "cheque", titulo: "Cheque a DAC", estadoPago: "inamovible", pagado: false, texto: "Faltan 12 días" });
+    expect(a.find((i) => i.clave === "cheque:2")).toMatchObject({ pagado: true, pagadoComo: "se debitó (fecha pasada)" });
+    expect(a.find((i) => i.clave === "cheque:3")).toMatchObject({ pagado: true, pagadoComo: "cayó en el banco" });
+    expect(pagosAReclamar(a).some((i) => i.origen === "cheque")).toBe(false);
+  });
+});
