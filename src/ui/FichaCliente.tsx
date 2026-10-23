@@ -45,7 +45,7 @@ export function FichaCliente({
   React.useEffect(() => {
     setBorrador(cliente);
     setEditando(false);
-  }, [cliente.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [cliente.id]);
 
   const caja: React.CSSProperties = { background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "10px 12px" };
   const titulo: React.CSSProperties = { fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 6 };
