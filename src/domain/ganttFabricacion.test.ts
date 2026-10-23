@@ -3,6 +3,9 @@ import {
   cantidadDelRubro,
   cantidadesCotizadas,
   cargaPorDia,
+  diasRestantes,
+  fechaLimiteCompra,
+  nivelDias,
   duracionDelRubro,
   estadoDelPlan,
   finSugerido,
@@ -76,5 +79,31 @@ describe("gantt de fabricacion", () => {
     expect(carga.get("2026-10-23")).toBe(2);
     expect(carga.get("2026-10-24")).toBeUndefined();
     expect(carga.get("2026-10-26")).toBe(3);
+  });
+});
+
+describe("compras pendientes por trabajo", () => {
+  it("la fecha limite es el primer rubro del Gantt sin hacer; si no, el inicio o la fecha maxima", () => {
+    const plan = {
+      id: 1, company: "BGA", jobId: 1,
+      rubros: [
+        { rubroId: 1, desde: "2026-10-20", hecho: true },
+        { rubroId: 5, desde: "2026-10-28" },
+        { rubroId: 2, desde: "2026-10-26" },
+      ],
+    };
+    expect(fechaLimiteCompra({ startDate: "2026-10-30" }, plan, RUBROS_POR_DEFECTO)).toEqual({ fecha: "2026-10-26", origen: "arranca Placas enchapadas (Gantt)" });
+    expect(fechaLimiteCompra({ startDate: "2026-10-30" }, undefined, RUBROS_POR_DEFECTO)?.origen).toBe("inicio del trabajo");
+    expect(fechaLimiteCompra({ maxRequirementDate: "2026-11-05" }, undefined, RUBROS_POR_DEFECTO)?.fecha).toBe("2026-11-05");
+    expect(fechaLimiteCompra({}, undefined, RUBROS_POR_DEFECTO)).toBeNull();
+  });
+
+  it("dias restantes y su color", () => {
+    expect(diasRestantes("2026-10-26", "2026-10-23")).toBe(3);
+    expect(diasRestantes("2026-10-20", "2026-10-23")).toBe(-3);
+    expect(nivelDias(3)).toBe("rojo");
+    expect(nivelDias(6)).toBe("amarillo");
+    expect(nivelDias(15)).toBe("verde");
+    expect(nivelDias(null)).toBe("gris");
   });
 });

@@ -169,3 +169,37 @@ export function cargaPorDia(planes: PlanFabricacion[], feriados?: Set<string>): 
   );
   return carga;
 }
+
+// ---- Compras pendientes por trabajo (Nicolas, 2026-10-23) ------------------------------------------
+// "Las compras pendientes para fabricacion en la ficha de cada trabajo y el reporte en Compras, separado
+// por trabajo, vinculado con los bloques de fabricacion para tener el contador de dias restantes."
+// La fecha limite para tener el material es el PRIMER rubro del Gantt que arranca (sin hacer); si el
+// trabajo todavia no esta planificado, la fecha de inicio del trabajo; si tampoco, la fecha maxima de
+// requerimiento del presupuesto.
+export type FechaLimiteCompra = { fecha: string; origen: string } | null;
+export function fechaLimiteCompra(
+  job: { startDate?: string; maxRequirementDate?: string },
+  plan: PlanFabricacion | undefined,
+  rubros: RubroFabricacion[]
+): FechaLimiteCompra {
+  const primero = (plan?.rubros || [])
+    .filter((r) => r.desde && !r.hecho)
+    .sort((a, b) => String(a.desde).localeCompare(String(b.desde)))[0];
+  if (primero?.desde) {
+    const nombre = rubros.find((r) => r.id === primero.rubroId)?.nombre || "rubro";
+    return { fecha: primero.desde, origen: `arranca ${nombre} (Gantt)` };
+  }
+  if (job.startDate) return { fecha: job.startDate, origen: "inicio del trabajo" };
+  if (job.maxRequirementDate) return { fecha: job.maxRequirementDate, origen: "fecha máxima del presupuesto" };
+  return null;
+}
+
+// Dias corridos de hoy a la fecha (negativo = vencida).
+export function diasRestantes(fecha: string, hoyIso: string): number {
+  const a = new Date(`${hoyIso}T12:00:00`).getTime();
+  const b = new Date(`${fecha}T12:00:00`).getTime();
+  return Math.round((b - a) / 86400000);
+}
+
+export const nivelDias = (dias: number | null): "rojo" | "amarillo" | "verde" | "gris" =>
+  dias == null ? "gris" : dias <= 3 ? "rojo" : dias <= 7 ? "amarillo" : "verde";

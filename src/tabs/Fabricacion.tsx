@@ -42,6 +42,10 @@ type FabricacionTabProps = {
 
 // Oculto POR EL MOMENTO y SOLO en esta solapa (regla de Nicolas: "oculto" es por solapa).
 const MOSTRAR_ESTADO_STOCK: boolean = false;
+// Reemplazados por la Organizacion diaria y el Gantt de fabricacion (Nicolas, 2026-10-23): el semaforo de
+// fabricacion, el calendario de fabricacion y entregas y el avance con fechas limite de compra. Las compras
+// pendientes pasaron a la ficha de cada trabajo y a Compras (ver ui/ComprasPendientesTrabajo).
+const MOSTRAR_BLOQUES_VIEJOS: boolean = false;
 
 export function FabricacionTab({
   stockSemaphoreSummary,
@@ -112,6 +116,7 @@ export function FabricacionTab({
 
   return (
         <div style={styles.column}>
+          {MOSTRAR_BLOQUES_VIEJOS && (
           <Panel span="wide" title="Semaforo de fabricacion">
             <SemaforoResumen
               items={[
@@ -132,6 +137,7 @@ export function FabricacionTab({
               </div>
             </div>
           </Panel>
+          )}
 
           <Panel
             title="Tablero general de fabricacion"
@@ -156,6 +162,7 @@ export function FabricacionTab({
             </div>
           </Panel>
 
+          {MOSTRAR_BLOQUES_VIEJOS && (<>
           <Panel
             title="Calendario de fabricacion y entregas"
             span="full"
@@ -567,6 +574,7 @@ export function FabricacionTab({
               </div>
             )}
           </Panel>
+          </>)}
 
           {/* Nicolas lo pidio oculto POR EL MOMENTO (2026-08-27), solo en esta solapa. */}
           {MOSTRAR_ESTADO_STOCK && (

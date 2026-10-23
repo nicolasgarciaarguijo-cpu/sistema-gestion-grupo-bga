@@ -231,7 +231,8 @@ import { resumirMaterialesDelTrabajo } from "./domain/jobMaterials";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
 import { GanttFabricacion } from "./tabs/GanttFabricacion";
-import { RUBROS_POR_DEFECTO, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
+import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
+import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
@@ -7943,13 +7944,25 @@ Escribi CERRAR para confirmar:`
   // fecha de inicio (ver domain/materialNeeds). Complementa a stockNeedRows, que consolida por
   // material: los faltantes de ambas vistas suman igual. Un trabajo finalizado no tiene faltantes
   // ni compite por stock: si se termino, el material se consiguio de algun lado.
+  // Fecha para la que cada trabajo necesita el material: el primer rubro del Gantt de fabricacion que arranca
+  // (si no esta planificado, el inicio del trabajo o la fecha maxima del presupuesto).
+  const fechaLimiteCompraById = useMemo(() => {
+    const rubrosGantt = rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO;
+    const m = new Map<number, ReturnType<typeof fechaLimiteCompra>>();
+    approvedJobsSummary.forEach((job) =>
+      m.set(job.id, fechaLimiteCompra(job, planesFabricacion.find((p) => p.jobId === job.id), rubrosGantt))
+    );
+    return m;
+  }, [approvedJobsSummary, planesFabricacion, rubrosFabricacion]);
+
   const jobMaterialNeedById = useMemo(() => {
     const needs = allocateMaterialNeeds(
       approvedJobsSummary
         .filter((job) => job.executionStatus !== "finalizado")
         .map((job) => ({
           id: job.id,
-          startDate: job.startDate || "",
+          // El stock se reparte primero a los que lo necesitan antes (segun el Gantt).
+          startDate: fechaLimiteCompraById.get(job.id)?.fecha || job.startDate || "",
           materials: job.snapshot.materials.map((material) => {
             const stockMatch = matchStockForMaterial(material, stockByCode, stockByDescription);
             return {
@@ -7966,7 +7979,31 @@ Escribi CERRAR para confirmar:`
     const map = new Map<number, JobMaterialNeed>();
     needs.forEach((need) => map.set(need.jobId, need));
     return map;
-  }, [approvedJobsSummary, stockByCode, stockByDescription]);
+  }, [approvedJobsSummary, stockByCode, stockByDescription, fechaLimiteCompraById]);
+
+  // COMPRAS PENDIENTES POR TRABAJO (Nicolas, 2026-10-23): en la ficha del trabajo y como reporte en Compras,
+  // con el contador de dias que quedan hasta que arranca su fabricacion. Los mas urgentes primero.
+  const comprasPendientesPorTrabajo = useMemo<CompraPendienteTrabajo[]>(() => {
+    const hoy = todayIso();
+    return approvedJobsSummary
+      .filter((job) => job.executionStatus !== "finalizado")
+      .map((job) => {
+        const need = jobMaterialNeedById.get(job.id);
+        const limite = fechaLimiteCompraById.get(job.id) || null;
+        return {
+          jobId: job.id,
+          company: job.company,
+          budgetNumber: job.budgetNumber,
+          client: job.client,
+          faltantes: need?.missingRows ?? [],
+          estimado: need?.estimatedCost ?? 0,
+          limite,
+          dias: limite ? diasRestantes(limite.fecha, hoy) : null,
+        };
+      })
+      .sort((a, b) => (a.dias ?? 99999) - (b.dias ?? 99999) || a.budgetNumber.localeCompare(b.budgetNumber));
+  }, [approvedJobsSummary, jobMaterialNeedById, fechaLimiteCompraById]);
+  const [verTodosConCompra, setVerTodosConCompra] = useState(false);
 
   const purchaseCalendarRows = useMemo(
     () =>
@@ -20733,6 +20770,45 @@ Escribi CERRAR para confirmar:`
           uploadPurchaseInvoiceFile={uploadPurchaseInvoiceFile}
           onAbrirFichaProveedor={abrirFichaProveedor}
           facturasSlot={vista === "compras" ? renderFacturasCompra() : undefined}
+          comprasFabricacionSlot={
+            vista === "compras" ? (
+              <Panel
+                span="full"
+                title="Compras pendientes para fabricación (por trabajo)"
+                actions={
+                  <label style={{ fontSize: 12.5, display: "inline-flex", gap: 5, alignItems: "center", cursor: "pointer" }}>
+                    <input type="checkbox" checked={verTodosConCompra} onChange={(e) => setVerTodosConCompra(e.target.checked)} />
+                    Ver también los que ya tienen todo
+                  </label>
+                }
+              >
+                <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
+                  Una ficha por trabajo, la más urgente primero. Los días cuentan hasta que arranca su fabricación en el Gantt (o, si no está planificado, hasta el inicio del trabajo). El stock se reparte primero a los que arrancan antes.
+                </div>
+                {(() => {
+                  const lista = comprasPendientesPorTrabajo.filter((c) => verTodosConCompra || c.faltantes.length > 0);
+                  if (!lista.length) return <div style={{ fontSize: 13, color: "#166534", fontWeight: 700 }}>✓ No hay compras pendientes para los trabajos en fabricación.</div>;
+                  return (
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {lista.map((c) => (
+                        <ComprasPendientesTrabajo
+                          key={c.jobId}
+                          c={c}
+                          money={money}
+                          companyShort={(co) => getCompanyMeta(co as CompanyName).short}
+                          onAbrirTrabajo={(jobId) => {
+                            setSelectedApprovedJobId(jobId);
+                            setActiveTab("aprobados" as TabKey);
+                          }}
+                          onIrAFabricacion={() => setActiveTab("fabricacion" as TabKey)}
+                        />
+                      ))}
+                    </div>
+                  );
+                })()}
+              </Panel>
+            ) : undefined
+          }
           costosSlot={vista === "compras" ? <>{renderCostos("composicion")}{renderCostos("grupos")}</> : undefined}
           analisisSlot={
             <AnalisisGastos
@@ -22627,6 +22703,20 @@ Escribi CERRAR para confirmar:`
           exportPaymentReceipt={exportPaymentReceipt}
           onClientSummary={openJobClientSummary}
           onMaterialsSummary={openJobMaterialsSummary}
+          comprasDelTrabajo={(job: any) => {
+            const c = comprasPendientesPorTrabajo.find((x) => x.jobId === job.id);
+            if (!c) return null;
+            return (
+              <div style={{ margin: "10px 0" }}>
+                <ComprasPendientesTrabajo
+                  c={c}
+                  money={money}
+                  mostrarEncabezado={false}
+                  onIrAFabricacion={() => setActiveTab("fabricacion" as TabKey)}
+                />
+              </div>
+            );
+          }}
           remitosDelTrabajo={(job: any) =>
             renderRemitosPanel({
               titulo: "Remitos del trabajo",
@@ -22779,7 +22869,6 @@ Escribi CERRAR para confirmar:`
           nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
         />
       )}
-      {activeTab === "fabricacion" && renderCompras("fabricacion")}
 
       {activeTab === "stock" && (
         <StockTab

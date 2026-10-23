@@ -70,6 +70,8 @@ type ComprasTabProps = {
   uploadPurchaseInvoiceFile: (invoiceId: number, file: File | null) => void;
   // Analisis de gastos (todos los egresos del sistema): va arriba de todo.
   analisisSlot?: React.ReactNode;
+  // Reporte de compras pendientes para fabricacion, una ficha por trabajo con sus dias restantes.
+  comprasFabricacionSlot?: React.ReactNode;
   // Que bloques se dibujan (Nicolas, 2026-10-14): la solapa Compras, o los bloques que se mudaron a
   // Fabricacion (semaforo y pendientes) y a Caja chica y viaticos (deuda con la gente).
   vista?: "compras" | "fabricacion" | "cajaChica";
@@ -109,6 +111,7 @@ export function ComprasTab({
   updatePurchaseInvoice,
   uploadPurchaseInvoiceFile,
   analisisSlot,
+  comprasFabricacionSlot,
   onAbrirFichaProveedor,
   vista = "compras",
   facturasSlot,
@@ -189,6 +192,7 @@ export function ComprasTab({
           </datalist>
 
           {vista === "compras" && analisisSlot}
+          {vista === "compras" && comprasFabricacionSlot}
 
           {vista === "fabricacion" && (
           <Panel span="wide" title="Semaforo de compras">

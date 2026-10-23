@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-23",
+    fecha: "23/10/2026",
+    titulo: "Fabricación reordenada y compras pendientes por trabajo",
+    items: [
+      {
+        titulo: "Fabricación: Organización diaria y Gantt reemplazan a los bloques viejos",
+        que: "Ya no están el semáforo de fabricación, el calendario de fabricación y entregas, el avance con fechas límite de compra ni el semáforo de compras: los reemplazan la Organización diaria y el Gantt de fabricación.",
+        como: "Fabricación: arriba el tablero general; después Organización diaria y Gantt de fabricación.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Compras pendientes en la ficha de cada trabajo",
+        que: "La ficha de cada trabajo aprobado muestra qué materiales faltan comprar para fabricarlo, con un contador de días: cuenta hasta que arranca su primer rubro en el Gantt (si no está planificado, hasta el inicio del trabajo). Rojo con 3 días o menos, amarillo hasta 7.",
+        como: "Trabajos aprobados → abrí un trabajo: bloque 'Compras pendientes para fabricación'.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Reporte en Compras, separado por trabajo",
+        que: "En Compras hay una ficha por trabajo con sus faltantes, el estimado y los días que quedan, la más urgente primero. El stock se reparte primero a los trabajos que arrancan antes en el Gantt.",
+        como: "Compras → 'Compras pendientes para fabricación (por trabajo)'. Desde cada ficha se abre el trabajo o el Gantt.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-10-22b",
     fecha: "22/10/2026",
     titulo: "Gantt de fabricación",

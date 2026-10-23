@@ -129,6 +129,8 @@ type AprobadosTabProps = {
   onMaterialsSummary: (job: any) => void;
   // Fase 5: remitos del trabajo (salidas de stock y entregas al cliente).
   remitosDelTrabajo?: (job: any) => React.ReactNode;
+  // Compras pendientes para fabricacion de este trabajo, con los dias que quedan (ver ui/ComprasPendientesTrabajo).
+  comprasDelTrabajo?: (job: any) => React.ReactNode;
 };
 
 // Bloques que Nicolas pidio ocultar POR EL MOMENTO (2026-08-27). Se dejan en el codigo, no se
@@ -188,6 +190,7 @@ export function AprobadosTab({
   onClientSummary,
   onMaterialsSummary,
   remitosDelTrabajo,
+  comprasDelTrabajo,
   onBorrarTrabajo,
 }: AprobadosTabProps) {
   // Menú contextual (click derecho) del cliente: resumen económico (falta facturar/cobrar/comisión).
@@ -1038,6 +1041,8 @@ export function AprobadosTab({
                   <SummaryRow label="Comision pendiente" value={money(selectedApprovedJob.commissionPending)} strong tone="out" />
                 </Panel>
               </div>
+
+              {comprasDelTrabajo && comprasDelTrabajo(selectedApprovedJob)}
 
               {remitosDelTrabajo && remitosDelTrabajo(selectedApprovedJob)}
 
