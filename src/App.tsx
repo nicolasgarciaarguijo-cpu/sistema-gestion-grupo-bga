@@ -13361,6 +13361,11 @@ Escribi CERRAR para confirmar:`
   };
   // Asignar el pago de una cuota: uno nuevo (un pago a proveedor, al acreedor, en el grupo de la deuda)
   // o uno ya cargado. Ese pago es el que llega al cash flow.
+  // La tarjeta de un pago (debito o credito) y, si es de credito, sus cuotas.
+  const datosTarjeta = (f: { metodo: string; administration: string; tarjetaId?: number; cuotas?: number }) =>
+    f.administration !== "negro" && (f.metodo === "tarjeta_credito" || f.metodo === "tarjeta_debito")
+      ? { tarjetaId: f.tarjetaId, cuotasTarjeta: f.metodo === "tarjeta_credito" ? Math.max(1, Number(f.cuotas) || 1) : undefined }
+      : { tarjetaId: undefined, cuotasTarjeta: undefined };
   const registrarPagoCuota = (deudaId: number, cuotaId: string, f: PagoCuotaForm) => {
     const d = debtPlans.find((x) => x.id === deudaId);
     if (!d) return;
@@ -13384,6 +13389,7 @@ Escribi CERRAR para confirmar:`
         supplier: d.acreedor || d.concept,
         notes: "Pago de cuota (Desendeudamiento)",
         paymentMethod: f.metodo,
+        ...datosTarjeta(f),
         antesDeApertura: decidirAntesDeApertura(undefined, f.cuentaId, f.fecha, Number(f.monto) || 0, `El pago de la cuota ${cuota.numero}`),
         ...firma(),
       };
@@ -16632,6 +16638,13 @@ Escribi CERRAR para confirmar:`
       null
     );
   };
+  // Las tarjetas de Bancos y tarjetas, con la cuenta del banco que las respalda (para elegir en cada pago).
+  const tarjetasParaPagar = visibleCreditCards
+    .filter((c) => c.active !== false)
+    .map((c) => {
+      const cuenta = cuentaDelBanco(String(c.company), c.bank, "ARS");
+      return { id: c.id, name: c.name, company: String(c.company), bank: c.bank || "", cuentaId: cuenta?.id, cuentaNombre: cuenta?.nombre };
+    });
   // COMPRAS CON TARJETA (2026-10-23): cada cuota en su resumen (domain/controlTarjetas).
   const comprasConTarjeta = useMemo(
     () =>
@@ -17216,6 +17229,8 @@ Escribi CERRAR para confirmar:`
       monto: Number(c.amount || 0),
       metodo: (c.paymentMethod as any) || "transferencia",
       cuentaId: c.cuentaId,
+      tarjetaId: c.tarjetaId,
+      cuotas: c.cuotasTarjeta,
       administration: c.administration === "negro" ? "negro" : "blanco",
       pagadoPor: c.pagadoPor,
       notas: c.notes || "",
@@ -17243,6 +17258,7 @@ Escribi CERRAR para confirmar:`
                 amount: Number(f.monto) || 0,
                 paymentMethod: f.metodo,
                 cuentaId: f.cuentaId,
+                ...datosTarjeta(f),
                 administration: f.administration,
                 notes: f.notas || "",
                 pagadoPor: f.metodo === "efectivo" && f.administration === "negro" ? f.pagadoPor || undefined : undefined,
@@ -17262,6 +17278,7 @@ Escribi CERRAR para confirmar:`
         amount: Number(f.monto) || 0,
         paymentMethod: f.metodo,
         cuentaId: f.cuentaId,
+        ...datosTarjeta(f),
         administration: f.administration,
         supplier: f.supplier,
         supplierId: prov?.id,
@@ -20368,7 +20385,7 @@ Escribi CERRAR para confirmar:`
         paymentMethod: (pg.administration === "negro" ? "efectivo" : pg.metodo) as PaymentMethod,
         cuentaId: pg.cuentaId,
         // Tarjeta de credito: cual y en cuantas cuotas (descuenta del banco el dia del resumen).
-        tarjetaId: pg.administration !== "negro" && pg.metodo === "tarjeta_credito" ? pg.tarjetaId : undefined,
+        tarjetaId: pg.administration !== "negro" && (pg.metodo === "tarjeta_credito" || pg.metodo === "tarjeta_debito") ? pg.tarjetaId : undefined,
         cuotasTarjeta: pg.administration !== "negro" && pg.metodo === "tarjeta_credito" ? Math.max(1, Number(pg.cuotas) || 1) : undefined,
         administration: pg.administration,
         supplier: f.supplier,
@@ -21895,7 +21912,7 @@ Escribi CERRAR para confirmar:`
       )}
       {facturaModal && (
         <FacturaCompraModal
-          tarjetas={visibleCreditCards.filter((c) => c.active !== false).map((c) => ({ id: c.id, name: c.name, company: String(c.company), cuentaId: cuentaDelBanco(String(c.company), c.bank, "ARS")?.id }))}
+          tarjetas={tarjetasParaPagar}
           key={facturaModal.id || "nueva"}
           personas={visibleEmployees
             .filter((e) => !isEmployeeTerminated(e))
@@ -22195,6 +22212,7 @@ Escribi CERRAR para confirmar:`
           inicial={pagoACuentaModal}
           companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
           cuentas={cuentasSistema as any}
+          tarjetas={tarjetasParaPagar}
           personas={visibleEmployees.filter((e) => !isEmployeeTerminated(e)).map((e) => String(e.name || "").trim()).filter(Boolean).sort((a, b) => a.localeCompare(b))}
           money={money}
           onGuardar={guardarPagoACuenta}
@@ -22408,6 +22426,7 @@ Escribi CERRAR para confirmar:`
               }));
           }}
           esProveedor={(acreedor) => !!buscarProveedor(suppliers as any, acreedor || "", "")}
+          tarjetas={tarjetasParaPagar}
           onAbrirProveedor={(acreedor) => {
             const prov = buscarProveedor(suppliers as any, acreedor || "", "") as any;
             if (prov) abrirFichaProveedor(prov.name, prov.taxId || "");

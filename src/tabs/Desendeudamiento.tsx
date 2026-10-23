@@ -22,6 +22,7 @@ import {
 } from "../domain/desendeudamiento";
 
 import NumInput from "../ui/NumInput";
+import { SelectorTarjeta, type TarjetaOpt } from "../ui/SelectorTarjeta";
 import { OPCIONES_MEDIO_PAGO } from "../domain/types";
 export type PagoCuotaForm = {
   modo: "nuevo" | "vincular";
@@ -31,6 +32,8 @@ export type PagoCuotaForm = {
   cuentaId?: string;
   administration: "blanco" | "negro";
   costEntryId?: number;
+  tarjetaId?: number;
+  cuotas?: number;
 };
 
 export type OtraDeuda = { titulo: string; company: string; monto: number; detalle: string; tab: string };
@@ -66,8 +69,10 @@ export function DesendeudamientoTab({
   facturasDelAcreedor,
   esProveedor,
   onAbrirProveedor,
+  tarjetas = [],
   onIr,
 }: {
+  tarjetas?: TarjetaOpt[];
   deudas: DebtPlan[];
   hoy: string;
   companyOptions: Array<{ value: string; label?: string; short?: string }>;
@@ -759,6 +764,20 @@ export function DesendeudamientoTab({
                     ))}
                   </select>
                 </label>
+                {pago.form.administration !== "negro" && (
+                  <SelectorTarjeta
+                    tarjetas={tarjetas}
+                    company={pago.deuda.company}
+                    metodo={pago.form.metodo}
+                    tarjetaId={pago.form.tarjetaId}
+                    cuotas={pago.form.cuotas}
+                    labelStyle={lbl}
+                    inputStyle={input}
+                    onChange={(x) =>
+                      setPago({ ...pago, form: { ...pago.form, ...("tarjetaId" in x ? { tarjetaId: x.tarjetaId } : {}), ...(x.cuentaId ? { cuentaId: x.cuentaId } : {}), ...(x.cuotas ? { cuotas: x.cuotas } : {}) } })
+                    }
+                  />
+                )}
                 <label style={lbl}>De qué cuenta
                   <select style={{ ...input, ...(pago.form.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={pago.form.cuentaId || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, cuentaId: e.target.value || undefined } })}>
                     <option value="">— Elegí la cuenta —</option>

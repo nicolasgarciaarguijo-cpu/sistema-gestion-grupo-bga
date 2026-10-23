@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-23f",
+    fecha: "23/10/2026",
+    titulo: "Elegir la tarjeta en cada pago",
+    items: [
+      {
+        titulo: "Pago con tarjeta: la lista de tarjetas y el banco solo",
+        que: "En cualquier pago a un proveedor (factura, pago a cuenta o cuota de una deuda), al elegir tarjeta de crédito o de débito aparece la lista de las tarjetas cargadas en Bancos y tarjetas. Al elegir una, la cuenta de donde sale se completa sola con la del banco que respalda la tarjeta (y lo dice debajo). Con crédito, también se cargan las cuotas.",
+        como: "Medio de pago → 'Tarjeta de crédito' o 'Tarjeta de débito' → Tarjeta. Si avisa que no hay cuenta de ese banco, creala en Bancos y tarjetas → Cuentas.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-10-23e",
     fecha: "23/10/2026",
     titulo: "Impuestos del banco y control de tarjetas",

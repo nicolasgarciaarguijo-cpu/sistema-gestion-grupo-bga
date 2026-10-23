@@ -6,6 +6,7 @@ import { FirmanteFijo } from "./FirmanteSelect";
 
 import NumInput from "./NumInput";
 import { OPCIONES_MEDIO_PAGO } from "../domain/types";
+import { SelectorTarjeta, esPagoConTarjeta, type TarjetaOpt } from "./SelectorTarjeta";
 export type PagoACuentaForm = {
   // Si viene, la ventana EDITA ese pago (CostEntry) en vez de crear uno nuevo. aCuenta: si es un pago sin factura.
   id?: number;
@@ -21,6 +22,9 @@ export type PagoACuentaForm = {
   pagadoPor?: string;
   firmante?: string; // lo graba App: el usuario que opera
   notas: string;
+  // Pago con tarjeta: cual (y en cuantas cuotas si es de credito).
+  tarjetaId?: number;
+  cuotas?: number;
 };
 
 const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600 };
@@ -35,7 +39,9 @@ export function PagoACuentaModal({
   onGuardar,
   onCerrar,
   onBorrar,
+  tarjetas = [],
 }: {
+  tarjetas?: TarjetaOpt[];
   inicial: PagoACuentaForm;
   companyOptions: Array<{ value: string; label?: string; short?: string }>;
   cuentas: Array<{ id: string; company: string; nombre: string; moneda?: string; activa?: boolean }>;
@@ -48,7 +54,7 @@ export function PagoACuentaModal({
 }) {
   const [f, setF] = useState<PagoACuentaForm>(inicial);
   const set = (patch: Partial<PagoACuentaForm>) => setF((p) => ({ ...p, ...patch }));
-  const ok = !!f.fecha && Number(f.monto) > 0 && !!f.company && !!f.cuentaId;
+  const ok = !!f.fecha && Number(f.monto) > 0 && !!f.company && !!f.cuentaId && !(esPagoConTarjeta(f.metodo) && f.administration !== "negro" && !f.tarjetaId);
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(640px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
@@ -83,6 +89,18 @@ export function PagoACuentaModal({
               ))}
             </select>
           </label>
+          {f.administration !== "negro" && (
+            <SelectorTarjeta
+              tarjetas={tarjetas}
+              company={f.company}
+              metodo={f.metodo}
+              tarjetaId={f.tarjetaId}
+              cuotas={f.cuotas}
+              labelStyle={lbl}
+              inputStyle={input}
+              onChange={(x) => set({ ...("tarjetaId" in x ? { tarjetaId: x.tarjetaId } : {}), ...(x.cuentaId ? { cuentaId: x.cuentaId } : {}), ...(x.cuotas ? { cuotas: x.cuotas } : {}) })}
+            />
+          )}
           <label style={lbl}>De qué cuenta salió
             <select style={{ ...input, ...(f.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
               <option value="">— Elegí la cuenta —</option>

@@ -8,6 +8,7 @@
 import React, { useMemo, useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 
+import { SelectorTarjeta, esPagoConTarjeta, type TarjetaOpt } from "./SelectorTarjeta";
 import NumInput from "./NumInput";
 
 export type MedioPago = "efectivo" | "transferencia" | "cheque" | "tarjeta_debito" | "tarjeta_credito" | "debito";
@@ -112,7 +113,7 @@ export function FacturaCompraModal({
   personas = [],
 }: {
   // Tarjetas de credito de las empresas (con la cuenta del banco que las paga, si se sabe).
-  tarjetas?: Array<{ id: number; name: string; company: string; cuentaId?: string }>;
+  tarjetas?: TarjetaOpt[];
   inicial: FacturaForm;
   proveedores: ProveedorOpt[];
   cuentas: Array<{ id: string; company: string; nombre: string; moneda?: string; activa?: boolean }>;
@@ -225,7 +226,7 @@ export function FacturaCompraModal({
   if (!(Number(f.total) > 0)) faltan.push("el total");
   if (f.pagos.some((p) => !p.fecha || !(Number(p.monto) > 0))) faltan.push("la fecha y el monto de cada pago");
   if (f.pagos.some((p) => !p.cuentaId)) faltan.push("la cuenta de cada pago");
-  if (f.pagos.some((p) => p.metodo === "tarjeta_credito" && p.administration !== "negro" && !p.tarjetaId)) faltan.push("la tarjeta de cada pago con tarjeta de crédito");
+  if (f.pagos.some((p) => esPagoConTarjeta(p.metodo) && p.administration !== "negro" && !p.tarjetaId)) faltan.push("la tarjeta de cada pago con tarjeta");
   if (!f.porBanco && saldo > 1 && f.saldo.fechaPrevista && !f.saldo.cuentaId) faltan.push("de qué cuenta sale lo que falta");
   if (pagado > Number(f.total || 0) + 1) faltan.push(`que los pagos no pasen el total (sobran ${money(pagado - Number(f.total || 0))})`);
 
@@ -430,28 +431,17 @@ export function FacturaCompraModal({
                       {p.metodo === "debito" && <option value="debito">Débito automático</option>}
                     </select>
                   </label>
-                  {p.metodo === "tarjeta_credito" && p.administration !== "negro" && (
-                    <>
-                      <label style={lbl}>Tarjeta
-                        <select
-                          style={{ ...input, ...(p.tarjetaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }}
-                          value={p.tarjetaId ?? ""}
-                          onChange={(e) => {
-                            const t = tarjetas.find((x) => x.id === Number(e.target.value));
-                            setPagoN(p.key, { tarjetaId: t ? t.id : undefined, ...(t?.cuentaId && !p.cuentaId ? { cuentaId: t.cuentaId } : {}) });
-                          }}
-                        >
-                          <option value="">— Elegí la tarjeta —</option>
-                          {tarjetas.filter((t) => t.company === empresaPaga).map((t) => (
-                            <option key={t.id} value={t.id}>{t.name}</option>
-                          ))}
-                        </select>
-                      </label>
-                      <label style={lbl} title="La compra se carga por el total: el sistema espera una cuota (total ÷ cuotas) en cada resumen">
-                        Cuotas
-                        <NumInput style={input} value={p.cuotas || 1} onChange={(e) => setPagoN(p.key, { cuotas: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} />
-                      </label>
-                    </>
+                  {p.administration !== "negro" && (
+                    <SelectorTarjeta
+                      tarjetas={tarjetas}
+                      company={empresaPaga}
+                      metodo={p.metodo}
+                      tarjetaId={p.tarjetaId}
+                      cuotas={p.cuotas}
+                      labelStyle={lbl}
+                      inputStyle={input}
+                      onChange={(x) => setPagoN(p.key, { ...("tarjetaId" in x ? { tarjetaId: x.tarjetaId } : {}), ...(x.cuentaId ? { cuentaId: x.cuentaId } : {}), ...(x.cuotas ? { cuotas: x.cuotas } : {}) })}
+                    />
                   )}
                   <label style={lbl}>De qué cuenta salió
                     <select style={{ ...input, ...(p.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={p.cuentaId || ""} onChange={(e) => setPagoN(p.key, { cuentaId: e.target.value || undefined })}>
