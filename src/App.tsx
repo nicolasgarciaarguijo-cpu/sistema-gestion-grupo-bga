@@ -67,6 +67,10 @@ import {
 } from "./domain/agendaInamovibles";
 import { allSectionsWith, extraRowsOf } from "./domain/calendarStructure";
 import { PagosInamovibles } from "./tabs/PagosInamovibles";
+import { impuestosDeExtractos, impuestosDeResumenes, type GrupoImpuestos } from "./domain/impuestosBancarios";
+import { controlarResumen, cuotasEsperadas } from "./domain/controlTarjetas";
+import { ImpuestosBancariosPanel } from "./ui/ImpuestosBancariosPanel";
+import { ControlResumenesTarjeta } from "./ui/ControlResumenesTarjeta";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
 import { ReclamoPagosVencidos } from "./ui/ReclamoPagosVencidos";
 import {
@@ -14536,7 +14540,8 @@ Escribi CERRAR para confirmar:`
     const gastos = costEntries
       // Los pagos de haberes son de la ficha de la persona, no de un proveedor. Los pagos al acreedor de un
       // prestamo si cuentan: el prestamo figura como deuda en su cuenta corriente y cada pago la baja.
-      .filter((entry) => canAccessCompany(entry.company) && entry.employeeId == null)
+      // El pago de los impuestos del extracto / la tarjeta tampoco es de un proveedor.
+      .filter((entry) => canAccessCompany(entry.company) && entry.employeeId == null && !entry.impuestosClave)
       .map((entry) => ({
         id: entry.id,
         kind: "gasto" as const,
@@ -16616,6 +16621,80 @@ Escribi CERRAR para confirmar:`
   // de una persona es un gasto de su caja chica: se ve en la rendicion de su caja y cuenta en lo utilizado.
   // No es un gasto nuevo (el pago ya esta en el cash flow y ya baja la caja de la persona): es la misma
   // plata vista desde la caja. La caja es la abierta de esa persona en esa empresa a la fecha del pago.
+  // La cuenta del banco (por nombre del banco) de una empresa y moneda.
+  const cuentaDelBanco = (company: string, banco: string, moneda: "ARS" | "USD") => {
+    const n = (x: string) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const b = n(banco);
+    const bancos = cuentasSistema.filter((c) => c.tipo === "banco" && c.company === company && c.moneda === moneda && c.activa !== false);
+    return (
+      bancos.find((c) => n(c.banco || "") === b) ||
+      bancos.find((c) => !!b && (n(c.banco || c.nombre).includes(b) || b.includes(n(c.banco || c.nombre)))) ||
+      null
+    );
+  };
+  // COMPRAS CON TARJETA (2026-10-23): cada cuota en su resumen (domain/controlTarjetas).
+  const comprasConTarjeta = useMemo(
+    () =>
+      costEntries
+        .filter((c) => c.paymentMethod === "tarjeta_credito" && c.tarjetaId != null && canAccessCompany(c.company))
+        .map((c) => ({
+          id: c.id,
+          company: String(c.company),
+          tarjetaId: Number(c.tarjetaId),
+          date: c.date,
+          amount: Number(c.amount || 0),
+          cuotas: c.cuotasTarjeta,
+          description: c.description || "",
+          supplier: c.supplier || "",
+        })),
+    [costEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+  const cuotasDeTarjeta = useMemo(() => cuotasEsperadas(comprasConTarjeta, visibleCreditCardStatements as any), [comprasConTarjeta, visibleCreditCardStatements]);
+  const controlesTarjeta = useMemo(
+    () => visibleCreditCardStatements.map((s) => controlarResumen(s as any, visibleCreditCardConsumptions as any, cuotasDeTarjeta)),
+    [visibleCreditCardStatements, visibleCreditCardConsumptions, cuotasDeTarjeta]
+  );
+  // IMPUESTOS DEL EXTRACTO Y DEL RESUMEN (domain/impuestosBancarios): una deuda por banco y mes, y por resumen.
+  // Los debitos que ya se cargaron como pago (vinculados) no se vuelven a juntar.
+  const gruposImpuestos = useMemo<GrupoImpuestos[]>(() => {
+    const yaCargados = new Set(costEntries.filter((c) => c.bankEntryId != null).map((c) => Number(c.bankEntryId)));
+    return [
+      ...impuestosDeExtractos(visibleBankStatementEntries.filter((b) => !yaCargados.has(b.id)) as any),
+      ...impuestosDeResumenes(visibleCreditCardStatements as any, visibleCreditCardConsumptions as any, visibleCreditCards as any),
+    ];
+  }, [visibleBankStatementEntries, visibleCreditCardStatements, visibleCreditCardConsumptions, visibleCreditCards, costEntries]);
+  const pagoDeImpuestos = (clave: string) => costEntries.find((c) => c.impuestosClave === clave);
+  const cuentaDeImpuestos = (g: GrupoImpuestos) => cuentaDelBanco(g.company, g.banco, g.moneda);
+  // Tildar pagado: se asienta el pago desde la cuenta del banco (baja su saldo). Destildar lo borra.
+  const setImpuestosPagados = (g: GrupoImpuestos, pagado: boolean) => {
+    const previo = pagoDeImpuestos(g.clave);
+    if (!pagado) {
+      if (previo) setCostEntries((prev) => prev.filter((c) => c.id !== previo.id));
+      return;
+    }
+    if (previo) return;
+    const cuenta = cuentaDeImpuestos(g);
+    if (!cuenta) return;
+    const pago: CostEntry = {
+      id: newId(),
+      company: g.company as CompanyName,
+      date: g.fecha,
+      group: "Impuestos y comisiones bancarias",
+      description: g.titulo,
+      amount: g.total,
+      cuentaId: cuenta.id,
+      administration: "blanco",
+      source: "manual",
+      supplier: "",
+      notes: `Asentado desde ${g.origen === "banco" ? "el extracto bancario" : "el resumen de la tarjeta"} (${g.lineas.length} débito(s))`,
+      paymentMethod: "debito",
+      impuestosClave: g.clave,
+      antesDeApertura: decidirAntesDeApertura(undefined, cuenta.id, g.fecha, g.total, g.titulo),
+      ...firma(),
+    };
+    setCostEntries((prev) => [pago, ...prev]);
+  };
+
   const plataMovidaSistema = useMemo(
     () =>
       plataDelSistema({
@@ -16627,7 +16706,15 @@ Escribi CERRAR para confirmar:`
           commissionPayments: j.commissionPayments || [],
         })) as any,
         costEntries: [
-          ...costEntries.filter((e) => canAccessCompany(e.company)),
+          ...costEntries.filter((e) => canAccessCompany(e.company) && !(e.paymentMethod === "tarjeta_credito" && e.tarjetaId != null)),
+          // Compras con tarjeta: cada cuota sale de la cuenta el dia del vencimiento de su resumen. Sin resumen
+          // cargado todavia, queda en la tarjeta (no baja ninguna cuenta).
+          ...cuotasDeTarjeta
+            .filter((q) => q.dueDate)
+            .map((q) => {
+              const c = costEntries.find((x) => x.id === q.compraId)!;
+              return { ...c, id: `${c.id}-c${q.cuota}` as any, date: q.dueDate as string, amount: q.monto, description: `${c.description || ""}${q.de > 1 ? ` · cuota ${q.cuota}/${q.de}` : ""}` };
+            }),
           // Viaticos eventuales: salen de su cuenta como un gasto (los fijos van con los haberes).
           ...visibleViaticos.map((v) => ({
             id: v.id,
@@ -16657,7 +16744,7 @@ Escribi CERRAR para confirmar:`
           cuentaId: inversiones.find((i) => `inv-coloc-${i.id}` === e.id || `inv-rescate-${i.id}` === e.id)?.cuentaId,
         })),
       }),
-    [visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos, retirosSocietarios]
+    [cuotasDeTarjeta, visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos, retirosSocietarios]
   );
   const movimientosDeCuentas = useMemo(
     () => movimientosPorCuenta(plataMovidaSistema, cuentasSistema),
@@ -20164,6 +20251,8 @@ Escribi CERRAR para confirmar:`
     empresa: String(c.company) !== String(companyFactura) ? String(c.company) : undefined,
     pagadoPor: c.pagadoPor,
     firmante: c.firmante,
+    tarjetaId: c.tarjetaId,
+    cuotas: c.cuotasTarjeta,
   });
   const facturaDeId = (id: number): FacturaForm | null => {
     const inv = purchaseInvoicesWithBankLink.find((i) => i.id === id);
@@ -20278,6 +20367,9 @@ Escribi CERRAR para confirmar:`
         // Negro es efectivo (no pasa por el banco).
         paymentMethod: (pg.administration === "negro" ? "efectivo" : pg.metodo) as PaymentMethod,
         cuentaId: pg.cuentaId,
+        // Tarjeta de credito: cual y en cuantas cuotas (descuenta del banco el dia del resumen).
+        tarjetaId: pg.administration !== "negro" && pg.metodo === "tarjeta_credito" ? pg.tarjetaId : undefined,
+        cuotasTarjeta: pg.administration !== "negro" && pg.metodo === "tarjeta_credito" ? Math.max(1, Number(pg.cuotas) || 1) : undefined,
         administration: pg.administration,
         supplier: f.supplier,
         supplierId: prov?.id,
@@ -21803,6 +21895,7 @@ Escribi CERRAR para confirmar:`
       )}
       {facturaModal && (
         <FacturaCompraModal
+          tarjetas={visibleCreditCards.filter((c) => c.active !== false).map((c) => ({ id: c.id, name: c.name, company: String(c.company), cuentaId: cuentaDelBanco(String(c.company), c.bank, "ARS")?.id }))}
           key={facturaModal.id || "nueva"}
           personas={visibleEmployees
             .filter((e) => !isEmployeeTerminated(e))
@@ -22268,6 +22361,11 @@ Escribi CERRAR para confirmar:`
               if (p.deudaConLaGente > 0.5)
                 out.push({ titulo: "Deuda con la gente", company: p.short || p.company, monto: p.deudaConLaGente, detalle: `${p.deudaConLaGenteCount} factura(s) pagadas de su bolsillo, sin reintegrar`, tab: "movimientosInternos" });
             });
+            gruposImpuestos
+              .filter((g) => !pagoDeImpuestos(g.clave) && g.moneda === "ARS")
+              .forEach((g) =>
+                out.push({ titulo: g.titulo, company: getCompanyMeta(g.company as CompanyName).short, monto: g.total, detalle: `${g.lineas.length} débito(s) · tildalo pagado en Bancos y tarjetas`, tab: "bancos" })
+              );
             visibleCreditCardStatements
               .filter((t) => !t.paid && Number(t.totalArs || 0) > 0)
               .forEach((t) =>
@@ -22616,6 +22714,25 @@ Escribi CERRAR para confirmar:`
               updateCreditCardConsumption={updateCreditCardConsumption}
             />
           }
+        />
+        <ImpuestosBancariosPanel
+          grupos={gruposImpuestos}
+          pagadoDe={(clave) => {
+            const p = pagoDeImpuestos(clave);
+            return p ? { fecha: p.date } : null;
+          }}
+          cuentaDe={(g) => {
+            const c = cuentaDeImpuestos(g);
+            return c ? { id: c.id, nombre: c.nombre } : null;
+          }}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+          money={money}
+          onPagado={setImpuestosPagados}
+        />
+        <ControlResumenesTarjeta
+          tarjetas={visibleCreditCards.map((c) => ({ id: c.id, name: c.name, company: String(c.company) }))}
+          controles={controlesTarjeta}
+          money={money}
         />
         </>
       )}

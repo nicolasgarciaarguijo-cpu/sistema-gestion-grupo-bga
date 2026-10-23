@@ -31,6 +31,9 @@ export type PagoFactura = {
   empresa?: string; // empresa que PAGA (ausente = la de la factura). Distinta = pago cruzado.
   pagadoPor?: string; // efectivo negro: quien de la nomina hizo el pago (informativo)
   firmante?: string; // ultimo firmante (solo para mostrar: al guardar firma el usuario que opera)
+  // Tarjeta de credito: CUAL tarjeta y en cuantas cuotas (2026-10-23). Descuenta del banco el dia del resumen.
+  tarjetaId?: number;
+  cuotas?: number;
 };
 
 export const TIPOS_COMPROBANTE = ["Factura", "Nota de débito", "Ticket factura", "Recibo", "Otro"];
@@ -92,6 +95,7 @@ const titulo: React.CSSProperties = { fontSize: 12, fontWeight: 800, color: "#47
 const grid: React.CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 };
 
 export function FacturaCompraModal({
+  tarjetas = [],
   inicial,
   proveedores,
   cuentas,
@@ -107,6 +111,8 @@ export function FacturaCompraModal({
   recepciones,
   personas = [],
 }: {
+  // Tarjetas de credito de las empresas (con la cuenta del banco que las paga, si se sabe).
+  tarjetas?: Array<{ id: number; name: string; company: string; cuentaId?: string }>;
   inicial: FacturaForm;
   proveedores: ProveedorOpt[];
   cuentas: Array<{ id: string; company: string; nombre: string; moneda?: string; activa?: boolean }>;
@@ -219,6 +225,7 @@ export function FacturaCompraModal({
   if (!(Number(f.total) > 0)) faltan.push("el total");
   if (f.pagos.some((p) => !p.fecha || !(Number(p.monto) > 0))) faltan.push("la fecha y el monto de cada pago");
   if (f.pagos.some((p) => !p.cuentaId)) faltan.push("la cuenta de cada pago");
+  if (f.pagos.some((p) => p.metodo === "tarjeta_credito" && p.administration !== "negro" && !p.tarjetaId)) faltan.push("la tarjeta de cada pago con tarjeta de crédito");
   if (!f.porBanco && saldo > 1 && f.saldo.fechaPrevista && !f.saldo.cuentaId) faltan.push("de qué cuenta sale lo que falta");
   if (pagado > Number(f.total || 0) + 1) faltan.push(`que los pagos no pasen el total (sobran ${money(pagado - Number(f.total || 0))})`);
 
@@ -423,6 +430,29 @@ export function FacturaCompraModal({
                       {p.metodo === "debito" && <option value="debito">Débito automático</option>}
                     </select>
                   </label>
+                  {p.metodo === "tarjeta_credito" && p.administration !== "negro" && (
+                    <>
+                      <label style={lbl}>Tarjeta
+                        <select
+                          style={{ ...input, ...(p.tarjetaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }}
+                          value={p.tarjetaId ?? ""}
+                          onChange={(e) => {
+                            const t = tarjetas.find((x) => x.id === Number(e.target.value));
+                            setPagoN(p.key, { tarjetaId: t ? t.id : undefined, ...(t?.cuentaId && !p.cuentaId ? { cuentaId: t.cuentaId } : {}) });
+                          }}
+                        >
+                          <option value="">— Elegí la tarjeta —</option>
+                          {tarjetas.filter((t) => t.company === empresaPaga).map((t) => (
+                            <option key={t.id} value={t.id}>{t.name}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label style={lbl} title="La compra se carga por el total: el sistema espera una cuota (total ÷ cuotas) en cada resumen">
+                        Cuotas
+                        <NumInput style={input} value={p.cuotas || 1} onChange={(e) => setPagoN(p.key, { cuotas: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} />
+                      </label>
+                    </>
+                  )}
                   <label style={lbl}>De qué cuenta salió
                     <select style={{ ...input, ...(p.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={p.cuentaId || ""} onChange={(e) => setPagoN(p.key, { cuentaId: e.target.value || undefined })}>
                       <option value="">— Elegí la cuenta —</option>

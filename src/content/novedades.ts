@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-23e",
+    fecha: "23/10/2026",
+    titulo: "Impuestos del banco y control de tarjetas",
+    items: [
+      {
+        titulo: "Impuestos y comisiones del extracto como deuda",
+        que: "Al cargar el extracto, los impuestos, comisiones e intereses que cobra el banco se juntan solos en una deuda por banco y por mes ('Impuestos extracto bancario · banco · mes'), con el detalle de cada débito para controlar. Lo mismo con los cargos del resumen de tarjeta (sellos, percepciones, comisiones), por resumen. Al tildarla pagada se asienta el pago desde la cuenta de ese banco y baja su saldo. Las que faltan pagar también figuran en Desendeudamiento.",
+        como: "Bancos y tarjetas → 'Impuestos y comisiones del extracto y la tarjeta': abrí el detalle, controlá y tildá 'Pagado'.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Pago con tarjeta: elegir la tarjeta y las cuotas",
+        que: "Al pagar una factura con tarjeta de crédito se elige cuál tarjeta y en cuántas cuotas (por el total). La compra ya no descuenta del banco el día de la compra: cada cuota descuenta el día del vencimiento del resumen donde aparece.",
+        como: "Factura de compra → pago → medio 'Tarjeta de crédito' → Tarjeta y Cuotas.",
+        tab: "compras",
+      },
+      {
+        titulo: "Control de cada resumen de tarjeta",
+        que: "Por cada tarjeta, cada resumen con ✓ si cierra (las compras cargadas con esa tarjeta + sus impuestos = el monto a pagar). Si no cierra, la lista de renglones del resumen con ✓ o ✗: los que faltan cargar y las compras cargadas que no aparecen, para buscarlas.",
+        como: "Bancos y tarjetas → 'Control de resúmenes de tarjeta': tocá un resumen para ver el detalle.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-10-23d",
     fecha: "23/10/2026",
     titulo: "Los préstamos figuran como deuda",

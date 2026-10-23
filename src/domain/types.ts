@@ -1150,6 +1150,12 @@ export type CostEntry = {
   costKind?: "fijo" | "variable";
   // Tipo del grupo (puede haber dos grupos con el mismo nombre: uno fijo y uno variable).
   groupKind?: "fijo" | "variable";
+  // TARJETA DE CREDITO (2026-10-23): con que tarjeta y en cuantas cuotas. Cada cuota descuenta del banco el
+  // dia del vencimiento del resumen donde aparece (domain/controlTarjetas), no el dia de la compra.
+  tarjetaId?: number;
+  cuotasTarjeta?: number;
+  // Pago de una deuda de IMPUESTOS del extracto o del resumen (domain/impuestosBancarios): su clave.
+  impuestosClave?: string;
 };
 
 // "debito" = debito automatico de la cuenta (lo viejo). Tarjeta de debito y de credito se suman el 2026-10-20.
