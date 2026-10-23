@@ -1,4 +1,4 @@
-import { bloqueDeDeuda, comprasDeConvenios, facturasEnConvenio, pagosDeCuotas } from "./desendeudamiento";
+import { acreedoresDeDeudas, bloqueDeDeuda, comprasDeConvenios, facturasEnConvenio, pagosDeCuotas } from "./desendeudamiento";
 
 const base = { nextDueDate: "", remainingInstallments: 0, nextInstallmentAmount: 0, active: true, company: "BGA" };
 
@@ -32,6 +32,9 @@ describe("desendeudamiento · prestamos y cuentas corrientes", () => {
     ];
     expect(comprasDeConvenios(deudas as any, "2026-10-23")).toEqual([
       { deudaId: 3, company: "BGA", acreedor: "AFIP", fecha: "2026-09-01", total: 200, detalle: "Convenio · Plan de pago (2 cuotas)", saldada: false, ultimoPagoId: 9 },
+      // El prestamo tambien es DEUDA en la cuenta corriente de su acreedor (no saldo a favor).
+      { deudaId: 4, company: "BGA", acreedor: "Préstamo banco", fecha: "2026-10-10", total: 50, detalle: "Préstamo · Préstamo banco (1 cuota)", saldada: false, ultimoPagoId: null },
     ]);
+    expect(acreedoresDeDeudas(deudas as any).map((x) => x.acreedor)).toEqual(["AFIP", "Préstamo banco"]);
   });
 });

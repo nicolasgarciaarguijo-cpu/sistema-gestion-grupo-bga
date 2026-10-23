@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-23d",
+    fecha: "23/10/2026",
+    titulo: "Los préstamos figuran como deuda",
+    items: [
+      {
+        titulo: "El préstamo es deuda en la cuenta del acreedor, no saldo a favor",
+        que: "Cada préstamo y cada convenio de Desendeudamiento figura en la cuenta corriente de su acreedor como DEUDA por el total de las cuotas, y esa cuenta pasa a 'con convenio'. Cada pago al acreedor la baja. Ya no aparecen como 'a favor' en 'Cuentas abiertas · proveedores sin convenio', ni sus pagos como 'pagos sin factura'.",
+        como: "Proveedores → cuentas corrientes con convenio. Importante: en la ficha del préstamo, el acreedor tiene que tener el mismo nombre que el proveedor al que se le cargan los pagos (por ejemplo, el banco).",
+        tab: "desendeudamiento",
+      },
+    ],
+  },
+  {
     id: "2026-10-23c",
     fecha: "23/10/2026",
     titulo: "Desendeudamiento: préstamos y cuentas corrientes con convenio",

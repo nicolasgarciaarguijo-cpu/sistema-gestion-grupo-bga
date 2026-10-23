@@ -218,7 +218,7 @@ import { FichaPagoHaberes } from "./ui/FichaPagoHaberes";
 import { PagoHaberModal, type PagoHaberForm } from "./ui/PagoHaberModal";
 import { ComprasTab } from "./tabs/Compras";
 import { DesendeudamientoTab, type PagoCuotaForm, type OtraDeuda } from "./tabs/Desendeudamiento";
-import { bloqueDeDeuda, camposLegacy, comprasDeConvenios, cuotasDeDeuda, cuotasPendientes, facturasEnConvenio, pagosDeCuotas, resumenDeuda } from "./domain/desendeudamiento";
+import { acreedoresDeDeudas, bloqueDeDeuda, camposLegacy, comprasDeConvenios, cuotasDeDeuda, cuotasPendientes, facturasEnConvenio, pagosDeCuotas, resumenDeuda } from "./domain/desendeudamiento";
 import { GastoCajaChicaModal, type GastoCajaForm } from "./ui/GastoCajaChicaModal";
 import { CajaChicaListado } from "./tabs/CajaChicaListado";
 import { FichaCajaChica } from "./ui/FichaCajaChica";
@@ -14534,14 +14534,9 @@ Escribi CERRAR para confirmar:`
     const taxIdBySupplierId = new Map(suppliers.map((sup) => [sup.id, sup.taxId || ""]));
     // Los PAGOS son los gastos cargados (CostEntry): manuales y los que bajaron del extracto.
     const gastos = costEntries
-      // Los pagos de haberes son de la ficha de la persona, no de un proveedor. La cuota de un PRESTAMO
-      // tampoco: es devolver plata prestada (si entraba, el banco quedaba "a favor" por cada cuota).
-      .filter(
-        (entry) =>
-          canAccessCompany(entry.company) &&
-          entry.employeeId == null &&
-          !(pagosDeCuotasMap.has(entry.id) && bloqueDeDeuda(pagosDeCuotasMap.get(entry.id) as any) === "prestamo")
-      )
+      // Los pagos de haberes son de la ficha de la persona, no de un proveedor. Los pagos al acreedor de un
+      // prestamo si cuentan: el prestamo figura como deuda en su cuenta corriente y cada pago la baja.
+      .filter((entry) => canAccessCompany(entry.company) && entry.employeeId == null)
       .map((entry) => ({
         id: entry.id,
         kind: "gasto" as const,
@@ -14604,7 +14599,6 @@ Escribi CERRAR para confirmar:`
   }, [
     costEntries,
     suppliers,
-    pagosDeCuotasMap,
     visibleBankStatementEntries,
     purchaseLedgerInvoices,
     purchaseInvoicesWithBankLink,
@@ -14613,17 +14607,29 @@ Escribi CERRAR para confirmar:`
     effectiveIsAdmin,
   ]);
 
+  // Llave (CUIT o nombre) de cada acreedor de Desendeudamiento, igual que la de su cuenta corriente.
+  const llavesAcreedoresDeudas = useMemo(
+    () =>
+      acreedoresDeDeudas(deudasAccesibles as any).map((x) => {
+        const prov = buscarProveedor(suppliers as any, x.acreedor, "") as any;
+        return prov ? supplierKey(prov.name, prov.taxId || "") : supplierKey(x.acreedor, "");
+      }),
+    [deudasAccesibles, suppliers]
+  );
+
   const purchaseLedger = useMemo(
     () =>
       computeSupplierLedgers({
         invoices: purchaseLedgerInvoices,
         payments: purchaseLedgerPayments,
         creditNotes: visibleCreditNotes as any,
-        currentAccountKeys: suppliers
-          .filter((sup) => sup.currentAccount)
-          .map((sup) => supplierKey(sup.name, sup.taxId)),
+        currentAccountKeys: [
+          ...suppliers.filter((sup) => sup.currentAccount).map((sup) => supplierKey(sup.name, sup.taxId)),
+          // El acreedor de un prestamo o de un convenio de Desendeudamiento: su cuenta es CON convenio.
+          ...llavesAcreedoresDeudas,
+        ],
       }),
-    [purchaseLedgerInvoices, purchaseLedgerPayments, suppliers, visibleCreditNotes]
+    [purchaseLedgerInvoices, purchaseLedgerPayments, suppliers, visibleCreditNotes, llavesAcreedoresDeudas]
   );
 
 
@@ -14649,8 +14655,13 @@ Escribi CERRAR para confirmar:`
     const taxIdDe = new Map(suppliers.map((s) => [s.id, s.taxId || ""]));
     return pagosSinFactura(
       costEntries
-        // El pago de una cuota lo respalda su deuda (prestamo o convenio): no es un pago sin factura.
-        .filter((c) => canAccessCompany(c.company) && !pagosDeCuotasMap.has(c.id))
+        // El pago de una cuota (o un pago al acreedor de una deuda) lo respalda la deuda: no es un pago sin factura.
+        .filter((c) => {
+          if (!canAccessCompany(c.company) || pagosDeCuotasMap.has(c.id)) return false;
+          const prov = buscarProveedor(suppliers as any, c.supplier || "", "") as any;
+          const key = prov ? supplierKey(prov.name, prov.taxId || "") : supplierKey(c.supplier || "", "");
+          return !llavesAcreedoresDeudas.includes(key);
+        })
         .map((c) => ({
           ...c,
           company: String(c.company),
@@ -14660,7 +14671,7 @@ Escribi CERRAR para confirmar:`
       purchaseInvoices,
       todayIso()
     );
-  }, [costEntries, purchaseInvoices, suppliers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession, pagosDeCuotasMap]);
+  }, [costEntries, purchaseInvoices, suppliers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession, pagosDeCuotasMap, llavesAcreedoresDeudas]);
 
   // CONTEO DE BLANQUEO por empresa, en el EJERCICIO FISCAL en curso (ver domain/faltaFactura). Sube con la
   // plata negra que entra al banco (deposito, prestamo o aporte en negro); baja con lo que balancea (sacar

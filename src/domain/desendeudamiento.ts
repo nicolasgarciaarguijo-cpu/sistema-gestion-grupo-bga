@@ -124,8 +124,9 @@ export function camposLegacy(cuotas: CuotaDeuda[]): { nextDueDate: string; remai
 // van en cuenta corriente (convenio con ese acreedor).
 //
 // - PRESTAMO: la plata que entro se asienta como un prestamo recibido (domain/contributions) en la cuenta
-//   elegida; las cuotas se pagan con pagos de verdad. Esos pagos NO son pagos a un proveedor: no entran en
-//   la cuenta corriente del acreedor (si entraban, el acreedor quedaba "a favor" por cada cuota).
+//   elegida; las cuotas se pagan con pagos de verdad. En la cuenta corriente del acreedor el prestamo figura
+//   como DEUDA (el total de las cuotas), con convenio: cada pago la baja (Nicolas, 2026-10-23: "los prestamos
+//   los veo como plata a favor en proveedores sin convenio, cuando en realidad deberia ver la deuda").
 // - CUENTA CORRIENTE CON CONVENIO: un acuerdo de cuotas con un acreedor. Si se eligen FACTURAS del
 //   proveedor, el convenio es esas facturas en cuotas (las facturas dejan de programarse por su cuenta y
 //   quedan pagadas al completar el convenio). Sin facturas (AFIP, un equipo), la deuda del convenio entra en
@@ -153,6 +154,14 @@ export function bloqueDeDeuda(d: Pick<DeudaConBloque, "bloque" | "tipo" | "conce
   return "cuenta_corriente";
 }
 
+// Acreedores de las deudas activas: su cuenta corriente es CON convenio (la deuda tiene su plan de cuotas).
+export function acreedoresDeDeudas(deudas: DeudaConBloque[]): Array<{ company: string; acreedor: string }> {
+  return deudas
+    .filter((d) => d.active !== false)
+    .map((d) => ({ company: d.company, acreedor: (d.acreedor || d.concept || "").trim() }))
+    .filter((x) => !!x.acreedor);
+}
+
 // Pagos (CostEntry) que saldan cuotas, con su deuda.
 export function pagosDeCuotas<T extends DeudaConBloque>(deudas: T[]): Map<number, T> {
   const m = new Map<number, T>();
@@ -169,12 +178,13 @@ export function facturasEnConvenio<T extends DeudaConBloque>(deudas: T[]): Map<n
   return m;
 }
 
-// La deuda de un convenio SIN facturas, como compra en la cuenta corriente del acreedor.
+// La deuda de un PRESTAMO o de un convenio SIN facturas, como compra en la cuenta corriente del acreedor.
 export type CompraDeConvenio = { deudaId: number; company: string; acreedor: string; fecha: string; total: number; detalle: string; saldada: boolean; ultimoPagoId: number | null };
 export function comprasDeConvenios(deudas: DeudaConBloque[], hoy: string): CompraDeConvenio[] {
   return deudas
-    .filter((d) => bloqueDeDeuda(d) === "cuenta_corriente" && !(d.facturaIds || []).length)
+    .filter((d) => d.active !== false && (bloqueDeDeuda(d) === "prestamo" || !(d.facturaIds || []).length))
     .map((d) => {
+      const esPrestamo = bloqueDeDeuda(d) === "prestamo";
       const cuotas = cuotasDeDeuda(d);
       const r = resumenDeuda(d, hoy);
       const pagos = cuotas.filter(cuotaPagada).map((c) => Number(c.pagoCostEntryId));
@@ -184,7 +194,7 @@ export function comprasDeConvenios(deudas: DeudaConBloque[], hoy: string): Compr
         acreedor: (d.acreedor || d.concept || "").trim(),
         fecha: d.fechaInicio || cuotas[0]?.fecha || "",
         total: r.total,
-        detalle: `Convenio · ${d.concept || "deuda"} (${r.cuotas} cuota${r.cuotas === 1 ? "" : "s"})`,
+        detalle: `${esPrestamo ? "Préstamo" : "Convenio"} · ${d.concept || "deuda"} (${r.cuotas} cuota${r.cuotas === 1 ? "" : "s"})`,
         saldada: r.cuotas > 0 && r.cuotasPendientes === 0,
         ultimoPagoId: pagos.length ? pagos[pagos.length - 1] : null,
       };
