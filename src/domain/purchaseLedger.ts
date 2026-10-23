@@ -24,7 +24,9 @@ export type LedgerInvoice = {
   total: number;
   administration: "blanco" | "negro";
   // De donde salio la factura: cargada en Compras, levantada de caja chica o del listado de ARCA.
-  origin: "compras" | "caja_chica" | "arca";
+  origin: "compras" | "caja_chica" | "arca" | "convenio";
+  // Convenio de Desendeudamiento sin facturas: la deuda del acuerdo, como compra (no es una factura).
+  detalle?: string;
   paidByCostEntryId?: number | null;
   paidByBankEntryId?: number | null;
   // Quien puso la plata. Vacio = la empresa. Con nombre = esa persona la pago de su bolsillo y la
@@ -204,11 +206,11 @@ export function computeSupplierLedgers({
       key: `inv-${inv.id}`,
       type: "compra",
       date: inv.invoiceDate || "",
-      detail: inv.invoiceNumber ? `Factura ${inv.invoiceNumber}` : "Compra sin comprobante",
+      detail: inv.detalle || (inv.invoiceNumber ? `Factura ${inv.invoiceNumber}` : "Compra sin comprobante"),
       amount: total,
       administration: inv.administration,
       saldo: 0,
-      invoiceId: inv.id,
+      invoiceId: inv.origin === "convenio" ? undefined : inv.id,
       conciliada: isConciliada(inv),
       paidByPerson: inv.paidByPerson || "",
     });

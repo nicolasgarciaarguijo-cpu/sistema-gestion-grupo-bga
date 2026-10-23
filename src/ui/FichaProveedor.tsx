@@ -36,7 +36,12 @@ export function FichaProveedor({
   onEditarDatos,
   onBorrarFactura,
   onSoltarDebito,
+  convenios = [],
+  onAbrirConvenio,
 }: {
+  // Convenios de cuenta corriente con este proveedor (Desendeudamiento): su plan de cuotas.
+  convenios?: Array<{ id: number; concepto: string; total: number; pagado: number; pendiente: number; proxima?: { fecha: string; monto: number }; facturas: number }>;
+  onAbrirConvenio?: (deudaId: number) => void;
   nombre: string;
   taxId: string;
   proveedor?: {
@@ -358,6 +363,29 @@ export function FichaProveedor({
             <div style={{ fontSize: 13, color: "#64748b" }}>Sin facturas ni pagos registrados.</div>
           )}
         </div>
+
+        {convenios.length > 0 && (
+          <div style={{ ...caja, marginTop: 10 }}>
+            <div style={titulo}>Convenios de pago (Desendeudamiento)</div>
+            {convenios.map((c) => (
+              <div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap", fontSize: 13, padding: "4px 0", borderBottom: "1px solid #f1f5f9" }}>
+                <span>
+                  <b>{c.concepto}</b>
+                  <span style={{ color: "#64748b" }}>
+                    {" "}· {c.facturas ? `${c.facturas} factura(s)` : "sin facturas"} · total {money(c.total)} · pagado {money(c.pagado)} ·{" "}
+                  </span>
+                  <b style={{ color: "#b45309" }}>pendiente {money(c.pendiente)}</b>
+                  {c.proxima && <span style={{ color: "#64748b" }}> · próxima {c.proxima.fecha.split("-").reverse().join("/")} {money(c.proxima.monto)}</span>}
+                </span>
+                {onAbrirConvenio && (
+                  <button type="button" onClick={() => onAbrirConvenio(c.id)} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 6, padding: "2px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    Abrir el convenio
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ ...caja, marginTop: 10 }}>
           <div style={titulo}>Próximos pagos (facturas sin pagar)</div>

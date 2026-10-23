@@ -11,6 +11,8 @@ import type { DebtPlan } from "../domain/types";
 import { FirmanteFijo } from "../ui/FirmanteSelect";
 import {
   TIPOS_DEUDA,
+  bloqueDeDeuda,
+  type BloqueDeuda,
   cuotasDeDeuda,
   cuotaPagada,
   generarCuotas,
@@ -59,6 +61,11 @@ export function DesendeudamientoTab({
   onBorrar,
   onRegistrarPago,
   onQuitarPago,
+  ingresoDe,
+  onIngreso,
+  facturasDelAcreedor,
+  esProveedor,
+  onAbrirProveedor,
   onIr,
 }: {
   deudas: DebtPlan[];
@@ -77,8 +84,24 @@ export function DesendeudamientoTab({
   onBorrar: (id: number) => void;
   onRegistrarPago: (deudaId: number, cuotaId: string, pago: PagoCuotaForm) => void;
   onQuitarPago: (deudaId: number, cuotaId: string) => void;
+  // PRESTAMO: la plata que entro (asiento de prestamo recibido). null = quitarlo.
+  ingresoDe: (capitalId: number) => { fecha: string; monto: number; cuentaId?: string } | null;
+  onIngreso: (deudaId: number, datos: { fecha: string; monto: number; cuentaId?: string } | null) => void;
+  // CUENTA CORRIENTE: las facturas del acreedor que se pueden meter en el convenio.
+  facturasDelAcreedor: (company: string, acreedor: string, deudaId: number) => Array<{ id: number; fecha: string; numero: string; total: number; pagada: boolean }>;
+  esProveedor: (acreedor: string) => boolean;
+  onAbrirProveedor: (acreedor: string) => void;
   onIr: (tab: string) => void;
 }) {
+  // Formulario del ingreso de cada prestamo (fecha, monto, cuenta) mientras se edita.
+  const [ingresoForm, setIngresoForm] = useState<Record<number, { fecha: string; monto: number; cuentaId?: string }>>({});
+  const agregarEn = (bloque: BloqueDeuda) => {
+    const id = onAgregar();
+    if (typeof id === "number") {
+      onActualizar(id, { bloque, tipo: bloque === "prestamo" ? "prestamo" : "plan_pago" });
+      setFichaId(id);
+    }
+  };
   const [menu, setMenu] = useState<null | { x: number; y: number; deudaId: number; cuotaId: string }>(null);
   const [pago, setPago] = useState<null | { deuda: DebtPlan; cuota: CuotaDeuda; form: PagoCuotaForm }>(null);
   const [estipular, setEstipular] = useState<Record<number, { fecha: string; cantidad: number; monto: number }>>({});
@@ -110,7 +133,17 @@ export function DesendeudamientoTab({
 
   return (
     <div style={styles.column}>
-      <Panel span="full" title="Desendeudamiento" actions={<ButtonLike onClick={() => { const id = onAgregar(); if (typeof id === "number") setFichaId(id); }}>+ Agregar deuda</ButtonLike>}>
+      <Panel
+        span="full"
+        title="Desendeudamiento"
+        abierto
+        actions={
+          <span style={{ display: "inline-flex", gap: 6 }}>
+            <ButtonLike onClick={() => agregarEn("prestamo")}>+ Préstamo</ButtonLike>
+            <ButtonLike onClick={() => agregarEn("cuenta_corriente")}>+ Convenio de cuenta corriente</ButtonLike>
+          </span>
+        }
+      >
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8, marginBottom: 6 }}>
           <MiniMetric label="Deuda pendiente (cuotas impagas)" value={money(totalPendiente)} />
           <MiniMetric label="A pagar este mes" value={money(delMes)} />
@@ -118,20 +151,22 @@ export function DesendeudamientoTab({
           <MiniMetric label="Deudas activas" value={String(activas.length)} />
         </div>
         <div style={{ fontSize: 12, color: "#64748b" }}>
-          Cada deuda va como un proveedor: sus pagos entran al cash flow en EGRESOS · PROVEEDORES, en el grupo de costo elegido y con el nombre del acreedor. Las cuotas pendientes van a la agenda de pagos inamovibles. Los préstamos entre socios o entre las empresas van en Movimientos internos.
+          Dos bloques. <b>Préstamos</b>: la plata que entró a una cuenta y su plan de cuotas; las cuotas se pagan desde acá y no cuentan como pagos a un proveedor. <b>Cuentas corrientes con convenio</b>: un acuerdo de cuotas con un acreedor (un proveedor, AFIP, un plan de pago, un equipo); se pueden elegir las facturas que entran en el convenio y figura en la ficha del proveedor. Las cuotas van a Pagos programados y sus pagos al cash flow, en el grupo de costo elegido. Los préstamos entre socios o entre las empresas van en Movimientos internos.
         </div>
       </Panel>
 
-      {deudas.length === 0 && (
-        <Panel span="full" title="Sin deudas cargadas">
-          <div style={{ fontSize: 13, color: "#64748b" }}>Tocá "+ Agregar deuda" para cargar un plan de pago, un préstamo o una financiación.</div>
-        </Panel>
-      )}
 
       {/* EL LISTADO de deudas: cada una abre su FICHA (Nicolas, 2026-10-20: "que se vea como una ficha similar a
           la de Pago a proveedores; cada deuda tiene una ficha donde se cargan las cuotas y los pagos"). */}
-      {deudas.length > 0 && (
-        <Panel span="full" title={`Deudas (${deudas.length})`}>
+      {(["prestamo", "cuenta_corriente"] as BloqueDeuda[]).map((bloque) => {
+        const lista = deudas.filter((d) => bloqueDeDeuda(d) === bloque);
+        return (
+        <Panel key={bloque} span="full" abierto title={bloque === "prestamo" ? `Préstamos (${lista.length})` : `Cuentas corrientes con convenio (${lista.length})`}>
+          {lista.length === 0 && (
+            <div style={{ fontSize: 13, color: "#64748b", marginBottom: 6 }}>
+              {bloque === "prestamo" ? 'Sin préstamos. Tocá "+ Préstamo".' : 'Sin convenios. Tocá "+ Convenio de cuenta corriente".'}
+            </div>
+          )}
           <table style={{ borderCollapse: "collapse", width: "100%" }}>
             <thead>
               <tr>
@@ -145,7 +180,7 @@ export function DesendeudamientoTab({
               </tr>
             </thead>
             <tbody>
-              {[...deudas]
+              {[...lista]
                 .sort((a, b) => Number(b.active) - Number(a.active) || (a.concept || "").localeCompare(b.concept || ""))
                 .map((d) => {
                   const r = resumenDeuda(d, hoy);
@@ -188,7 +223,8 @@ export function DesendeudamientoTab({
             </tbody>
           </table>
         </Panel>
-      )}
+        );
+      })}
 
       <Panel span="full" title="Otras deudas del sistema (se manejan en su solapa)">
         {otrasDeudas.length === 0 ? (
@@ -238,7 +274,12 @@ export function DesendeudamientoTab({
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
                 <div>
                   <div style={{ fontSize: 19, fontWeight: 800 }}>{d.concept || "Deuda sin nombre"}{d.acreedor ? ` · ${d.acreedor}` : ""}</div>
-                  <div style={{ fontSize: 12.5, color: "#64748b" }}>{companyOptions.find((c) => c.value === d.company)?.short || d.company} · ficha de la deuda: cuotas y pagos</div>
+                  <div style={{ fontSize: 12.5, color: "#64748b" }}>
+                    {companyOptions.find((c) => c.value === d.company)?.short || d.company} · {bloqueDeDeuda(d) === "prestamo" ? "préstamo" : "cuenta corriente con convenio"}: cuotas y pagos
+                    {d.acreedor && esProveedor(d.acreedor) && (
+                      <button type="button" style={btnFila} onClick={() => onAbrirProveedor(d.acreedor || "")}>Abrir la ficha del proveedor</button>
+                    )}
+                  </div>
                 </div>
                 <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12, flexWrap: "wrap" }}>
                   {r.proxima && (
@@ -266,6 +307,12 @@ export function DesendeudamientoTab({
               </div>
             <div style={{ opacity: d.active ? 1 : 0.55, display: "grid", gap: 10 }}>
                 <div style={grid}>
+                  <label style={lbl}>Bloque
+                    <select style={input} value={bloqueDeDeuda(d)} onChange={(e) => onActualizar(d.id, { bloque: e.target.value as BloqueDeuda })}>
+                      <option value="prestamo">Préstamo</option>
+                      <option value="cuenta_corriente">Cuenta corriente con convenio</option>
+                    </select>
+                  </label>
                   <label style={lbl}>Concepto
                     <input style={input} value={d.concept} onChange={(e) => onActualizar(d.id, { concept: e.target.value })} />
                   </label>
@@ -314,6 +361,106 @@ export function DesendeudamientoTab({
                 <label style={lbl}>Notas
                   <input style={input} value={d.notes} onChange={(e) => onActualizar(d.id, { notes: e.target.value })} />
                 </label>
+
+                {/* PRESTAMO: la plata que entro a la cuenta. Queda asentada como prestamo recibido. */}
+                {bloqueDeDeuda(d) === "prestamo" && (() => {
+                  const actual = d.ingresoCapitalId != null ? ingresoDe(d.ingresoCapitalId) : null;
+                  const f = ingresoForm[d.id] || actual || { fecha: d.fechaInicio || hoy, monto: Number(d.capital || 0), cuentaId: undefined };
+                  const set = (patch: Partial<typeof f>) => setIngresoForm((p) => ({ ...p, [d.id]: { ...f, ...patch } }));
+                  const cuentasEmpresa = cuentas.filter((c) => c.company === d.company && c.activa !== false);
+                  return (
+                    <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "8px 10px", display: "grid", gap: 6 }}>
+                      <b style={{ fontSize: 12.5, color: "#166534" }}>
+                        Ingreso del préstamo {actual ? `· asentado: ${money(actual.monto)} el ${actual.fecha.split("-").reverse().join("/")}` : "· todavía no asentado"}
+                      </b>
+                      <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
+                        <label style={lbl}>Fecha de acreditación
+                          <input style={input} type="date" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
+                        </label>
+                        <label style={lbl}>Monto que entró
+                          <NumInput style={{ ...input, width: 150 }} value={f.monto || ""} onChange={(e) => set({ monto: Number(e.target.value) || 0 })} />
+                        </label>
+                        <label style={lbl}>Cuenta donde entró
+                          <select style={{ ...input, minWidth: 200 }} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
+                            <option value="">— Elegí la cuenta —</option>
+                            {cuentasEmpresa.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                          </select>
+                        </label>
+                        <ButtonLike
+                          onClick={() => {
+                            if (!f.fecha || !(f.monto > 0) || !f.cuentaId) return window.alert("Completá la fecha, el monto y la cuenta donde entró la plata.");
+                            onIngreso(d.id, f);
+                            setIngresoForm((p) => { const n = { ...p }; delete n[d.id]; return n; });
+                          }}
+                        >
+                          {actual ? "Guardar cambios" : "Asentar el ingreso"}
+                        </ButtonLike>
+                        {actual && (
+                          <button type="button" style={{ ...btnFila, color: "#b91c1c", borderColor: "#fecaca" }} onClick={() => window.confirm("¿Quitar el asiento del ingreso del préstamo?") && onIngreso(d.id, null)}>
+                            Quitar el ingreso
+                          </button>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "#64748b" }}>
+                        Entra como préstamo recibido en esa cuenta (suma a su saldo y al cash flow). Las cuotas se pagan abajo; esos pagos no cuentan como pagos a un proveedor.
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* CUENTA CORRIENTE: las facturas del proveedor que entran en el convenio. */}
+                {bloqueDeDeuda(d) === "cuenta_corriente" && (() => {
+                  const facturas = facturasDelAcreedor(d.company, d.acreedor || d.concept, d.id);
+                  const elegidas = new Set((d.facturaIds || []).map(Number));
+                  const totalElegidas = facturas.filter((x) => elegidas.has(x.id)).reduce((a, x) => a + x.total, 0);
+                  return (
+                    <div style={{ background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 8, padding: "8px 10px", display: "grid", gap: 6 }}>
+                      <b style={{ fontSize: 12.5, color: "#9a3412" }}>
+                        Facturas del convenio {elegidas.size ? `· ${elegidas.size} elegida(s) por ${money(totalElegidas)}` : "· ninguna elegida (el convenio es por el monto de las cuotas)"}
+                      </b>
+                      {facturas.length === 0 ? (
+                        <div style={{ fontSize: 12.5, color: "#64748b" }}>
+                          {d.acreedor ? `No hay facturas de "${d.acreedor}" en esta empresa.` : "Elegí el acreedor arriba para ver sus facturas."} Sin facturas, la deuda del convenio entra en la cuenta corriente del acreedor por el total de las cuotas.
+                        </div>
+                      ) : (
+                        <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+                            <tbody>
+                              {facturas.map((x) => (
+                                <tr key={x.id} style={{ opacity: x.pagada && !elegidas.has(x.id) ? 0.5 : 1 }}>
+                                  <td style={{ ...td, width: 28 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={elegidas.has(x.id)}
+                                      onChange={(e) => {
+                                        const n = new Set(elegidas);
+                                        if (e.target.checked) n.add(x.id);
+                                        else n.delete(x.id);
+                                        onActualizar(d.id, { facturaIds: Array.from(n) });
+                                      }}
+                                    />
+                                  </td>
+                                  <td style={td}>{x.fecha.split("-").reverse().join("/")}</td>
+                                  <td style={td}>{x.numero}</td>
+                                  <td style={{ ...td, textAlign: "right" }}>{money(x.total)}</td>
+                                  <td style={{ ...td, fontSize: 11.5, color: x.pagada ? "#166534" : "#b45309" }}>{x.pagada ? "pagada" : "impaga"}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                      {elegidas.size > 0 && Math.abs(totalElegidas - r.total) > 1 && (
+                        <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700 }}>
+                          ⚠ Las cuotas suman {money(r.total)} y las facturas elegidas {money(totalElegidas)}. Si el acuerdo tiene interés, está bien; si no, ajustá las cuotas (abajo podés estipularlas con el total de las facturas).
+                        </div>
+                      )}
+                      <div style={{ fontSize: 11.5, color: "#64748b" }}>
+                        Las facturas elegidas dejan de programarse por su cuenta: las programan las cuotas. Al pagar la última cuota quedan pagadas. Las demás facturas del proveedor siguen con su condición de pago.
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5 }}>
                   <span>Total: <b>{money(r.total)}</b></span>
@@ -449,6 +596,20 @@ export function DesendeudamientoTab({
                   <label style={lbl}>Monto por cuota
                     <NumInput style={{ ...input, width: 130 }} value={est.monto || ""} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, monto: Number(e.target.value) || 0 } }))} />
                   </label>
+                  {bloqueDeDeuda(d) === "cuenta_corriente" && (d.facturaIds || []).length > 0 && (() => {
+                    const ids = new Set((d.facturaIds || []).map(Number));
+                    const total = facturasDelAcreedor(d.company, d.acreedor || d.concept, d.id).filter((x) => ids.has(x.id)).reduce((a, x) => a + x.total, 0);
+                    return (
+                      <button
+                        type="button"
+                        style={{ ...btnFila, padding: "5px 9px" }}
+                        title="Divide el total de las facturas elegidas en la cantidad de cuotas"
+                        onClick={() => est.cantidad > 0 && setEstipular((p) => ({ ...p, [d.id]: { ...est, monto: Math.round((total / est.cantidad) * 100) / 100 } }))}
+                      >
+                        Usar el total de las facturas ({money(total)})
+                      </button>
+                    );
+                  })()}
                   <ButtonLike
                     onClick={() => {
                       if (!est.fecha || !(est.cantidad > 0)) return;

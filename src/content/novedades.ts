@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-23c",
+    fecha: "23/10/2026",
+    titulo: "Desendeudamiento: préstamos y cuentas corrientes con convenio",
+    items: [
+      {
+        titulo: "Dos bloques: Préstamos y Cuentas corrientes con convenio",
+        que: "Desendeudamiento ahora separa los PRÉSTAMOS (plata que entró a una cuenta y su plan de cuotas) de las CUENTAS CORRIENTES CON CONVENIO (un acuerdo de cuotas con un proveedor, AFIP, un plan de pago o un equipo). Las deudas que ya estaban se ubicaron solas: los préstamos por su nombre y el resto en cuentas corrientes. Todo se puede cambiar desde la ficha (campo 'Bloque').",
+        como: "Desendeudamiento: '+ Préstamo' o '+ Convenio de cuenta corriente'. Click en una deuda abre su ficha.",
+        tab: "desendeudamiento",
+      },
+      {
+        titulo: "Préstamo: el ingreso de la plata y cuotas que no son pagos a proveedor",
+        que: "En la ficha del préstamo se asienta la plata que entró (fecha, monto y cuenta): suma al saldo de esa cuenta y al cash flow como préstamo recibido. Los pagos de sus cuotas ya no cuentan como pagos al acreedor: se terminó el saldo a favor que dejaba cada cuota.",
+        como: "Ficha del préstamo → 'Ingreso del préstamo' → 'Asentar el ingreso'.",
+        tab: "desendeudamiento",
+      },
+      {
+        titulo: "Convenio: elegir las facturas y verlo en la ficha del proveedor",
+        que: "En un convenio se eligen las facturas del proveedor que entran en el acuerdo; esas facturas dejan de programarse por su cuenta (las programan las cuotas) y quedan pagadas con la última cuota. Sin facturas, la deuda del convenio entra en la cuenta corriente del acreedor, así las cuotas la bajan en vez de dejar saldo a favor. La ficha del proveedor muestra sus convenios.",
+        como: "Ficha del convenio → 'Facturas del convenio' (tildá las que entran) → 'Usar el total de las facturas' para armar las cuotas.",
+        tab: "desendeudamiento",
+      },
+    ],
+  },
+  {
     id: "2026-10-23b",
     fecha: "23/10/2026",
     titulo: "Cheques entregados en Pagos programados",

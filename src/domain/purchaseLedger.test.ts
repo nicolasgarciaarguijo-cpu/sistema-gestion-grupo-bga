@@ -184,3 +184,18 @@ describe("factura pagada con caja chica", () => {
     expect(ledgers[0].saldo).toBe(0);
   });
 });
+
+describe("cuenta corriente con convenio (Desendeudamiento)", () => {
+  it("la deuda del convenio entra como compra: la cuota pagada baja el saldo, no deja saldo a favor", () => {
+    const { ledgers } = computeSupplierLedgers({
+      invoices: [
+        { id: -3, company: "BGA", supplier: "AFIP", taxId: "", invoiceNumber: "", invoiceDate: "2026-09-01", total: 200, administration: "blanco", origin: "convenio", detalle: "Convenio · Plan de pago (2 cuotas)" },
+      ],
+      payments: [{ id: 9, kind: "gasto", company: "BGA", supplier: "AFIP", taxId: "", date: "2026-10-10", amount: 100, administration: "blanco", description: "Cuota 1", bankEntryId: null }],
+    });
+    expect(ledgers[0].saldo).toBe(100);
+    const compra = ledgers[0].movimientos.find((m) => m.type === "compra")!;
+    expect(compra.detail).toBe("Convenio · Plan de pago (2 cuotas)");
+    expect(compra.invoiceId).toBeUndefined();
+  });
+});

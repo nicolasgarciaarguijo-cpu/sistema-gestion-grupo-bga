@@ -763,6 +763,13 @@ export type DebtPlan = {
   fechaInicio?: string;
   // Cuotas estipuladas, cada una con el pago que la salda. Sin esto, se generan de los campos de arriba.
   cuotas?: import("./desendeudamiento").CuotaDeuda[];
+  // DOS BLOQUES (2026-10-23, ver domain/desendeudamiento): prestamo o cuenta corriente con convenio. Ausente =
+  // los prestamos se reconocen por el tipo o el nombre; el resto es cuenta corriente.
+  bloque?: "prestamo" | "cuenta_corriente";
+  // Cuenta corriente: las facturas del proveedor que entran en el convenio (se pagan con las cuotas).
+  facturaIds?: number[];
+  // Prestamo: el asiento del prestamo recibido (la plata que entro a la cuenta), en Deudas y aportes.
+  ingresoCapitalId?: number;
 };
 
 // Efectivo fuera del banco Y fuera de caja chica (caja de seguridad, plata en mano). Se asienta a

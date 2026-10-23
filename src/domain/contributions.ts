@@ -32,6 +32,8 @@ export type CapitalEntry = {
   // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
   firmante?: string;
   firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento
+  // Ingreso de un PRESTAMO de Desendeudamiento: la deuda se sigue ahi (sus cuotas), no aca.
+  deudaId?: number;
 };
 
 export type CapitalColorSplit = { blanco: number; negro: number; total: number };

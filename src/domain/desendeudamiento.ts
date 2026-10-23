@@ -116,3 +116,78 @@ export function camposLegacy(cuotas: CuotaDeuda[]): { nextDueDate: string; remai
     nextInstallmentAmount: Number(pend[0]?.monto || 0),
   };
 }
+
+// ---- DOS BLOQUES (Nicolas, 2026-10-23) ------------------------------------------------------------------
+// "Existen 2 tipos de deudas. Deudas por PRESTAMOS: en un punto es una inyeccion de plata en alguna cuenta y
+// despues un plan de cuotas por pagar. Y deudas de CUENTA CORRIENTE con algun proveedor, con un acuerdo de
+// pagos o una fecha de pago mensual." Los planes de pago (AFIP, ABL, moratorias) y la financiacion de equipos
+// van en cuenta corriente (convenio con ese acreedor).
+//
+// - PRESTAMO: la plata que entro se asienta como un prestamo recibido (domain/contributions) en la cuenta
+//   elegida; las cuotas se pagan con pagos de verdad. Esos pagos NO son pagos a un proveedor: no entran en
+//   la cuenta corriente del acreedor (si entraban, el acreedor quedaba "a favor" por cada cuota).
+// - CUENTA CORRIENTE CON CONVENIO: un acuerdo de cuotas con un acreedor. Si se eligen FACTURAS del
+//   proveedor, el convenio es esas facturas en cuotas (las facturas dejan de programarse por su cuenta y
+//   quedan pagadas al completar el convenio). Sin facturas (AFIP, un equipo), la deuda del convenio entra en
+//   la cuenta corriente del acreedor como una compra, asi sus cuotas la bajan en vez de dejar saldo a favor.
+export type BloqueDeuda = "prestamo" | "cuenta_corriente";
+
+export type DeudaConBloque = DeudaBase & {
+  company: string;
+  concept: string;
+  acreedor?: string;
+  tipo?: TipoDeuda;
+  bloque?: BloqueDeuda;
+  facturaIds?: number[];
+  fechaInicio?: string;
+  administration?: "blanco" | "negro";
+};
+
+const PALABRA_PRESTAMO = /pr[eé]stamo/i;
+
+// El bloque elegido; si no se eligio, los PRESTAMOS se reconocen por su tipo o por su nombre y el resto es
+// cuenta corriente.
+export function bloqueDeDeuda(d: Pick<DeudaConBloque, "bloque" | "tipo" | "concept" | "acreedor">): BloqueDeuda {
+  if (d.bloque) return d.bloque;
+  if (d.tipo === "prestamo" || PALABRA_PRESTAMO.test(`${d.concept || ""} ${d.acreedor || ""}`)) return "prestamo";
+  return "cuenta_corriente";
+}
+
+// Pagos (CostEntry) que saldan cuotas, con su deuda.
+export function pagosDeCuotas<T extends DeudaConBloque>(deudas: T[]): Map<number, T> {
+  const m = new Map<number, T>();
+  deudas.forEach((d) => cuotasDeDeuda(d).forEach((c) => c.pagoCostEntryId != null && m.set(Number(c.pagoCostEntryId), d)));
+  return m;
+}
+
+// Facturas que forman parte de un convenio (no se programan por su cuenta: las programan las cuotas).
+export function facturasEnConvenio<T extends DeudaConBloque>(deudas: T[]): Map<number, T> {
+  const m = new Map<number, T>();
+  deudas
+    .filter((d) => bloqueDeDeuda(d) === "cuenta_corriente")
+    .forEach((d) => (d.facturaIds || []).forEach((id) => m.set(Number(id), d)));
+  return m;
+}
+
+// La deuda de un convenio SIN facturas, como compra en la cuenta corriente del acreedor.
+export type CompraDeConvenio = { deudaId: number; company: string; acreedor: string; fecha: string; total: number; detalle: string; saldada: boolean; ultimoPagoId: number | null };
+export function comprasDeConvenios(deudas: DeudaConBloque[], hoy: string): CompraDeConvenio[] {
+  return deudas
+    .filter((d) => bloqueDeDeuda(d) === "cuenta_corriente" && !(d.facturaIds || []).length)
+    .map((d) => {
+      const cuotas = cuotasDeDeuda(d);
+      const r = resumenDeuda(d, hoy);
+      const pagos = cuotas.filter(cuotaPagada).map((c) => Number(c.pagoCostEntryId));
+      return {
+        deudaId: d.id,
+        company: d.company,
+        acreedor: (d.acreedor || d.concept || "").trim(),
+        fecha: d.fechaInicio || cuotas[0]?.fecha || "",
+        total: r.total,
+        detalle: `Convenio · ${d.concept || "deuda"} (${r.cuotas} cuota${r.cuotas === 1 ? "" : "s"})`,
+        saldada: r.cuotas > 0 && r.cuotasPendientes === 0,
+        ultimoPagoId: pagos.length ? pagos[pagos.length - 1] : null,
+      };
+    })
+    .filter((c) => c.total > 0 && !!c.acreedor);
+}

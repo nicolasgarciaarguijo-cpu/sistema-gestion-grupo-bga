@@ -218,7 +218,7 @@ import { FichaPagoHaberes } from "./ui/FichaPagoHaberes";
 import { PagoHaberModal, type PagoHaberForm } from "./ui/PagoHaberModal";
 import { ComprasTab } from "./tabs/Compras";
 import { DesendeudamientoTab, type PagoCuotaForm, type OtraDeuda } from "./tabs/Desendeudamiento";
-import { camposLegacy, cuotasDeDeuda, cuotasPendientes } from "./domain/desendeudamiento";
+import { bloqueDeDeuda, camposLegacy, comprasDeConvenios, cuotasDeDeuda, cuotasPendientes, facturasEnConvenio, pagosDeCuotas, resumenDeuda } from "./domain/desendeudamiento";
 import { GastoCajaChicaModal, type GastoCajaForm } from "./ui/GastoCajaChicaModal";
 import { CajaChicaListado } from "./tabs/CajaChicaListado";
 import { FichaCajaChica } from "./ui/FichaCajaChica";
@@ -4467,9 +4467,37 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const purchaseInvoiceOrigin = (inv: PurchaseInvoice): "compras" | "caja_chica" | "arca" =>
     inv.source === "caja_chica" ? "caja_chica" : /listado de ARCA/i.test(inv.notes || "") ? "arca" : "compras";
 
+  // DESENDEUDAMIENTO en dos bloques (2026-10-23, ver domain/desendeudamiento): los pagos que saldan cuotas y
+  // las facturas que forman parte de un convenio.
+  const deudasAccesibles = useMemo(() => debtPlans.filter((d) => canAccessCompany(d.company)), [debtPlans, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]);
+  const pagosDeCuotasMap = useMemo(() => pagosDeCuotas(deudasAccesibles as any), [deudasAccesibles]);
+  const facturasEnConvenioMap = useMemo(() => facturasEnConvenio(deudasAccesibles as any), [deudasAccesibles]);
+
   const purchaseLedgerInvoices = useMemo(
-    () =>
-      purchaseInvoicesWithBankLink.map((inv) => ({
+    () => [
+      // El CONVENIO sin facturas (AFIP, un equipo...): su deuda entra como compra en la cuenta corriente del
+      // acreedor, asi las cuotas la bajan en vez de dejarlo "a favor".
+      ...comprasDeConvenios(deudasAccesibles as any, todayIso()).map((c) => {
+        const prov = buscarProveedor(suppliers as any, c.acreedor, "") as any;
+        const d = deudasAccesibles.find((x) => x.id === c.deudaId);
+        return {
+          id: -c.deudaId,
+          company: String(c.company),
+          supplier: prov?.name || c.acreedor,
+          taxId: prov?.taxId || "",
+          invoiceNumber: "",
+          invoiceDate: c.fecha,
+          total: c.total,
+          administration: (d?.administration === "negro" ? "negro" : "blanco") as "blanco" | "negro",
+          origin: "convenio" as const,
+          detalle: c.detalle,
+          paidByCostEntryId: c.saldada ? c.ultimoPagoId : null,
+          paidByBankEntryId: null,
+          paidByPerson: "",
+          reimbursedAt: "",
+        };
+      }),
+      ...purchaseInvoicesWithBankLink.map((inv) => ({
         id: inv.id,
         company: String(inv.company),
         supplier: inv.supplier || "",
@@ -4489,7 +4517,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         paidByPerson: inv.paidByPerson || "",
         reimbursedAt: inv.reimbursedAt || "",
       })),
-    [purchaseInvoicesWithBankLink]
+    ],
+    [purchaseInvoicesWithBankLink, deudasAccesibles, suppliers]
   );
 
   const visiblePettyCashFunds = useMemo(
@@ -13357,9 +13386,47 @@ Escribi CERRAR para confirmar:`
       setCostEntries((prev) => [pago, ...prev]);
     }
     if (costEntryId == null) return;
-    actualizarDeuda(deudaId, {
-      cuotas: cuotasDeDeuda(d).map((c) => (c.id === cuotaId ? { ...c, pagoCostEntryId: costEntryId } : c)),
-    });
+    const cuotasNuevas = cuotasDeDeuda(d).map((c) => (c.id === cuotaId ? { ...c, pagoCostEntryId: costEntryId } : c));
+    actualizarDeuda(deudaId, { cuotas: cuotasNuevas });
+    // CONVENIO con facturas: pagada la ultima cuota, las facturas del convenio quedan pagadas.
+    const ids = new Set((d.facturaIds || []).map(Number));
+    if (bloqueDeDeuda(d as any) === "cuenta_corriente" && ids.size && cuotasNuevas.every((c) => c.pagoCostEntryId != null)) {
+      setPurchaseInvoices((prev) => prev.map((inv) => (ids.has(inv.id) && inv.paidByCostEntryId == null && inv.paidByBankEntryId == null ? { ...inv, paidByCostEntryId: costEntryId } : inv)));
+    }
+  };
+  // PRESTAMO: la plata que entro (Nicolas, 2026-10-23: "en un punto es una inyeccion de plata en alguna
+  // cuenta"). Se asienta como PRESTAMO RECIBIDO en Deudas y aportes, vinculado a la deuda: asi entra en el
+  // saldo de la cuenta y en el cash flow como cualquier prestamo. null = quitar el asiento.
+  const ingresoDePrestamo = (deudaId: number, datos: { fecha: string; monto: number; cuentaId?: string } | null) => {
+    const d = debtPlans.find((x) => x.id === deudaId);
+    if (!d) return;
+    if (!datos) {
+      if (d.ingresoCapitalId != null) setCapitalEntries((prev) => prev.filter((c) => c.id !== d.ingresoCapitalId));
+      actualizarDeuda(deudaId, { ingresoCapitalId: undefined });
+      return;
+    }
+    const color = d.administration === "negro" ? "negro" : "blanco";
+    const campos = {
+      company: d.company,
+      date: datos.fecha,
+      origin: (d.acreedor || d.concept || "Préstamo").trim(),
+      kind: "prestamo" as const,
+      direction: "recibido" as const,
+      color: color as any,
+      amount: Number(datos.monto || 0),
+      cuentaId: datos.cuentaId,
+      notes: `Préstamo · ${d.concept || ""} (Desendeudamiento)`.trim(),
+      deudaId: d.id,
+      ...firma(),
+    };
+    const existe = d.ingresoCapitalId != null && capitalEntries.some((c) => c.id === d.ingresoCapitalId);
+    if (existe) {
+      setCapitalEntries((prev) => prev.map((c) => (c.id === d.ingresoCapitalId ? { ...c, ...campos } : c)));
+    } else {
+      const id = newId();
+      setCapitalEntries((prev) => [{ id, ...campos }, ...prev]);
+      actualizarDeuda(deudaId, { ingresoCapitalId: id, capital: d.capital || Number(datos.monto || 0), fechaInicio: d.fechaInicio || datos.fecha });
+    }
   };
   const quitarPagoCuota = (deudaId: number, cuotaId: string) => {
     const d = debtPlans.find((x) => x.id === deudaId);
@@ -14467,8 +14534,14 @@ Escribi CERRAR para confirmar:`
     const taxIdBySupplierId = new Map(suppliers.map((sup) => [sup.id, sup.taxId || ""]));
     // Los PAGOS son los gastos cargados (CostEntry): manuales y los que bajaron del extracto.
     const gastos = costEntries
-      // Los pagos de haberes son de la ficha de la persona, no de un proveedor.
-      .filter((entry) => canAccessCompany(entry.company) && entry.employeeId == null)
+      // Los pagos de haberes son de la ficha de la persona, no de un proveedor. La cuota de un PRESTAMO
+      // tampoco: es devolver plata prestada (si entraba, el banco quedaba "a favor" por cada cuota).
+      .filter(
+        (entry) =>
+          canAccessCompany(entry.company) &&
+          entry.employeeId == null &&
+          !(pagosDeCuotasMap.has(entry.id) && bloqueDeDeuda(pagosDeCuotasMap.get(entry.id) as any) === "prestamo")
+      )
       .map((entry) => ({
         id: entry.id,
         kind: "gasto" as const,
@@ -14531,6 +14604,7 @@ Escribi CERRAR para confirmar:`
   }, [
     costEntries,
     suppliers,
+    pagosDeCuotasMap,
     visibleBankStatementEntries,
     purchaseLedgerInvoices,
     purchaseInvoicesWithBankLink,
@@ -14575,7 +14649,8 @@ Escribi CERRAR para confirmar:`
     const taxIdDe = new Map(suppliers.map((s) => [s.id, s.taxId || ""]));
     return pagosSinFactura(
       costEntries
-        .filter((c) => canAccessCompany(c.company))
+        // El pago de una cuota lo respalda su deuda (prestamo o convenio): no es un pago sin factura.
+        .filter((c) => canAccessCompany(c.company) && !pagosDeCuotasMap.has(c.id))
         .map((c) => ({
           ...c,
           company: String(c.company),
@@ -14585,7 +14660,7 @@ Escribi CERRAR para confirmar:`
       purchaseInvoices,
       todayIso()
     );
-  }, [costEntries, purchaseInvoices, suppliers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]);
+  }, [costEntries, purchaseInvoices, suppliers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession, pagosDeCuotasMap]);
 
   // CONTEO DE BLANQUEO por empresa, en el EJERCICIO FISCAL en curso (ver domain/faltaFactura). Sube con la
   // plata negra que entra al banco (deposito, prestamo o aporte en negro); baja con lo que balancea (sacar
@@ -14838,7 +14913,8 @@ Escribi CERRAR para confirmar:`
     () =>
       summarizeContributions(
         visibleCapitalEntries.filter(
-          (item) => balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope
+          // El ingreso de un prestamo de Desendeudamiento: su deuda se sigue alla (las cuotas), no aca.
+          (item) => (balanceCompanyScope === "__ALL__" || item.company === balanceCompanyScope) && item.deudaId == null
         )
       ),
     [visibleCapitalEntries, balanceCompanyScope]
@@ -16873,7 +16949,8 @@ Escribi CERRAR para confirmar:`
         (() => {
           const aplicado = creditoAplicadoPorFactura(visibleCreditNotes);
           return purchaseInvoicesWithBankLink
-            .filter((i) => canAccessCompany(i.company))
+            // Las facturas de un convenio las programan sus cuotas (Desendeudamiento), no su condicion.
+            .filter((i) => canAccessCompany(i.company) && !facturasEnConvenioMap.has(i.id))
             .map((i) => (aplicado.has(i.id) ? { ...i, total: saldoDeFactura(Number(i.total || 0), aplicado.get(i.id) || 0) } : i))
             // A medio pagar (varios pagos): lo que se programa es lo que FALTA, no el total.
             .map((i) => {
@@ -16894,7 +16971,7 @@ Escribi CERRAR para confirmar:`
           conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, inv?.grupoCosto || prov?.grupoCosto || "|Sin grupo"),
         };
       }),
-    [purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes, costEntries]
+    [purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes, costEntries, facturasEnConvenioMap]
   );
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
   // Movimientos del mes de una cuenta, abiertos desde el tablero de plata disponible.
@@ -17222,7 +17299,7 @@ Escribi CERRAR para confirmar:`
         facturas: facturasAPagar,
         // Las ya pagadas siguen en el calendario, tachadas (no desaparecen al pagarlas).
         facturasPagadas: facturasPagadasProgramadas(
-          purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company)) as any,
+          purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company) && !facturasEnConvenioMap.has(i.id)) as any,
           suppliers as any
         ),
         // Cheques entregados (pagos con medio cheque): inamovibles el dia que se debitan. Cubiertos cuando el
@@ -17247,7 +17324,7 @@ Escribi CERRAR para confirmar:`
       hasta,
       hoyIso
     );
-  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries, purchaseInvoicesWithBankLink, suppliers]);
+  }, [vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries, purchaseInvoicesWithBankLink, suppliers, facturasEnConvenioMap]);
 
   // ANALISIS DE GASTOS (Compras y analisis de gastos): todos los egresos del sistema, los realizados (lo
   // mismo que alimenta el Calendario) y lo que viene (Pagos programados). Ver domain/analisisGastos.
@@ -21808,6 +21885,20 @@ Escribi CERRAR para confirmar:`
             proveedor={prov}
             ledger={ledger}
             porPagar={porPagar}
+            convenios={deudasAccesibles
+              .filter((d) => bloqueDeDeuda(d as any) === "cuenta_corriente" && d.active)
+              .filter((d) => {
+                const p = buscarProveedor(suppliers as any, d.acreedor || d.concept || "", "") as any;
+                return !!p && supplierKey(p.name, p.taxId || "") === supplierKey(fichaProveedor.nombre, fichaProveedor.taxId || "");
+              })
+              .map((d) => {
+                const r = resumenDeuda(d, hoyIso);
+                return { id: d.id, concepto: d.concept || "Convenio", total: r.total, pagado: r.pagado, pendiente: r.pendiente, proxima: r.proxima ? { fecha: r.proxima.fecha, monto: r.proxima.monto } : undefined, facturas: (d.facturaIds || []).length };
+              })}
+            onAbrirConvenio={() => {
+              setFichaProveedor(null);
+              setActiveTab("desendeudamiento" as TabKey);
+            }}
             renglonesEgreso={renglonesEgreso}
             fvPorRenglon={calendarRowConfig.fv || {}}
             money={money}
@@ -22184,6 +22275,34 @@ Escribi CERRAR para confirmar:`
           onBorrar={removeDebtPlan}
           onRegistrarPago={registrarPagoCuota}
           onQuitarPago={quitarPagoCuota}
+          ingresoDe={(capitalId) => {
+            const c = capitalEntries.find((x) => x.id === capitalId);
+            return c ? { fecha: c.date, monto: Number(c.amount || 0), cuentaId: c.cuentaId } : null;
+          }}
+          onIngreso={ingresoDePrestamo}
+          facturasDelAcreedor={(company, acreedor, deudaId) => {
+            const prov = buscarProveedor(suppliers as any, acreedor || "", "") as any;
+            const key = prov ? supplierKey(prov.name, prov.taxId || "") : supplierKey(acreedor || "", "");
+            const enOtro = (id: number) => {
+              const x = facturasEnConvenioMap.get(id);
+              return !!x && x.id !== deudaId;
+            };
+            return purchaseInvoicesWithBankLink
+              .filter((i) => i.company === company && supplierKey(i.supplier || "", i.taxId || "") === key && i.source !== "caja_chica" && !enOtro(i.id))
+              .sort((a, b) => (b.invoiceDate || "").localeCompare(a.invoiceDate || ""))
+              .map((i) => ({
+                id: i.id,
+                fecha: i.invoiceDate || "",
+                numero: i.invoiceNumber || "sin número",
+                total: Number(i.total || 0),
+                pagada: i.paidByCostEntryId != null || i.paidByBankEntryId != null,
+              }));
+          }}
+          esProveedor={(acreedor) => !!buscarProveedor(suppliers as any, acreedor || "", "")}
+          onAbrirProveedor={(acreedor) => {
+            const prov = buscarProveedor(suppliers as any, acreedor || "", "") as any;
+            if (prov) abrirFichaProveedor(prov.name, prov.taxId || "");
+          }}
           onIr={(tab) => setActiveTab(tab as TabKey)}
         />
       )}
