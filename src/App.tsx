@@ -238,6 +238,7 @@ import { GanttFabricacion } from "./tabs/GanttFabricacion";
 import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
 import { TiposMueble } from "./tabs/TiposMueble";
 import { MueblesPresupuesto } from "./tabs/MueblesPresupuesto";
+import { filasAjenasNuevas, type FilaGuardada } from "./domain/cambiosAjenos";
 import type { MuebleDelPresupuesto, PersonaParaCotizar } from "./domain/presupuestoMuebles";
 import { Mantenimiento } from "./tabs/Mantenimiento";
 import { esMaquinaOHerramienta, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
@@ -2551,8 +2552,15 @@ const mergeSupabaseAppStateRecords = (
   };
 };
 
-const readSupabasePersistedAppStateRecord =
-  async (): Promise<SupabaseSnapshotRecord | null> => {
+const readSupabasePersistedAppStateRecord = async (): Promise<SupabaseSnapshotRecord | null> =>
+  (await readSupabasePersistedAppStateWithRows())?.record ?? null;
+
+// Igual que la lectura completa, pero devuelve tambien las filas (modulo + empresa) con su sello de guardado:
+// sirven para saber que cambio OTRA sesion (ver domain/cambiosAjenos).
+const readSupabasePersistedAppStateWithRows = async (): Promise<{
+  record: SupabaseSnapshotRecord | null;
+  rows: FilaGuardada[];
+} | null> => {
   const sessionResult = await supabase.auth.getSession();
   if (!sessionResult.data.session?.user) return null;
 
@@ -2573,7 +2581,10 @@ const readSupabasePersistedAppStateRecord =
     }
   }
 
-  return mergeSupabaseAppStateRecords(legacyRecord, moduleRecords);
+  return {
+    record: mergeSupabaseAppStateRecords(legacyRecord, moduleRecords),
+    rows: moduleRecords.map((r) => ({ module_key: r.module_key, company: r.company, saved_at: r.saved_at, updated_by: r.updated_by })),
+  };
 };
 
 const writeSupabasePersistedLegacyAppState = async (
@@ -3389,6 +3400,15 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const dbBaselineRef = useRef<PersistedAppStateData | null>(null);
   const lastSupabaseAutosaveAtRef = useRef(0);
   const pendingRemoteSnapshotRef = useRef<PersistedAppState | null>(null);
+  // Sello (saved_at + updated_by) de cada fila modulo+empresa en la ultima revision: lo que cambio y lo guardo
+  // otro usuario es un cambio ajeno a traer (no depende del reloj ni de cual fue el ultimo guardado de la base).
+  const remoteRowStampsRef = useRef<Map<string, string> | null>(null);
+  const realtimeRevisionTimerRef = useRef<number | null>(null);
+  // Las funciones de sincronizacion se llaman desde un intervalo y desde realtime: si se llamaran directo,
+  // usarian los datos del render en que se armo el intervalo (viejos) y creerian que hay cambios locales sin
+  // guardar, y nunca aplicarian lo ajeno. Por eso van por ref, que siempre apunta a la version del ultimo render.
+  const revisarCambiosAjenosRef = useRef<(source: "realtime" | "poll") => Promise<void>>(async () => {});
+  const applyIncomingSnapshotRef = useRef<(record: SupabaseSnapshotRecord | null, source: "realtime" | "poll") => void>(() => {});
   // Guard anti-pérdida: solo permitimos ESCRIBIR en Supabase despues de una carga
   // inicial EXITOSA del estado remoto. Si la carga falla (base caida/lenta) o aun no
   // ocurrio, el autosave NO sube nada -> nunca pisa los datos buenos con estado vacio.
@@ -3831,8 +3851,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         await loadSupabaseActiveSessions();
         await loadSupabaseChatMessages();
 
-        const remoteRecord = await readSupabasePersistedAppStateRecord();
-        applyIncomingSupabaseSnapshot(remoteRecord, "poll");
+        await revisarCambiosAjenosRef.current("poll");
         // Carga remota OK: recien ahora habilitamos la escritura a Supabase.
         if (!supabaseHydratedOkRef.current) {
           supabaseHydratedOkRef.current = true;
@@ -3853,12 +3872,21 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     const handleBeforeUnload = () => {
       void clearSupabasePresence();
     };
+    // Con la pestaña en segundo plano o la compu suspendida, el navegador frena el intervalo y la conexion en vivo
+    // se puede caer: al volver, se revisa enseguida.
+    const alVolver = () => {
+      if (document.visibilityState === "visible") void runCollaborationSync();
+    };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("visibilitychange", alVolver);
+    window.addEventListener("focus", alVolver);
 
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("visibilitychange", alVolver);
+      window.removeEventListener("focus", alVolver);
     };
   }, [
     isSupabaseLoggedIn,
@@ -3948,7 +3976,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         () => {
           void readSupabasePersistedAppStateRecord()
             .then((nextRecord) => {
-              applyIncomingSupabaseSnapshot(nextRecord, "realtime");
+              applyIncomingSnapshotRef.current(nextRecord, "realtime");
             })
             .catch((error) => {
               console.log("COLLAB REALTIME SNAPSHOT ERROR:", error);
@@ -3963,73 +3991,24 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           table: SUPABASE_APP_STATE_MODULES_V2_TABLE,
         },
         (payload: any) => {
+          // Un guardado propio no hace falta traerlo. Lo ajeno: se revisa la base entera por fila (el aviso de
+          // realtime puede venir sin los datos si la fila es grande, y aplicar lo que trae mezclado con datos
+          // viejos de esta sesion podia volver atras cambios).
           const nextRow = isRecord(payload?.new) ? payload.new : null;
-          const moduleKey =
-            nextRow && typeof nextRow.module_key === "string"
-              ? nextRow.module_key
-              : "";
-          const rowCompany =
-            nextRow && typeof nextRow.company === "string"
-              ? nextRow.company
-              : GENERAL_COMPANY;
-          const modulePayload =
-            nextRow && moduleKey
-              ? normalizePersistedAppStateModule(nextRow.payload, moduleKey)
-              : null;
-
-          if (modulePayload) {
-            const savedAt =
-              typeof nextRow?.saved_at === "string"
-                ? nextRow.saved_at
-                : modulePayload.savedAt;
-            const updatedBy =
-              typeof nextRow?.updated_by === "string" ? nextRow.updated_by : null;
-            const currentData =
-              lastRealtimeModuleMergeSavedAtRef.current === savedAt &&
-              lastRealtimeModuleMergedDataRef.current
-                ? lastRealtimeModuleMergedDataRef.current
-                : buildPersistedAppData();
-            // Reemplaza SOLO la porcion de esa empresa, sin pisar las demas.
-            const mergedModuleData = applyCompanyModuleSlice(
-              modulePayload.moduleKey,
-              currentData,
-              rowCompany,
-              modulePayload.data
-            ) as PersistedAppStateData;
-            lastRealtimeModuleMergeSavedAtRef.current = savedAt;
-            lastRealtimeModuleMergedDataRef.current = mergedModuleData;
-            applyIncomingSupabaseSnapshot(
-              {
-                payload: {
-                  version: APP_PERSISTENCE_VERSION,
-                  savedAt,
-                  data: mergedModuleData,
-                },
-                saved_at: savedAt,
-                updated_by: updatedBy,
-                module_keys: [modulePayload.moduleKey],
-              },
-              "realtime"
-            );
-            return;
-          }
-
-          void readSupabasePersistedAppStateRecord()
-            .then((nextRecord) => {
-              applyIncomingSupabaseSnapshot(
-                nextRecord && moduleKey
-                  ? { ...nextRecord, module_keys: [moduleKey] }
-                  : nextRecord,
-                "realtime"
-              );
-            })
-            .catch((error) => {
-              console.log("COLLAB REALTIME MODULE SNAPSHOT ERROR:", error);
-            });
+          if (nextRow && typeof nextRow.updated_by === "string" && nextRow.updated_by === supabaseSession?.user?.id) return;
+          if (realtimeRevisionTimerRef.current) window.clearTimeout(realtimeRevisionTimerRef.current);
+          realtimeRevisionTimerRef.current = window.setTimeout(() => {
+            realtimeRevisionTimerRef.current = null;
+            void revisarCambiosAjenosRef.current("realtime").catch((error) => console.log("COLLAB REALTIME MODULE ERROR:", error));
+          }, 400);
         }
       )
       .subscribe((status: string) => {
         console.log("COLLAB REALTIME STATUS:", status);
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+          // Mientras se reconecta, una revision por las dudas (lo que se haya perdido en el medio).
+          void revisarCambiosAjenosRef.current("poll").catch(() => {});
+        }
       });
 
     collaborationChannelRef.current = channel;
@@ -8324,7 +8303,8 @@ Escribi CERRAR para confirmar:`
 
   const applyIncomingSupabaseSnapshot = (
     record: SupabaseSnapshotRecord | null,
-    source: "realtime" | "poll"
+    source: "realtime" | "poll",
+    opciones: { porFila?: boolean } = {}
   ) => {
     if (!record?.payload || !record.saved_at) return;
 
@@ -8338,7 +8318,9 @@ Escribi CERRAR para confirmar:`
       ? new Date(localSnapshotSavedAt).getTime()
       : 0;
 
-    if (!Number.isFinite(remoteSavedAt) || remoteSavedAt < localSavedAt) return;
+    // Detectado por los sellos de cada fila (cambio ajeno seguro): no se compara contra el reloj propio, que
+    // puede estar adelantado respecto del de la otra maquina.
+    if (!Number.isFinite(remoteSavedAt) || (!opciones.porFila && remoteSavedAt < localSavedAt)) return;
 
     lastSnapshotEventKeyRef.current = eventKey;
 
@@ -8368,7 +8350,7 @@ Escribi CERRAR para confirmar:`
       return;
     }
 
-    lastSupabaseSnapshotSavedAtRef.current = normalized.savedAt;
+    if (!opciones.porFila || remoteSavedAt >= localSavedAt) lastSupabaseSnapshotSavedAtRef.current = normalized.savedAt;
     const currentSignature = buildPersistedDataSignature(buildPersistedAppData());
     const hasLocalUnsyncedChanges =
       currentSignature !== lastPersistedDataSignatureRef.current;
@@ -8416,6 +8398,28 @@ Escribi CERRAR para confirmar:`
       }`
     );
   };
+
+  // Lee la base y trae lo que guardo OTRA sesion desde la ultima revision (por fila modulo+empresa). La primera
+  // vez solo anota los sellos y aplica como siempre.
+  const revisarCambiosAjenos = async (source: "realtime" | "poll") => {
+    const leido = await readSupabasePersistedAppStateWithRows();
+    if (!leido) return;
+    const primera = remoteRowStampsRef.current === null;
+    const { sellos, cambios } = filasAjenasNuevas(remoteRowStampsRef.current, leido.rows, supabaseSession?.user?.id);
+    remoteRowStampsRef.current = sellos;
+    if (primera || !cambios) {
+      applyIncomingSupabaseSnapshot(leido.record, source);
+      return;
+    }
+    if (!leido.record) return;
+    applyIncomingSupabaseSnapshot(
+      { ...leido.record, saved_at: cambios.savedAt, updated_by: cambios.updatedBy, module_keys: cambios.moduleKeys },
+      source,
+      { porFila: true }
+    );
+  };
+  revisarCambiosAjenosRef.current = revisarCambiosAjenos;
+  applyIncomingSnapshotRef.current = applyIncomingSupabaseSnapshot;
 
   const buildSystemAssistantReply = (question: string) => {
     const normalized = question.trim().toLowerCase();
