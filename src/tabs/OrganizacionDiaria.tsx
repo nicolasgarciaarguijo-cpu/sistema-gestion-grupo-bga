@@ -21,10 +21,13 @@ import {
   type TareaDelDia,
   type TipoTarea,
   type TurnoDia,
+  type UnidadTarea,
+  UNIDADES_TAREA,
 } from "../domain/organizacionDiaria";
 import { timeToMinutes } from "../domain/attendance";
+import { capacidadesDelEmpleado, categoriaPrincipal, tieneCategorias, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
 
-export type EmpleadoOrg = { id: number; name: string; company: string };
+export type EmpleadoOrg = { id: number; name: string; company: string; categoriasInternas?: number[] };
 export type TrabajoOrg = { id: number; budgetNumber: string; client: string; company: string; direccion?: string };
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -51,6 +54,7 @@ export function OrganizacionDiaria({
   asignaciones,
   grupos,
   tipos,
+  categorias,
   companyShort,
   onGuardarAsignacion,
   onBorrarAsignacion,
@@ -66,6 +70,8 @@ export function OrganizacionDiaria({
   asignaciones: AsignacionDiaria[];
   grupos: GrupoTrabajo[];
   tipos: TipoTarea[];
+  // Categorias internas (Personal): el empleado solo hace las tareas de las suyas.
+  categorias: CategoriaEmpleado[];
   companyShort: (company: string) => string;
   onGuardarAsignacion: (a: AsignacionDiaria) => void;
   onBorrarAsignacion: (id: number) => void;
@@ -241,6 +247,10 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
                 >
                   <div>
                     <strong>{e.name}</strong> <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{companyShort(e.company)}</span>
+                    {(() => {
+                      const cp = categoriaPrincipal(e.categoriasInternas, categorias);
+                      return cp ? <span style={{ fontSize: 11.5, color: "#0f766e", marginLeft: 6 }}>{cp.nombre}</span> : <span style={{ fontSize: 11.5, color: "#b45309", marginLeft: 6 }}>sin categoría interna</span>;
+                    })()}
                     <div style={{ fontSize: 12, color: "#64748b" }}>
                       {existe
                         ? `${a.lugar === "obra" ? `🏗 ${t ? `${t.budgetNumber} · ${t.client}` : "Obra sin elegir"}` : "🏭 Fábrica"} · ${a.turnos.map((x) => `${x.desde}-${x.hasta}`).join(" / ") || "sin turnos"} · ${h.total} h · ${a.tareas.length} tarea(s)${a.tareas.length ? ` (${hechas} hechas)` : ""}`
@@ -258,6 +268,7 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
                     trabajos={trabajos}
                     tipos={tipos}
                     grupos={grupos}
+                    capacidades={tieneCategorias(e.categoriasInternas) ? capacidadesDelEmpleado(e.categoriasInternas, categorias) : null}
                     onGuardar={guardar}
                     onBorrar={existe ? () => { if (window.confirm(`¿Borrar el día de ${e.name}?`)) { onBorrarAsignacion(a.id); setAbierta(null); } } : undefined}
                     onAbrirTrabajo={onAbrirTrabajo}
@@ -283,6 +294,7 @@ function FichaDelDia({
   trabajos,
   tipos,
   grupos,
+  capacidades,
   onGuardar,
   onBorrar,
   onAbrirTrabajo,
@@ -292,6 +304,9 @@ function FichaDelDia({
   trabajos: TrabajoOrg[];
   tipos: TipoTarea[];
   grupos: GrupoTrabajo[];
+  // Lo que el empleado domina, de la tarea mas nueva a la mas vieja. null = sin categorias cargadas (no
+  // se restringe todavia).
+  capacidades: Capacidad[] | null;
   onGuardar: (a: AsignacionDiaria) => void;
   onBorrar?: () => void;
   onAbrirTrabajo?: (jobId: number) => void;
@@ -302,7 +317,11 @@ function FichaDelDia({
   const setTarea = (id: number, patch: Partial<TareaDelDia>) => set({ tareas: a.tareas.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
   const t = trabajos.find((x) => x.id === a.jobId);
   const mapa = linkMapa(t?.direccion);
-  const avisos = avisosDelDia(a);
+  const puede = (tipoId: number) => !capacidades || capacidades.some((c) => c.tareaId === tipoId);
+  const fueraDeCategoria = a.tareas
+    .filter((x) => x.tipoTareaId != null && !puede(Number(x.tipoTareaId)))
+    .map((x) => `"${x.descripcion || tipos.find((tp) => tp.id === x.tipoTareaId)?.nombre || "tarea"}" está fuera de sus categorías internas`);
+  const avisos = [...avisosDelDia(a), ...fueraDeCategoria];
   const h = horasDelDia(a);
   const tareas = [...a.tareas].sort((x, z) => x.desde.localeCompare(z.desde));
   const tiposActivos = tipos.filter((x) => x.activa !== false);
@@ -413,16 +432,23 @@ function FichaDelDia({
                       }}
                     >
                       <option value="">— Elegí —</option>
+                      {capacidades && (
+                        <optgroup label="Lo que domina (las nuevas primero)">
+                          {capacidades.map((c) => tiposActivos.find((tp) => tp.id === c.tareaId)).filter((tp): tp is TipoTarea => !!tp).map((tp) => (
+                            <option key={`cap-${tp.id}`} value={tp.id}>{tp.nombre}</option>
+                          ))}
+                        </optgroup>
+                      )}
                       {grupos.map((g) => {
-                        const deGrupo = tiposActivos.filter((tp) => tp.grupoId === g.id);
+                        const deGrupo = tiposActivos.filter((tp) => tp.grupoId === g.id && (!capacidades || !puede(tp.id)));
                         return deGrupo.length ? (
-                          <optgroup key={g.id} label={g.nombre}>
-                            {deGrupo.map((tp) => <option key={tp.id} value={tp.id}>{tp.nombre}</option>)}
+                          <optgroup key={g.id} label={capacidades ? `${g.nombre} · fuera de su categoría` : g.nombre}>
+                            {deGrupo.map((tp) => <option key={tp.id} value={tp.id} disabled={!puede(tp.id)}>{tp.nombre}</option>)}
                           </optgroup>
                         ) : null;
                       })}
-                      {tiposActivos.filter((tp) => !tp.grupoId || !grupos.some((g) => g.id === tp.grupoId)).map((tp) => (
-                        <option key={tp.id} value={tp.id}>{tp.nombre}</option>
+                      {tiposActivos.filter((tp) => (!tp.grupoId || !grupos.some((g) => g.id === tp.grupoId)) && (!capacidades || !puede(tp.id))).map((tp) => (
+                        <option key={tp.id} value={tp.id} disabled={!puede(tp.id)}>{tp.nombre}</option>
                       ))}
                     </select>
                   </td>
@@ -553,6 +579,11 @@ function Catalogo({
         </select>
       </td>
       <td style={td}>
+        <select style={input} value={t.unidad || "u"} onChange={(e) => onGuardarTipo({ ...t, unidad: e.target.value as UnidadTarea })}>
+          {UNIDADES_TAREA.map((u) => <option key={u.value} value={u.value}>{u.label}</option>)}
+        </select>
+      </td>
+      <td style={td}>
         <input
           style={{ ...input, width: 70 }}
           type="number"
@@ -579,7 +610,7 @@ function Catalogo({
   return (
     <Panel span="full" title="Tipos de tarea y grupos de trabajo">
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
-        Se arma una vez y queda: cada grupo de trabajo con sus tipos de tarea, el tiempo estándar y el desglose en pasos. Al cargar el día se elige el tipo y no hay que tipear todo.
+        Se arma una vez y queda: cada grupo de trabajo con sus tipos de tarea, la unidad en que se mide, las horas por unidad y el desglose en pasos. Al cargar el día se elige el tipo y no hay que tipear todo.
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         <ButtonLike onClick={() => onGuardarGrupo({ id: nuevoId(), nombre: "Grupo nuevo", orden: grupos.length + 1 })}>+ Grupo de trabajo</ButtonLike>
@@ -607,7 +638,8 @@ function Catalogo({
                 <tr>
                   <th style={th}>Tarea</th>
                   <th style={th}>Grupo</th>
-                  <th style={th}>Horas estándar</th>
+                  <th style={th}>Unidad</th>
+                  <th style={th}>Horas por unidad</th>
                   <th style={th}>Desglose (pasos)</th>
                   <th style={th}></th>
                 </tr>

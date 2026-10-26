@@ -1578,6 +1578,8 @@ export type Employee = {
   suppliesDueDate: string;
   suppliesAttachmentName: string;
   skills: string;
+  // Categorias INTERNAS tildadas (capacidades, no las del convenio). Ver domain/categoriasEmpleado.
+  categoriasInternas?: number[];
   notes: string;
   payrolls: EmployeePayroll[];
   // Baja del empleado. Si `terminationDate` tiene fecha (yyyy-mm-dd), sale de la nomina y pasa a la

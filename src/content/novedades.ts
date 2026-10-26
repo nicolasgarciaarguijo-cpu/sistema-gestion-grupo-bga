@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-25a",
+    fecha: "25/10/2026",
+    titulo: "Categorías internas del personal y sus capacidades",
+    items: [
+      {
+        titulo: "Categorías internas con sus tareas",
+        que: "Personal tiene un bloque nuevo, 'Categorías internas' (Aprendiz, Ayudantes, Armador, Mecanizador, Laqueador, Instalador, Herrero, Responsables…). No son las del convenio: son las capacidades. Cada una da tareas del catálogo de Fabricación y suma las de las categorías que incluye (quien sube conserva lo que ya hacía). El nivel define qué tareas se priorizan.",
+        como: "Personal → Categorías internas: el nombre y el nivel se escriben en la celda; click derecho sobre una categoría → 'Tareas…' o 'Qué categorías incluye…'.",
+        tab: "personal",
+      },
+      {
+        titulo: "Las categorías de cada persona",
+        que: "En la ficha de cada empleado se tildan las categorías que puede desempeñar y se ve todo lo que puede hacer, con las tareas de su categoría más alta resaltadas.",
+        como: "Personal → abrí la ficha → 'Categorías internas y capacidades'.",
+        tab: "personal",
+      },
+      {
+        titulo: "Capacidades en Fabricación y tareas con unidad",
+        que: "Fabricación muestra 'Capacidades del personal': qué domina cada uno y, por tarea, quién la puede hacer (las que no tiene nadie o dependen de una sola persona son el puesto a cubrir). En la organización diaria, a quien tiene categorías solo se le pueden dar sus tareas, primero las más nuevas. Las tareas del catálogo ahora tienen unidad (unidades, metros lineales, m², m³) y horas por unidad.",
+        como: "Fabricación → Capacidades del personal. En Tipos de tarea y grupos de trabajo elegí la unidad de cada tarea.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-10-23f",
     fecha: "23/10/2026",
     titulo: "Elegir la tarjeta en cada pago",

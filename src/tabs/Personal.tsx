@@ -37,6 +37,9 @@ import type { DayAttendance } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
 import NumInput from "../ui/NumInput";
+import { CategoriasInternas, CategoriasDelEmpleado } from "./CategoriasInternas";
+import type { CategoriaEmpleado } from "../domain/categoriasEmpleado";
+import type { GrupoTrabajo, TipoTarea } from "../domain/organizacionDiaria";
 type PersonalTabProps = {
   employees: any[];
   onPayrollMonthReport: (month: string, employeeIds?: number[]) => void;
@@ -115,6 +118,13 @@ type PersonalTabProps = {
   updateAttendanceRecord: any;
   updateEmployeeDocument: any;
   updateEmployeeField: any;
+  // Categorias internas (capacidades) y el catalogo de tareas de Fabricacion que dan.
+  categoriasInternas: CategoriaEmpleado[];
+  tiposTarea: TipoTarea[];
+  gruposTrabajo: GrupoTrabajo[];
+  onGuardarCategoria: (c: CategoriaEmpleado) => void;
+  onBorrarCategoria: (id: number) => void;
+  nuevoId: () => number;
   updateEmployeePayrollManual: any;
   updateEmployeeProvisionItem: any;
 };
@@ -224,6 +234,7 @@ export function PersonalTab(props: PersonalTabProps) {
     removeEmployeeDocument, removeEmployeeProvisionItem,
     saveEmployeePayrollMonth, syncLaborMarkersFromPersonal, updateAttendanceRecord,
     updateEmployeeDocument, updateEmployeeField, updateEmployeePayrollManual,
+    categoriasInternas, tiposTarea, gruposTrabajo, onGuardarCategoria, onBorrarCategoria, nuevoId,
     updateEmployeeProvisionItem,
   } = props;
   // Escalas: se muestran las VIGENTES = la que rige este mes (la ultima cargada <= mes en curso, aunque
@@ -1128,6 +1139,20 @@ export function PersonalTab(props: PersonalTabProps) {
               <Panel title="Reglas de liquidacion" span="full">
                 <ReglasLiquidacion config={employeeBaseConfig} />
               </Panel>
+            </div>
+          )}
+
+          {!selectedEmployee && (
+            <div style={{ order: 3, gridColumn: "1 / -1" }}>
+              <CategoriasInternas
+                categorias={categoriasInternas}
+                tipos={tiposTarea}
+                grupos={gruposTrabajo}
+                empleados={visibleEmployees}
+                onGuardar={onGuardarCategoria}
+                onBorrar={onBorrarCategoria}
+                nuevoId={nuevoId}
+              />
             </div>
           )}
 
@@ -2338,6 +2363,13 @@ export function PersonalTab(props: PersonalTabProps) {
                       </Panel>
 
                     </div>
+
+                    <CategoriasDelEmpleado
+                      empleado={selectedEmployee}
+                      categorias={categoriasInternas}
+                      tipos={tiposTarea}
+                      onCambiar={(ids) => updateEmployeeField(selectedEmployee.id, "categoriasInternas", ids)}
+                    />
 
                     <div style={styles.personalAttendancePayrollGrid}>
                       <div style={styles.personalAttendancePane}>

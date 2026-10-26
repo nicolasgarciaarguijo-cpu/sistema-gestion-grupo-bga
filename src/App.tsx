@@ -235,6 +235,8 @@ import { resumirMaterialesDelTrabajo } from "./domain/jobMaterials";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
 import { GanttFabricacion } from "./tabs/GanttFabricacion";
+import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
+import { CATEGORIAS_POR_DEFECTO, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
@@ -1843,6 +1845,8 @@ type PersistedAppStateData = {
   // Fabricacion · Gantt: el plan de cada trabajo (por empresa) y los rubros de cantidades (global).
   planesFabricacion: PlanFabricacion[];
   rubrosFabricacion: RubroFabricacion[];
+  // Personal · categorias internas (capacidades): catalogo global con sus tareas de fabricacion.
+  categoriasEmpleado: CategoriaEmpleado[];
   // Cuentas (bancos, efectivo, cajas por persona) corregidas a mano: apertura, nombre, principal.
   cuentas: Cuenta[];
   costRules: CostRule[];
@@ -1915,7 +1919,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "organizacion-diaria",
     label: "Fabricación · organización diaria",
-    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion"] as const,
+    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado"] as const,
   },
   {
     key: "cuentas",
@@ -3110,6 +3114,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [gruposTrabajo, setGruposTrabajo] = useState<GrupoTrabajo[]>([]);
   const [planesFabricacion, setPlanesFabricacion] = useState<PlanFabricacion[]>([]);
   const [rubrosFabricacion, setRubrosFabricacion] = useState<RubroFabricacion[]>([]);
+  const [categoriasEmpleado, setCategoriasEmpleado] = useState<CategoriaEmpleado[]>([]);
+  // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
+  const categoriasVigentes = categoriasEmpleado.length ? categoriasEmpleado : CATEGORIAS_POR_DEFECTO;
   const [cuentasGuardadas, setCuentasGuardadas] = useState<Cuenta[]>([]);
   const [inversionesCompanyScope, setInversionesCompanyScope] = useState<string>("__ALL__");
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
@@ -9744,6 +9751,7 @@ Escribi CERRAR para confirmar:`
     gruposTrabajo: gruposTrabajo.map((item) => ({ ...item })),
     planesFabricacion: planesFabricacion.map((item) => ({ ...item, rubros: item.rubros.map((r) => ({ ...r })) })),
     rubrosFabricacion: rubrosFabricacion.map((item) => ({ ...item, palabras: [...item.palabras], excluir: [...(item.excluir || [])] })),
+    categoriasEmpleado: categoriasEmpleado.map((item) => ({ ...item, incluye: [...item.incluye], tareaIds: [...item.tareaIds] })),
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
@@ -10081,6 +10089,7 @@ Escribi CERRAR para confirmar:`
       keepAccessibleByCompany(data.planesFabricacion || []).map((item) => ({ ...item, rubros: (item.rubros || []).map((r) => ({ ...r })) }))
     );
     setRubrosFabricacion((data.rubrosFabricacion || []).map((item) => ({ ...item, palabras: [...(item.palabras || [])], excluir: [...(item.excluir || [])] })));
+    setCategoriasEmpleado((data.categoriasEmpleado || []).map((item) => ({ ...item, incluye: [...(item.incluye || [])], tareaIds: [...(item.tareaIds || [])] })));
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -12409,6 +12418,7 @@ Escribi CERRAR para confirmar:`
     gruposTrabajo,
     planesFabricacion,
     rubrosFabricacion,
+    categoriasEmpleado,
     cuentasGuardadas,
     fiscalClosings,
     inversiones,
@@ -15595,6 +15605,7 @@ Escribi CERRAR para confirmar:`
       | EmployeeDocument[]
       | EmployeePayroll[]
       | EmployeeProvisionItem[]
+      | number[]
   ) => {
     setEmployees((prev) =>
       prev.map((employee) =>
@@ -23096,11 +23107,12 @@ Escribi CERRAR para confirmar:`
       )}
       {activeTab === "fabricacion" && (
         <OrganizacionDiaria
-          empleados={visibleEmployees.map((e) => ({ id: e.id, name: e.name, company: e.company }))}
+          empleados={visibleEmployees.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
           trabajos={visibleApprovedJobs.map((j) => ({ id: j.id, budgetNumber: j.budgetNumber, client: j.client, company: j.company, direccion: j.deliveryDestination }))}
           asignaciones={asignacionesDiarias.filter((a) => canAccessCompany(a.company))}
           grupos={gruposTrabajo}
           tipos={tiposTarea}
+          categorias={categoriasVigentes}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
           onGuardarAsignacion={(a) => {
             const conFirma = { ...a, ...firma() };
@@ -23119,6 +23131,15 @@ Escribi CERRAR para confirmar:`
             setActiveTab("aprobados" as TabKey);
           }}
           nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
+        />
+      )}
+      {activeTab === "fabricacion" && (
+        <CapacidadesPersonal
+          empleados={visibleEmployees.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
+          categorias={categoriasVigentes}
+          tipos={tiposTarea}
+          grupos={gruposTrabajo}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
         />
       )}
       {activeTab === "fabricacion" && (
@@ -23294,6 +23315,22 @@ Escribi CERRAR para confirmar:`
           updateAttendanceRecord={updateAttendanceRecord}
           updateEmployeeDocument={updateEmployeeDocument}
           updateEmployeeField={updateEmployeeField}
+          categoriasInternas={categoriasVigentes}
+          tiposTarea={tiposTarea}
+          gruposTrabajo={gruposTrabajo}
+          onGuardarCategoria={(c: CategoriaEmpleado) =>
+            setCategoriasEmpleado((prev) => {
+              const base = prev.length ? prev : CATEGORIAS_POR_DEFECTO;
+              return base.some((x) => x.id === c.id) ? base.map((x) => (x.id === c.id ? c : x)) : [...base, c];
+            })
+          }
+          onBorrarCategoria={(id: number) => {
+            setCategoriasEmpleado((prev) =>
+              (prev.length ? prev : CATEGORIAS_POR_DEFECTO).filter((x) => x.id !== id).map((x) => ({ ...x, incluye: x.incluye.filter((i) => i !== id) }))
+            );
+            setEmployees((prev) => prev.map((e) => (e.categoriasInternas?.includes(id) ? { ...e, categoriasInternas: e.categoriasInternas.filter((i) => i !== id) } : e)));
+          }}
+          nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
           updateEmployeePayrollManual={updateEmployeePayrollManual}
           updateEmployeeProvisionItem={updateEmployeeProvisionItem}
         />

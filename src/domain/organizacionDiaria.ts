@@ -12,6 +12,13 @@
 import { deriveConvenioHours, timeToMinutes, type ConvenioHours } from "./attendance";
 
 // ---- Catalogo: grupos de trabajo y tipos de tarea (se arman una vez y se editan) ----------------
+export type UnidadTarea = "u" | "ml" | "m2" | "m3";
+export const UNIDADES_TAREA: Array<{ value: UnidadTarea; label: string }> = [
+  { value: "u", label: "unidades" },
+  { value: "ml", label: "metros lineales" },
+  { value: "m2", label: "m²" },
+  { value: "m3", label: "m³" },
+];
 export type GrupoTrabajo = { id: number; nombre: string; descripcion?: string; orden?: number };
 export type TipoTarea = {
   id: number;
@@ -19,7 +26,10 @@ export type TipoTarea = {
   nombre: string;
   // Desglose: los pasos de la tarea, para no tipear todo cada vez.
   pasos?: string[];
-  // Tiempo estandar (horas) para planificar y, despues, para presupuestar.
+  // Unidad en que se mide la tarea (Nicolas, 2026-10-25: siempre unidades, metros lineales, m2 o m3).
+  unidad?: UnidadTarea;
+  // Tiempo estandar en horas POR UNIDAD (el Gantt lo multiplica por la cantidad) para planificar y
+  // presupuestar.
   horasEstimadas?: number;
   activa?: boolean;
 };

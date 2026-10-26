@@ -669,6 +669,12 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
     intro: "Seguis los trabajos en produccion: que hay en curso, sus fechas y la carga de la fabrica.",
     sections: [
       {
+        heading: "Capacidades del personal",
+        blocks: [
+          { type: "p", text: "Muestra qué tareas domina cada persona según sus categorías internas (se cargan en Personal) y, por tarea, quién la puede hacer. Las tareas sin nadie o con una sola persona son el puesto a cubrir al contratar. En la organización diaria solo se le pueden dar a cada uno las tareas que domina." },
+        ],
+      },
+      {
         heading: "Trabajos en curso",
         blocks: [
           {
@@ -773,6 +779,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
     intro:
       "Los empleados, su liquidacion mensual, las escalas salariales y las provisiones (EPP, insumos, examenes, capacitaciones) con su vigencia. Aca tambien sale el costo hora hombre que se usa para cotizar.",
     sections: [
+      {
+        heading: "Categorías internas (capacidades)",
+        blocks: [
+          { type: "p", text: "Además de la categoría del convenio (la que liquida), cada persona tiene categorías INTERNAS que dicen qué tareas de fabricación puede hacer. Son acumulativas: cada categoría incluye a las de abajo, y al organizar el día se priorizan las tareas de la categoría más alta." },
+          { type: "steps", items: ["Personal → Categorías internas: click derecho sobre una categoría → 'Tareas…' para tildar las tareas que da (del catálogo de Fabricación).", "Click derecho → 'Qué categorías incluye…' para armar la escalera (ej. Armador general incluye a Ayudante de fabricación).", "En la ficha del empleado, 'Categorías internas y capacidades': tildá las que puede desempeñar."] },
+          { type: "tip", text: "Mientras una persona no tenga categorías cargadas, en la organización diaria se le puede dar cualquier tarea." }
+        ],
+      },
       {
         heading: "Viático fijo en el acuerdo",
         blocks: [
