@@ -1,6 +1,6 @@
 // FABRICACION · ORGANIZACION DIARIA (Nicolas, 2026-10-22). "Cargar las tareas que va a realizar cada empleado
 // durante el dia, empezando por si va a estar en obra o en fabrica (la obra sale de los trabajos aprobados),
-// con las horas del dia en turno manana 07:30-13:30 y turno tarde 13:30-17:00, pudiendo cambiarlos si se
+// con las horas del dia en turno manana 07:30-13:30 y turno tarde 14:00-17:00 (almuerzo 13:30-14:00), pudiendo cambiarlos si se
 // sabe de antemano que habra horas extras, alineado con el modo de horas extras (hasta las 21 al 50%,
 // despues nocturna). Dar tareas por hora, marcar tarea realizada con el horario en que se termino, exportar
 // un PDF por empleado y ver en una linea temporal donde esta cada uno y cuantos hay juntos en cada lugar."
@@ -73,14 +73,15 @@ export type AsignacionDiaria = {
   firmadoEn?: string;
 };
 
-// Turnos de siempre: manana 07:30-13:30 y tarde 13:30-17:00. El sabado se trabaja a la manana (al 50%).
+// Turnos de siempre: manana 07:30-13:30 y tarde 14:00-17:00 (el almuerzo de 13:30 a 14:00 no se trabaja; Nicolas,
+// 2026-10-26). El sabado se trabaja a la manana (al 50%).
 export function turnosPorDefecto(fecha: string): TurnoDia[] {
   const dow = new Date(`${fecha}T12:00:00`).getDay();
   if (dow === 0) return [];
   if (dow === 6) return [{ id: "manana", nombre: "Mañana", desde: "07:00", hasta: "13:00" }];
   return [
     { id: "manana", nombre: "Mañana", desde: "07:30", hasta: "13:30" },
-    { id: "tarde", nombre: "Tarde", desde: "13:30", hasta: "17:00" },
+    { id: "tarde", nombre: "Tarde", desde: "14:00", hasta: "17:00" },
   ];
 }
 

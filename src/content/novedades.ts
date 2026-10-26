@@ -236,7 +236,7 @@ export const NOVEDADES: TandaNovedades[] = [
     items: [
       {
         titulo: "Fabricación: organización diaria",
-        que: "Un calendario del mes: al abrir un día aparece cada empleado con su ficha del día: si está en fábrica o en obra (la obra sale de los trabajos aprobados, con link al mapa y a la ficha del trabajo), los turnos (mañana 07:30-13:30 y tarde 13:30-17:00, editables, con '+ Turno extra' hasta las 21 al 50% y después nocturno; cada turno dice cómo se paga) y las tareas por hora. Cada tarea se tilda como hecha y queda la hora en que se terminó, para tomar tiempos. Avisa si dos tareas se pisan o caen fuera de los turnos. Hay un PDF por empleado y una línea temporal con quién está en cada lugar y cuántos hay juntos.",
+        que: "Un calendario del mes: al abrir un día aparece cada empleado con su ficha del día: si está en fábrica o en obra (la obra sale de los trabajos aprobados, con link al mapa y a la ficha del trabajo), los turnos (mañana 07:30-13:30 y tarde 14:00-17:00, con el almuerzo en el medio, editables, con '+ Turno extra' hasta las 21 al 50% y después nocturno; cada turno dice cómo se paga) y las tareas por hora. Cada tarea se tilda como hecha y queda la hora en que se terminó, para tomar tiempos. Avisa si dos tareas se pisan o caen fuera de los turnos. Hay un PDF por empleado y una línea temporal con quién está en cada lugar y cuántos hay juntos.",
         como: "Fabricación → Organización diaria: elegí el día, abrí '+ Armar el día' en cada empleado. 'Copiar el día anterior' repite lo de ayer. Abajo, 'Tipos de tarea y grupos de trabajo': armá el catálogo una vez (con horas estándar y pasos) y después solo elegís.",
         tab: "fabricacion",
       },

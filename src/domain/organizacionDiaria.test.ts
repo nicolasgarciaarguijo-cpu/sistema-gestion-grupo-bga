@@ -11,8 +11,8 @@ import {
 } from "./organizacionDiaria";
 
 describe("organizacion diaria", () => {
-  it("turnos de siempre: manana 07:30-13:30 y tarde 13:30-17:00; sabado solo manana", () => {
-    expect(turnosPorDefecto("2026-10-22").map((t) => `${t.desde}-${t.hasta}`)).toEqual(["07:30-13:30", "13:30-17:00"]);
+  it("turnos de siempre: manana 07:30-13:30 y tarde 14:00-17:00 (almuerzo en el medio); sabado solo manana", () => {
+    expect(turnosPorDefecto("2026-10-22").map((t) => `${t.desde}-${t.hasta}`)).toEqual(["07:30-13:30", "14:00-17:00"]);
     expect(turnosPorDefecto("2026-10-24").map((t) => `${t.desde}-${t.hasta}`)).toEqual(["07:00-13:00"]);
     expect(turnosPorDefecto("2026-10-25")).toEqual([]);
   });
