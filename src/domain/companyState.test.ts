@@ -146,4 +146,27 @@ describe("applyCompanyModuleSlice (realtime)", () => {
     expect((next.approvedJobs as any[]).map((i) => i.id).sort()).toEqual([1, 9]);
     expect(next.flag).toBe(true);
   });
+
+  it("proveedores por empresa: un usuario de una sola empresa no reescribe los de la otra (2026-10-26)", () => {
+    const BGA = "BGA estudio de diseño y produccion industrial s.r.l";
+    const DR = "De raiz s.r.l";
+    // Lo que carga un usuario de De Raiz: sus proveedores y los compartidos (los de BGA ya no le llegan).
+    const data = { suppliers: [{ id: 1, company: DR }, { id: 2, company: "General" }, { id: 3 }], costRules: [] };
+    const buckets = splitModuleDataByCompany("costos", data, [DR]);
+    expect(Object.keys(buckets).sort()).toEqual([DR, "General"].sort());
+    expect(buckets[DR].suppliers).toEqual([{ id: 1, company: DR }]);
+    // La fila General solo lleva los compartidos (y los sin empresa): no hay lista entera que pise a BGA.
+    expect(buckets.General.suppliers).toEqual([{ id: 2, company: "General" }, { id: 3 }]);
+    expect(buckets[BGA]).toBeUndefined();
+  });
+
+  it("aportes, efectivo y movimientos internos tambien se parten por empresa", () => {
+    const DR = "De raiz s.r.l";
+    const cf = splitModuleDataByCompany("cash-flow", { capitalEntries: [{ id: 1, company: DR }], cashHoldings: [{ id: 2, company: DR }] }, [DR]);
+    expect(cf[DR].capitalEntries).toHaveLength(1);
+    expect(cf.General.capitalEntries).toEqual([]);
+    const mi = splitModuleDataByCompany("movimientos-internos", { internalTransfers: [{ id: 1, company: DR }], personLedgerEntries: [] }, [DR]);
+    expect(mi[DR].internalTransfers).toHaveLength(1);
+    expect(mi.General.internalTransfers).toEqual([]);
+  });
 });

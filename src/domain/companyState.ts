@@ -24,12 +24,17 @@ export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   archivos: ["companyAssets"],
   "caja-chica": ["pettyCashExpenses", "pettyCashFunds", "viaticos", "pettyCashTypes"],
   // `fiscalClosings`: cada cierre es de una empresa, asi que se parte como el resto.
-  "cash-flow": ["debtPlans", "financialItems", "bankStatementEntries", "ivaVepPayments", "fiscalClosings", "retirosSocietarios", "regularizacionesBlanqueo"],
+  // capitalEntries y cashHoldings (2026-10-26): tenian empresa pero se guardaban enteros en General; un usuario de
+  // una sola empresa los cargaba podados y al guardar borraba los de la otra. Ahora se parten como el resto.
+  "cash-flow": ["debtPlans", "financialItems", "bankStatementEntries", "ivaVepPayments", "fiscalClosings", "retirosSocietarios", "regularizacionesBlanqueo", "capitalEntries", "cashHoldings"],
   compras: ["purchaseInvoices", "remitoDrafts", "remitos", "creditNotes"],
   // Costos: los gastos van por empresa; los grupos tambien (cada empresa arma los suyos).
   // Modulo nuevo (2026-07-14): no necesita entrada en el splitter SQL porque no hay datos
   // legacy en app_state_modules que partir; el frontend escribe v2 directo.
-  costos: ["costEntries", "costGroups"],
+  // Proveedores (2026-10-26): por empresa; los compartidos llevan company "General" y quedan en esa fila.
+  costos: ["costEntries", "costGroups", "suppliers"],
+  // Movimientos internos (2026-10-26): cada movimiento y cada renglon de la cuenta con la gente es de una empresa.
+  "movimientos-internos": ["internalTransfers", "personLedgerEntries"],
   // Seguros: cada seguro lleva su empresa; se aísla por empresa como los demás. Módulo nuevo
   // (2026-09-01): no necesita entrada en el splitter SQL (no hay datos legacy que partir).
   seguros: ["seguros"],

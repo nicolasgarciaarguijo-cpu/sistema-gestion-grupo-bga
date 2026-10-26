@@ -3037,7 +3037,14 @@ export default function App() {
   const [supabaseCompanyPermissions, setSupabaseCompanyPermissions] = useState<any[]>([]);
   const [supabaseTabPermissions, setSupabaseTabPermissions] = useState<any[]>([]);
   const [companyCatalog, setCompanyCatalog] = useState<CompanyOption[]>(DEFAULT_COMPANY_OPTIONS);
-  const [workspaceCompanyScope, setWorkspaceCompanyScope] = useState<CompanyScope>("General");
+  // La empresa elegida se recuerda en este navegador (es solo una comodidad de cada uno).
+  const [workspaceCompanyScope, setWorkspaceCompanyScope] = useState<CompanyScope>(() => {
+    try {
+      return (window.localStorage.getItem("sistema.vistaEmpresa") as CompanyScope) || "General";
+    } catch {
+      return "General";
+    }
+  });
   const [newCompanyDraft, setNewCompanyDraft] = useState<CompanyOption>({
     value: "",
     short: "",
@@ -4085,6 +4092,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     if (!isSupabaseLoggedIn || effectiveIsAdmin) return;
     const allowedCompany = (company: unknown) =>
       company === "General" ||
+      company == null ||
+      company === "" ||
       (typeof company === "string" &&
         allowedCompaniesForSession.includes(company as CompanyName));
     const prune = <T extends { company?: unknown }>(
@@ -4181,6 +4190,26 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
     return company === "General" || company === workspaceCompanyScope;
   };
+
+  // VISTA POR EMPRESA (2026-10-26): el selector ofrece solo las empresas que el usuario puede usar. Con una sola,
+  // queda fija en esa ("hay personas que solo van a trabajar en una sola empresa y deben poder operar de esa forma").
+  // Lo que se carga en las solapas va a la empresa elegida arriba; con "todas", a la del presupuesto (como antes).
+  const empresaParaCargar = (workspaceCompanyScope !== "General" ? workspaceCompanyScope : budget.company) as CompanyName;
+  const empresasDeLaVista = COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName));
+  useEffect(() => {
+    if (!isSupabaseLoggedIn) return;
+    const permitidas = empresasDeLaVista.map((c) => c.value);
+    if (!permitidas.length) return;
+    if (permitidas.length === 1 && workspaceCompanyScope !== permitidas[0]) setWorkspaceCompanyScope(permitidas[0] as CompanyScope);
+    else if (workspaceCompanyScope !== "General" && !permitidas.includes(workspaceCompanyScope as string)) setWorkspaceCompanyScope("General");
+  }, [isSupabaseLoggedIn, effectiveIsAdmin, allowedCompaniesForSession, workspaceCompanyScope]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem("sistema.vistaEmpresa", String(workspaceCompanyScope));
+    } catch {
+      // sin almacenamiento del navegador: se vuelve a elegir al entrar
+    }
+  }, [workspaceCompanyScope]);
 
   const visibleTabOptions = useMemo(() => {
     const accessTab = TAB_OPTIONS.find((item) => item.key === "acceso");
@@ -9932,8 +9961,11 @@ Escribi CERRAR para confirmar:`
       if (!restrictByCompany) return items as T[];
       return items.filter((item) => {
         const company = item?.company;
+        // Sin empresa = General (asi se guarda): podarlo hacia que, al guardar, la fila General se reescribiera sin el.
         return (
           company === "General" ||
+          company == null ||
+          company === "" ||
           (typeof company === "string" &&
             allowedCompaniesForSession.includes(company as CompanyName))
         );
@@ -11836,7 +11868,7 @@ Escribi CERRAR para confirmar:`
       ...prev,
       {
         id: newId(),
-        company: budget.company,
+        company: empresaParaCargar,
         workType: budget.workType,
         group: fixedMarkerGroupOptions[0] || "Administrativos",
         description: "",
@@ -11851,7 +11883,7 @@ Escribi CERRAR para confirmar:`
       ...prev,
       {
         id: newId(),
-        company: budget.company,
+        company: empresaParaCargar,
         workType: budget.workType,
         subtype: "Insumos basicos",
         description: "",
@@ -11868,7 +11900,7 @@ Escribi CERRAR para confirmar:`
       ...prev,
       {
         id: newId(),
-        company: budget.company,
+        company: empresaParaCargar,
         workType: budget.workType,
         category: "",
         employees: 1,
@@ -11885,7 +11917,7 @@ Escribi CERRAR para confirmar:`
       ...prev,
       {
         id: newId(),
-        company: budget.company,
+        company: empresaParaCargar,
         shared: true,
         kind: "EPP",
         description: "",
@@ -12053,7 +12085,7 @@ Escribi CERRAR para confirmar:`
         id: newId(),
         fileName: file.name,
         sourceType,
-        company: budget.company,
+        company: empresaParaCargar,
         notes,
         rows: rows.length > 0 ? rows : [buildBlankRemitoDraftRow(budget.company)],
       });
@@ -13148,7 +13180,7 @@ Escribi CERRAR para confirmar:`
     setPurchaseInvoices((prev) => [
       {
         id: newId(),
-        company: budget.company,
+        company: empresaParaCargar,
         administration: "blanco",
         source: "compras",
         pettyCashExpenseId: undefined,
@@ -13222,7 +13254,7 @@ Escribi CERRAR para confirmar:`
     setPettyCashFunds((prev) => [
       {
         id: newId(),
-        company: budget.company,
+        company: empresaParaCargar,
         description: "",
         responsible: "",
         assignedAmount: 0,
@@ -13397,7 +13429,7 @@ Escribi CERRAR para confirmar:`
       ...prev,
       {
         id,
-        company: budget.company,
+        company: empresaParaCargar,
         concept: "",
         dueDay: 1,
         nextInstallmentAmount: 0,
@@ -13520,7 +13552,7 @@ Escribi CERRAR para confirmar:`
       {
         id: newId(),
         ...firma(),
-        company: budget.company,
+        company: empresaParaCargar,
         date: todayIso(),
         origin: "",
         kind: "aporte",
@@ -13542,7 +13574,7 @@ Escribi CERRAR para confirmar:`
       {
         id: newId(),
         ...firma(),
-        company: budget.company,
+        company: empresaParaCargar,
         date: todayIso(),
         description: "",
         currency: "ARS",
@@ -13564,7 +13596,7 @@ Escribi CERRAR para confirmar:`
       {
         id: newId(),
         ...firma(),
-        company: budget.company,
+        company: empresaParaCargar,
         date: todayIso(),
         direction: "efectivo_a_banco",
         currency: "ARS",
@@ -13589,7 +13621,7 @@ Escribi CERRAR para confirmar:`
       {
         id: newId(),
         ...firma(),
-        company: budget.company,
+        company: empresaParaCargar,
         person: "",
         date: todayIso(),
         kind,
@@ -13612,7 +13644,7 @@ Escribi CERRAR para confirmar:`
       {
         id: newId(),
         ...firma(),
-        company: budget.company,
+        company: empresaParaCargar,
         date: todayIso(),
         period: "",
         amount: 0,
@@ -13640,7 +13672,7 @@ Escribi CERRAR para confirmar:`
     setBankStatementEntries((prev) => [
       {
         id: newId(),
-        company: budget.company,
+        company: empresaParaCargar,
         date: defaultDateForActiveMonth(),
         bank: "",
         movementType: "credito",
@@ -13742,7 +13774,7 @@ Escribi CERRAR para confirmar:`
       ...prev,
       {
         id: newId(),
-        company: budget.company,
+        company: empresaParaCargar,
         category: "Activo fijo",
         description: "",
         value: 0,
@@ -20821,7 +20853,7 @@ Escribi CERRAR para confirmar:`
   // CAJAS: nueva (desde el listado o la ficha) y editar.
   const abrirNuevaCaja = (responsable?: string) =>
     setCajaForm({
-      company: budget.company,
+      company: empresaParaCargar,
       empresaImputada: budget.company,
       responsible: responsable || "",
       tipo: "General",
@@ -20907,7 +20939,7 @@ Escribi CERRAR para confirmar:`
     setPettyCashTypes((prev) => {
       const yaEsta = prev.some((t) => t.nombre === viejo);
       const sinViejo = prev.map((t) => (t.nombre === viejo ? { ...t, nombre: nuevo } : t));
-      return yaEsta ? sinViejo : [...sinViejo, { id: newId(), company: budget.company, nombre: nuevo }];
+      return yaEsta ? sinViejo : [...sinViejo, { id: newId(), company: empresaParaCargar, nombre: nuevo }];
     });
     setPettyCashFunds((prev) => prev.map((f) => ((f.tipo || "General") === viejo && canAccessCompany(f.company) ? { ...f, tipo: nuevo } : f)));
   };
@@ -21662,9 +21694,11 @@ Escribi CERRAR para confirmar:`
                   style={styles.input}
                   value={workspaceCompanyScope}
                   onChange={(e) => setWorkspaceCompanyScope(e.target.value)}
+                  disabled={empresasDeLaVista.length < 2}
+                  title={empresasDeLaVista.length < 2 ? "Tu usuario trabaja con una sola empresa" : undefined}
                 >
-                  <option value="General">General / todo el grupo</option>
-                  {COMPANY_OPTIONS.map((company) => (
+                  {empresasDeLaVista.length > 1 && <option value="General">General / todas mis empresas</option>}
+                  {empresasDeLaVista.map((company) => (
                     <option key={`scope-${company.value}`} value={company.value}>
                       {company.short}
                     </option>
@@ -22085,7 +22119,7 @@ Escribi CERRAR para confirmar:`
             onAltaProveedor={(nombre, taxId) =>
               setSuppliers((prev) => [
                 ...prev,
-                { id: newId(), company: budget.company, name: nombre, taxId: taxId || "", aliases: "", active: true, notes: "Alta desde la ficha del proveedor" } as Supplier,
+                { id: newId(), company: empresaParaCargar, name: nombre, taxId: taxId || "", aliases: "", active: true, notes: "Alta desde la ficha del proveedor" } as Supplier,
               ])
             }
             onFechaFactura={(invoiceId, fecha) =>
@@ -22509,7 +22543,7 @@ Escribi CERRAR para confirmar:`
           onEditarViatico={(id, cambio) => setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, ...cambio, ...firma() } : v)))}
           onAgregarTipo={(nombre) => {
             if (tiposCaja.some((t) => t.toLowerCase() === nombre.toLowerCase())) return;
-            setPettyCashTypes((prev) => [...prev, { id: newId(), company: budget.company, nombre }]);
+            setPettyCashTypes((prev) => [...prev, { id: newId(), company: empresaParaCargar, nombre }]);
           }}
           onRenombrarTipo={renombrarTipoCaja}
           onQuitarTipo={(nombre) => setPettyCashTypes((prev) => prev.filter((t) => t.nombre !== nombre))}
