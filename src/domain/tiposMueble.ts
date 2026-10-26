@@ -37,6 +37,9 @@ export type RenglonReceta = {
   // Ausente = la misma unidad que la tarea.
   base?: BaseCantidad;
   nota?: string;
+  // El grupo de tareas del que vino (Nicolas, 2026-10-26: "el tipo de mueble determina el grupo de trabajos, y dentro
+  // las tareas"). Sirve para actualizar la receta cuando el grupo cambia en el catalogo.
+  grupoId?: number;
 };
 
 export type TipoMueble = {
@@ -181,3 +184,47 @@ export function recetaDesdeTareas(tareaIds: number[], nuevoId: () => number): Re
 
 // El paso que sigue al ultimo (para "+ Tarea" al final de la receta).
 export const pasoSiguiente = (receta: RenglonReceta[]) => Math.max(0, ...receta.map((r) => r.paso)) + 1;
+
+// ---- GRUPOS DE TAREAS EN LA RECETA (Nicolas, 2026-10-26) ---------------------------------------------------
+// "Hay tareas que son repetitivas en todos los tipos de muebles: armar un listado de grupos de tareas con sus tareas
+// y asignarlos a los tipos de mueble". Asignar un grupo suma sus tareas al final, una por paso (despues se pueden
+// poner en paralelo), marcadas con el grupo. Si el grupo cambia en el catalogo, se puede actualizar la receta.
+
+// Las tareas de un grupo, en el orden del catalogo (solo las activas).
+export const tareasDelGrupo = (grupoId: number, catalogo: TipoTarea[]): number[] =>
+  catalogo.filter((t) => t.grupoId === grupoId && t.activa !== false).map((t) => t.id);
+
+// Los grupos asignados, en el orden en que aparecen en la receta.
+export function gruposDeLaReceta(receta: RenglonReceta[]): number[] {
+  return Array.from(new Set(recetaOrdenada(receta).map((r) => r.grupoId).filter((g): g is number => g != null)));
+}
+
+export function agregarGrupo(receta: RenglonReceta[], grupoId: number, tareaIds: number[], nuevoId: () => number): RenglonReceta[] {
+  const ya = new Set(receta.filter((r) => r.grupoId === grupoId).map((r) => r.tareaId));
+  let paso = pasoSiguiente(receta);
+  const nuevos = tareaIds.filter((id) => !ya.has(id)).map((tareaId) => ({ id: nuevoId(), tareaId, paso: paso++, factor: 1, grupoId }));
+  return [...receta, ...nuevos];
+}
+
+// Que le falta a la receta del grupo (tareas nuevas en el catalogo) y que sobra (tareas que salieron del grupo).
+export function diferenciasConGrupo(receta: RenglonReceta[], grupoId: number, tareaIds: number[]): { faltan: number[]; sobran: RenglonReceta[] } {
+  const delGrupo = receta.filter((r) => r.grupoId === grupoId);
+  const tiene = new Set(delGrupo.map((r) => r.tareaId));
+  const debe = new Set(tareaIds);
+  return { faltan: tareaIds.filter((id) => !tiene.has(id)), sobran: delGrupo.filter((r) => !debe.has(r.tareaId)) };
+}
+
+// Pone la receta al dia con el grupo: saca lo que ya no esta y suma lo nuevo justo despues de lo ultimo del grupo
+// (corriendo los pasos que siguen). Lo que ya estaba conserva su paso, cantidad y base.
+export function actualizarGrupo(receta: RenglonReceta[], grupoId: number, tareaIds: number[], nuevoId: () => number): RenglonReceta[] {
+  const { faltan, sobran } = diferenciasConGrupo(receta, grupoId, tareaIds);
+  const fuera = new Set(sobran.map((r) => r.id));
+  let lista = receta.filter((r) => !fuera.has(r.id));
+  if (!faltan.length) return lista;
+  const delGrupo = lista.filter((r) => r.grupoId === grupoId);
+  const desde = delGrupo.length ? Math.max(...delGrupo.map((r) => r.paso)) : pasoSiguiente(lista) - 1;
+  lista = lista.map((r) => (r.paso > desde ? { ...r, paso: r.paso + faltan.length } : r));
+  return [...lista, ...faltan.map((tareaId, i) => ({ id: nuevoId(), tareaId, paso: desde + 1 + i, factor: 1, grupoId }))];
+}
+
+export const quitarGrupo = (receta: RenglonReceta[], grupoId: number): RenglonReceta[] => receta.filter((r) => r.grupoId !== grupoId);

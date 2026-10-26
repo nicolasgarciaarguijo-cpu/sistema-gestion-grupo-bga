@@ -27,6 +27,12 @@ export const NOVEDADES: TandaNovedades[] = [
         tab: "calendarioAnual",
       },
       {
+        titulo: "Grupos de tareas en los tipos de mueble",
+        que: "El tipo de mueble se arma con grupos de tareas: las tareas que se repiten en muchos muebles se juntan en un grupo y el grupo se asigna a cada tipo de mueble de una vez. Si después el grupo cambia en el catálogo, la receta avisa y se actualiza con un click.",
+        como: "Fabricación → Tipos de mueble → click derecho → Receta… → '+ Grupo de tareas…'. Los grupos se arman en Tipos de tarea y grupos de trabajo.",
+        tab: "fabricacion",
+      },
+      {
         titulo: "Fabricación: trabajos de las dos empresas, gente de De Raíz",
         que: "Fabricación muestra siempre los trabajos de BGA y de De Raíz (los ejecuta el personal de De Raíz). El listado de tareas es común a las dos empresas. Las personas de la organización diaria y las que hacen las tareas al cotizar por mueble son las de De Raíz; las máquinas nuevas se cargan como de De Raíz.",
         como: "Fabricación, con cualquier empresa elegida arriba.",

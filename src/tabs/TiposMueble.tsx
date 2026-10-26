@@ -12,9 +12,14 @@ import {
 import type { RubroFabricacion } from "../domain/ganttFabricacion";
 import {
   BASES_CANTIDAD,
+  actualizarGrupo,
+  agregarGrupo,
+  diferenciasConGrupo,
+  gruposDeLaReceta,
+  quitarGrupo,
+  tareasDelGrupo,
   rubrosDeLaReceta,
   pasoSiguiente,
-  recetaDesdeTareas,
   recetaOrdenada,
   resumenDeTiempos,
   tareasDelMueble,
@@ -60,8 +65,7 @@ export function TiposMueble({
     setAbierto(t.id);
   };
   const desdeGrupo = (g: GrupoTrabajo) => {
-    const ids = tareas.filter((t) => t.grupoId === g.id && t.activa !== false).map((t) => t.id);
-    nuevo({ nombre: g.nombre, descripcion: g.descripcion, receta: recetaDesdeTareas(ids, nuevoId) });
+    nuevo({ nombre: g.nombre, descripcion: g.descripcion, receta: agregarGrupo([], g.id, tareasDelGrupo(g.id, tareas), nuevoId) });
   };
   const tipoAbierto = tipos.find((t) => t.id === abierto);
 
@@ -153,6 +157,9 @@ export function TiposMueble({
                     </td>
                     <td style={{ ...tdDato, textAlign: "right" }}>{fmt(res.horasReloj)}</td>
                     <td style={{ ...tdFlexible, fontSize: 12 }}>
+                      {gruposDeLaReceta(tipo.receta).length > 0 && (
+                        <strong style={{ color: "#0f766e" }}>{gruposDeLaReceta(tipo.receta).map((g) => grupos.find((x) => x.id === g)?.nombre || "grupo borrado").join(" + ")} · </strong>
+                      )}
                       {calc.length ? calc.map((t) => `${t.etiqueta} ${t.nombre}`).join(" · ") : <span style={{ color: "#94a3b8" }}>Sin tareas (click derecho → Receta…)</span>}
                     </td>
                   </tr>
@@ -282,9 +289,43 @@ function EditorReceta({
 
         <div style={sub}>Receta · por pasos</div>
         <div style={{ fontSize: 12, color: "#64748b" }}>
-          Mismo número de paso = en paralelo (3.1, 3.2); el siguiente espera a que terminen todas. Click derecho sobre un renglón: subir, bajar, juntar con el paso anterior, borrar.
+          Mismo número de paso = en paralelo (3.1, 3.2); el siguiente espera a que terminen todas. Los grupos de tareas se arman en el catálogo de tareas y se asignan con "+ Grupo de tareas…" (las tareas del grupo quedan en verde). Click derecho sobre un renglón: subir, bajar, juntar con el paso anterior, borrar.
         </div>
         {activas.length === 0 && <div style={{ fontSize: 12.5, color: "#b45309" }}>No hay tareas en el catálogo (Fabricación → Tipos de tarea y grupos de trabajo).</div>}
+        {gruposDeLaReceta(tipo.receta).length > 0 && (
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {gruposDeLaReceta(tipo.receta).map((gid) => {
+              const g = grupos.find((x) => x.id === gid);
+              const ids = tareasDelGrupo(gid, tareas);
+              const dif = diferenciasConGrupo(tipo.receta, gid, ids);
+              const cambio = dif.faltan.length + dif.sobran.length > 0;
+              return (
+                <span key={gid} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, border: `1px solid ${cambio ? "#fcd34d" : "#99f6e4"}`, background: cambio ? "#fffbeb" : "#f0fdfa", borderRadius: 999, padding: "2px 10px" }}>
+                  <strong>{g?.nombre || "Grupo borrado"}</strong>
+                  <span style={{ color: "#64748b" }}>{tipo.receta.filter((r) => r.grupoId === gid).length} tareas</span>
+                  {cambio && (
+                    <button
+                      type="button"
+                      style={{ border: "none", background: "none", color: "#b45309", fontWeight: 700, cursor: "pointer", padding: 0 }}
+                      title="El grupo cambió en el catálogo: suma las tareas nuevas y saca las que ya no están"
+                      onClick={() => onGuardar({ ...tipo, receta: actualizarGrupo(tipo.receta, gid, ids, nuevoId) })}
+                    >
+                      cambió{dif.faltan.length ? ` +${dif.faltan.length}` : ""}{dif.sobran.length ? ` −${dif.sobran.length}` : ""} · actualizar
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    style={{ border: "none", background: "none", color: "#94a3b8", cursor: "pointer", padding: 0 }}
+                    title="Sacar el grupo (y sus tareas) de este tipo de mueble"
+                    onClick={() => window.confirm(`¿Sacar el grupo "${g?.nombre || ""}" y sus tareas de este tipo de mueble?`) && onGuardar({ ...tipo, receta: quitarGrupo(tipo.receta, gid) })}
+                  >
+                    ✕
+                  </button>
+                </span>
+              );
+            })}
+          </div>
+        )}
         <div style={{ ...planillaWrap, ...anchos.vars }}>
           <table className="planilla" style={planillaTable}>
             <colgroup>
@@ -336,8 +377,8 @@ function EditorReceta({
                         {r.etiqueta.includes(".") && <span style={{ fontSize: 11, color: "#0f766e" }}>.{r.etiqueta.split(".")[1]}</span>}
                       </span>
                     </td>
-                    <td style={tdDato}>
-                      <select style={selectCelda} value={r.tareaId} onChange={(e) => guardarRenglon({ ...r, tareaId: Number(e.target.value) })}>
+                    <td style={tdDato} title={r.grupoId != null ? `Del grupo ${grupos.find((x) => x.id === r.grupoId)?.nombre || "borrado"}` : undefined}>
+                      <select style={{ ...selectCelda, color: r.grupoId != null ? "#0f766e" : undefined }} value={r.tareaId} onChange={(e) => guardarRenglon({ ...r, tareaId: Number(e.target.value) })}>
                         {!t && <option value={r.tareaId}>tarea borrada</option>}
                         {gruposDeTareas.map((g) => (
                           <optgroup key={g} label={g}>
@@ -395,6 +436,24 @@ function EditorReceta({
           >
             + Tarea (paso siguiente)
           </ButtonLike>
+          {grupos.length > 0 && (
+            <select
+              value=""
+              onChange={(e) => {
+                const gid = Number(e.target.value);
+                if (gid) onGuardar({ ...tipo, receta: agregarGrupo(tipo.receta, gid, tareasDelGrupo(gid, tareas), nuevoId) });
+              }}
+              style={{ marginLeft: 8, fontSize: 13, fontWeight: 700, borderRadius: 8, border: "1px solid #cbd5e1", padding: "6px 8px", cursor: "pointer" }}
+              title="Suma todas las tareas del grupo al final, una por paso"
+            >
+              <option value="">+ Grupo de tareas…</option>
+              {grupos.map((g) => (
+                <option key={g.id} value={g.id} disabled={gruposDeLaReceta(tipo.receta).includes(g.id)}>
+                  {g.nombre} ({tareasDelGrupo(g.id, tareas).length} tareas){gruposDeLaReceta(tipo.receta).includes(g.id) ? " · ya está" : ""}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
 
         <div style={sub}>Probar tiempos</div>

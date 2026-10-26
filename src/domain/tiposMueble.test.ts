@@ -1,4 +1,4 @@
-import { cantidadesPorRubro, medidasDelMueble, recetaOrdenada, resumenDeTiempos, rubrosDeLaReceta, tareasDelMueble, type TipoMueble } from "./tiposMueble";
+import { actualizarGrupo, agregarGrupo, diferenciasConGrupo, gruposDeLaReceta, quitarGrupo, tareasDelGrupo, cantidadesPorRubro, medidasDelMueble, recetaOrdenada, resumenDeTiempos, rubrosDeLaReceta, tareasDelMueble, type TipoMueble } from "./tiposMueble";
 import type { TipoTarea } from "./organizacionDiaria";
 import type { RubroFabricacion } from "./ganttFabricacion";
 
@@ -68,5 +68,41 @@ describe("tipos de mueble", () => {
     // paso 1: 2 h · paso 2: 0,6 + 2 (reloj 2) · paso 3: 2 · paso 4: 0
     expect(r.horasHombre).toBe(6.6);
     expect(r.horasReloj).toBe(6);
+  });
+
+  describe("grupos de tareas en la receta", () => {
+    const cat: TipoTarea[] = [
+      { id: 1, nombre: "Cortar", grupoId: 7 },
+      { id: 2, nombre: "Cantear", grupoId: 7 },
+      { id: 3, nombre: "Armar", grupoId: 8 },
+      { id: 4, nombre: "Vieja", grupoId: 7, activa: false },
+    ];
+    let n = 100;
+    const id = () => ++n;
+
+    it("asignar un grupo suma sus tareas activas al final, una por paso, marcadas con el grupo", () => {
+      expect(tareasDelGrupo(7, cat)).toEqual([1, 2]);
+      const r = agregarGrupo([{ id: 1, tareaId: 3, paso: 1, factor: 1, grupoId: 8 }], 7, tareasDelGrupo(7, cat), id);
+      expect(r.slice(1).map((x) => [x.tareaId, x.paso, x.grupoId])).toEqual([[1, 2, 7], [2, 3, 7]]);
+      expect(gruposDeLaReceta(r)).toEqual([8, 7]);
+      // asignarlo de nuevo no duplica
+      expect(agregarGrupo(r, 7, [1, 2], id)).toHaveLength(3);
+    });
+
+    it("si el grupo cambia: avisa la diferencia y actualizar suma lo nuevo despues del grupo y saca lo que salió", () => {
+      const receta = [
+        { id: 1, tareaId: 1, paso: 1, factor: 2, grupoId: 7 },
+        { id: 2, tareaId: 2, paso: 2, factor: 1, grupoId: 7 },
+        { id: 3, tareaId: 3, paso: 3, factor: 1, grupoId: 8 },
+      ];
+      // ahora el grupo 7 es: cortar y una tarea nueva 9 (cantear salió)
+      expect(diferenciasConGrupo(receta, 7, [1, 9])).toEqual({ faltan: [9], sobran: [receta[1]] });
+      const r = actualizarGrupo(receta, 7, [1, 9], id);
+      expect(r.find((x) => x.tareaId === 1)).toMatchObject({ paso: 1, factor: 2 }); // conserva lo que tenía
+      expect(r.find((x) => x.tareaId === 9)).toMatchObject({ paso: 2, grupoId: 7 }); // justo despues de lo ultimo del grupo
+      expect(r.find((x) => x.tareaId === 3)!.paso).toBe(4); // lo que seguía se corre
+      expect(r.some((x) => x.tareaId === 2)).toBe(false);
+      expect(quitarGrupo(r, 7).map((x) => x.tareaId)).toEqual([3]);
+    });
   });
 });
