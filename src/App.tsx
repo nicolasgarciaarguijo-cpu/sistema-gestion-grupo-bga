@@ -4181,6 +4181,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // FABRICACION ES DE DE RAIZ Y HACE LOS TRABAJOS DE LAS DOS EMPRESAS: ahi no se filtra por la empresa elegida
   // (solo por permiso). En el resto de las solapas manda la empresa elegida arriba.
   const alcanceEmpresa: CompanyScope = activeTab === "fabricacion" ? "General" : workspaceCompanyScope;
+  // SEPARAR POR EMPRESA SIEMPRE (Nicolas, 2026-10-26: "todas las solapas, todos los bloques. Quien puede ver todo ve todo,
+  // quien puede ver solo una ve solo una; lo compartido se ve en las dos"). Para listas que se pasan enteras a una solapa.
+  const porEmpresa = <T extends { company?: unknown }>(lista: T[]): T[] =>
+    lista.filter((x) => canAccessCompany((x.company || "General") as CompanyName | "General"));
   // Solo el permiso (sin mirar la empresa elegida arriba).
   const tienePermisoEmpresa = (company: CompanyName | "General") =>
     isSupabaseLoggedIn && (effectiveIsAdmin || company === "General" || allowedCompaniesForSession.includes(company as CompanyName));
@@ -4226,6 +4230,17 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     if (permitidas.length === 1 && workspaceCompanyScope !== permitidas[0]) setWorkspaceCompanyScope(permitidas[0] as CompanyScope);
     else if (workspaceCompanyScope !== "General" && !permitidas.includes(workspaceCompanyScope as string)) setWorkspaceCompanyScope("General");
   }, [isSupabaseLoggedIn, effectiveIsAdmin, allowedCompaniesForSession, workspaceCompanyScope]);
+  // Los selectores propios de cada solapa (Seguros, Inversiones, Costos, Tarjetas, Mov. internos, Cash flow) arrancan en
+  // la empresa elegida arriba y la siguen cuando cambia.
+  useEffect(() => {
+    const v = workspaceCompanyScope === "General" ? "__ALL__" : String(workspaceCompanyScope);
+    setInternalCompanyScope(v as CompanyScope | "__ALL__");
+    setSegurosCompanyScope(v);
+    setInversionesCompanyScope(v);
+    setTarjetasCompanyScope(v);
+    setCostsCompanyScope(v);
+    setBalanceCompanyScope(v);
+  }, [workspaceCompanyScope]);
   useEffect(() => {
     try {
       window.localStorage.setItem("sistema.vistaEmpresa", String(workspaceCompanyScope));
@@ -21087,7 +21102,7 @@ Escribi CERRAR para confirmar:`
           suppliers={visibleSuppliers}
           updateSupplier={(id, field, value) => updateArrayItem(setSuppliers, id, field as any, value as any)}
           purchaseInvoiceRows={purchaseInvoiceRows}
-          costEntries={costEntries}
+          costEntries={porEmpresa(costEntries)}
           employeeNames={employeeNames}
           purchaseInvoiceSummary={purchaseInvoiceSummary}
           pettyCashSummary={pettyCashSummary}
@@ -21167,8 +21182,8 @@ Escribi CERRAR para confirmar:`
           fiscalLabel={costsFiscalLabel}
           months={costsMonths}
           aggregation={costsAggregation}
-          costGroups={costGroups}
-          costEntries={costEntries}
+          costGroups={porEmpresa(costGroups)}
+          costEntries={porEmpresa(costEntries)}
           pettyCashExpenses={visiblePettyCashExpenses}
           updatePettyCashExpense={updatePettyCashExpense}
           getPettyCashAdministration={getPettyCashAdministration}
@@ -21893,7 +21908,7 @@ Escribi CERRAR para confirmar:`
         <PagosInamovibles
           items={agendaInamoviblesItems}
           hoy={hoyIso}
-          vencimientos={vencimientos}
+          vencimientos={porEmpresa(vencimientos)}
           companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value))}
           sections={allSectionsWith(calendarRowConfig)}
           canEdit={canSeeInamovibles}
@@ -22420,7 +22435,7 @@ Escribi CERRAR para confirmar:`
           setBalanceMonth={setBalanceMonth}
           balanceFiscalYearOptions={balanceFiscalYearOptions}
           updateCompanyFiscalStartMonth={updateCompanyFiscalStartMonth}
-          fiscalClosings={fiscalClosings}
+          fiscalClosings={porEmpresa(fiscalClosings)}
           preCierre={preCierrePorEmpresa}
           cargasPlanilla={cargasPlanillaPorEmpresa}
           onIrASolapa={(tab) => setActiveTab(tab as TabKey)}
@@ -22433,7 +22448,7 @@ Escribi CERRAR para confirmar:`
           activeAssetsMonthlyDepreciation={activeAssetsMonthlyDepreciation}
           analysisYear={analysisYear}
           annualCashFlowEntries={cashFlowEntries}
-          bankStatementEntries={bankStatementEntries}
+          bankStatementEntries={porEmpresa(bankStatementEntries)}
           annualDebtRows={annualDebtRows}
           bankStatementSummary={bankStatementSummary}
           reservaSummary={reservaSummary}
@@ -22455,7 +22470,7 @@ Escribi CERRAR para confirmar:`
           getCompanyMeta={getCompanyMeta}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           updateArrayItem={updateArrayItem}
-          debtPlans={debtPlans}
+          debtPlans={porEmpresa(debtPlans)}
           setDebtPlans={setDebtPlans}
           addDebtPlan={addDebtPlan}
           removeDebtPlan={removeDebtPlan}
@@ -22744,7 +22759,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "seguros" && (
         <SegurosTab
-          seguros={seguros}
+          seguros={porEmpresa(seguros)}
           hoyIso={todayIso()}
           months={fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear)}
           companyScope={segurosCompanyScope}
@@ -22762,7 +22777,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "inversiones" && (
         <InversionesTab
-          inversiones={inversiones}
+          inversiones={porEmpresa(inversiones)}
           companyScope={inversionesCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
@@ -22790,7 +22805,7 @@ Escribi CERRAR para confirmar:`
           onBankLoadsUntilChange={setBankLoadsUntil}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
-          costGroups={costGroups}
+          costGroups={porEmpresa(costGroups)}
           createCostGroup={createCostGroup}
           approvedJobsForLink={visibleApprovedJobs.map((j) => ({
             budgetNumber: j.budgetNumber,
@@ -22997,13 +23012,13 @@ Escribi CERRAR para confirmar:`
           activePersonalProvisionMonthlyTotal={activePersonalProvisionMonthlyTotal}
           budget={budget}
           fixedMarkersByGroup={fixedMarkersByGroup}
-          fixedMarkers={fixedMarkers}
-          supplyMarkers={supplyMarkers}
-          laborMarkers={laborMarkers}
-          personalProvisionMarkers={personalProvisionMarkers}
+          fixedMarkers={porEmpresa(fixedMarkers)}
+          supplyMarkers={porEmpresa(supplyMarkers)}
+          laborMarkers={porEmpresa(laborMarkers)}
+          personalProvisionMarkers={porEmpresa(personalProvisionMarkers)}
           fixedMarkerGroupOptions={fixedMarkerGroupOptions}
           costsMonths={costsMonths}
-          costGroups={costGroups}
+          costGroups={porEmpresa(costGroups)}
           costRows={costRows}
           costsFiscalLabel={costsFiscalLabel}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
@@ -23045,7 +23060,7 @@ Escribi CERRAR para confirmar:`
           crmSemaphoreSummary={crmSemaphoreSummary}
           selectedCrmClientKey={selectedCrmClientKey}
           selectedCrmClient={selectedCrmClient}
-          approvedJobs={approvedJobs}
+          approvedJobs={porEmpresa(approvedJobs)}
           getClientSemaphore={getClientSemaphore}
           getSavedBudgetDisplayLabel={getSavedBudgetDisplayLabel}
           restoreCrmAndBudgetsFromSupabase={restoreCrmAndBudgetsFromSupabase}
@@ -23409,9 +23424,9 @@ Escribi CERRAR para confirmar:`
           visibleStockItems={visibleStockItems}
           stockIncreasePct={stockIncreasePct}
           totalStockValue={totalStockValue}
-          costAnalysisGroups={costAnalysisGroups}
-          costAnalysisEntries={costAnalysisEntries}
-          remitoDrafts={remitoDrafts}
+          costAnalysisGroups={porEmpresa(costAnalysisGroups)}
+          costAnalysisEntries={porEmpresa(costAnalysisEntries)}
+          remitoDrafts={porEmpresa(remitoDrafts)}
           remitosSlot={renderRemitosPanel({
             titulo: "Remitos · historial",
             lista: remitos.filter((r) => canAccessCompany(r.company as CompanyName)),
@@ -23458,7 +23473,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "personal" && (
         <PersonalTab
-          employees={employees}
+          employees={porEmpresa(employees)}
           onPayrollMonthReport={openPayrollMonthReport}
           onCargarReciboOficial={cargarReciboOficial}
           precargaAuto={employeeBaseConfig.precargaHorasAuto !== false}
