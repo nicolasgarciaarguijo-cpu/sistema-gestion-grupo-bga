@@ -238,11 +238,11 @@ import { GanttFabricacion } from "./tabs/GanttFabricacion";
 import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
 import { TiposMueble } from "./tabs/TiposMueble";
 import { MueblesPresupuesto } from "./tabs/MueblesPresupuesto";
-import { repartirHorasEnManoDeObra, type MuebleDelPresupuesto } from "./domain/presupuestoMuebles";
+import type { MuebleDelPresupuesto, PersonaParaCotizar } from "./domain/presupuestoMuebles";
 import { Mantenimiento } from "./tabs/Mantenimiento";
 import { esMaquinaOHerramienta, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
-import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
+import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
@@ -16481,6 +16481,20 @@ Escribi CERRAR para confirmar:`
     });
   };
   const costoHoraDe = (employee: Employee) => costoHoraSummaryFor(employee).hourlyCost;
+  // Para presupuestar por mueble: quien sabe hacer cada tarea (categorias internas) y su costo hora de cotizar.
+  // El que no tiene categorias cargadas no entra (no se sabe que hace). La gente se comparte entre empresas.
+  const personasParaCotizar = useMemo<PersonaParaCotizar[]>(
+    () =>
+      (activeTab === "presupuesto" ? employees : [])
+        .filter((e) => !isEmployeeTerminated(e) && tieneCategorias(e.categoriasInternas))
+        .map((e) => ({
+          id: e.id,
+          nombre: String(e.name || "").trim(),
+          costoHora: Number(costoHoraDe(e) || 0),
+          tareas: capacidadesDelEmpleado(e.categoriasInternas, categoriasVigentes).map((c) => c.tareaId),
+        })),
+    [activeTab, employees, categoriasVigentes, payrollMonth]
+  );
 
   // Liquidacion de un empleado para un MES cualquiera (la de la ficha es la del mes elegido).
   const payrollSummaryFor = (employee: Employee, month: string) => {
@@ -22506,9 +22520,22 @@ Escribi CERRAR para confirmar:`
               tareas={tiposTarea}
               rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
               materiales={materials}
-              horasEnManoDeObra={labor.reduce((a, l) => a + Number(l.jobHours || 0), 0)}
-              hayManoDeObra={labor.length > 0}
-              onPasarAManoDeObra={(horas) => setLabor((prev) => repartirHorasEnManoDeObra(prev, horas))}
+              personas={personasParaCotizar}
+              manoDeObra={labor}
+              money={money}
+              onPasarAManoDeObra={(plan) =>
+                setLabor(
+                  plan.porPersona.map((p) => ({
+                    id: newId(),
+                    category: p.personaId == null ? "Sin persona idónea (al costo más alto)" : `${p.nombre} · muebles`,
+                    employees: 1,
+                    monthlyHoursPerEmployee: nominalLaborHoursPerEmployee,
+                    hourlyRate: Math.round(p.costoHora * 100) / 100,
+                    jobHours: p.horas,
+                    employeeId: p.personaId ?? undefined,
+                  }))
+                )
+              }
               nuevoId={newId}
             />
           }

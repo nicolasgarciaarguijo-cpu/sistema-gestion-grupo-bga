@@ -1,5 +1,5 @@
-// Muebles del presupuesto: muestra las horas de cada mueble con lo cotizado en el bloque y "Pasar las horas a
-// mano de obra" manda el total.
+// Muebles del presupuesto: muestra las horas de cada mueble con lo cotizado en el bloque, quien hace las tareas
+// y "Pasar a mano de obra" manda el plan por persona.
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { act } from "react-dom/test-utils";
@@ -37,8 +37,9 @@ describe("MueblesPresupuesto", () => {
           tareas={tareas}
           rubros={rubros}
           materiales={[{ description: "Bisagra cazoleta", qty: 8 }]}
-          horasEnManoDeObra={0}
-          hayManoDeObra
+          personas={[{ id: 7, nombre: "Ana", costoHora: 1000, tareas: [1, 2] }]}
+          manoDeObra={[]}
+          money={(n) => "$" + n}
           onPasarAManoDeObra={pasar}
           nuevoId={() => 1}
         />
@@ -47,9 +48,10 @@ describe("MueblesPresupuesto", () => {
     // cortar 2 m2 × 0,5 = 1 · bisagras 8 × 0,25 = 2
     expect(div.textContent).toContain("3 hs-hombre");
     expect(div.textContent).toContain("Bisagras 8");
-    const boton = Array.from(div.querySelectorAll("button")).find((b) => b.textContent?.includes("Pasar las horas"))!;
+    expect(div.textContent).toContain("$3000"); // Ana: 3 h × $1000
+    const boton = Array.from(div.querySelectorAll("button")).find((b) => b.textContent?.includes("Pasar a mano de obra"))!;
     act(() => boton.click());
-    expect(pasar).toHaveBeenCalledWith(3);
+    expect(pasar.mock.calls[0][0].porPersona).toEqual([{ personaId: 7, nombre: "Ana", horas: 3, costoHora: 1000, costo: 3000 }]);
     act(() => root.unmount());
   });
 });

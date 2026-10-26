@@ -22,8 +22,8 @@ export const NOVEDADES: TandaNovedades[] = [
     items: [
       {
         titulo: "Muebles del presupuesto: las horas salen de la receta",
-        que: "Cada bloque del presupuesto puede llevar sus muebles (tipo, cantidad y medidas). Las horas salen de la receta del tipo de mueble, con las medidas y con los materiales cotizados en el bloque (bisagras, placas, cajones...). Se ve el detalle por tarea y qué falta para que el número esté completo.",
-        como: "Presupuesto → Muebles del presupuesto → '+ Mueble…'. Después, 'Pasar las horas a mano de obra' las reparte entre las categorías.",
+        que: "Cada bloque del presupuesto puede llevar sus muebles (tipo, cantidad y medidas). Las horas salen de la receta del tipo de mueble, con las medidas y con los materiales cotizados en el bloque (bisagras, placas, cajones...). Cada tarea la hace quien sabe hacerla con el costo hora más alto, y las tareas en paralelo se reparten entre los que saben para terminar lo antes posible: se ve quién hace qué, cuántas horas y cuánto cuesta.",
+        como: "Presupuesto → Muebles del presupuesto → '+ Mueble…'. Después, 'Pasar a mano de obra (por persona)' deja una fila por persona con sus horas y su costo hora.",
         tab: "presupuesto",
       },
     ],

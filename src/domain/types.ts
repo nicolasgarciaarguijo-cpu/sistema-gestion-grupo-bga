@@ -84,6 +84,8 @@ export type LaborRow = {
   jobHours: number;
   sourceMarkerId?: number;
   sourceCompany?: CompanyName;
+  // Fila de una persona puntual (sale de los muebles del presupuesto: quien hace cada tarea).
+  employeeId?: number;
 };
 
 export type FixedCost = {

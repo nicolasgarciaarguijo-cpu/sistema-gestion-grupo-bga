@@ -1,6 +1,7 @@
 // PRESUPUESTO · MUEBLES DEL BLOQUE (fase 3, Nicolas 2026-10-26). Se elige el tipo de mueble, cuantos y sus
-// medidas; las horas salen de su receta con los materiales cotizados en el bloque, y "Pasar a mano de obra"
-// las reparte entre las categorias. El calculo vive en domain/presupuestoMuebles.ts.
+// medidas; las horas salen de su receta con los materiales cotizados en el bloque. Cada tarea la hace el idoneo
+// mas caro que la termina antes (los mejores, lo mas rapido posible) y "Pasar a mano de obra" deja una fila por
+// persona con sus horas y su costo hora. El calculo vive en domain/presupuestoMuebles.ts.
 import React, { useMemo, useState } from "react";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import {
@@ -12,7 +13,7 @@ import NumInput from "../ui/NumInput";
 import type { RubroFabricacion } from "../domain/ganttFabricacion";
 import type { TipoTarea } from "../domain/organizacionDiaria";
 import { rubrosDeLaReceta, type TipoMueble } from "../domain/tiposMueble";
-import { calcularMueblesDelPresupuesto, type MuebleDelPresupuesto } from "../domain/presupuestoMuebles";
+import { calcularMueblesDelPresupuesto, planificarMuebles, type MuebleDelPresupuesto, type PersonaParaCotizar, type PlanDeMuebles } from "../domain/presupuestoMuebles";
 
 const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" };
 const caja: React.CSSProperties = { background: "#fff", borderRadius: 12, width: "min(760px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" };
@@ -26,8 +27,9 @@ export function MueblesPresupuesto({
   tareas,
   rubros,
   materiales,
-  horasEnManoDeObra,
-  hayManoDeObra,
+  personas,
+  manoDeObra,
+  money,
   onPasarAManoDeObra,
   nuevoId,
 }: {
@@ -38,9 +40,12 @@ export function MueblesPresupuesto({
   rubros: RubroFabricacion[];
   // Los materiales del bloque (de ahi salen las cantidades de los rubros).
   materiales: Array<{ description: string; qty: number }>;
-  horasEnManoDeObra: number;
-  hayManoDeObra: boolean;
-  onPasarAManoDeObra: (horas: number) => void;
+  // El plantel con su costo hora para cotizar y las tareas que sabe hacer (categorias internas).
+  personas: PersonaParaCotizar[];
+  // La mano de obra del bloque hoy (para saber si ya tiene lo que sale de los muebles).
+  manoDeObra: Array<{ employeeId?: number; jobHours: number; hourlyRate: number }>;
+  money: (n: number) => string;
+  onPasarAManoDeObra: (plan: PlanDeMuebles) => void;
   nuevoId: () => number;
 }) {
   const anchos = usePlanillaWidths("ppto.muebles", { label: 260, col: 96, colCompact: 76 });
@@ -54,7 +59,12 @@ export function MueblesPresupuesto({
     if (!t) return;
     onCambiar([...muebles, { id: nuevoId(), tipoMuebleId: t.id, cantidad: 1, largo: t.largo, alto: t.alto, profundidad: t.profundidad }]);
   };
-  const distinto = Math.abs(horasEnManoDeObra - res.horasHombre) > 0.05;
+  const plan = useMemo(() => planificarMuebles(res.muebles, personas), [res, personas]);
+  const quienHace = (muebleId: number, renglonId: number) => plan.asignaciones.find((a) => a.muebleId === muebleId && a.renglonId === renglonId);
+  // Al dia: la mano de obra tiene exactamente una fila por persona del plan, con sus horas y su costo hora.
+  const alDia =
+    manoDeObra.length === plan.porPersona.length &&
+    plan.porPersona.every((p) => manoDeObra.some((l) => (l.employeeId ?? null) === p.personaId && Math.abs(l.jobHours - p.horas) < 0.05 && Math.abs(l.hourlyRate - p.costoHora) < 1));
   const abierto = res.muebles.find((c) => c.mueble.id === detalle);
 
   return (
@@ -159,20 +169,58 @@ export function MueblesPresupuesto({
       )}
 
       {muebles.length > 0 && (
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 8 }}>
-          <div style={{ fontSize: 13 }}>
-            <strong>{fmt(res.horasHombre)} hs-hombre</strong>
-            {res.incompleto ? <span style={{ color: "#b45309" }}> (incompleto)</span> : null}
-            <span style={{ color: "#64748b" }}> · el mueble más largo: {fmt(res.horasRelojMax)} hs de reloj · en mano de obra hoy: {fmt(horasEnManoDeObra)} hs</span>
+        <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>Quién hace qué</div>
+          <div style={{ fontSize: 12, color: "#64748b" }}>
+            Cada tarea la hace la persona que sabe hacerla con el costo hora más alto; si está ocupada con otra tarea en paralelo, la toma el
+            siguiente que sabe, para que salga lo más rápido posible. Se cotiza como si fuera el único trabajo de la fábrica.
           </div>
-          <span title={!hayManoDeObra ? "Primero cargá la mano de obra del bloque (Restaurar)" : distinto ? "Reparte estas horas entre las categorías de mano de obra según cuánta gente tiene cada una" : "La mano de obra ya tiene estas horas"}>
+          {personas.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "#b45309" }}>Nadie tiene categorías internas cargadas (Personal → ficha de cada persona): no se puede saber quién hace cada tarea.</div>
+          ) : (
+            <table style={{ width: "100%", maxWidth: 720, borderCollapse: "collapse", fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ color: "#64748b", textAlign: "left" }}>
+                  <th style={{ padding: "3px 6px" }}>Persona</th>
+                  <th style={{ padding: "3px 6px", textAlign: "right" }}>Horas</th>
+                  <th style={{ padding: "3px 6px", textAlign: "right" }}>$ hora</th>
+                  <th style={{ padding: "3px 6px", textAlign: "right" }}>Costo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {plan.porPersona.map((p) => (
+                  <tr key={String(p.personaId)} style={{ borderTop: "1px solid #f1f5f9", color: p.personaId == null ? "#b45309" : undefined }}>
+                    <td style={{ padding: "3px 6px", fontWeight: 600 }} title={p.personaId == null ? "Nadie tiene estas tareas en sus categorías: se cotizan al costo hora más alto del plantel" : undefined}>{p.nombre}</td>
+                    <td style={{ padding: "3px 6px", textAlign: "right" }}>{fmt(p.horas)}</td>
+                    <td style={{ padding: "3px 6px", textAlign: "right" }}>{money(p.costoHora)}</td>
+                    <td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700 }}>{money(p.costo)}</td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: "1px solid #cbd5e1", fontWeight: 800 }}>
+                  <td style={{ padding: "3px 6px" }}>Total</td>
+                  <td style={{ padding: "3px 6px", textAlign: "right" }}>{fmt(res.horasHombre)}</td>
+                  <td />
+                  <td style={{ padding: "3px 6px", textAlign: "right" }}>{money(plan.costo)}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ fontSize: 13 }}>
+              <strong>{fmt(res.horasHombre)} hs-hombre</strong>
+              {res.incompleto ? <span style={{ color: "#b45309" }}> (incompleto)</span> : null}
+              <span style={{ color: "#64748b" }}> · se termina en {fmt(plan.horasReloj)} hs de reloj con esta gente</span>
+              {plan.sinPersona.length ? <span style={{ color: "#b45309" }}> · {plan.sinPersona.length} tarea{plan.sinPersona.length === 1 ? "" : "s"} sin nadie que sepa hacerla{plan.sinPersona.length === 1 ? "" : "s"}</span> : null}
+            </div>
             <ButtonLike
-              onClick={() => onPasarAManoDeObra(res.horasHombre)}
-              disabled={!hayManoDeObra || !distinto}
+              onClick={() => {
+                if (!manoDeObra.length || window.confirm("La mano de obra de este bloque se reemplaza por una fila por persona, con sus horas y su costo hora. ¿Seguir? (Restaurar trae de vuelta las categorías)")) onPasarAManoDeObra(plan);
+              }}
+              disabled={alDia || !plan.porPersona.length}
             >
-              {distinto ? "Pasar las horas a mano de obra" : "Mano de obra al día ✓"}
+              {alDia ? "Mano de obra al día ✓" : "Pasar a mano de obra (por persona)"}
             </ButtonLike>
-          </span>
+          </div>
         </div>
       )}
 
@@ -253,6 +301,8 @@ export function MueblesPresupuesto({
                   <th style={{ padding: "3px 4px", textAlign: "right" }}>Cantidad</th>
                   <th style={{ padding: "3px 4px", textAlign: "right" }}>Hs/unidad</th>
                   <th style={{ padding: "3px 4px", textAlign: "right" }}>Horas</th>
+                  <th style={{ padding: "3px 4px" }}>Quién</th>
+                  <th style={{ padding: "3px 4px", textAlign: "right" }} title="Desde y hasta qué hora del trabajo (contando desde que arranca)">De – a (hs)</th>
                 </tr>
               </thead>
               <tbody>
@@ -265,6 +315,15 @@ export function MueblesPresupuesto({
                     </td>
                     <td style={{ padding: "3px 4px", textAlign: "right", color: t.sinTiempo ? "#b45309" : undefined }}>{t.sinTiempo ? "sin tiempo" : fmt(t.horasPorUnidad)}</td>
                     <td style={{ padding: "3px 4px", textAlign: "right", fontWeight: 700 }}>{fmt(t.horas)}</td>
+                    {(() => {
+                      const q = quienHace(abierto.mueble.id, t.renglonId);
+                      return (
+                        <>
+                          <td style={{ padding: "3px 4px", color: q && q.personaId == null ? "#b45309" : undefined }}>{q ? q.persona : "—"}</td>
+                          <td style={{ padding: "3px 4px", textAlign: "right", color: "#64748b" }}>{q ? `${fmt(q.inicio)} – ${fmt(q.fin)}` : ""}</td>
+                        </>
+                      );
+                    })()}
                   </tr>
                 ))}
               </tbody>

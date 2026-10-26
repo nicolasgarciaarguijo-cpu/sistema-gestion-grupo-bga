@@ -1,4 +1,4 @@
-import { calcularMueblesDelPresupuesto, materialesDeCadaMueble, repartirHorasEnManoDeObra, type MuebleDelPresupuesto } from "./presupuestoMuebles";
+import { calcularMueblesDelPresupuesto, materialesDeCadaMueble, planificarMuebles, type MuebleDelPresupuesto, type PersonaParaCotizar } from "./presupuestoMuebles";
 import type { TipoMueble } from "./tiposMueble";
 import type { TipoTarea } from "./organizacionDiaria";
 import type { RubroFabricacion } from "./ganttFabricacion";
@@ -72,13 +72,44 @@ describe("presupuestar por tipo de mueble", () => {
     expect(res.incompleto).toBe(true);
   });
 
-  it("las horas se reparten en la mano de obra segun la gente de cada categoria y suman justo", () => {
-    const labor = [
-      { id: 1, employees: 2, jobHours: 0 },
-      { id: 2, employees: 1, jobHours: 0 },
-    ];
-    const r = repartirHorasEnManoDeObra(labor, 10);
-    expect(r.map((l) => l.jobHours)).toEqual([6.67, 3.33]);
-    expect(repartirHorasEnManoDeObra([{ id: 1, employees: 0, jobHours: 0 }, { id: 2, employees: 0, jobHours: 5 }], 8).map((l) => l.jobHours)).toEqual([4, 4]);
+  describe("quién hace cada tarea", () => {
+    // Paso 1: cortar (0,7 h). Paso 2 en paralelo: bisagras (2 h) y armar (4 h).
+    const calc = () =>
+      calcularMueblesDelPresupuesto([{ id: 1, tipoMuebleId: 1, cantidad: 2, largo: 1, alto: 0.7 }], [alacena], catalogo, [{ description: "Bisagra", qty: 8 }], rubros).muebles;
+    const ana: PersonaParaCotizar = { id: 1, nombre: "Ana (oficial)", costoHora: 9000, tareas: [1, 2, 3] };
+    const beto: PersonaParaCotizar = { id: 2, nombre: "Beto (ayudante)", costoHora: 5000, tareas: [1, 2, 3] };
+
+    it("la tarea la hace el idóneo más caro; en paralelo, la otra pasa al siguiente para terminar antes", () => {
+      const plan = planificarMuebles(calc(), [beto, ana]);
+      const quien = (n: string) => plan.asignaciones.find((a) => a.nombre === n)!;
+      expect(quien("Cortar placas").persona).toBe("Ana (oficial)");
+      expect(quien("Armar módulo")).toMatchObject({ persona: "Ana (oficial)", inicio: 0.7, fin: 4.7 });
+      expect(quien("Colocar bisagras")).toMatchObject({ persona: "Beto (ayudante)", inicio: 0.7, fin: 2.7 });
+      expect(plan.horasReloj).toBe(4.7);
+      expect(plan.costo).toBe(4.7 * 9000 + 2 * 5000);
+      expect(plan.porPersona.map((p) => [p.nombre, p.horas])).toEqual([["Ana (oficial)", 4.7], ["Beto (ayudante)", 2]]);
+    });
+
+    it("si solo una persona sabe, las tareas en paralelo van una detrás de la otra", () => {
+      const plan = planificarMuebles(calc(), [ana, { ...beto, tareas: [1] }]);
+      expect(plan.horasReloj).toBe(6.7);
+      expect(plan.asignaciones.filter((a) => a.persona === "Ana (oficial)").length).toBe(3);
+    });
+
+    it("sin nadie idóneo, se avisa y se cotiza al costo hora más alto", () => {
+      const plan = planificarMuebles(calc(), [{ ...ana, tareas: [1, 3] }]);
+      expect(plan.sinPersona.map((a) => a.nombre)).toEqual(["Colocar bisagras"]);
+      expect(plan.sinPersona[0].costoHora).toBe(9000);
+    });
+
+    it("muebles distintos van en paralelo", () => {
+      const res = calcularMueblesDelPresupuesto(
+        [{ id: 1, tipoMuebleId: 2, cantidad: 1 }, { id: 2, tipoMuebleId: 2, cantidad: 1 }],
+        [bajo], catalogo, [{ description: "Bisagra", qty: 16 }], rubros
+      );
+      const plan = planificarMuebles(res.muebles, [ana, beto]);
+      expect(plan.horasReloj).toBe(2);
+      expect(plan.porPersona.map((p) => p.nombre)).toEqual(["Ana (oficial)", "Beto (ayudante)"]);
+    });
   });
 });

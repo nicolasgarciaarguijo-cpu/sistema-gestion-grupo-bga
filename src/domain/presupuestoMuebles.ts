@@ -3,7 +3,7 @@
 // tareas por medida usan las medidas, y las que salen de materiales usan lo cotizado en el bloque. Si dos
 // muebles usan el mismo rubro, lo cotizado se reparte entre ellos segun la cantidad; a mano se puede fijar
 // la cantidad de un rubro para un mueble (y eso se descuenta de lo que se reparte entre los demas).
-// Las horas pasan a la mano de obra del bloque repartidas entre sus categorias.
+// Las horas pasan a la mano de obra por persona: ver planificarMuebles (quien hace cada tarea).
 import type { RubroFabricacion } from "./ganttFabricacion";
 import type { TipoTarea } from "./organizacionDiaria";
 import { cantidadesPorRubro, resumenDeTiempos, rubrosDeLaReceta, tareasDelMueble, type MuebleMedido, type TareaCalculada, type TipoMueble } from "./tiposMueble";
@@ -105,16 +105,116 @@ export function calcularMueblesDelPresupuesto(
   };
 }
 
-// Reparte las horas entre las categorias de mano de obra del bloque segun cuanta gente tiene cada una
-// (sin gente cargada, en partes iguales). Devuelve las filas con sus horas de trabajo nuevas.
-export function repartirHorasEnManoDeObra<T extends { id: number; employees: number; jobHours: number }>(labor: T[], horas: number): T[] {
-  if (!labor.length) return labor;
-  const gente = labor.reduce((s, l) => s + pos(l.employees), 0);
-  const pesos = labor.map((l) => (gente ? pos(l.employees) / gente : 1 / labor.length));
-  let asignado = 0;
-  return labor.map((l, i) => {
-    const h = i === labor.length - 1 ? r2(horas - asignado) : r2(horas * pesos[i]);
-    asignado = r2(asignado + h);
-    return { ...l, jobHours: Math.max(0, h) };
+// ---- QUIEN HACE CADA TAREA (Nicolas, 2026-10-26) --------------------------------------------------------
+// "Las horas se deben asignar por empleado que pueda realizar la tarea, siempre considerando que el mas costoso
+// es quien la va a llevar a cabo... los mejores haciendo las tareas, pero optimizando los tiempos para que salga
+// lo mas rapido posible". Para cotizar no se mira el resto de la fabrica (como si fuera el unico trabajo).
+// Regla: cada tarea va a quien la termina antes entre los idoneos; si empatan (estan todos libres), al de costo
+// hora mas alto. Asi arrancan los mejores, y una tarea en paralelo pasa al siguiente mejor solo si el primero
+// esta ocupado. Los pasos de un mueble van en orden (el 3 espera al 2 entero); muebles distintos van en paralelo.
+
+export type PersonaParaCotizar = {
+  id: number;
+  nombre: string;
+  costoHora: number;
+  // Tareas del catalogo que puede hacer (de sus categorias internas).
+  tareas: number[];
+};
+
+export type AsignacionTarea = {
+  muebleId: number;
+  renglonId: number;
+  tareaId: number;
+  nombre: string;
+  etiqueta: string;
+  horas: number;
+  personaId: number | null;
+  persona: string;
+  costoHora: number;
+  inicio: number;
+  fin: number;
+};
+
+export type PlanDeMuebles = {
+  asignaciones: AsignacionTarea[];
+  horasReloj: number;
+  costo: number;
+  porPersona: Array<{ personaId: number | null; nombre: string; horas: number; costoHora: number; costo: number }>;
+  sinPersona: AsignacionTarea[];
+};
+
+export function planificarMuebles(calculados: MuebleCalculado[], personas: PersonaParaCotizar[]): PlanDeMuebles {
+  const libre = new Map<number, number>(personas.map((p) => [p.id, 0]));
+  // Sin nadie idoneo se cotiza al costo hora mas alto del plantel (para no quedar corto).
+  const peorCaso = Math.max(0, ...personas.map((p) => pos(p.costoHora)));
+  type Estado = { c: MuebleCalculado; pasos: Array<{ paso: number; tareas: TareaCalculada[] }>; i: number; listo: number; pendientes: TareaCalculada[]; finPaso: number };
+  const estados: Estado[] = calculados
+    .filter((c) => c.tareas.some((t) => t.horas > 0))
+    .map((c) => {
+      const porPaso = new Map<number, TareaCalculada[]>();
+      c.tareas.filter((t) => t.horas > 0).forEach((t) => porPaso.set(t.paso, [...(porPaso.get(t.paso) || []), t]));
+      const pasos = Array.from(porPaso.entries()).sort((a, b) => a[0] - b[0]).map(([paso, tareas]) => ({ paso, tareas }));
+      return { c, pasos, i: 0, listo: 0, pendientes: [...pasos[0].tareas], finPaso: 0 };
+    });
+  const asignaciones: AsignacionTarea[] = [];
+  for (;;) {
+    // La tarea que puede arrancar antes; a igualdad, la mas larga primero (asi la toma el mejor).
+    let elegido: { e: Estado; t: TareaCalculada } | null = null;
+    estados.forEach((e) => {
+      if (e.i >= e.pasos.length) return;
+      e.pendientes.forEach((t) => {
+        if (!elegido || e.listo < elegido.e.listo || (e.listo === elegido.e.listo && t.horas > elegido.t.horas)) elegido = { e, t };
+      });
+    });
+    if (!elegido) break;
+    const { e, t } = elegido as { e: Estado; t: TareaCalculada };
+    const idoneos = personas.filter((p) => p.tareas.includes(t.tareaId));
+    let mejor: PersonaParaCotizar | null = null;
+    let inicio = e.listo;
+    idoneos.forEach((p) => {
+      const arranca = Math.max(e.listo, libre.get(p.id) || 0);
+      const mejorArranca = mejor ? Math.max(e.listo, libre.get(mejor.id) || 0) : Infinity;
+      if (arranca < mejorArranca - 1e-9 || (Math.abs(arranca - mejorArranca) < 1e-9 && pos(p.costoHora) > pos(mejor!.costoHora))) {
+        mejor = p;
+        inicio = arranca;
+      }
+    });
+    const m = mejor as PersonaParaCotizar | null;
+    const fin = r2(inicio + t.horas);
+    if (m) libre.set(m.id, fin);
+    asignaciones.push({
+      muebleId: e.c.mueble.id,
+      renglonId: t.renglonId,
+      tareaId: t.tareaId,
+      nombre: t.nombre,
+      etiqueta: t.etiqueta,
+      horas: t.horas,
+      personaId: m ? m.id : null,
+      persona: m ? m.nombre : "Nadie sabe hacerla",
+      costoHora: m ? pos(m.costoHora) : peorCaso,
+      inicio: r2(inicio),
+      fin,
+    });
+    e.pendientes = e.pendientes.filter((x) => x !== t);
+    e.finPaso = Math.max(e.finPaso, fin);
+    if (!e.pendientes.length) {
+      e.i += 1;
+      e.listo = e.finPaso;
+      e.pendientes = e.i < e.pasos.length ? [...e.pasos[e.i].tareas] : [];
+    }
+  }
+  const porPersona = new Map<string, { personaId: number | null; nombre: string; horas: number; costoHora: number; costo: number }>();
+  asignaciones.forEach((a) => {
+    const k = String(a.personaId);
+    const prev = porPersona.get(k) || { personaId: a.personaId, nombre: a.persona, horas: 0, costoHora: a.costoHora, costo: 0 };
+    porPersona.set(k, { ...prev, horas: r2(prev.horas + a.horas), costo: Math.round((prev.costo + a.horas * a.costoHora) * 100) / 100 });
   });
+  const lista = Array.from(porPersona.values()).sort((a, b) => b.costoHora - a.costoHora);
+  return {
+    asignaciones,
+    horasReloj: r2(Math.max(0, ...asignaciones.map((a) => a.fin))),
+    costo: Math.round(lista.reduce((s, p) => s + p.costo, 0) * 100) / 100,
+    porPersona: lista,
+    sinPersona: asignaciones.filter((a) => a.personaId == null),
+  };
 }
