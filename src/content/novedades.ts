@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-26d",
+    fecha: "26/10/2026",
+    titulo: "Empresas por separado o juntas",
+    items: [
+      {
+        titulo: "Elegir la empresa arriba cambia todas las solapas",
+        que: "Al elegir BGA, De Raíz o todas en 'Vista operativa por empresa', las solapas se actualizan enseguida (antes seguían mostrando lo anterior). Cada uno ve solo las empresas que tiene permitidas; quien trabaja con una sola queda fijo en esa. Lo que se carga va a la empresa elegida.",
+        como: "Arriba de todo, 'Vista operativa por empresa'. El sistema recuerda la última que elegiste.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Fabricación: trabajos de las dos empresas, gente de De Raíz",
+        que: "Fabricación muestra siempre los trabajos de BGA y de De Raíz (los ejecuta el personal de De Raíz). El listado de tareas es común a las dos empresas. Las personas de la organización diaria y las que hacen las tareas al cotizar por mueble son las de De Raíz; las máquinas nuevas se cargan como de De Raíz.",
+        como: "Fabricación, con cualquier empresa elegida arriba.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-10-26c",
     fecha: "26/10/2026",
     titulo: "Presupuestar por tipo de mueble",

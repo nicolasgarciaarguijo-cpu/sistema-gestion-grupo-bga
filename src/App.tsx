@@ -4177,6 +4177,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     personalProvisionMarkers,
   ]);
 
+  // FABRICACION ES DE DE RAIZ Y HACE LOS TRABAJOS DE LAS DOS EMPRESAS: ahi no se filtra por la empresa elegida
+  // (solo por permiso). En el resto de las solapas manda la empresa elegida arriba.
+  const alcanceEmpresa: CompanyScope = activeTab === "fabricacion" ? "General" : workspaceCompanyScope;
   const canAccessCompany = (company: CompanyName | "General") => {
     if (!isSupabaseLoggedIn) return false;
     const hasPermission =
@@ -4186,13 +4189,15 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
     if (!hasPermission) return false;
 
-    if (workspaceCompanyScope === "General") return true;
+    if (alcanceEmpresa === "General") return true;
 
-    return company === "General" || company === workspaceCompanyScope;
+    return company === "General" || company === alcanceEmpresa;
   };
 
   // VISTA POR EMPRESA (2026-10-26): el selector ofrece solo las empresas que el usuario puede usar. Con una sola,
   // queda fija en esa ("hay personas que solo van a trabajar en una sola empresa y deben poder operar de esa forma").
+  // La empresa que fabrica (De Raiz): sus empleados son los de Fabricacion y los que hacen las tareas al cotizar.
+  const empresaQueFabrica = (COMPANY_OPTIONS.find((c) => /ra[ií]z/i.test(String(c.value)))?.value || "") as CompanyName;
   // Lo que se carga en las solapas va a la empresa elegida arriba; con "todas", a la del presupuesto (como antes).
   const empresaParaCargar = (workspaceCompanyScope !== "General" ? workspaceCompanyScope : budget.company) as CompanyName;
   const empresasDeLaVista = COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName));
@@ -4259,7 +4264,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
       getLatestBudgetRevisions(savedBudgets).filter((item) =>
         canAccessCompany(item.company)
       ),
-    [workspaceCompanyScope, savedBudgets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, savedBudgets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   // Versiones anteriores de un presupuesto (mismas raiz, distinto id), mas nuevas primero.
@@ -4470,21 +4475,21 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
   const visibleApprovedJobs = useMemo(
     () => approvedJobs.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, approvedJobs, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, approvedJobs, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleFinancialItems = useMemo(
     () => financialItems.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, financialItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, financialItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleCreditNotes = useMemo(
     () => creditNotes.filter((n) => canAccessCompany(n.company as CompanyName)),
-    [workspaceCompanyScope, creditNotes, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, creditNotes, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
   const visiblePurchaseInvoices = useMemo(
     () => purchaseInvoices.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, purchaseInvoices, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, purchaseInvoices, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   // Facturas de compra + el débito del banco que las paga (si se vinculó desde el Calendario anual).
@@ -4508,7 +4513,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
   // DESENDEUDAMIENTO en dos bloques (2026-10-23, ver domain/desendeudamiento): los pagos que saldan cuotas y
   // las facturas que forman parte de un convenio.
-  const deudasAccesibles = useMemo(() => debtPlans.filter((d) => canAccessCompany(d.company)), [workspaceCompanyScope, debtPlans, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]);
+  const deudasAccesibles = useMemo(() => debtPlans.filter((d) => canAccessCompany(d.company)), [alcanceEmpresa, debtPlans, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]);
   const pagosDeCuotasMap = useMemo(() => pagosDeCuotas(deudasAccesibles as any), [deudasAccesibles]);
   const facturasEnConvenioMap = useMemo(() => facturasEnConvenio(deudasAccesibles as any), [deudasAccesibles]);
 
@@ -4562,7 +4567,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
   const visiblePettyCashFunds = useMemo(
     () => pettyCashFunds.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, pettyCashFunds, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, pettyCashFunds, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const normalizedPettyCashExpenses = useMemo(
@@ -4576,11 +4581,11 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
   const visiblePettyCashExpenses = useMemo(
     () => normalizedPettyCashExpenses.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, normalizedPettyCashExpenses, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, normalizedPettyCashExpenses, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
   const visibleViaticos = useMemo(
     () => viaticos.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, viaticos, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, viaticos, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   // Balance blanco/negro de caja chica: entradas por origen del fondo vs salidas por administracion.
@@ -4636,45 +4641,45 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
   const visibleDebtPlans = useMemo(
     () => debtPlans.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, debtPlans, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, debtPlans, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleCapitalEntries = useMemo(
     () => capitalEntries.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, capitalEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, capitalEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleCashHoldings = useMemo(
     () => cashHoldings.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, cashHoldings, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, cashHoldings, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleInternalTransfers = useMemo(
     () => internalTransfers.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, internalTransfers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, internalTransfers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visiblePersonLedgerEntries = useMemo(
     () => personLedgerEntries.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, personLedgerEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, personLedgerEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleIvaVepPayments = useMemo(
     () => ivaVepPayments.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, ivaVepPayments, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, ivaVepPayments, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleCreditCards = useMemo(
     () => creditCards.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, creditCards, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, creditCards, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
   const visibleCreditCardStatements = useMemo(
     () => creditCardStatements.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, creditCardStatements, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, creditCardStatements, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
   const visibleCreditCardConsumptions = useMemo(
     () => creditCardConsumptions.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, creditCardConsumptions, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, creditCardConsumptions, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
   const scopedCardConsumptions = useMemo(
     () =>
@@ -4691,7 +4696,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
   const visibleBankStatementEntries = useMemo(
     () => bankStatementEntries.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, bankStatementEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, bankStatementEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   // --- Silos por mes (vista filtrada por fecha) ---
@@ -4718,17 +4723,17 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
 
   const visibleStockItems = useMemo(
     () => stockItems.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, stockItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, stockItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const visibleCompanyAssets = useMemo(
     () => companyAssets.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, companyAssets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, companyAssets, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const accessibleEmployees = useMemo(
     () => employees.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, employees, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, employees, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   // La nomina son los ACTIVOS. El que esta dado de baja no se borra: sale de aca (y de todo lo que
@@ -4737,6 +4742,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     () => accessibleEmployees.filter(isEmployeeActive),
     [accessibleEmployees]
   );
+  const empleadosFabrica = visibleEmployees.filter((e) => !empresaQueFabrica || e.company === empresaQueFabrica);
 
   // RESPONSABLE / FIRMANTE (Nicolas, 2026-10-16): es SIEMPRE el usuario que opera, sin selector. Se graba
   // solo (firmante + firmadoEn) al crear y al editar cada movimiento de plata: queda el ultimo responsable.
@@ -4868,7 +4874,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           if (groupCompare !== 0) return groupCompare;
           return Number(a.sortOrder || 0) - Number(b.sortOrder || 0);
         }),
-    [workspaceCompanyScope, stockItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, stockItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
   const displayedMaterials = useMemo(
@@ -8134,7 +8140,7 @@ Escribi CERRAR para confirmar:`
   // Ver domain/cajaChicaFicha.ts `pagosComoGastosDeCaja`. Es la misma plata del pago, vista desde la caja.
   const pagosConCajaChica = useMemo(
     () => pagosComoGastosDeCaja(costEntries.filter((c) => canAccessCompany(c.company)) as any, pettyCashFunds as any),
-    [workspaceCompanyScope, costEntries, pettyCashFunds, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, costEntries, pettyCashFunds, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
   const idsPagosConCaja = useMemo(() => new Set(pagosConCajaChica.map((p) => p.id)), [pagosConCajaChica]);
   const pettyCashFundSummaries = useMemo(
@@ -14533,7 +14539,7 @@ Escribi CERRAR para confirmar:`
       personLedgerEntries: visiblePersonLedgerEntries
         .filter((e) => inScope(String(e.company)) && despuesDelCierre(String(e.company), e.date)),
     });
-  }, [workspaceCompanyScope, reservaBankAccounts, reservaUntil, visiblePettyCashFunds, visiblePettyCashExpenses, visibleCashHoldings, visibleApprovedJobs, costEntries, visibleInternalTransfers, visiblePersonLedgerEntries, balanceCompanyScope, fiscalClosings, COMPANY_OPTIONS]);
+  }, [alcanceEmpresa, reservaBankAccounts, reservaUntil, visiblePettyCashFunds, visiblePettyCashExpenses, visibleCashHoldings, visibleApprovedJobs, costEntries, visibleInternalTransfers, visiblePersonLedgerEntries, balanceCompanyScope, fiscalClosings, COMPANY_OPTIONS]);
 
   // PLATA DISPONIBLE (tablero superior): la reserva calculada POR empresa (no sigue el selector del
   // balance), para ver de un vistazo cuánta plata hay en cada banco de cada empresa y cuánto en negro,
@@ -14629,7 +14635,7 @@ Escribi CERRAR para confirmar:`
         byDay,
       };
     });
-  }, [workspaceCompanyScope, 
+  }, [alcanceEmpresa, 
     COMPANY_OPTIONS,
     balanceFiscalStartYear,
     visibleBankStatementEntries,
@@ -14710,7 +14716,7 @@ Escribi CERRAR para confirmar:`
         };
       });
     return [...gastos, ...bancos, ...caja];
-  }, [workspaceCompanyScope, 
+  }, [alcanceEmpresa, 
     costEntries,
     suppliers,
     visibleBankStatementEntries,
@@ -14785,7 +14791,7 @@ Escribi CERRAR para confirmar:`
       purchaseInvoices,
       todayIso()
     );
-  }, [workspaceCompanyScope, costEntries, purchaseInvoices, suppliers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession, pagosDeCuotasMap, llavesAcreedoresDeudas]);
+  }, [alcanceEmpresa, costEntries, purchaseInvoices, suppliers, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession, pagosDeCuotasMap, llavesAcreedoresDeudas]);
 
   // CONTEO DE BLANQUEO por empresa, en el EJERCICIO FISCAL en curso (ver domain/faltaFactura). Sube con la
   // plata negra que entra al banco (deposito, prestamo o aporte en negro); baja con lo que balancea (sacar
@@ -14832,7 +14838,7 @@ Escribi CERRAR para confirmar:`
       out.set(company, conteoBlanqueo({ company, desde: startIso, hasta: endIso, movimientos }));
     });
     return out;
-  }, [workspaceCompanyScope, visibleInternalTransfers, visibleCapitalEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visiblePurchaseInvoices, costEntries, companyCatalog, COMPANY_OPTIONS, issuedInvoices, regularizacionesBlanqueo]);
+  }, [alcanceEmpresa, visibleInternalTransfers, visibleCapitalEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visiblePurchaseInvoices, costEntries, companyCatalog, COMPANY_OPTIONS, issuedInvoices, regularizacionesBlanqueo]);
 
   const plataDisponibleByCompany = useMemo(() => {
     const realCompanies = COMPANY_OPTIONS.filter(
@@ -15010,7 +15016,7 @@ Escribi CERRAR para confirmar:`
         efectivoApertura,
       };
     });
-  }, [workspaceCompanyScope, 
+  }, [alcanceEmpresa, 
     faltaFacturaPorEmpresa,
     bankLoadsUntil,
     COMPANY_OPTIONS,
@@ -15177,7 +15183,7 @@ Escribi CERRAR para confirmar:`
           posicionReal: pos.posicion + Number(falta?.ivaFaltante || 0),
         };
       });
-  }, [workspaceCompanyScope, 
+  }, [alcanceEmpresa, 
     faltaFacturaPorEmpresa,
     COMPANY_OPTIONS,
     balanceCompanyScope,
@@ -15505,7 +15511,7 @@ Escribi CERRAR para confirmar:`
     }).forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
 
     return entries.sort((a, b) => a.date.localeCompare(b.date));
-  }, [workspaceCompanyScope, 
+  }, [alcanceEmpresa, 
     retirosSocietarios,
     inversiones,
     visibleViaticos,
@@ -16522,7 +16528,7 @@ Escribi CERRAR para confirmar:`
   const personasParaCotizar = useMemo<PersonaParaCotizar[]>(
     () =>
       (activeTab === "presupuesto" ? employees : [])
-        .filter((e) => !isEmployeeTerminated(e) && tieneCategorias(e.categoriasInternas))
+        .filter((e) => !isEmployeeTerminated(e) && tieneCategorias(e.categoriasInternas) && (!empresaQueFabrica || e.company === empresaQueFabrica))
         .map((e) => ({
           id: e.id,
           nombre: String(e.name || "").trim(),
@@ -16746,7 +16752,7 @@ Escribi CERRAR para confirmar:`
       efectivoApertura: plataDisponibleByCompany.flatMap((p: any) => p.efectivoApertura || []),
       personas: responsables,
     }));
-  }, [workspaceCompanyScope, plataDisponibleByCompany, visiblePettyCashFunds, cuentasGuardadas, bankLoadsUntil, visibleBankStatementEntries, fiscalClosings]);
+  }, [alcanceEmpresa, plataDisponibleByCompany, visiblePettyCashFunds, cuentasGuardadas, bankLoadsUntil, visibleBankStatementEntries, fiscalClosings]);
 
   // FACTURA PAGADA CON LA CAJA CHICA (Nicolas, 2026-10-21): un pago cargado en Compras cuya cuenta es la caja
   // de una persona es un gasto de su caja chica: se ve en la rendicion de su caja y cuenta en lo utilizado.
@@ -16785,7 +16791,7 @@ Escribi CERRAR para confirmar:`
           description: c.description || "",
           supplier: c.supplier || "",
         })),
-    [workspaceCompanyScope, costEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+    [alcanceEmpresa, costEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
   const cuotasDeTarjeta = useMemo(() => cuotasEsperadas(comprasConTarjeta, visibleCreditCardStatements as any), [comprasConTarjeta, visibleCreditCardStatements]);
   const controlesTarjeta = useMemo(
@@ -16882,7 +16888,7 @@ Escribi CERRAR para confirmar:`
           cuentaId: inversiones.find((i) => `inv-coloc-${i.id}` === e.id || `inv-rescate-${i.id}` === e.id)?.cuentaId,
         })),
       }),
-    [workspaceCompanyScope, cuotasDeTarjeta, visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos, retirosSocietarios]
+    [alcanceEmpresa, cuotasDeTarjeta, visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos, retirosSocietarios]
   );
   const movimientosDeCuentas = useMemo(
     () => movimientosPorCuenta(plataMovidaSistema, cuentasSistema),
@@ -17161,7 +17167,7 @@ Escribi CERRAR para confirmar:`
         // Este ejercicio y el siguiente: la planilla se corre mas alla de octubre.
         [...fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear), ...fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear + 1)]
       ),
-    [workspaceCompanyScope, seguros, balanceFiscalStartYear]
+    [alcanceEmpresa, seguros, balanceFiscalStartYear]
   );
 
   // PAGOS INAMOVIBLES. La agenda junta lo que ya existe en el sistema (cuotas de deudas, resumenes de
@@ -17207,7 +17213,7 @@ Escribi CERRAR para confirmar:`
           conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, inv?.grupoCosto || prov?.grupoCosto || "|Sin grupo"),
         };
       }),
-    [workspaceCompanyScope, purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes, costEntries, facturasEnConvenioMap]
+    [alcanceEmpresa, purchaseInvoicesWithBankLink, suppliers, visibleCreditNotes, costEntries, facturasEnConvenioMap]
   );
   const [fichaProveedor, setFichaProveedor] = useState<{ nombre: string; taxId: string } | null>(null);
   // Movimientos del mes de una cuenta, abiertos desde el tablero de plata disponible.
@@ -17564,7 +17570,7 @@ Escribi CERRAR para confirmar:`
       hasta,
       hoyIso
     );
-  }, [workspaceCompanyScope, vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries, purchaseInvoicesWithBankLink, suppliers, facturasEnConvenioMap]);
+  }, [alcanceEmpresa, vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries, purchaseInvoicesWithBankLink, suppliers, facturasEnConvenioMap]);
 
   // ANALISIS DE GASTOS (Compras y analisis de gastos): todos los egresos del sistema, los realizados (lo
   // mismo que alimenta el Calendario) y lo que viene (Pagos programados). Ver domain/analisisGastos.
@@ -17611,7 +17617,7 @@ Escribi CERRAR para confirmar:`
       });
       return { company, short: String(c.short || company), primary: String((c as any).primary || "#334155"), filas };
     });
-  }, [workspaceCompanyScope, activeTab, financialItems, costEntries, employees, companyCatalog]);
+  }, [alcanceEmpresa, activeTab, financialItems, costEntries, employees, companyCatalog]);
 
   const preCierrePorEmpresa = useMemo(() => {
     if (activeTab !== "cashflow") return [] as Array<{ company: string; short: string; primary: string; fin: string; data: PreCierre }>;
@@ -17673,7 +17679,7 @@ Escribi CERRAR para confirmar:`
       };
     });
     // planDelCierre usa casi todo el estado: se recalcula al entrar a Balance y cuando cambian las fuentes.
-  }, [workspaceCompanyScope, activeTab, approvedJobsSummary, agendaInamoviblesItems, purchaseLedgerInvoices, purchaseLedgerPayments, visibleCreditNotes, pendientesSinFactura, visiblePettyCashFunds, visiblePettyCashExpenses, companyCatalog, costEntries, bankStatementEntries, financialItems, issuedInvoices, purchaseInvoices]);
+  }, [alcanceEmpresa, activeTab, approvedJobsSummary, agendaInamoviblesItems, purchaseLedgerInvoices, purchaseLedgerPayments, visibleCreditNotes, pendientesSinFactura, visiblePettyCashFunds, visiblePettyCashExpenses, companyCatalog, costEntries, bankStatementEntries, financialItems, issuedInvoices, purchaseInvoices]);
   const pagosVencidosAReclamar = useMemo(() => pagosAReclamar(agendaInamoviblesItems), [agendaInamoviblesItems]);
 
   // Marca de un pago de la agenda (por clave): se fusiona con la que ya hubiera.
@@ -17828,7 +17834,7 @@ Escribi CERRAR para confirmar:`
       ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => i.origen !== "cheque"), filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
       // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
     ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
-  }, [workspaceCompanyScope, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans]);
+  }, [alcanceEmpresa, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans]);
 
   // Marcar pagado: si el origen tiene su propio "pagado", se usa ESE (queda vinculado en las dos
   // solapas); si no, se guarda una marca.
@@ -17964,13 +17970,13 @@ Escribi CERRAR para confirmar:`
 
   const visibleIssuedInvoices = useMemo(
     () => issuedInvoices.filter((item) => canAccessCompany(item.company)),
-    [workspaceCompanyScope, issuedInvoices, allowedCompaniesForSession, effectiveIsAdmin]
+    [alcanceEmpresa, issuedInvoices, allowedCompaniesForSession, effectiveIsAdmin]
   );
 
   // Proveedores visibles segun la empresa (el listado puede ser de una empresa o "General").
   const visibleSuppliers = useMemo(
     () => suppliers.filter((item) => canAccessCompany(item.company as any)),
-    [workspaceCompanyScope, suppliers, allowedCompaniesForSession, effectiveIsAdmin]
+    [alcanceEmpresa, suppliers, allowedCompaniesForSession, effectiveIsAdmin]
   );
 
   // ---- CUENTA CORRIENTE DE COMPRAS (solapa Compras) ----------------------------------------------
@@ -18089,7 +18095,7 @@ Escribi CERRAR para confirmar:`
       (entry) => canAccessCompany(entry.company) && saleDelBanco(entry.paymentMethod)
     );
     return reconcilePayments(pagos, debits);
-  }, [workspaceCompanyScope, costEntries, visibleBankStatementEntries, allowedCompaniesForSession, effectiveIsAdmin]);
+  }, [alcanceEmpresa, costEntries, visibleBankStatementEntries, allowedCompaniesForSession, effectiveIsAdmin]);
 
   // CUENTA CORRIENTE ENTRE LAS EMPRESAS DEL GRUPO. Los giros entre BGA y De Raiz no son pagos ni
   // cobros (para el grupo no entro ni salio nada), pero cada uno se cruza con una factura entre las
@@ -19106,7 +19112,7 @@ Escribi CERRAR para confirmar:`
       bankCredits,
       bankDebits,
     });
-  }, [workspaceCompanyScope, 
+  }, [alcanceEmpresa, 
     billingBalance,
     costEntries,
     visiblePettyCashExpenses,
@@ -19180,7 +19186,7 @@ Escribi CERRAR para confirmar:`
           };
         })
       ),
-    [workspaceCompanyScope, payrollMonth, scaleRows, employeeBaseConfig, personalProvisionMarkers, stockItems]
+    [alcanceEmpresa, payrollMonth, scaleRows, employeeBaseConfig, personalProvisionMarkers, stockItems]
   );
 
   const companyCategoryCostRows = useMemo(() => {
@@ -20316,7 +20322,7 @@ Escribi CERRAR para confirmar:`
         tienePagoCargado: estadoPagos.ids.length > 0,
         arca: purchaseInvoiceOrigin(inv) === "arca" ? "importada" : inv.arcaCruzada ? "cruzada" : undefined,
       } as FilaFactura;
-    }), [workspaceCompanyScope, purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas, pettyCashExpenses, pettyCashFunds]);
+    }), [alcanceEmpresa, purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas, pettyCashExpenses, pettyCashFunds]);
   const facturaVacia = (supplier = "", taxId = "", company = ""): FacturaForm => {
     const prov = buscarProveedor(suppliers as any, supplier, taxId) as any;
     const mono = prov?.condicionIva === "monotributo";
@@ -23184,6 +23190,11 @@ Escribi CERRAR para confirmar:`
       )}
 
       {activeTab === "fabricacion" && (
+        <div style={{ fontSize: 12.5, color: "#475569", background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", margin: "0 0 10px" }}>
+          Fabricación es de De Raíz: acá se ven los trabajos de las dos empresas (lo que factura BGA también lo hace De Raíz), con la gente, las tareas y las máquinas de De Raíz.
+        </div>
+      )}
+      {activeTab === "fabricacion" && (
         <FabricacionTab
           stockSemaphoreSummary={stockSemaphoreSummary}
           purchaseDeadlineSemaphore={purchaseDeadlineSemaphore}
@@ -23215,7 +23226,7 @@ Escribi CERRAR para confirmar:`
       )}
       {activeTab === "fabricacion" && (
         <OrganizacionDiaria
-          empleados={visibleEmployees.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
+          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
           trabajos={visibleApprovedJobs.map((j) => ({ id: j.id, budgetNumber: j.budgetNumber, client: j.client, company: j.company, direccion: j.deliveryDestination }))}
           asignaciones={asignacionesDiarias.filter((a) => canAccessCompany(a.company))}
           grupos={gruposTrabajo}
@@ -23242,7 +23253,7 @@ Escribi CERRAR para confirmar:`
       )}
       {activeTab === "fabricacion" && (
         <CapacidadesPersonal
-          empleados={visibleEmployees.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
+          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
           categorias={categoriasVigentes}
           tipos={tiposTarea}
           grupos={gruposTrabajo}
@@ -23256,7 +23267,7 @@ Escribi CERRAR para confirmar:`
           tipos={tiposTarea}
           grupos={gruposTrabajo}
           categorias={categoriasVigentes}
-          empleados={visibleEmployees.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
+          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
           asignaciones={asignacionesDiarias.filter((a) => canAccessCompany(a.company))}
           hoy={todayIso()}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
@@ -23268,9 +23279,9 @@ Escribi CERRAR para confirmar:`
               ...prev,
               {
                 id,
-                company: "General",
+                company: empresaQueFabrica || "General",
                 kind: "general",
-                shared: true,
+                shared: !empresaQueFabrica,
                 group: grupo,
                 location: "",
                 sortOrder: Math.max(0, ...prev.filter((item) => item.kind === "general").map((item) => Number(item.sortOrder || 0))) + 1,
@@ -23331,7 +23342,7 @@ Escribi CERRAR para confirmar:`
           planes={planesFabricacion.filter((p) => canAccessCompany(p.company))}
           rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
           tipos={tiposTarea}
-          cantidadEmpleados={visibleEmployees.length}
+          cantidadEmpleados={empleadosFabrica.length}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
           onGuardarPlan={(p) => {
             const conFirma = { ...p, ...firma() };
