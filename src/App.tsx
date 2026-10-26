@@ -237,6 +237,8 @@ import { OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
 import { GanttFabricacion } from "./tabs/GanttFabricacion";
 import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
 import { TiposMueble } from "./tabs/TiposMueble";
+import { MueblesPresupuesto } from "./tabs/MueblesPresupuesto";
+import { repartirHorasEnManoDeObra, type MuebleDelPresupuesto } from "./domain/presupuestoMuebles";
 import { Mantenimiento } from "./tabs/Mantenimiento";
 import { esMaquinaOHerramienta, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
@@ -1796,6 +1798,7 @@ type PersistedAppStateData = {
   materials: Material[];
   basicSupplies: Material[];
   labor: LaborRow[];
+  muebles?: MuebleDelPresupuesto[];
   fixedCosts: FixedCost[];
   budgetIncreases: BudgetIncrease[];
   budgetDiscounts: BudgetDiscount[];
@@ -3040,6 +3043,7 @@ export default function App() {
   const [materials, setMaterials] = useState<Material[]>(defaultMaterials);
   const [basicSupplies, setBasicSupplies] = useState<Material[]>(defaultBasicSupplies);
   const [labor, setLabor] = useState<LaborRow[]>(defaultLabor);
+  const [mueblesPpto, setMueblesPpto] = useState<MuebleDelPresupuesto[]>([]);
   const [fixedCosts, setFixedCosts] = useState<FixedCost[]>(defaultFixedCosts);
   const [budgetIncreases, setBudgetIncreases] = useState<BudgetIncrease[]>(defaultBudgetIncreases);
   const [budgetDiscounts, setBudgetDiscounts] = useState<BudgetDiscount[]>(defaultBudgetDiscounts);
@@ -5046,6 +5050,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         materials: item.materials.map((row) => ({ ...row })),
         basicSupplies: item.basicSupplies.map((row) => ({ ...row })),
         labor: item.labor.map((row) => ({ ...row })),
+      muebles: (item.muebles || []).map((row) => ({ ...row })),
         fixedCosts: item.fixedCosts.map((row) => ({ ...row })),
         increases: item.increases.map((row) => ({ ...row })),
         discounts: item.discounts.map((row) => ({ ...row })),
@@ -5054,6 +5059,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
       materials: materials.map((item) => ({ ...item })),
       basicSupplies: basicSupplies.map((item) => ({ ...item })),
       labor: labor.map((item) => ({ ...item })),
+      muebles: mueblesPpto.map((item) => ({ ...item })),
       fixedCosts: fixedCosts.map((item) => ({ ...item })),
       increases: budgetIncreases.map((item) => ({ ...item })),
       discounts: cloneBudgetDiscounts(budgetDiscounts),
@@ -5158,6 +5164,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
               materials: materials.map((item) => ({ ...item })),
               basicSupplies: basicSupplies.map((item) => ({ ...item })),
               labor: labor.map((item) => ({ ...item })),
+      muebles: mueblesPpto.map((item) => ({ ...item })),
               fixedCosts: fixedCosts.map((item) => ({ ...item })),
               increases: budgetIncreases.map((item) => ({ ...item })),
               discounts: budgetDiscounts.map((item) => ({ ...item })),
@@ -5177,6 +5184,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
       materials,
       basicSupplies,
       labor,
+      mueblesPpto,
       fixedCosts,
       budgetIncreases,
       budgetDiscounts,
@@ -9604,6 +9612,7 @@ Escribi CERRAR para confirmar:`
         materials: item.materials.map((row) => ({ ...row })),
         basicSupplies: item.basicSupplies.map((row) => ({ ...row })),
         labor: item.labor.map((row) => ({ ...row })),
+      muebles: (item.muebles || []).map((row) => ({ ...row })),
         fixedCosts: item.fixedCosts.map((row) => ({ ...row })),
         increases: (item.increases || []).map((row) => ({ ...row })),
         discounts: item.discounts.map((row) => ({ ...row })),
@@ -9615,6 +9624,7 @@ Escribi CERRAR para confirmar:`
     setMaterials(snapshot.materials.map((item) => ({ ...item })));
     setBasicSupplies(snapshot.basicSupplies.map((item) => ({ ...item })));
     setLabor(snapshot.labor.map((item) => ({ ...item })));
+    setMueblesPpto((snapshot.muebles || []).map((item) => ({ ...item })));
     setFixedCosts(snapshot.fixedCosts.map((item) => ({ ...item })));
     setBudgetIncreases((snapshot.increases || []).map((item) => ({ ...item })));
     setBudgetDiscounts(cloneBudgetDiscounts(snapshot.discounts || []));
@@ -9652,6 +9662,7 @@ Escribi CERRAR para confirmar:`
     setMaterials([]);
     setBasicSupplies([]);
     setLabor([]);
+    setMueblesPpto([]);
     setFixedCosts([]);
     setBudgetIncreases(defaultBudgetIncreases.map((item) => ({ ...item })));
     setBudgetDiscounts(cloneBudgetDiscounts(defaultBudgetDiscounts));
@@ -9677,6 +9688,7 @@ Escribi CERRAR para confirmar:`
     setMaterials([]);
     setBasicSupplies([]);
     setLabor([]);
+    setMueblesPpto([]);
     setFixedCosts([]);
     setBudgetIncreases([]);
     setBudgetDiscounts([]);
@@ -9700,6 +9712,7 @@ Escribi CERRAR para confirmar:`
       materials: item.materials.map((row) => ({ ...row })),
       basicSupplies: item.basicSupplies.map((row) => ({ ...row })),
       labor: item.labor.map((row) => ({ ...row })),
+      muebles: (item.muebles || []).map((row) => ({ ...row })),
       fixedCosts: item.fixedCosts.map((row) => ({ ...row })),
       increases: item.increases.map((row) => ({ ...row })),
       discounts: item.discounts.map((row) => ({ ...row })),
@@ -9712,6 +9725,7 @@ Escribi CERRAR para confirmar:`
     materials: materials.map((item) => ({ ...item })),
     basicSupplies: basicSupplies.map((item) => ({ ...item })),
     labor: labor.map((item) => ({ ...item })),
+      muebles: mueblesPpto.map((item) => ({ ...item })),
     fixedCosts: fixedCosts.map((item) => ({ ...item })),
     budgetIncreases: budgetIncreases.map((item) => ({ ...item })),
     budgetDiscounts: cloneBudgetDiscounts(budgetDiscounts),
@@ -9955,6 +9969,7 @@ Escribi CERRAR para confirmar:`
         materials: item.materials.map((row) => ({ ...row })),
         basicSupplies: item.basicSupplies.map((row) => ({ ...row })),
         labor: item.labor.map((row) => ({ ...row })),
+      muebles: (item.muebles || []).map((row) => ({ ...row })),
         fixedCosts: item.fixedCosts.map((row) => ({ ...row })),
         increases: (item.increases || []).map((row) => ({ ...row })),
         discounts: item.discounts.map((row) => ({ ...row })),
@@ -9968,6 +9983,7 @@ Escribi CERRAR para confirmar:`
     setMaterials((data.materials || defaultMaterials).map((item) => ({ ...item })));
     setBasicSupplies((data.basicSupplies || defaultBasicSupplies).map((item) => ({ ...item })));
     setLabor((data.labor || defaultLabor).map((item) => ({ ...item })));
+    setMueblesPpto((data.muebles || []).map((item) => ({ ...item })));
     setFixedCosts((data.fixedCosts || defaultFixedCosts).map((item) => ({ ...item })));
     setBudgetIncreases((data.budgetIncreases || defaultBudgetIncreases).map((item) => ({ ...item })));
     setBudgetDiscounts(cloneBudgetDiscounts(data.budgetDiscounts || defaultBudgetDiscounts));
@@ -10648,6 +10664,7 @@ Escribi CERRAR para confirmar:`
         materials: item.materials.map((row) => ({ ...row })),
         basicSupplies: item.basicSupplies.map((row) => ({ ...row })),
         labor: item.labor.map((row) => ({ ...row })),
+      muebles: (item.muebles || []).map((row) => ({ ...row })),
         fixedCosts: item.fixedCosts.map((row) => ({ ...row })),
         increases: (item.increases || []).map((row) => ({ ...row })),
         discounts: item.discounts.map((row) => ({ ...row })),
@@ -10656,6 +10673,7 @@ Escribi CERRAR para confirmar:`
       materials: materials.map((item) => ({ ...item })),
       basicSupplies: basicSupplies.map((item) => ({ ...item })),
       labor: labor.map((item) => ({ ...item })),
+      muebles: mueblesPpto.map((item) => ({ ...item })),
       fixedCosts: fixedCosts.map((item) => ({ ...item })),
       increases: budgetIncreases.map((item) => ({ ...item })),
       discounts: cloneBudgetDiscounts(budgetDiscounts),
@@ -11601,6 +11619,7 @@ Escribi CERRAR para confirmar:`
       materials: materials.map((item) => ({ ...item })),
       basicSupplies: basicSupplies.map((item) => ({ ...item })),
       labor: labor.map((item) => ({ ...item })),
+      muebles: mueblesPpto.map((item) => ({ ...item })),
       fixedCosts: fixedCosts.map((item) => ({ ...item })),
       increases: budgetIncreases.map((item) => ({ ...item })),
       discounts: budgetDiscounts.map((item) => ({ ...item })),
@@ -11632,6 +11651,7 @@ Escribi CERRAR para confirmar:`
     setMaterials(target.materials.map((item) => ({ ...item })));
     setBasicSupplies(target.basicSupplies.map((item) => ({ ...item })));
     setLabor(target.labor.map((item) => ({ ...item })));
+    setMueblesPpto((target.muebles || []).map((item) => ({ ...item })));
     setFixedCosts(target.fixedCosts.map((item) => ({ ...item })));
     setBudgetIncreases((target.increases || []).map((item) => ({ ...item })));
     setBudgetDiscounts(target.discounts.map((item) => ({ ...item })));
@@ -12380,6 +12400,7 @@ Escribi CERRAR para confirmar:`
     materials,
     basicSupplies,
     labor,
+    mueblesPpto,
     fixedCosts,
     budgetIncreases,
     budgetDiscounts,
@@ -22477,6 +22498,20 @@ Escribi CERRAR para confirmar:`
           clientesCotizar={clientesParaCotizar(crmClients, savedBudgets, approvedJobs)}
           materials={materials}
           labor={labor}
+          bloqueMuebles={
+            <MueblesPresupuesto
+              muebles={mueblesPpto}
+              onCambiar={setMueblesPpto}
+              tipos={tiposMueble}
+              tareas={tiposTarea}
+              rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
+              materiales={materials}
+              horasEnManoDeObra={labor.reduce((a, l) => a + Number(l.jobHours || 0), 0)}
+              hayManoDeObra={labor.length > 0}
+              onPasarAManoDeObra={(horas) => setLabor((prev) => repartirHorasEnManoDeObra(prev, horas))}
+              nuevoId={newId}
+            />
+          }
           fixedCosts={fixedCosts}
           basicSupplies={basicSupplies}
           budgetDiscounts={budgetDiscounts}

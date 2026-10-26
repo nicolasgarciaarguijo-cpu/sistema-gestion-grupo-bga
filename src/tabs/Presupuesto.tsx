@@ -138,6 +138,8 @@ function ClientPicker({
 
 type PresupuestoTabProps = {
   budget: any;
+  // Muebles del bloque (tipo de mueble → horas). Lo arma App con MueblesPresupuesto.
+  bloqueMuebles?: React.ReactNode;
   crmClients: any[];
   // Clientes para el buscador: el CRM mas los viejos del historial (domain/clients.ts).
   clientesCotizar: ClienteParaCotizar[];
@@ -294,7 +296,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
     preDiscountNetPrice, totalIncreaseAmount, totalDiscountAmount,
     billedPctNormalized, budgetWhiteTotal, budgetBlackTotal, stockSearchOptions,
     displayedMaterials, stockByCode, stockByDescription, laborRows,
-    nominalLaborHoursPerEmployee, totalFixedCosts,
+    nominalLaborHoursPerEmployee, totalFixedCosts, bloqueMuebles,
   } = props;
   // ---- PLANILLAS del presupuesto (estetica del Calendario anual) ------------------------------
   const anchosMateriales = usePlanillaWidths("ppto.materiales", { label: 320, col: 104, colCompact: 80 });
@@ -1464,6 +1466,8 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
               })()}
               <div style={styles.rightStrong}>Total insumos y fletes: {money(totalBasicSupplies)}</div>
             </Panel>
+
+            {bloqueMuebles}
 
             <Panel span="full"
               title="Mano de obra"

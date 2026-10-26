@@ -1,3 +1,4 @@
+import type { MuebleDelPresupuesto } from "./presupuestoMuebles";
 // Dominio: tipos y constantes base del Sistema de Gestion Grupo BGA.
 // Extraido de App.tsx para reducir el monolito. Sin logica de UI ni estado.
 
@@ -204,6 +205,8 @@ export type BudgetSectionTotals = {
 };
 
 export type BudgetSection = {
+  // Muebles del bloque (tipo, cantidad, medidas): de su receta salen las horas. Ver domain/presupuestoMuebles.
+  muebles?: MuebleDelPresupuesto[];
   id: number;
   title: string;
   notes: string;
@@ -258,6 +261,7 @@ export type BudgetData = {
 
 export type BudgetSnapshot = {
   budget: BudgetData;
+  muebles?: MuebleDelPresupuesto[];
   subBudgets: BudgetSection[];
   materials: Material[];
   basicSupplies: Material[];

@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-26c",
+    fecha: "26/10/2026",
+    titulo: "Presupuestar por tipo de mueble",
+    items: [
+      {
+        titulo: "Muebles del presupuesto: las horas salen de la receta",
+        que: "Cada bloque del presupuesto puede llevar sus muebles (tipo, cantidad y medidas). Las horas salen de la receta del tipo de mueble, con las medidas y con los materiales cotizados en el bloque (bisagras, placas, cajones...). Se ve el detalle por tarea y qué falta para que el número esté completo.",
+        como: "Presupuesto → Muebles del presupuesto → '+ Mueble…'. Después, 'Pasar las horas a mano de obra' las reparte entre las categorías.",
+        tab: "presupuesto",
+      },
+    ],
+  },
+  {
     id: "2026-10-26b",
     fecha: "26/10/2026",
     titulo: "Mantenimiento en Fabricación y el aviso de pagos vencidos",

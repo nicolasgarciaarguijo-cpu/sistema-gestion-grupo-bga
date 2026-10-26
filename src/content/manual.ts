@@ -554,6 +554,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Armas el presupuesto de un trabajo: materiales, mano de obra, costos y precio final para el cliente.",
     sections: [
       {
+        heading: "Muebles del presupuesto (horas por tipo de mueble)",
+        blocks: [
+          { type: "p", text: "Cada bloque puede llevar sus muebles: el tipo (de Fabricación → Tipos de mueble), cuántos y sus medidas. Las horas salen de la receta del tipo: las tareas por medida usan las medidas y las que salen de materiales (bisagras, placas, cajones...) usan lo cotizado en el bloque. Si dos muebles usan el mismo rubro, lo cotizado se reparte según cuántos son." },
+          { type: "steps", items: ["Presupuesto → Muebles del presupuesto → '+ Mueble…' y elegí el tipo.", "Corregí cantidad y medidas en la fila. Click en las horas (o click derecho → Tareas y materiales…) para ver cada tarea y fijar a mano la cantidad de un rubro.", "'Pasar las horas a mano de obra' reparte el total entre las categorías de Mano de obra según cuánta gente tiene cada una."] },
+          { type: "tip", text: "Un asterisco en las horas avisa que falta algo: una tarea sin tiempo estándar o un rubro sin materiales cotizados. El total queda corto hasta completarlo." },
+        ],
+      },
+      {
         heading: "Cargar los componentes",
         blocks: [
           {
