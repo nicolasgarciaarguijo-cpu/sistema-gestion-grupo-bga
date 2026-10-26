@@ -73,6 +73,7 @@ import { ImpuestosBancariosPanel } from "./ui/ImpuestosBancariosPanel";
 import { ControlResumenesTarjeta } from "./ui/ControlResumenesTarjeta";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
 import { ReclamoPagosVencidos } from "./ui/ReclamoPagosVencidos";
+import { ElegirEmpresa } from "./ui/ElegirEmpresa";
 import {
   armarCuentas,
   controlContraExtracto,
@@ -4180,6 +4181,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // FABRICACION ES DE DE RAIZ Y HACE LOS TRABAJOS DE LAS DOS EMPRESAS: ahi no se filtra por la empresa elegida
   // (solo por permiso). En el resto de las solapas manda la empresa elegida arriba.
   const alcanceEmpresa: CompanyScope = activeTab === "fabricacion" ? "General" : workspaceCompanyScope;
+  // Solo el permiso (sin mirar la empresa elegida arriba).
+  const tienePermisoEmpresa = (company: CompanyName | "General") =>
+    isSupabaseLoggedIn && (effectiveIsAdmin || company === "General" || allowedCompaniesForSession.includes(company as CompanyName));
   const canAccessCompany = (company: CompanyName | "General") => {
     if (!isSupabaseLoggedIn) return false;
     const hasPermission =
@@ -4200,6 +4204,20 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const empresaQueFabrica = (COMPANY_OPTIONS.find((c) => /ra[ií]z/i.test(String(c.value)))?.value || "") as CompanyName;
   // Lo que se carga en las solapas va a la empresa elegida arriba; con "todas", a la del presupuesto (como antes).
   const empresaParaCargar = (workspaceCompanyScope !== "General" ? workspaceCompanyScope : budget.company) as CompanyName;
+  // AL CARGAR ALGO SE PREGUNTA DE QUE EMPRESA ES (Nicolas, 2026-10-26: "siempre me debe preguntar si es de BGA, de De Raiz
+  // o ambas"). "Ambas" = compartido (company General: lo ven las dos). Quien trabaja con una sola empresa no ve la
+  // pregunta: va a la suya.
+  const [pedidoEmpresa, setPedidoEmpresa] = useState<null | { titulo: string; resolver: (empresa: string | null) => void }>(null);
+  const elegirEmpresa = (titulo: string): Promise<string | null> => {
+    const opciones = COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName));
+    if (opciones.length === 1) return Promise.resolve(opciones[0].value as string);
+    return new Promise((resolver) => setPedidoEmpresa({ titulo, resolver }));
+  };
+  const conEmpresa = (titulo: string, hacer: (empresa: CompanyName) => void) => {
+    void elegirEmpresa(titulo).then((empresa) => {
+      if (empresa) hacer(empresa as CompanyName);
+    });
+  };
   const empresasDeLaVista = COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName));
   useEffect(() => {
     if (!isSupabaseLoggedIn) return;
@@ -4722,7 +4740,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     operationalMonth === localMonthKey() ? todayIso() : `${operationalMonth}-01`;
 
   const visibleStockItems = useMemo(
-    () => stockItems.filter((item) => canAccessCompany(item.company)),
+    // Lo marcado como compartido (las maquinas, por ejemplo) se ve en cualquiera de las empresas.
+    () => stockItems.filter((item) => canAccessCompany(item.company) || (item.shared && tienePermisoEmpresa(item.company))),
     [alcanceEmpresa, stockItems, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
 
@@ -11870,11 +11889,11 @@ Escribi CERRAR para confirmar:`
   };
 
   const addFixedMarker = () =>
-    setFixedMarkers((prev) => [
+    conEmpresa("el marcador de costo fijo", (empresaElegida) => (setFixedMarkers((prev) => [
       ...prev,
       {
         id: newId(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         workType: budget.workType,
         group: fixedMarkerGroupOptions[0] || "Administrativos",
         description: "",
@@ -11882,14 +11901,14 @@ Escribi CERRAR para confirmar:`
         active: true,
         notes: "",
       },
-    ]);
+    ])));
 
   const addSupplyMarker = () =>
-    setSupplyMarkers((prev) => [
+    conEmpresa("el marcador de insumo", (empresaElegida) => (setSupplyMarkers((prev) => [
       ...prev,
       {
         id: newId(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         workType: budget.workType,
         subtype: "Insumos basicos",
         description: "",
@@ -11899,14 +11918,14 @@ Escribi CERRAR para confirmar:`
         active: true,
         notes: "",
       },
-    ]);
+    ])));
 
   const addLaborMarker = () =>
-    setLaborMarkers((prev) => [
+    conEmpresa("el marcador de mano de obra", (empresaElegida) => (setLaborMarkers((prev) => [
       ...prev,
       {
         id: newId(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         workType: budget.workType,
         category: "",
         employees: 1,
@@ -11916,14 +11935,14 @@ Escribi CERRAR para confirmar:`
         active: true,
         notes: "",
       },
-    ]);
+    ])));
 
   const addPersonalProvisionMarker = () =>
-    setPersonalProvisionMarkers((prev) => [
+    conEmpresa("la provisión de personal", (empresaElegida) => (setPersonalProvisionMarkers((prev) => [
       ...prev,
       {
         id: newId(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         shared: true,
         kind: "EPP",
         description: "",
@@ -11932,7 +11951,7 @@ Escribi CERRAR para confirmar:`
         active: true,
         notes: "",
       },
-    ]);
+    ])));
 
   const addCostAnalysisGroup = () => {
     promptAndCreateCostAnalysisGroup("General");
@@ -12060,6 +12079,8 @@ Escribi CERRAR para confirmar:`
   };
 
   const handleRemitoFiles = async (files: FileList | null) => {
+    const empresaElegida = files && files.length ? await elegirEmpresa("los remitos") : null;
+    if (files && files.length && !empresaElegida) return;
     const selectedFiles = Array.from(files || []);
     if (selectedFiles.length === 0) return;
 
@@ -12091,7 +12112,7 @@ Escribi CERRAR para confirmar:`
         id: newId(),
         fileName: file.name,
         sourceType,
-        company: empresaParaCargar,
+        company: (empresaElegida || empresaParaCargar) as CompanyName,
         notes,
         rows: rows.length > 0 ? rows : [buildBlankRemitoDraftRow(budget.company)],
       });
@@ -13182,11 +13203,11 @@ Escribi CERRAR para confirmar:`
     ]);
   };
 
-  const addPurchaseInvoice = () => {
+  const addPurchaseInvoice = () => conEmpresa("la factura de compra", (empresaElegida) => {
     setPurchaseInvoices((prev) => [
       {
         id: newId(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         administration: "blanco",
         source: "compras",
         pettyCashExpenseId: undefined,
@@ -13207,7 +13228,7 @@ Escribi CERRAR para confirmar:`
       },
       ...prev,
     ]);
-  };
+  });
 
   const updatePurchaseInvoice = (
     invoiceId: number,
@@ -13256,11 +13277,11 @@ Escribi CERRAR para confirmar:`
     setIssuedInvoices((prev) => prev.map((inv) => (inv.id === id ? { ...inv, [field]: value } : inv)));
   };
 
-  const addPettyCashFund = () => {
+  const addPettyCashFund = () => conEmpresa("la caja chica", (empresaElegida) => {
     setPettyCashFunds((prev) => [
       {
         id: newId(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         description: "",
         responsible: "",
         assignedAmount: 0,
@@ -13273,7 +13294,7 @@ Escribi CERRAR para confirmar:`
       },
       ...prev,
     ]);
-  };
+  });
 
   const removePettyCashFund = (fundId: number) => {
     setPettyCashFunds((prev) => prev.filter((item) => item.id !== fundId));
@@ -13429,13 +13450,13 @@ Escribi CERRAR para confirmar:`
     setStorageMessage("Caja chica reabierta para continuar operando.");
   };
 
-  const addDebtPlan = () => {
+  const addDebtPlan = () => conEmpresa("la deuda", (empresaElegida) => {
     const id = newId();
     setDebtPlans((prev) => [
       ...prev,
       {
         id,
-        company: empresaParaCargar,
+        company: empresaElegida,
         concept: "",
         dueDay: 1,
         nextInstallmentAmount: 0,
@@ -13449,7 +13470,7 @@ Escribi CERRAR para confirmar:`
       },
     ]);
     return id;
-  };
+  });
 
   const removeDebtPlan = (debtId: number) => {
     setDebtPlans((prev) => prev.filter((item) => item.id !== debtId));
@@ -13553,12 +13574,12 @@ Escribi CERRAR para confirmar:`
     actualizarDeuda(deudaId, { cuotas: cuotasDeDeuda(d).map((c) => (c.id === cuotaId ? { ...c, pagoCostEntryId: null } : c)) });
   };
 
-  const addCapitalEntry = () => {
+  const addCapitalEntry = () => conEmpresa("el aporte o retiro", (empresaElegida) => {
     setCapitalEntries((prev) => [
       {
         id: newId(),
         ...firma(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         date: todayIso(),
         origin: "",
         kind: "aporte",
@@ -13569,18 +13590,18 @@ Escribi CERRAR para confirmar:`
       },
       ...prev,
     ]);
-  };
+  });
 
   const removeCapitalEntry = (entryId: number) => {
     setCapitalEntries((prev) => prev.filter((item) => item.id !== entryId));
   };
 
-  const addCashHolding = () => {
+  const addCashHolding = () => conEmpresa("el efectivo", (empresaElegida) => {
     setCashHoldings((prev) => [
       {
         id: newId(),
         ...firma(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         date: todayIso(),
         description: "",
         currency: "ARS",
@@ -13591,18 +13612,18 @@ Escribi CERRAR para confirmar:`
       },
       ...prev,
     ]);
-  };
+  });
 
   const removeCashHolding = (entryId: number) => {
     setCashHoldings((prev) => prev.filter((item) => item.id !== entryId));
   };
 
-  const addInternalTransfer = () => {
+  const addInternalTransfer = () => conEmpresa("el movimiento interno", (empresaElegida) => {
     setInternalTransfers((prev) => [
       {
         id: newId(),
         ...firma(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         date: todayIso(),
         direction: "efectivo_a_banco",
         currency: "ARS",
@@ -13614,7 +13635,7 @@ Escribi CERRAR para confirmar:`
       },
       ...prev,
     ]);
-  };
+  });
 
   const removeInternalTransfer = (entryId: number) => {
     setInternalTransfers((prev) => prev.filter((item) => item.id !== entryId));
@@ -13622,12 +13643,12 @@ Escribi CERRAR para confirmar:`
 
   // Cuenta corriente con la gente. El DEBE es "puso plata"; el HABER, "se le devolvio". Arranca en
   // DEBE porque es el caso normal: el movimiento nace cuando alguien pone la plata.
-  const addPersonLedgerEntry = (kind: "debe" | "haber" = "debe") => {
+  const addPersonLedgerEntry = (kind: "debe" | "haber" = "debe") => conEmpresa("el renglón de la cuenta con la gente", (empresaElegida) => {
     setPersonLedgerEntries((prev) => [
       {
         id: newId(),
         ...firma(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         person: "",
         date: todayIso(),
         kind,
@@ -13639,18 +13660,18 @@ Escribi CERRAR para confirmar:`
       },
       ...prev,
     ]);
-  };
+  });
 
   const removePersonLedgerEntry = (entryId: number) => {
     setPersonLedgerEntries((prev) => prev.filter((item) => item.id !== entryId));
   };
 
-  const addIvaVepPayment = () => {
+  const addIvaVepPayment = () => conEmpresa("el VEP de IVA", (empresaElegida) => {
     setIvaVepPayments((prev) => [
       {
         id: newId(),
         ...firma(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         date: todayIso(),
         period: "",
         amount: 0,
@@ -13658,7 +13679,7 @@ Escribi CERRAR para confirmar:`
       },
       ...prev,
     ]);
-  };
+  });
 
   const updateIvaVepPayment = (
     entryId: number,
@@ -13674,11 +13695,11 @@ Escribi CERRAR para confirmar:`
     setIvaVepPayments((prev) => prev.filter((item) => item.id !== entryId));
   };
 
-  const addBankStatementEntry = () => {
+  const addBankStatementEntry = () => conEmpresa("el movimiento del banco", (empresaElegida) => {
     setBankStatementEntries((prev) => [
       {
         id: newId(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         date: defaultDateForActiveMonth(),
         bank: "",
         movementType: "credito",
@@ -13690,7 +13711,7 @@ Escribi CERRAR para confirmar:`
       },
       ...prev,
     ]);
-  };
+  });
 
   const removeBankStatementEntry = (entryId: number) => {
     const actual = bankStatementEntries.find((item) => item.id === entryId);
@@ -13775,12 +13796,12 @@ Escribi CERRAR para confirmar:`
     );
   };
 
-  const addCompanyAsset = () => {
+  const addCompanyAsset = () => conEmpresa("el archivo", (empresaElegida) => {
     setCompanyAssets((prev) => [
       ...prev,
       {
         id: newId(),
-        company: empresaParaCargar,
+        company: empresaElegida,
         category: "Activo fijo",
         description: "",
         value: 0,
@@ -13789,7 +13810,7 @@ Escribi CERRAR para confirmar:`
         notes: "",
       },
     ]);
-  };
+  });
 
   const removeCompanyAsset = (assetId: number) => {
     setCompanyAssets((prev) => prev.filter((item) => item.id !== assetId));
@@ -20858,8 +20879,8 @@ Escribi CERRAR para confirmar:`
   };
   // CAJAS: nueva (desde el listado o la ficha) y editar.
   const abrirNuevaCaja = (responsable?: string) =>
-    setCajaForm({
-      company: empresaParaCargar,
+    conEmpresa("la caja", (empresaElegida) => (setCajaForm({
+      company: empresaElegida,
       empresaImputada: budget.company,
       responsible: responsable || "",
       tipo: "General",
@@ -20868,7 +20889,7 @@ Escribi CERRAR para confirmar:`
       assignedWhite: 0,
       assignedBlack: 0,
       notes: "",
-    });
+    })));
   const abrirEditarCaja = (fundId: number) => {
     const f = pettyCashFunds.find((x) => x.id === fundId);
     if (!f) return;
@@ -21291,6 +21312,17 @@ Escribi CERRAR para confirmar:`
             />
           )}
           {resumenTablero && <ResumenMovimientos {...resumenTablero} money={money} onCerrar={() => setResumenTablero(null)} />}
+          {pedidoEmpresa && (
+            <ElegirEmpresa
+              titulo={pedidoEmpresa.titulo}
+              opciones={COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName)).map((c) => ({ value: String(c.value), label: c.short, color: c.primary }))}
+              sugerida={workspaceCompanyScope}
+              onElegir={(empresa) => {
+                pedidoEmpresa.resolver(empresa);
+                setPedidoEmpresa(null);
+              }}
+            />
+          )}
           {canSeeInamovibles && pagosVencidosAReclamar.length > 0 && (
             <ReclamoPagosVencidos
               items={pagosVencidosAReclamar}
@@ -22123,11 +22155,11 @@ Escribi CERRAR para confirmar:`
             money={money}
             onUpdateProveedor={(id, field, value) => updateArrayItem(setSuppliers, id, field as any, value as any)}
             onAltaProveedor={(nombre, taxId) =>
-              setSuppliers((prev) => [
+              conEmpresa("el proveedor", (empresaElegida) => (setSuppliers((prev) => [
                 ...prev,
-                { id: newId(), company: empresaParaCargar, name: nombre, taxId: taxId || "", aliases: "", active: true, notes: "Alta desde la ficha del proveedor" } as Supplier,
+                { id: newId(), company: empresaElegida, name: nombre, taxId: taxId || "", aliases: "", active: true, notes: "Alta desde la ficha del proveedor" } as Supplier,
               ])
-            }
+            ))}
             onFechaFactura={(invoiceId, fecha) =>
               setPurchaseInvoices((prev) => prev.map((f) => (f.id === invoiceId ? { ...f, fechaPagoPrevista: fecha } : f)))
             }
@@ -22547,10 +22579,10 @@ Escribi CERRAR para confirmar:`
           onEliminarCaja={eliminarCajaChica}
           onQuitarViatico={(id) => setViaticos((prev) => prev.filter((v) => v.id !== id))}
           onEditarViatico={(id, cambio) => setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, ...cambio, ...firma() } : v)))}
-          onAgregarTipo={(nombre) => {
+          onAgregarTipo={(nombre) => conEmpresa("el tipo de caja", (empresaElegida) => {
             if (tiposCaja.some((t) => t.toLowerCase() === nombre.toLowerCase())) return;
-            setPettyCashTypes((prev) => [...prev, { id: newId(), company: empresaParaCargar, nombre }]);
-          }}
+            setPettyCashTypes((prev) => [...prev, { id: newId(), company: empresaElegida, nombre }]);
+          })}
           onRenombrarTipo={renombrarTipoCaja}
           onQuitarTipo={(nombre) => setPettyCashTypes((prev) => prev.filter((t) => t.nombre !== nombre))}
         />
@@ -23273,15 +23305,17 @@ Escribi CERRAR para confirmar:`
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
           onGuardarFicha={(f) => setFichasMaquinas((prev) => (prev.some((x) => x.stockItemId === f.stockItemId) ? prev.map((x) => (x.stockItemId === f.stockItemId ? f : x)) : [...prev, f]))}
           onGuardarAsignacion={guardarAsignacionDiaria}
-          onCrearEnStock={(descripcion, grupo) => {
+          empresas={COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName)).map((c) => ({ value: String(c.value), label: c.short }))}
+          onCrearEnStock={(descripcion, grupo, empresa) => {
             const id = newId();
             setStockItems((prev) => [
               ...prev,
               {
                 id,
-                company: empresaQueFabrica || "General",
+                // La maquina es de una empresa (su valor impacta en esa) pero la usan las dos (Nicolas, 2026-10-26).
+                company: (empresa || empresaQueFabrica || "General") as CompanyName,
                 kind: "general",
-                shared: !empresaQueFabrica,
+                shared: true,
                 group: grupo,
                 location: "",
                 sortOrder: Math.max(0, ...prev.filter((item) => item.kind === "general").map((item) => Number(item.sortOrder || 0))) + 1,

@@ -56,6 +56,7 @@ export function Mantenimiento({
   onGuardarFicha,
   onGuardarAsignacion,
   onCrearEnStock,
+  empresas = [],
   onPrepararCatalogo,
   onIrAStock,
   nuevoId,
@@ -71,7 +72,9 @@ export function Mantenimiento({
   companyShort: (c: string) => string;
   onGuardarFicha: (f: FichaMaquina) => void;
   onGuardarAsignacion: (a: AsignacionDiaria) => void;
-  onCrearEnStock: (descripcion: string, grupo: string) => number;
+  // La maquina es de una empresa (su valor) y la usan las dos: se pregunta la duena.
+  onCrearEnStock: (descripcion: string, grupo: string, empresa?: string) => number;
+  empresas?: Array<{ value: string; label: string }>;
   onPrepararCatalogo: () => void;
   onIrAStock: () => void;
   nuevoId: () => number;
@@ -80,7 +83,7 @@ export function Mantenimiento({
   const [menu, setMenu] = useState<{ x: number; y: number; m: MaquinaStock } | null>(null);
   const [fichaAbierta, setFichaAbierta] = useState<number | null>(null);
   const [programar, setProgramar] = useState<{ m: MaquinaStock; planId?: number } | null>(null);
-  const [nueva, setNueva] = useState<{ descripcion: string; grupo: string } | null>(null);
+  const [nueva, setNueva] = useState<{ descripcion: string; grupo: string; empresa?: string } | null>(null);
   const ordenadas = [...maquinas].sort((a, b) => GRUPOS_MAQUINAS.indexOf(a.group) - GRUPOS_MAQUINAS.indexOf(b.group) || a.description.localeCompare(b.description));
   const vencimientos = vencimientosDeMantenimiento(maquinas, fichas, hoy);
   const trabadas = tareasTrabadasPorHerramientas(tipos, maquinas, fichas);
@@ -283,12 +286,22 @@ export function Mantenimiento({
                 {GRUPOS_MAQUINAS.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
             </label>
+            {empresas.length > 1 && (
+              <label style={campo}>
+                ¿De qué empresa es? (su valor impacta en esa; la usan las dos)
+                <select style={input} value={nueva.empresa || ""} onChange={(e) => setNueva({ ...nueva, empresa: e.target.value })}>
+                  <option value="">Elegí la empresa…</option>
+                  {empresas.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
+                </select>
+              </label>
+            )}
             <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
               <ButtonLike secondary onClick={() => setNueva(null)}>Cancelar</ButtonLike>
               <ButtonLike
                 onClick={() => {
                   if (!nueva.descripcion.trim()) return;
-                  const id = onCrearEnStock(nueva.descripcion.trim(), nueva.grupo);
+                  if (empresas.length > 1 && !nueva.empresa) return;
+                  const id = onCrearEnStock(nueva.descripcion.trim(), nueva.grupo, nueva.empresa || empresas[0]?.value);
                   setNueva(null);
                   setFichaAbierta(id);
                 }}
