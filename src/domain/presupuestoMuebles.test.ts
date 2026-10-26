@@ -111,5 +111,37 @@ describe("presupuestar por tipo de mueble", () => {
       expect(plan.horasReloj).toBe(2);
       expect(plan.porPersona.map((p) => p.nombre)).toEqual(["Ana (oficial)", "Beto (ayudante)"]);
     });
+
+    describe("tareas de 2 o más personas", () => {
+      const cat2: TipoTarea[] = [...catalogo, { id: 4, nombre: "Colocar mesada", unidad: "u", horasEstimadas: 1, personas: 2 }];
+      const mesada: TipoMueble = { id: 3, nombre: "Mesada", receta: [{ id: 31, tareaId: 4, paso: 1, factor: 1, base: "u" }] };
+      const ofA: PersonaParaCotizar = { id: 1, nombre: "Ana", costoHora: 9000, tareas: [4] };
+      const ofC: PersonaParaCotizar = { id: 3, nombre: "Carla", costoHora: 8000, tareas: [4] };
+      const ayB: PersonaParaCotizar = { id: 2, nombre: "Beto", costoHora: 5000, tareas: [4], ayudante: true };
+      const ayD: PersonaParaCotizar = { id: 4, nombre: "Dani", costoHora: 4000, tareas: [], ayudante: true };
+      const muebles = (n: number) =>
+        calcularMueblesDelPresupuesto(Array.from({ length: n }, (_, i) => ({ id: i + 1, tipoMuebleId: 3, cantidad: 1 })), [mesada], cat2, [], rubros).muebles;
+
+      it("la hace el especialista más caro con el ayudante más caro: mismo tiempo, el doble de horas-hombre", () => {
+        const m = muebles(1);
+        expect(m[0].horasHombre).toBe(2);
+        expect(m[0].horasReloj).toBe(1);
+        const plan = planificarMuebles(m, [ayD, ayB, ofC, ofA]);
+        expect(plan.asignaciones[0]).toMatchObject({ persona: "Ana", ayudantes: [{ persona: "Beto" }], inicio: 0, fin: 1 });
+        expect(plan.costo).toBe(9000 + 5000);
+      });
+
+      it("un ayudante no es el especialista aunque sepa la tarea; dos a la vez se reparten la gente", () => {
+        const plan = planificarMuebles(muebles(2), [ayD, ayB, ofC, ofA]);
+        expect(plan.asignaciones.map((a) => [a.persona, a.ayudantes.map((y) => y.persona)])).toEqual([["Ana", ["Beto"]], ["Carla", ["Dani"]]]);
+        expect(plan.horasReloj).toBe(1);
+      });
+
+      it("sin ayudantes en el plantel, se avisa y se cotiza igual", () => {
+        const plan = planificarMuebles(muebles(1), [ofA]);
+        expect(plan.faltanAyudantes.length).toBe(1);
+        expect(plan.porPersona.map((p) => [p.nombre, p.costo])).toEqual([["Ana", 9000], ["Ayudantes que faltan", 9000]]);
+      });
+    });
   });
 });

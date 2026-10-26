@@ -614,6 +614,17 @@ function Catalogo({
         />
       </td>
       <td style={td}>
+        <input
+          style={{ ...input, width: 56 }}
+          type="number"
+          step="1"
+          min="1"
+          title="Personas a la vez. Con 2 o más: un especialista y ayudantes (el tiempo es el mismo; las horas-hombre se multiplican)"
+          value={t.personas ?? 1}
+          onChange={(e) => onGuardarTipo({ ...t, personas: Math.max(1, Math.round(Number(e.target.value) || 1)) === 1 ? undefined : Math.max(1, Math.round(Number(e.target.value) || 1)) })}
+        />
+      </td>
+      <td style={td}>
         <button
           type="button"
           style={{ ...btn(), textAlign: "left", maxWidth: 220, whiteSpace: "normal" }}
@@ -670,6 +681,7 @@ function Catalogo({
                   <th style={th}>Grupo</th>
                   <th style={th}>Unidad</th>
                   <th style={th}>Horas por unidad</th>
+                  <th style={th} title="Personas a la vez: 2 o más = un especialista y ayudantes">Personas</th>
                   <th style={th}>Herramientas</th>
                   <th style={th}>Desglose (pasos)</th>
                   <th style={th}></th>

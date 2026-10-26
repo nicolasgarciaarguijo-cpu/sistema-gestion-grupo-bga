@@ -31,6 +31,10 @@ export type TipoTarea = {
   // Tiempo estandar en horas POR UNIDAD (el Gantt lo multiplica por la cantidad) para planificar y
   // presupuestar.
   horasEstimadas?: number;
+  // Cuantas personas hacen falta a la vez (Nicolas, 2026-10-26: "comunmente por dimensiones, no porque se
+  // necesiten 2 cabezas"). Ausente = 1. Con 2 o mas: un especialista (idoneo) + ayudantes. El tiempo no cambia;
+  // las horas-hombre y el costo se multiplican.
+  personas?: number;
   // Maquinas y herramientas que hacen falta (ids de items de Stock). Ver domain/mantenimiento.ts.
   herramientas?: number[];
   activa?: boolean;

@@ -115,7 +115,11 @@ export type TareaCalculada = {
   // true si la cantidad la corrigieron a mano.
   ajustada: boolean;
   horasPorUnidad: number;
+  // Duracion de la tarea (horas de reloj).
   horas: number;
+  // Personas a la vez (1 si no se cargo) y horas-hombre = horas x personas.
+  personas: number;
+  horasHombre: number;
   // La tarea no tiene tiempo estandar cargado: el total queda corto.
   sinTiempo: boolean;
   // Sale de un rubro de materiales que este mueble no trae cargado (cantidad 0 hasta que se cargue).
@@ -135,6 +139,7 @@ export function tareasDelMueble(tipo: TipoMueble, mueble: MuebleMedido, catalogo
     const ajustada = ajuste != null && Number.isFinite(ajuste);
     const cantidad = r2(ajustada ? Number(ajuste) : pos(r.factor) * medida);
     const horasPorUnidad = pos(t?.horasEstimadas);
+    const personas = Math.max(1, Math.round(pos(t?.personas)) || 1);
     return {
       renglonId: r.id,
       tareaId: r.tareaId,
@@ -146,6 +151,8 @@ export function tareasDelMueble(tipo: TipoMueble, mueble: MuebleMedido, catalogo
       ajustada,
       horasPorUnidad,
       horas: r2(cantidad * horasPorUnidad),
+      personas,
+      horasHombre: r2(cantidad * horasPorUnidad * personas),
       sinTiempo: !horasPorUnidad,
       sinMaterial: rubroId != null && deMaterial == null && !ajustada,
     };
@@ -159,7 +166,7 @@ export function resumenDeTiempos(tareas: TareaCalculada[]): { horasHombre: numbe
   tareas.forEach((t) => porPaso.set(t.paso, [...(porPaso.get(t.paso) || []), t]));
   const pasos = Array.from(porPaso.entries())
     .sort((a, b) => a[0] - b[0])
-    .map(([paso, ts]) => ({ paso, horas: r2(ts.reduce((s, t) => s + t.horas, 0)), horasReloj: r2(Math.max(0, ...ts.map((t) => t.horas))) }));
+    .map(([paso, ts]) => ({ paso, horas: r2(ts.reduce((s, t) => s + t.horasHombre, 0)), horasReloj: r2(Math.max(0, ...ts.map((t) => t.horas))) }));
   return {
     horasHombre: r2(pasos.reduce((s, p) => s + p.horas, 0)),
     horasReloj: r2(pasos.reduce((s, p) => s + p.horasReloj, 0)),

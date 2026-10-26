@@ -173,7 +173,8 @@ export function MueblesPresupuesto({
           <div style={{ fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>Quién hace qué</div>
           <div style={{ fontSize: 12, color: "#64748b" }}>
             Cada tarea la hace la persona que sabe hacerla con el costo hora más alto; si está ocupada con otra tarea en paralelo, la toma el
-            siguiente que sabe, para que salga lo más rápido posible. Se cotiza como si fuera el único trabajo de la fábrica.
+            siguiente que sabe, para que salga lo más rápido posible. Las tareas de 2 o más personas las hace un especialista con ayudantes
+            (de cualquier rumbo). Se cotiza como si fuera el único trabajo de la fábrica.
           </div>
           {personas.length === 0 ? (
             <div style={{ fontSize: 12.5, color: "#b45309" }}>Nadie tiene categorías internas cargadas (Personal → ficha de cada persona): no se puede saber quién hace cada tarea.</div>
@@ -210,6 +211,7 @@ export function MueblesPresupuesto({
               <strong>{fmt(res.horasHombre)} hs-hombre</strong>
               {res.incompleto ? <span style={{ color: "#b45309" }}> (incompleto)</span> : null}
               <span style={{ color: "#64748b" }}> · se termina en {fmt(plan.horasReloj)} hs de reloj con esta gente</span>
+              {plan.faltanAyudantes.length ? <span style={{ color: "#b45309" }}> · faltan ayudantes en {plan.faltanAyudantes.length} tarea{plan.faltanAyudantes.length === 1 ? "" : "s"} de 2 o más personas</span> : null}
               {plan.sinPersona.length ? <span style={{ color: "#b45309" }}> · {plan.sinPersona.length} tarea{plan.sinPersona.length === 1 ? "" : "s"} sin nadie que sepa hacerla{plan.sinPersona.length === 1 ? "" : "s"}</span> : null}
             </div>
             <ButtonLike
@@ -300,7 +302,7 @@ export function MueblesPresupuesto({
                   <th style={{ padding: "3px 4px" }}>Tarea</th>
                   <th style={{ padding: "3px 4px", textAlign: "right" }}>Cantidad</th>
                   <th style={{ padding: "3px 4px", textAlign: "right" }}>Hs/unidad</th>
-                  <th style={{ padding: "3px 4px", textAlign: "right" }}>Horas</th>
+                  <th style={{ padding: "3px 4px", textAlign: "right" }} title="Duración de la tarea (con 2 o más personas, cada una pone estas horas)">Horas</th>
                   <th style={{ padding: "3px 4px" }}>Quién</th>
                   <th style={{ padding: "3px 4px", textAlign: "right" }} title="Desde y hasta qué hora del trabajo (contando desde que arranca)">De – a (hs)</th>
                 </tr>
@@ -314,12 +316,23 @@ export function MueblesPresupuesto({
                       {t.sinMaterial ? "sin material cotizado" : `${fmt(t.cantidad)} ${unidadCorta(t.unidad)}`}
                     </td>
                     <td style={{ padding: "3px 4px", textAlign: "right", color: t.sinTiempo ? "#b45309" : undefined }}>{t.sinTiempo ? "sin tiempo" : fmt(t.horasPorUnidad)}</td>
-                    <td style={{ padding: "3px 4px", textAlign: "right", fontWeight: 700 }}>{fmt(t.horas)}</td>
+                    <td style={{ padding: "3px 4px", textAlign: "right", fontWeight: 700 }}>{fmt(t.horas)}{t.personas > 1 ? <span style={{ fontWeight: 400, color: "#64748b" }}> × {t.personas}</span> : null}</td>
                     {(() => {
                       const q = quienHace(abierto.mueble.id, t.renglonId);
                       return (
                         <>
-                          <td style={{ padding: "3px 4px", color: q && q.personaId == null ? "#b45309" : undefined }}>{q ? q.persona : "—"}</td>
+                          <td style={{ padding: "3px 4px" }}>
+                            {q ? (
+                              <>
+                                <span style={{ color: q.personaId == null ? "#b45309" : undefined }}>{q.persona}</span>
+                                {q.ayudantes.map((y, i) => (
+                                  <span key={i} style={{ color: y.personaId == null ? "#b45309" : "#64748b" }}> + {y.persona}{y.personaId != null ? " (ayudante)" : ""}</span>
+                                ))}
+                              </>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
                           <td style={{ padding: "3px 4px", textAlign: "right", color: "#64748b" }}>{q ? `${fmt(q.inicio)} – ${fmt(q.fin)}` : ""}</td>
                         </>
                       );

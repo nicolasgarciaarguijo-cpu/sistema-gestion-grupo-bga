@@ -242,7 +242,7 @@ import type { MuebleDelPresupuesto, PersonaParaCotizar } from "./domain/presupue
 import { Mantenimiento } from "./tabs/Mantenimiento";
 import { esMaquinaOHerramienta, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
-import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
+import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
@@ -16492,8 +16492,13 @@ Escribi CERRAR para confirmar:`
           nombre: String(e.name || "").trim(),
           costoHora: Number(costoHoraDe(e) || 0),
           tareas: capacidadesDelEmpleado(e.categoriasInternas, categoriasVigentes).map((c) => c.tareaId),
+          // Ayudante de cualquier rumbo: su categoria principal es de un escalon de ayudantes.
+          ayudante: (() => {
+            const cat = categoriaPrincipal(e.categoriasInternas, categoriasVigentes);
+            return !!cat && (/ayudante/i.test(nombreEscalon(cat.nivel, escalonesVigentes)) || /ayudante/i.test(cat.nombre));
+          })(),
         })),
-    [activeTab, employees, categoriasVigentes, payrollMonth]
+    [activeTab, employees, categoriasVigentes, escalonesVigentes, payrollMonth]
   );
 
   // Liquidacion de un empleado para un MES cualquiera (la de la ficha es la del mes elegido).

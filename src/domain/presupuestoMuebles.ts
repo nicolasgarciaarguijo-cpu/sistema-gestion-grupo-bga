@@ -93,7 +93,7 @@ export function calcularMueblesDelPresupuesto(
   calculados.forEach((c) =>
     c.tareas.forEach((t) => {
       const prev = porTarea.get(t.tareaId) || { tareaId: t.tareaId, nombre: t.nombre, horas: 0 };
-      porTarea.set(t.tareaId, { ...prev, horas: r2(prev.horas + t.horas) });
+      porTarea.set(t.tareaId, { ...prev, horas: r2(prev.horas + t.horasHombre) });
     })
   );
   return {
@@ -119,7 +119,11 @@ export type PersonaParaCotizar = {
   costoHora: number;
   // Tareas del catalogo que puede hacer (de sus categorias internas).
   tareas: number[];
+  // Es ayudante (de cualquier rumbo): puede ser el segundo en las tareas de 2 o mas personas.
+  ayudante?: boolean;
 };
+
+export type AyudanteAsignado = { personaId: number | null; persona: string; costoHora: number };
 
 export type AsignacionTarea = {
   muebleId: number;
@@ -127,10 +131,13 @@ export type AsignacionTarea = {
   tareaId: number;
   nombre: string;
   etiqueta: string;
+  // Duracion (reloj). Cada persona de la tarea pone estas horas.
   horas: number;
   personaId: number | null;
   persona: string;
   costoHora: number;
+  // Tareas de 2 o mas personas: los ayudantes (personaId null = falta un ayudante; se cotiza igual).
+  ayudantes: AyudanteAsignado[];
   inicio: number;
   fin: number;
 };
@@ -141,12 +148,22 @@ export type PlanDeMuebles = {
   costo: number;
   porPersona: Array<{ personaId: number | null; nombre: string; horas: number; costoHora: number; costo: number }>;
   sinPersona: AsignacionTarea[];
+  // Tareas a las que les falta algun ayudante (no hay suficientes en el plantel).
+  faltanAyudantes: AsignacionTarea[];
 };
 
+const EPS = 1e-9;
+
+// Tareas de 2 o mas personas (Nicolas, 2026-10-26): "siempre es un especialista y se deben considerar como
+// ayudantes solo a los ayudantes de cualquier espectro". El especialista es un idoneo que no es ayudante (si no
+// hay, cualquier idoneo); los demas, ayudantes. Arrancan juntos: cuando el ultimo de ellos esta libre.
 export function planificarMuebles(calculados: MuebleCalculado[], personas: PersonaParaCotizar[]): PlanDeMuebles {
   const libre = new Map<number, number>(personas.map((p) => [p.id, 0]));
-  // Sin nadie idoneo se cotiza al costo hora mas alto del plantel (para no quedar corto).
+  const libreDe = (p: PersonaParaCotizar) => libre.get(p.id) || 0;
+  // Sin nadie idoneo se cotiza al costo hora mas alto del plantel; un ayudante que falta, al del ayudante mas caro.
   const peorCaso = Math.max(0, ...personas.map((p) => pos(p.costoHora)));
+  const ayudantesTodos = personas.filter((p) => p.ayudante);
+  const peorAyudante = ayudantesTodos.length ? Math.max(...ayudantesTodos.map((p) => pos(p.costoHora))) : peorCaso;
   type Estado = { c: MuebleCalculado; pasos: Array<{ paso: number; tareas: TareaCalculada[] }>; i: number; listo: number; pendientes: TareaCalculada[]; finPaso: number };
   const estados: Estado[] = calculados
     .filter((c) => c.tareas.some((t) => t.horas > 0))
@@ -158,30 +175,42 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     });
   const asignaciones: AsignacionTarea[] = [];
   for (;;) {
-    // La tarea que puede arrancar antes; a igualdad, la mas larga primero (asi la toma el mejor).
+    // La tarea que puede arrancar antes; a igualdad, la de mas horas-hombre primero (asi la toman los mejores).
     let elegido: { e: Estado; t: TareaCalculada } | null = null;
     estados.forEach((e) => {
       if (e.i >= e.pasos.length) return;
       e.pendientes.forEach((t) => {
-        if (!elegido || e.listo < elegido.e.listo || (e.listo === elegido.e.listo && t.horas > elegido.t.horas)) elegido = { e, t };
+        if (!elegido || e.listo < elegido.e.listo || (e.listo === elegido.e.listo && t.horasHombre > elegido.t.horasHombre)) elegido = { e, t };
       });
     });
     if (!elegido) break;
     const { e, t } = elegido as { e: Estado; t: TareaCalculada };
+    const cuantos = Math.max(1, t.personas || 1);
     const idoneos = personas.filter((p) => p.tareas.includes(t.tareaId));
-    let mejor: PersonaParaCotizar | null = null;
-    let inicio = e.listo;
-    idoneos.forEach((p) => {
-      const arranca = Math.max(e.listo, libre.get(p.id) || 0);
-      const mejorArranca = mejor ? Math.max(e.listo, libre.get(mejor.id) || 0) : Infinity;
-      if (arranca < mejorArranca - 1e-9 || (Math.abs(arranca - mejorArranca) < 1e-9 && pos(p.costoHora) > pos(mejor!.costoHora))) {
-        mejor = p;
-        inicio = arranca;
-      }
+    const especialistas = cuantos > 1 && idoneos.some((p) => !p.ayudante) ? idoneos.filter((p) => !p.ayudante) : idoneos;
+    // Para cada especialista posible, los ayudantes que antes se liberan (a igualdad, los mas caros) y cuando
+    // pueden arrancar todos juntos. Gana el que arranca antes; a igualdad, el especialista mas caro.
+    let mejor: { lider: PersonaParaCotizar | null; ayudantes: PersonaParaCotizar[]; inicio: number } | null = null;
+    const ayudantesPara = (lider: PersonaParaCotizar | null) =>
+      ayudantesTodos
+        .filter((p) => !lider || p.id !== lider.id)
+        .sort((a, b) => libreDe(a) - libreDe(b) || pos(b.costoHora) - pos(a.costoHora))
+        .slice(0, cuantos - 1);
+    (especialistas.length ? especialistas : [null]).forEach((lider) => {
+      const ays = ayudantesPara(lider);
+      const inicio = Math.max(e.listo, lider ? libreDe(lider) : 0, ...ays.map(libreDe));
+      if (
+        !mejor ||
+        inicio < mejor.inicio - EPS ||
+        (Math.abs(inicio - mejor.inicio) < EPS && pos(lider?.costoHora) > pos(mejor.lider?.costoHora))
+      )
+        mejor = { lider, ayudantes: ays, inicio };
     });
-    const m = mejor as PersonaParaCotizar | null;
+    const { lider, ayudantes, inicio } = mejor as unknown as { lider: PersonaParaCotizar | null; ayudantes: PersonaParaCotizar[]; inicio: number };
     const fin = r2(inicio + t.horas);
-    if (m) libre.set(m.id, fin);
+    if (lider) libre.set(lider.id, fin);
+    ayudantes.forEach((p) => libre.set(p.id, fin));
+    const faltan = cuantos - 1 - ayudantes.length;
     asignaciones.push({
       muebleId: e.c.mueble.id,
       renglonId: t.renglonId,
@@ -189,9 +218,13 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
       nombre: t.nombre,
       etiqueta: t.etiqueta,
       horas: t.horas,
-      personaId: m ? m.id : null,
-      persona: m ? m.nombre : "Nadie sabe hacerla",
-      costoHora: m ? pos(m.costoHora) : peorCaso,
+      personaId: lider ? lider.id : null,
+      persona: lider ? lider.nombre : "Nadie sabe hacerla",
+      costoHora: lider ? pos(lider.costoHora) : peorCaso,
+      ayudantes: [
+        ...ayudantes.map((p) => ({ personaId: p.id, persona: p.nombre, costoHora: pos(p.costoHora) })),
+        ...Array.from({ length: faltan }, () => ({ personaId: null, persona: "Ayudante que falta", costoHora: peorAyudante })),
+      ],
       inicio: r2(inicio),
       fin,
     });
@@ -204,17 +237,21 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     }
   }
   const porPersona = new Map<string, { personaId: number | null; nombre: string; horas: number; costoHora: number; costo: number }>();
+  const sumar = (clave: string, personaId: number | null, nombre: string, costoHora: number, horas: number) => {
+    const prev = porPersona.get(clave) || { personaId, nombre, horas: 0, costoHora, costo: 0 };
+    porPersona.set(clave, { ...prev, horas: r2(prev.horas + horas), costo: Math.round((prev.costo + horas * costoHora) * 100) / 100 });
+  };
   asignaciones.forEach((a) => {
-    const k = String(a.personaId);
-    const prev = porPersona.get(k) || { personaId: a.personaId, nombre: a.persona, horas: 0, costoHora: a.costoHora, costo: 0 };
-    porPersona.set(k, { ...prev, horas: r2(prev.horas + a.horas), costo: Math.round((prev.costo + a.horas * a.costoHora) * 100) / 100 });
+    sumar(a.personaId == null ? "sin-idoneo" : String(a.personaId), a.personaId, a.persona, a.costoHora, a.horas);
+    a.ayudantes.forEach((y) => sumar(y.personaId == null ? "falta-ayudante" : String(y.personaId), y.personaId, y.personaId == null ? "Ayudantes que faltan" : y.persona, y.costoHora, a.horas));
   });
-  const lista = Array.from(porPersona.values()).sort((a, b) => b.costoHora - a.costoHora);
+  const lista = Array.from(porPersona.values()).sort((a, b) => (a.personaId == null ? 1 : 0) - (b.personaId == null ? 1 : 0) || b.costoHora - a.costoHora);
   return {
     asignaciones,
     horasReloj: r2(Math.max(0, ...asignaciones.map((a) => a.fin))),
     costo: Math.round(lista.reduce((s, p) => s + p.costo, 0) * 100) / 100,
     porPersona: lista,
     sinPersona: asignaciones.filter((a) => a.personaId == null),
+    faltanAyudantes: asignaciones.filter((a) => a.ayudantes.some((y) => y.personaId == null)),
   };
 }
