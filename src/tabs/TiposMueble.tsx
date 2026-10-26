@@ -65,7 +65,7 @@ export function TiposMueble({
     setAbierto(t.id);
   };
   const desdeGrupo = (g: GrupoTrabajo) => {
-    nuevo({ nombre: g.nombre, descripcion: g.descripcion, receta: agregarGrupo([], g.id, tareasDelGrupo(g.id, tareas), nuevoId) });
+    nuevo({ nombre: g.nombre, descripcion: g.descripcion, receta: agregarGrupo([], g.id, tareasDelGrupo(g.id, tareas, grupos), nuevoId) });
   };
   const tipoAbierto = tipos.find((t) => t.id === abierto);
 
@@ -296,7 +296,7 @@ function EditorReceta({
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             {gruposDeLaReceta(tipo.receta).map((gid) => {
               const g = grupos.find((x) => x.id === gid);
-              const ids = tareasDelGrupo(gid, tareas);
+              const ids = tareasDelGrupo(gid, tareas, grupos);
               const dif = diferenciasConGrupo(tipo.receta, gid, ids);
               const cambio = dif.faltan.length + dif.sobran.length > 0;
               return (
@@ -353,9 +353,20 @@ function EditorReceta({
               </tr>
             </thead>
             <tbody>
-              {ordenada.map((r) => {
+              {ordenada.map((r, i) => {
                 const t = tareas.find((x) => x.id === r.tareaId);
+                // Encabezado de operacion: cuando arranca un grupo (Operacion 1 · Corte CNC).
+                const arrancaGrupo = r.grupoId != null && ordenada[i - 1]?.grupoId !== r.grupoId;
+                const nroOperacion = r.grupoId != null ? gruposDeLaReceta(tipo.receta).indexOf(r.grupoId) + 1 : 0;
                 return (
+                  <React.Fragment key={r.id}>
+                  {arrancaGrupo && (
+                    <tr>
+                      <td colSpan={6} style={{ ...tdNombre, background: "#f0fdfa", color: "#0f766e", fontWeight: 800, fontSize: 12.5 }}>
+                        Operación {nroOperacion} · {grupos.find((g) => g.id === r.grupoId)?.nombre || "grupo borrado"}
+                      </td>
+                    </tr>
+                  )}
                   <tr
                     key={r.id}
                     onContextMenu={(ev) => {
@@ -424,6 +435,7 @@ function EditorReceta({
                       <input style={inputCelda} value={r.nota || ""} onChange={(e) => guardarRenglon({ ...r, nota: e.target.value || undefined })} {...focoCelda} />
                     </td>
                   </tr>
+                  </React.Fragment>
                 );
               })}
             </tbody>
@@ -441,7 +453,7 @@ function EditorReceta({
               value=""
               onChange={(e) => {
                 const gid = Number(e.target.value);
-                if (gid) onGuardar({ ...tipo, receta: agregarGrupo(tipo.receta, gid, tareasDelGrupo(gid, tareas), nuevoId) });
+                if (gid) onGuardar({ ...tipo, receta: agregarGrupo(tipo.receta, gid, tareasDelGrupo(gid, tareas, grupos), nuevoId) });
               }}
               style={{ marginLeft: 8, fontSize: 13, fontWeight: 700, borderRadius: 8, border: "1px solid #cbd5e1", padding: "6px 8px", cursor: "pointer" }}
               title="Suma todas las tareas del grupo al final, una por paso"
@@ -449,7 +461,7 @@ function EditorReceta({
               <option value="">+ Grupo de tareas…</option>
               {grupos.map((g) => (
                 <option key={g.id} value={g.id} disabled={gruposDeLaReceta(tipo.receta).includes(g.id)}>
-                  {g.nombre} ({tareasDelGrupo(g.id, tareas).length} tareas){gruposDeLaReceta(tipo.receta).includes(g.id) ? " · ya está" : ""}
+                  {g.nombre} ({tareasDelGrupo(g.id, tareas, grupos).length} tareas){gruposDeLaReceta(tipo.receta).includes(g.id) ? " · ya está" : ""}
                 </option>
               ))}
             </select>

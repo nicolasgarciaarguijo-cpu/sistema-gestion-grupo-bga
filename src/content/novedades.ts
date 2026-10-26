@@ -28,7 +28,7 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Grupos de tareas en los tipos de mueble",
-        que: "El tipo de mueble se arma con grupos de tareas: las tareas que se repiten en muchos muebles se juntan en un grupo y el grupo se asigna a cada tipo de mueble de una vez. Si después el grupo cambia en el catálogo, la receta avisa y se actualiza con un click.",
+        que: "El tipo de mueble se arma con operaciones (grupos de tareas: Corte CNC, Pegado de cantos, Armado…), cada una con sus tareas en orden. Las tareas de un grupo se cargan de una vez pegando la lista (1. … 2. …), y una tarea ya escrita en otro grupo se llama y es la misma. El grupo se asigna a cada tipo de mueble con un click y la receta queda por operación; si el grupo cambia, la receta avisa y se actualiza.",
         como: "Fabricación → Tipos de mueble → click derecho → Receta… → '+ Grupo de tareas…'. Los grupos se arman en Tipos de tarea y grupos de trabajo.",
         tab: "fabricacion",
       },

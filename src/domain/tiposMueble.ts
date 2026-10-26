@@ -12,7 +12,7 @@
 // cantidad (por mueble, ml, m2 o m3) y cuanto lleva por cada una. La cantidad sale sola de las medidas y
 // se puede corregir a mano ("las 2 cosas hasta ver cual es la mas util"). Funciones puras.
 
-import type { TipoTarea, UnidadTarea } from "./organizacionDiaria";
+import { idsDeGrupo, type GrupoTrabajo, type TipoTarea, type UnidadTarea } from "./organizacionDiaria";
 import { coincideConRubro, type RubroFabricacion } from "./ganttFabricacion";
 
 // De que medida del mueble sale la cantidad de la tarea. "u" = por cada mueble. "rubro:<id>" = por cada
@@ -190,9 +190,9 @@ export const pasoSiguiente = (receta: RenglonReceta[]) => Math.max(0, ...receta.
 // y asignarlos a los tipos de mueble". Asignar un grupo suma sus tareas al final, una por paso (despues se pueden
 // poner en paralelo), marcadas con el grupo. Si el grupo cambia en el catalogo, se puede actualizar la receta.
 
-// Las tareas de un grupo, en el orden del catalogo (solo las activas).
-export const tareasDelGrupo = (grupoId: number, catalogo: TipoTarea[]): number[] =>
-  catalogo.filter((t) => t.grupoId === grupoId && t.activa !== false).map((t) => t.id);
+// Las tareas de un grupo, en el orden del grupo (solo las activas).
+export const tareasDelGrupo = (grupoId: number, catalogo: TipoTarea[], grupos: GrupoTrabajo[] = []): number[] =>
+  idsDeGrupo(grupos.find((g) => g.id === grupoId) || { id: grupoId }, catalogo).filter((id) => catalogo.find((t) => t.id === id)?.activa !== false);
 
 // Los grupos asignados, en el orden en que aparecen en la receta.
 export function gruposDeLaReceta(receta: RenglonReceta[]): number[] {

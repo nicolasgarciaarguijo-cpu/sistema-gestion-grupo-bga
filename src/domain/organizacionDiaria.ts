@@ -19,7 +19,10 @@ export const UNIDADES_TAREA: Array<{ value: UnidadTarea; label: string }> = [
   { value: "m2", label: "m²" },
   { value: "m3", label: "m³" },
 ];
-export type GrupoTrabajo = { id: number; nombre: string; descripcion?: string; orden?: number };
+// Un grupo de trabajo es una OPERACION (Corte CNC, Pegado de cantos, Armado...) con sus tareas EN ORDEN. Una misma
+// tarea puede estar en varios grupos (Nicolas, 2026-10-26: "si ya la escribi en otro grupo quiero poder llamarla").
+// `tareaIds` = la lista ordenada; ausente (grupos viejos) = las tareas que tienen ese grupoId, en el orden del catalogo.
+export type GrupoTrabajo = { id: number; nombre: string; descripcion?: string; orden?: number; tareaIds?: number[] };
 export type TipoTarea = {
   id: number;
   grupoId?: number | null;
@@ -195,4 +198,52 @@ export function genteJuntaPorLugar(franjas: FranjaLugar[]): Array<{ lugarKey: st
 export function linkMapa(direccion?: string): string | null {
   const d = String(direccion || "").trim();
   return d ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(d)}` : null;
+}
+
+// ---- Grupos como listas de tareas -------------------------------------------------------------------------
+export function idsDeGrupo(g: Pick<GrupoTrabajo, "id" | "tareaIds">, tipos: TipoTarea[]): number[] {
+  const ids = g.tareaIds ?? tipos.filter((t) => t.grupoId === g.id).map((t) => t.id);
+  return ids.filter((id) => tipos.some((t) => t.id === id));
+}
+export const tareasDeGrupo = (g: Pick<GrupoTrabajo, "id" | "tareaIds">, tipos: TipoTarea[]): TipoTarea[] =>
+  idsDeGrupo(g, tipos).map((id) => tipos.find((t) => t.id === id) as TipoTarea);
+
+const normalizarNombre = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
+// Una lista pegada ("1. Limpieza del CNC 2. Control de presion...", o una por renglon, con o sin numeros) -> nombres.
+export function lineasDeTareas(texto: string): string[] {
+  return texto
+    .replace(/\s+(?=\d{1,2}\s*[.)-]\s)/g, "\n")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^\s*(?:\d{1,2}\s*[.)-]|[-•*])\s*/, "").trim())
+    .filter(Boolean);
+}
+
+// Pega una lista en un grupo: cada nombre que ya existe en el catalogo se LLAMA (misma tarea, mismo tiempo); los que no,
+// se crean en este grupo. Se agregan al final, en el orden pegado, sin repetir lo que el grupo ya tiene.
+export function pegarTareasEnGrupo(
+  g: GrupoTrabajo,
+  tipos: TipoTarea[],
+  texto: string,
+  nuevoId: () => number
+): { grupo: GrupoTrabajo; nuevas: TipoTarea[]; llamadas: number } {
+  const ids = [...idsDeGrupo(g, tipos)];
+  const nuevas: TipoTarea[] = [];
+  let llamadas = 0;
+  for (const nombre of lineasDeTareas(texto)) {
+    const existe = tipos.find((t) => normalizarNombre(t.nombre) === normalizarNombre(nombre));
+    const creada = nuevas.find((t) => normalizarNombre(t.nombre) === normalizarNombre(nombre));
+    if (existe || creada) {
+      const id = (existe || creada)!.id;
+      if (!ids.includes(id)) {
+        ids.push(id);
+        llamadas++;
+      }
+      continue;
+    }
+    const t: TipoTarea = { id: nuevoId(), nombre, grupoId: g.id, unidad: "u", pasos: [], activa: true };
+    nuevas.push(t);
+    ids.push(t.id);
+  }
+  return { grupo: { ...g, tareaIds: ids }, nuevas, llamadas };
 }
