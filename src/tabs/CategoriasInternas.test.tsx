@@ -7,6 +7,7 @@ import { act } from "react-dom/test-utils";
 import { CategoriasInternas, CategoriasDelEmpleado } from "./CategoriasInternas";
 import { CapacidadesPersonal } from "./CapacidadesPersonal";
 import { TiposMueble } from "./TiposMueble";
+import { Mantenimiento } from "./Mantenimiento";
 import type { TipoMueble } from "../domain/tiposMueble";
 import type { CategoriaEmpleado } from "../domain/categoriasEmpleado";
 import type { TipoTarea } from "../domain/organizacionDiaria";
@@ -110,6 +111,35 @@ describe("TiposMueble", () => {
     // 2 h cortar + (0,6 cantear ∥ 2 mecanizar): 4,6 h-hombre y 4 h de reloj
     expect(document.body.textContent).toContain("4,6 h-hombre");
     expect(document.body.textContent).toContain("4 h de reloj");
+    act(() => root.unmount());
+    div.remove();
+  });
+});
+
+describe("Mantenimiento", () => {
+  it("lista las máquinas con su estado, los preventivos vencidos y las tareas trabadas", () => {
+    const { div, root } = montar(
+      <Mantenimiento
+        maquinas={[{ id: 1, description: "Seccionadora", group: "Maquinas pesadas", quantity: 1, company: "General" }]}
+        fichas={[{ stockItemId: 1, estado: "fuera_de_servicio", planes: [{ id: 5, descripcion: "Correas", cadaDias: 30, ultimaFecha: "2026-09-01" }], historial: [] }]}
+        tipos={[{ id: 100, nombre: "Cortar placas", herramientas: [1] }]}
+        grupos={[]}
+        categorias={[]}
+        empleados={[]}
+        asignaciones={[]}
+        hoy="2026-10-26"
+        companyShort={(c) => c}
+        onGuardarFicha={jest.fn()}
+        onGuardarAsignacion={jest.fn()}
+        onCrearEnStock={() => 2}
+        onPrepararCatalogo={jest.fn()}
+        onIrAStock={jest.fn()}
+        nuevoId={() => 9}
+      />
+    );
+    expect(div.textContent).toContain("Fuera de servicio");
+    expect(div.textContent).toContain("vencido hace 25 d");
+    expect(div.textContent).toContain("Cortar placas no se puede hacer: Seccionadora (fuera de servicio)");
     act(() => root.unmount());
     div.remove();
   });

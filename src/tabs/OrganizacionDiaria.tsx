@@ -25,6 +25,7 @@ import {
   UNIDADES_TAREA,
 } from "../domain/organizacionDiaria";
 import { timeToMinutes } from "../domain/attendance";
+import { GRUPOS_MAQUINAS, herramientasFaltantes, type Faltante, type FichaMaquina, type MaquinaStock } from "../domain/mantenimiento";
 import { capacidadesDelEmpleado, categoriaPrincipal, etiquetaCategoria, tieneCategorias, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
 
 export type EmpleadoOrg = { id: number; name: string; company: string; categoriasInternas?: number[] };
@@ -64,6 +65,8 @@ export function OrganizacionDiaria({
   onBorrarTipo,
   onAbrirTrabajo,
   nuevoId,
+  maquinas = [],
+  fichasMaquinas = [],
 }: {
   empleados: EmpleadoOrg[];
   trabajos: TrabajoOrg[];
@@ -81,7 +84,11 @@ export function OrganizacionDiaria({
   onBorrarTipo: (id: number) => void;
   onAbrirTrabajo?: (jobId: number) => void;
   nuevoId: () => number;
+  // Maquinas y herramientas de Stock con su ficha (Mantenimiento): que pide cada tarea y si esta disponible.
+  maquinas?: MaquinaStock[];
+  fichasMaquinas?: FichaMaquina[];
 }) {
+  const faltanPara = (tipoId: number) => herramientasFaltantes(tipos.find((x) => x.id === tipoId)?.herramientas, maquinas, fichasMaquinas);
   const hoy = new Date();
   const hoyIso = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}`;
   const [mes, setMes] = useState(hoyIso.slice(0, 7));
@@ -269,6 +276,7 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
                     tipos={tipos}
                     grupos={grupos}
                     capacidades={tieneCategorias(e.categoriasInternas) ? capacidadesDelEmpleado(e.categoriasInternas, categorias) : null}
+                    faltanPara={faltanPara}
                     onGuardar={guardar}
                     onBorrar={existe ? () => { if (window.confirm(`¿Borrar el día de ${e.name}?`)) { onBorrarAsignacion(a.id); setAbierta(null); } } : undefined}
                     onAbrirTrabajo={onAbrirTrabajo}
@@ -281,7 +289,7 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
         </div>
       </Panel>
 
-      <Catalogo grupos={grupos} tipos={tipos} onGuardarGrupo={onGuardarGrupo} onBorrarGrupo={onBorrarGrupo} onGuardarTipo={onGuardarTipo} onBorrarTipo={onBorrarTipo} nuevoId={nuevoId} />
+      <Catalogo grupos={grupos} tipos={tipos} maquinas={maquinas} onGuardarGrupo={onGuardarGrupo} onBorrarGrupo={onBorrarGrupo} onGuardarTipo={onGuardarTipo} onBorrarTipo={onBorrarTipo} nuevoId={nuevoId} />
     </>
   );
 }
@@ -295,11 +303,14 @@ function FichaDelDia({
   tipos,
   grupos,
   capacidades,
+  faltanPara,
   onGuardar,
   onBorrar,
   onAbrirTrabajo,
   nuevoId,
 }: {
+  // Herramientas que faltan o no andan para un tipo de tarea (Mantenimiento).
+  faltanPara?: (tipoId: number) => Faltante[];
   a: AsignacionDiaria;
   trabajos: TrabajoOrg[];
   tipos: TipoTarea[];
@@ -321,7 +332,11 @@ function FichaDelDia({
   const fueraDeCategoria = a.tareas
     .filter((x) => x.tipoTareaId != null && !puede(Number(x.tipoTareaId)))
     .map((x) => `"${x.descripcion || tipos.find((tp) => tp.id === x.tipoTareaId)?.nombre || "tarea"}" está fuera de sus categorías internas`);
-  const avisos = [...avisosDelDia(a), ...fueraDeCategoria];
+  // Tareas cuya maquina o herramienta falta o no anda (ver Mantenimiento).
+  const sinHerramienta = a.tareas
+    .filter((x) => x.tipoTareaId != null && !x.hecha)
+    .flatMap((x) => (faltanPara ? faltanPara(Number(x.tipoTareaId)) : []).map((f) => `"${x.descripcion || "tarea"}" necesita ${f.nombre} (${f.motivo})`));
+  const avisos = [...avisosDelDia(a), ...fueraDeCategoria, ...sinHerramienta];
   const h = horasDelDia(a);
   const tareas = [...a.tareas].sort((x, z) => x.desde.localeCompare(z.desde));
   const tiposActivos = tipos.filter((x) => x.activa !== false);
@@ -553,6 +568,7 @@ function LineaTemporal({
 function Catalogo({
   grupos,
   tipos,
+  maquinas,
   onGuardarGrupo,
   onBorrarGrupo,
   onGuardarTipo,
@@ -561,6 +577,7 @@ function Catalogo({
 }: {
   grupos: GrupoTrabajo[];
   tipos: TipoTarea[];
+  maquinas: MaquinaStock[];
   onGuardarGrupo: (g: GrupoTrabajo) => void;
   onBorrarGrupo: (id: number) => void;
   onGuardarTipo: (t: TipoTarea) => void;
@@ -569,6 +586,9 @@ function Catalogo({
 }) {
   const ordenados = [...grupos].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre));
   const sinGrupo = tipos.filter((t) => !t.grupoId || !grupos.some((g) => g.id === t.grupoId));
+  const [herrDe, setHerrDe] = useState<number | null>(null);
+  const tipoHerr = tipos.find((t) => t.id === herrDe);
+  const nombreMaq = (id: number) => maquinas.find((m) => m.id === id)?.description || "borrada de stock";
   const filaTipo = (t: TipoTarea) => (
     <tr key={t.id} style={{ opacity: t.activa === false ? 0.5 : 1 }}>
       <td style={td}><input style={{ ...input, width: "100%" }} value={t.nombre} onChange={(e) => onGuardarTipo({ ...t, nombre: e.target.value })} /></td>
@@ -592,6 +612,16 @@ function Catalogo({
           value={t.horasEstimadas ?? ""}
           onChange={(e) => onGuardarTipo({ ...t, horasEstimadas: e.target.value === "" ? undefined : Number(e.target.value) })}
         />
+      </td>
+      <td style={td}>
+        <button
+          type="button"
+          style={{ ...btn(), textAlign: "left", maxWidth: 220, whiteSpace: "normal" }}
+          title="Máquinas y herramientas que hacen falta para esta tarea (salen de Stock)"
+          onClick={() => setHerrDe(t.id)}
+        >
+          {(t.herramientas || []).length ? (t.herramientas || []).map(nombreMaq).join(", ") : "Herramientas…"}
+        </button>
       </td>
       <td style={td}>
         <textarea
@@ -640,6 +670,7 @@ function Catalogo({
                   <th style={th}>Grupo</th>
                   <th style={th}>Unidad</th>
                   <th style={th}>Horas por unidad</th>
+                  <th style={th}>Herramientas</th>
                   <th style={th}>Desglose (pasos)</th>
                   <th style={th}></th>
                 </tr>
@@ -649,6 +680,40 @@ function Catalogo({
           )}
         </div>
       ))}
+      {tipoHerr && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }} onClick={() => setHerrDe(null)}>
+          <div style={{ background: "#fff", borderRadius: 12, width: "min(560px, 100%)", padding: 18, display: "grid", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+            <strong style={{ fontSize: 15 }}>Herramientas para "{tipoHerr.nombre}"</strong>
+            <div style={{ fontSize: 12.5, color: "#64748b" }}>Tildá las máquinas y herramientas que hacen falta. Salen de Stock (Máquinas pesadas, Máquinas manuales y Herramientas); su estado se lleva en Mantenimiento.</div>
+            {maquinas.length === 0 && <div style={{ fontSize: 12.5, color: "#b45309" }}>No hay máquinas ni herramientas en Stock todavía.</div>}
+            {GRUPOS_MAQUINAS.map((g) => {
+              const lista = maquinas.filter((m) => m.group === g);
+              if (!lista.length) return null;
+              return (
+                <div key={g}>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>{g}</div>
+                  {lista.map((m) => {
+                    const tiene = (tipoHerr.herramientas || []).includes(m.id);
+                    return (
+                      <label key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, padding: "2px 0", cursor: "pointer" }}>
+                        <input
+                          type="checkbox"
+                          checked={tiene}
+                          onChange={(e) => onGuardarTipo({ ...tipoHerr, herramientas: e.target.checked ? [...(tipoHerr.herramientas || []), m.id] : (tipoHerr.herramientas || []).filter((x) => x !== m.id) })}
+                        />
+                        {m.description} <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{m.quantity} en stock</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <ButtonLike onClick={() => setHerrDe(null)}>Listo</ButtonLike>
+            </div>
+          </div>
+        </div>
+      )}
     </Panel>
   );
 }

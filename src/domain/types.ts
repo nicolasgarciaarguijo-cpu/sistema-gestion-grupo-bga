@@ -21,6 +21,7 @@ export type TabKey =
   | "cashflow"
   | "calendarioAnual"
   | "fabricacion"
+  | "mantenimiento"
   | "compras"
   | "cajaChica"
   | "presupuesto"

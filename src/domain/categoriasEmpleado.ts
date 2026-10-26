@@ -88,6 +88,8 @@ export const CATEGORIAS_POR_DEFECTO: CategoriaEmpleado[] = [
   c(16, "Responsable de obra", 5),
   c(17, "Terminaciones general", 0, [], { extra: true }),
   c(18, "Terminaciones especializado", 0, [17], { extra: true }),
+  // Los idoneos para el mantenimiento de maquinas (solapa Mantenimiento).
+  c(19, "Mantenimiento de máquinas", 0, [], { extra: true }),
 ];
 
 const activas = (catalogo: CategoriaEmpleado[]) => catalogo.filter((x) => x.activa !== false);

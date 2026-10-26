@@ -237,6 +237,8 @@ import { OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
 import { GanttFabricacion } from "./tabs/GanttFabricacion";
 import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
 import { TiposMueble } from "./tabs/TiposMueble";
+import { Mantenimiento } from "./tabs/Mantenimiento";
+import { esMaquinaOHerramienta, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
 import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
@@ -534,6 +536,7 @@ const STOCK_GENERAL_GROUP_OPTIONS = [
   "Herrajes",
   "Maquinas pesadas",
   "Maquinas manuales",
+  "Herramientas",
 ] as const;
 
 type StockGeneralGroupName = (typeof STOCK_GENERAL_GROUP_OPTIONS)[number];
@@ -553,6 +556,7 @@ const STOCK_GROUP_CODE_PREFIX: Record<StockGeneralGroupName, string> = {
   Herrajes: "HER",
   "Maquinas pesadas": "MPS",
   "Maquinas manuales": "MMA",
+  Herramientas: "HTA",
 };
 
 // ORDEN DE LAS SOLAPAS. Lo fijo Nicolas el 2026-08-26: los titulos van en MAYUSCULA y el orden
@@ -575,6 +579,7 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "cajaChica", label: "CAJA CHICA Y VIÁTICOS" },
   { key: "emitirFacturas", label: "EMITIR FACTURAS" },
   { key: "fabricacion", label: "FABRICACIÓN" },
+  { key: "mantenimiento", label: "MANTENIMIENTO" },
   { key: "personal", label: "PERSONAL" },
   { key: "asistencia", label: "ASISTENCIA" },
   // --- ADMINISTRACION NETA ---
@@ -603,6 +608,7 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "cajaChica",
   "emitirFacturas",
   "fabricacion",
+  "mantenimiento",
   "personal",
   "asistencia",
 ];
@@ -672,6 +678,7 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   cashflow: "CF",
   calendarioAnual: "CAL",
   fabricacion: "FB",
+  mantenimiento: "MNT",
   compras: "CP",
   cajaChica: "CC",
   presupuesto: "PR",
@@ -1851,6 +1858,8 @@ type PersistedAppStateData = {
   categoriasEmpleado: CategoriaEmpleado[];
   // Nombres de los escalones internos (posicion = nivel). Vacio = los de siempre.
   escalonesInternos: string[];
+  // Mantenimiento: la ficha de cada maquina/herramienta de Stock (por id de stock), con preventivos e historial.
+  fichasMaquinas: FichaMaquina[];
   // Fabricacion · tipos de mueble: receta ordenada por pasos sobre el catalogo de tareas (global).
   tiposMueble: TipoMueble[];
   // Cuentas (bancos, efectivo, cajas por persona) corregidas a mano: apertura, nombre, principal.
@@ -1925,7 +1934,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "organizacion-diaria",
     label: "Fabricación · organización diaria",
-    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble"] as const,
+    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble", "fichasMaquinas"] as const,
   },
   {
     key: "cuentas",
@@ -3123,6 +3132,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [categoriasEmpleado, setCategoriasEmpleado] = useState<CategoriaEmpleado[]>([]);
   const [tiposMueble, setTiposMueble] = useState<TipoMueble[]>([]);
   const [escalonesInternos, setEscalonesInternos] = useState<string[]>([]);
+  const [fichasMaquinas, setFichasMaquinas] = useState<FichaMaquina[]>([]);
   const escalonesVigentes = escalonesInternos.length ? escalonesInternos : ESCALONES_POR_DEFECTO;
   // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
   const categoriasVigentes = categoriasEmpleado.length ? categoriasEmpleado : CATEGORIAS_POR_DEFECTO;
@@ -4724,6 +4734,11 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // Ver ui/FirmanteSelect.
   const usuarioFirmante = String(supabaseProfile?.full_name || supabaseSession?.user?.email || "Usuario").trim();
   const firma = () => ({ firmante: usuarioFirmante, firmadoEn: new Date().toISOString() });
+  const guardarAsignacionDiaria = (a: AsignacionDiaria) => {
+    const conFirma = { ...a, ...firma() };
+    setAsignacionesDiarias((prev) => (prev.some((x) => x.id === a.id) ? prev.map((x) => (x.id === a.id ? conFirma : x)) : [...prev, conFirma]));
+    if (a.tareas.some((t) => t.hecha && t.mantenimiento)) setFichasMaquinas((prev) => registrarTareasHechas(prev, a, newId));
+  };
 
   const formerEmployees = useMemo(
     () =>
@@ -9763,6 +9778,7 @@ Escribi CERRAR para confirmar:`
     categoriasEmpleado: categoriasEmpleado.map((item) => ({ ...item, incluye: [...item.incluye], tareaIds: [...item.tareaIds] })),
     tiposMueble: tiposMueble.map((item) => ({ ...item, receta: item.receta.map((r) => ({ ...r })) })),
     escalonesInternos: [...escalonesInternos],
+    fichasMaquinas: fichasMaquinas.map((item) => ({ ...item, planes: item.planes.map((p) => ({ ...p })), historial: item.historial.map((r) => ({ ...r })) })),
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
@@ -10103,6 +10119,7 @@ Escribi CERRAR para confirmar:`
     setCategoriasEmpleado((data.categoriasEmpleado || []).map((item) => ({ ...item, incluye: [...(item.incluye || [])], tareaIds: [...(item.tareaIds || [])] })));
     setTiposMueble((data.tiposMueble || []).map((item) => ({ ...item, receta: (item.receta || []).map((r) => ({ ...r })) })));
     setEscalonesInternos([...(data.escalonesInternos || [])]);
+    setFichasMaquinas((data.fichasMaquinas || []).map((item) => ({ ...item, planes: (item.planes || []).map((p) => ({ ...p })), historial: (item.historial || []).map((r) => ({ ...r })) })));
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -12434,6 +12451,7 @@ Escribi CERRAR para confirmar:`
     categoriasEmpleado,
     tiposMueble,
     escalonesInternos,
+    fichasMaquinas,
     cuentasGuardadas,
     fiscalClosings,
     inversiones,
@@ -23129,10 +23147,9 @@ Escribi CERRAR para confirmar:`
           tipos={tiposTarea}
           categorias={categoriasVigentes}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
-          onGuardarAsignacion={(a) => {
-            const conFirma = { ...a, ...firma() };
-            setAsignacionesDiarias((prev) => (prev.some((x) => x.id === a.id) ? prev.map((x) => (x.id === a.id ? conFirma : x)) : [...prev, conFirma]));
-          }}
+          onGuardarAsignacion={guardarAsignacionDiaria}
+          maquinas={visibleStockItems.filter(esMaquinaOHerramienta)}
+          fichasMaquinas={fichasMaquinas}
           onBorrarAsignacion={(id) => setAsignacionesDiarias((prev) => prev.filter((x) => x.id !== id))}
           onGuardarGrupo={(g) => setGruposTrabajo((prev) => (prev.some((x) => x.id === g.id) ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]))}
           onBorrarGrupo={(id) => {
@@ -23155,6 +23172,61 @@ Escribi CERRAR para confirmar:`
           tipos={tiposTarea}
           grupos={gruposTrabajo}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+        />
+      )}
+      {activeTab === "mantenimiento" && (
+        <Mantenimiento
+          maquinas={visibleStockItems.filter(esMaquinaOHerramienta)}
+          fichas={fichasMaquinas}
+          tipos={tiposTarea}
+          grupos={gruposTrabajo}
+          categorias={categoriasVigentes}
+          empleados={visibleEmployees.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
+          asignaciones={asignacionesDiarias.filter((a) => canAccessCompany(a.company))}
+          hoy={todayIso()}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+          onGuardarFicha={(f) => setFichasMaquinas((prev) => (prev.some((x) => x.stockItemId === f.stockItemId) ? prev.map((x) => (x.stockItemId === f.stockItemId ? f : x)) : [...prev, f]))}
+          onGuardarAsignacion={guardarAsignacionDiaria}
+          onCrearEnStock={(descripcion, grupo) => {
+            const id = newId();
+            setStockItems((prev) => [
+              ...prev,
+              {
+                id,
+                company: "General",
+                kind: "general",
+                shared: true,
+                group: grupo,
+                location: "",
+                sortOrder: Math.max(0, ...prev.filter((item) => item.kind === "general").map((item) => Number(item.sortOrder || 0))) + 1,
+                code: getNextStockCode(prev, grupo),
+                description: descripcion,
+                unit: "u",
+                quantity: 1,
+                unitPrice: 0,
+                periodicityMonths: 0,
+                active: true,
+              },
+            ]);
+            return id;
+          }}
+          onPrepararCatalogo={() => {
+            // Grupo de trabajo "Mantenimiento" con sus tareas, dadas a la habilidad extra de mantenimiento.
+            const grupoId = newId();
+            const tareas = TAREAS_MANTENIMIENTO_BASE.map((nombre, i) => ({ id: grupoId + 1 + i, grupoId, nombre, unidad: "u" as const, horasEstimadas: 1, pasos: [], activa: true }));
+            setGruposTrabajo((prev) => [...prev, { id: grupoId, nombre: "Mantenimiento", descripcion: "Mantenimiento de máquinas y herramientas", orden: prev.length + 1 }]);
+            setTiposTarea((prev) => [...prev, ...tareas]);
+            setCategoriasEmpleado((prev) => {
+              const base = prev.length ? prev : CATEGORIAS_POR_DEFECTO;
+              const mant = base.find((x) => x.extra && /manten/i.test(x.nombre));
+              const ids = tareas.map((t) => t.id);
+              return mant
+                ? base.map((x) => (x.id === mant.id ? { ...x, tareaIds: Array.from(new Set([...x.tareaIds, ...ids])) } : x))
+                : [...base, { id: newId(), nombre: "Mantenimiento de máquinas", nivel: 0, incluye: [], tareaIds: ids, extra: true, activa: true }];
+            });
+          }}
+          onIrAStock={() => setActiveTab("stock" as TabKey)}
+          nuevoId={newId}
         />
       )}
       {activeTab === "fabricacion" && (

@@ -31,6 +31,8 @@ export type TipoTarea = {
   // Tiempo estandar en horas POR UNIDAD (el Gantt lo multiplica por la cantidad) para planificar y
   // presupuestar.
   horasEstimadas?: number;
+  // Maquinas y herramientas que hacen falta (ids de items de Stock). Ver domain/mantenimiento.ts.
+  herramientas?: number[];
   activa?: boolean;
 };
 
@@ -49,6 +51,8 @@ export type TareaDelDia = {
   hecha?: boolean;
   hechaEn?: string; // ISO: cuando se marco hecha (para tomar tiempos)
   notas?: string;
+  // Tarea de mantenimiento de una maquina (al marcarla hecha queda en su historial).
+  mantenimiento?: { stockItemId: number; planId?: number };
 };
 export type AsignacionDiaria = {
   id: number;

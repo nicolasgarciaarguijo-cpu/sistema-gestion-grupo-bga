@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-26b",
+    fecha: "26/10/2026",
+    titulo: "Mantenimiento de máquinas y herramientas para cada tarea",
+    items: [
+      {
+        titulo: "Solapa nueva: Mantenimiento",
+        que: "Las máquinas y herramientas de Stock (Máquinas pesadas, Máquinas manuales y el grupo nuevo Herramientas) tienen su ficha: estado, compra, especificaciones, usos, reposición, preventivos e historial. Arriba se ven los preventivos vencidos y los próximos.",
+        como: "Mantenimiento → click derecho sobre una máquina → 'Ficha…'. '+ Máquina o herramienta' la crea en Stock.",
+        tab: "mantenimiento",
+      },
+      {
+        titulo: "Preventivos como tareas para los idóneos",
+        que: "Un preventivo se programa como tarea del día de una persona idónea (la que tiene esa tarea en sus categorías internas). Al marcarla hecha en la organización diaria queda en el historial de la máquina y el contador vuelve a arrancar.",
+        como: "Mantenimiento → 'Programar' en el preventivo → elegí día y persona. 'Preparar tareas de mantenimiento' arma el grupo y la habilidad extra.",
+        tab: "mantenimiento",
+      },
+      {
+        titulo: "Herramientas que pide cada tarea",
+        que: "Cada tarea del catálogo dice qué máquinas y herramientas necesita. Mantenimiento muestra qué tareas no se pueden hacer con lo que hay, y la organización diaria avisa si la herramienta falta o no está operativa.",
+        como: "Fabricación → Tipos de tarea y grupos de trabajo → columna 'Herramientas…'.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-10-26a",
     fecha: "26/10/2026",
     titulo: "Categorías internas del personal y tipos de mueble",
