@@ -18,8 +18,9 @@ import { calcularMueblesDelPresupuesto, planificarMuebles, type MuebleDelPresupu
 const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" };
 const caja: React.CSSProperties = { background: "#fff", borderRadius: 12, width: "min(760px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" };
 const fmt = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
-// Jornada del taller de lunes a viernes (07:30 a 17:00), para pasar las horas de reloj a dias.
-const HORAS_POR_DIA = 9.5;
+// Jornada del taller de lunes a viernes: 07:30 a 17:00 menos el almuerzo de 13:30 a 14:00 = 9 hs. Los sabados
+// no entran en la cuenta (Nicolas, 2026-10-26).
+const HORAS_POR_DIA = 9;
 const unidadCorta = (u?: string) => ({ u: "u", ml: "ml", m2: "m²", m3: "m³" } as Record<string, string>)[u || "u"] || "u";
 
 export function MueblesPresupuesto({
