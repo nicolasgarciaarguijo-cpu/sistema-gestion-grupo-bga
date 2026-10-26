@@ -137,10 +137,12 @@ describe("presupuestar por tipo de mueble", () => {
         expect(plan.horasReloj).toBe(1);
       });
 
-      it("si no alcanza el plantel entero, se avisa y se cotiza igual", () => {
-        const plan = planificarMuebles(muebles(1), [ofA]);
-        expect(plan.faltanAyudantes.length).toBe(1);
-        expect(plan.porPersona.map((p) => [p.nombre, p.costo])).toEqual([["Ana", 9000], ["Personas que faltan", 9000]]);
+      it("si la gente esta ocupada, la tarea espera: se estira el tiempo de fabricacion", () => {
+        // Tres mesadas a la vez y solo dos personas: la tercera espera a que terminen las primeras.
+        const plan = planificarMuebles(muebles(3), [ofA, ayB]);
+        expect(plan.asignaciones.map((a) => [a.inicio, a.fin])).toEqual([[0, 1], [1, 2], [2, 3]]);
+        expect(plan.horasReloj).toBe(3);
+        expect(plan.horasRelojSinEsperas).toBe(1);
       });
 
       it("el aprendiz también es ayudante", () => {

@@ -127,7 +127,7 @@ export type PersonaParaCotizar = {
 };
 
 // especialista = un especialista haciendo de ayudante porque no alcanzaron los ayudantes (para evaluar contratar uno).
-export type AyudanteAsignado = { personaId: number | null; persona: string; costoHora: number; especialista?: boolean };
+export type AyudanteAsignado = { personaId: number; persona: string; costoHora: number; especialista?: boolean };
 
 export type AsignacionTarea = {
   muebleId: number;
@@ -140,7 +140,7 @@ export type AsignacionTarea = {
   personaId: number | null;
   persona: string;
   costoHora: number;
-  // Tareas de 2 o mas personas: los ayudantes (personaId null = falta un ayudante; se cotiza igual).
+  // Tareas de 2 o mas personas: los ayudantes.
   ayudantes: AyudanteAsignado[];
   inicio: number;
   fin: number;
@@ -152,8 +152,9 @@ export type PlanDeMuebles = {
   costo: number;
   porPersona: Array<{ personaId: number | null; nombre: string; horas: number; costoHora: number; costo: number }>;
   sinPersona: AsignacionTarea[];
-  // Tareas a las que les falta gente (no alcanza el plantel entero).
-  faltanAyudantes: AsignacionTarea[];
+  // Lo que tardaria si nunca hubiera que esperar a alguien ocupado (solo la receta): la diferencia con horasReloj
+  // es lo que se estira la fabricacion por la gente que hay.
+  horasRelojSinEsperas: number;
   // Especialistas haciendo de ayudante (no alcanzaron los ayudantes): horas en total, para evaluar contratar uno.
   especialistasDeAyudante: { tareas: AsignacionTarea[]; horas: number };
 };
@@ -162,10 +163,12 @@ const EPS = 1e-9;
 
 // Tareas de 2 o mas personas (Nicolas, 2026-10-26): siempre las encabeza un especialista (un idoneo que no es
 // aprendiz ni ayudante; si no hay, cualquier idoneo). Los demas son ayudantes: aprendices o ayudantes de cualquier
-// rumbo, por categoria INTERNA. Si no alcanzan, completa un especialista (el menos experimentado libre), y se avisa:
+// rumbo, por categoria INTERNA. Si no hay ayudantes libres, completa un especialista libre (el menos caro) y se avisa:
 // "un especialista esta haciendo tareas de ayudante, asi consideramos la contratacion de uno". Arrancan juntos.
 // "Siempre el especialista debe hacer las tareas mas complejas": entre las tareas que pueden arrancar a la vez,
 // primero se asignan las que solo saben hacer los escalones mas altos.
+// "El plantel entero siempre va a alcanzar. Lo que pasaria es que se estiran los tiempos de fabricacion": si no hay
+// gente libre, la tarea espera a que se libere. Asi se conocen los tiempos de fabricacion reales con este personal.
 export function planificarMuebles(calculados: MuebleCalculado[], personas: PersonaParaCotizar[]): PlanDeMuebles {
   const libre = new Map<number, number>(personas.map((p) => [p.id, 0]));
   const libreDe = (p: PersonaParaCotizar) => libre.get(p.id) || 0;
@@ -175,8 +178,6 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
   const complejidad = new Map<number, number>();
   personas.forEach((p) => p.tareas.forEach((id) => complejidad.set(id, Math.min(complejidad.get(id) ?? Infinity, pos(p.nivel)))));
   const complejidadDe = (id: number) => (Number.isFinite(complejidad.get(id)) ? (complejidad.get(id) as number) : 0);
-  const ayudantesTodos = personas.filter((p) => p.ayudante);
-  const peorAyudante = ayudantesTodos.length ? Math.max(...ayudantesTodos.map((p) => pos(p.costoHora))) : peorCaso;
   type Estado = { c: MuebleCalculado; pasos: Array<{ paso: number; tareas: TareaCalculada[] }>; i: number; listo: number; pendientes: TareaCalculada[]; finPaso: number };
   const estados: Estado[] = calculados
     .filter((c) => c.tareas.some((t) => t.horas > 0))
@@ -239,7 +240,6 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     const fin = r2(inicio + t.horas);
     if (lider) libre.set(lider.id, fin);
     ayudantes.forEach((p) => libre.set(p.id, fin));
-    const faltan = cuantos - 1 - ayudantes.length;
     asignaciones.push({
       muebleId: e.c.mueble.id,
       renglonId: t.renglonId,
@@ -250,10 +250,7 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
       personaId: lider ? lider.id : null,
       persona: lider ? lider.nombre : "Nadie sabe hacerla",
       costoHora: lider ? pos(lider.costoHora) : peorCaso,
-      ayudantes: [
-        ...ayudantes.map((p) => ({ personaId: p.id, persona: p.nombre, costoHora: pos(p.costoHora), especialista: !p.ayudante })),
-        ...Array.from({ length: faltan }, () => ({ personaId: null, persona: "Falta una persona", costoHora: peorAyudante })),
-      ],
+      ayudantes: ayudantes.map((p) => ({ personaId: p.id, persona: p.nombre, costoHora: pos(p.costoHora), especialista: !p.ayudante })),
       inicio: r2(inicio),
       fin,
     });
@@ -272,7 +269,7 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
   };
   asignaciones.forEach((a) => {
     sumar(a.personaId == null ? "sin-idoneo" : String(a.personaId), a.personaId, a.persona, a.costoHora, a.horas);
-    a.ayudantes.forEach((y) => sumar(y.personaId == null ? "falta-ayudante" : String(y.personaId), y.personaId, y.personaId == null ? "Personas que faltan" : y.persona, y.costoHora, a.horas));
+    a.ayudantes.forEach((y) => sumar(String(y.personaId), y.personaId, y.persona, y.costoHora, a.horas));
   });
   const lista = Array.from(porPersona.values()).sort((a, b) => (a.personaId == null ? 1 : 0) - (b.personaId == null ? 1 : 0) || b.costoHora - a.costoHora);
   return {
@@ -281,7 +278,7 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     costo: Math.round(lista.reduce((s, p) => s + p.costo, 0) * 100) / 100,
     porPersona: lista,
     sinPersona: asignaciones.filter((a) => a.personaId == null),
-    faltanAyudantes: asignaciones.filter((a) => a.ayudantes.some((y) => y.personaId == null)),
+    horasRelojSinEsperas: r2(Math.max(0, ...calculados.map((c) => c.horasReloj))),
     especialistasDeAyudante: (() => {
       const tareas = asignaciones.filter((a) => a.ayudantes.some((y) => y.especialista));
       return { tareas, horas: r2(tareas.reduce((s, a) => s + a.horas * a.ayudantes.filter((y) => y.especialista).length, 0)) };
