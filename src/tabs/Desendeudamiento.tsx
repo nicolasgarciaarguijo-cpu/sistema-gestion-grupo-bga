@@ -546,7 +546,7 @@ export function DesendeudamientoTab({
                                   title="Desvincular el pago (el pago queda cargado; la cuota vuelve a pendiente)"
                                   onClick={(ev) => {
                                     ev.stopPropagation();
-                                    if (window.confirm("¿Desvincular el pago de esta cuota? El pago queda cargado; la cuota vuelve a pendiente.")) onQuitarPago(d.id, c.id);
+                                    if (window.confirm("¿Quitar el pago de esta cuota? La cuota vuelve a pendiente. Si el pago se cargó desde acá, se borra; si era un pago que ya estaba cargado, queda y solo se desvincula.")) onQuitarPago(d.id, c.id);
                                   }}
                                 >
                                   ↩
@@ -659,7 +659,7 @@ export function DesendeudamientoTab({
                               style={{ ...btnFila, color: "#b91c1c", borderColor: "#fecaca" }}
                               title="Desvincular el pago de la cuota (el pago queda cargado)"
                               onClick={() => {
-                                if (window.confirm("¿Desvincular el pago de esta cuota? El pago queda cargado; la cuota vuelve a pendiente.")) onQuitarPago(d.id, c.id);
+                                if (window.confirm("¿Quitar el pago de esta cuota? La cuota vuelve a pendiente. Si el pago se cargó desde acá, se borra; si era un pago que ya estaba cargado, queda y solo se desvincula.")) onQuitarPago(d.id, c.id);
                               }}
                             >
                               ↩ Desvincular
@@ -699,7 +699,7 @@ export function DesendeudamientoTab({
             <button
               style={quickMenuItem}
               onClick={() => {
-                if (window.confirm("¿Desvincular el pago de esta cuota? El pago queda cargado; la cuota vuelve a pendiente.")) onQuitarPago(deudaMenu.id, cuotaMenu.id);
+                if (window.confirm("¿Quitar el pago de esta cuota? La cuota vuelve a pendiente. Si el pago se cargó desde acá, se borra; si era un pago que ya estaba cargado, queda y solo se desvincula.")) onQuitarPago(deudaMenu.id, cuotaMenu.id);
                 setMenu(null);
               }}
             >

@@ -13481,6 +13481,12 @@ Escribi CERRAR para confirmar:`
   const quitarPagoCuota = (deudaId: number, cuotaId: string) => {
     const d = debtPlans.find((x) => x.id === deudaId);
     if (!d) return;
+    // El pago que se cargo DESDE la cuota se borra con ella (2026-10-26): antes solo se desvinculaba y, al
+    // volver a pagar la cuota, quedaba un pago huerfano repetido (cash flow, banco y "a favor" del acreedor
+    // inflados). Un pago que ya existia y se vinculo a mano queda cargado: solo se desvincula.
+    const pagoId = cuotasDeDeuda(d).find((c) => c.id === cuotaId)?.pagoCostEntryId;
+    const pago = pagoId != null ? costEntries.find((e) => e.id === pagoId) : undefined;
+    if (pago && /Pago de cuota \(Desendeudamiento\)/.test(pago.notes || "")) return removeCostEntry(pago.id);
     actualizarDeuda(deudaId, { cuotas: cuotasDeDeuda(d).map((c) => (c.id === cuotaId ? { ...c, pagoCostEntryId: null } : c)) });
   };
 
