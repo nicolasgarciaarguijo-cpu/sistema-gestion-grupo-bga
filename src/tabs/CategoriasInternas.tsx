@@ -11,7 +11,9 @@ import {
 import {
   capacidadesDelEmpleado,
   categoriasEfectivas,
+  etiquetaCategoria,
   hayCiclo,
+  nombreEscalon,
   tareasHeredadas,
   type CategoriaEmpleado,
 } from "../domain/categoriasEmpleado";
@@ -24,6 +26,13 @@ const caja: React.CSSProperties = { background: "#fff", borderRadius: 12, width:
 const sub: React.CSSProperties = { fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, marginTop: 4 };
 const check: React.CSSProperties = { display: "flex", gap: 6, alignItems: "center", fontSize: 13, padding: "2px 0", cursor: "pointer" };
 const unidadLabel = (t?: TipoTarea) => UNIDADES_TAREA.find((u) => u.value === (t?.unidad || "u"))?.label || "unidades";
+
+// Escalon por escalon (1 Aprendiz ... 5 Responsable), y al final las habilidades extra.
+const claveEscalon = (c: CategoriaEmpleado) => (c.extra ? Number.MAX_SAFE_INTEGER : c.nivel);
+const ordenarPorEscalon = (cats: CategoriaEmpleado[]) =>
+  [...cats].sort((a, b) => claveEscalon(a) - claveEscalon(b) || a.nombre.localeCompare(b.nombre) || (a.area || "").localeCompare(b.area || ""));
+const tituloEscalon = (c: CategoriaEmpleado) => (c.extra ? "Habilidades extra · se suman a cualquier escalón" : `Escalón ${c.nivel} · ${nombreEscalon(c.nivel)}`);
+const filaTitulo: React.CSSProperties = { background: "#f8fafc", fontSize: 11, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4, padding: "5px 8px" };
 
 // Tareas agrupadas como en el catalogo de Fabricacion (grupo de trabajo), para tildar.
 function tareasPorGrupo(tipos: TipoTarea[], grupos: GrupoTrabajo[]) {
@@ -56,9 +65,12 @@ export function CategoriasInternas({
   const [menu, setMenu] = useState<{ x: number; y: number; cat: CategoriaEmpleado } | null>(null);
   const [editTareas, setEditTareas] = useState<number | null>(null);
   const [editIncluye, setEditIncluye] = useState<number | null>(null);
-  const ordenadas = [...categorias].sort((a, b) => a.nivel - b.nivel || a.nombre.localeCompare(b.nombre));
+  const ordenadas = ordenarPorEscalon(categorias);
   const nombreTarea = (id: number) => tipos.find((t) => t.id === id)?.nombre;
-  const nombreCat = (id: number) => categorias.find((c) => c.id === id)?.nombre || "—";
+  const nombreCat = (id: number) => {
+    const x = categorias.find((c) => c.id === id);
+    return x ? etiquetaCategoria(x, categorias) : "—";
+  };
   // Quienes estan en una categoria: la tienen tildada o la alcanzan por una superior.
   const empleadosDe = (catId: number) => empleados.filter((e) => categoriasEfectivas(e.categoriasInternas, categorias).has(catId));
   const abrirMenu = (ev: React.MouseEvent, cat: CategoriaEmpleado) => {
@@ -73,7 +85,7 @@ export function CategoriasInternas({
   return (
     <Panel span="full" title="Categorías internas" actions={<ButtonLike onClick={nueva}>+ Categoría</ButtonLike>}>
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
-        No son las del convenio (esas liquidan): son las capacidades de cada persona. Cada categoría da tareas del catálogo de Fabricación y suma las de las categorías que incluye, así que quien sube conserva lo que ya hacía. A la hora de organizar el día se priorizan las tareas de la categoría más alta. Click derecho sobre una categoría: tareas, qué incluye, pausar o borrar.
+        No son las del convenio (esas liquidan): son las capacidades de cada persona, por escalones. Aprendiz → Ayudante general → Ayudante especializado (con su rumbo) → el oficio → Responsable. Cada escalón suma lo de abajo, así que quien sube conserva lo que ya hacía, y se priorizan las tareas del escalón más alto. Las habilidades extra (Terminaciones) no son escalón: se suman a quien las tenga. Click derecho sobre una categoría: tareas, qué incluye, pausar o borrar.
       </div>
       {tipos.length === 0 && (
         <div style={{ fontSize: 12.5, color: "#b45309", marginBottom: 8 }}>
@@ -89,6 +101,7 @@ export function CategoriasInternas({
             <col style={colDato} />
             <col style={colDato} />
             <col style={colDato} />
+            <col style={colDato} />
             <col style={colFlexible} />
           </colgroup>
           <thead>
@@ -98,9 +111,10 @@ export function CategoriasInternas({
                 <PlanillaManija onMouseDown={(ev) => anchos.startResize(ev, "label")} onDoubleClick={anchos.resetLabel} />
               </th>
               <th style={{ ...thColumna, textAlign: "right" }} title="Escalón: a más alto, más prioridad tienen sus tareas">
-                Nivel
+                Escalón
                 <PlanillaManija onMouseDown={(ev) => anchos.startResize(ev, "col")} onDoubleClick={anchos.resetCol} />
               </th>
+              <th style={thColumna} title="Rumbo / área dentro del escalón (vacío = vale para todos)">Rumbo</th>
               <th style={thColumna}>Incluye a</th>
               <th style={{ ...thColumna, textAlign: "right" }}>Tareas propias</th>
               <th style={{ ...thColumna, textAlign: "right" }}>Con heredadas</th>
@@ -109,12 +123,19 @@ export function CategoriasInternas({
             </tr>
           </thead>
           <tbody>
-            {ordenadas.map((cat) => {
+            {ordenadas.map((cat, i) => {
               const heredadas = tareasHeredadas(cat, categorias);
               const gente = empleadosDe(cat.id);
               const pausada = cat.activa === false;
+              const titulo = i === 0 || tituloEscalon(ordenadas[i - 1]) !== tituloEscalon(cat);
               return (
-                <tr key={cat.id} onContextMenu={(ev) => abrirMenu(ev, cat)} style={{ opacity: pausada ? 0.5 : 1 }}>
+                <React.Fragment key={cat.id}>
+                {titulo && (
+                  <tr>
+                    <td colSpan={8} style={filaTitulo}>{tituloEscalon(cat)}</td>
+                  </tr>
+                )}
+                <tr onContextMenu={(ev) => abrirMenu(ev, cat)} style={{ opacity: pausada ? 0.5 : 1 }}>
                   <td style={tdNombre}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span
@@ -126,14 +147,21 @@ export function CategoriasInternas({
                     </span>
                   </td>
                   <td style={tdDato}>
-                    <input
-                      style={inputCeldaDerecha}
-                      type="number"
-                      min={1}
-                      value={cat.nivel}
-                      onChange={(e) => onGuardar({ ...cat, nivel: Math.max(1, Number(e.target.value) || 1) })}
-                      {...focoCelda}
-                    />
+                    {cat.extra ? (
+                      <span style={{ display: "block", textAlign: "right", fontSize: 12, color: "#7c3aed" }}>extra</span>
+                    ) : (
+                      <input
+                        style={inputCeldaDerecha}
+                        type="number"
+                        min={1}
+                        value={cat.nivel}
+                        onChange={(e) => onGuardar({ ...cat, nivel: Math.max(1, Number(e.target.value) || 1) })}
+                        {...focoCelda}
+                      />
+                    )}
+                  </td>
+                  <td style={tdDato}>
+                    <input style={inputCelda} value={cat.area || ""} placeholder="—" onChange={(e) => onGuardar({ ...cat, area: e.target.value || undefined })} {...focoCelda} />
                   </td>
                   <td style={{ ...tdDato, fontSize: 12, color: "#475569" }} title={cat.incluye.map(nombreCat).join(", ")}>
                     {cat.incluye.length ? cat.incluye.map(nombreCat).join(", ") : "—"}
@@ -151,6 +179,7 @@ export function CategoriasInternas({
                     {!cat.tareaIds.length && !heredadas.length && <span style={{ color: "#94a3b8" }}>Sin tareas (click derecho → Tareas…)</span>}
                   </td>
                 </tr>
+                </React.Fragment>
               );
             })}
           </tbody>
@@ -164,6 +193,13 @@ export function CategoriasInternas({
           <button type="button" style={quickMenuItem} onClick={() => { setEditIncluye(menu.cat.id); setMenu(null); }}>Qué categorías incluye…</button>
           <button type="button" style={quickMenuItem} onClick={() => { onGuardar({ ...menu.cat, activa: menu.cat.activa === false }); setMenu(null); }}>
             {menu.cat.activa === false ? "Activar" : "Pausar"}
+          </button>
+          <button
+            type="button"
+            style={quickMenuItem}
+            onClick={() => { onGuardar(menu.cat.extra ? { ...menu.cat, extra: false, nivel: Math.max(1, menu.cat.nivel) } : { ...menu.cat, extra: true }); setMenu(null); }}
+          >
+            {menu.cat.extra ? "Pasar a escalón" : "Convertir en habilidad extra"}
           </button>
           <QuickMenuSep />
           <button type="button" style={quickMenuItem} onClick={() => { nueva(); setMenu(null); }}>+ Categoría nueva</button>
@@ -185,7 +221,7 @@ export function CategoriasInternas({
       {catTareas && (
         <div style={overlay} onClick={() => setEditTareas(null)}>
           <div style={caja} onClick={(e) => e.stopPropagation()}>
-            <strong style={{ fontSize: 15 }}>Tareas de {catTareas.nombre}</strong>
+            <strong style={{ fontSize: 15 }}>Tareas de {etiquetaCategoria(catTareas, categorias)}</strong>
             <div style={{ fontSize: 12.5, color: "#64748b" }}>
               Tildá las tareas propias de esta categoría. Las que ya da una categoría que incluye aparecen como heredadas: no hace falta repetirlas.
             </div>
@@ -246,7 +282,7 @@ export function CategoriasInternas({
                       disabled={ciclo}
                       onChange={(e) => onGuardar({ ...catIncluye, incluye: e.target.checked ? [...catIncluye.incluye, x.id] : catIncluye.incluye.filter((id) => id !== x.id) })}
                     />
-                    {x.nombre} <span style={{ fontSize: 11.5, color: "#94a3b8" }}>nivel {x.nivel}{ciclo ? " · ya la incluye a ella" : ""}</span>
+                    {etiquetaCategoria(x, categorias)} <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{x.extra ? "extra" : `escalón ${x.nivel}`}{ciclo ? " · ya la incluye a ella" : ""}</span>
                   </label>
                 );
               })}
@@ -276,18 +312,20 @@ export function CategoriasDelEmpleado({
   const efectivas = categoriasEfectivas(tildadas, categorias);
   const caps = capacidadesDelEmpleado(tildadas, categorias);
   const maxNivel = caps.length ? caps[0].prioridad : 0;
-  const ordenadas = [...categorias].filter((c) => c.activa !== false).sort((a, b) => a.nivel - b.nivel || a.nombre.localeCompare(b.nombre));
-  const niveles = Array.from(new Set(ordenadas.map((c) => c.nivel)));
+  const ordenadas = ordenarPorEscalon(categorias.filter((c) => c.activa !== false));
+  const bloques = Array.from(new Set(ordenadas.map(tituloEscalon)));
+  // En los escalones con rumbo, el rumbo solo alcanza (bajo "Ayudante especializado": Armado, Laqueado...).
+  const etiquetaEnBloque = (c: CategoriaEmpleado) => (c.area && ordenadas.filter((x) => tituloEscalon(x) === tituloEscalon(c) && x.nombre === c.nombre).length > 1 ? c.area : c.nombre);
   return (
     <Panel title="Categorías internas y capacidades" span="full" nested>
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 6 }}>
-        Tildá las categorías que puede desempeñar. Las que incluyen se suman solas (en gris). En la organización diaria solo se le pueden dar estas tareas, priorizando las de su categoría más alta.
+        Tildá su escalón y su rumbo (lo de abajo se suma solo, en gris) y sus habilidades extra. En la organización diaria solo se le pueden dar estas tareas, priorizando las de su escalón más alto.
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "2px 14px" }}>
-        {niveles.map((n) => (
-          <div key={n}>
-            <div style={sub}>Nivel {n}</div>
-            {ordenadas.filter((c) => c.nivel === n).map((c) => {
+        {bloques.map((b) => (
+          <div key={b}>
+            <div style={sub}>{b.replace(" · se suman a cualquier escalón", "")}</div>
+            {ordenadas.filter((c) => tituloEscalon(c) === b).map((c) => {
               const directa = tildadas.includes(c.id);
               const porArrastre = !directa && efectivas.has(c.id);
               return (
@@ -297,7 +335,7 @@ export function CategoriasDelEmpleado({
                     checked={directa || porArrastre}
                     onChange={(e) => onCambiar(e.target.checked ? [...tildadas, c.id] : tildadas.filter((id) => id !== c.id))}
                   />
-                  {c.nombre}
+                  {etiquetaEnBloque(c)}
                   {porArrastre && <span style={{ fontSize: 11 }}>(incluida)</span>}
                 </label>
               );
@@ -317,7 +355,7 @@ export function CategoriasDelEmpleado({
             return (
               <span
                 key={x.tareaId}
-                title={`De ${categorias.find((c) => c.id === x.categoriaId)?.nombre || ""}${nueva ? " · prioritaria" : ""}`}
+                title={`De ${(() => { const c = categorias.find((k) => k.id === x.categoriaId); return c ? etiquetaCategoria(c, categorias) : ""; })()}${nueva ? " · prioritaria" : ""}`}
                 style={{
                   fontSize: 12, borderRadius: 999, padding: "2px 8px",
                   background: nueva ? "#ccfbf1" : "#f1f5f9", color: nueva ? "#115e59" : "#475569",

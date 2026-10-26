@@ -675,6 +675,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         ],
       },
       {
+        heading: "Tipos de mueble",
+        blocks: [
+          { type: "p", text: "Cada tipo de mueble es una receta de tareas del catálogo, ordenada por pasos. Mismo número de paso = en paralelo (3.1, 3.2, por distintas personas); el paso siguiente espera a que termine todo el anterior. Cada renglón dice cuánto lleva y de qué medida sale (por mueble, por ml de largo, por m² de frente o por m³), y con el tiempo estándar de la tarea da las horas." },
+          { type: "steps", items: ["Fabricación → Tipos de mueble → '+ Tipo de mueble' (o 'Crear desde un grupo de trabajo…', que copia sus tareas como pasos).", "Click derecho → 'Receta y tiempos…': agregá tareas, ajustá paso, cantidad y de qué medida sale. Click derecho sobre un renglón para subirlo, bajarlo o ponerlo en paralelo con el paso anterior.", "Abajo, 'Probar tiempos': con otras medidas ves las horas-hombre y las horas de reloj; podés corregir una cantidad a mano para comparar."] },
+          { type: "tip", text: "Las horas salen del tiempo estándar de cada tarea (catálogo de tareas). Si una tarea no lo tiene cargado, el total queda corto y se marca con *." }
+        ],
+      },
+      {
         heading: "Trabajos en curso",
         blocks: [
           {
@@ -782,8 +790,8 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       {
         heading: "Categorías internas (capacidades)",
         blocks: [
-          { type: "p", text: "Además de la categoría del convenio (la que liquida), cada persona tiene categorías INTERNAS que dicen qué tareas de fabricación puede hacer. Son acumulativas: cada categoría incluye a las de abajo, y al organizar el día se priorizan las tareas de la categoría más alta." },
-          { type: "steps", items: ["Personal → Categorías internas: click derecho sobre una categoría → 'Tareas…' para tildar las tareas que da (del catálogo de Fabricación).", "Click derecho → 'Qué categorías incluye…' para armar la escalera (ej. Armador general incluye a Ayudante de fabricación).", "En la ficha del empleado, 'Categorías internas y capacidades': tildá las que puede desempeñar."] },
+          { type: "p", text: "Además de la categoría del convenio (la que liquida), cada persona tiene categorías INTERNAS que dicen qué tareas de fabricación puede hacer. Van por escalones: Aprendiz → Ayudante general → Ayudante especializado (con su rumbo) → el oficio (Armador, Mecanizador, Enchapador, Laqueador, Instalador, Herrero) → Responsable. Cada escalón incluye a los de abajo de su rumbo, y al organizar el día se priorizan las tareas del escalón más alto. Terminaciones es una habilidad extra: no es escalón, se suma a quien la tenga." },
+          { type: "steps", items: ["Personal → Categorías internas: click derecho sobre una categoría → 'Tareas…' para tildar las tareas que da (del catálogo de Fabricación).", "Click derecho → 'Qué categorías incluye…' si querés cambiar la escalera, o 'Convertir en habilidad extra'.", "En la ficha del empleado, 'Categorías internas y capacidades': tildá su escalón con su rumbo y sus habilidades extra."] },
           { type: "tip", text: "Mientras una persona no tenga categorías cargadas, en la organización diaria se le puede dar cualquier tarea." }
         ],
       },

@@ -9,46 +9,62 @@
 // Las tareas son las del catalogo de Fabricacion (TipoTarea), asi el mismo id viaja de la ficha del
 // empleado a la organizacion diaria y, despues, al cronograma. Funciones puras.
 
+// Ajuste de Nicolas (2026-10-26): no son 22 categorias sueltas sino ESCALONES. Aprendiz → Ayudante general →
+// Ayudante especializado (la misma categoria, se elige un RUMBO) → el oficio (Armador, Instalador, Laqueador,
+// Enchapador, Mecanizador, Herrero: mismo escalon, distinta area) → Responsable, el ultimo. Terminaciones no
+// es un escalon: son HABILIDADES EXTRA de ciertas personas. Por dentro sigue siendo una categoria por
+// escalon y rumbo (cada rumbo da tareas distintas), encadenadas con "incluye".
 export type CategoriaEmpleado = {
   id: number;
   nombre: string;
   // Escalon: a mas alto, mas nueva la tarea para el empleado (se prioriza al armar el cronograma).
   nivel: number;
-  // Categorias inferiores que esta suma (lo acumulativo): Armador general incluye a Ayudante de
-  // fabricacion, que incluye a Ayudante general, que incluye a Aprendiz.
+  // Categorias inferiores que esta suma (lo acumulativo): Armador incluye a Ayudante especializado de
+  // Armado, que incluye a Ayudante general, que incluye a Aprendiz.
   incluye: number[];
   // Tareas propias de la categoria (ids del catalogo de Fabricacion). Las heredadas no se repiten.
   tareaIds: number[];
+  // Rumbo / area dentro del escalon (Armado, Laqueado...). Sin rumbo = vale para todos.
+  area?: string;
+  // Habilidad extra (Terminaciones): no es escalon, se suma a cualquiera.
+  extra?: boolean;
   descripcion?: string;
   activa?: boolean;
 };
 
+export const ESCALONES: Record<number, string> = {
+  1: "Aprendiz",
+  2: "Ayudante general",
+  3: "Ayudante especializado",
+  4: "Oficio",
+  5: "Responsable",
+};
+export const nombreEscalon = (nivel: number) => ESCALONES[nivel] || `Escalón ${nivel}`;
+
+// "Ayudante especializado · Laqueado": el rumbo se agrega cuando el nombre solo no alcanza (lo comparten
+// varias categorias); "Laqueador" ya lo dice.
+export function etiquetaCategoria(cat: CategoriaEmpleado, catalogo: CategoriaEmpleado[]): string {
+  const repetido = !!cat.area && catalogo.some((x) => x.id !== cat.id && x.nombre === cat.nombre);
+  return repetido ? `${cat.nombre} · ${cat.area}` : cat.nombre;
+}
+
+export const RUMBOS_POR_DEFECTO = ["Armado", "Mecanizado", "Enchapado", "Laqueado", "Instalación", "Herrería"];
+const OFICIOS = ["Armador", "Mecanizador", "Enchapador", "Laqueador", "Instalador", "Herrero"];
+
 // La lista de siempre. Se guarda recien al primer cambio (hasta ahi se muestra esta), como los rubros
-// del Gantt. Los "incluye" son una propuesta: se corrigen en la solapa.
-const c = (id: number, nombre: string, nivel: number, incluye: number[] = []): CategoriaEmpleado => ({ id, nombre, nivel, incluye, tareaIds: [] });
+// del Gantt. Todo se corrige en la solapa.
+const c = (id: number, nombre: string, nivel: number, incluye: number[] = [], mas: Partial<CategoriaEmpleado> = {}): CategoriaEmpleado => ({ id, nombre, nivel, incluye, tareaIds: [], ...mas });
 export const CATEGORIAS_POR_DEFECTO: CategoriaEmpleado[] = [
   c(1, "Aprendiz", 1),
   c(2, "Ayudante general", 2, [1]),
-  c(3, "Ayudante de laqueado", 3, [2]),
-  c(4, "Ayudante de fabricación", 3, [2]),
-  c(5, "Ayudante de instalación", 3, [2]),
-  c(6, "Ayudante de herrería", 3, [2]),
-  c(7, "Instalador general", 4, [5]),
-  c(8, "Instalador especializado", 5, [7]),
-  c(9, "Armador general", 4, [4]),
-  c(10, "Armador especializado", 5, [9]),
-  c(11, "Mecanizador general", 4, [4]),
-  c(12, "Mecanizador especializado", 5, [11]),
-  c(13, "Terminaciones general", 4, [4]),
-  c(14, "Terminaciones especializado", 5, [13]),
-  c(15, "Laqueador general", 4, [3]),
-  c(16, "Laqueador especializado", 5, [15]),
-  c(17, "Enchapados general", 4, [4]),
-  c(18, "Enchapados especializado", 5, [17]),
-  c(19, "Responsable de fábrica", 6),
-  c(20, "Responsable de obra", 6, [8]),
-  c(21, "Herrero general", 4, [6]),
-  c(22, "Herrero especializado", 5, [21]),
+  // 3..8: Ayudante especializado, uno por rumbo.
+  ...RUMBOS_POR_DEFECTO.map((area, i) => c(3 + i, "Ayudante especializado", 3, [2], { area })),
+  // 9..14: el oficio de cada rumbo, que incluye a su ayudante especializado.
+  ...OFICIOS.map((nombre, i) => c(9 + i, nombre, 4, [3 + i], { area: RUMBOS_POR_DEFECTO[i] })),
+  c(15, "Responsable de fábrica", 5),
+  c(16, "Responsable de obra", 5, [13], { area: "Instalación" }),
+  c(17, "Terminaciones general", 0, [], { extra: true }),
+  c(18, "Terminaciones especializado", 0, [17], { extra: true }),
 ];
 
 const activas = (catalogo: CategoriaEmpleado[]) => catalogo.filter((x) => x.activa !== false);
@@ -82,14 +98,16 @@ export function capacidadesDelEmpleado(tildadas: number[] | undefined, catalogo:
   const efectivas = categoriasEfectivas(tildadas, catalogo);
   const directas = new Set(tildadas || []);
   const porTarea = new Map<number, Capacidad>();
-  activas(catalogo)
-    .filter((cat) => efectivas.has(cat.id))
-    .forEach((cat) =>
-      cat.tareaIds.forEach((tareaId) => {
-        const prev = porTarea.get(tareaId);
-        if (!prev || cat.nivel > prev.prioridad) porTarea.set(tareaId, { tareaId, prioridad: cat.nivel, categoriaId: cat.id, heredada: !directas.has(cat.id) });
-      })
-    );
+  const alcanzadas = activas(catalogo).filter((cat) => efectivas.has(cat.id));
+  // Las habilidades extra no son escalon: valen lo mismo que su escalon mas alto (son lo que lo distingue).
+  const tope = Math.max(1, ...alcanzadas.filter((x) => !x.extra).map((x) => x.nivel));
+  alcanzadas.forEach((cat) => {
+    const prioridad = cat.extra ? tope : cat.nivel;
+    cat.tareaIds.forEach((tareaId) => {
+      const prev = porTarea.get(tareaId);
+      if (!prev || prioridad > prev.prioridad) porTarea.set(tareaId, { tareaId, prioridad, categoriaId: cat.id, heredada: !directas.has(cat.id) });
+    });
+  });
   return Array.from(porTarea.values()).sort((a, b) => b.prioridad - a.prioridad || a.tareaId - b.tareaId);
 }
 
@@ -102,13 +120,23 @@ export function puedeHacer(tildadas: number[] | undefined, tareaId: number, cata
 
 export const tieneCategorias = (tildadas: number[] | undefined) => !!tildadas && tildadas.length > 0;
 
-// La categoria "de cartel" del empleado: la tildada de mayor nivel.
+// La categoria "de cartel" del empleado: la tildada de mayor escalon (las habilidades extra no cuentan).
 export function categoriaPrincipal(tildadas: number[] | undefined, catalogo: CategoriaEmpleado[]): CategoriaEmpleado | undefined {
   const porId = new Map(activas(catalogo).map((x) => [x.id, x]));
   return (tildadas || [])
     .map((id) => porId.get(id))
-    .filter((x): x is CategoriaEmpleado => !!x)
+    .filter((x): x is CategoriaEmpleado => !!x && !x.extra)
     .sort((a, b) => b.nivel - a.nivel || a.nombre.localeCompare(b.nombre))[0];
+}
+
+// Rumbos del empleado (las areas de lo que alcanza) y sus habilidades extra.
+export function rumbosDelEmpleado(tildadas: number[] | undefined, catalogo: CategoriaEmpleado[]): string[] {
+  const ef = categoriasEfectivas(tildadas, catalogo);
+  return Array.from(new Set(activas(catalogo).filter((x) => ef.has(x.id) && !x.extra && x.area).map((x) => x.area as string)));
+}
+export function extrasDelEmpleado(tildadas: number[] | undefined, catalogo: CategoriaEmpleado[]): CategoriaEmpleado[] {
+  const ef = categoriasEfectivas(tildadas, catalogo);
+  return activas(catalogo).filter((x) => ef.has(x.id) && !!x.extra);
 }
 
 // Tareas heredadas de una categoria (las de las inferiores que incluye), sin las propias.

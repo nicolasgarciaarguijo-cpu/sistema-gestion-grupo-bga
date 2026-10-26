@@ -6,6 +6,8 @@ import { createRoot } from "react-dom/client";
 import { act } from "react-dom/test-utils";
 import { CategoriasInternas, CategoriasDelEmpleado } from "./CategoriasInternas";
 import { CapacidadesPersonal } from "./CapacidadesPersonal";
+import { TiposMueble } from "./TiposMueble";
+import type { TipoMueble } from "../domain/tiposMueble";
 import type { CategoriaEmpleado } from "../domain/categoriasEmpleado";
 import type { TipoTarea } from "../domain/organizacionDiaria";
 
@@ -74,6 +76,40 @@ describe("CategoriasInternas", () => {
     expect(div.textContent).toContain("Sin categoría cargada: Pedro");
     expect(div.textContent).toContain("1 sin nadie");
     expect(div.textContent).toContain("Nadie: puesto a cubrir");
+    act(() => root.unmount());
+    div.remove();
+  });
+});
+
+describe("TiposMueble", () => {
+  it("lista la receta por pasos y el editor calcula los tiempos", () => {
+    const tareas: TipoTarea[] = [
+      { id: 1, nombre: "Cortar placas", unidad: "m2", horasEstimadas: 0.5 },
+      { id: 2, nombre: "Cantear", unidad: "ml", horasEstimadas: 0.1 },
+      { id: 3, nombre: "Mecanizar", unidad: "u", horasEstimadas: 1 },
+    ];
+    const tipo: TipoMueble = {
+      id: 10,
+      nombre: "Bajo mesada",
+      largo: 2,
+      alto: 0.8,
+      profundidad: 0.6,
+      receta: [
+        { id: 101, tareaId: 1, paso: 1, factor: 2.5, base: "m2" },
+        { id: 102, tareaId: 2, paso: 2, factor: 3, base: "ml" },
+        { id: 103, tareaId: 3, paso: 2, factor: 2, base: "u" },
+      ],
+    };
+    const { div, root } = montar(<TiposMueble tipos={[tipo]} tareas={tareas} grupos={[]} onGuardar={jest.fn()} onBorrar={jest.fn()} nuevoId={() => 5} />);
+    const fila = Array.from(div.querySelectorAll("tbody tr")).find((f) => f.textContent?.includes("2.1 Cantear"))!;
+    expect(fila.textContent).toContain("2.2 Mecanizar");
+    act(() => {
+      fila.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    });
+    act(() => Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "Receta y tiempos…")!.click());
+    // 2 h cortar + (0,6 cantear ∥ 2 mecanizar): 4,6 h-hombre y 4 h de reloj
+    expect(document.body.textContent).toContain("4,6 h-hombre");
+    expect(document.body.textContent).toContain("4 h de reloj");
     act(() => root.unmount());
     div.remove();
   });

@@ -16,19 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
-    id: "2026-10-25a",
-    fecha: "25/10/2026",
-    titulo: "Categorías internas del personal y sus capacidades",
+    id: "2026-10-26a",
+    fecha: "26/10/2026",
+    titulo: "Categorías internas del personal y tipos de mueble",
     items: [
       {
         titulo: "Categorías internas con sus tareas",
-        que: "Personal tiene un bloque nuevo, 'Categorías internas' (Aprendiz, Ayudantes, Armador, Mecanizador, Laqueador, Instalador, Herrero, Responsables…). No son las del convenio: son las capacidades. Cada una da tareas del catálogo de Fabricación y suma las de las categorías que incluye (quien sube conserva lo que ya hacía). El nivel define qué tareas se priorizan.",
-        como: "Personal → Categorías internas: el nombre y el nivel se escriben en la celda; click derecho sobre una categoría → 'Tareas…' o 'Qué categorías incluye…'.",
+        que: "Personal tiene un bloque nuevo, 'Categorías internas', por escalones: Aprendiz → Ayudante general → Ayudante especializado (con su rumbo: Armado, Mecanizado, Enchapado, Laqueado, Instalación, Herrería) → el oficio (Armador, Mecanizador, Enchapador, Laqueador, Instalador, Herrero) → Responsable. Terminaciones va aparte, como habilidad extra. No son las del convenio: son las capacidades. Cada escalón suma lo de abajo (quien sube conserva lo que ya hacía) y se priorizan las tareas del escalón más alto.",
+        como: "Personal → Categorías internas: nombre, escalón y rumbo se escriben en la celda; click derecho sobre una categoría → 'Tareas…'.",
         tab: "personal",
       },
       {
         titulo: "Las categorías de cada persona",
-        que: "En la ficha de cada empleado se tildan las categorías que puede desempeñar y se ve todo lo que puede hacer, con las tareas de su categoría más alta resaltadas.",
+        que: "En la ficha de cada empleado se tilda su escalón y su rumbo (lo de abajo se marca solo) y sus habilidades extra, y se ve todo lo que puede hacer, con las tareas de su escalón más alto resaltadas.",
         como: "Personal → abrí la ficha → 'Categorías internas y capacidades'.",
         tab: "personal",
       },
@@ -36,6 +36,12 @@ export const NOVEDADES: TandaNovedades[] = [
         titulo: "Capacidades en Fabricación y tareas con unidad",
         que: "Fabricación muestra 'Capacidades del personal': qué domina cada uno y, por tarea, quién la puede hacer (las que no tiene nadie o dependen de una sola persona son el puesto a cubrir). En la organización diaria, a quien tiene categorías solo se le pueden dar sus tareas, primero las más nuevas. Las tareas del catálogo ahora tienen unidad (unidades, metros lineales, m², m³) y horas por unidad.",
         como: "Fabricación → Capacidades del personal. En Tipos de tarea y grupos de trabajo elegí la unidad de cada tarea.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Tipos de mueble con su receta",
+        que: "Fabricación tiene 'Tipos de mueble': cada uno es una receta de tareas del catálogo ordenada por pasos. Las del mismo paso (3.1, 3.2) las pueden hacer distintas personas a la vez; el paso siguiente arranca cuando terminó todo el anterior. Cada tarea saca su cantidad de las medidas del mueble (por mueble, ml, m² o m³) y, con su tiempo estándar, da las horas-hombre y las horas de reloj mínimas.",
+        como: "Fabricación → Tipos de mueble → '+ Tipo de mueble' o 'Crear desde un grupo de trabajo…'. Click derecho → 'Receta y tiempos…' para cargar los pasos y probar con otras medidas.",
         tab: "fabricacion",
       },
     ],

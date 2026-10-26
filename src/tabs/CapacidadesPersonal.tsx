@@ -13,6 +13,8 @@ import {
   capacidadesDelEmpleado,
   categoriaPrincipal,
   coberturaDeTareas,
+  etiquetaCategoria,
+  extrasDelEmpleado,
   tieneCategorias,
   type CategoriaEmpleado,
 } from "../domain/categoriasEmpleado";
@@ -88,7 +90,10 @@ export function CapacidadesPersonal({
                     {e.name} <span style={{ fontSize: 11, color: "#94a3b8" }}>{companyShort(e.company)}</span>
                   </td>
                   <td style={{ ...tdDato, fontSize: 12, color: cp ? undefined : "#b45309" }} title={(e.categoriasInternas || []).map((id) => categorias.find((c) => c.id === id)?.nombre).filter(Boolean).join(", ")}>
-                    {cp ? cp.nombre : "sin cargar"}
+                    {cp ? etiquetaCategoria(cp, categorias) : "sin cargar"}
+                    {extrasDelEmpleado(e.categoriasInternas, categorias).map((x) => (
+                      <span key={x.id} style={{ marginLeft: 4, fontSize: 10.5, color: "#7c3aed" }}>+ {x.nombre}</span>
+                    ))}
                   </td>
                   <td style={{ ...tdDato, textAlign: "right" }}>{tieneCategorias(e.categoriasInternas) ? caps.length : "—"}</td>
                   <td style={tdFlexible}>

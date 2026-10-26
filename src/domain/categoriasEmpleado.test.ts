@@ -4,8 +4,10 @@ import {
   categoriaPrincipal,
   categoriasEfectivas,
   coberturaDeTareas,
+  etiquetaCategoria,
   hayCiclo,
   puedeHacer,
+  rumbosDelEmpleado,
   tareasHeredadas,
   type CategoriaEmpleado,
 } from "./categoriasEmpleado";
@@ -70,9 +72,18 @@ describe("categorias internas", () => {
     ]);
   });
 
-  it("la lista de siempre trae las 22 categorias sin ciclos", () => {
-    expect(CATEGORIAS_POR_DEFECTO).toHaveLength(22);
+  it("la lista de siempre: escalones con rumbo, sin ciclos", () => {
     CATEGORIAS_POR_DEFECTO.forEach((x) => expect(hayCiclo(x.id, x.incluye, CATEGORIAS_POR_DEFECTO)).toBe(false));
-    expect(Array.from(categoriasEfectivas([10], CATEGORIAS_POR_DEFECTO)).sort((a, b) => a - b)).toEqual([1, 2, 4, 9, 10]);
+    // Laqueador (12) → Ayudante especializado de Laqueado (6) → Ayudante general → Aprendiz
+    expect(Array.from(categoriasEfectivas([12], CATEGORIAS_POR_DEFECTO)).sort((a, b) => a - b)).toEqual([1, 2, 6, 12]);
+    expect(rumbosDelEmpleado([12], CATEGORIAS_POR_DEFECTO)).toEqual(["Laqueado"]);
+    expect(etiquetaCategoria(CATEGORIAS_POR_DEFECTO.find((x) => x.id === 6)!, CATEGORIAS_POR_DEFECTO)).toBe("Ayudante especializado · Laqueado");
+    expect(etiquetaCategoria(CATEGORIAS_POR_DEFECTO.find((x) => x.id === 12)!, CATEGORIAS_POR_DEFECTO)).toBe("Laqueador");
+  });
+
+  it("habilidades extra: no son escalon pero valen como el escalon mas alto", () => {
+    const conExtra: CategoriaEmpleado[] = [...cat, { id: 50, nombre: "Terminaciones", nivel: 0, incluye: [], tareaIds: [5000], extra: true }];
+    expect(capacidadesDelEmpleado([9, 50], conExtra).find((x) => x.tareaId === 5000)?.prioridad).toBe(4);
+    expect(categoriaPrincipal([9, 50], conExtra)?.nombre).toBe("Armador general");
   });
 });

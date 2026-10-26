@@ -25,7 +25,7 @@ import {
   UNIDADES_TAREA,
 } from "../domain/organizacionDiaria";
 import { timeToMinutes } from "../domain/attendance";
-import { capacidadesDelEmpleado, categoriaPrincipal, tieneCategorias, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
+import { capacidadesDelEmpleado, categoriaPrincipal, etiquetaCategoria, tieneCategorias, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
 
 export type EmpleadoOrg = { id: number; name: string; company: string; categoriasInternas?: number[] };
 export type TrabajoOrg = { id: number; budgetNumber: string; client: string; company: string; direccion?: string };
@@ -249,7 +249,7 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
                     <strong>{e.name}</strong> <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{companyShort(e.company)}</span>
                     {(() => {
                       const cp = categoriaPrincipal(e.categoriasInternas, categorias);
-                      return cp ? <span style={{ fontSize: 11.5, color: "#0f766e", marginLeft: 6 }}>{cp.nombre}</span> : <span style={{ fontSize: 11.5, color: "#b45309", marginLeft: 6 }}>sin categoría interna</span>;
+                      return cp ? <span style={{ fontSize: 11.5, color: "#0f766e", marginLeft: 6 }}>{etiquetaCategoria(cp, categorias)}</span> : <span style={{ fontSize: 11.5, color: "#b45309", marginLeft: 6 }}>sin categoría interna</span>;
                     })()}
                     <div style={{ fontSize: 12, color: "#64748b" }}>
                       {existe
