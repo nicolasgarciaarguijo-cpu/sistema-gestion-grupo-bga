@@ -23,7 +23,7 @@ export const NOVEDADES: TandaNovedades[] = [
       {
         titulo: "El aviso de pagos vencidos es solo un recordatorio",
         que: "Al abrir el sistema siguen apareciendo los pagos programados vencidos sin cargar, pero desde ahí ya no se paga ni se reprograma: cada uno tiene un botón que lleva a la ficha del proveedor (o a la solapa de donde sale, como Desendeudamiento o Bancos y Tarjetas) para gestionar el pago ahí.",
-        como: "En el aviso, tocá Ir a la ficha del proveedor. Cerrar o Esc lo esconde hasta la próxima vez que abras el sistema.",
+        como: "En el aviso, tocá Ir a la ficha del proveedor. Al cerrarlo queda siempre un cartel rojo abajo a la izquierda con los pagos vencidos, hasta que se carguen; tocándolo se vuelve a abrir.",
         tab: "calendarioAnual",
       },
       {

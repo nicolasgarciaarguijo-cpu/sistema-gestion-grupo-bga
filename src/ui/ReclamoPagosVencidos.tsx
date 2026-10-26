@@ -5,8 +5,8 @@ import { ORIGEN_LABEL, type ItemInamovible } from "../domain/agendaInamovibles";
 // RECORDATORIO DE PAGOS VENCIDOS (pedido de Nicolas, 2026-10-06; cambiado 2026-10-26): cuando llega la
 // fecha de un pago programado y no se cargo, aparece al abrir el sistema. Es SOLO un recordatorio: desde
 // aca no se paga ni se reprograma. Cada pago lleva a la ficha del proveedor (o a la solapa de donde sale)
-// y el pago se gestiona ahi. Se cierra con "Cerrar" o Esc; vuelve a aparecer la proxima vez que se abre
-// o se recarga el sistema (no se guarda en ningun lado: es solo de esta sesion de la pagina).
+// y el pago se gestiona ahi. Al cerrarlo (Cerrar o Esc) queda SIEMPRE un cartel rojo fijo abajo con cuantos
+// pagos vencidos hay, para no olvidarse; tocandolo se vuelve a abrir. Desaparece solo cuando no queda ninguno.
 
 const fmt = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}`;
 
@@ -34,7 +34,32 @@ export function ReclamoPagosVencidos({
     window.addEventListener("keydown", alApretar);
     return () => window.removeEventListener("keydown", alApretar);
   }, []);
-  if (items.length === 0 || cerradoPorAhora) return null;
+  if (items.length === 0) return null;
+  if (cerradoPorAhora)
+    return (
+      <button
+        type="button"
+        onClick={() => setCerradoPorAhora(false)}
+        title="Ver los pagos programados vencidos"
+        style={{
+          position: "fixed",
+          left: 16,
+          bottom: 16,
+          zIndex: 4900,
+          padding: "8px 14px",
+          borderRadius: 10,
+          border: "1px solid #fecaca",
+          background: "#b91c1c",
+          color: "#fff",
+          fontWeight: 800,
+          fontSize: 13,
+          boxShadow: "0 6px 20px rgba(0,0,0,0.25)",
+          cursor: "pointer",
+        }}
+      >
+        ⚠ {items.length} pago{items.length === 1 ? "" : "s"} vencido{items.length === 1 ? "" : "s"} sin cargar · ver
+      </button>
+    );
   return (
     <div
       role="dialog"
@@ -95,7 +120,7 @@ export function ReclamoPagosVencidos({
           ))}
         </div>
         <div style={{ padding: "10px 20px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11.5, color: "#94a3b8" }}>Vuelve a aparecer la próxima vez que abras el sistema.</span>
+          <span style={{ fontSize: 11.5, color: "#94a3b8" }}>Al cerrarlo queda un cartel rojo abajo a la izquierda hasta que se carguen.</span>
           <button
             type="button"
             onClick={() => setCerradoPorAhora(true)}
