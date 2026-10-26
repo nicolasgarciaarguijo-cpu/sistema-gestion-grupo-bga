@@ -705,6 +705,26 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         ],
       },
       {
+        heading: "Mantenimiento · Fichas de máquinas y herramientas",
+        blocks: [
+          { type: "p", text: "Las máquinas y herramientas son los items de Stock de los grupos Máquinas pesadas, Máquinas manuales y Herramientas (la cantidad se lleva en Stock). Cada una tiene su ficha: estado (operativa, en mantenimiento, fuera de servicio, a reponer), fecha de compra, marca, modelo, serie, proveedor, especificaciones, usos y fecha de reposición." },
+          { type: "steps", items: ["Fabricación → bloque Máquinas y herramientas → '+ Máquina o herramienta' (se crea en Stock) o cargala directo en Stock.", "Click derecho sobre una máquina → 'Ficha…' (o doble click). El estado también se cambia desde el click derecho.", "En la ficha, '+ Preventivo': qué se hace, cada cuántos días, el último hecho y con qué tarea del catálogo se hace."] },
+        ],
+      },
+      {
+        heading: "Mantenimiento · Preventivos como tareas para los idóneos",
+        blocks: [
+          { type: "p", text: "Cada preventivo vence a los N días del último hecho (o en la fecha que fijes). 'Programar' lo suma como tarea al día de una persona en la organización diaria de Fabricación; arriba aparecen los idóneos: los que tienen esa tarea en sus categorías internas (por ejemplo la habilidad extra 'Mantenimiento de máquinas'). Cuando la persona la marca hecha, queda en el historial de la máquina y el contador vuelve a arrancar." },
+          { type: "tip", text: "'Preparar tareas de mantenimiento' crea el grupo de trabajo Mantenimiento con sus tareas y se las da a la habilidad extra de mantenimiento. Después tildá esa habilidad en la ficha de quienes la tengan." },
+        ],
+      },
+      {
+        heading: "Mantenimiento · Herramientas para cada tarea",
+        blocks: [
+          { type: "p", text: "En Fabricación → Tipos de tarea, la columna Herramientas dice qué máquinas y herramientas pide cada tarea. Mantenimiento muestra qué tareas no se pueden hacer hoy porque falta una herramienta, no hay unidades o no está operativa, y la organización diaria avisa si se le da a alguien una tarea así." },
+        ],
+      },
+      {
         heading: "Preguntas frecuentes",
         blocks: [
           {
@@ -720,34 +740,6 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
               },
             ],
           },
-        ],
-      },
-    ],
-  },
-  {
-    tabKey: "mantenimiento",
-    title: "Mantenimiento",
-    emoji: "🛠️",
-    intro: "Las máquinas y herramientas de Stock con su ficha, sus mantenimientos preventivos y qué tareas se pueden hacer con lo que hay.",
-    sections: [
-      {
-        heading: "Fichas de máquinas y herramientas",
-        blocks: [
-          { type: "p", text: "Las máquinas y herramientas son los items de Stock de los grupos Máquinas pesadas, Máquinas manuales y Herramientas (la cantidad se lleva en Stock). Cada una tiene su ficha: estado (operativa, en mantenimiento, fuera de servicio, a reponer), fecha de compra, marca, modelo, serie, proveedor, especificaciones, usos y fecha de reposición." },
-          { type: "steps", items: ["Mantenimiento → '+ Máquina o herramienta' (se crea en Stock) o cargala directo en Stock.", "Click derecho sobre una máquina → 'Ficha…' (o doble click). El estado también se cambia desde el click derecho.", "En la ficha, '+ Preventivo': qué se hace, cada cuántos días, el último hecho y con qué tarea del catálogo se hace."] },
-        ],
-      },
-      {
-        heading: "Preventivos como tareas para los idóneos",
-        blocks: [
-          { type: "p", text: "Cada preventivo vence a los N días del último hecho (o en la fecha que fijes). 'Programar' lo suma como tarea al día de una persona en la organización diaria de Fabricación; arriba aparecen los idóneos: los que tienen esa tarea en sus categorías internas (por ejemplo la habilidad extra 'Mantenimiento de máquinas'). Cuando la persona la marca hecha, queda en el historial de la máquina y el contador vuelve a arrancar." },
-          { type: "tip", text: "'Preparar tareas de mantenimiento' crea el grupo de trabajo Mantenimiento con sus tareas y se las da a la habilidad extra de mantenimiento. Después tildá esa habilidad en la ficha de quienes la tengan." },
-        ],
-      },
-      {
-        heading: "Herramientas para cada tarea",
-        blocks: [
-          { type: "p", text: "En Fabricación → Tipos de tarea, la columna Herramientas dice qué máquinas y herramientas pide cada tarea. Mantenimiento muestra qué tareas no se pueden hacer hoy porque falta una herramienta, no hay unidades o no está operativa, y la organización diaria avisa si se le da a alguien una tarea así." },
         ],
       },
     ],

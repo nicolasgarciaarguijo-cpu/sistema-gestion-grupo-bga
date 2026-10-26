@@ -579,7 +579,6 @@ const TAB_OPTIONS: Array<{ key: TabKey; label: string }> = [
   { key: "cajaChica", label: "CAJA CHICA Y VIÁTICOS" },
   { key: "emitirFacturas", label: "EMITIR FACTURAS" },
   { key: "fabricacion", label: "FABRICACIÓN" },
-  { key: "mantenimiento", label: "MANTENIMIENTO" },
   { key: "personal", label: "PERSONAL" },
   { key: "asistencia", label: "ASISTENCIA" },
   // --- ADMINISTRACION NETA ---
@@ -608,7 +607,6 @@ const BRUTA_TAB_KEYS: TabKey[] = [
   "cajaChica",
   "emitirFacturas",
   "fabricacion",
-  "mantenimiento",
   "personal",
   "asistencia",
 ];
@@ -678,7 +676,6 @@ const TAB_SHORT_LABELS: Record<TabKey, string> = {
   cashflow: "CF",
   calendarioAnual: "CAL",
   fabricacion: "FB",
-  mantenimiento: "MNT",
   compras: "CP",
   cajaChica: "CC",
   presupuesto: "PR",
@@ -17621,46 +17618,8 @@ Escribi CERRAR para confirmar:`
     if (item) upsertMarcaInamovible(item, { estadoPago: estado });
   };
 
-  // RECLAMO: "ya se pago" -> se sube el comprobante y el pago queda cerrado. Si el origen tiene su
-  // propio pagado (tarjeta, pago del cash flow, vencimiento a mano), se marca tambien alla.
-  const comprobanteInamovible = async (item: ItemInamovible, file: File) => {
-    let storagePath: string | undefined;
-    try {
-      const ext = (file.name.split(".").pop() || "pdf").toLowerCase();
-      const path = `comprobantes-pagos/${item.company}/${item.fechaLimite}-${item.clave}.${ext}`
-        .normalize("NFD")
-        .replace(/[̀-ͯ]/g, "")
-        .replace(/[^A-Za-z0-9/._-]/g, "_");
-      const { error } = await supabase.storage
-        .from("documentos")
-        .upload(path, file, { upsert: true, contentType: file.type || undefined });
-      if (!error) storagePath = path;
-    } catch {
-      // sin storage igual queda asentado el comprobante por su nombre
-    }
-    upsertMarcaInamovible(item, { pagado: true, comprobante: { fileName: file.name, storagePath, at: todayIso() } });
-    if (item.origen === "tarjeta" || item.origen === "cashflow" || item.origen === "manual") {
-      setInamoviblePagado(item, true);
-    }
-    setStorageMessage(`Comprobante de "${item.titulo}" guardado: el pago quedó cerrado.`);
-  };
-
-  // RECLAMO: reprogramar. Donde el origen tiene fecha propia, se cambia ALLA (vinculado): la fecha del
-  // vencimiento de esa vez, el vencimiento del resumen de tarjeta o el dia del pago del cash flow.
-  const reprogramarInamovible = (item: ItemInamovible, fecha: string) => {
-    if (item.origen === "manual") {
-      setOcurrenciaVencimiento(item, { fecha });
-    } else if (item.origen === "tarjeta") {
-      setCreditCardStatements((prev) => prev.map((t) => (t.id === item.refId ? { ...t, dueDate: fecha } : t)));
-    } else if (item.origen === "cashflow") {
-      setFinancialItems((prev) => prev.map((f) => (f.id === item.refId ? { ...f, date: fecha } : f)));
-    } else if (item.origen === "factura") {
-      setPurchaseInvoices((prev) => prev.map((f) => (f.id === item.refId ? { ...f, fechaPagoPrevista: fecha } : f)));
-    } else {
-      upsertMarcaInamovible(item, { reprogramadoA: fecha });
-    }
-    setStorageMessage(`"${item.titulo}" reprogramado para el ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}.`);
-  };
+  // El reclamo de pagos vencidos es solo recordatorio (2026-10-26): el pago se gestiona en la ficha
+  // del proveedor o en la solapa de donde sale. Ver ui/ReclamoPagosVencidos.
   const canSeeInamovibles = effectiveIsAdmin || supabaseAllowedTabs.includes("calendarioAnual");
 
   // NOVEDADES: al iniciar sesion, lo nuevo que esa persona todavia no vio (solo de sus solapas). Se
@@ -21245,10 +21204,13 @@ Escribi CERRAR para confirmar:`
           {canSeeInamovibles && pagosVencidosAReclamar.length > 0 && (
             <ReclamoPagosVencidos
               items={pagosVencidosAReclamar}
-              hoy={hoyIso}
               companyShort={(company) => COMPANY_OPTIONS.find((c) => c.value === company)?.short || company}
-              onComprobante={comprobanteInamovible}
-              onReprogramar={reprogramarInamovible}
+              onAbrir={(item) => {
+                // Solo recordatorio: el pago se gestiona en la ficha del proveedor (o en la solapa de donde sale).
+                if (item.proveedor) return abrirFichaProveedor(item.proveedor);
+                const tab: Record<string, string> = { deuda: "desendeudamiento", tarjeta: "bancos", sueldos: "personal", seguro: "seguros", factura: "costos", cheque: "costos" };
+                setActiveTab((tab[item.origen] || "calendarioAnual") as TabKey);
+              }}
             />
           )}
           {canSeeInamovibles && (
@@ -23174,7 +23136,7 @@ Escribi CERRAR para confirmar:`
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
         />
       )}
-      {activeTab === "mantenimiento" && (
+      {activeTab === "fabricacion" && (
         <Mantenimiento
           maquinas={visibleStockItems.filter(esMaquinaOHerramienta)}
           fichas={fichasMaquinas}

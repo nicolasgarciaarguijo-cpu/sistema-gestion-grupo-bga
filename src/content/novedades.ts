@@ -18,19 +18,25 @@ export const NOVEDADES: TandaNovedades[] = [
   {
     id: "2026-10-26b",
     fecha: "26/10/2026",
-    titulo: "Mantenimiento de máquinas y herramientas para cada tarea",
+    titulo: "Mantenimiento en Fabricación y el aviso de pagos vencidos",
     items: [
       {
-        titulo: "Solapa nueva: Mantenimiento",
+        titulo: "El aviso de pagos vencidos es solo un recordatorio",
+        que: "Al abrir el sistema siguen apareciendo los pagos programados vencidos sin cargar, pero desde ahí ya no se paga ni se reprograma: cada uno tiene un botón que lleva a la ficha del proveedor (o a la solapa de donde sale, como Desendeudamiento o Bancos y Tarjetas) para gestionar el pago ahí.",
+        como: "En el aviso, tocá Ir a la ficha del proveedor. Cerrar o Esc lo esconde hasta la próxima vez que abras el sistema.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Mantenimiento, adentro de Fabricación",
         que: "Las máquinas y herramientas de Stock (Máquinas pesadas, Máquinas manuales y el grupo nuevo Herramientas) tienen su ficha: estado, compra, especificaciones, usos, reposición, preventivos e historial. Arriba se ven los preventivos vencidos y los próximos.",
-        como: "Mantenimiento → click derecho sobre una máquina → 'Ficha…'. '+ Máquina o herramienta' la crea en Stock.",
-        tab: "mantenimiento",
+        como: "Fabricación → bloque 'Máquinas y herramientas' → click derecho sobre una máquina → 'Ficha…'. '+ Máquina o herramienta' la crea en Stock.",
+        tab: "fabricacion",
       },
       {
         titulo: "Preventivos como tareas para los idóneos",
         que: "Un preventivo se programa como tarea del día de una persona idónea (la que tiene esa tarea en sus categorías internas). Al marcarla hecha en la organización diaria queda en el historial de la máquina y el contador vuelve a arrancar.",
-        como: "Mantenimiento → 'Programar' en el preventivo → elegí día y persona. 'Preparar tareas de mantenimiento' arma el grupo y la habilidad extra.",
-        tab: "mantenimiento",
+        como: "Fabricación → 'Mantenimiento preventivo · próximos' → 'Programar' → elegí día y persona. 'Preparar tareas de mantenimiento' arma el grupo y la habilidad extra.",
+        tab: "fabricacion",
       },
       {
         titulo: "Herramientas que pide cada tarea",

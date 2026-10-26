@@ -53,6 +53,7 @@ export type ItemInamovible = {
   company: string;
   titulo: string;
   detalle: string;
+  proveedor?: string; // facturas y cheques: a quien se le paga (para ir a su ficha)
   ventanaDesde: string;
   fechaLimite: string;
   fechaConfirmada?: string;
@@ -362,6 +363,7 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             company: x.company,
             titulo: `Factura ${x.supplier || "proveedor"}`,
             detalle: `${x.invoiceNumber || "sin número"} · ${x.fechaElegida ? "fecha elegida" : "según la condición del proveedor"}`,
+            proveedor: x.supplier || undefined,
             ventanaDesde: x.fechaPago,
             fechaLimite: x.fechaPago,
             monto: Number(x.total || 0),
@@ -390,6 +392,7 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             company: x.company,
             titulo: `Factura ${x.supplier || "proveedor"}`,
             detalle: `${x.invoiceNumber || "sin número"} · pagada`,
+            proveedor: x.supplier || undefined,
             ventanaDesde: x.fechaPago,
             fechaLimite: x.fechaPago,
             monto: Number(x.total || 0),
@@ -420,6 +423,7 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             refId: x.id,
             company: x.company,
             titulo: `Cheque a ${x.supplier || "proveedor"}`,
+            proveedor: x.supplier || undefined,
             detalle: x.detalle || "Pago ya hecho: ese día se debita, tiene que haber plata en la cuenta",
             ventanaDesde: x.date,
             fechaLimite: x.date,
