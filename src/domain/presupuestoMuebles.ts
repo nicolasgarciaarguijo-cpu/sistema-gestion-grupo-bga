@@ -119,11 +119,15 @@ export type PersonaParaCotizar = {
   costoHora: number;
   // Tareas del catalogo que puede hacer (de sus categorias internas).
   tareas: number[];
-  // Es ayudante (de cualquier rumbo): puede ser el segundo en las tareas de 2 o mas personas.
+  // Por su categoria INTERNA (el escalon mas alto que tiene tildado): aprendiz o ayudante de cualquier rumbo.
+  // Son los ayudantes de las tareas de 2 o mas personas. Nada que ver con la categoria de contratacion.
   ayudante?: boolean;
+  // Escalon interno mas alto (1 = aprendiz...). Sirve para saber que tareas son mas complejas.
+  nivel?: number;
 };
 
-export type AyudanteAsignado = { personaId: number | null; persona: string; costoHora: number };
+// especialista = un especialista haciendo de ayudante porque no alcanzaron los ayudantes (para evaluar contratar uno).
+export type AyudanteAsignado = { personaId: number | null; persona: string; costoHora: number; especialista?: boolean };
 
 export type AsignacionTarea = {
   muebleId: number;
@@ -148,20 +152,29 @@ export type PlanDeMuebles = {
   costo: number;
   porPersona: Array<{ personaId: number | null; nombre: string; horas: number; costoHora: number; costo: number }>;
   sinPersona: AsignacionTarea[];
-  // Tareas a las que les falta algun ayudante (no hay suficientes en el plantel).
+  // Tareas a las que les falta gente (no alcanza el plantel entero).
   faltanAyudantes: AsignacionTarea[];
+  // Especialistas haciendo de ayudante (no alcanzaron los ayudantes): horas en total, para evaluar contratar uno.
+  especialistasDeAyudante: { tareas: AsignacionTarea[]; horas: number };
 };
 
 const EPS = 1e-9;
 
-// Tareas de 2 o mas personas (Nicolas, 2026-10-26): "siempre es un especialista y se deben considerar como
-// ayudantes solo a los ayudantes de cualquier espectro". El especialista es un idoneo que no es ayudante (si no
-// hay, cualquier idoneo); los demas, ayudantes. Arrancan juntos: cuando el ultimo de ellos esta libre.
+// Tareas de 2 o mas personas (Nicolas, 2026-10-26): siempre las encabeza un especialista (un idoneo que no es
+// aprendiz ni ayudante; si no hay, cualquier idoneo). Los demas son ayudantes: aprendices o ayudantes de cualquier
+// rumbo, por categoria INTERNA. Si no alcanzan, completa un especialista (el menos experimentado libre), y se avisa:
+// "un especialista esta haciendo tareas de ayudante, asi consideramos la contratacion de uno". Arrancan juntos.
+// "Siempre el especialista debe hacer las tareas mas complejas": entre las tareas que pueden arrancar a la vez,
+// primero se asignan las que solo saben hacer los escalones mas altos.
 export function planificarMuebles(calculados: MuebleCalculado[], personas: PersonaParaCotizar[]): PlanDeMuebles {
   const libre = new Map<number, number>(personas.map((p) => [p.id, 0]));
   const libreDe = (p: PersonaParaCotizar) => libre.get(p.id) || 0;
   // Sin nadie idoneo se cotiza al costo hora mas alto del plantel; un ayudante que falta, al del ayudante mas caro.
   const peorCaso = Math.max(0, ...personas.map((p) => pos(p.costoHora)));
+  // Complejidad de una tarea: el escalon mas bajo de quienes la saben hacer (si solo la sabe un oficial, es compleja).
+  const complejidad = new Map<number, number>();
+  personas.forEach((p) => p.tareas.forEach((id) => complejidad.set(id, Math.min(complejidad.get(id) ?? Infinity, pos(p.nivel)))));
+  const complejidadDe = (id: number) => (Number.isFinite(complejidad.get(id)) ? (complejidad.get(id) as number) : 0);
   const ayudantesTodos = personas.filter((p) => p.ayudante);
   const peorAyudante = ayudantesTodos.length ? Math.max(...ayudantesTodos.map((p) => pos(p.costoHora))) : peorCaso;
   type Estado = { c: MuebleCalculado; pasos: Array<{ paso: number; tareas: TareaCalculada[] }>; i: number; listo: number; pendientes: TareaCalculada[]; finPaso: number };
@@ -175,12 +188,17 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     });
   const asignaciones: AsignacionTarea[] = [];
   for (;;) {
-    // La tarea que puede arrancar antes; a igualdad, la de mas horas-hombre primero (asi la toman los mejores).
+    // La tarea que puede arrancar antes; a igualdad, la mas compleja y despues la de mas horas-hombre (asi los
+    // especialistas quedan para lo dificil).
     let elegido: { e: Estado; t: TareaCalculada } | null = null;
+    const antes = (e: Estado, t: TareaCalculada, o: { e: Estado; t: TareaCalculada }) =>
+      e.listo < o.e.listo - EPS ||
+      (Math.abs(e.listo - o.e.listo) < EPS &&
+        (complejidadDe(t.tareaId) > complejidadDe(o.t.tareaId) || (complejidadDe(t.tareaId) === complejidadDe(o.t.tareaId) && t.horasHombre > o.t.horasHombre)));
     estados.forEach((e) => {
       if (e.i >= e.pasos.length) return;
       e.pendientes.forEach((t) => {
-        if (!elegido || e.listo < elegido.e.listo || (e.listo === elegido.e.listo && t.horasHombre > elegido.t.horasHombre)) elegido = { e, t };
+        if (!elegido || antes(e, t, elegido)) elegido = { e, t };
       });
     });
     if (!elegido) break;
@@ -191,13 +209,24 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     // Para cada especialista posible, los ayudantes que antes se liberan (a igualdad, los mas caros) y cuando
     // pueden arrancar todos juntos. Gana el que arranca antes; a igualdad, el especialista mas caro.
     let mejor: { lider: PersonaParaCotizar | null; ayudantes: PersonaParaCotizar[]; inicio: number } | null = null;
-    const ayudantesPara = (lider: PersonaParaCotizar | null) =>
-      ayudantesTodos
+    // Ayudantes: primero los aprendices/ayudantes que estan libres para arrancar con el especialista (a igualdad,
+    // los mas caros); si no alcanzan, especialistas libres (el menos caro primero); si nadie esta libre, el que
+    // antes se libere.
+    const ayudantesPara = (lider: PersonaParaCotizar | null) => {
+      const t0 = Math.max(e.listo, lider ? libreDe(lider) : 0);
+      const llega = (p: PersonaParaCotizar) => Math.max(t0, libreDe(p));
+      return personas
         .filter((p) => !lider || p.id !== lider.id)
-        .sort((a, b) => libreDe(a) - libreDe(b) || pos(b.costoHora) - pos(a.costoHora))
+        .sort(
+          (a, b) =>
+            llega(a) - llega(b) ||
+            (a.ayudante ? 0 : 1) - (b.ayudante ? 0 : 1) ||
+            (a.ayudante ? pos(b.costoHora) - pos(a.costoHora) : pos(a.costoHora) - pos(b.costoHora))
+        )
         .slice(0, cuantos - 1);
+    };
     (especialistas.length ? especialistas : [null]).forEach((lider) => {
-      const ays = ayudantesPara(lider);
+      const ays = cuantos > 1 ? ayudantesPara(lider) : [];
       const inicio = Math.max(e.listo, lider ? libreDe(lider) : 0, ...ays.map(libreDe));
       if (
         !mejor ||
@@ -222,8 +251,8 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
       persona: lider ? lider.nombre : "Nadie sabe hacerla",
       costoHora: lider ? pos(lider.costoHora) : peorCaso,
       ayudantes: [
-        ...ayudantes.map((p) => ({ personaId: p.id, persona: p.nombre, costoHora: pos(p.costoHora) })),
-        ...Array.from({ length: faltan }, () => ({ personaId: null, persona: "Ayudante que falta", costoHora: peorAyudante })),
+        ...ayudantes.map((p) => ({ personaId: p.id, persona: p.nombre, costoHora: pos(p.costoHora), especialista: !p.ayudante })),
+        ...Array.from({ length: faltan }, () => ({ personaId: null, persona: "Falta una persona", costoHora: peorAyudante })),
       ],
       inicio: r2(inicio),
       fin,
@@ -243,7 +272,7 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
   };
   asignaciones.forEach((a) => {
     sumar(a.personaId == null ? "sin-idoneo" : String(a.personaId), a.personaId, a.persona, a.costoHora, a.horas);
-    a.ayudantes.forEach((y) => sumar(y.personaId == null ? "falta-ayudante" : String(y.personaId), y.personaId, y.personaId == null ? "Ayudantes que faltan" : y.persona, y.costoHora, a.horas));
+    a.ayudantes.forEach((y) => sumar(y.personaId == null ? "falta-ayudante" : String(y.personaId), y.personaId, y.personaId == null ? "Personas que faltan" : y.persona, y.costoHora, a.horas));
   });
   const lista = Array.from(porPersona.values()).sort((a, b) => (a.personaId == null ? 1 : 0) - (b.personaId == null ? 1 : 0) || b.costoHora - a.costoHora);
   return {
@@ -253,5 +282,9 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     porPersona: lista,
     sinPersona: asignaciones.filter((a) => a.personaId == null),
     faltanAyudantes: asignaciones.filter((a) => a.ayudantes.some((y) => y.personaId == null)),
+    especialistasDeAyudante: (() => {
+      const tareas = asignaciones.filter((a) => a.ayudantes.some((y) => y.especialista));
+      return { tareas, horas: r2(tareas.reduce((s, a) => s + a.horas * a.ayudantes.filter((y) => y.especialista).length, 0)) };
+    })(),
   };
 }

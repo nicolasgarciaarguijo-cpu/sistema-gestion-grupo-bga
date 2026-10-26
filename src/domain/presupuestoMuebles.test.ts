@@ -137,11 +137,41 @@ describe("presupuestar por tipo de mueble", () => {
         expect(plan.horasReloj).toBe(1);
       });
 
-      it("sin ayudantes en el plantel, se avisa y se cotiza igual", () => {
+      it("si no alcanza el plantel entero, se avisa y se cotiza igual", () => {
         const plan = planificarMuebles(muebles(1), [ofA]);
         expect(plan.faltanAyudantes.length).toBe(1);
-        expect(plan.porPersona.map((p) => [p.nombre, p.costo])).toEqual([["Ana", 9000], ["Ayudantes que faltan", 9000]]);
+        expect(plan.porPersona.map((p) => [p.nombre, p.costo])).toEqual([["Ana", 9000], ["Personas que faltan", 9000]]);
       });
+
+      it("el aprendiz también es ayudante", () => {
+        const apr: PersonaParaCotizar = { id: 9, nombre: "Eli (aprendiz)", costoHora: 3000, tareas: [], ayudante: true, nivel: 1 };
+        const plan = planificarMuebles(muebles(1), [ofA, apr]);
+        expect(plan.asignaciones[0].ayudantes).toEqual([{ personaId: 9, persona: "Eli (aprendiz)", costoHora: 3000, especialista: false }]);
+        expect(plan.especialistasDeAyudante.horas).toBe(0);
+      });
+
+      it("si no alcanzan los ayudantes, completa un especialista (el menos caro) y se avisa para contratar", () => {
+        const plan = planificarMuebles(muebles(2), [ofA, ofC, ayB, { id: 5, nombre: "Fede", costoHora: 7000, tareas: [] }]);
+        // Ana + Beto en una; Carla encabeza la otra y, sin ayudantes libres, la ayuda Fede (especialista).
+        expect(plan.asignaciones[1]).toMatchObject({ persona: "Carla", ayudantes: [{ persona: "Fede", especialista: true }] });
+        expect(plan.especialistasDeAyudante).toMatchObject({ horas: 1 });
+        expect(plan.horasReloj).toBe(1);
+      });
+    });
+
+    it("el especialista va primero a la tarea más compleja", () => {
+      // Paso 2: bisagras (2 h, la sabe un ayudante) y armar (4 h... la sabe solo la oficial). Si las dos arrancan
+      // juntas, armar se asigna primero: la oficial queda en lo difícil.
+      const of: PersonaParaCotizar = { id: 1, nombre: "Oficial", costoHora: 9000, tareas: [1, 2, 3], nivel: 4 };
+      const ay: PersonaParaCotizar = { id: 2, nombre: "Ayudante", costoHora: 5000, tareas: [1, 2], ayudante: true, nivel: 2 };
+      const res = calcularMueblesDelPresupuesto(
+        [{ id: 1, tipoMuebleId: 1, cantidad: 1, largo: 1, alto: 1 }],
+        [{ ...alacena, receta: [{ id: 12, tareaId: 2, paso: 1, factor: 1, base: "rubro:10" }, { id: 13, tareaId: 3, paso: 1, factor: 0.5, base: "u" }] }],
+        catalogo, [{ description: "Bisagra", qty: 8 }], rubros
+      );
+      // bisagras 8 × 0,25 = 2 h (más horas) · armar 0,5 × 2 = 1 h (más compleja)
+      const plan = planificarMuebles(res.muebles, [ay, of]);
+      expect(plan.asignaciones.map((a) => [a.nombre, a.persona])).toEqual([["Armar módulo", "Oficial"], ["Colocar bisagras", "Ayudante"]]);
     });
   });
 });

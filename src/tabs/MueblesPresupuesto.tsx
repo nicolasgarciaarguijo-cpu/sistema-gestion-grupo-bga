@@ -173,8 +173,9 @@ export function MueblesPresupuesto({
           <div style={{ fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>Quién hace qué</div>
           <div style={{ fontSize: 12, color: "#64748b" }}>
             Cada tarea la hace la persona que sabe hacerla con el costo hora más alto; si está ocupada con otra tarea en paralelo, la toma el
-            siguiente que sabe, para que salga lo más rápido posible. Las tareas de 2 o más personas las hace un especialista con ayudantes
-            (de cualquier rumbo). Se cotiza como si fuera el único trabajo de la fábrica.
+            siguiente que sabe, para que salga lo más rápido posible. Las tareas de 2 o más personas las encabeza un especialista y lo ayudan
+            aprendices o ayudantes (por su categoría interna); si no alcanzan, completa un especialista y se avisa. Los especialistas van
+            primero a las tareas más complejas. Se cotiza como si fuera el único trabajo de la fábrica.
           </div>
           {personas.length === 0 ? (
             <div style={{ fontSize: 12.5, color: "#b45309" }}>Nadie tiene categorías internas cargadas (Personal → ficha de cada persona): no se puede saber quién hace cada tarea.</div>
@@ -206,12 +207,18 @@ export function MueblesPresupuesto({
               </tbody>
             </table>
           )}
+          {plan.especialistasDeAyudante.horas > 0 && (
+            <div style={{ fontSize: 12.5, color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "6px 10px" }}>
+              ⚠ No alcanzan los ayudantes: hay especialistas haciendo tareas de ayudante ({fmt(plan.especialistasDeAyudante.horas)} hs en{" "}
+              {plan.especialistasDeAyudante.tareas.map((a) => a.nombre).filter((v, i, x) => x.indexOf(v) === i).join(", ")}). Conviene evaluar contratar un ayudante.
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <div style={{ fontSize: 13 }}>
               <strong>{fmt(res.horasHombre)} hs-hombre</strong>
               {res.incompleto ? <span style={{ color: "#b45309" }}> (incompleto)</span> : null}
               <span style={{ color: "#64748b" }}> · se termina en {fmt(plan.horasReloj)} hs de reloj con esta gente</span>
-              {plan.faltanAyudantes.length ? <span style={{ color: "#b45309" }}> · faltan ayudantes en {plan.faltanAyudantes.length} tarea{plan.faltanAyudantes.length === 1 ? "" : "s"} de 2 o más personas</span> : null}
+              {plan.faltanAyudantes.length ? <span style={{ color: "#b45309" }}> · no alcanza la gente en {plan.faltanAyudantes.length} tarea{plan.faltanAyudantes.length === 1 ? "" : "s"} de 2 o más personas</span> : null}
               {plan.sinPersona.length ? <span style={{ color: "#b45309" }}> · {plan.sinPersona.length} tarea{plan.sinPersona.length === 1 ? "" : "s"} sin nadie que sepa hacerla{plan.sinPersona.length === 1 ? "" : "s"}</span> : null}
             </div>
             <ButtonLike
@@ -326,7 +333,7 @@ export function MueblesPresupuesto({
                               <>
                                 <span style={{ color: q.personaId == null ? "#b45309" : undefined }}>{q.persona}</span>
                                 {q.ayudantes.map((y, i) => (
-                                  <span key={i} style={{ color: y.personaId == null ? "#b45309" : "#64748b" }}> + {y.persona}{y.personaId != null ? " (ayudante)" : ""}</span>
+                                  <span key={i} style={{ color: y.personaId == null || y.especialista ? "#b45309" : "#64748b" }}> + {y.persona}{y.personaId == null ? "" : y.especialista ? " (especialista haciendo de ayudante)" : " (ayudante)"}</span>
                                 ))}
                               </>
                             ) : (

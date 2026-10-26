@@ -16492,10 +16492,12 @@ Escribi CERRAR para confirmar:`
           nombre: String(e.name || "").trim(),
           costoHora: Number(costoHoraDe(e) || 0),
           tareas: capacidadesDelEmpleado(e.categoriasInternas, categoriasVigentes).map((c) => c.tareaId),
-          // Ayudante de cualquier rumbo: su categoria principal es de un escalon de ayudantes.
-          ayudante: (() => {
+          // Por su categoria INTERNA (el escalon mas alto tildado, nunca la de contratacion): aprendiz o ayudante
+          // de cualquier rumbo = ayudante en las tareas de 2 o mas personas.
+          ...(() => {
             const cat = categoriaPrincipal(e.categoriasInternas, categoriasVigentes);
-            return !!cat && (/ayudante/i.test(nombreEscalon(cat.nivel, escalonesVigentes)) || /ayudante/i.test(cat.nombre));
+            const ayudante = !!cat && (/aprendiz|ayudante/i.test(nombreEscalon(cat.nivel, escalonesVigentes)) || /aprendiz|ayudante/i.test(cat.nombre));
+            return { ayudante, nivel: cat?.nivel || 0 };
           })(),
         })),
     [activeTab, employees, categoriasVigentes, escalonesVigentes, payrollMonth]
