@@ -124,6 +124,8 @@ type PersonalTabProps = {
   gruposTrabajo: GrupoTrabajo[];
   onGuardarCategoria: (c: CategoriaEmpleado) => void;
   onBorrarCategoria: (id: number) => void;
+  escalonesInternos: string[];
+  onGuardarEscalones: (escalones: string[], categorias?: CategoriaEmpleado[]) => void;
   nuevoId: () => number;
   updateEmployeePayrollManual: any;
   updateEmployeeProvisionItem: any;
@@ -234,7 +236,7 @@ export function PersonalTab(props: PersonalTabProps) {
     removeEmployeeDocument, removeEmployeeProvisionItem,
     saveEmployeePayrollMonth, syncLaborMarkersFromPersonal, updateAttendanceRecord,
     updateEmployeeDocument, updateEmployeeField, updateEmployeePayrollManual,
-    categoriasInternas, tiposTarea, gruposTrabajo, onGuardarCategoria, onBorrarCategoria, nuevoId,
+    categoriasInternas, tiposTarea, gruposTrabajo, onGuardarCategoria, onBorrarCategoria, escalonesInternos, onGuardarEscalones, nuevoId,
     updateEmployeeProvisionItem,
   } = props;
   // Escalas: se muestran las VIGENTES = la que rige este mes (la ultima cargada <= mes en curso, aunque
@@ -1152,6 +1154,8 @@ export function PersonalTab(props: PersonalTabProps) {
                 onGuardar={onGuardarCategoria}
                 onBorrar={onBorrarCategoria}
                 nuevoId={nuevoId}
+                escalones={escalonesInternos}
+                onGuardarEscalones={onGuardarEscalones}
               />
             </div>
           )}
@@ -2368,6 +2372,7 @@ export function PersonalTab(props: PersonalTabProps) {
                       empleado={selectedEmployee}
                       categorias={categoriasInternas}
                       tipos={tiposTarea}
+                      escalones={escalonesInternos}
                       onCambiar={(ids) => updateEmployeeField(selectedEmployee.id, "categoriasInternas", ids)}
                     />
 

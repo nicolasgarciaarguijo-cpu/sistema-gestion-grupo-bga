@@ -37,6 +37,7 @@ export const RUBROS_POR_DEFECTO: RubroFabricacion[] = [
   { id: 7, nombre: "Iluminación", unidad: "m", origen: "materiales", palabras: ["led", "iluminacion"], orden: 7 },
   { id: 8, nombre: "Laqueado", unidad: "m²", origen: "materiales", palabras: ["laca", "laqueado", "laquead"], orden: 8 },
   { id: 9, nombre: "Módulos de instalación", unidad: "u", origen: "manual", palabras: [], orden: 9 },
+  { id: 10, nombre: "Bisagras", unidad: "u", origen: "materiales", palabras: ["bisagra"], orden: 10 },
 ];
 
 // El plan de un trabajo: por rubro, cuanto hay que hacer, quien y cuando.
@@ -67,6 +68,17 @@ export const sinAcentos = (s: string) =>
     .normalize("NFD")
     .replace(/[̀-ͯ]/g, "");
 
+// Si un material (por su descripcion) cuenta para el rubro. Por comienzo de palabra: "laca" no tiene que
+// agarrar "placa". Lo usan el Gantt y los tipos de mueble.
+export function coincideConRubro(descripcion: string, r: Pick<RubroFabricacion, "palabras" | "excluir">): boolean {
+  const si = r.palabras.map(sinAcentos).filter(Boolean);
+  const no = (r.excluir || []).map(sinAcentos).filter(Boolean);
+  if (!si.length) return false;
+  const palabras = sinAcentos(descripcion).split(/[^a-z0-9]+/).filter(Boolean);
+  const tiene = (p: string) => palabras.some((w) => w.startsWith(p));
+  return si.some(tiene) && !no.some(tiene);
+}
+
 export type CantidadCotizada = { cantidad: number; detalle: Array<{ descripcion: string; cantidad: number; unidad: string }> };
 
 // Lo cotizado de cada rubro en un trabajo (o presupuesto: cualquier cosa con snapshot).
@@ -83,15 +95,8 @@ export function cantidadesCotizadas(job: any, rubros: RubroFabricacion[]): Recor
       out[r.id] = { cantidad: 0, detalle: [] };
       return;
     }
-    const si = r.palabras.map(sinAcentos).filter(Boolean);
-    const no = (r.excluir || []).map(sinAcentos).filter(Boolean);
     const detalle = resumen.consolidado
-      .filter((f) => {
-        // Por comienzo de palabra: "laca" no tiene que agarrar "placa".
-        const palabras = sinAcentos(f.descripcion).split(/[^a-z0-9]+/).filter(Boolean);
-        const tiene = (p: string) => palabras.some((w) => w.startsWith(p));
-        return si.some(tiene) && !no.some(tiene);
-      })
+      .filter((f) => coincideConRubro(f.descripcion, r))
       .map((f) => ({ descripcion: f.descripcion, cantidad: f.cantidad, unidad: f.unidad }));
     out[r.id] = { cantidad: Math.round(detalle.reduce((a, d) => a + d.cantidad, 0) * 100) / 100, detalle };
   });

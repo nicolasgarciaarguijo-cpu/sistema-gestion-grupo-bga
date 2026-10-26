@@ -9,8 +9,10 @@ import {
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
   inputCelda, inputCeldaDerecha, focoCelda,
 } from "../ui/planilla";
+import type { RubroFabricacion } from "../domain/ganttFabricacion";
 import {
   BASES_CANTIDAD,
+  rubrosDeLaReceta,
   pasoSiguiente,
   recetaDesdeTareas,
   recetaOrdenada,
@@ -33,6 +35,7 @@ export function TiposMueble({
   tipos,
   tareas,
   grupos,
+  rubros = [],
   onGuardar,
   onBorrar,
   nuevoId,
@@ -40,6 +43,8 @@ export function TiposMueble({
   tipos: TipoMueble[];
   tareas: TipoTarea[];
   grupos: GrupoTrabajo[];
+  // Rubros de materiales del Gantt (placas, cajones, puertas...): una tarea puede sacar su cantidad de ahi.
+  rubros?: RubroFabricacion[];
   onGuardar: (t: TipoMueble) => void;
   onBorrar: (id: number) => void;
   nuevoId: () => number;
@@ -120,7 +125,7 @@ export function TiposMueble({
                 const pausado = tipo.activa === false;
                 const calc = tareasDelMueble(tipo, { tipoMuebleId: tipo.id, cantidad: 1, largo: tipo.largo, alto: tipo.alto, profundidad: tipo.profundidad }, tareas);
                 const res = resumenDeTiempos(calc);
-                const faltanTiempos = calc.some((t) => t.sinTiempo);
+                const faltanTiempos = calc.some((t) => t.sinTiempo || t.sinMaterial);
                 return (
                   <tr
                     key={tipo.id}
@@ -143,7 +148,7 @@ export function TiposMueble({
                     </td>
                     <td style={{ ...tdDato, textAlign: "right" }}>{res.pasos.length}</td>
                     <td style={{ ...tdDato, fontSize: 12 }}>{[tipo.largo, tipo.alto, tipo.profundidad].map((x) => fmt(x || 0)).join(" × ")}</td>
-                    <td style={{ ...tdDato, textAlign: "right", color: faltanTiempos ? "#b45309" : undefined }} title={faltanTiempos ? "Hay tareas sin tiempo estándar: el total queda corto" : undefined}>
+                    <td style={{ ...tdDato, textAlign: "right", color: faltanTiempos ? "#b45309" : undefined }} title={faltanTiempos ? "Hay tareas sin tiempo estándar o que salen de materiales (se completan con el presupuesto): el total queda corto" : undefined}>
                       {fmt(res.horasHombre)}{faltanTiempos ? "*" : ""}
                     </td>
                     <td style={{ ...tdDato, textAlign: "right" }}>{fmt(res.horasReloj)}</td>
@@ -190,7 +195,7 @@ export function TiposMueble({
         </QuickMenu>
       )}
 
-      {tipoAbierto && <EditorReceta tipo={tipoAbierto} tareas={tareas} grupos={grupos} onGuardar={onGuardar} onCerrar={() => setAbierto(null)} nuevoId={nuevoId} nombreTarea={nombreTarea} />}
+      {tipoAbierto && <EditorReceta tipo={tipoAbierto} tareas={tareas} grupos={grupos} rubros={rubros} onGuardar={onGuardar} onCerrar={() => setAbierto(null)} nuevoId={nuevoId} nombreTarea={nombreTarea} />}
     </Panel>
   );
 }
@@ -199,6 +204,7 @@ function EditorReceta({
   tipo,
   tareas,
   grupos,
+  rubros,
   onGuardar,
   onCerrar,
   nuevoId,
@@ -207,6 +213,7 @@ function EditorReceta({
   tipo: TipoMueble;
   tareas: TipoTarea[];
   grupos: GrupoTrabajo[];
+  rubros: RubroFabricacion[];
   onGuardar: (t: TipoMueble) => void;
   onCerrar: () => void;
   nuevoId: () => number;
@@ -217,8 +224,12 @@ function EditorReceta({
   // La prueba no se guarda: es para ver tiempos con otras medidas o corregir cantidades.
   const [prueba, setPrueba] = useState({ cantidad: 1, largo: tipo.largo || 0, alto: tipo.alto || 0, profundidad: tipo.profundidad || 0 });
   const [ajustes, setAjustes] = useState<Record<number, number>>({});
+  // Cantidades de materiales para probar (en el presupuesto salen solas de lo cotizado).
+  const [materiales, setMateriales] = useState<Record<number, number>>({});
   const ordenada = recetaOrdenada(tipo.receta);
-  const calc = tareasDelMueble(tipo, { tipoMuebleId: tipo.id, ...prueba, ajustes }, tareas);
+  const calc = tareasDelMueble(tipo, { tipoMuebleId: tipo.id, ...prueba, ajustes, materiales }, tareas);
+  const rubrosMateriales = rubros.filter((r) => r.origen === "materiales" && r.activo !== false);
+  const rubrosUsados = rubrosDeLaReceta(tipo).map((id) => rubros.find((r) => r.id === id)).filter((r): r is RubroFabricacion => !!r);
   const res = resumenDeTiempos(calc);
   const activas = tareas.filter((t) => t.activa !== false);
   const grupoDe = (t: TipoTarea) => grupos.find((g) => g.id === t.grupoId)?.nombre || "Sin grupo";
@@ -355,7 +366,14 @@ function EditorReceta({
                         value={r.base || t?.unidad || "u"}
                         onChange={(e) => guardarRenglon({ ...r, base: e.target.value as BaseCantidad })}
                       >
-                        {BASES_CANTIDAD.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                        <optgroup label="Medidas del mueble">
+                          {BASES_CANTIDAD.map((b) => <option key={b.value} value={b.value}>{b.label}</option>)}
+                        </optgroup>
+                        {rubrosMateriales.length > 0 && (
+                          <optgroup label="Materiales del presupuesto">
+                            {rubrosMateriales.map((rb) => <option key={rb.id} value={`rubro:${rb.id}`}>por {rb.unidad} de {rb.nombre.toLowerCase()}</option>)}
+                          </optgroup>
+                        )}
                       </select>
                     </td>
                     <td style={{ ...tdDato, textAlign: "right", color: t?.horasEstimadas ? undefined : "#b45309" }}>
@@ -385,6 +403,19 @@ function EditorReceta({
           {medida("largo", "Largo (m)")}
           {medida("alto", "Alto (m)")}
           {medida("profundidad", "Profundidad (m)")}
+          {rubrosUsados.map((rb) => (
+            <label key={rb.id} style={{ display: "grid", gap: 2, fontSize: 11.5, color: "#64748b" }} title="En el presupuesto sale solo de los materiales cotizados">
+              {rb.nombre} ({rb.unidad})
+              <input
+                type="number"
+                min={0}
+                style={{ width: 80, fontSize: 13, padding: "4px 6px", borderRadius: 6, border: "1px solid #cbd5e1" }}
+                value={materiales[rb.id] ?? ""}
+                placeholder="del ppto"
+                onChange={(e) => setMateriales({ ...materiales, [rb.id]: Number(e.target.value) || 0 })}
+              />
+            </label>
+          ))}
           <button
             type="button"
             style={{ fontSize: 12, border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", padding: "5px 8px", cursor: "pointer" }}
@@ -421,7 +452,9 @@ function EditorReceta({
                     />{" "}
                     <span style={{ color: "#94a3b8" }}>{UNIDADES_TAREA.find((u) => u.value === t.unidad)?.label}</span>
                   </td>
-                  <td style={{ padding: "3px 6px", textAlign: "right", color: t.sinTiempo ? "#b45309" : undefined }}>{t.sinTiempo ? "sin tiempo" : fmt(t.horas)}</td>
+                  <td style={{ padding: "3px 6px", textAlign: "right", color: t.sinTiempo || t.sinMaterial ? "#b45309" : undefined }}>
+                    {t.sinTiempo ? "sin tiempo" : t.sinMaterial ? "falta el material" : fmt(t.horas)}
+                  </td>
                 </tr>
               ))}
             </tbody>

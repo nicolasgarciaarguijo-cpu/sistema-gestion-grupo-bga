@@ -6,7 +6,10 @@ import {
   coberturaDeTareas,
   etiquetaCategoria,
   hayCiclo,
+  insertarEscalon,
+  moverEscalon,
   puedeHacer,
+  quitarEscalon,
   rumbosDelEmpleado,
   tareasHeredadas,
   type CategoriaEmpleado,
@@ -79,6 +82,24 @@ describe("categorias internas", () => {
     expect(rumbosDelEmpleado([12], CATEGORIAS_POR_DEFECTO)).toEqual(["Laqueado"]);
     expect(etiquetaCategoria(CATEGORIAS_POR_DEFECTO.find((x) => x.id === 6)!, CATEGORIAS_POR_DEFECTO)).toBe("Ayudante especializado · Laqueado");
     expect(etiquetaCategoria(CATEGORIAS_POR_DEFECTO.find((x) => x.id === 12)!, CATEGORIAS_POR_DEFECTO)).toBe("Laqueador");
+  });
+
+  it("escalones editables: subir, insertar y quitar (solo vacios) mueven las categorias con ellos", () => {
+    const esc = ["Aprendiz", "Ayudante general", "Ayudante de fab.", "Armador"];
+    const subido = moverEscalon(esc, cat, 3, 1);
+    expect(subido.escalones).toEqual(["Aprendiz", "Ayudante general", "Armador", "Ayudante de fab."]);
+    expect(subido.categorias.find((x) => x.id === 4)?.nivel).toBe(4);
+    expect(subido.categorias.find((x) => x.id === 9)?.nivel).toBe(3);
+    const insertado = insertarEscalon(esc, cat, 2, "Medio oficial");
+    expect(insertado.escalones[2]).toBe("Medio oficial");
+    expect(insertado.categorias.find((x) => x.id === 9)?.nivel).toBe(5);
+    expect(quitarEscalon(esc, cat, 4)).toBeNull(); // Armador tiene categoria
+    expect(quitarEscalon(insertado.escalones, insertado.categorias, 3)?.escalones).toEqual(esc);
+  });
+
+  it("los responsables no heredan las tareas de abajo (son de control)", () => {
+    expect(Array.from(categoriasEfectivas([15], CATEGORIAS_POR_DEFECTO))).toEqual([15]);
+    expect(Array.from(categoriasEfectivas([16], CATEGORIAS_POR_DEFECTO))).toEqual([16]);
   });
 
   it("habilidades extra: no son escalon pero valen como el escalon mas alto", () => {

@@ -13,9 +13,13 @@
 // se puede corregir a mano ("las 2 cosas hasta ver cual es la mas util"). Funciones puras.
 
 import type { TipoTarea, UnidadTarea } from "./organizacionDiaria";
+import { coincideConRubro, type RubroFabricacion } from "./ganttFabricacion";
 
-// De que medida del mueble sale la cantidad de la tarea. "u" = por cada mueble.
-export type BaseCantidad = UnidadTarea;
+// De que medida del mueble sale la cantidad de la tarea. "u" = por cada mueble. "rubro:<id>" = por cada
+// unidad de un rubro de materiales del presupuesto (placas, cajones, puertas, herrajes...: los rubros del
+// Gantt, con sus palabras clave), asi la cantidad de herrajes o de placas afina el tiempo.
+export type BaseCantidad = UnidadTarea | `rubro:${number}`;
+export const rubroDeBase = (base?: string): number | null => (base && base.startsWith("rubro:") ? Number(base.slice(6)) || null : null);
 export const BASES_CANTIDAD: Array<{ value: BaseCantidad; label: string }> = [
   { value: "u", label: "por mueble" },
   { value: "ml", label: "por ml de largo" },
@@ -56,7 +60,25 @@ export type MuebleMedido = {
   profundidad?: number;
   // Correcciones a mano de la cantidad de un renglon (id de renglon → cantidad total en la unidad de la tarea).
   ajustes?: Record<number, number>;
+  // Cantidades por rubro de materiales (id de rubro → cantidad), sacadas de lo cotizado para este mueble.
+  materiales?: Record<number, number>;
 };
+
+// Lo cotizado de cada rubro en una lista de materiales (los de un bloque del presupuesto, por ejemplo).
+export function cantidadesPorRubro(materiales: Array<{ description: string; qty: number }>, rubros: RubroFabricacion[]): Record<number, number> {
+  const out: Record<number, number> = {};
+  rubros
+    .filter((r) => r.origen === "materiales" && r.activo !== false)
+    .forEach((r) => {
+      const total = materiales.filter((m) => coincideConRubro(m.description, r)).reduce((s, m) => s + (Number(m.qty) || 0), 0);
+      if (total) out[r.id] = Math.round(total * 100) / 100;
+    });
+  return out;
+}
+
+// Los rubros de materiales que usa la receta (para pedir esas cantidades).
+export const rubrosDeLaReceta = (tipo: Pick<TipoMueble, "receta">): number[] =>
+  Array.from(new Set(tipo.receta.map((r) => rubroDeBase(r.base)).filter((x): x is number => x != null)));
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const pos = (n: unknown) => (Number.isFinite(Number(n)) && Number(n) > 0 ? Number(n) : 0);
@@ -96,6 +118,8 @@ export type TareaCalculada = {
   horas: number;
   // La tarea no tiene tiempo estandar cargado: el total queda corto.
   sinTiempo: boolean;
+  // Sale de un rubro de materiales que este mueble no trae cargado (cantidad 0 hasta que se cargue).
+  sinMaterial: boolean;
 };
 
 export function tareasDelMueble(tipo: TipoMueble, mueble: MuebleMedido, catalogo: TipoTarea[]): TareaCalculada[] {
@@ -104,9 +128,12 @@ export function tareasDelMueble(tipo: TipoMueble, mueble: MuebleMedido, catalogo
     const t = catalogo.find((x) => x.id === r.tareaId);
     const unidad = t?.unidad || "u";
     const base = r.base || unidad;
+    const rubroId = rubroDeBase(base);
+    const deMaterial = rubroId != null ? mueble.materiales?.[rubroId] : undefined;
+    const medida = rubroId != null ? pos(deMaterial) : medidas[base as UnidadTarea] || 0;
     const ajuste = mueble.ajustes?.[r.id];
     const ajustada = ajuste != null && Number.isFinite(ajuste);
-    const cantidad = r2(ajustada ? Number(ajuste) : pos(r.factor) * medidas[base]);
+    const cantidad = r2(ajustada ? Number(ajuste) : pos(r.factor) * medida);
     const horasPorUnidad = pos(t?.horasEstimadas);
     return {
       renglonId: r.id,
@@ -120,6 +147,7 @@ export function tareasDelMueble(tipo: TipoMueble, mueble: MuebleMedido, catalogo
       horasPorUnidad,
       horas: r2(cantidad * horasPorUnidad),
       sinTiempo: !horasPorUnidad,
+      sinMaterial: rubroId != null && deMaterial == null && !ajustada,
     };
   });
 }

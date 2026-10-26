@@ -32,14 +32,35 @@ export type CategoriaEmpleado = {
   activa?: boolean;
 };
 
-export const ESCALONES: Record<number, string> = {
-  1: "Aprendiz",
-  2: "Ayudante general",
-  3: "Ayudante especializado",
-  4: "Oficio",
-  5: "Responsable",
-};
-export const nombreEscalon = (nivel: number) => ESCALONES[nivel] || `Escalón ${nivel}`;
+// Los nombres de los escalones, del 1 para arriba (posicion = nivel). Editables: se suman, se renombran y
+// se reordenan ("dame la posibilidad de edicion de todas formas"). Se guardan recien al primer cambio.
+export const ESCALONES_POR_DEFECTO = ["Aprendiz", "Ayudante general", "Ayudante especializado", "Oficio", "Responsable"];
+export const nombreEscalon = (nivel: number, escalones: string[] = ESCALONES_POR_DEFECTO) => escalones[nivel - 1] || `Escalón ${nivel}`;
+
+// Cambiar el escalon `nivel` de lugar con el de al lado: los nombres y las categorias viajan juntos.
+export function moverEscalon(escalones: string[], cats: CategoriaEmpleado[], nivel: number, d: -1 | 1): { escalones: string[]; categorias: CategoriaEmpleado[] } {
+  const otro = nivel + d;
+  if (otro < 1 || otro > escalones.length) return { escalones, categorias: cats };
+  const nuevos = [...escalones];
+  [nuevos[nivel - 1], nuevos[otro - 1]] = [nuevos[otro - 1], nuevos[nivel - 1]];
+  return {
+    escalones: nuevos,
+    categorias: cats.map((c) => (c.extra ? c : c.nivel === nivel ? { ...c, nivel: otro } : c.nivel === otro ? { ...c, nivel } : c)),
+  };
+}
+
+// Un escalon nuevo justo arriba de `nivel` (0 = el mas bajo): los de arriba suben uno.
+export function insertarEscalon(escalones: string[], cats: CategoriaEmpleado[], despuesDe: number, nombre = "Escalón nuevo"): { escalones: string[]; categorias: CategoriaEmpleado[] } {
+  const nuevos = [...escalones];
+  nuevos.splice(despuesDe, 0, nombre);
+  return { escalones: nuevos, categorias: cats.map((c) => (!c.extra && c.nivel > despuesDe ? { ...c, nivel: c.nivel + 1 } : c)) };
+}
+
+// Solo se quita un escalon vacio (sin categorias); los de arriba bajan uno.
+export function quitarEscalon(escalones: string[], cats: CategoriaEmpleado[], nivel: number): { escalones: string[]; categorias: CategoriaEmpleado[] } | null {
+  if (cats.some((c) => !c.extra && c.nivel === nivel)) return null;
+  return { escalones: escalones.filter((_, i) => i !== nivel - 1), categorias: cats.map((c) => (!c.extra && c.nivel > nivel ? { ...c, nivel: c.nivel - 1 } : c)) };
+}
 
 // "Ayudante especializado · Laqueado": el rumbo se agrega cuando el nombre solo no alcanza (lo comparten
 // varias categorias); "Laqueador" ya lo dice.
@@ -61,8 +82,10 @@ export const CATEGORIAS_POR_DEFECTO: CategoriaEmpleado[] = [
   ...RUMBOS_POR_DEFECTO.map((area, i) => c(3 + i, "Ayudante especializado", 3, [2], { area })),
   // 9..14: el oficio de cada rumbo, que incluye a su ayudante especializado.
   ...OFICIOS.map((nombre, i) => c(9 + i, nombre, 4, [3 + i], { area: RUMBOS_POR_DEFECTO[i] })),
+  // Responsables: tareas de CONTROL. Estan por encima de todo pero no heredan las tareas de abajo (si
+  // ademas tiene un oficio, se tilda aparte).
   c(15, "Responsable de fábrica", 5),
-  c(16, "Responsable de obra", 5, [13], { area: "Instalación" }),
+  c(16, "Responsable de obra", 5),
   c(17, "Terminaciones general", 0, [], { extra: true }),
   c(18, "Terminaciones especializado", 0, [17], { extra: true }),
 ];

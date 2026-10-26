@@ -22,8 +22,8 @@ export const NOVEDADES: TandaNovedades[] = [
     items: [
       {
         titulo: "Categorías internas con sus tareas",
-        que: "Personal tiene un bloque nuevo, 'Categorías internas', por escalones: Aprendiz → Ayudante general → Ayudante especializado (con su rumbo: Armado, Mecanizado, Enchapado, Laqueado, Instalación, Herrería) → el oficio (Armador, Mecanizador, Enchapador, Laqueador, Instalador, Herrero) → Responsable. Terminaciones va aparte, como habilidad extra. No son las del convenio: son las capacidades. Cada escalón suma lo de abajo (quien sube conserva lo que ya hacía) y se priorizan las tareas del escalón más alto.",
-        como: "Personal → Categorías internas: nombre, escalón y rumbo se escriben en la celda; click derecho sobre una categoría → 'Tareas…'.",
+        que: "Personal tiene un bloque nuevo, 'Categorías internas', por escalones: Aprendiz → Ayudante general → Ayudante especializado (con su rumbo: Armado, Mecanizado, Enchapado, Laqueado, Instalación, Herrería) → el oficio (Armador, Mecanizador, Enchapador, Laqueador, Instalador, Herrero) → Responsable (tareas de control: está arriba de todo pero no hereda las de abajo). Terminaciones va aparte, como habilidad extra. Los escalones se pueden renombrar, sumar y reordenar. No son las del convenio: son las capacidades. Cada escalón suma lo de abajo (quien sube conserva lo que ya hacía) y se priorizan las tareas del escalón más alto.",
+        como: "Personal → Categorías internas: nombre, escalón y rumbo se escriben en la celda; click derecho sobre una categoría → 'Tareas…'. Click derecho sobre el título de un escalón para subirlo, bajarlo, sumar uno nuevo o quitarlo.",
         tab: "personal",
       },
       {
@@ -40,7 +40,7 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Tipos de mueble con su receta",
-        que: "Fabricación tiene 'Tipos de mueble': cada uno es una receta de tareas del catálogo ordenada por pasos. Las del mismo paso (3.1, 3.2) las pueden hacer distintas personas a la vez; el paso siguiente arranca cuando terminó todo el anterior. Cada tarea saca su cantidad de las medidas del mueble (por mueble, ml, m² o m³) y, con su tiempo estándar, da las horas-hombre y las horas de reloj mínimas.",
+        que: "Fabricación tiene 'Tipos de mueble': cada uno es una receta de tareas del catálogo ordenada por pasos. Las del mismo paso (3.1, 3.2) las pueden hacer distintas personas a la vez; el paso siguiente arranca cuando terminó todo el anterior. Cada tarea saca su cantidad de las medidas del mueble (por mueble, ml, m² o m³) o de los materiales del presupuesto (por placa, por bisagra, por cajón…, los rubros del Gantt) y, con su tiempo estándar, da las horas-hombre y las horas de reloj mínimas.",
         como: "Fabricación → Tipos de mueble → '+ Tipo de mueble' o 'Crear desde un grupo de trabajo…'. Click derecho → 'Receta y tiempos…' para cargar los pasos y probar con otras medidas.",
         tab: "fabricacion",
       },

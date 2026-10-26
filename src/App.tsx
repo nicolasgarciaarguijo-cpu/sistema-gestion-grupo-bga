@@ -238,7 +238,7 @@ import { GanttFabricacion } from "./tabs/GanttFabricacion";
 import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
 import { TiposMueble } from "./tabs/TiposMueble";
 import type { TipoMueble } from "./domain/tiposMueble";
-import { CATEGORIAS_POR_DEFECTO, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
+import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
@@ -1849,6 +1849,8 @@ type PersistedAppStateData = {
   rubrosFabricacion: RubroFabricacion[];
   // Personal · categorias internas (capacidades): catalogo global con sus tareas de fabricacion.
   categoriasEmpleado: CategoriaEmpleado[];
+  // Nombres de los escalones internos (posicion = nivel). Vacio = los de siempre.
+  escalonesInternos: string[];
   // Fabricacion · tipos de mueble: receta ordenada por pasos sobre el catalogo de tareas (global).
   tiposMueble: TipoMueble[];
   // Cuentas (bancos, efectivo, cajas por persona) corregidas a mano: apertura, nombre, principal.
@@ -1923,7 +1925,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "organizacion-diaria",
     label: "Fabricación · organización diaria",
-    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "tiposMueble"] as const,
+    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble"] as const,
   },
   {
     key: "cuentas",
@@ -3120,6 +3122,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [rubrosFabricacion, setRubrosFabricacion] = useState<RubroFabricacion[]>([]);
   const [categoriasEmpleado, setCategoriasEmpleado] = useState<CategoriaEmpleado[]>([]);
   const [tiposMueble, setTiposMueble] = useState<TipoMueble[]>([]);
+  const [escalonesInternos, setEscalonesInternos] = useState<string[]>([]);
+  const escalonesVigentes = escalonesInternos.length ? escalonesInternos : ESCALONES_POR_DEFECTO;
   // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
   const categoriasVigentes = categoriasEmpleado.length ? categoriasEmpleado : CATEGORIAS_POR_DEFECTO;
   const [cuentasGuardadas, setCuentasGuardadas] = useState<Cuenta[]>([]);
@@ -9758,6 +9762,7 @@ Escribi CERRAR para confirmar:`
     rubrosFabricacion: rubrosFabricacion.map((item) => ({ ...item, palabras: [...item.palabras], excluir: [...(item.excluir || [])] })),
     categoriasEmpleado: categoriasEmpleado.map((item) => ({ ...item, incluye: [...item.incluye], tareaIds: [...item.tareaIds] })),
     tiposMueble: tiposMueble.map((item) => ({ ...item, receta: item.receta.map((r) => ({ ...r })) })),
+    escalonesInternos: [...escalonesInternos],
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
@@ -10097,6 +10102,7 @@ Escribi CERRAR para confirmar:`
     setRubrosFabricacion((data.rubrosFabricacion || []).map((item) => ({ ...item, palabras: [...(item.palabras || [])], excluir: [...(item.excluir || [])] })));
     setCategoriasEmpleado((data.categoriasEmpleado || []).map((item) => ({ ...item, incluye: [...(item.incluye || [])], tareaIds: [...(item.tareaIds || [])] })));
     setTiposMueble((data.tiposMueble || []).map((item) => ({ ...item, receta: (item.receta || []).map((r) => ({ ...r })) })));
+    setEscalonesInternos([...(data.escalonesInternos || [])]);
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -12427,6 +12433,7 @@ Escribi CERRAR para confirmar:`
     rubrosFabricacion,
     categoriasEmpleado,
     tiposMueble,
+    escalonesInternos,
     cuentasGuardadas,
     fiscalClosings,
     inversiones,
@@ -23155,6 +23162,7 @@ Escribi CERRAR para confirmar:`
           tipos={tiposMueble}
           tareas={tiposTarea}
           grupos={gruposTrabajo}
+          rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
           onGuardar={(t) => setTiposMueble((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [...prev, t]))}
           onBorrar={(id) => setTiposMueble((prev) => prev.filter((x) => x.id !== id))}
           nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
@@ -23342,6 +23350,11 @@ Escribi CERRAR para confirmar:`
               return base.some((x) => x.id === c.id) ? base.map((x) => (x.id === c.id ? c : x)) : [...base, c];
             })
           }
+          escalonesInternos={escalonesVigentes}
+          onGuardarEscalones={(escalones: string[], categorias?: CategoriaEmpleado[]) => {
+            setEscalonesInternos(escalones);
+            if (categorias) setCategoriasEmpleado(categorias);
+          }}
           onBorrarCategoria={(id: number) => {
             setCategoriasEmpleado((prev) =>
               (prev.length ? prev : CATEGORIAS_POR_DEFECTO).filter((x) => x.id !== id).map((x) => ({ ...x, incluye: x.incluye.filter((i) => i !== id) }))
