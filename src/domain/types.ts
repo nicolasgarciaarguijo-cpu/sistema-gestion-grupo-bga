@@ -107,6 +107,10 @@ export type FixedMarker = {
   amount: number;
   active: boolean;
   notes: string;
+  // Costos empresariales: en que presupuestos entra (los de su empresa, los de las dos o ninguno).
+  impactaEn?: "empresa" | "ambas" | "ninguna";
+  // true = el monto no manda: el grupo usa el promedio de los ultimos 3 meses.
+  sigueSugerido?: boolean;
 };
 
 export type SupplyMarkerSubtype =

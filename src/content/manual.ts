@@ -972,6 +972,24 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         ],
       },
       {
+        heading: "Costos empresariales",
+        blocks: [
+          {
+            type: "p",
+            text: "Lo que gastó cada empresa en Costos los últimos 3 meses cerrados (el mes en curso no entra), grupo por grupo, con su promedio. Siempre por empresa: se elige arriba a la derecha y los costos de una no se mezclan con los de la otra.",
+          },
+          {
+            type: "p",
+            text: "El promedio es la sugerencia de cuánto cargarle por mes a los presupuestos. Si te parece que tiene que ser más o menos, escribí el monto en 'A usar' y ese es el que va. Si lo borrás, vuelve al promedio. Si el grupo tenía varios marcadores (alquiler, expensas...), el monto se reparte entre ellos en proporción.",
+          },
+          {
+            type: "p",
+            text: "Con click derecho sobre un grupo se elige en qué presupuestos impacta: solo en los de su empresa, en los de las dos empresas o en ninguno. Por defecto impactan los grupos fijos cargados a mano; los variables y los automáticos (Personal, Caja chica) no, porque ya entran al presupuesto por materiales y mano de obra.",
+          },
+          { type: "tip", text: "Lo de la otra empresa marcado 'las dos' aparece abajo de todo, en violeta: se ve, pero se edita desde su empresa." },
+        ],
+      },
+      {
         heading: "Preguntas frecuentes",
         blocks: [
           {

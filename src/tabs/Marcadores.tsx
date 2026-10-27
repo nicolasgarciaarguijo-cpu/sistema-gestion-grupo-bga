@@ -1,6 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
-import { Panel, Field, MiniMetric, ButtonLike, AmountInput } from "../ui/primitives";
+import { Panel, Field, MiniMetric, ButtonLike, AmountInput, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
@@ -8,7 +8,7 @@ import {
 } from "../ui/planilla";
 import { money } from "../lib/format";
 import { newId } from "../domain/id";
-import { aggregateCosts, realCostsByGroup } from "../domain/costs";
+import { elegirImpacto, fijarValor, MESES_DEL_PROMEDIO, volverAlSugerido, type CostoEmpresarial, type ImpactoCosto } from "../domain/costosEmpresariales";
 import { WORK_TYPE_OPTIONS, PERSONAL_PROVISION_KINDS } from "../domain/types";
 import type {
   CompanyName,
@@ -47,10 +47,10 @@ type MarcadoresTabProps = {
   personalProvisionMarkers: any[];
   fixedMarkerGroupOptions: any[];
   // Lo que la empresa gasta de verdad, para el bloque "Costos empresariales".
-  costsMonths: string[];
-  costGroups: any[];
-  costRows: any[];
-  costsFiscalLabel: string;
+  // De cada empresa: los ultimos 3 meses cerrados, el promedio sugerido y el valor que se usa.
+  costosEmpresariales: CostoEmpresarial[];
+  mesesDelPromedio: string[];
+  empresaDelPresupuesto: CompanyName;
   COMPANY_OPTIONS: any[];
   getCompanyMeta: (company: CompanyName) => any;
   promptAndCreateCostAnalysisGroup: (company?: any) => any;
@@ -105,10 +105,9 @@ export function MarcadoresTab({
   laborMarkers,
   personalProvisionMarkers,
   fixedMarkerGroupOptions,
-  costsMonths,
-  costGroups,
-  costRows,
-  costsFiscalLabel,
+  costosEmpresariales,
+  mesesDelPromedio,
+  empresaDelPresupuesto,
   COMPANY_OPTIONS,
   getCompanyMeta,
   promptAndCreateCostAnalysisGroup,
@@ -143,95 +142,30 @@ export function MarcadoresTab({
   const anchosEppM = usePlanillaWidths("marcadores.epp", { label: 300, col: 120, colCompact: 92 });
   const anchosEmpresariales = usePlanillaWidths("marcadores.empresariales", { label: 300, col: 130, colCompact: 100 });
 
-  // --- Costos empresariales: lo real de Costos entrando a Marcadores ---------------------
-  // Marcadores tiene su PROPIO filtro de empresa: si mirara el de la solapa Costos, el numero
-  // cambiaria por un filtro puesto en otra pantalla y nadie entenderia por que.
-  const [empresaCostos, setEmpresaCostos] = React.useState<string>("__ALL__");
+  // --- Costos empresariales: promedio de los ultimos 3 meses de Costos, POR EMPRESA ----------
+  // El promedio es la sugerencia; "A usar" se puede escribir y manda. Cada grupo elige si impacta en
+  // los presupuestos de su empresa, de las dos o de ninguna. Filtro propio y nunca "todas": los
+  // costos de una empresa no se mezclan con los de la otra.
+  const [empresaCostos, setEmpresaCostos] = React.useState<CompanyName>(empresaDelPresupuesto);
+  const [menuCosto, setMenuCosto] = React.useState<null | { x: number; y: number; c: CostoEmpresarial }>(null);
+  const empresaCorta = (c: CompanyName) => getCompanyMeta(c).short;
 
-  const costosReales = React.useMemo(
-    () =>
-      realCostsByGroup(
-        aggregateCosts({
-          months: costsMonths,
-          groups: costGroups,
-          rows: costRows,
-          companyScope: empresaCostos === "__ALL__" ? "__ALL__" : (empresaCostos as CompanyName),
-        })
-      ),
-    [costsMonths, costGroups, costRows, empresaCostos]
-  );
+  const costosDeLaEmpresa = costosEmpresariales.filter((c) => c.company === empresaCostos);
+  // Lo de la otra empresa marcado "las dos": tambien entra a los presupuestos de esta.
+  const deLaOtra = costosEmpresariales.filter((c) => c.company !== empresaCostos && c.impacta === "ambas" && c.valorAUsar > 0);
+  const sumar = (lista: CostoEmpresarial[], campo: "promedio" | "valorAUsar") => lista.reduce((a, c) => a + c[campo], 0);
+  const entraAPresupuestos = sumar(costosDeLaEmpresa.filter((c) => c.impacta !== "ninguna"), "valorAUsar") + sumar(deLaOtra, "valorAUsar");
+  const mesCorto = (m: string) => new Date(`${m}-15T12:00:00`).toLocaleDateString("es-AR", { month: "short", year: "2-digit" });
+  const textoImpacto = (c: CostoEmpresarial) =>
+    c.impacta === "ambas" ? "Las dos" : c.impacta === "empresa" ? empresaCorta(c.company) : "No impacta";
 
-  // Cuanto tiene cargado HOY cada grupo como marcador: es lo que realmente se usa para
-  // presupuestar. La diferencia contra lo real es el aviso de que el precio quedo viejo.
-  const marcadorPorGrupo = React.useMemo(() => {
-    const acc = new Map<string, number>();
-    fixedMarkers
-      .filter((m: any) => m.active && (empresaCostos === "__ALL__" || m.company === empresaCostos))
-      .forEach((m: any) => acc.set(m.group, (acc.get(m.group) || 0) + Number(m.amount || 0)));
-    return acc;
-  }, [fixedMarkers, empresaCostos]);
-
-  const totalRealMensual = (kind: "fijo" | "variable") =>
-    costosReales.filter((r) => r.kind === kind).reduce((a, r) => a + r.monthlyAverage, 0);
-
-  // Vuelca el promedio mensual real de un grupo al marcador que se usa para presupuestar.
-  // No lo hace solo: cambiar esto cambia el precio de todos los presupuestos siguientes, asi que
-  // sale del click derecho y con confirmacion.
-  const adoptarReal = (grupo: string, montoReal: number) => {
-    if (!(montoReal > 0)) return;
-    const objetivo = fixedMarkers.filter(
-      (m: any) => m.group === grupo && (empresaCostos === "__ALL__" || m.company === empresaCostos)
-    );
-    const empresaDestino =
-      empresaCostos === "__ALL__" ? budget.company : (empresaCostos as CompanyName);
-
-    if (objetivo.length === 0) {
-      if (!window.confirm(`"${grupo}" no tiene marcador cargado.
-
-¿Crear uno de ${money(montoReal)} por mes?`)) return;
-      setFixedMarkers((prev: any[]) => [
-        ...prev,
-        {
-          id: newId(),
-          company: empresaDestino,
-          workType: "General",
-          group: grupo,
-          description: grupo,
-          amount: Math.round(montoReal),
-          active: true,
-          notes: `Real de Costos ${costsFiscalLabel}`,
-        },
-      ]);
-      return;
-    }
-
-    if (objetivo.length === 1) {
-      const actual = Number(objetivo[0].amount || 0);
-      if (!window.confirm(`"${grupo}": pasar el marcador de ${money(actual)} a ${money(montoReal)} por mes?`)) return;
-      updateArrayItem(setFixedMarkers, objetivo[0].id, "amount" as any, Math.round(montoReal) as any);
-      return;
-    }
-
-    // Varios marcadores en el mismo grupo: se ajustan PROPORCIONALMENTE para que sumen lo real,
-    // asi no se pierde el detalle de cada concepto (alquiler, expensas, ...).
-    const suma = objetivo.reduce((a: number, m: any) => a + Number(m.amount || 0), 0);
-    if (!window.confirm(
-      `"${grupo}" tiene ${objetivo.length} marcadores que suman ${money(suma)}.
-
-` +
-      `¿Ajustarlos proporcionalmente para que sumen ${money(montoReal)} por mes?`
-    )) return;
+  const cambiarImpacto = (c: CostoEmpresarial, impacta: ImpactoCosto) =>
+    setFixedMarkers((prev: any[]) => elegirImpacto(prev, c, impacta, newId));
+  // Vacio (o cero) = vuelve a usar el promedio.
+  const escribirValor = (c: CostoEmpresarial, valor: number) =>
     setFixedMarkers((prev: any[]) =>
-      prev.map((m: any) => {
-        if (!objetivo.some((o: any) => o.id === m.id)) return m;
-        const nuevo =
-          suma > 0
-            ? (Number(m.amount || 0) / suma) * montoReal
-            : montoReal / objetivo.length;
-        return { ...m, amount: Math.round(nuevo) };
-      })
+      valor > 0 ? fijarValor(prev, c, valor, newId, "Costos empresariales") : volverAlSugerido(prev, c)
     );
-  };
 
   return (
         <div style={styles.column}>
@@ -324,10 +258,9 @@ export function MarcadoresTab({
                 <select
                   style={{ ...styles.input, maxWidth: 200 }}
                   value={empresaCostos}
-                  onChange={(e) => setEmpresaCostos(e.target.value)}
-                  title="Qué empresa se está mirando"
+                  onChange={(e) => setEmpresaCostos(e.target.value as CompanyName)}
+                  title="De qué empresa son los costos"
                 >
-                  <option value="__ALL__">Todas</option>
                   {COMPANY_OPTIONS.map((c: any) => (
                     <option key={c.value} value={c.value}>{c.short}</option>
                   ))}
@@ -338,28 +271,25 @@ export function MarcadoresTab({
                 </ButtonLike>
             </div>
           }>
-            {/* Lo REAL primero: lo que la empresa gasta de verdad, grupo por grupo, saliendo de
-                Costos. Debajo van los marcadores, que son lo que se usa para poner precio. */}
             <div style={styles.metricGrid}>
-              <MiniMetric label={`Fijos reales / mes · ${costsFiscalLabel}`} value={money(totalRealMensual("fijo"))} />
-              <MiniMetric label="Variables reales / mes" value={money(totalRealMensual("variable"))} />
-              <MiniMetric label="Total real / mes" value={money(totalRealMensual("fijo") + totalRealMensual("variable"))} />
-              <MiniMetric
-                label="En presupuestos (marcadores)"
-                value={money(Array.from(marcadorPorGrupo.values()).reduce((a, v) => a + v, 0))}
-              />
+              <MiniMetric label={`Fijos · promedio ${MESES_DEL_PROMEDIO} meses`} value={money(sumar(costosDeLaEmpresa.filter((c) => c.kind === "fijo"), "promedio"))} />
+              <MiniMetric label="Variables · promedio" value={money(sumar(costosDeLaEmpresa.filter((c) => c.kind === "variable"), "promedio"))} />
+              <MiniMetric label={`Entra a presupuestos de ${empresaCorta(empresaCostos)} / mes`} value={money(entraAPresupuestos)} />
+              {deLaOtra.length > 0 && <MiniMetric label="De eso, de la otra empresa" value={money(sumar(deLaOtra, "valorAUsar"))} />}
             </div>
 
             <div style={{ ...styles.sectionNote, marginTop: 10, marginBottom: 8 }}>
-              Esto es lo que sale de <strong>Costos</strong>, promediado sobre los meses que tienen
-              movimientos cargados. <strong>Click derecho</strong> sobre un grupo para volcarlo al
-              marcador que se usa para presupuestar.
+              Lo gastado en <strong>Costos</strong> por {empresaCorta(empresaCostos)} en los últimos {MESES_DEL_PROMEDIO} meses cerrados
+              ({mesesDelPromedio.map(mesCorto).join(", ")}). El <strong>promedio</strong> es la sugerencia; en <strong>A usar</strong> podés
+              escribir otro monto y ese es el que va al presupuesto (vacío = usa el promedio). <strong>Click derecho</strong> sobre un
+              grupo para elegir si impacta en los presupuestos de {empresaCorta(empresaCostos)}, de las dos empresas o de ninguna.
             </div>
 
             <div style={{ ...planillaWrap, ...anchosEmpresariales.vars, marginBottom: 14 }}>
               <table className="planilla" style={planillaTable}>
                 <colgroup>
                   <col style={colLabel} />
+                  {mesesDelPromedio.map((m) => <col key={m} style={colDato} />)}
                   <col style={colDato} />
                   <col style={colDato} />
                   <col style={colDato} />
@@ -374,113 +304,98 @@ export function MarcadoresTab({
                         onDoubleClick={anchosEmpresariales.resetLabel}
                       />
                     </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>
-                      Real / mes
-                      <PlanillaManija
-                        onMouseDown={(ev) => anchosEmpresariales.startResize(ev, "col")}
-                        onDoubleClick={anchosEmpresariales.resetCol}
-                      />
-                    </th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>Total ejercicio</th>
-                    <th style={{ ...thColumna, textAlign: "right" }}>En presupuestos</th>
-                    <th style={thFlexible}>Diferencia</th>
+                    {mesesDelPromedio.map((m, i) => (
+                      <th key={m} style={{ ...thColumna, textAlign: "right" }}>
+                        {mesCorto(m)}
+                        {i === 0 && (
+                          <PlanillaManija
+                            onMouseDown={(ev) => anchosEmpresariales.startResize(ev, "col")}
+                            onDoubleClick={anchosEmpresariales.resetCol}
+                          />
+                        )}
+                      </th>
+                    ))}
+                    <th style={{ ...thColumna, textAlign: "right" }}>Promedio</th>
+                    <th style={{ ...thColumna, textAlign: "right" }}>A usar</th>
+                    <th style={thColumna}>Impacta en</th>
+                    <th style={thFlexible} />
                   </tr>
                 </thead>
                 <tbody>
                   {SECCIONES_COSTOS.map((sec) => {
-                    const filas = costosReales.filter((r) => r.kind === sec.kind);
+                    const filas = costosDeLaEmpresa.filter((r) => r.kind === sec.kind);
+                    const columnas = mesesDelPromedio.length + 5;
                     return (
                       <React.Fragment key={sec.kind}>
                         <tr>
-                          <td colSpan={5} style={styles.sectionCell}>
-                            <div
-                              style={{
-                                ...styles.sectionHeader,
-                                background: sec.fondo,
-                                color: sec.tinta,
-                                borderColor: sec.tinta,
-                              }}
-                            >
+                          <td colSpan={columnas} style={styles.sectionCell}>
+                            <div style={{ ...styles.sectionHeader, background: sec.fondo, color: sec.tinta, borderColor: sec.tinta }}>
                               {sec.titulo}
                             </div>
                           </td>
                         </tr>
                         {filas.length === 0 && (
                           <tr>
-                            <td colSpan={5} style={{ ...tdNombre, color: "#94a3b8", fontWeight: 400 }}>
+                            <td colSpan={columnas} style={{ ...tdNombre, color: "#94a3b8", fontWeight: 400 }}>
                               No hay grupos de este tipo.
                             </td>
                           </tr>
                         )}
-                        {filas.map((row) => {
-                          const enPresupuestos = marcadorPorGrupo.get(row.group) || 0;
-                          const dif = row.monthlyAverage - enPresupuestos;
-                          const sinDatos = row.monthsWithData === 0;
+                        {filas.map((c) => {
+                          const apagado = c.impacta === "ninguna";
+                          const manual = c.valorManual != null;
+                          const dif = manual ? (c.valorManual as number) - c.promedio : 0;
+                          const meta = getCompanyMeta(c.company);
                           return (
                             <tr
-                              key={`${sec.kind}-${row.group}`}
+                              key={`${sec.kind}-${c.group}`}
                               onContextMenu={(ev) => {
-                                if (sinDatos) return;
                                 ev.preventDefault();
                                 ev.stopPropagation();
-                                adoptarReal(row.group, row.monthlyAverage);
+                                setMenuCosto({ x: ev.clientX, y: ev.clientY, c });
                               }}
-                              title={
-                                sinDatos
-                                  ? "Sin gastos cargados en el ejercicio"
-                                  : "Click derecho: usar este real en los presupuestos"
-                              }
-                              style={{ cursor: sinDatos ? "default" : "context-menu" }}
+                              title="Click derecho: en qué presupuestos impacta"
                             >
-                              <td style={{ ...tdNombre, fontWeight: 400 }}>
-                                {row.group}
-                                {row.auto && <span style={{ ...styles.chatStatus, marginLeft: 6 }}>auto</span>}
+                              <td style={{ ...tdNombre, fontWeight: 400, opacity: apagado ? 0.55 : 1 }}>
+                                {c.group}
+                                {c.auto && <span style={{ ...styles.chatStatus, marginLeft: 6 }}>auto</span>}
                               </td>
-                              <td
-                                style={{
-                                  ...tdDato, textAlign: "right", fontWeight: 700,
-                                  color: sinDatos ? "#cbd5e1" : "#0f172a",
-                                }}
-                              >
-                                {sinDatos ? "·" : money(row.monthlyAverage)}
+                              {c.porMes.map((v, i) => (
+                                <td key={i} style={{ ...tdDato, textAlign: "right", color: v > 0 ? "#475569" : "#cbd5e1" }}>
+                                  {v > 0 ? money(v) : "·"}
+                                </td>
+                              ))}
+                              <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: c.promedio > 0 ? "#0f172a" : "#cbd5e1" }}>
+                                {c.promedio > 0 ? money(c.promedio) : "·"}
                               </td>
-                              <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>
-                                {row.total > 0 ? money(row.total) : "·"}
+                              <td style={{ ...tdDato, padding: 0, background: manual ? "#fffbeb" : undefined }}>
+                                <AmountInput
+                                  style={{ ...inputCeldaDerecha, fontWeight: manual ? 700 : 400 }}
+                                  value={c.valorManual ?? 0}
+                                  placeholder={c.promedio > 0 ? money(c.promedio) : "0"}
+                                  onChange={(n) => escribirValor(c, n)}
+                                />
                               </td>
-                              <td
-                                style={{
-                                  ...tdDato, textAlign: "right",
-                                  color: enPresupuestos > 0 ? "#334155" : "#cbd5e1",
-                                }}
-                              >
-                                {enPresupuestos > 0 ? money(enPresupuestos) : "·"}
+                              <td style={tdDato}>
+                                <span
+                                  style={{
+                                    ...styles.chatStatus,
+                                    background: apagado ? "#f1f5f9" : c.impacta === "ambas" ? "#ede9fe" : "#ffffff",
+                                    color: apagado ? "#94a3b8" : c.impacta === "ambas" ? "#5b21b6" : meta.primary,
+                                    boxShadow: apagado || c.impacta === "ambas" ? undefined : `inset 0 0 0 1px ${meta.primary}`,
+                                  }}
+                                >
+                                  {textoImpacto(c)}
+                                </span>
                               </td>
-                              <td style={tdFlexible}>
-                                {sinDatos ? (
-                                  <span style={{ color: "#94a3b8" }}>sin gastos cargados todavía</span>
-                                ) : (
-                                  <span style={{ display: "inline-flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                    <span
-                                      style={{
-                                        fontWeight: 700,
-                                        color: Math.abs(dif) < 1 ? "#16a34a" : dif > 0 ? "#dc2626" : "#2563eb",
-                                      }}
-                                    >
-                                      {Math.abs(dif) < 1 ? "al día" : `${dif > 0 ? "+" : "−"}${money(Math.abs(dif))}`}
-                                    </span>
-                                    <span style={{ color: "#94a3b8", fontSize: 11 }}>
-                                      {enPresupuestos === 0
-                                        ? "sin marcador: no entra al precio"
-                                        : dif > 1
-                                        ? "se está presupuestando de menos"
-                                        : dif < -1
-                                        ? "se está presupuestando de más"
-                                        : ""}
-                                      {" · "}
-                                      {row.monthsWithData} {row.monthsWithData === 1 ? "mes" : "meses"} con datos
-                                    </span>
-                                  </span>
-                                )}
+                              <td style={{ ...tdFlexible, color: "#94a3b8", fontSize: 11 }}>
+                                {manual
+                                  ? Math.abs(dif) < 1
+                                    ? "a mano, igual al promedio"
+                                    : `a mano: ${dif > 0 ? "+" : "−"}${money(Math.abs(dif))} contra el promedio`
+                                  : c.promedio > 0
+                                  ? "usa el promedio"
+                                  : "sin gastos en los últimos meses"}
                               </td>
                             </tr>
                           );
@@ -488,9 +403,66 @@ export function MarcadoresTab({
                       </React.Fragment>
                     );
                   })}
+                  {deLaOtra.length > 0 && (
+                    <>
+                      <tr>
+                        <td colSpan={mesesDelPromedio.length + 5} style={styles.sectionCell}>
+                          <div style={{ ...styles.sectionHeader, background: "#ede9fe", color: "#5b21b6", borderColor: "#5b21b6" }}>
+                            DE LA OTRA EMPRESA (IMPACTAN EN LAS DOS)
+                          </div>
+                        </td>
+                      </tr>
+                      {deLaOtra.map((c) => (
+                        <tr key={`otra-${c.company}-${c.group}`}>
+                          <td style={{ ...tdNombre, fontWeight: 400 }}>{c.group} · {empresaCorta(c.company)}</td>
+                          {c.porMes.map((v, i) => (
+                            <td key={i} style={{ ...tdDato, textAlign: "right", color: "#94a3b8" }}>{v > 0 ? money(v) : "·"}</td>
+                          ))}
+                          <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{c.promedio > 0 ? money(c.promedio) : "·"}</td>
+                          <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(c.valorAUsar)}</td>
+                          <td style={tdDato} />
+                          <td style={{ ...tdFlexible, color: "#94a3b8", fontSize: 11 }}>se edita en {empresaCorta(c.company)}</td>
+                        </tr>
+                      ))}
+                    </>
+                  )}
                 </tbody>
               </table>
             </div>
+            {menuCosto && (
+              <QuickMenu x={menuCosto.x} y={menuCosto.y} onClose={() => setMenuCosto(null)}>
+                <QuickMenuTitle>{menuCosto.c.group} · {empresaCorta(menuCosto.c.company)}</QuickMenuTitle>
+                {([
+                  ["empresa", `Impacta solo en presupuestos de ${empresaCorta(menuCosto.c.company)}`],
+                  ["ambas", "Impacta en presupuestos de las dos empresas"],
+                  ["ninguna", "No impacta en presupuestos"],
+                ] as Array<[ImpactoCosto, string]>).map(([v, texto]) => (
+                  <button
+                    key={v}
+                    type="button"
+                    style={{ ...quickMenuItem, fontWeight: menuCosto.c.impacta === v ? 700 : 400 }}
+                    onClick={() => {
+                      cambiarImpacto(menuCosto.c, v);
+                      setMenuCosto(null);
+                    }}
+                  >
+                    {menuCosto.c.impacta === v ? "✓ " : ""}{texto}
+                  </button>
+                ))}
+                {menuCosto.c.valorManual != null && (
+                  <button
+                    type="button"
+                    style={quickMenuItem}
+                    onClick={() => {
+                      escribirValor(menuCosto.c, 0);
+                      setMenuCosto(null);
+                    }}
+                  >
+                    Volver al promedio ({money(menuCosto.c.promedio)})
+                  </button>
+                )}
+              </QuickMenu>
+            )}
 
             <div style={{ ...styles.sectionNote, marginBottom: 8 }}>
               <strong>Marcadores</strong> — lo que se usa hoy para poner precio a los presupuestos.
@@ -544,7 +516,8 @@ export function MarcadoresTab({
                     <td
                       style={{
                         ...tdNombre, fontWeight: 400, padding: 0,
-                        opacity: item.active ? 1 : 0.45,
+                        // Apagado, o reemplazado por el promedio de 3 meses (Costos empresariales).
+                        opacity: item.active && !item.sigueSugerido ? 1 : 0.45,
                         boxShadow: `inset 4px 0 0 ${markerCompany.primary}`,
                       }}
                     >

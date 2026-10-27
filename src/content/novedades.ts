@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-27b",
+    fecha: "27/10/2026",
+    titulo: "Costos empresariales: promedio de 3 meses por empresa",
+    items: [
+      {
+        titulo: "Los costos del presupuesto salen de los últimos 3 meses",
+        que: "Costos empresariales muestra, empresa por empresa, lo gastado en cada grupo los últimos 3 meses cerrados y su promedio. Ese promedio es lo que entra al presupuesto, salvo que escribas otro monto en 'A usar': ese manda. Vacío = vuelve al promedio.",
+        como: "Marcadores → Costos empresariales: elegí la empresa arriba a la derecha.",
+        tab: "marcadores",
+      },
+      {
+        titulo: "Cada costo elige en qué empresa impacta",
+        que: "Click derecho sobre un grupo: impacta solo en los presupuestos de su empresa, en los de las dos o en ninguno. Por defecto impactan los grupos fijos cargados a mano; los variables y los automáticos (Personal, Caja chica) no, porque ya entran al presupuesto por materiales y mano de obra. Ahora un presupuesto de BGA ya no toma los costos fijos de De Raíz (y al revés), salvo los marcados 'las dos'.",
+        como: "Marcadores → Costos empresariales → click derecho en el grupo.",
+        tab: "marcadores",
+      },
+    ],
+  },
+  {
     id: "2026-10-27a",
     fecha: "27/10/2026",
     titulo: "El cronograma mira lo que ya está ocupado",

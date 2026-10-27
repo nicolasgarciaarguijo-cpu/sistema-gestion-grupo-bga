@@ -246,6 +246,7 @@ import { Retrabajos, EfectividadPersonal } from "./tabs/Retrabajos";
 import { filasAjenasNuevas, type FilaGuardada } from "./domain/cambiosAjenos";
 import type { MuebleDelPresupuesto, PersonaParaCotizar } from "./domain/presupuestoMuebles";
 import { Mantenimiento } from "./tabs/Mantenimiento";
+import { costosEmpresariales, marcadoresParaPresupuesto, ultimosMesesCerrados } from "./domain/costosEmpresariales";
 import { esMaquinaOHerramienta, motivoNoDisponible, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
 import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
@@ -9154,16 +9155,6 @@ Escribi CERRAR para confirmar:`
     };
   }, [workspaceCompanyScope, companyCatalog]);
 
-  const activeFixedMarkersForBudget = useMemo(
-    () =>
-      fixedMarkers.filter(
-        (item) =>
-          item.active &&
-          (item.workType === budget.workType || item.workType === "General")
-      ),
-    [fixedMarkers, budget.workType]
-  );
-
   const activeSupplyMarkersForBudget = useMemo(
     () =>
       supplyMarkers.filter(
@@ -9274,14 +9265,6 @@ Escribi CERRAR para confirmar:`
       amount,
     }));
   }, [activeCostAnalysisEntriesForBudget]);
-
-  const activeFixedCostsFromSourcesForBudget = useMemo(
-    () => [
-      ...activeFixedMarkersForBudget.map(mapFixedMarkerToBudgetRow),
-      ...derivedCostAnalysisFixedCostsForBudget,
-    ],
-    [activeFixedMarkersForBudget, derivedCostAnalysisFixedCostsForBudget]
-  );
 
   const fixedMarkersByGroup = useMemo(
     () =>
@@ -18081,6 +18064,35 @@ Escribi CERRAR para confirmar:`
     [costEntries, visiblePettyCashExpenses, costsPayrollRows]
   );
 
+  // Costos empresariales de cada empresa (promedio de los ultimos 3 meses o el valor escrito a mano)
+  // y lo que de eso entra al presupuesto: los de SU empresa y los marcados "ambas".
+  const costosEmpresarialesTodas = useMemo(
+    () =>
+      COMPANY_OPTIONS.flatMap((c) =>
+        costosEmpresariales({ hoy: todayIso(), company: c.value as CompanyName, groups: costGroups, rows: costRows, marcadores: fixedMarkers })
+      ),
+    [COMPANY_OPTIONS, costGroups, costRows, fixedMarkers]
+  );
+
+  const activeFixedMarkersForBudget = useMemo(
+    () =>
+      marcadoresParaPresupuesto({
+        empresa: budget.company as CompanyName,
+        workType: budget.workType,
+        costos: costosEmpresarialesTodas,
+        marcadores: fixedMarkers,
+      }),
+    [costosEmpresarialesTodas, fixedMarkers, budget.company, budget.workType]
+  );
+
+  const activeFixedCostsFromSourcesForBudget = useMemo(
+    () => [
+      ...activeFixedMarkersForBudget.map(mapFixedMarkerToBudgetRow),
+      ...derivedCostAnalysisFixedCostsForBudget,
+    ],
+    [activeFixedMarkersForBudget, derivedCostAnalysisFixedCostsForBudget]
+  );
+
   const visibleIssuedInvoices = useMemo(
     () => issuedInvoices.filter((item) => canAccessCompany(item.company)),
     [alcanceEmpresa, issuedInvoices, allowedCompaniesForSession, effectiveIsAdmin]
@@ -23096,10 +23108,9 @@ Escribi CERRAR para confirmar:`
           laborMarkers={porEmpresa(laborMarkers)}
           personalProvisionMarkers={porEmpresa(personalProvisionMarkers)}
           fixedMarkerGroupOptions={fixedMarkerGroupOptions}
-          costsMonths={costsMonths}
-          costGroups={porEmpresa(costGroups)}
-          costRows={costRows}
-          costsFiscalLabel={costsFiscalLabel}
+          costosEmpresariales={costosEmpresarialesTodas}
+          mesesDelPromedio={ultimosMesesCerrados(todayIso())}
+          empresaDelPresupuesto={budget.company as CompanyName}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
           promptAndCreateCostAnalysisGroup={promptAndCreateCostAnalysisGroup}
