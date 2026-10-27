@@ -984,7 +984,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
           },
           {
             type: "p",
-            text: "Con click derecho sobre un grupo se elige en qué presupuestos impacta: solo en los de su empresa, en los de las dos empresas o en ninguno. Por defecto impactan los grupos fijos cargados a mano; los variables y los automáticos (Personal) no, porque ya entran al presupuesto por materiales y mano de obra.",
+            text: "Con click derecho sobre un grupo se elige en qué presupuestos se cobra: solo en los de su empresa, en los de las dos empresas o en ninguno. Solo Marcadores puede hacer esto y es solo para presupuestar: el gasto sigue siendo únicamente de la empresa que lo paga (el alquiler lo paga De Raíz y se cobra también en los presupuestos de BGA). Por defecto impactan los grupos fijos cargados a mano; los variables y los automáticos (Personal) no, porque ya entran al presupuesto por materiales y mano de obra.",
           },
           { type: "tip", text: "Lo de la otra empresa marcado 'las dos' aparece abajo de todo, en violeta: se ve, pero se edita desde su empresa." },
         ],

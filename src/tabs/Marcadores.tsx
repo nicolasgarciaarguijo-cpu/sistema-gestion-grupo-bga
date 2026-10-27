@@ -157,7 +157,7 @@ export function MarcadoresTab({
   const entraAPresupuestos = sumar(costosDeLaEmpresa.filter((c) => c.impacta !== "ninguna"), "valorAUsar") + sumar(deLaOtra, "valorAUsar");
   const mesCorto = (m: string) => new Date(`${m}-15T12:00:00`).toLocaleDateString("es-AR", { month: "short", year: "2-digit" });
   const textoImpacto = (c: CostoEmpresarial) =>
-    c.impacta === "ambas" ? "Las dos" : c.impacta === "empresa" ? empresaCorta(c.company) : "No impacta";
+    c.impacta === "ambas" ? "Las dos" : c.impacta === "empresa" ? empresaCorta(c.company) : "No se cobra";
 
   const cambiarImpacto = (c: CostoEmpresarial, impacta: ImpactoCosto) =>
     setFixedMarkers((prev: any[]) => elegirImpacto(prev, c, impacta, newId));
@@ -274,7 +274,7 @@ export function MarcadoresTab({
             <div style={styles.metricGrid}>
               <MiniMetric label={`Fijos · promedio ${MESES_DEL_PROMEDIO} meses`} value={money(sumar(costosDeLaEmpresa.filter((c) => c.kind === "fijo"), "promedio"))} />
               <MiniMetric label="Variables · promedio" value={money(sumar(costosDeLaEmpresa.filter((c) => c.kind === "variable"), "promedio"))} />
-              <MiniMetric label={`Entra a presupuestos de ${empresaCorta(empresaCostos)} / mes`} value={money(entraAPresupuestos)} />
+              <MiniMetric label={`Se cobra en presupuestos de ${empresaCorta(empresaCostos)} / mes`} value={money(entraAPresupuestos)} />
               {deLaOtra.length > 0 && <MiniMetric label="De eso, de la otra empresa" value={money(sumar(deLaOtra, "valorAUsar"))} />}
             </div>
 
@@ -282,7 +282,8 @@ export function MarcadoresTab({
               Lo gastado en <strong>Costos</strong> por {empresaCorta(empresaCostos)} en los últimos {MESES_DEL_PROMEDIO} meses cerrados
               ({mesesDelPromedio.map(mesCorto).join(", ")}). El <strong>promedio</strong> es la sugerencia; en <strong>A usar</strong> podés
               escribir otro monto y ese es el que va al presupuesto (vacío = usa el promedio). <strong>Click derecho</strong> sobre un
-              grupo para elegir si impacta en los presupuestos de {empresaCorta(empresaCostos)}, de las dos empresas o de ninguna.
+              grupo para elegir en qué presupuestos se cobra: solo en los de {empresaCorta(empresaCostos)}, en los de las dos empresas (la hoja de
+              presupuesto es la misma) o en ninguno. Presupuestar no es imputar: el gasto sigue siendo solo de la empresa que lo paga.
             </div>
 
             <div style={{ ...planillaWrap, ...anchosEmpresariales.vars, marginBottom: 14 }}>
@@ -317,7 +318,7 @@ export function MarcadoresTab({
                     ))}
                     <th style={{ ...thColumna, textAlign: "right" }}>Promedio</th>
                     <th style={{ ...thColumna, textAlign: "right" }}>A usar</th>
-                    <th style={thColumna}>Impacta en</th>
+                    <th style={thColumna}>Se cobra en</th>
                     <th style={thFlexible} />
                   </tr>
                 </thead>
@@ -408,7 +409,7 @@ export function MarcadoresTab({
                       <tr>
                         <td colSpan={mesesDelPromedio.length + 5} style={styles.sectionCell}>
                           <div style={{ ...styles.sectionHeader, background: "#ede9fe", color: "#5b21b6", borderColor: "#5b21b6" }}>
-                            DE LA OTRA EMPRESA (IMPACTAN EN LAS DOS)
+                            DE LA OTRA EMPRESA · SE COBRAN TAMBIÉN EN ESTOS PRESUPUESTOS
                           </div>
                         </td>
                       </tr>
@@ -421,7 +422,7 @@ export function MarcadoresTab({
                           <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{c.promedio > 0 ? money(c.promedio) : "·"}</td>
                           <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(c.valorAUsar)}</td>
                           <td style={tdDato} />
-                          <td style={{ ...tdFlexible, color: "#94a3b8", fontSize: 11 }}>se edita en {empresaCorta(c.company)}</td>
+                          <td style={{ ...tdFlexible, color: "#94a3b8", fontSize: 11 }}>lo paga {empresaCorta(c.company)} (es su gasto) · se edita en {empresaCorta(c.company)}</td>
                         </tr>
                       ))}
                     </>
@@ -433,9 +434,9 @@ export function MarcadoresTab({
               <QuickMenu x={menuCosto.x} y={menuCosto.y} onClose={() => setMenuCosto(null)}>
                 <QuickMenuTitle>{menuCosto.c.group} · {empresaCorta(menuCosto.c.company)}</QuickMenuTitle>
                 {([
-                  ["empresa", `Impacta solo en presupuestos de ${empresaCorta(menuCosto.c.company)}`],
-                  ["ambas", "Impacta en presupuestos de las dos empresas"],
-                  ["ninguna", "No impacta en presupuestos"],
+                  ["empresa", `Se cobra solo en presupuestos de ${empresaCorta(menuCosto.c.company)}`],
+                  ["ambas", `Se cobra en presupuestos de las dos empresas (lo paga ${empresaCorta(menuCosto.c.company)})`],
+                  ["ninguna", "No se cobra en presupuestos"],
                 ] as Array<[ImpactoCosto, string]>).map(([v, texto]) => (
                   <button
                     key={v}

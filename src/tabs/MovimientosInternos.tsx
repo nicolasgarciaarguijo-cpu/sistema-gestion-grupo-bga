@@ -1255,7 +1255,7 @@ export function MovimientosInternosTab({
           <Panel title={`⚠ Pagos cruzados entre empresas (${filas.length})`} span="full">
             <div style={{ ...styles.muted, marginBottom: 8 }}>
               Facturas de una empresa que pagó la otra. No debería pasar: la plata salió de una empresa y el gasto es de la
-              otra, así que entre ellas queda una deuda. Solo se muestra; se corrige en la factura (Compras → click → "Empresa que paga").
+              otra, así que la empresa de la factura le debe a la que pagó. Hay que pedir el cambio de factura o devolver la plata. Se corrige en la factura (Compras → click → "Empresa que paga").
             </div>
             <table className="planilla" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
               <thead>

@@ -466,7 +466,7 @@ export function FacturaCompraModal({
                 </div>
                 {cruzado && (
                   <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700, marginTop: 6 }}>
-                    ⚠ Pago cruzado: la factura es de una empresa y la paga otra. Queda a la vista en Movimientos internos.
+                    ⚠ Pago cruzado: la factura es de una empresa y la paga otra. Lo correcto es pedir que la factura salga a nombre de la empresa que paga; si no, queda como deuda con la empresa que pagó (Movimientos internos → Pagos cruzados).
                   </div>
                 )}
                 {cruceAdm && (

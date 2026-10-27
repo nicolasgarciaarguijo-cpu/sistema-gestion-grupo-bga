@@ -90,7 +90,7 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Cada costo elige en qué empresa impacta",
-        que: "Click derecho sobre un grupo: impacta solo en los presupuestos de su empresa, en los de las dos o en ninguno. Por defecto impactan los grupos fijos cargados a mano; los variables y los automáticos (Personal) no, porque ya entran al presupuesto por materiales y mano de obra. Ahora un presupuesto de BGA ya no toma los costos fijos de De Raíz (y al revés), salvo los marcados 'las dos'.",
+        que: "Click derecho sobre un grupo: se cobra solo en los presupuestos de su empresa, en los de las dos o en ninguno. 'Las dos' es solo para presupuestar (la hoja de presupuesto es la misma): el gasto sigue siendo únicamente de la empresa que lo paga, no se duplica. Por defecto impactan los grupos fijos cargados a mano; los variables y los automáticos (Personal) no, porque ya entran al presupuesto por materiales y mano de obra. Ahora un presupuesto de BGA ya no toma los costos fijos de De Raíz (y al revés), salvo los marcados 'las dos'.",
         como: "Marcadores → Costos empresariales → click derecho en el grupo.",
         tab: "marcadores",
       },

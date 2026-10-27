@@ -5,6 +5,9 @@ import type { CompanyName, CostGroup, CostKind, FixedMarker, WorkTypeName } from
 // grupo por grupo. El promedio es la SUGERENCIA de cuanto cargarle a los presupuestos; al costado
 // se puede escribir otro valor y ese manda. Siempre por empresa: cada empresa con sus costos, y en
 // cada grupo se elige si impacta en los presupuestos de esa empresa sola, de las dos o de ninguna.
+// OJO (Nicolas, 27/10/2026): PRESUPUESTAR no es IMPUTAR. El gasto es siempre de la empresa que lo paga (con su
+// factura); "las dos" solo dice que el costo SE COBRA en los presupuestos de las dos, porque la hoja de presupuesto es
+// la misma. Ej.: el alquiler lo paga De Raiz (es costo de De Raiz) y se cobra tambien en los presupuestos de BGA.
 
 export const MESES_DEL_PROMEDIO = 3;
 
