@@ -11044,10 +11044,10 @@ Escribi CERRAR para confirmar:`
     });
   };
 
-  const createDirectApprovedJob = () => {
-    if (!canWriteCompany(budget.company)) {
+  const createDirectApprovedJob = () => conEmpresa("el trabajo", (empresaElegida) => {
+    if (!canWriteCompany(empresaElegida)) {
       window.alert(
-        `No puedo guardar trabajos de ${getCompanyMeta(budget.company).short} en esta sesión.\n\n` +
+        `No puedo guardar trabajos de ${getCompanyMeta(empresaElegida).short} en esta sesión.\n\n` +
           `El trabajo NO se guardaría (se perdería al recargar). Puede ser que el catálogo de empresas / ` +
           `permisos todavía esté cargando: esperá unos segundos y reintentá. Si persiste, ingresá con un ` +
           `usuario que tenga acceso a esa empresa.`
@@ -11060,7 +11060,7 @@ Escribi CERRAR para confirmar:`
     const syntheticBudgetId = -generatedId;
     const budgetNumber = `DIR-${String(Date.now()).slice(-6)}`;
     const placeholderSnapshot = buildPlaceholderBudgetSnapshot({
-      company: budget.company,
+      company: empresaElegida,
       workType: budget.workType,
       budgetNumber,
       client: budget.client || "Cliente directo",
@@ -11081,7 +11081,7 @@ Escribi CERRAR para confirmar:`
       sourceType: "direct",
       legacyImported: false,
       budgetNumber,
-      company: budget.company,
+      company: empresaElegida,
       client: budget.client || "Cliente directo",
       project: budget.project || "Trabajo directo",
       date: approvalDate,
@@ -11120,7 +11120,7 @@ Escribi CERRAR para confirmar:`
     });
     setSelectedApprovedJobId(nextJob.id);
     setActiveTab("aprobados");
-  };
+  });
 
   const importLegacyApprovedJobs = () => {
     const existingNumbers = new Set(approvedJobs.map((item) => item.budgetNumber.trim()));
@@ -11968,13 +11968,13 @@ Escribi CERRAR para confirmar:`
       },
     ])));
 
-  const addCostAnalysisGroup = () => {
-    promptAndCreateCostAnalysisGroup("General");
-  };
+  const addCostAnalysisGroup = () => conEmpresa("el grupo de análisis de costos", (empresaElegida) => {
+    promptAndCreateCostAnalysisGroup(empresaElegida);
+  });
 
-  const addCostAnalysisEntry = () => {
+  const addCostAnalysisEntry = () => conEmpresa("el renglón de análisis de costos", (empresaElegida) => {
     const fallbackGroup =
-      costAnalysisGroups[0] ?? promptAndCreateCostAnalysisGroup("General");
+      costAnalysisGroups[0] ?? promptAndCreateCostAnalysisGroup(empresaElegida);
     if (!fallbackGroup) return;
 
     setCostAnalysisEntries((prev) => [
@@ -11982,7 +11982,7 @@ Escribi CERRAR para confirmar:`
       {
         id: newId(),
         groupId: fallbackGroup.id,
-        company: "General",
+        company: empresaElegida,
         description: "",
         unit: "u",
         quantity: 0,
@@ -11991,7 +11991,7 @@ Escribi CERRAR para confirmar:`
         notes: "",
       },
     ]);
-  };
+  });
 
   const updateCostAnalysisGroup = (
     groupId: number,
@@ -13143,9 +13143,13 @@ Escribi CERRAR para confirmar:`
   };
 
   const addFinancialItem = (date?: string, company?: CompanyName) => {
+    if (!company) return conEmpresa("el movimiento", (empresaElegida) => cargarFinancialItem(date, empresaElegida));
+    cargarFinancialItem(date, company);
+  };
+  const cargarFinancialItem = (date: string | undefined, company: CompanyName) => {
     const item: FinancialCalendarItem = {
       id: newId(),
-      company: company ?? budget.company,
+      company,
       date: date ?? `${financialMonth}-01`,
       type: "facturacion",
       status: "pendiente",
@@ -13192,14 +13196,14 @@ Escribi CERRAR para confirmar:`
     setStorageMessage(`Movimiento de stock registrado (${type}).`);
   };
 
-  const addStockItem = () => {
+  const addStockItem = () => conEmpresa("el artículo de stock", (empresaElegida) => {
     setStockItems((prev) => [
       ...prev,
       {
         id: newId(),
-        company: "General",
+        company: empresaElegida,
         kind: "general",
-        shared: true,
+        shared: empresaElegida === "General",
         group: "Melaminas",
         location: "",
         sortOrder:
@@ -13216,7 +13220,7 @@ Escribi CERRAR para confirmar:`
         active: true,
       },
     ]);
-  };
+  });
 
   const addPurchaseInvoice = () => conEmpresa("la factura de compra", (empresaElegida) => {
     setPurchaseInvoices((prev) => [
@@ -18482,7 +18486,7 @@ Escribi CERRAR para confirmar:`
     );
   };
 
-  const addCostEntry = () => {
+  const addCostEntry = () => conEmpresa("el pago", (empresaElegida) => {
     const firstManualGroup =
       costGroups.find((group) => group.active && !group.auto)?.name || "";
     setCostEntries((prev) => [
@@ -18490,7 +18494,7 @@ Escribi CERRAR para confirmar:`
       {
         id: newId(),
         ...firma(),
-        company: costsCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : costsCompanyScope,
+        company: empresaElegida,
         date: `${costsMonths[0]}-01`,
         group: firstManualGroup,
         description: "",
@@ -18501,7 +18505,7 @@ Escribi CERRAR para confirmar:`
         notes: "",
       },
     ]);
-  };
+  });
 
   const removeCostEntry = (id: number) => {
     const actual = costEntries.find((e) => e.id === id);
@@ -18608,12 +18612,12 @@ Escribi CERRAR para confirmar:`
   };
 
   // --- Seguros: handlers ---
-  const addSeguro = () => {
+  const addSeguro = () => conEmpresa("el seguro", (empresaElegida) => {
     setSeguros((prev) => [
       ...prev,
       {
         id: newId(),
-        company: segurosCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : segurosCompanyScope,
+        company: empresaElegida,
         tipo: "",
         descripcion: "",
         aseguradora: "",
@@ -18630,7 +18634,7 @@ Escribi CERRAR para confirmar:`
         rendicion: "numerica",
       },
     ]);
-  };
+  });
 
   const removeSeguro = (id: number) => {
     setSeguros((prev) => prev.filter((s) => s.id !== id));
@@ -18671,13 +18675,12 @@ Escribi CERRAR para confirmar:`
   };
 
   // --- Inversiones: handlers ---
-  const addInversion = () => {
+  const addInversion = () => conEmpresa("la inversión", (empresaElegida) => {
     setInversiones((prev) => [
       ...prev,
       {
         id: newId(),
-        company:
-          inversionesCompanyScope === "__ALL__" ? COMPANY_OPTIONS[0].value : inversionesCompanyScope,
+        company: empresaElegida,
         tipo: "",
         descripcion: "",
         moneda: "ARS",
@@ -18690,7 +18693,7 @@ Escribi CERRAR para confirmar:`
         ...firma(),
       },
     ]);
-  };
+  });
 
   const removeInversion = (id: number) => {
     setInversiones((prev) => prev.filter((i) => i.id !== id));
@@ -18723,18 +18726,18 @@ Escribi CERRAR para confirmar:`
       : tarjetasCompanyScope) as CompanyName;
 
   const addCreditCard = () =>
-    setCreditCards((prev) => [
+    conEmpresa("la tarjeta", (empresaElegida) => (setCreditCards((prev) => [
       ...prev,
       {
         id: newId(),
-        company: tarjetasNewCompany(),
+        company: empresaElegida,
         name: "Nueva tarjeta",
         bank: "",
         lastDigits: "",
         active: true,
         notes: "",
       },
-    ]);
+    ])));
   const removeCreditCard = (id: number) =>
     setCreditCards((prev) => prev.filter((c) => c.id !== id));
   const updateCreditCard = (id: number, field: keyof CreditCard, value: any) =>
@@ -19679,7 +19682,10 @@ Escribi CERRAR para confirmar:`
     ? monthlyHistorySnapshots.filter(
         (item) =>
           item.tabKey === activeMonthlyTab &&
-          item.companyScope === workspaceCompanyScope
+          item.companyScope === workspaceCompanyScope &&
+          // Una foto de "todas" lleva datos de las dos empresas: solo la ve quien puede ver las dos.
+          (item.companyScope !== "General" || effectiveIsAdmin || empresasDeLaVista.length === COMPANY_OPTIONS.length) &&
+          (item.companyScope === "General" || tienePermisoEmpresa(item.companyScope as CompanyName))
       )
     : [];
   const latestMonthlyHistorySnapshot = activeMonthlyHistory[0];
