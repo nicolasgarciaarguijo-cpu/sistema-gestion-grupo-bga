@@ -381,3 +381,22 @@ describe("realCostsByGroup: la foto que viaja a Costos empresariales", () => {
     expect(materiales.monthlyAverage).toBe(0);
   });
 });
+
+describe("arqueo de caja", () => {
+  it("lo no cobrado suma y lo cobrado de más resta en el grupo Arqueo de caja", () => {
+    const { COST_GROUP_ARQUEO } = require("./costs");
+    const rows = buildCostRows({
+      entries: [],
+      pettyCash: [],
+      payroll: [],
+      arqueos: [
+        { company: "BGA", date: "2025-11-10", amount: 1500 },
+        { company: "BGA", date: "2025-11-20", amount: -400 },
+      ],
+    } as any);
+    const agg = aggregateCosts({ months: ["2025-11"], groups, rows, companyScope: "BGA" as any });
+    const fila = agg.rows.find((r) => r.group === COST_GROUP_ARQUEO);
+    expect(fila?.total).toBe(1100);
+    expect(isAutoCostGroup(COST_GROUP_ARQUEO)).toBe(true);
+  });
+});

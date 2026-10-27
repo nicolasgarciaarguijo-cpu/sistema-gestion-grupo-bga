@@ -205,6 +205,12 @@ export function AprobadosTab({
   // Un trabajo está TERMINADO cuando ya se cobró todo y la comisión está paga.
   const isJobDone = (job: any) =>
     Number(job.remainingToPay || 0) <= 1 && Number(job.commissionPending || 0) <= 1;
+  // FINALIZAR UN TRABAJO (Nicolas, 27/10/2026): antes de marcarlo, un cartel con lo que falta (factura, cobro, comision)
+  // para decidir. Una diferencia chica en los cobros se puede cerrar como ARQUEO DE CAJA.
+  const [finalizando, setFinalizando] = React.useState<any | null>(null);
+  // Terminados (finalizado y sin pendientes): van a una seccion aparte, minimizada, por empresa.
+  const [terminadosAbiertos, setTerminadosAbiertos] = React.useState<Set<string>>(new Set());
+  const pedirFinalizar = (job: any) => setFinalizando(job);
   // Cuánto falta facturar (target por % facturado − lo ya facturado).
   const faltaFacturar = (job: any) => {
     const target = Number(job.soldNetPrice || 0) * (Number(job.billedPct || 0) / 100);
@@ -263,6 +269,11 @@ export function AprobadosTab({
                 <ButtonLike onClick={() => { setSelectedApprovedJobId(ctxMenu.job.id); setCtxMenu(null); }} secondary>
                   Abrir ficha
                 </ButtonLike>
+                {ctxMenu.job.executionStatus !== "finalizado" && (
+                  <ButtonLike onClick={() => { pedirFinalizar(ctxMenu.job); setCtxMenu(null); }}>
+                    Marcar como finalizado…
+                  </ButtonLike>
+                )}
                 {onBorrarTrabajo && (
                   <button
                     type="button"
@@ -464,7 +475,8 @@ export function AprobadosTab({
                           <style>{FILA_TERMINADA_CSS}</style>
                         </td>
                       </tr>
-                      {group.items.map((job) => {
+                      {(() => {
+                      const fila = (job: any) => {
                         const finalizado = job.executionStatus === "finalizado";
                         const done = isJobDone(job);
                         // finalizado Y realmente cerrado (a cobrar 0 + comisión paga) → CELESTE.
@@ -564,7 +576,34 @@ export function AprobadosTab({
                           </td>
                         </tr>
                         );
-                      })}
+                      };
+                      const esTerminado = (j: any) => j.executionStatus === "finalizado" && isJobDone(j);
+                      const terminados = group.items.filter(esTerminado);
+                      const abiertos = terminadosAbiertos.has(group.value);
+                      return (
+                        <>
+                          {group.items.filter((j: any) => !esTerminado(j)).map(fila)}
+                          {terminados.length > 0 && (
+                            <tr
+                              style={{ cursor: "pointer" }}
+                              onClick={() =>
+                                setTerminadosAbiertos((prev) => {
+                                  const n = new Set(prev);
+                                  if (n.has(group.value)) n.delete(group.value);
+                                  else n.add(group.value);
+                                  return n;
+                                })
+                              }
+                            >
+                              <td colSpan={10} style={{ ...tdNombre, background: "#f0f9ff", color: "#075985", fontWeight: 800, fontSize: 12.5 }}>
+                                {abiertos ? "▾" : "▸"} Terminados ({terminados.length}) · {abiertos ? "click para minimizar" : "click para ver"}
+                              </td>
+                            </tr>
+                          )}
+                          {abiertos && terminados.map(fila)}
+                        </>
+                      );
+                      })()}
                     </React.Fragment>
                   ))}
                 </tbody>
@@ -869,7 +908,9 @@ export function AprobadosTab({
                         style={styles.input}
                         value={selectedApprovedJob.executionStatus}
                         onChange={(e) =>
-                          updateApprovedJob(selectedApprovedJob.id, "executionStatus", e.target.value)
+                          e.target.value === "finalizado"
+                            ? pedirFinalizar(selectedApprovedJob)
+                            : updateApprovedJob(selectedApprovedJob.id, "executionStatus", e.target.value)
                         }
                       >
                         <option value="pendiente">Pendiente</option>
@@ -2199,6 +2240,63 @@ export function AprobadosTab({
             </div>
             </div>
           )}
+          {finalizando && (() => {
+            const j = approvedJobsSummary.find((x: any) => x.id === finalizando.id) || finalizando;
+            const ff = faltaFacturar(j);
+            const fc = Number(j.remainingToPay || 0);
+            const exc = Number(j.cobradoDeMas || 0);
+            const fco = Number(j.commissionPending || 0);
+            const faltas: string[] = [];
+            if (ff > 1) faltas.push(`Falta facturar ${money(ff)}`);
+            if (fc > 1) faltas.push(`Falta cobrar ${money(fc)}`);
+            if (exc > 1) faltas.push(`Se cobró de más ${money(exc)}`);
+            if (fco > 1) faltas.push(`Falta pagar comisión ${money(fco)}`);
+            const diferencia = fc > 1 ? fc : exc > 1 ? -exc : 0;
+            const grande = Math.abs(diferencia) > Math.max(1, Number(j.valueToCollect || 0)) * 0.02;
+            const finalizar = () => {
+              updateApprovedJob(j.id, "executionStatus", "finalizado");
+              setFinalizando(null);
+            };
+            return (
+              <div onClick={() => setFinalizando(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4600, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "60px 12px" }}>
+                <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(560px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
+                  <strong style={{ fontSize: 16 }}>Finalizar {j.budgetNumber} · {j.client}</strong>
+                  {faltas.length === 0 ? (
+                    <div style={{ fontSize: 13, color: "#166534" }}>✓ Está todo: facturado, cobrado y la comisión paga. Pasa a Terminados.</div>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 13, color: "#991b1b", fontWeight: 700 }}>Antes de finalizar, mirá lo que falta:</div>
+                      <ul style={{ margin: 0, paddingLeft: 20, fontSize: 13, color: "#7f1d1d" }}>
+                        {faltas.map((x) => <li key={x}>{x}</li>)}
+                      </ul>
+                      <div style={{ fontSize: 12.5, color: "#475569" }}>
+                        Si lo finalizás igual, queda con ⚠ en rojo hasta que se resuelva. Si la diferencia en los cobros es un redondeo, cerrala
+                        como <strong>arqueo de caja</strong>: el saldo del trabajo queda en cero y la diferencia va a Costos, grupo "Arqueo de caja"
+                        (lo que no se cobró suma, lo cobrado de más resta). No es un pago: no toca el banco ni el cash flow.
+                      </div>
+                    </>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, flexWrap: "wrap" }}>
+                    <ButtonLike secondary onClick={() => setFinalizando(null)}>Cancelar</ButtonLike>
+                    {diferencia !== 0 && (
+                      <ButtonLike
+                        onClick={() => {
+                          if (grande && !window.confirm(`La diferencia (${money(Math.abs(diferencia))}) es más del 2% de lo que había que cobrar. ¿Seguro que es un redondeo y la cerrás como arqueo de caja?`)) return;
+                          updateApprovedJob(j.id, "ajusteCierre" as any, { monto: Math.round(diferencia * 100) / 100, fecha: new Date().toISOString().slice(0, 10) } as any);
+                          finalizar();
+                        }}
+                      >
+                        Cerrar {diferencia > 0 ? "lo que falta cobrar" : "lo cobrado de más"} ({money(Math.abs(diferencia))}) como arqueo de caja y finalizar
+                      </ButtonLike>
+                    )}
+                    <ButtonLike secondary={faltas.length > 0} onClick={finalizar}>
+                      {faltas.length ? "Finalizar igual" : "Finalizar"}
+                    </ButtonLike>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
   );
 }

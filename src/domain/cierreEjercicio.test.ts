@@ -253,3 +253,19 @@ describe("la partición: qué queda en el sistema y qué se va a las carpetas", 
     expect(r.detalle[0]).toEqual({ nombre: "Banco", archivar: 3, quedan: 0 });
   });
 });
+
+describe("cierre automático: qué ejercicios hay que cerrar", () => {
+  const { ejerciciosPorCerrar } = require("./cierreEjercicio");
+  const empresas = [{ company: "BGA", fiscalStartMonth: 11 }, { company: "De Raiz", fiscalStartMonth: 11 }];
+  it("antes del 1/11/2026 no pide nada (2024-25 es de antes del sistema)", () => {
+    expect(ejerciciosPorCerrar([], empresas, "2026-10-27")).toEqual([]);
+  });
+  it("desde el 1/11/2026 pide cerrar 2025-26 en cada empresa que no lo cerró", () => {
+    expect(ejerciciosPorCerrar([], empresas, "2026-11-01").map((x: any) => [x.company, x.fiscalStartYear, x.endIso])).toEqual([
+      ["BGA", 2025, "2026-10-31"],
+      ["De Raiz", 2025, "2026-10-31"],
+    ]);
+    const cerradoBGA = [{ id: 1, company: "BGA", fiscalStartYear: 2025 } as any];
+    expect(ejerciciosPorCerrar(cerradoBGA, empresas, "2026-11-03").map((x: any) => x.company)).toEqual(["De Raiz"]);
+  });
+});

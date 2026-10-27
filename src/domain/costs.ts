@@ -21,11 +21,14 @@ export const COST_GROUP_PETTY_CASH = "Caja chica";
 // Lo rendido que todavia no tiene grupo (no deberia pasar: rendir exige el grupo). Se ve como aviso.
 export const COST_GROUP_SIN_CLASIFICAR = "Sin clasificar";
 export const COST_GROUP_PAYROLL = "Personal";
+// ARQUEO DE CAJA (Nicolas, 27/10/2026): la diferencia chica (redondeo) con la que se cierra un trabajo. Lo que no se
+// cobro suma como gasto; lo cobrado de mas RESTA. No es un pago: no toca el cash flow ni el banco, solo los costos.
+export const COST_GROUP_ARQUEO = "Arqueo de caja";
 
 // Grupos automaticos: se alimentan de otras solapas, no admiten carga manual.
 // "Compras y materiales" SALIO de esta lista (2026-07-19): la factura de compra ya no es el gasto,
 // el gasto es el PAGO. Ahora es un grupo comun, para poder imputarle los pagos a proveedores.
-export const AUTO_COST_GROUPS: readonly string[] = [COST_GROUP_PAYROLL];
+export const AUTO_COST_GROUPS: readonly string[] = [COST_GROUP_PAYROLL, COST_GROUP_ARQUEO];
 
 // Semilla de grupos. Los 5 primeros son los mismos "grandes grupos" que Marcadores ya usa
 // en "costos fijos por grupo" (DEFAULT_FIXED_MARKER_GROUPS en App.tsx).
@@ -37,6 +40,7 @@ export const DEFAULT_COST_GROUP_SEEDS: Array<{ name: string; kind: CostKind; aut
   { name: "Operativos", kind: "fijo", auto: false },
   { name: COST_GROUP_PAYROLL, kind: "fijo", auto: true },
   { name: COST_GROUP_PURCHASES, kind: "variable", auto: false },
+  { name: COST_GROUP_ARQUEO, kind: "variable", auto: true },
 ];
 
 export function isAutoCostGroup(name: string): boolean {
@@ -141,7 +145,7 @@ export type CostSourceRow = {
   group: string;
   amount: number;
   administration: "blanco" | "negro";
-  origin: "manual" | "extracto" | "compras" | "cajaChica" | "personal";
+  origin: "manual" | "extracto" | "compras" | "cajaChica" | "personal" | "arqueo";
 };
 
 export type CostSourcesInput = {
@@ -156,6 +160,8 @@ export type CostSourcesInput = {
     costGroup?: string;
   }>;
   // Nomina ya resuelta por mes: blanco = impacto patronal, negro = pagos en negro.
+  // Ajustes de cierre de los trabajos (arqueo de caja). Opcional.
+  arqueos?: Array<{ company: string; date: string; amount: number }>;
   payroll: Array<{
     company: CompanyName;
     month: string; // "yyyy-mm"
@@ -193,6 +199,13 @@ export function buildCostRows(input: CostSourcesInput): CostSourceRow[] {
       administration: exp.administration,
       origin: "cajaChica",
     });
+  });
+
+  // Arqueo de caja de los trabajos cerrados con diferencia: positivo = no se cobro (gasto), negativo = se cobro de mas.
+  (input.arqueos || []).forEach((a) => {
+    const amount = Number(a.amount || 0);
+    if (!amount) return;
+    rows.push({ company: a.company, date: a.date, group: COST_GROUP_ARQUEO, amount, administration: "blanco", origin: "arqueo" });
   });
 
   input.payroll.forEach((pr) => {
@@ -296,7 +309,8 @@ export function aggregateCosts(input: CostAggregationInput): CostAggregation {
     const month = costMonthKey(row.date);
     if (!month || !monthSet.has(month)) return;
     const amount = Number(row.amount || 0);
-    if (!(amount > 0)) return;
+    // El arqueo de caja puede restar (se cobro de mas); el resto de los gastos es siempre positivo.
+    if (row.group === COST_GROUP_ARQUEO ? !amount : !(amount > 0)) return;
 
     let entry = byGroup.get(row.group);
     if (!entry) {
@@ -318,7 +332,7 @@ export function aggregateCosts(input: CostAggregationInput): CostAggregation {
 
   const result = Array.from(byGroup.values());
   result.forEach((row) => {
-    row.monthsWithData = months.filter((m) => (row.byMonth[m] || 0) > 0).length;
+    row.monthsWithData = months.filter((m) => (row.byMonth[m] || 0) !== 0).length;
   });
   result.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === "fijo" ? -1 : 1;

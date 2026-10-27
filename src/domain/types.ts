@@ -525,6 +525,9 @@ export type ApprovedJob = {
   estimatedOccupancyPct: number;
   estimatedMaterialCost: number;
   executionStatus: "pendiente" | "en_curso" | "finalizado";
+  // AJUSTE DE CIERRE (27/10/2026): la diferencia chica con la que se dio por terminado el trabajo. Positivo = lo que no
+  // se cobro; negativo = lo cobrado de mas. Deja el saldo en cero y va a Costos, grupo "Arqueo de caja".
+  ajusteCierre?: { monto: number; fecha: string; firmante?: string };
   notes: string;
   workFiles: {
     id: number;

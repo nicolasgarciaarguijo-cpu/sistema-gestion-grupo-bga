@@ -25,7 +25,7 @@
 //
 // Todo acá es puro: se le pasan los números ya calculados y arma/lee la foto. Nada de fechas de hoy
 // ni de estado global, para poder testearlo.
-import { fiscalYearBounds } from "./fiscalYear";
+import { currentFiscalStartYear, fiscalYearBounds } from "./fiscalYear";
 
 import type { FilaArqueo } from "./arqueoCierre";
 
@@ -446,4 +446,29 @@ export function resumenDeLaPurga(
     conservados: detalle.reduce((a, d) => a + d.quedan, 0),
     detalle,
   };
+}
+
+// ================================================================================================
+// CIERRE AUTOMATICO (Nicolas, 27/10/2026): "que sea automatico el cierre del año y me pida control para el
+// año siguiente". Al terminar el ejercicio, el sistema sabe solo que empresas tienen que cerrar el que
+// acaba de terminar y le abre el asistente al administrador. Solo mira el ejercicio INMEDIATO anterior:
+// los de antes del sistema no se cierran.
+// ================================================================================================
+export type EjercicioPorCerrar = { company: string; fiscalStartYear: number; endIso: string };
+// El primer ejercicio que se cierra de verdad es nov-2025 / oct-2026: los anteriores son de antes del sistema.
+export const PRIMER_EJERCICIO_A_CERRAR = 2025;
+
+export function ejerciciosPorCerrar(
+  cierres: CierreEjercicio[],
+  empresas: Array<{ company: string; fiscalStartMonth: number }>,
+  hoyIso: string
+): EjercicioPorCerrar[] {
+  const hoy = new Date(`${String(hoyIso).slice(0, 10)}T12:00:00`);
+  return empresas.flatMap(({ company, fiscalStartMonth }) => {
+    const anio = currentFiscalStartYear(fiscalStartMonth, hoy) - 1;
+    if (anio < PRIMER_EJERCICIO_A_CERRAR) return [];
+    const { endIso } = fiscalYearBounds(fiscalStartMonth, anio);
+    const yaCerrado = cierresActivos(cierres).some((c) => c.company === company && c.fiscalStartYear === anio);
+    return yaCerrado ? [] : [{ company, fiscalStartYear: anio, endIso }];
+  });
 }

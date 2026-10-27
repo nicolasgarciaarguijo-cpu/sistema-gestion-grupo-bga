@@ -106,6 +106,8 @@ import { resumenCaja } from "./domain/cajaChicaFicha";
 import {
   construirCierre,
   motivosParaNoCerrar,
+  ejerciciosPorCerrar,
+  cierresActivos,
   particionarFacturasCompra,
   particionarFondos,
   particionarGastosDeCajaChica,
@@ -236,6 +238,7 @@ import { RemitosPanel } from "./tabs/RemitosPanel";
 import { resumirMaterialesDelTrabajo } from "./domain/jobMaterials";
 import { FabricacionTab } from "./tabs/Fabricacion";
 import { CatalogoTareas, OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
+import { AsistenteCierre, nombreEjercicio } from "./ui/AsistenteCierre";
 import { GanttFabricacion } from "./tabs/GanttFabricacion";
 import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
 import { TiposMueble } from "./tabs/TiposMueble";
@@ -5482,7 +5485,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           commissionPaidTotal,
           commissionPending: Math.max(0, Number(job.commissionAmount || 0) - commissionPaidTotal),
           collectedTotal: financialCollected,
-          remainingToPay: Math.max(0, valueToCollect - financialCollected),
+          // El ajuste de cierre (arqueo de caja) cubre la diferencia con la que se termino el trabajo.
+          remainingToPay: Math.max(0, valueToCollect - financialCollected - Number(job.ajusteCierre?.monto || 0)),
+          cobradoDeMas: Math.max(0, financialCollected - valueToCollect + Number(job.ajusteCierre?.monto || 0)),
           // Track en USD (bloques dolarizados del presupuesto). Neto y saldo se siguen aparte del
           // circuito en pesos; el cobrado en USD es paymentsUsdTotal (pagos cargados en U$S).
           soldNetPriceUsd: Number(job.soldNetPriceUsd || 0),
@@ -7096,6 +7101,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   //
   // Si la carpeta no esta vinculada, NO se cierra: sin el archivo, limpiar seria perder.
   const [cierreBusy, setCierreBusy] = useState(false);
+  // CIERRE AUTOMATICO: el asistente se abre solo (una vez por sesion) cuando hay un ejercicio terminado sin cerrar.
+  const [asistenteCierre, setAsistenteCierre] = useState(false);
+  const asistenteCierreMostrado = useRef(false);
   const [cierreMensaje, setCierreMensaje] = useState("");
 
   // La reserva de UNA empresa cortada a una fecha: es de donde salen las 8 billeteras de la foto.
@@ -7648,6 +7656,28 @@ Escribi CERRAR para confirmar:`
 
   // Reabrir: el cierre deja de mandar (ni traba la edicion ni da apertura) pero NO se borra, queda el
   // rastro. Las imagenes que se sacaron NO vuelven solas: estan en la carpeta.
+  // Que ejercicios terminaron y no se cerraron (solo para el administrador, de las empresas que puede operar).
+  const porCerrar = useMemo(
+    () =>
+      effectiveIsAdmin && isSupabaseLoggedIn
+        ? ejerciciosPorCerrar(
+            fiscalClosings,
+            COMPANY_OPTIONS.filter((c) => tienePermisoEmpresa(c.value as CompanyName)).map((c) => ({
+              company: c.value,
+              fiscalStartMonth: c.fiscalYearStartMonth ?? DEFAULT_FISCAL_START_MONTH,
+            })),
+            todayIso()
+          ).map((x) => ({ ...x, short: getCompanyMeta(x.company as CompanyName).short }))
+        : [],
+    [fiscalClosings, effectiveIsAdmin, isSupabaseLoggedIn, COMPANY_OPTIONS, tienePermisoEmpresa, getCompanyMeta]
+  );
+  useEffect(() => {
+    if (porCerrar.length && !asistenteCierreMostrado.current) {
+      asistenteCierreMostrado.current = true;
+      setAsistenteCierre(true);
+    }
+  }, [porCerrar.length]);
+
   const reabrirEjercicio = (cierreId: number) => {
     const c = fiscalClosings.find((x) => x.id === cierreId);
     if (!c) return;
@@ -11258,7 +11288,7 @@ Escribi CERRAR para confirmar:`
   const updateApprovedJob = (
     jobId: number,
     field: keyof ApprovedJob,
-    value: string | number
+    value: string | number | ApprovedJob["ajusteCierre"]
   ) => {
     // Un trabajo de un ejercicio cerrado se mira pero no se toca. Ojo: los trabajos que quedaron
     // ABIERTOS (con saldo a cobrar) tambien caen aca si su fecha es del ano cerrado, y eso es a
@@ -11268,24 +11298,13 @@ Escribi CERRAR para confirmar:`
     setApprovedJobs((prev) =>
       prev.map((job) => {
         if (job.id !== jobId) return job;
-        if (field === "executionStatus" && value === "finalizado") {
-          // No se puede COMPLETAR un trabajo si falta cargar algo: facturar, cobrar o pagar la comisión.
-          // Así el sombreado/filtro de "terminado" garantiza que de verdad no quedó nada pendiente.
-          const summary = approvedJobsSummary.find((s) => s.id === jobId);
-          const commissionPaid = job.commissionPayments.reduce((acc, item) => acc + Number(item.amount || 0), 0);
-          const faltaComision = Math.max(0, Number(job.commissionAmount || 0) - commissionPaid);
-          const faltaCobrar = Number(summary?.remainingToPay || 0);
-          const target = Number(job.soldNetPrice || 0) * (Number(job.billedPct || 0) / 100);
-          const invoiced = (job.invoices || []).reduce((a, i) => a + Number(i?.subtotal || 0), 0);
-          const faltaFacturar = Math.max(0, target - invoiced);
-          const faltan: string[] = [];
-          if (faltaFacturar > 1) faltan.push(`facturar ${money(faltaFacturar)}`);
-          if (faltaCobrar > 1) faltan.push(`cobrar ${money(faltaCobrar)}`);
-          if (faltaComision > 1) faltan.push(`pagar comisión ${money(faltaComision)}`);
-          if (faltan.length) {
-            window.alert(`No podés completar el trabajo: falta ${faltan.join(", ")}.`);
-            return job;
-          }
+        // FINALIZAR (27/10/2026): ya no se traba. Trabajos aprobados muestra antes un cartel con lo que falta (factura,
+        // cobro, comision) y se decide ahi; una diferencia chica se cierra como arqueo de caja (ajusteCierre).
+        // Si el trabajo vuelve a estar en curso, el ajuste de cierre se va.
+        if (field === "executionStatus" && value !== "finalizado" && job.ajusteCierre) {
+          const sinAjuste = { ...job, executionStatus: value } as ApprovedJob;
+          delete sinAjuste.ajusteCierre;
+          return sinAjuste;
         }
         const nextJob = { ...job, [field]: value } as ApprovedJob;
         if (field === "approvalDate") {
@@ -18067,8 +18086,11 @@ Escribi CERRAR para confirmar:`
           costGroup: exp.costGroup,
         })),
         payroll: costsPayrollRows,
+        arqueos: approvedJobs
+          .filter((j) => j.ajusteCierre && Number(j.ajusteCierre.monto) && canAccessCompany(j.company as CompanyName))
+          .map((j) => ({ company: String(j.company), date: j.ajusteCierre!.fecha, amount: Number(j.ajusteCierre!.monto) })),
       }),
-    [costEntries, visiblePettyCashExpenses, costsPayrollRows]
+    [alcanceEmpresa, costEntries, visiblePettyCashExpenses, costsPayrollRows, approvedJobs]
   );
 
   // Costos empresariales de cada empresa (promedio de los ultimos 3 meses o el valor escrito a mano)
@@ -21956,6 +21978,50 @@ Escribi CERRAR para confirmar:`
             </div>
           )}
 
+      {porCerrar.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 10, padding: "8px 12px", margin: "0 0 12px", fontSize: 13 }}>
+          <strong style={{ color: "#9a3412" }}>⚠ Falta cerrar el ejercicio {nombreEjercicio(porCerrar[0].fiscalStartYear)}</strong>
+          <span style={{ color: "#7c2d12" }}>de {porCerrar.map((x) => x.short).join(" y ")}: hasta cerrarlo, el año nuevo no tiene su punto de partida.</span>
+          <ButtonLike onClick={() => setAsistenteCierre(true)}>Hacer el cierre</ButtonLike>
+        </div>
+      )}
+      {(activeTab === "calendarioAnual" || activeTab === "cashflow") && (() => {
+        // QUE EJERCICIO SE ESTA MIRANDO (27/10/2026): el anterior queda para mirar, y tiene que quedar claro.
+        const corriente = currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date());
+        const anio = balanceFiscalStartYear;
+        const cerrado = cierresActivos(fiscalClosings).some((c) => c.fiscalStartYear === anio && canAccessCompany(c.company as CompanyName));
+        const esCorriente = anio === corriente;
+        return (
+          <div
+            style={{
+              display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderRadius: 10, padding: "6px 12px", margin: "0 0 10px", fontSize: 13,
+              background: esCorriente ? "#f0fdf4" : "#fef2f2", border: `1px solid ${esCorriente ? "#bbf7d0" : "#fecaca"}`,
+              color: esCorriente ? "#166534" : "#991b1b", fontWeight: 700,
+            }}
+          >
+            {esCorriente
+              ? `Ejercicio corriente ${nombreEjercicio(anio)}`
+              : `Estás viendo el ejercicio ${anio < corriente ? "ANTERIOR" : "SIGUIENTE"} ${nombreEjercicio(anio)}${cerrado ? " · cerrado: solo lectura" : ""}`}
+            {!esCorriente && <ButtonLike secondary onClick={() => setBalanceFiscalStartYear(corriente)}>Volver al corriente ({nombreEjercicio(corriente)})</ButtonLike>}
+          </div>
+        );
+      })()}
+      {asistenteCierre && (
+        <AsistenteCierre
+          porCerrar={porCerrar}
+          busy={cierreBusy}
+          mensaje={cierreMensaje}
+          onRevisar={() => {
+            setAsistenteCierre(false);
+            setActiveTab("cashflow" as TabKey);
+          }}
+          onCerrar={(company, anio) => {
+            setAsistenteCierre(false);
+            cerrarEjercicio(company as CompanyName, anio);
+          }}
+          onMasTarde={() => setAsistenteCierre(false)}
+        />
+      )}
       {activeTab === "acceso" && (
         <AccesoTab
           isSupabaseLoggedIn={isSupabaseLoggedIn}

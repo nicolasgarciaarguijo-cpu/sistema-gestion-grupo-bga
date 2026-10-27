@@ -16,6 +16,37 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-27e",
+    fecha: "27/10/2026",
+    titulo: "Cierre de ejercicio automático y trabajos terminados",
+    items: [
+      {
+        titulo: "El cierre del año se abre solo",
+        que: "Terminado el ejercicio (desde el 1/11), al administrador se le abre el asistente de cierre: revisar lo que sigue abierto, controlar bancos y efectivo (se corrige la plata real para arrancar sin diferencias) y cerrar cada empresa. Hasta cerrarlo queda un aviso arriba para retomarlo. No se borra nada: lo del año queda para mirar y lo que sigue en proceso pasa al año nuevo.",
+        como: "Aparece solo. También: aviso naranja arriba → Hacer el cierre.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Qué ejercicio estás mirando",
+        que: "En el Calendario anual y en Balance, un cartel dice si estás en el ejercicio corriente o en el anterior (cerrado, solo lectura), con un botón para volver al corriente.",
+        como: "Calendario anual / Balance: arriba de todo.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Trabajos terminados aparte",
+        que: "Los trabajos finalizados y sin pendientes bajan a una sección 'Terminados' por empresa, minimizada. Para finalizar uno, un cartel muestra lo que falta (factura, cobro, comisión) y decidís: finalizarlo igual o, si la diferencia en los cobros es un redondeo, cerrarla como arqueo de caja.",
+        como: "Trabajos aprobados → click derecho → Marcar como finalizado… (o Estado → Finalizado en la ficha).",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Grupo de costos 'Arqueo de caja'",
+        que: "La diferencia con la que se cierra un trabajo va a Costos en el grupo Arqueo de caja: lo que no se cobró suma y lo cobrado de más resta, así se ve cómo evoluciona. No es un pago: no toca el banco ni el cash flow.",
+        como: "Compras y análisis de gastos → Composición / Grupos de costos.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-10-27d",
     fecha: "27/10/2026",
     titulo: "Tipos de mueble: se eligen las tareas desde la ficha",
