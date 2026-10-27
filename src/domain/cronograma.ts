@@ -91,6 +91,8 @@ export type TrabajoParaCronograma = {
   muebles: MuebleDelPresupuesto[];
   // materiales cotizados (para las tareas que salen de materiales)
   materiales: Array<{ description: string; qty: number }>;
+  // Horas de retrabajo cargadas (fase 6): corren el fin del trabajo.
+  horasRetrabajo?: number;
 };
 
 export type EstadoEntrega = "llega" | "justo" | "no_llega" | "sin_entrega" | "sin_datos";
@@ -139,7 +141,8 @@ export function cronogramaDeTrabajos(
     if (!asign.length) {
       return { jobId: t.jobId, nombre: t.nombre, horasHombre, incompleto: true, inicio: t.inicio, entrega: t.entrega, holguraDias, estado: "sin_datos", asignaciones: [] };
     }
-    const finHoras = Math.max(...asign.map((a) => a.fin));
+    // Lo que hubo que rehacer se suma al final del trabajo (corre la fecha de fin).
+    const finHoras = Math.max(...asign.map((a) => a.fin)) + Math.max(0, t.horasRetrabajo || 0);
     // el ultimo dia en que se trabaja (si termina justo al cierre, es ese dia)
     const fin = relojDe(base, Math.max(0, finHoras - 1e-6)).fecha;
     let estado: EstadoEntrega = "sin_entrega";

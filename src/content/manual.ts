@@ -691,6 +691,12 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         ],
       },
       {
+        heading: "Retrabajos",
+        blocks: [
+          { type: "p", text: "Cada retrabajo es de un trabajo y de una tarea: quién la hizo (cuenta en su efectividad), quién la rehace, cuánto se rehace (100% = la tarea entera), las horas de la tarea original y los materiales. Costo = horas × costo hora de quien rehace + materiales. Sus horas se suman al final del trabajo en el cronograma automático (se corre la fecha de fin). En Personal, 'Efectividad (retrabajos)' muestra por persona y por mes las horas de tareas tildadas hechas contra las horas rehechas por su culpa." },
+        ],
+      },
+      {
         heading: "Tipos de mueble",
         blocks: [
           { type: "p", text: "Cada tipo de mueble es una receta de tareas del catálogo, ordenada por pasos. Mismo número de paso = en paralelo (3.1, 3.2, por distintas personas); el paso siguiente espera a que termine todo el anterior. Cada renglón dice cuánto lleva y de qué sale: una medida del mueble (por mueble, por ml de largo, por m² de frente o por m³) o un material del presupuesto (por placa, por bisagra, por cajón…: los rubros del Gantt, con sus palabras clave). Con el tiempo estándar de la tarea da las horas." },

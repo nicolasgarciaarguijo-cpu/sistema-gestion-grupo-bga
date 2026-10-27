@@ -59,4 +59,11 @@ describe("cronograma de los trabajos", () => {
     );
     expect(r.trabajos[0]).toMatchObject({ fin: "2026-11-02", estado: "sin_entrega" });
   });
+
+  it("las horas de retrabajo corren el fin del trabajo", () => {
+    const sin = cronogramaDeTrabajos([{ jobId: 1, nombre: "X", inicio: "2026-10-26", muebles: [{ id: 1, tipoMuebleId: 1, cantidad: 1 }], materiales: [] }], [tipo], tareas, [], [ana], "2026-10-26");
+    const con = cronogramaDeTrabajos([{ jobId: 1, nombre: "X", inicio: "2026-10-26", horasRetrabajo: 9, muebles: [{ id: 1, tipoMuebleId: 1, cantidad: 1 }], materiales: [] }], [tipo], tareas, [], [ana], "2026-10-26");
+    expect(sin.trabajos[0].fin).toBe("2026-10-26");
+    expect(con.trabajos[0].fin).toBe("2026-10-27");
+  });
 });

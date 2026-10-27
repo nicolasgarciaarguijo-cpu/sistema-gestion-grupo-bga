@@ -21,6 +21,12 @@ export const NOVEDADES: TandaNovedades[] = [
     titulo: "Cronograma automático y si llegamos a la entrega",
     items: [
       {
+        titulo: "Retrabajos y efectividad",
+        que: "En Fabricación se cargan los retrabajos: de qué trabajo y tarea, quién la hizo, quién la rehace y cuánto (100% = la tarea entera). Se ve el costo (horas por el costo hora de quien rehace, más materiales) y sus horas corren el fin del trabajo en el cronograma. En Personal, la efectividad de cada persona en el mes: horas trabajadas contra horas rehechas por su culpa.",
+        como: "Fabricación → Retrabajos → '+ Retrabajo'. Personal → Efectividad (retrabajos).",
+        tab: "fabricacion",
+      },
+      {
         titulo: "Cronograma automático de Fabricación",
         que: "Los trabajos en curso con sus muebles cargados se reparten solos entre la gente de De Raíz (quien sabe cada tarea, los mejores, lo más rápido), de lunes a viernes de 07:30 a 17:00 con el almuerzo. Cada trabajo dice cuándo termina, si llega a la entrega con su holgura (10 días hábiles por defecto, editable) y quién hace qué cada día. Con un click se pasa a la organización diaria.",
         como: "Fabricación → Cronograma automático. 'Muebles…' carga o corrige los muebles del trabajo (los presupuestos viejos se completan acá, sin tocar el precio).",

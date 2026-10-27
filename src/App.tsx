@@ -241,6 +241,8 @@ import { TiposMueble } from "./tabs/TiposMueble";
 import { MueblesPresupuesto } from "./tabs/MueblesPresupuesto";
 import { CronogramaFabricacion, type TrabajoDeFabrica } from "./tabs/CronogramaFabricacion";
 import { volcarEnOrganizacion } from "./domain/cronograma";
+import { efectividadPorPersona, horasDeRetrabajoPorTrabajo, type Retrabajo } from "./domain/retrabajos";
+import { Retrabajos, EfectividadPersonal } from "./tabs/Retrabajos";
 import { filasAjenasNuevas, type FilaGuardada } from "./domain/cambiosAjenos";
 import type { MuebleDelPresupuesto, PersonaParaCotizar } from "./domain/presupuestoMuebles";
 import { Mantenimiento } from "./tabs/Mantenimiento";
@@ -1864,6 +1866,8 @@ type PersistedAppStateData = {
   escalonesInternos: string[];
   // Mantenimiento: la ficha de cada maquina/herramienta de Stock (por id de stock), con preventivos e historial.
   fichasMaquinas: FichaMaquina[];
+  // Retrabajos (fase 6): cada uno de un trabajo y de su empresa. Ver domain/retrabajos.ts.
+  retrabajos: Retrabajo[];
   // Fabricacion · tipos de mueble: receta ordenada por pasos sobre el catalogo de tareas (global).
   tiposMueble: TipoMueble[];
   // Cuentas (bancos, efectivo, cajas por persona) corregidas a mano: apertura, nombre, principal.
@@ -1938,7 +1942,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "organizacion-diaria",
     label: "Fabricación · organización diaria",
-    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble", "fichasMaquinas"] as const,
+    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble", "fichasMaquinas", "retrabajos"] as const,
   },
   {
     key: "cuentas",
@@ -3155,6 +3159,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [tiposMueble, setTiposMueble] = useState<TipoMueble[]>([]);
   const [escalonesInternos, setEscalonesInternos] = useState<string[]>([]);
   const [fichasMaquinas, setFichasMaquinas] = useState<FichaMaquina[]>([]);
+  const [retrabajos, setRetrabajos] = useState<Retrabajo[]>([]);
   const escalonesVigentes = escalonesInternos.length ? escalonesInternos : ESCALONES_POR_DEFECTO;
   // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
   const categoriasVigentes = categoriasEmpleado.length ? categoriasEmpleado : CATEGORIAS_POR_DEFECTO;
@@ -9865,6 +9870,7 @@ Escribi CERRAR para confirmar:`
     tiposMueble: tiposMueble.map((item) => ({ ...item, receta: item.receta.map((r) => ({ ...r })) })),
     escalonesInternos: [...escalonesInternos],
     fichasMaquinas: fichasMaquinas.map((item) => ({ ...item, planes: item.planes.map((p) => ({ ...p })), historial: item.historial.map((r) => ({ ...r })) })),
+    retrabajos: retrabajos.map((item) => ({ ...item })),
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
@@ -10211,6 +10217,7 @@ Escribi CERRAR para confirmar:`
     setTiposMueble((data.tiposMueble || []).map((item) => ({ ...item, receta: (item.receta || []).map((r) => ({ ...r })) })));
     setEscalonesInternos([...(data.escalonesInternos || [])]);
     setFichasMaquinas((data.fichasMaquinas || []).map((item) => ({ ...item, planes: (item.planes || []).map((p) => ({ ...p })), historial: (item.historial || []).map((r) => ({ ...r })) })));
+    setRetrabajos(keepAccessibleByCompany(data.retrabajos || []).map((item) => ({ ...item })));
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -12550,6 +12557,7 @@ Escribi CERRAR para confirmar:`
     tiposMueble,
     escalonesInternos,
     fichasMaquinas,
+    retrabajos,
     cuentasGuardadas,
     fiscalClosings,
     inversiones,
@@ -16588,6 +16596,13 @@ Escribi CERRAR para confirmar:`
   );
   // CRONOGRAMA (fase 4): los trabajos en curso con sus muebles. Los muebles salen de lo cargado en Fabricacion o, si no,
   // de los bloques del presupuesto (cada bloque por su cantidad). Los ids se rehacen por trabajo para no chocar.
+  const retrabajoPorTrabajo = useMemo(() => horasDeRetrabajoPorTrabajo(retrabajos), [retrabajos]);
+  // Costo hora de cotizar por id (retrabajos y efectividad).
+  const costoHoraPorId = (id: number) => {
+    const e = employees.find((x) => x.id === id);
+    return e ? Number(costoHoraDe(e) || 0) : 0;
+  };
+  const [mesEfectividad, setMesEfectividad] = useState(() => todayIso().slice(0, 7));
   const trabajosCronograma = useMemo(() => {
     const hoy = todayIso();
     return approvedJobs
@@ -16610,9 +16625,10 @@ Escribi CERRAR para confirmar:`
           muebles,
           materiales,
           deCotizacion: !j.fabricacion?.muebles && deCotizacion.length > 0,
+          horasRetrabajo: retrabajoPorTrabajo[j.id] || 0,
         } as TrabajoDeFabrica;
       });
-  }, [approvedJobs, effectiveIsAdmin, allowedCompaniesForSession, isSupabaseLoggedIn]);
+  }, [approvedJobs, effectiveIsAdmin, allowedCompaniesForSession, isSupabaseLoggedIn, retrabajoPorTrabajo]);
   const guardarFabricacionDeTrabajo = (jobId: number, cambios: { muebles?: MuebleDelPresupuesto[]; inicio?: string; holguraDias?: number }) => {
     setApprovedJobs((prev) =>
       prev.map((j) =>
@@ -23438,6 +23454,23 @@ Escribi CERRAR para confirmar:`
         />
       )}
       {activeTab === "fabricacion" && (
+        <Retrabajos
+          retrabajos={porEmpresa(retrabajos)}
+          trabajos={trabajosCronograma.map((t) => ({ jobId: t.jobId, nombre: t.nombre, company: t.company }))}
+          tareas={tiposTarea}
+          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name }))}
+          costoHora={costoHoraPorId}
+          money={money}
+          hoy={todayIso()}
+          onGuardar={(r) => {
+            const conFirma = { ...r, ...firma() };
+            setRetrabajos((prev) => (prev.some((x) => x.id === r.id) ? prev.map((x) => (x.id === r.id ? conFirma : x)) : [...prev, conFirma]));
+          }}
+          onBorrar={(id) => setRetrabajos((prev) => prev.filter((x) => x.id !== id))}
+          nuevoId={newId}
+        />
+      )}
+      {activeTab === "fabricacion" && (
         <TiposMueble
           tipos={tiposMueble}
           tareas={tiposTarea}
@@ -23544,6 +23577,19 @@ Escribi CERRAR para confirmar:`
         />
       )}
 
+      {activeTab === "personal" && (() => {
+        const minutos = (hhmm: string) => {
+          const [h, m] = String(hhmm || "").split(":").map(Number);
+          return Number.isFinite(h) ? h * 60 + (Number.isFinite(m) ? m : 0) : 0;
+        };
+        const hechas = porEmpresa(asignacionesDiarias)
+          .filter((a) => a.fecha.startsWith(mesEfectividad))
+          .flatMap((a) => a.tareas.filter((t) => t.hecha).map((t) => ({ empleadoId: a.empleadoId, horas: Math.max(0, minutos(t.hasta) - minutos(t.desde)) / 60 })));
+        const delMes = porEmpresa(retrabajos).filter((r) => r.fecha.startsWith(mesEfectividad));
+        const gente = visibleEmployees.filter((e) => hechas.some((h) => h.empleadoId === e.id) || delMes.some((r) => r.responsableId === e.id));
+        const filas = efectividadPorPersona(gente.map((e) => e.id), hechas, delMes, costoHoraPorId).map((x) => ({ ...x, nombre: gente.find((e) => e.id === x.empleadoId)?.name || "—" }));
+        return <EfectividadPersonal filas={filas} money={money} mes={mesEfectividad} onMes={setMesEfectividad} />;
+      })()}
       {activeTab === "personal" && (
         <PersonalTab
           employees={porEmpresa(employees)}
