@@ -66,13 +66,18 @@ export function ReciboBlancoDocument({
   const sindicato = Number(s.sindicato || 0);
   const seguro = Number(s.seguro || 0);
   const contribSubtotal = Number(s.employerJubilacion || 0) + Number(s.employerObraSocial || 0) + Number(s.employerArt || 0) + Number(s.employerLifeInsurance || 0);
-  const costoTotal = Number(s.totalGross || 0) + contribSubtotal;
+  // Fuera de convenio: el sueldo acordado. Con cargas va en el remunerativo; sin cargas se cobra tal cual (sin aportes).
+  const acordadoConCargas = Number(s.agreedWhiteCharged || 0);
+  const acordadoSinCargas = Number(s.agreedWhiteFlat || 0);
+  const anticipos = Number(s.anticipos || 0);
+  const costoTotal = Number(s.totalGross || 0) + acordadoSinCargas + contribSubtotal;
   const h = hours || {};
   // Cantidad con 5 decimales, como la columna UNIDAD del recibo del usuario.
   const u = (n: number) => (n ? Number(n).toFixed(5).replace(".", ",") : "");
 
   // Grilla de conceptos con su CODIGO, igual que el recibo real.
   const haberes = ([
+    ["0010", "SUELDO ACORDADO", "", acordadoConCargas],
     ["0017", "HORAS TRABAJADAS", u(Number(h.normalHours || 0)), Number(s.grossNormal || 0)],
     ["0018", "HORAS EXTRAS 50%", u(Number(h.extra50Hours || 0)), Number(s.extra50 || 0)],
     ["0021", "HORAS EXTRAS 100%", u(Number(h.extra100Hours || 0)), Number(s.extra100 || 0)],
@@ -87,6 +92,7 @@ export function ReciboBlancoDocument({
     ...((Array.isArray(s.nonRemItems) && s.nonRemItems.length > 1
       ? s.nonRemItems.map((i: any) => ["0250", `ASIG. SNR${i.label ? " " + i.label : ""}`, u(Number(i.hourly || 0)), Number(i.amount || 0)])
       : [["0250", "ASIG. SNR", "", Number(s.nonRem || 0)]]) as Array<[string, string, string, number]>),
+    ["0260", "SUELDO ACORDADO SIN APORTES", "", acordadoSinCargas],
   ] as Array<[string, string, string, number]>).filter((r) => r[3] !== 0);
   const descuentos: Array<[string, string, string, number]> = [
     ["0300", "JUBILACION", "11,000000", jubilacion],
@@ -94,6 +100,7 @@ export function ReciboBlancoDocument({
     ["0310", "OBRA SOCIAL", "3,0000000", obraSocial],
     ["0322", "APORTE SINDICAL", u(Number(config.unionPct || 0)), sindicato],
     ["0324", "SEG VIDA Y SEPELIO", u(Number(config.insurancePct || 0)), seguro],
+    ...(anticipos ? [["0400", "ANTICIPOS", "", anticipos] as [string, string, string, number]] : []),
   ];
 
   // El bloque de abajo: cuanto cuesta cada concepto y quien lo paga. Ver domain/reciboComposicion.ts,
@@ -173,6 +180,12 @@ export function ReciboBlancoDocument({
             <td style={lbl}>Remunerativo</td><td style={right}>{money(Number(s.grossRem || 0))}</td>
             <td style={lbl}>No remunerativo</td><td style={right}>{money(Number(s.nonRem || 0))}</td>
           </tr>
+          {(acordadoSinCargas > 0 || anticipos > 0) && (
+            <tr>
+              <td style={lbl}>Sin aportes</td><td style={right}>{money(acordadoSinCargas)}</td>
+              <td style={lbl}>Anticipos</td><td style={{ ...right, color: "#b00" }}>{anticipos ? `- ${money(anticipos)}` : money(0)}</td>
+            </tr>
+          )}
           <tr>
             <td style={lbl}>Descuentos</td><td style={{ ...right, color: "#b00" }}>- {money(Number(s.descuentos || 0))}</td>
             <td style={lbl}>SUELDO NETO</td><td style={{ ...right, fontWeight: 800, fontSize: 13 }}>{money(Number(s.net || 0))}</td>

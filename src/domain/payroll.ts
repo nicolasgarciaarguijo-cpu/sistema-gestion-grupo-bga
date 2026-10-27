@@ -324,6 +324,12 @@ export function computePayrollSummary({
     grossRem,
     totalGross,
     nonRem,
+    // Fuera de convenio: el sueldo blanco acordado, con cargas (ya esta dentro de grossRem) o sin (se suma al neto).
+    // El recibo los muestra como renglones propios para que la grilla cierre con el neto.
+    agreedWhiteCharged: chargedAgreedWhite,
+    agreedWhiteFlat: flatAgreedWhite,
+    // Lo adelantado en el mes (se descuenta del neto).
+    anticipos: Number(payroll.anticipos || 0),
     seniorityBonus,
     presentismo,
     employerContrib,

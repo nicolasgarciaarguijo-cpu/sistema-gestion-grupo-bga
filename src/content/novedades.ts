@@ -21,6 +21,12 @@ export const NOVEDADES: TandaNovedades[] = [
     titulo: "El cronograma mira lo que ya está ocupado",
     items: [
       {
+        titulo: "Recibo blanco del personal fuera de convenio",
+        que: "El recibo blanco de quien está fuera de convenio (socios, administración) ahora muestra el sueldo acordado: con cargas en el remunerativo, sin cargas como 'sueldo acordado sin aportes'. También muestra los anticipos del mes. Así la grilla cierra con el neto, y el costo total empleador incluye lo que se paga sin aportes.",
+        como: "Personal → ficha de la persona → 'Recibo blanco' (o click derecho en la nómina).",
+        tab: "personal",
+      },
+      {
         titulo: "Rescate previsto de las inversiones",
         que: "Cada inversión activa en pesos con fecha de fin aparece en la planilla como '≈' el día que vence, en su renglón de rescate, por su última valuación. No suma; al rescatarla manda el número real.",
         como: "Inversiones: cargar la fecha de fin y el valor actual. Se ve en el Calendario anual, INGRESOS · INVERSIONES.",

@@ -269,6 +269,13 @@ describe("fuera de convenio", () => {
     expect(r.blackImpact).toBeCloseTo(400000 + 400000 / 12); // + prorrateo aguinaldo negro
   });
 
+  it("expone el acordado y los anticipos para que el recibo cierre con el neto", () => {
+    const sin = run({ normalHours: 0, anticipos: 50000 }, { isFueraConvenio: true, agreedWhite: 800000, computeWhiteCharges: false });
+    expect(sin).toMatchObject({ agreedWhiteCharged: 0, agreedWhiteFlat: 800000, anticipos: 50000, net: 750000 });
+    const con = run({ normalHours: 0 }, { isFueraConvenio: true, agreedWhite: 800000, computeWhiteCharges: true });
+    expect(con).toMatchObject({ agreedWhiteCharged: 800000, agreedWhiteFlat: 0 });
+  });
+
   it("con cargas: el blanco paga descuentos de ley y prorratea SAC", () => {
     const r = run(
       { normalHours: 0 },
