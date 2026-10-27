@@ -239,6 +239,8 @@ import { GanttFabricacion } from "./tabs/GanttFabricacion";
 import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
 import { TiposMueble } from "./tabs/TiposMueble";
 import { MueblesPresupuesto } from "./tabs/MueblesPresupuesto";
+import { CronogramaFabricacion, type TrabajoDeFabrica } from "./tabs/CronogramaFabricacion";
+import { volcarEnOrganizacion } from "./domain/cronograma";
 import { filasAjenasNuevas, type FilaGuardada } from "./domain/cambiosAjenos";
 import type { MuebleDelPresupuesto, PersonaParaCotizar } from "./domain/presupuestoMuebles";
 import { Mantenimiento } from "./tabs/Mantenimiento";
@@ -16567,7 +16569,7 @@ Escribi CERRAR para confirmar:`
   // El que no tiene categorias cargadas no entra (no se sabe que hace). La gente se comparte entre empresas.
   const personasParaCotizar = useMemo<PersonaParaCotizar[]>(
     () =>
-      (activeTab === "presupuesto" ? employees : [])
+      (activeTab === "presupuesto" || activeTab === "fabricacion" ? employees : [])
         .filter((e) => !isEmployeeTerminated(e) && tieneCategorias(e.categoriasInternas) && (!empresaQueFabrica || e.company === empresaQueFabrica))
         .map((e) => ({
           id: e.id,
@@ -16584,6 +16586,46 @@ Escribi CERRAR para confirmar:`
         })),
     [activeTab, employees, categoriasVigentes, escalonesVigentes, payrollMonth]
   );
+  // CRONOGRAMA (fase 4): los trabajos en curso con sus muebles. Los muebles salen de lo cargado en Fabricacion o, si no,
+  // de los bloques del presupuesto (cada bloque por su cantidad). Los ids se rehacen por trabajo para no chocar.
+  const trabajosCronograma = useMemo(() => {
+    const hoy = todayIso();
+    return approvedJobs
+      .filter((j) => tienePermisoEmpresa(j.company) && j.executionStatus !== "finalizado")
+      .map((j) => {
+        const secciones = (j.snapshot?.subBudgets || []) as BudgetSection[];
+        const deCotizacion: MuebleDelPresupuesto[] = (secciones.length
+          ? secciones.flatMap((sec) => (sec.muebles || []).map((m) => ({ ...m, cantidad: Number(m.cantidad || 0) * (Number(sec.quantity) > 0 ? Number(sec.quantity) : 1) })))
+          : j.snapshot?.muebles || []
+        ).map((m, i) => ({ ...m, id: j.id * 1000 + i }));
+        const materiales = (secciones.length ? secciones.flatMap((sec) => sec.materials || []) : j.snapshot?.materials || []).map((m) => ({ description: String(m.description || ""), qty: Number(m.qty) || 0 }));
+        const muebles = j.fabricacion?.muebles ?? deCotizacion;
+        return {
+          jobId: j.id,
+          nombre: [j.budgetNumber, j.client || j.project].filter(Boolean).join(" · ") || `Trabajo ${j.id}`,
+          company: String(j.company),
+          inicio: j.fabricacion?.inicio || j.startDate || j.approvalDate || hoy,
+          entrega: j.deliveryDate || undefined,
+          holguraDias: j.fabricacion?.holguraDias,
+          muebles,
+          materiales,
+          deCotizacion: !j.fabricacion?.muebles && deCotizacion.length > 0,
+        } as TrabajoDeFabrica;
+      });
+  }, [approvedJobs, effectiveIsAdmin, allowedCompaniesForSession, isSupabaseLoggedIn]);
+  const guardarFabricacionDeTrabajo = (jobId: number, cambios: { muebles?: MuebleDelPresupuesto[]; inicio?: string; holguraDias?: number }) => {
+    setApprovedJobs((prev) =>
+      prev.map((j) =>
+        j.id === jobId
+          ? {
+              ...j,
+              // Los muebles que se editan aca quedan fijos en el trabajo (los del presupuesto vienen en la lista que se edita).
+              fabricacion: { ...(j.fabricacion || {}), ...cambios },
+            }
+          : j
+      )
+    );
+  };
 
   // Liquidacion de un empleado para un MES cualquiera (la de la ficha es la del mes elegido).
   const payrollSummaryFor = (employee: Employee, month: string) => {
@@ -23367,6 +23409,31 @@ Escribi CERRAR para confirmar:`
             });
           }}
           onIrAStock={() => setActiveTab("stock" as TabKey)}
+          nuevoId={newId}
+        />
+      )}
+      {activeTab === "fabricacion" && (
+        <CronogramaFabricacion
+          trabajos={trabajosCronograma.filter((t) => t.muebles.length > 0)}
+          sinMuebles={trabajosCronograma.filter((t) => t.muebles.length === 0).map((t) => ({ jobId: t.jobId, nombre: t.nombre, company: t.company, inicio: t.inicio }))}
+          tipos={tiposMueble}
+          tareas={tiposTarea}
+          rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
+          personas={personasParaCotizar}
+          hoy={todayIso()}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+          onGuardarFabricacion={guardarFabricacionDeTrabajo}
+          onPasarAOrganizacion={(jobId, filas) => {
+            const dias = volcarEnOrganizacion(
+              asignacionesDiarias,
+              filas,
+              empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: String(e.company) })),
+              jobId,
+              newId
+            );
+            dias.forEach(guardarAsignacionDiaria);
+            setStorageMessage(`Se pasaron ${filas.length} tareas a la organización diaria (${dias.length} días de personas).`);
+          }}
           nuevoId={newId}
         />
       )}

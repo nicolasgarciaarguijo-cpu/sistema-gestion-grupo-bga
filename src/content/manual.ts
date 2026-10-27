@@ -683,6 +683,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         ],
       },
       {
+        heading: "Cronograma automático",
+        blocks: [
+          { type: "p", text: "Los trabajos en curso con sus muebles cargados se reparten entre la gente de De Raíz: cada tarea la hace quien la sabe hacer con el costo hora más alto, y lo que va en paralelo se reparte para terminar antes. Se trabaja de lunes a viernes de 07:30 a 17:00 con el almuerzo de 13:30 a 14:00. Cada trabajo arranca en su inicio (editable) y se ve cuándo termina, el margen hasta la entrega y si llega con la holgura pedida (10 días hábiles por defecto, editable por trabajo)." },
+          { type: "steps", items: ["Fabricación → Cronograma automático.", "'Muebles…' carga o corrige los muebles del trabajo. Los presupuestos hechos a la manera vieja se completan acá, sin tocar su precio.", "'Quién y cuándo…' muestra cada tarea por día y persona; 'Pasar a la organización diaria' la carga en el día de cada uno."] },
+          { type: "tip", text: "Hace falta que las tareas tengan tiempo estándar y que la gente de De Raíz tenga sus categorías internas. Lo que no tiene muebles sigue con el Gantt por rubros como siempre." },
+        ],
+      },
+      {
         heading: "Tipos de mueble",
         blocks: [
           { type: "p", text: "Cada tipo de mueble es una receta de tareas del catálogo, ordenada por pasos. Mismo número de paso = en paralelo (3.1, 3.2, por distintas personas); el paso siguiente espera a que termine todo el anterior. Cada renglón dice cuánto lleva y de qué sale: una medida del mueble (por mueble, por ml de largo, por m² de frente o por m³) o un material del presupuesto (por placa, por bisagra, por cajón…: los rubros del Gantt, con sus palabras clave). Con el tiempo estándar de la tarea da las horas." },

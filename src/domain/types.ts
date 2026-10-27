@@ -544,6 +544,9 @@ export type ApprovedJob = {
   cobrosPrevistos?: Payment[];
   retentions: Retention[];
   snapshot: BudgetSnapshot;
+  // Fabricacion (fase 4, 2026-10-26): los muebles del trabajo (del presupuesto, o cargados en Fabricacion para los
+  // presupuestos viejos), desde cuando arranca en fabrica y la holgura pedida (dias habiles). Ver domain/cronograma.ts.
+  fabricacion?: { muebles?: MuebleDelPresupuesto[]; inicio?: string; holguraDias?: number };
 };
 
 export type FinancialItemType = "facturacion" | "cobranza" | "pago";

@@ -169,7 +169,8 @@ const EPS = 1e-9;
 // primero se asignan las que solo saben hacer los escalones mas altos.
 // "El plantel entero siempre va a alcanzar. Lo que pasaria es que se estiran los tiempos de fabricacion": si no hay
 // gente libre, la tarea espera a que se libere. Asi se conocen los tiempos de fabricacion reales con este personal.
-export function planificarMuebles(calculados: MuebleCalculado[], personas: PersonaParaCotizar[]): PlanDeMuebles {
+// `liberacion`: desde que hora (de trabajo, contando desde hoy) puede arrancar cada mueble (el inicio de su trabajo).
+export function planificarMuebles(calculados: MuebleCalculado[], personas: PersonaParaCotizar[], liberacion: Record<number, number> = {}): PlanDeMuebles {
   const libre = new Map<number, number>(personas.map((p) => [p.id, 0]));
   const libreDe = (p: PersonaParaCotizar) => libre.get(p.id) || 0;
   // Sin nadie idoneo se cotiza al costo hora mas alto del plantel; un ayudante que falta, al del ayudante mas caro.
@@ -185,7 +186,8 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
       const porPaso = new Map<number, TareaCalculada[]>();
       c.tareas.filter((t) => t.horas > 0).forEach((t) => porPaso.set(t.paso, [...(porPaso.get(t.paso) || []), t]));
       const pasos = Array.from(porPaso.entries()).sort((a, b) => a[0] - b[0]).map(([paso, tareas]) => ({ paso, tareas }));
-      return { c, pasos, i: 0, listo: 0, pendientes: [...pasos[0].tareas], finPaso: 0 };
+      const desde = Math.max(0, liberacion[c.mueble.id] || 0);
+      return { c, pasos, i: 0, listo: desde, pendientes: [...pasos[0].tareas], finPaso: desde };
     });
   const asignaciones: AsignacionTarea[] = [];
   for (;;) {

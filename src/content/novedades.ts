@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-26e",
+    fecha: "26/10/2026",
+    titulo: "Cronograma automático y si llegamos a la entrega",
+    items: [
+      {
+        titulo: "Cronograma automático de Fabricación",
+        que: "Los trabajos en curso con sus muebles cargados se reparten solos entre la gente de De Raíz (quien sabe cada tarea, los mejores, lo más rápido), de lunes a viernes de 07:30 a 17:00 con el almuerzo. Cada trabajo dice cuándo termina, si llega a la entrega con su holgura (10 días hábiles por defecto, editable) y quién hace qué cada día. Con un click se pasa a la organización diaria.",
+        como: "Fabricación → Cronograma automático. 'Muebles…' carga o corrige los muebles del trabajo (los presupuestos viejos se completan acá, sin tocar el precio).",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Siempre se pregunta de qué empresa es lo que se carga",
+        que: "Al cargar un seguro, una inversión, un pago, una tarjeta, un trabajo, un movimiento, un artículo de stock y el resto de las altas, el sistema pregunta si es de BGA, de De Raíz o de ambas (compartido). Quien trabaja con una sola empresa no ve la pregunta.",
+        como: "Aparece sola al tocar el botón de agregar.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-26d",
     fecha: "26/10/2026",
     titulo: "Empresas por separado o juntas",

@@ -35,6 +35,8 @@ export function MueblesPresupuesto({
   money,
   onPasarAManoDeObra,
   nuevoId,
+  soloMuebles = false,
+  titulo = "Muebles del presupuesto",
 }: {
   muebles: MuebleDelPresupuesto[];
   onCambiar: (muebles: MuebleDelPresupuesto[]) => void;
@@ -49,6 +51,9 @@ export function MueblesPresupuesto({
   manoDeObra: Array<{ employeeId?: number; jobHours: number; hourlyRate: number }>;
   money: (n: number) => string;
   onPasarAManoDeObra: (plan: PlanDeMuebles) => void;
+  // En Fabricacion (muebles de un trabajo) no va lo de mano de obra: solo la lista y sus horas.
+  soloMuebles?: boolean;
+  titulo?: string;
   nuevoId: () => number;
 }) {
   const anchos = usePlanillaWidths("ppto.muebles", { label: 260, col: 96, colCompact: 76 });
@@ -73,7 +78,7 @@ export function MueblesPresupuesto({
   return (
     <Panel
       span="full"
-      title="Muebles del presupuesto"
+      title={titulo}
       actions={
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           <select
@@ -171,7 +176,7 @@ export function MueblesPresupuesto({
         </div>
       )}
 
-      {muebles.length > 0 && (
+      {muebles.length > 0 && !soloMuebles && (
         <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
           <div style={{ fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>Quién hace qué</div>
           <div style={{ fontSize: 12, color: "#64748b" }}>
