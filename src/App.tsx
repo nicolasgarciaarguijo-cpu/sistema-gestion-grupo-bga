@@ -7104,6 +7104,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // CIERRE AUTOMATICO: el asistente se abre solo (una vez por sesion) cuando hay un ejercicio terminado sin cerrar.
   const [asistenteCierre, setAsistenteCierre] = useState(false);
   const asistenteCierreMostrado = useRef(false);
+  // LO DEL EJERCICIO CERRADO SE ESCONDE (27/10/2026): lo terminado del año cerrado no se ve en las listas; con
+  // "Ver ejercicio cerrado" vuelve a aparecer (solo lectura). Lo que sigue abierto (impago, en curso) se ve siempre.
+  // Solo afecta lo que se MUESTRA: los totales y saldos se calculan con todo.
+  const [verCerrado, setVerCerrado] = useState(false);
   const [cierreMensaje, setCierreMensaje] = useState("");
 
   // La reserva de UNA empresa cortada a una fecha: es de donde salen las 8 billeteras de la foto.
@@ -7677,6 +7681,11 @@ Escribi CERRAR para confirmar:`
       setAsistenteCierre(true);
     }
   }, [porCerrar.length]);
+
+  // true = es de un ejercicio cerrado y hoy se esta escondiendo.
+  const ocultoPorCierre = (company: string, iso: string | undefined) =>
+    !verCerrado && !!iso && !!cierreQueBloquea(fiscalClosings, company, iso);
+  const hayEjercicioCerrado = cierresActivos(fiscalClosings).some((c) => canAccessCompany(c.company as CompanyName));
 
   const reabrirEjercicio = (cierreId: number) => {
     const c = fiscalClosings.find((x) => x.id === cierreId);
@@ -21107,7 +21116,7 @@ Escribi CERRAR para confirmar:`
   };
   const renderFacturasCompra = () => (
     <FacturasCompraPanel
-      filas={filasFacturas}
+      filas={filasFacturas.filter((x) => !(x.pagada && ocultoPorCierre(x.company, x.invoiceDate)))}
       companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
       money={money}
       onExportarEstudio={({ empresa, desde, hasta }) => {
@@ -21305,8 +21314,8 @@ Escribi CERRAR para confirmar:`
           months={costsMonths}
           aggregation={costsAggregation}
           costGroups={porEmpresa(costGroups)}
-          costEntries={porEmpresa(costEntries)}
-          pettyCashExpenses={visiblePettyCashExpenses}
+          costEntries={porEmpresa(costEntries).filter((x) => !ocultoPorCierre(x.company, x.date))}
+          pettyCashExpenses={visiblePettyCashExpenses.filter((x) => !ocultoPorCierre(x.company, x.date))}
           updatePettyCashExpense={updatePettyCashExpense}
           getPettyCashAdministration={getPettyCashAdministration}
           autoClassifyUnassigned={autoClassifyUnassigned}
@@ -21983,6 +21992,19 @@ Escribi CERRAR para confirmar:`
           <strong style={{ color: "#9a3412" }}>⚠ Falta cerrar el ejercicio {nombreEjercicio(porCerrar[0].fiscalStartYear)}</strong>
           <span style={{ color: "#7c2d12" }}>de {porCerrar.map((x) => x.short).join(" y ")}: hasta cerrarlo, el año nuevo no tiene su punto de partida.</span>
           <ButtonLike onClick={() => setAsistenteCierre(true)}>Hacer el cierre</ButtonLike>
+        </div>
+      )}
+      {hayEjercicioCerrado && ["compras", "costos", "cajaChica", "aprobados"].includes(activeTab) && (
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderRadius: 10, padding: "6px 12px", margin: "0 0 10px", fontSize: 13, fontWeight: 700,
+            background: verCerrado ? "#fef2f2" : "#f0fdf4", border: `1px solid ${verCerrado ? "#fecaca" : "#bbf7d0"}`, color: verCerrado ? "#991b1b" : "#166534",
+          }}
+        >
+          {verCerrado
+            ? "Estás viendo también lo del ejercicio ANTERIOR (cerrado, solo lectura)."
+            : "Ejercicio corriente: lo terminado del ejercicio cerrado está escondido (lo que sigue abierto se ve)."}
+          <ButtonLike secondary onClick={() => setVerCerrado((v) => !v)}>{verCerrado ? "Esconder el ejercicio cerrado" : "Ver ejercicio cerrado"}</ButtonLike>
         </div>
       )}
       {(activeTab === "calendarioAnual" || activeTab === "cashflow") && (() => {
@@ -22759,8 +22781,10 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "cajaChica" && (
         <CajaChicaListado
-          fondos={visiblePettyCashFunds as any}
-          gastos={[...visiblePettyCashExpenses, ...pagosConCajaChica] as any}
+          fondos={visiblePettyCashFunds.filter((x) => !(x.closed && ocultoPorCierre(x.company, x.closedDate))) as any}
+          gastos={[...visiblePettyCashExpenses, ...pagosConCajaChica].filter(
+            (g: any) => !visiblePettyCashFunds.some((x) => x.id === g.fundId && x.closed && ocultoPorCierre(x.company, x.closedDate))
+          ) as any}
           tipos={tiposCaja}
           viaticos={visibleViaticos as any}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
@@ -23273,6 +23297,7 @@ Escribi CERRAR para confirmar:`
       {activeTab === "aprobados" && (
         <AprobadosTab
           cuentas={cuentasSistema}
+          ocultarTerminado={(j: any) => ocultoPorCierre(j.company, j.estimatedDeliveryDate || j.startDate || j.approvalDate)}
           onBorrarTrabajo={(jobId) => {
             // BORRAR UN TRABAJO (Nicolas, 2026-10-20: "asi como poder editar, debo poder borrar"). Se van con el
             // sus pagos, facturas y comisiones (salen del cash flow). El presupuesto guardado queda en Historial.

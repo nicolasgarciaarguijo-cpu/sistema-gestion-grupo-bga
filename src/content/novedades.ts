@@ -33,6 +33,12 @@ export const NOVEDADES: TandaNovedades[] = [
         tab: "calendarioAnual",
       },
       {
+        titulo: "Lo del ejercicio cerrado queda escondido",
+        que: "Después del cierre, en Compras, Pago a proveedores, Caja chica y Trabajos aprobados lo ya terminado del ejercicio cerrado (facturas pagas, pagos, cajas cerradas, trabajos terminados) no se ve. Lo que sigue abierto se ve siempre. Con 'Ver ejercicio cerrado' vuelve a aparecer, en solo lectura. Los totales y saldos no cambian: se calculan con todo.",
+        como: "Arriba de esas solapas: Ver ejercicio cerrado / Esconder el ejercicio cerrado.",
+        tab: "compras",
+      },
+      {
         titulo: "Trabajos terminados aparte",
         que: "Los trabajos finalizados y sin pendientes bajan a una sección 'Terminados' por empresa, minimizada. Para finalizar uno, un cartel muestra lo que falta (factura, cobro, comisión) y decidís: finalizarlo igual o, si la diferencia en los cobros es un redondeo, cerrarla como arqueo de caja.",
         como: "Trabajos aprobados → click derecho → Marcar como finalizado… (o Estado → Finalizado en la ficha).",

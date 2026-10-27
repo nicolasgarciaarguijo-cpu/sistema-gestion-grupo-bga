@@ -83,6 +83,8 @@ type AprobadosTabProps = {
   importLegacyApprovedJobs: () => void;
   exportPrint: (mode: PrintMode) => void;
   updateApprovedJob: (jobId: number, field: keyof ApprovedJob, value: string | number) => void;
+  // Terminados de un ejercicio cerrado que hoy se esconden ("Ver ejercicio cerrado" los muestra).
+  ocultarTerminado?: (job: any) => boolean;
   issuedInvoices: any[];
   updateIssuedInvoice: (id: number, field: any, value: any) => void;
   loadBudgetFromSnapshot: (snapshot: any, budgetId: any) => void;
@@ -147,6 +149,7 @@ export function AprobadosTab({
   approvedJobsTimelineRows,
   selectedApprovedJobId,
   selectedApprovedJob,
+  ocultarTerminado,
   getCompanyMeta,
   companyOptions = [],
   getApprovedJobSourceLabel,
@@ -578,7 +581,7 @@ export function AprobadosTab({
                         );
                       };
                       const esTerminado = (j: any) => j.executionStatus === "finalizado" && isJobDone(j);
-                      const terminados = group.items.filter(esTerminado);
+                      const terminados = group.items.filter((j: any) => esTerminado(j) && !ocultarTerminado?.(j));
                       const abiertos = terminadosAbiertos.has(group.value);
                       return (
                         <>
