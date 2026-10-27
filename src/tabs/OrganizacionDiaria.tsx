@@ -4,7 +4,7 @@
 // esta cada uno (cuantos hay juntos en cada lugar). Abajo, el catalogo de grupos de trabajo y tipos de tarea
 // para no tipear todo cada vez. La logica vive en domain/organizacionDiaria.ts.
 import React, { useMemo, useState } from "react";
-import { Panel, ButtonLike } from "../ui/primitives";
+import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
 import {
   avisosDelDia,
   comoSePaga,
@@ -70,7 +70,10 @@ export function OrganizacionDiaria({
   nuevoId,
   maquinas = [],
   fichasMaquinas = [],
+  onRetrabajo,
 }: {
+  // Click derecho en una tarea del dia: registrar que hubo que rehacerla (Retrabajos, en Fabricacion).
+  onRetrabajo?: (p: { jobId: number | null; tareaId: number | null; responsableId: number; horasTarea: number; fecha: string; descripcion: string }) => void;
   empleados: EmpleadoOrg[];
   trabajos: TrabajoOrg[];
   asignaciones: AsignacionDiaria[];
@@ -283,6 +286,7 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
                     onGuardar={guardar}
                     onBorrar={existe ? () => { if (window.confirm(`¿Borrar el día de ${e.name}?`)) { onBorrarAsignacion(a.id); setAbierta(null); } } : undefined}
                     onAbrirTrabajo={onAbrirTrabajo}
+                    onRetrabajo={onRetrabajo}
                     nuevoId={nuevoId}
                   />
                 )}
@@ -310,8 +314,10 @@ function FichaDelDia({
   onGuardar,
   onBorrar,
   onAbrirTrabajo,
+  onRetrabajo,
   nuevoId,
 }: {
+  onRetrabajo?: (p: { jobId: number | null; tareaId: number | null; responsableId: number; horasTarea: number; fecha: string; descripcion: string }) => void;
   // Herramientas que faltan o no andan para un tipo de tarea (Mantenimiento).
   faltanPara?: (tipoId: number) => Faltante[];
   a: AsignacionDiaria;
@@ -327,6 +333,23 @@ function FichaDelDia({
   nuevoId: () => number;
 }) {
   const set = (patch: Partial<AsignacionDiaria>) => onGuardar({ ...a, ...patch });
+  const [menuTarea, setMenuTarea] = useState<null | { x: number; y: number; t: TareaDelDia }>(null);
+  const retrabajo = (x: TareaDelDia) => {
+    const desde = timeToMinutes(x.desde) ?? 0;
+    const hasta = timeToMinutes(x.hasta) ?? desde;
+    // Las horas de la tarea: lo que tardo de verdad si se marco hecha, si no lo planificado (sin el almuerzo).
+    const real = minutosReales(x, a.fecha);
+    const almuerzo = desde <= 13 * 60 + 30 && hasta >= 14 * 60 ? 30 : 0;
+    const minutos = real != null ? real : Math.max(0, hasta - desde - almuerzo);
+    onRetrabajo?.({
+      jobId: x.jobId ?? a.jobId ?? null,
+      tareaId: x.tipoTareaId ?? null,
+      responsableId: a.empleadoId,
+      horasTarea: Math.round((minutos / 60) * 100) / 100,
+      fecha: a.fecha,
+      descripcion: x.descripcion || tipos.find((tp) => tp.id === x.tipoTareaId)?.nombre || "",
+    });
+  };
   const setTurno = (id: string, patch: Partial<TurnoDia>) => set({ turnos: a.turnos.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
   const setTarea = (id: number, patch: Partial<TareaDelDia>) => set({ tareas: a.tareas.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
   const t = trabajos.find((x) => x.id === a.jobId);
@@ -436,7 +459,18 @@ function FichaDelDia({
               const real = minutosReales(x, a.fecha);
               const tipo = tipos.find((tp) => tp.id === x.tipoTareaId);
               return (
-                <tr key={x.id} style={{ background: x.hecha ? "#f0fdf4" : undefined }}>
+                <tr
+                  key={x.id}
+                  style={{ background: x.hecha ? "#f0fdf4" : undefined }}
+                  onContextMenu={
+                    onRetrabajo
+                      ? (ev) => {
+                          ev.preventDefault();
+                          setMenuTarea({ x: ev.clientX, y: ev.clientY, t: x });
+                        }
+                      : undefined
+                  }
+                >
                   <td style={td}><input style={input} type="time" value={x.desde} onChange={(e) => setTarea(x.id, { desde: e.target.value })} /></td>
                   <td style={td}><input style={input} type="time" value={x.hasta} onChange={(e) => setTarea(x.id, { hasta: e.target.value })} /></td>
                   <td style={td}>
@@ -498,6 +532,12 @@ function FichaDelDia({
           <button type="button" style={btn()} onClick={() => set({ tareas: [...a.tareas, { id: nuevoId(), descripcion: "", ...siguienteHorario() }] })}>+ Tarea</button>
           {onBorrar && <button type="button" style={btn(true)} onClick={onBorrar}>🗑 Borrar el día</button>}
         </div>
+        {menuTarea && (
+          <QuickMenu x={menuTarea.x} y={menuTarea.y} onClose={() => setMenuTarea(null)}>
+            <QuickMenuTitle>{menuTarea.t.descripcion || "Tarea"}</QuickMenuTitle>
+            <button type="button" style={quickMenuItem} onClick={() => { retrabajo(menuTarea.t); setMenuTarea(null); }}>Hubo que rehacerla: registrar retrabajo…</button>
+          </QuickMenu>
+        )}
         {avisos.length > 0 && (
           <div style={{ marginTop: 6, fontSize: 12, color: "#b45309", fontWeight: 700 }}>{avisos.map((x) => <div key={x}>⚠ {x}</div>)}</div>
         )}

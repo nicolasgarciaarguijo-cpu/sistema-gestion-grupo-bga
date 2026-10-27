@@ -2,7 +2,7 @@
 // (cuenta en su efectividad), quien la rehace, que % se rehace (100 = entera), las horas de la tarea y los materiales.
 // Costo = horas x costo hora de quien rehace + materiales. Sus horas corren el cronograma del trabajo. Ver
 // domain/retrabajos.ts.
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import { costoDeRetrabajo, horasDeRetrabajo, type Retrabajo } from "../domain/retrabajos";
 import type { TipoTarea } from "../domain/organizacionDiaria";
@@ -25,7 +25,12 @@ export function Retrabajos({
   onGuardar,
   onBorrar,
   nuevoId,
+  precargado,
+  onPrecargadoUsado,
 }: {
+  // Desde la organizacion diaria (click derecho en una tarea): abre el formulario con la tarea, quien la hizo y sus horas.
+  precargado?: Partial<Retrabajo> | null;
+  onPrecargadoUsado?: () => void;
   retrabajos: Retrabajo[];
   trabajos: Array<{ jobId: number; nombre: string; company: string }>;
   tareas: TipoTarea[];
@@ -53,6 +58,24 @@ export function Retrabajos({
   const nombreTarea = (r: Retrabajo) => (r.tareaId != null ? tareas.find((t) => t.id === r.tareaId)?.nombre : "") || r.descripcion || "—";
   const nuevo = () =>
     setEditando({ id: nuevoId(), company: trabajos[0]?.company || "", fecha: hoy, jobId: trabajos[0]?.jobId ?? 0, tareaId: null, responsableId: empleados[0]?.id ?? 0, porcentaje: 100, horasTarea: 0, materiales: 0 });
+  useEffect(() => {
+    if (!precargado) return;
+    const t = trabajos.find((x) => x.jobId === precargado.jobId) || trabajos[0];
+    setEditando({
+      id: nuevoId(),
+      company: t?.company || "",
+      fecha: hoy,
+      jobId: t?.jobId ?? 0,
+      tareaId: null,
+      responsableId: empleados[0]?.id ?? 0,
+      porcentaje: 100,
+      horasTarea: 0,
+      materiales: 0,
+      ...precargado,
+      ...(t && !trabajos.some((x) => x.jobId === precargado.jobId) ? { jobId: t.jobId, company: t.company } : {}),
+    });
+    onPrecargadoUsado?.();
+  }, [precargado]);
   const e = editando;
   const costoE = e ? costoDeRetrabajo(e, costoHora) : null;
 

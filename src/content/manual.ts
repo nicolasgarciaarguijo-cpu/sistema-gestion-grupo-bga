@@ -687,6 +687,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         blocks: [
           { type: "p", text: "Los trabajos en curso con sus muebles cargados se reparten entre la gente de De Raíz: cada tarea la hace quien la sabe hacer con el costo hora más alto, y lo que va en paralelo se reparte para terminar antes. Se trabaja de lunes a viernes de 07:30 a 17:00 con el almuerzo de 13:30 a 14:00. Cada trabajo arranca en su inicio (editable) y se ve cuándo termina, el margen hasta la entrega y si llega con la holgura pedida (10 días hábiles por defecto, editable por trabajo)." },
           { type: "steps", items: ["Fabricación → Cronograma automático.", "'Muebles…' carga o corrige los muebles del trabajo. Los presupuestos hechos a la manera vieja se completan acá, sin tocar su precio.", "'Quién y cuándo…' muestra cada tarea por día y persona; 'Pasar a la organización diaria' la carga en el día de cada uno."] },
+          { type: "p", text: "Descuenta lo que ya está ocupado en la organización diaria: los días en obra, las tareas cargadas a mano (las de los trabajos del cronograma no, porque ya son parte de su receta) y los mantenimientos. Si alguien de la tarea no está, la tarea se corta y sigue después. Las máquinas pesadas de Stock hacen una tarea por unidad a la vez, un mantenimiento las para mientras dura, y si una máquina que pide la tarea no anda (en mantenimiento, fuera de servicio o sin unidades) el trabajo avisa que la fecha no es real." },
           { type: "tip", text: "Hace falta que las tareas tengan tiempo estándar y que la gente de De Raíz tenga sus categorías internas. Lo que no tiene muebles sigue con el Gantt por rubros como siempre." },
         ],
       },
@@ -694,6 +695,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         heading: "Retrabajos",
         blocks: [
           { type: "p", text: "Cada retrabajo es de un trabajo y de una tarea: quién la hizo (cuenta en su efectividad), quién la rehace, cuánto se rehace (100% = la tarea entera), las horas de la tarea original y los materiales. Costo = horas × costo hora de quien rehace + materiales. Sus horas se suman al final del trabajo en el cronograma automático (se corre la fecha de fin). En Personal, 'Efectividad (retrabajos)' muestra por persona y por mes las horas de tareas tildadas hechas contra las horas rehechas por su culpa." },
+          { type: "tip", text: "Desde la organización diaria: click derecho sobre una tarea → 'Hubo que rehacerla: registrar retrabajo…' abre el retrabajo con el trabajo, la tarea, quién la hizo y sus horas ya cargadas." },
         ],
       },
       {

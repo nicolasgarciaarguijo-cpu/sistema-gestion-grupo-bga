@@ -9,10 +9,10 @@ import {
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
 } from "../ui/planilla";
 import type { RubroFabricacion } from "../domain/ganttFabricacion";
-import type { TipoTarea } from "../domain/organizacionDiaria";
+import type { AsignacionDiaria, TipoTarea } from "../domain/organizacionDiaria";
 import type { TipoMueble } from "../domain/tiposMueble";
-import type { MuebleDelPresupuesto, PersonaParaCotizar } from "../domain/presupuestoMuebles";
-import { cronogramaDeTrabajos, HOLGURA_POR_DEFECTO, tareasPorPersonaYDia, type EstadoEntrega, type TrabajoParaCronograma } from "../domain/cronograma";
+import type { MaquinaDelTaller, MuebleDelPresupuesto, PersonaParaCotizar } from "../domain/presupuestoMuebles";
+import { cronogramaDeTrabajos, HOLGURA_POR_DEFECTO, ocupacionDelTaller, primerHabil, tareasPorPersonaYDia, type EstadoEntrega, type TrabajoParaCronograma } from "../domain/cronograma";
 import { MueblesPresupuesto } from "./MueblesPresupuesto";
 
 export type TrabajoDeFabrica = TrabajoParaCronograma & { company: string; deCotizacion: boolean };
@@ -35,6 +35,8 @@ export function CronogramaFabricacion({
   rubros,
   personas,
   hoy,
+  diasOrganizados = [],
+  maquinas = [],
   companyShort,
   onGuardarFabricacion,
   onPasarAOrganizacion,
@@ -48,6 +50,10 @@ export function CronogramaFabricacion({
   rubros: RubroFabricacion[];
   personas: PersonaParaCotizar[];
   hoy: string;
+  // La organizacion diaria (lo cargado a mano, los dias en obra y los mantenimientos se descuentan).
+  diasOrganizados?: AsignacionDiaria[];
+  // Maquinas de Stock: las pesadas con sus unidades (cuello de botella) y si andan. El ocupado sale de los mantenimientos.
+  maquinas?: Array<Omit<MaquinaDelTaller, "ocupado">>;
   companyShort: (c: string) => string;
   onGuardarFabricacion: (jobId: number, cambios: { muebles?: MuebleDelPresupuesto[]; inicio?: string; holguraDias?: number }) => void;
   onPasarAOrganizacion: (jobId: number, filas: ReturnType<typeof tareasPorPersonaYDia>) => void;
@@ -56,7 +62,17 @@ export function CronogramaFabricacion({
   const anchos = usePlanillaWidths("fabricacion.cronograma", { label: 260, col: 96, colCompact: 76 });
   const [mueblesDe, setMueblesDe] = useState<number | null>(null);
   const [detalleDe, setDetalleDe] = useState<number | null>(null);
-  const crono = useMemo(() => cronogramaDeTrabajos(trabajos, tipos, tareas, rubros, personas, hoy), [trabajos, tipos, tareas, rubros, personas, hoy]);
+  const ocupacion = useMemo(() => ocupacionDelTaller(primerHabil(hoy), diasOrganizados, trabajos.map((t) => t.jobId)), [hoy, diasOrganizados, trabajos]);
+  const crono = useMemo(
+    () =>
+      cronogramaDeTrabajos(trabajos, tipos, tareas, rubros, personas, hoy, {
+        ocupadoPersona: ocupacion.ocupadoPersona,
+        maquinas: maquinas.map((m) => ({ ...m, ocupado: ocupacion.ocupadoMaquina[m.id] || [] })),
+        herramientasDeTarea: Object.fromEntries(tareas.filter((t) => t.herramientas?.length).map((t) => [t.id, t.herramientas as number[]])),
+      }),
+    [trabajos, tipos, tareas, rubros, personas, hoy, ocupacion, maquinas]
+  );
+  const pesadas = maquinas.filter((m) => m.unidades != null);
   const nombreMueble = (muebleId: number) => {
     for (const t of trabajos) {
       const m = t.muebles.find((x) => x.id === muebleId);
@@ -75,6 +91,12 @@ export function CronogramaFabricacion({
         Los trabajos con sus muebles cargados se reparten entre la gente de De Raíz (cada tarea la hace quien sabe con el costo hora más alto, y lo que
         va en paralelo se reparte para terminar antes), de lunes a viernes de 07:30 a 17:00 con el almuerzo. Cada trabajo arranca en su inicio; después
         se ve si llega a la entrega con la holgura pedida. A un trabajo de un presupuesto viejo se le cargan los muebles acá, sin tocar su precio.
+      </div>
+      <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>
+        Descuenta de la organización diaria: <strong>{ocupacion.diasEnObra}</strong> día{ocupacion.diasEnObra === 1 ? "" : "s"} en obra ·{" "}
+        <strong>{ocupacion.tareasAMano}</strong> tarea{ocupacion.tareasAMano === 1 ? "" : "s"} cargada{ocupacion.tareasAMano === 1 ? "" : "s"} a mano ·{" "}
+        <strong>{ocupacion.mantenimientos}</strong> mantenimiento{ocupacion.mantenimientos === 1 ? "" : "s"}
+        {pesadas.length > 0 && <> · máquinas pesadas de a una tarea por unidad ({pesadas.map((m) => m.nombre).join(", ")})</>}.
       </div>
       {personas.length === 0 && (
         <div style={{ fontSize: 12.5, color: "#b45309", marginBottom: 8 }}>Nadie de De Raíz tiene categorías internas cargadas: no se puede saber quién hace cada tarea.</div>
@@ -149,6 +171,14 @@ export function CronogramaFabricacion({
                     <td style={tdFlexible}>
                       <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: e.color, background: e.fondo, borderRadius: 999, padding: "1px 8px" }}>{e.texto}</span>
+                        {r.trabadas.length > 0 && (
+                          <span
+                            style={{ fontSize: 12, fontWeight: 700, color: "#991b1b" }}
+                            title={r.trabadas.map((x) => `${x.nombre}: ${x.motivos.join(", ")}`).join("\n")}
+                          >
+                            ⚠ máquina parada: la fecha no es real
+                          </span>
+                        )}
                         <button type="button" style={{ fontSize: 12, border: "1px solid #cbd5e1", background: "#fff", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }} onClick={() => setMueblesDe(r.jobId)}>Muebles…</button>
                         {r.asignaciones.length > 0 && (
                           <button type="button" style={{ fontSize: 12, border: "1px solid #cbd5e1", background: "#fff", borderRadius: 6, padding: "1px 6px", cursor: "pointer" }} onClick={() => setDetalleDe(r.jobId)}>Quién y cuándo…</button>
@@ -208,8 +238,14 @@ export function CronogramaFabricacion({
           <div style={{ background: "#fff", borderRadius: 12, width: "min(820px, 100%)", padding: 18, display: "grid", gap: 8 }} onClick={(e) => e.stopPropagation()}>
             <strong style={{ fontSize: 15 }}>{detalle.nombre} · quién y cuándo</strong>
             <div style={{ fontSize: 12.5, color: "#64748b" }}>
-              Del {fecha(detalle.inicio)} al {fecha(detalle.fin)}. Contempla los otros trabajos con muebles (la gente se comparte), no lo que ya está cargado a mano en la organización diaria.
+              Del {fecha(detalle.inicio)} al {fecha(detalle.fin)}. Contempla los otros trabajos con muebles (la gente y las máquinas se comparten), los días en
+              obra, las tareas cargadas a mano y los mantenimientos de la organización diaria. Si alguien de la tarea no está, la tarea se corta y sigue después.
             </div>
+            {detalle.trabadas.length > 0 && (
+              <div style={{ fontSize: 12.5, color: "#991b1b", fontWeight: 700 }}>
+                {detalle.trabadas.map((x) => <div key={x.nombre}>⚠ {x.nombre} necesita {x.motivos.join(", ")}: hasta que vuelva a andar, la fecha de fin no es real.</div>)}
+              </div>
+            )}
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
               <thead>
                 <tr style={{ color: "#64748b", textAlign: "left" }}>

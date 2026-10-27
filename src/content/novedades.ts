@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-27a",
+    fecha: "27/10/2026",
+    titulo: "El cronograma mira lo que ya está ocupado",
+    items: [
+      {
+        titulo: "El cronograma descuenta la organización diaria",
+        que: "El cronograma automático ya no supone que todos están libres: descuenta los días en obra (el instalador no está en el taller), las tareas cargadas a mano y los mantenimientos. Si alguien de la tarea no está, la tarea se corta y sigue después.",
+        como: "Fabricación → Cronograma automático: arriba dice cuánto descontó; 'Quién y cuándo…' muestra los tramos reales.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Máquinas pesadas y máquinas paradas",
+        que: "Las máquinas pesadas de Stock hacen una tarea por unidad a la vez (con una CNC, dos cortes no van en paralelo aunque haya gente libre). Un mantenimiento programado para la máquina mientras dura. Si una máquina que pide la tarea está en mantenimiento, fuera de servicio o sin unidades, el trabajo avisa '⚠ máquina parada: la fecha no es real'.",
+        como: "Las tareas dicen qué máquinas usan en el catálogo de tareas (Organización diaria) y el estado de cada máquina se carga en Mantenimiento.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Registrar un retrabajo desde la tarea del día",
+        que: "En la organización diaria, click derecho sobre una tarea → 'Hubo que rehacerla: registrar retrabajo…'. Se abre el retrabajo con el trabajo, la tarea, quién la hizo y sus horas ya cargadas.",
+        como: "Fabricación → Organización diaria → abrir el día de la persona → click derecho en la tarea.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-10-26e",
     fecha: "26/10/2026",
     titulo: "Cronograma automático y si llegamos a la entrega",

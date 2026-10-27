@@ -144,7 +144,61 @@ export type AsignacionTarea = {
   ayudantes: AyudanteAsignado[];
   inicio: number;
   fin: number;
+  // Las horas en que de verdad se trabaja (si se corta por alguien en obra, una tarea a mano o una maquina parada).
+  tramos?: Intervalo[];
+  // Maquinas pesadas que ocupa.
+  maquinas?: string[];
+  // Maquinas que pide y hoy no andan (en mantenimiento, fuera de servicio, sin unidades): la fecha no es real.
+  trabadaPor?: string[];
 };
+
+// Horas de trabajo [desde, hasta), contadas desde el arranque del primer dia del cronograma.
+export type Intervalo = [number, number];
+// Lo que ya esta ocupado en el taller (Nicolas, 2026-10-27: "afinar el cronograma"): las horas de cada persona
+// tomadas por la organizacion diaria (tareas cargadas a mano, dias en obra, mantenimientos) y las maquinas.
+// Una maquina con `unidades` es un cuello de botella (maquinas pesadas: una tarea por unidad a la vez); sin unidades
+// solo cuenta si anda y cuando esta parada por mantenimiento.
+export type MaquinaDelTaller = { id: number; nombre: string; unidades?: number | null; ocupado?: Intervalo[]; noDisponible?: string | null };
+export type RecursosDelTaller = {
+  ocupadoPersona?: Record<number, Intervalo[]>;
+  maquinas?: MaquinaDelTaller[];
+  // Maquinas y herramientas que pide cada tarea del catalogo (ids de Stock).
+  herramientasDeTarea?: Record<number, number[]>;
+};
+
+// Junta intervalos y los ordena.
+export function unirIntervalos(listas: Intervalo[][]): Intervalo[] {
+  const todos = listas.flat().filter(([a, b]) => b > a).sort((x, y) => x[0] - y[0]);
+  const out: Intervalo[] = [];
+  todos.forEach(([a, b]) => {
+    const u = out[out.length - 1];
+    if (u && a <= u[1] + 1e-9) u[1] = Math.max(u[1], b);
+    else out.push([a, b]);
+  });
+  return out;
+}
+
+// Desde `t`, hace `horas` de trabajo saltando lo ocupado: cuando arranca de verdad, cuando termina y en que tramos.
+export function avanzarHoras(t: number, horas: number, ocupado: Intervalo[]): { inicio: number; fin: number; tramos: Intervalo[] } {
+  const tramos: Intervalo[] = [];
+  let cur = t;
+  let resta = horas;
+  for (const [a, b] of ocupado) {
+    if (resta <= 1e-9) break;
+    if (b <= cur + 1e-9) continue;
+    if (a <= cur + 1e-9) {
+      cur = b;
+      continue;
+    }
+    const hueco = a - cur;
+    if (resta <= hueco + 1e-9) break;
+    tramos.push([r2(cur), r2(a)]);
+    resta -= hueco;
+    cur = b;
+  }
+  if (resta > 1e-9 || !tramos.length) tramos.push([r2(cur), r2(cur + resta)]);
+  return { inicio: tramos[0][0], fin: tramos[tramos.length - 1][1], tramos };
+}
 
 export type PlanDeMuebles = {
   asignaciones: AsignacionTarea[];
@@ -170,9 +224,23 @@ const EPS = 1e-9;
 // "El plantel entero siempre va a alcanzar. Lo que pasaria es que se estiran los tiempos de fabricacion": si no hay
 // gente libre, la tarea espera a que se libere. Asi se conocen los tiempos de fabricacion reales con este personal.
 // `liberacion`: desde que hora (de trabajo, contando desde hoy) puede arrancar cada mueble (el inicio de su trabajo).
-export function planificarMuebles(calculados: MuebleCalculado[], personas: PersonaParaCotizar[], liberacion: Record<number, number> = {}): PlanDeMuebles {
+// `recursos`: lo que ya esta ocupado (gente y maquinas); una tarea se corta y sigue cuando alguien de ella no esta.
+export function planificarMuebles(
+  calculados: MuebleCalculado[],
+  personas: PersonaParaCotizar[],
+  liberacion: Record<number, number> = {},
+  recursos: RecursosDelTaller = {}
+): PlanDeMuebles {
   const libre = new Map<number, number>(personas.map((p) => [p.id, 0]));
   const libreDe = (p: PersonaParaCotizar) => libre.get(p.id) || 0;
+  const ocupadoDe = (id: number) => recursos.ocupadoPersona?.[id] || [];
+  const maquinas = new Map((recursos.maquinas || []).map((m) => [m.id, m]));
+  // Cuando se libera cada unidad de cada maquina pesada.
+  const libreMaq = new Map<number, number[]>();
+  maquinas.forEach((m) => {
+    if (m.unidades != null && !m.noDisponible) libreMaq.set(m.id, Array.from({ length: Math.max(1, Math.floor(m.unidades)) }, () => 0));
+  });
+  const maquinasDe = (tareaId: number) => (recursos.herramientasDeTarea?.[tareaId] || []).map((id) => maquinas.get(id)).filter((m): m is MaquinaDelTaller => !!m);
   // Sin nadie idoneo se cotiza al costo hora mas alto del plantel; un ayudante que falta, al del ayudante mas caro.
   const peorCaso = Math.max(0, ...personas.map((p) => pos(p.costoHora)));
   // Complejidad de una tarea: el escalon mas bajo de quienes la saben hacer (si solo la sabe un oficial, es compleja).
@@ -211,7 +279,19 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     const especialistas = cuantos > 1 && idoneos.some((p) => !p.ayudante) ? idoneos.filter((p) => !p.ayudante) : idoneos;
     // Para cada especialista posible, los ayudantes que antes se liberan (a igualdad, los mas caros) y cuando
     // pueden arrancar todos juntos. Gana el que arranca antes; a igualdad, el especialista mas caro.
-    let mejor: { lider: PersonaParaCotizar | null; ayudantes: PersonaParaCotizar[]; inicio: number } | null = null;
+    let mejor: { lider: PersonaParaCotizar | null; ayudantes: PersonaParaCotizar[]; inicio: number; fin: number; tramos: Intervalo[] } | null = null;
+    // Maquinas que pide: las que no andan traban la tarea (se avisa, pero se planifica igual); de las pesadas se usa
+    // la unidad que antes se libera.
+    const pide = maquinasDe(t.tareaId);
+    const trabadaPor = pide.filter((m) => m.noDisponible).map((m) => `${m.nombre} (${m.noDisponible})`);
+    const unidades = pide
+      .filter((m) => libreMaq.has(m.id))
+      .map((m) => {
+        const us = libreMaq.get(m.id) as number[];
+        const u = us.indexOf(Math.min(...us));
+        return { m, u, libre: us[u] };
+      });
+    const ocupadoMaq = pide.map((m) => m.ocupado || []);
     // Ayudantes: primero los aprendices/ayudantes que estan libres para arrancar con el especialista (a igualdad,
     // los mas caros); si no alcanzan, especialistas libres (el menos caro primero); si nadie esta libre, el que
     // antes se libere.
@@ -230,18 +310,21 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
     };
     (especialistas.length ? especialistas : [null]).forEach((lider) => {
       const ays = cuantos > 1 ? ayudantesPara(lider) : [];
-      const inicio = Math.max(e.listo, lider ? libreDe(lider) : 0, ...ays.map(libreDe));
+      const desde = Math.max(e.listo, lider ? libreDe(lider) : 0, ...ays.map(libreDe), ...unidades.map((x) => x.libre));
+      const gente = [...(lider ? [lider] : []), ...ays];
+      const { inicio, fin, tramos } = avanzarHoras(desde, t.horas, unirIntervalos([...gente.map((p) => ocupadoDe(p.id)), ...ocupadoMaq]));
+      // Gana el que termina antes; a igualdad, el especialista mas caro.
       if (
         !mejor ||
-        inicio < mejor.inicio - EPS ||
-        (Math.abs(inicio - mejor.inicio) < EPS && pos(lider?.costoHora) > pos(mejor.lider?.costoHora))
+        fin < mejor.fin - EPS ||
+        (Math.abs(fin - mejor.fin) < EPS && pos(lider?.costoHora) > pos(mejor.lider?.costoHora))
       )
-        mejor = { lider, ayudantes: ays, inicio };
+        mejor = { lider, ayudantes: ays, inicio, fin, tramos };
     });
-    const { lider, ayudantes, inicio } = mejor as unknown as { lider: PersonaParaCotizar | null; ayudantes: PersonaParaCotizar[]; inicio: number };
-    const fin = r2(inicio + t.horas);
+    const { lider, ayudantes, inicio, fin, tramos } = mejor as unknown as { lider: PersonaParaCotizar | null; ayudantes: PersonaParaCotizar[]; inicio: number; fin: number; tramos: Intervalo[] };
     if (lider) libre.set(lider.id, fin);
     ayudantes.forEach((p) => libre.set(p.id, fin));
+    unidades.forEach((x) => ((libreMaq.get(x.m.id) as number[])[x.u] = fin));
     asignaciones.push({
       muebleId: e.c.mueble.id,
       renglonId: t.renglonId,
@@ -255,6 +338,9 @@ export function planificarMuebles(calculados: MuebleCalculado[], personas: Perso
       ayudantes: ayudantes.map((p) => ({ personaId: p.id, persona: p.nombre, costoHora: pos(p.costoHora), especialista: !p.ayudante })),
       inicio: r2(inicio),
       fin,
+      ...(tramos.length > 1 ? { tramos } : {}),
+      ...(pide.length ? { maquinas: pide.map((m) => m.nombre) } : {}),
+      ...(trabadaPor.length ? { trabadaPor } : {}),
     });
     e.pendientes = e.pendientes.filter((x) => x !== t);
     e.finPaso = Math.max(e.finPaso, fin);

@@ -246,7 +246,7 @@ import { Retrabajos, EfectividadPersonal } from "./tabs/Retrabajos";
 import { filasAjenasNuevas, type FilaGuardada } from "./domain/cambiosAjenos";
 import type { MuebleDelPresupuesto, PersonaParaCotizar } from "./domain/presupuestoMuebles";
 import { Mantenimiento } from "./tabs/Mantenimiento";
-import { esMaquinaOHerramienta, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
+import { esMaquinaOHerramienta, motivoNoDisponible, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
 import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
@@ -16603,6 +16603,19 @@ Escribi CERRAR para confirmar:`
     return e ? Number(costoHoraDe(e) || 0) : 0;
   };
   const [mesEfectividad, setMesEfectividad] = useState(() => todayIso().slice(0, 7));
+  // Retrabajo que se registra desde una tarea de la organizacion diaria (abre el formulario precargado).
+  const [retrabajoPrecargado, setRetrabajoPrecargado] = useState<Partial<Retrabajo> | null>(null);
+  // Maquinas para el cronograma: las pesadas son cuello de botella (una tarea por unidad a la vez); todas avisan si no andan.
+  const maquinasDelTaller = useMemo(
+    () =>
+      visibleStockItems.filter(esMaquinaOHerramienta).map((m) => ({
+        id: m.id,
+        nombre: m.description,
+        unidades: m.group === "Maquinas pesadas" ? Math.max(1, Math.floor(Number(m.quantity) || 0)) : null,
+        noDisponible: motivoNoDisponible(m, fichasMaquinas.find((f) => f.stockItemId === m.id)),
+      })),
+    [visibleStockItems, fichasMaquinas]
+  );
   const trabajosCronograma = useMemo(() => {
     const hoy = todayIso();
     return approvedJobs
@@ -23347,6 +23360,7 @@ Escribi CERRAR para confirmar:`
           onGuardarAsignacion={guardarAsignacionDiaria}
           maquinas={visibleStockItems.filter(esMaquinaOHerramienta)}
           fichasMaquinas={fichasMaquinas}
+          onRetrabajo={(p) => setRetrabajoPrecargado({ ...p, jobId: p.jobId ?? undefined })}
           onBorrarAsignacion={(id) => setAsignacionesDiarias((prev) => prev.filter((x) => x.id !== id))}
           onGuardarGrupo={(g) => setGruposTrabajo((prev) => (prev.some((x) => x.id === g.id) ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]))}
           onBorrarGrupo={(id) => {
@@ -23437,6 +23451,8 @@ Escribi CERRAR para confirmar:`
           rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
           personas={personasParaCotizar}
           hoy={todayIso()}
+          diasOrganizados={asignacionesDiarias}
+          maquinas={maquinasDelTaller}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
           onGuardarFabricacion={guardarFabricacionDeTrabajo}
           onPasarAOrganizacion={(jobId, filas) => {
@@ -23468,6 +23484,8 @@ Escribi CERRAR para confirmar:`
           }}
           onBorrar={(id) => setRetrabajos((prev) => prev.filter((x) => x.id !== id))}
           nuevoId={newId}
+          precargado={retrabajoPrecargado}
+          onPrecargadoUsado={() => setRetrabajoPrecargado(null)}
         />
       )}
       {activeTab === "fabricacion" && (

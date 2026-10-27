@@ -3,7 +3,7 @@
 // de De Raiz) y lo pasa al calendario del taller: lunes a viernes de 07:30 a 17:00, con el almuerzo de 13:30 a 14:00
 // (9 hs por dia, sin sabados). Cada trabajo arranca en su fecha de inicio; despues dice si llega a la entrega con la
 // holgura (10 dias habiles por defecto, editable por trabajo).
-import { calcularMueblesDelPresupuesto, planificarMuebles, type AsignacionTarea, type MuebleDelPresupuesto, type PersonaParaCotizar } from "./presupuestoMuebles";
+import { calcularMueblesDelPresupuesto, planificarMuebles, unirIntervalos, type AsignacionTarea, type Intervalo, type MuebleDelPresupuesto, type PersonaParaCotizar, type RecursosDelTaller } from "./presupuestoMuebles";
 import type { TipoMueble } from "./tiposMueble";
 import { turnosPorDefecto, type AsignacionDiaria, type TipoTarea } from "./organizacionDiaria";
 import type { RubroFabricacion } from "./ganttFabricacion";
@@ -78,6 +78,60 @@ export function tramosDe(base: string, inicio: number, fin: number): Array<{ fec
   return out;
 }
 
+// Hora del reloj de un dia -> hora de trabajo del cronograma (null si el dia no cuenta: antes de `base` o fin de semana).
+// Lo de antes de las 07:30 o despues de las 17:00 se corta; el almuerzo no suma.
+export function horaDeTrabajo(base: string, fecha: string, hhmm: string): number | null {
+  if (fecha < base || !esHabil(fecha)) return null;
+  const [h, m] = String(hhmm || "").split(":").map(Number);
+  if (!Number.isFinite(h)) return null;
+  const min = Math.min(Math.max(h * 60 + (Number.isFinite(m) ? m : 0), INICIO_MIN), INICIO_MIN + HORAS_POR_DIA * 60 + ALMUERZO_MIN);
+  const dentro = min <= ALMUERZO_DESDE ? min - INICIO_MIN : min < ALMUERZO_DESDE + ALMUERZO_MIN ? ALMUERZO_DESDE - INICIO_MIN : min - INICIO_MIN - ALMUERZO_MIN;
+  return diasHabilesEntre(base, fecha) * HORAS_POR_DIA + dentro / 60;
+}
+
+// LO QUE YA ESTA OCUPADO EN LA ORGANIZACION DIARIA (Nicolas, 2026-10-27): el cronograma descuenta
+// - los dias en obra (el instalador no esta en el taller ese dia),
+// - las tareas cargadas a mano (las de los trabajos del cronograma no: ya son parte de su receta y se vuelven a planificar),
+// - los mantenimientos (ocupan a la persona y paran la maquina).
+export type OcupacionDelTaller = {
+  ocupadoPersona: Record<number, Intervalo[]>;
+  ocupadoMaquina: Record<number, Intervalo[]>;
+  diasEnObra: number;
+  tareasAMano: number;
+  mantenimientos: number;
+};
+export function ocupacionDelTaller(base: string, dias: AsignacionDiaria[], jobsDelCronograma: number[]): OcupacionDelTaller {
+  const delCrono = new Set(jobsDelCronograma);
+  const persona: Record<number, Intervalo[]> = {};
+  const maquina: Record<number, Intervalo[]> = {};
+  const out = { diasEnObra: 0, tareasAMano: 0, mantenimientos: 0 };
+  const sumar = (mapa: Record<number, Intervalo[]>, id: number, iv: Intervalo) => {
+    mapa[id] = [...(mapa[id] || []), iv];
+  };
+  dias.forEach((d) => {
+    const ini = horaDeTrabajo(base, d.fecha, "07:30");
+    if (ini == null) return;
+    if (d.lugar === "obra") {
+      out.diasEnObra += 1;
+      sumar(persona, d.empleadoId, [ini, ini + HORAS_POR_DIA]);
+      return;
+    }
+    d.tareas.forEach((t) => {
+      if (!t.mantenimiento && t.jobId != null && delCrono.has(t.jobId)) return;
+      const a = horaDeTrabajo(base, d.fecha, t.desde);
+      const b = horaDeTrabajo(base, d.fecha, t.hasta);
+      if (a == null || b == null || b <= a) return;
+      sumar(persona, d.empleadoId, [a, b]);
+      if (t.mantenimiento) {
+        out.mantenimientos += 1;
+        sumar(maquina, t.mantenimiento.stockItemId, [a, b]);
+      } else out.tareasAMano += 1;
+    });
+  });
+  const unir = (m: Record<number, Intervalo[]>) => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, unirIntervalos([v])])) as Record<number, Intervalo[]>;
+  return { ocupadoPersona: unir(persona), ocupadoMaquina: unir(maquina), ...out };
+}
+
 // La fabricacion de un trabajo: sus muebles (del presupuesto, o cargados en Fabricacion para los presupuestos viejos),
 // desde cuando arranca y la holgura que se le pide.
 export type FabricacionDelTrabajo = { muebles?: MuebleDelPresupuesto[]; inicio?: string; holguraDias?: number };
@@ -109,6 +163,8 @@ export type ResultadoTrabajo = {
   margenDias?: number; // dias habiles entre el fin y la entrega
   estado: EstadoEntrega;
   asignaciones: AsignacionTarea[];
+  // Tareas que piden una maquina que hoy no anda: la fecha de fin no es real hasta que vuelva.
+  trabadas: Array<{ nombre: string; motivos: string[] }>;
 };
 
 export function cronogramaDeTrabajos(
@@ -117,7 +173,8 @@ export function cronogramaDeTrabajos(
   tareas: TipoTarea[],
   rubros: RubroFabricacion[],
   personas: PersonaParaCotizar[],
-  hoy: string
+  hoy: string,
+  recursos: RecursosDelTaller = {}
 ): { base: string; trabajos: ResultadoTrabajo[]; asignaciones: AsignacionTarea[]; muebleDeTrabajo: Record<number, number> } {
   const base = primerHabil(hoy);
   // Todos los muebles de todos los trabajos, cada uno liberado en el inicio de su trabajo.
@@ -131,7 +188,7 @@ export function cronogramaDeTrabajos(
       liberacion[m.id] = desde;
     });
   });
-  const plan = planificarMuebles(calculados, personas, liberacion);
+  const plan = planificarMuebles(calculados, personas, liberacion, recursos);
   const resultados: ResultadoTrabajo[] = trabajos.map((t) => {
     const ids = new Set(t.muebles.map((m) => m.id));
     const asign = plan.asignaciones.filter((a) => ids.has(a.muebleId));
@@ -139,7 +196,7 @@ export function cronogramaDeTrabajos(
     const horasHombre = Math.round(calc.reduce((s, c) => s + c.horasHombre, 0) * 100) / 100;
     const holguraDias = t.holguraDias ?? HOLGURA_POR_DEFECTO;
     if (!asign.length) {
-      return { jobId: t.jobId, nombre: t.nombre, horasHombre, incompleto: true, inicio: t.inicio, entrega: t.entrega, holguraDias, estado: "sin_datos", asignaciones: [] };
+      return { jobId: t.jobId, nombre: t.nombre, horasHombre, incompleto: true, inicio: t.inicio, entrega: t.entrega, holguraDias, estado: "sin_datos", asignaciones: [], trabadas: [] };
     }
     // Lo que hubo que rehacer se suma al final del trabajo (corre la fecha de fin).
     const finHoras = Math.max(...asign.map((a) => a.fin)) + Math.max(0, t.horasRetrabajo || 0);
@@ -163,6 +220,11 @@ export function cronogramaDeTrabajos(
       margenDias,
       estado,
       asignaciones: asign,
+      trabadas: Array.from(
+        asign
+          .filter((a) => a.trabadaPor?.length)
+          .reduce((m, a) => m.set(a.nombre, Array.from(new Set([...(m.get(a.nombre) || []), ...(a.trabadaPor || [])]))), new Map<string, string[]>())
+      ).map(([nombre, motivos]) => ({ nombre, motivos })),
     };
   });
   return { base, trabajos: resultados, asignaciones: plan.asignaciones, muebleDeTrabajo };
@@ -177,7 +239,7 @@ export function tareasPorPersonaYDia(
   const out: Array<{ personaId: number; fecha: string; desde: string; hasta: string; descripcion: string; tareaId: number }> = [];
   asignaciones.forEach((a) => {
     const gente = [a.personaId, ...a.ayudantes.map((y) => y.personaId)].filter((x): x is number => x != null);
-    tramosDe(base, a.inicio, a.fin).forEach((tr) =>
+    (a.tramos?.length ? a.tramos : [[a.inicio, a.fin] as Intervalo]).flatMap(([i, f]) => tramosDe(base, i, f)).forEach((tr) =>
       gente.forEach((personaId) => out.push({ personaId, ...tr, descripcion: `${a.nombre} · ${nombreMueble(a.muebleId)}`, tareaId: a.tareaId }))
     );
   });
