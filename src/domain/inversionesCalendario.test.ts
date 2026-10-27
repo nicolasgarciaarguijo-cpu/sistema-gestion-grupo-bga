@@ -1,4 +1,4 @@
-import { destinoInversion, entradasInversiones, renglonDeRescate } from "./inversionesCalendario";
+import { destinoInversion, entradasInversiones, previsionesDeRescate, renglonDeRescate } from "./inversionesCalendario";
 
 const base = {
   id: 1,
@@ -47,5 +47,20 @@ describe("destinoInversion", () => {
     expect(destinoInversion("inv_colocacion")).toBe("colocacion");
     expect(destinoInversion("rescate_cauciones")).toBe("rescate");
     expect(destinoInversion("iv_reintegro_art")).toBeNull();
+  });
+});
+
+describe("previsionesDeRescate", () => {
+  it("la activa con fecha de fin se prevé el día que vence, por su última valuación", () => {
+    expect(previsionesDeRescate([{ ...base, fechaFin: "2026-11-02" }])).toEqual([
+      expect.objectContaining({ conceptKey: "rescate_plazo_fijo", date: "2026-11-02", amount: 1050, administration: "blanco" }),
+    ]);
+    expect(previsionesDeRescate([{ ...base, fechaFin: "2026-11-02", valorActual: 0 }])[0].amount).toBe(1000);
+  });
+
+  it("sin fecha de fin, cerrada o en dólares no se prevé", () => {
+    expect(previsionesDeRescate([base])).toEqual([]);
+    expect(previsionesDeRescate([{ ...base, fechaFin: "2026-11-02", estado: "cerrada" }])).toEqual([]);
+    expect(previsionesDeRescate([{ ...base, fechaFin: "2026-11-02", moneda: "USD" }])).toEqual([]);
   });
 });

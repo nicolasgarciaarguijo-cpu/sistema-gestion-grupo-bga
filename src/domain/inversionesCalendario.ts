@@ -108,3 +108,34 @@ export function destinoInversion(conceptKey: string): "colocacion" | "rescate" |
   if (RENGLONES_RESCATE.includes(conceptKey)) return "rescate";
   return null;
 }
+
+// RESCATE PREVISTO (Nicolas, 2026-10-27): una inversion activa con fecha de fin se ve en la planilla como "≈" en
+// INGRESOS · INVERSIONES el dia que vence, por su ultima valuacion (o el capital si no se valuo). Va por el carril de
+// previsiones: no suma. Al rescatarla (cerrada) la prevision desaparece y manda el rescate real.
+// Solo pesos: el carril de previsiones no lleva moneda y un monto en dolares se leeria como pesos.
+export type PrevisionRescate = {
+  conceptKey: string;
+  company: string;
+  date: string;
+  amount: number;
+  tipo: string;
+  descripcion: string;
+  administration: "blanco" | "negro";
+  cuentaId?: string;
+};
+export function previsionesDeRescate(inversiones: InversionLike[]): PrevisionRescate[] {
+  return inversiones
+    .filter((inv) => inv.estado === "activa" && inv.fechaFin && inv.moneda !== "USD")
+    .map((inv) => ({ inv, monto: Number(inv.valorActual) > 0 ? Number(inv.valorActual) : Number(inv.montoInvertido || 0) }))
+    .filter(({ monto }) => monto > 0)
+    .map(({ inv, monto }) => ({
+      conceptKey: renglonDeRescate(inv),
+      company: inv.company,
+      date: inv.fechaFin,
+      amount: monto,
+      tipo: inv.tipo,
+      descripcion: inv.descripcion,
+      administration: inv.administration === "negro" ? "negro" : "blanco",
+      ...(inv.cuentaId ? { cuentaId: inv.cuentaId } : {}),
+    }));
+}

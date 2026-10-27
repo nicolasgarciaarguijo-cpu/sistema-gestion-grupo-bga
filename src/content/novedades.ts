@@ -21,6 +21,12 @@ export const NOVEDADES: TandaNovedades[] = [
     titulo: "El cronograma mira lo que ya está ocupado",
     items: [
       {
+        titulo: "Rescate previsto de las inversiones",
+        que: "Cada inversión activa en pesos con fecha de fin aparece en la planilla como '≈' el día que vence, en su renglón de rescate, por su última valuación. No suma; al rescatarla manda el número real.",
+        como: "Inversiones: cargar la fecha de fin y el valor actual. Se ve en el Calendario anual, INGRESOS · INVERSIONES.",
+        tab: "inversiones",
+      },
+      {
         titulo: "El cronograma descuenta la organización diaria",
         que: "El cronograma automático ya no supone que todos están libres: descuenta los días en obra (el instalador no está en el taller), las tareas cargadas a mano y los mantenimientos. Si alguien de la tarea no está, la tarea se corta y sigue después.",
         como: "Fabricación → Cronograma automático: arriba dice cuánto descontó; 'Quién y cuándo…' muestra los tramos reales.",

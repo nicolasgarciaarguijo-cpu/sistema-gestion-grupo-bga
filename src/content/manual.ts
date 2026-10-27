@@ -1174,6 +1174,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         heading: "Colocación y rescate",
         blocks: [
           { type: "steps", items: ["Agregá la inversión con fecha de inicio, capital, moneda, blanco o negro y de qué cuenta sale: la plata sale de esa cuenta (EGRESOS · INVERSIONES).", "Actualizá el valor actual cuando quieras.", "Al rescatarla, pasala a Cerrada con la fecha de fin y lo que volvió: entra en INGRESOS · INVERSIONES, en el renglón de su tipo."] },
+          { type: "p", text: "Una inversión activa en pesos con fecha de fin se ve en la planilla como '≈' el día que vence, en su renglón de rescate, por la última valuación (o el capital). No suma: cuando se rescata, la reemplaza el número real." },
           { type: "tip", text: "Desde el Calendario: cargar en 'Colocación en inversiones' crea la inversión; cargar en un renglón de rescate te pide cuál se rescata y la cierra." }
         ],
       },

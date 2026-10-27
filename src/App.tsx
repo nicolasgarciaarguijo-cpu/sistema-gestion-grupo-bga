@@ -400,7 +400,7 @@ import { programadosEnRenglones } from "./domain/programadosEnRenglones";
 import { precargaCobros } from "./domain/precargaCobros";
 import { ResumenMovimientos, type FilaResumen } from "./ui/ResumenMovimientos";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
-import { entradasInversiones, destinoInversion, renglonDeRescate } from "./domain/inversionesCalendario";
+import { entradasInversiones, destinoInversion, previsionesDeRescate, renglonDeRescate } from "./domain/inversionesCalendario";
 import { entradasRetiros, RENGLON_RETIROS } from "./domain/retirosSocietarios";
 import { RetirosSocietariosPanel } from "./tabs/RetirosSocietarios";
 import { ArqueoCierre } from "./ui/ArqueoCierre";
@@ -17936,6 +17936,8 @@ Escribi CERRAR para confirmar:`
     };
     return [
       ...segurosPrevisiones,
+      // El rescate previsto de las inversiones activas con fecha de fin (desaparece al rescatarlas).
+      ...previsionesDeRescate(inversiones.filter((i) => canAccessCompany(i.company)) as any).filter((p) => p.date >= desde && p.date <= hasta),
       ...previsionesDeVencimientos(
         vencimientos.filter((v) => canAccessCompany(v.company)),
         desde,
@@ -17945,7 +17947,7 @@ Escribi CERRAR para confirmar:`
       ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => i.origen !== "cheque"), filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
       // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
     ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
-  }, [alcanceEmpresa, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans]);
+  }, [alcanceEmpresa, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans, inversiones]);
 
   // Marcar pagado: si el origen tiene su propio "pagado", se usa ESE (queda vinculado en las dos
   // solapas); si no, se guarda una marca.
