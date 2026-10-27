@@ -68,3 +68,15 @@ describe("organizacion diaria", () => {
     expect(linkMapa("")).toBeNull();
   });
 });
+
+describe("máquinas y herramientas elegidas en la tarea", () => {
+  const { conHerramientasDeLaTarea } = require("./organizacionDiaria");
+  it("cada paso pide las herramientas de su tarea además de las propias", () => {
+    const pasos = [{ id: 1, nombre: "Cargar placa", herramientas: [7] }, { id: 2, nombre: "Iniciar corte" }, { id: 3, nombre: "Suelto" }] as any[];
+    const grupos = [{ id: 10, nombre: "Corte CNC", tareaIds: [1, 2], herramientas: [5, 7] }];
+    const r = conHerramientasDeLaTarea(pasos, grupos);
+    expect(r[0].herramientas).toEqual([7, 5]);
+    expect(r[1].herramientas).toEqual([5, 7]);
+    expect(r[2].herramientas).toBeUndefined();
+  });
+});

@@ -23,6 +23,7 @@ import {
   type TurnoDia,
   type UnidadTarea,
   UNIDADES_TAREA,
+  conHerramientasDeLaTarea,
   idsDeGrupo,
   pegarTareasEnGrupo,
   tareasDeGrupo,
@@ -71,7 +72,10 @@ export function OrganizacionDiaria({
   maquinas = [],
   fichasMaquinas = [],
   onRetrabajo,
+  mostrarCatalogo = true,
 }: {
+  // El catalogo de grupos de trabajo y tareas puede ir aparte (en Fabricacion va al fondo: CatalogoTareas).
+  mostrarCatalogo?: boolean;
   // Click derecho en una tarea del dia: registrar que hubo que rehacerla (Retrabajos, en Fabricacion).
   onRetrabajo?: (p: { jobId: number | null; tareaId: number | null; responsableId: number; horasTarea: number; fecha: string; descripcion: string }) => void;
   empleados: EmpleadoOrg[];
@@ -94,7 +98,8 @@ export function OrganizacionDiaria({
   maquinas?: MaquinaStock[];
   fichasMaquinas?: FichaMaquina[];
 }) {
-  const faltanPara = (tipoId: number) => herramientasFaltantes(tipos.find((x) => x.id === tipoId)?.herramientas, maquinas, fichasMaquinas);
+  const tiposConHerramientas = conHerramientasDeLaTarea(tipos, grupos);
+  const faltanPara = (tipoId: number) => herramientasFaltantes(tiposConHerramientas.find((x) => x.id === tipoId)?.herramientas, maquinas, fichasMaquinas);
   const hoy = new Date();
   const hoyIso = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}`;
   const [mes, setMes] = useState(hoyIso.slice(0, 7));
@@ -296,7 +301,9 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
         </div>
       </Panel>
 
-      <Catalogo grupos={grupos} tipos={tipos} maquinas={maquinas} onGuardarGrupo={onGuardarGrupo} onBorrarGrupo={onBorrarGrupo} onGuardarTipo={onGuardarTipo} onBorrarTipo={onBorrarTipo} nuevoId={nuevoId} />
+      {mostrarCatalogo && (
+        <Catalogo grupos={grupos} tipos={tipos} maquinas={maquinas} onGuardarGrupo={onGuardarGrupo} onBorrarGrupo={onBorrarGrupo} onGuardarTipo={onGuardarTipo} onBorrarTipo={onBorrarTipo} nuevoId={nuevoId} />
+      )}
     </>
   );
 }
@@ -608,6 +615,11 @@ function LineaTemporal({
 }
 
 // ---- Catalogo: grupos de trabajo y tipos de tarea -------------------------------------------------
+// El catalogo de grupos de trabajo y tareas, para dibujarlo donde haga falta (al fondo de Fabricacion).
+export function CatalogoTareas(props: Parameters<typeof Catalogo>[0]) {
+  return <Catalogo {...props} />;
+}
+
 function Catalogo({
   grupos,
   tipos,
@@ -632,6 +644,7 @@ function Catalogo({
   const enAlgunGrupo = new Set(grupos.flatMap((g) => idsDeGrupo(g, tipos)));
   const sinGrupo = tipos.filter((t) => !enAlgunGrupo.has(t.id));
   const [herrDe, setHerrDe] = useState<number | null>(null);
+  const [herrGrupo, setHerrGrupo] = useState<number | null>(null);
   const [pegarEn, setPegarEn] = useState<GrupoTrabajo | null>(null);
   const [textoPegado, setTextoPegado] = useState("");
   const listaDe = (g: GrupoTrabajo) => idsDeGrupo(g, tipos);
@@ -645,6 +658,16 @@ function Catalogo({
   };
   const otrosGruposDe = (t: TipoTarea, g: GrupoTrabajo) => grupos.filter((x) => x.id !== g.id && listaDe(x).includes(t.id)).map((x) => x.nombre);
   const tipoHerr = tipos.find((t) => t.id === herrDe);
+  const grupoHerr = grupos.find((g) => g.id === herrGrupo);
+  const objetivoHerr = grupoHerr
+    ? { nombre: grupoHerr.nombre, ids: grupoHerr.herramientas || [], guardar: (ids: number[]) => onGuardarGrupo({ ...grupoHerr, herramientas: ids }) }
+    : tipoHerr
+    ? { nombre: tipoHerr.nombre, ids: tipoHerr.herramientas || [], guardar: (ids: number[]) => onGuardarTipo({ ...tipoHerr, herramientas: ids }) }
+    : null;
+  const cerrarHerr = () => {
+    setHerrDe(null);
+    setHerrGrupo(null);
+  };
   const nombreMaq = (id: number) => maquinas.find((m) => m.id === id)?.description || "borrada de stock";
   const filaTipo = (t: TipoTarea, g: GrupoTrabajo | null, orden: number) => (
     <tr key={t.id} style={{ opacity: t.activa === false ? 0.5 : 1 }}>
@@ -666,7 +689,7 @@ function Catalogo({
               if (destino) onGuardarGrupo({ ...destino, tareaIds: [...listaDe(destino), t.id] });
             }}
           >
-            <option value="">Sumar a un grupo…</option>
+            <option value="">Sumar a una tarea…</option>
             {ordenados.map((x) => <option key={x.id} value={x.id}>{x.nombre}</option>)}
           </select>
         )}
@@ -720,7 +743,7 @@ function Catalogo({
           <>
             <button type="button" style={btn()} title="Subir en el grupo" onClick={() => moverEnGrupo(g, t.id, -1)}>↑</button>{" "}
             <button type="button" style={btn()} title="Bajar en el grupo" onClick={() => moverEnGrupo(g, t.id, 1)}>↓</button>{" "}
-            <button type="button" style={btn()} title="Sacarla de este grupo (la tarea sigue en el catálogo)" onClick={() => onGuardarGrupo({ ...g, tareaIds: listaDe(g).filter((x) => x !== t.id) })}>Sacar</button>{" "}
+            <button type="button" style={btn()} title="Sacarlo de esta tarea (el paso sigue cargado)" onClick={() => onGuardarGrupo({ ...g, tareaIds: listaDe(g).filter((x) => x !== t.id) })}>Sacar</button>{" "}
           </>
         )}
         <button type="button" style={btn()} onClick={() => onGuardarTipo({ ...t, activa: t.activa === false })}>{t.activa === false ? "Activar" : "Pausar"}</button>{" "}
@@ -729,13 +752,13 @@ function Catalogo({
     </tr>
   );
   return (
-    <Panel span="full" title="Tipos de tarea y grupos de trabajo">
+    <Panel span="full" title="Tareas y su paso a paso">
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
-        Se arma una vez y queda: cada grupo de trabajo (una operación: Corte CNC, Pegado de cantos, Armado…) con sus tareas en orden, la unidad, las horas por unidad y el desglose. "Pegar lista…" carga todas las tareas de una vez (1. … 2. … o una por renglón); una tarea que ya está escrita en otro grupo se llama con "+ Tarea existente…" y es la misma (mismo tiempo).
+        Se arma una vez y queda: cada tarea (Corte CNC, Pegado de cantos, Armado…) con su paso a paso, que siempre es el mismo, y las máquinas y herramientas que necesita. Cada paso lleva su unidad y sus horas por unidad. "Pegar paso a paso…" carga todos los pasos de una vez (1. … 2. … o uno por renglón); un paso que ya está escrito en otra tarea se llama con "+ Paso existente…" y es el mismo (mismo tiempo). Los tipos de mueble eligen estas tareas desde su ficha.
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-        <ButtonLike onClick={() => onGuardarGrupo({ id: nuevoId(), nombre: "Grupo nuevo", orden: grupos.length + 1 })}>+ Grupo de trabajo</ButtonLike>
-        <ButtonLike secondary onClick={() => onGuardarTipo({ id: nuevoId(), nombre: "Tarea nueva", grupoId: null, pasos: [], activa: true })}>+ Tipo de tarea</ButtonLike>
+        <ButtonLike onClick={() => onGuardarGrupo({ id: nuevoId(), nombre: "Tarea nueva", orden: grupos.length + 1 })}>+ Tarea</ButtonLike>
+        <ButtonLike secondary onClick={() => onGuardarTipo({ id: nuevoId(), nombre: "Paso nuevo", grupoId: null, pasos: [], activa: true })}>+ Paso suelto</ButtonLike>
       </div>
       {[...ordenados.map((g) => ({ g: g as GrupoTrabajo | null, lista: tareasDeGrupo(g, tipos) })), ...(sinGrupo.length ? [{ g: null as GrupoTrabajo | null, lista: sinGrupo }] : [])].map(({ g, lista }) => (
         <div key={g ? g.id : "sin"} style={{ ...caja, marginBottom: 8 }}>
@@ -743,52 +766,60 @@ function Catalogo({
             {g ? (
               <>
                 <input style={{ ...input, fontWeight: 800, minWidth: 200 }} value={g.nombre} onChange={(e) => onGuardarGrupo({ ...g, nombre: e.target.value })} />
-                <input style={{ ...input, flex: 1, minWidth: 200 }} placeholder="Descripción del grupo" value={g.descripcion || ""} onChange={(e) => onGuardarGrupo({ ...g, descripcion: e.target.value })} />
+                <input style={{ ...input, flex: 1, minWidth: 200 }} placeholder="Descripción de la tarea" value={g.descripcion || ""} onChange={(e) => onGuardarGrupo({ ...g, descripcion: e.target.value })} />
+                <button
+                  type="button"
+                  style={{ ...btn(), maxWidth: 260, whiteSpace: "normal", textAlign: "left" }}
+                  title="Máquinas y herramientas que hacen falta para esta tarea (salen de Stock)"
+                  onClick={() => setHerrGrupo(g.id)}
+                >
+                  🛠 {(g.herramientas || []).length ? (g.herramientas || []).map(nombreMaq).join(", ") : "Máquinas y herramientas…"}
+                </button>
                 <button
                   type="button"
                   style={btn()}
                   onClick={() => {
                     const id = nuevoId();
-                    onGuardarTipo({ id, nombre: "Tarea nueva", grupoId: g.id, pasos: [], activa: true });
+                    onGuardarTipo({ id, nombre: "Paso nuevo", grupoId: g.id, pasos: [], activa: true });
                     onGuardarGrupo({ ...g, tareaIds: [...listaDe(g), id] });
                   }}
                 >
-                  + Tarea nueva
+                  + Paso
                 </button>
-                <button type="button" style={btn()} title="Pegar una lista (1. … 2. … o una por renglón): las que ya existen se llaman, las nuevas se crean" onClick={() => { setPegarEn(g); setTextoPegado(""); }}>Pegar lista…</button>
+                <button type="button" style={btn()} title="Pegar el paso a paso (1. … 2. … o uno por renglón): los que ya existen se llaman, los nuevos se crean" onClick={() => { setPegarEn(g); setTextoPegado(""); }}>Pegar paso a paso…</button>
                 <select
                   style={{ ...input, maxWidth: 220 }}
                   value=""
-                  title="Llamar una tarea que ya está escrita (en otro grupo o suelta)"
+                  title="Llamar un paso que ya está escrito (en otra tarea o suelto)"
                   onChange={(e) => {
                     const id = Number(e.target.value);
                     if (id) onGuardarGrupo({ ...g, tareaIds: [...listaDe(g), id] });
                   }}
                 >
-                  <option value="">+ Tarea existente…</option>
+                  <option value="">+ Paso existente…</option>
                   {[...tipos].filter((t) => t.activa !== false && !listaDe(g).includes(t.id)).sort((a, b) => a.nombre.localeCompare(b.nombre)).map((t) => (
                     <option key={t.id} value={t.id}>{t.nombre}</option>
                   ))}
                 </select>
-                <button type="button" style={btn(true)} onClick={() => window.confirm(`¿Borrar el grupo "${g.nombre}"? Las tareas siguen en el catálogo.`) && onBorrarGrupo(g.id)}>🗑</button>
+                <button type="button" style={btn(true)} onClick={() => window.confirm(`¿Borrar la tarea "${g.nombre}"? Sus pasos siguen cargados (quedan sueltos).`) && onBorrarGrupo(g.id)}>🗑</button>
               </>
             ) : (
-              <strong style={{ color: "#64748b" }}>Sin grupo</strong>
+              <strong style={{ color: "#64748b" }}>Pasos sueltos (sin tarea)</strong>
             )}
           </div>
           {lista.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Sin tareas en este grupo.</div>
+            <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Sin pasos todavía.</div>
           ) : (
             <table style={{ width: "100%", borderCollapse: "collapse" }}>
               <thead>
                 <tr>
-                  <th style={th}>Tarea</th>
-                  <th style={th}>Grupos</th>
+                  <th style={th}>Paso</th>
+                  <th style={th}>También en</th>
                   <th style={th}>Unidad</th>
                   <th style={th}>Horas por unidad</th>
                   <th style={th} title="Personas a la vez: 2 o más = un especialista y ayudantes">Personas</th>
-                  <th style={th}>Herramientas</th>
-                  <th style={th}>Desglose (pasos)</th>
+                  <th style={th}>Herramientas del paso</th>
+                  <th style={th}>Detalle</th>
                   <th style={th}></th>
                 </tr>
               </thead>
@@ -800,9 +831,9 @@ function Catalogo({
       {pegarEn && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }} onClick={() => setPegarEn(null)}>
           <div style={{ background: "#fff", borderRadius: 12, width: "min(640px, 100%)", padding: 18, display: "grid", gap: 8 }} onClick={(e) => e.stopPropagation()}>
-            <strong style={{ fontSize: 15 }}>Pegar tareas en "{pegarEn.nombre}"</strong>
+            <strong style={{ fontSize: 15 }}>Pegar el paso a paso de "{pegarEn.nombre}"</strong>
             <div style={{ fontSize: 12.5, color: "#64748b" }}>
-              Pegá la lista como la tengas: "1. Limpieza del CNC 2. Control de presión…" o una por renglón. Las que ya existen en el catálogo se llaman (son la misma tarea); las nuevas se crean en este grupo. Quedan en ese orden, al final del grupo.
+              Pegá el paso a paso como lo tengas: "1. Limpieza del CNC 2. Control de presión…" o uno por renglón. Los pasos que ya existen se llaman (son el mismo paso); los nuevos se crean en esta tarea. Quedan en ese orden, al final.
             </div>
             <textarea
               autoFocus
@@ -839,11 +870,11 @@ function Catalogo({
           </div>
         </div>
       )}
-      {tipoHerr && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }} onClick={() => setHerrDe(null)}>
+      {objetivoHerr && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }} onClick={cerrarHerr}>
           <div style={{ background: "#fff", borderRadius: 12, width: "min(560px, 100%)", padding: 18, display: "grid", gap: 8 }} onClick={(e) => e.stopPropagation()}>
-            <strong style={{ fontSize: 15 }}>Herramientas para "{tipoHerr.nombre}"</strong>
-            <div style={{ fontSize: 12.5, color: "#64748b" }}>Tildá las máquinas y herramientas que hacen falta. Salen de Stock (Máquinas pesadas, Máquinas manuales y Herramientas); su estado se lleva en Mantenimiento.</div>
+            <strong style={{ fontSize: 15 }}>Máquinas y herramientas para "{objetivoHerr.nombre}"</strong>
+            <div style={{ fontSize: 12.5, color: "#64748b" }}>Tildá las máquinas y herramientas que hacen falta para hacer la tarea (valen para todo su paso a paso). Salen de Stock (Máquinas pesadas, Máquinas manuales y Herramientas); su estado se lleva en Mantenimiento.</div>
             {maquinas.length === 0 && <div style={{ fontSize: 12.5, color: "#b45309" }}>No hay máquinas ni herramientas en Stock todavía.</div>}
             {GRUPOS_MAQUINAS.map((g) => {
               const lista = maquinas.filter((m) => m.group === g);
@@ -852,13 +883,13 @@ function Catalogo({
                 <div key={g}>
                   <div style={{ fontSize: 11.5, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>{g}</div>
                   {lista.map((m) => {
-                    const tiene = (tipoHerr.herramientas || []).includes(m.id);
+                    const tiene = objetivoHerr.ids.includes(m.id);
                     return (
                       <label key={m.id} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, padding: "2px 0", cursor: "pointer" }}>
                         <input
                           type="checkbox"
                           checked={tiene}
-                          onChange={(e) => onGuardarTipo({ ...tipoHerr, herramientas: e.target.checked ? [...(tipoHerr.herramientas || []), m.id] : (tipoHerr.herramientas || []).filter((x) => x !== m.id) })}
+                          onChange={(e) => objetivoHerr.guardar(e.target.checked ? [...objetivoHerr.ids, m.id] : objetivoHerr.ids.filter((x) => x !== m.id))}
                         />
                         {m.description} <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{m.quantity} en stock</span>
                       </label>
@@ -868,7 +899,7 @@ function Catalogo({
               );
             })}
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <ButtonLike onClick={() => setHerrDe(null)}>Listo</ButtonLike>
+              <ButtonLike onClick={cerrarHerr}>Listo</ButtonLike>
             </div>
           </div>
         </div>

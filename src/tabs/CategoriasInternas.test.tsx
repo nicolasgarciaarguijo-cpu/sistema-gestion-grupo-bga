@@ -107,7 +107,7 @@ describe("TiposMueble", () => {
     act(() => {
       fila.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
     });
-    act(() => Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "Receta y tiempos…")!.click());
+    act(() => Array.from(document.querySelectorAll("button")).find((b) => b.textContent === "Abrir ficha (tareas y tiempos)…")!.click());
     // 2 h cortar + (0,6 cantear ∥ 2 mecanizar): 4,6 h-hombre y 4 h de reloj
     expect(document.body.textContent).toContain("4,6 h-hombre");
     expect(document.body.textContent).toContain("4 h de reloj");

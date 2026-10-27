@@ -106,3 +106,18 @@ describe("tipos de mueble", () => {
     });
   });
 });
+
+describe("ficha del tipo de mueble: tildar las tareas", () => {
+  const { tildarGrupo } = require("./tiposMueble");
+  const catalogo = [1, 2, 3].map((id) => ({ id, nombre: `P${id}`, activa: true })) as any[];
+  const grupos = [{ id: 10, nombre: "Corte CNC", tareaIds: [1, 2, 3] }];
+  let n = 100;
+  const nuevoId = () => ++n;
+
+  it("tildar la tarea suma todo su paso a paso; destildarla lo saca", () => {
+    let t = tildarGrupo({ id: 1, nombre: "Bajo mesada", receta: [] }, 10, true, catalogo, grupos, nuevoId);
+    expect(t.receta.map((r: any) => r.tareaId)).toEqual([1, 2, 3]);
+    t = tildarGrupo(t, 10, false, catalogo, grupos, nuevoId);
+    expect(t.receta).toEqual([]);
+  });
+});

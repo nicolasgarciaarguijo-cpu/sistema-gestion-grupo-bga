@@ -228,3 +228,11 @@ export function actualizarGrupo(receta: RenglonReceta[], grupoId: number, tareaI
 }
 
 export const quitarGrupo = (receta: RenglonReceta[], grupoId: number): RenglonReceta[] => receta.filter((r) => r.grupoId !== grupoId);
+
+// ---- FICHA DEL TIPO: TILDAR LAS TAREAS (Nicolas, 27/10/2026) ------------------------------------------------
+// En la ficha se tildan las TAREAS que lleva el tipo (en el codigo: grupos de trabajo, ej. Corte CNC). Su paso a paso
+// (las tareas del grupo) es siempre el mismo: entra entero, no se destilda.
+export function tildarGrupo(tipo: TipoMueble, grupoId: number, on: boolean, catalogo: TipoTarea[], grupos: GrupoTrabajo[], nuevoId: () => number): TipoMueble {
+  if (!on) return { ...tipo, receta: quitarGrupo(tipo.receta, grupoId) };
+  return { ...tipo, receta: agregarGrupo(tipo.receta, grupoId, tareasDelGrupo(grupoId, catalogo, grupos), nuevoId) };
+}

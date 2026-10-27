@@ -235,7 +235,7 @@ import { RemitoModal } from "./ui/RemitoModal";
 import { RemitosPanel } from "./tabs/RemitosPanel";
 import { resumirMaterialesDelTrabajo } from "./domain/jobMaterials";
 import { FabricacionTab } from "./tabs/Fabricacion";
-import { OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
+import { CatalogoTareas, OrganizacionDiaria } from "./tabs/OrganizacionDiaria";
 import { GanttFabricacion } from "./tabs/GanttFabricacion";
 import { CapacidadesPersonal } from "./tabs/CapacidadesPersonal";
 import { TiposMueble } from "./tabs/TiposMueble";
@@ -254,6 +254,7 @@ import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, 
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
+import { conHerramientasDeLaTarea } from "./domain/organizacionDiaria";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
 import { EmitirFacturasTab } from "./tabs/EmitirFacturas";
@@ -23393,6 +23394,7 @@ Escribi CERRAR para confirmar:`
           maquinas={visibleStockItems.filter(esMaquinaOHerramienta)}
           fichasMaquinas={fichasMaquinas}
           onRetrabajo={(p) => setRetrabajoPrecargado({ ...p, jobId: p.jobId ?? undefined })}
+          mostrarCatalogo={false}
           onBorrarAsignacion={(id) => setAsignacionesDiarias((prev) => prev.filter((x) => x.id !== id))}
           onGuardarGrupo={(g) => setGruposTrabajo((prev) => (prev.some((x) => x.id === g.id) ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]))}
           onBorrarGrupo={(id) => {
@@ -23421,7 +23423,7 @@ Escribi CERRAR para confirmar:`
         <Mantenimiento
           maquinas={visibleStockItems.filter(esMaquinaOHerramienta)}
           fichas={fichasMaquinas}
-          tipos={tiposTarea}
+          tipos={conHerramientasDeLaTarea(tiposTarea, gruposTrabajo)}
           grupos={gruposTrabajo}
           categorias={categoriasVigentes}
           empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
@@ -23479,7 +23481,7 @@ Escribi CERRAR para confirmar:`
           trabajos={trabajosCronograma.filter((t) => t.muebles.length > 0)}
           sinMuebles={trabajosCronograma.filter((t) => t.muebles.length === 0).map((t) => ({ jobId: t.jobId, nombre: t.nombre, company: t.company, inicio: t.inicio }))}
           tipos={tiposMueble}
-          tareas={tiposTarea}
+          tareas={conHerramientasDeLaTarea(tiposTarea, gruposTrabajo)}
           rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
           personas={personasParaCotizar}
           hoy={todayIso()}
@@ -23565,6 +23567,23 @@ Escribi CERRAR para confirmar:`
             setSelectedApprovedJobId(jobId);
             setActiveTab("aprobados" as TabKey);
           }}
+          nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
+        />
+      )}
+      {/* Al FONDO de Fabricacion (Nicolas, 27/10/2026): el desglose de grupos de trabajo y tareas. Los tipos de
+          mueble los usan desde su ficha (se tildan los grupos y sus tareas). */}
+      {activeTab === "fabricacion" && (
+        <CatalogoTareas
+          grupos={gruposTrabajo}
+          tipos={tiposTarea}
+          maquinas={visibleStockItems.filter(esMaquinaOHerramienta) as any}
+          onGuardarGrupo={(g) => setGruposTrabajo((prev) => (prev.some((x) => x.id === g.id) ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]))}
+          onBorrarGrupo={(id) => {
+            setGruposTrabajo((prev) => prev.filter((x) => x.id !== id));
+            setTiposTarea((prev) => prev.map((t) => (t.grupoId === id ? { ...t, grupoId: null } : t)));
+          }}
+          onGuardarTipo={(t) => setTiposTarea((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [...prev, t]))}
+          onBorrarTipo={(id) => setTiposTarea((prev) => prev.filter((x) => x.id !== id))}
           nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
         />
       )}

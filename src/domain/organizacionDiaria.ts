@@ -22,7 +22,9 @@ export const UNIDADES_TAREA: Array<{ value: UnidadTarea; label: string }> = [
 // Un grupo de trabajo es una OPERACION (Corte CNC, Pegado de cantos, Armado...) con sus tareas EN ORDEN. Una misma
 // tarea puede estar en varios grupos (Nicolas, 2026-10-26: "si ya la escribi en otro grupo quiero poder llamarla").
 // `tareaIds` = la lista ordenada; ausente (grupos viejos) = las tareas que tienen ese grupoId, en el orden del catalogo.
-export type GrupoTrabajo = { id: number; nombre: string; descripcion?: string; orden?: number; tareaIds?: number[] };
+// En pantalla el GRUPO DE TRABAJO se llama TAREA (Nicolas, 27/10/2026: "Corte CNC" es una tarea) y sus tareas son su
+// PASO A PASO, siempre el mismo. Las maquinas y herramientas se eligen en la tarea y valen para todos sus pasos.
+export type GrupoTrabajo = { id: number; nombre: string; descripcion?: string; orden?: number; tareaIds?: number[]; herramientas?: number[] };
 export type TipoTarea = {
   id: number;
   grupoId?: number | null;
@@ -204,6 +206,14 @@ export function linkMapa(direccion?: string): string | null {
 export function idsDeGrupo(g: Pick<GrupoTrabajo, "id" | "tareaIds">, tipos: TipoTarea[]): number[] {
   const ids = g.tareaIds ?? tipos.filter((t) => t.grupoId === g.id).map((t) => t.id);
   return ids.filter((id) => tipos.some((t) => t.id === id));
+}
+// Las herramientas que pide cada paso: las suyas mas las de las tareas (grupos) que lo incluyen.
+export function conHerramientasDeLaTarea(tipos: TipoTarea[], grupos: GrupoTrabajo[]): TipoTarea[] {
+  return tipos.map((t) => {
+    const deGrupos = grupos.filter((g) => (g.herramientas || []).length && idsDeGrupo(g, tipos).includes(t.id)).flatMap((g) => g.herramientas || []);
+    if (!deGrupos.length) return t;
+    return { ...t, herramientas: Array.from(new Set([...(t.herramientas || []), ...deGrupos])) };
+  });
 }
 export const tareasDeGrupo = (g: Pick<GrupoTrabajo, "id" | "tareaIds">, tipos: TipoTarea[]): TipoTarea[] =>
   idsDeGrupo(g, tipos).map((id) => tipos.find((t) => t.id === id) as TipoTarea);

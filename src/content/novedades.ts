@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-27d",
+    fecha: "27/10/2026",
+    titulo: "Tipos de mueble: se eligen las tareas desde la ficha",
+    items: [
+      {
+        titulo: "Tareas con su paso a paso",
+        que: "Lo que antes se llamaba grupo de trabajo ahora es la TAREA (Corte CNC, Pegado de cantos, Armado…) y lo de adentro es su PASO A PASO, siempre el mismo. En cada tarea se eligen las máquinas y herramientas que necesita. Está al fondo de Fabricación.",
+        como: "Fabricación → al fondo, Tareas y su paso a paso → 🛠 Máquinas y herramientas…",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "La ficha del tipo de mueble",
+        que: "El bloque Tipos de mueble muestra la lista ordenada por nombre (se corrige en la misma fila). Al abrir un tipo como ficha se tildan las tareas que lleva; cada una entra con su paso a paso.",
+        como: "Fabricación → Tipos de mueble → click derecho → Abrir ficha.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-10-27c",
     fecha: "27/10/2026",
     titulo: "Facturas programadas en el cash flow, fichas emergentes y débito automático",
