@@ -218,7 +218,7 @@ export function conHerramientasDeLaTarea(tipos: TipoTarea[], grupos: GrupoTrabaj
 export const tareasDeGrupo = (g: Pick<GrupoTrabajo, "id" | "tareaIds">, tipos: TipoTarea[]): TipoTarea[] =>
   idsDeGrupo(g, tipos).map((id) => tipos.find((t) => t.id === id) as TipoTarea);
 
-const normalizarNombre = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+export const normalizarNombre = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 
 // Una lista pegada ("1. Limpieza del CNC 2. Control de presion...", o una por renglon, con o sin numeros) -> nombres.
 export function lineasDeTareas(texto: string): string[] {

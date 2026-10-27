@@ -12,7 +12,7 @@
 // cantidad (por mueble, ml, m2 o m3) y cuanto lleva por cada una. La cantidad sale sola de las medidas y
 // se puede corregir a mano ("las 2 cosas hasta ver cual es la mas util"). Funciones puras.
 
-import { idsDeGrupo, type GrupoTrabajo, type TipoTarea, type UnidadTarea } from "./organizacionDiaria";
+import { idsDeGrupo, lineasDeTareas, normalizarNombre, type GrupoTrabajo, type TipoTarea, type UnidadTarea } from "./organizacionDiaria";
 import { coincideConRubro, type RubroFabricacion } from "./ganttFabricacion";
 
 // De que medida del mueble sale la cantidad de la tarea. "u" = por cada mueble. "rubro:<id>" = por cada
@@ -235,4 +235,19 @@ export const quitarGrupo = (receta: RenglonReceta[], grupoId: number): RenglonRe
 export function tildarGrupo(tipo: TipoMueble, grupoId: number, on: boolean, catalogo: TipoTarea[], grupos: GrupoTrabajo[], nuevoId: () => number): TipoMueble {
   if (!on) return { ...tipo, receta: quitarGrupo(tipo.receta, grupoId) };
   return { ...tipo, receta: agregarGrupo(tipo.receta, grupoId, tareasDelGrupo(grupoId, catalogo, grupos), nuevoId) };
+}
+
+// ---- PEGAR UN LISTADO DE TIPOS DE MUEBLE (Nicolas, 27/10/2026) ---------------------------------------------
+// "1. Mesa melamina 2. Mesa laqueada…" o uno por renglón. Los que ya existen (mismo nombre) no se repiten.
+export function tiposDesdeListado(texto: string, existentes: TipoMueble[], nuevoId: () => number): TipoMueble[] {
+  const vistos = new Set(existentes.map((t) => normalizarNombre(t.nombre)));
+  const nuevos: TipoMueble[] = [];
+  for (const linea of lineasDeTareas(texto)) {
+    const nombre = linea.replace(/[.s]+$/, "").trim();
+    const clave = normalizarNombre(nombre);
+    if (!nombre || vistos.has(clave)) continue;
+    vistos.add(clave);
+    nuevos.push({ id: nuevoId(), nombre, receta: [], largo: 1, alto: 0.9, profundidad: 0.6, activa: true });
+  }
+  return nuevos;
 }
