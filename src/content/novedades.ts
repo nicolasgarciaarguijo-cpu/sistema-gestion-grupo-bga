@@ -27,12 +27,6 @@ export const NOVEDADES: TandaNovedades[] = [
         tab: "fabricacion",
       },
       {
-        titulo: "Pegar un listado de tipos de mueble",
-        que: "En Tipos de mueble, 'Pegar listado…' carga muchos tipos de una vez (1. … 2. … o uno por renglón). Los que ya existen no se repiten y la lista queda ordenada por nombre.",
-        como: "Fabricación → Tipos de mueble → Pegar listado…",
-        tab: "fabricacion",
-      },
-      {
         titulo: "La ficha del tipo de mueble",
         que: "El bloque Tipos de mueble muestra la lista ordenada por nombre (se corrige en la misma fila). Al abrir un tipo como ficha se tildan las tareas que lleva; cada una entra con su paso a paso.",
         como: "Fabricación → Tipos de mueble → click derecho → Abrir ficha.",

@@ -121,12 +121,3 @@ describe("ficha del tipo de mueble: tildar las tareas", () => {
     expect(t.receta).toEqual([]);
   });
 });
-
-describe("pegar un listado de tipos de mueble", () => {
-  const { tiposDesdeListado } = require("./tiposMueble");
-  it("saca la numeración y el punto final, y no repite los que ya existen", () => {
-    let n = 0;
-    const r = tiposDesdeListado("1. Mesa melamina 2. Mesa laqueada.\n3. Mesa melamina\nMódulo baúl enchapado.", [{ id: 1, nombre: "mesa LAQUEADA", receta: [] }], () => ++n);
-    expect(r.map((t: any) => t.nombre)).toEqual(["Mesa melamina", "Módulo baúl enchapado"]);
-  });
-});

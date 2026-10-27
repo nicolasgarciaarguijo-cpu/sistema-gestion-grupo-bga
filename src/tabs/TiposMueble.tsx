@@ -18,7 +18,6 @@ import {
   gruposDeLaReceta,
   tareasDelGrupo,
   tildarGrupo,
-  tiposDesdeListado,
   rubrosDeLaReceta,
   pasoSiguiente,
   recetaOrdenada,
@@ -58,8 +57,6 @@ export function TiposMueble({
   const anchos = usePlanillaWidths("fabricacion.tiposMueble", { label: 220, col: 100, colCompact: 76 });
   const [menu, setMenu] = useState<{ x: number; y: number; tipo: TipoMueble } | null>(null);
   const [abierto, setAbierto] = useState<number | null>(null);
-  // Pegar un listado de tipos de mueble de una vez (los que ya existen no se repiten).
-  const [pegando, setPegando] = useState<string | null>(null);
   const ordenados = [...tipos].sort((a, b) => a.nombre.localeCompare(b.nombre));
   const nombreTarea = (id: number) => tareas.find((t) => t.id === id)?.nombre || "tarea borrada";
   const nuevo = (base: Partial<TipoMueble> = {}) => {
@@ -91,7 +88,6 @@ export function TiposMueble({
               {grupos.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
             </select>
           )}
-          <ButtonLike secondary onClick={() => setPegando("")}>Pegar listado…</ButtonLike>
           <ButtonLike onClick={() => nuevo()}>+ Tipo de mueble</ButtonLike>
         </span>
       }
@@ -205,40 +201,6 @@ export function TiposMueble({
           </button>
         </QuickMenu>
       )}
-
-      {pegando != null && (() => {
-        const previa = tiposDesdeListado(pegando, tipos, () => -1);
-        return (
-          <div style={overlay} onClick={() => setPegando(null)}>
-            <div style={{ ...caja, width: "min(640px, 100%)" }} onClick={(e) => e.stopPropagation()}>
-              <strong style={{ fontSize: 15 }}>Pegar listado de tipos de mueble</strong>
-              <div style={{ fontSize: 12.5, color: "#64748b" }}>
-                Pegalo como lo tengas: "1. Mesa melamina 2. Mesa laqueada…" o uno por renglón. Los que ya existen no se repiten; después se ordenan solos por nombre y en cada ficha se tildan sus tareas.
-              </div>
-              <textarea
-                autoFocus
-                style={{ minHeight: 220, fontFamily: "inherit", fontSize: 13, border: "1px solid #cbd5e1", borderRadius: 6, padding: 8 }}
-                value={pegando}
-                onChange={(e) => setPegando(e.target.value)}
-                placeholder={"1. Mesa melamina\n2. Mesa laqueada\n3. …"}
-              />
-              <div style={{ fontSize: 12.5, color: "#475569" }}>{previa.length ? `${previa.length} tipo${previa.length === 1 ? "" : "s"} nuevo${previa.length === 1 ? "" : "s"}` : "Todavía no hay tipos nuevos para agregar."}</div>
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 6 }}>
-                <ButtonLike secondary onClick={() => setPegando(null)}>Cancelar</ButtonLike>
-                <ButtonLike
-                  disabled={!previa.length}
-                  onClick={() => {
-                    tiposDesdeListado(pegando, tipos, nuevoId).forEach(onGuardar);
-                    setPegando(null);
-                  }}
-                >
-                  Agregar {previa.length || ""}
-                </ButtonLike>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
 
       {tipoAbierto && <EditorReceta tipo={tipoAbierto} tareas={tareas} grupos={grupos} rubros={rubros} onGuardar={onGuardar} onCerrar={() => setAbierto(null)} nuevoId={nuevoId} nombreTarea={nombreTarea} />}
     </Panel>
