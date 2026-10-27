@@ -5467,6 +5467,11 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         const enPesos = (item: Payment) => (isUsdPesified(item) ? Number(item.amount || 0) * Number(item.exchangeRate || 0) : item.currency === "USD" ? 0 : Number(item.amount || 0));
         const porCircuito = (lista: Payment[], adm: "blanco" | "negro") =>
           lista.filter((item) => (item.administration === "negro" ? "negro" : "blanco") === adm).reduce((acc, item) => acc + enPesos(item), 0);
+        // LO QUE FALTA COBRAR POR CIRCUITO (27/10/2026): blanco = lo facturado + adicionales blancos, con su IVA, menos lo
+        // cobrado en blanco (y retenciones); negro = el resto del saldo. Para el resumen al pasar el mouse.
+        const totalBlancoACobrar = billedNet + invoiceVatAmount + additionalsWhiteNet + additionalsVat;
+        const pendienteBlanco = Math.max(0, totalBlancoACobrar - porCircuito(job.payments, "blanco") - retentionsTotal);
+        const pendienteNegro = Math.max(0, Math.max(0, valueToCollect - financialCollected - Number(job.ajusteCierre?.monto || 0)) - pendienteBlanco);
         const precarga = precargaCobros({
           neto: job.soldNetPrice,
           facturadoPct: Number(job.billedPct || 0),
@@ -5524,6 +5529,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           anticipoNegro,
           saldoToCharge,
           precarga,
+          pendienteBlanco,
+          pendienteNegro,
           estimatedProductionDays,
           estimatedDeliveryDate: job.deliveryDate,
         };

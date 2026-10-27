@@ -27,6 +27,12 @@ export const NOVEDADES: TandaNovedades[] = [
         tab: "aprobados",
       },
       {
+        titulo: "El bruto desglosado en neto + IVA",
+        que: "Al pasar el mouse sobre un trabajo (o con click derecho) se ve el bruto a cobrar partido en neto + IVA, lo que falta facturar (neto + IVA) y lo que falta cobrar (blanco con su IVA + negro).",
+        como: "Trabajos aprobados → pasar el mouse sobre el trabajo, o click derecho.",
+        tab: "aprobados",
+      },
+      {
         titulo: "Anticipo blanco y negro",
         que: "El anticipo es el % de anticipo del neto más el IVA de lo facturado. Primero se completa el blanco (lo facturado con todo su IVA) y lo que sobra del anticipo va al negro. Ej.: neto $7.104.323, 50% facturado, 70% de anticipo: blanco $4.298.115 y negro $1.420.865. La precarga de cobros usa la misma cuenta.",
         como: "Trabajos aprobados → ficha → Resumen económico → Anticipo a cobrar.",

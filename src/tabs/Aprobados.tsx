@@ -214,6 +214,39 @@ export function AprobadosTab({
   // Terminados (finalizado y sin pendientes): van a una seccion aparte, minimizada, por empresa.
   const [terminadosAbiertos, setTerminadosAbiertos] = React.useState<Set<string>>(new Set());
   const pedirFinalizar = (job: any) => setFinalizando(job);
+  // DESGLOSE DEL BRUTO (Nicolas, 27/10/2026): al pasar el mouse o con click derecho, que diga el bruto partido en neto + IVA,
+  // lo que falta facturar (neto + IVA) y lo que falta cobrar (blanco con IVA + negro).
+  const desgloseTrabajo = (job: any) => {
+    const iva = Number(job.snapshot?.params?.vatPct ?? 21) / 100;
+    const ff = faltaFacturar(job);
+    return {
+      netoTotal: Number(job.soldNetPrice || 0) + Number(job.additionalsTotal || 0) - Number(job.discountsTotal || 0),
+      ivaTotal: Number(job.invoiceVatAmount || 0) + Number(job.additionalsVatPendiente || 0),
+      bruto: Number(job.valueToCollect || 0),
+      faltaFacturarNeto: ff,
+      faltaFacturarIva: ff * iva,
+      faltaCobrar: Number(job.remainingToPay || 0),
+      faltaCobrarBlanco: Number(job.pendienteBlanco || 0),
+      faltaCobrarNegro: Number(job.pendienteNegro || 0),
+      iva,
+    };
+  };
+  const textoDesglose = (job: any) => {
+    const d = desgloseTrabajo(job);
+    const lineas = [
+      `${job.budgetNumber} · ${job.client}`,
+      `Bruto a cobrar ${money(d.bruto)} = neto ${money(d.netoTotal)} + IVA ${money(d.ivaTotal)}`,
+      d.faltaFacturarNeto > 1
+        ? `Falta facturar ${money(d.faltaFacturarNeto + d.faltaFacturarIva)} = neto ${money(d.faltaFacturarNeto)} + IVA ${money(d.faltaFacturarIva)}`
+        : "Facturación: OK",
+      d.faltaCobrar > 1
+        ? `Falta cobrar ${money(d.faltaCobrar)} = blanco ${money(d.faltaCobrarBlanco)} (neto ${money(d.faltaCobrarBlanco / (1 + d.iva))} + IVA ${money(d.faltaCobrarBlanco - d.faltaCobrarBlanco / (1 + d.iva))}) + negro ${money(d.faltaCobrarNegro)}`
+        : "Cobranza: OK",
+      Number(job.commissionPending || 0) > 1 ? `Falta pagar comisión ${money(job.commissionPending)}` : "",
+      "Click derecho: resumen y abrir ficha",
+    ];
+    return lineas.filter(Boolean).join("\n");
+  };
   // Cuánto falta facturar (target por % facturado − lo ya facturado).
   const faltaFacturar = (job: any) => {
     const target = Number(job.soldNetPrice || 0) * (Number(job.billedPct || 0) / 100);
@@ -237,9 +270,9 @@ export function AprobadosTab({
               />
               <div
                 style={{
-                  position: "fixed", left: Math.min(ctxMenu.x, window.innerWidth - 280), top: Math.min(ctxMenu.y, window.innerHeight - 220),
+                  position: "fixed", left: Math.min(ctxMenu.x, window.innerWidth - 350), top: Math.min(ctxMenu.y, window.innerHeight - 330),
                   zIndex: 61, background: "#fff", border: "1px solid #cbd5e1", borderRadius: 10,
-                  boxShadow: "0 16px 40px rgba(0,0,0,0.22)", padding: 12, width: 270, fontSize: 13,
+                  boxShadow: "0 16px 40px rgba(0,0,0,0.22)", padding: 12, width: 340, fontSize: 13,
                 }}
               >
                 <div style={{ fontWeight: 800, marginBottom: 6 }}>{ctxMenu.job.client}</div>
@@ -254,10 +287,19 @@ export function AprobadosTab({
                       <strong style={{ color: v > 1 ? "#dc2626" : "#16a34a" }}>{v > 1 ? money(v) : "✓ OK"}</strong>
                     </div>
                   );
+                  const d = desgloseTrabajo(ctxMenu.job);
+                  const detalle = (texto: string) => <div style={{ fontSize: 11.5, color: "#64748b", textAlign: "right", marginTop: -2 }}>{texto}</div>;
                   return (
                     <>
-                      {rowc("Falta facturar", ff)}
+                      <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0" }}>
+                        <span>Bruto a cobrar (c/IVA)</span>
+                        <strong>{money(d.bruto)}</strong>
+                      </div>
+                      {detalle(`neto ${money(d.netoTotal)} + IVA ${money(d.ivaTotal)}`)}
+                      {rowc("Falta facturar", ff > 1 ? ff + d.faltaFacturarIva : 0)}
+                      {ff > 1 && detalle(`neto ${money(ff)} + IVA ${money(d.faltaFacturarIva)}`)}
                       {rowc("Falta cobrar", fc)}
+                      {fc > 1 && detalle(`blanco ${money(d.faltaCobrarBlanco)} (neto ${money(d.faltaCobrarBlanco / (1 + d.iva))} + IVA ${money(d.faltaCobrarBlanco - d.faltaCobrarBlanco / (1 + d.iva))}) + negro ${money(d.faltaCobrarNegro)}`)}
                       {rowc("Falta pagar comisión", fco)}
                       <div style={{ borderTop: "1px solid #e2e8f0", marginTop: 6, paddingTop: 6, fontWeight: 700, color: ctxMenu.job.executionStatus === "finalizado" ? "#16a34a" : isJobDone(ctxMenu.job) ? "#16a34a" : "#b45309" }}>
                         {ctxMenu.job.executionStatus === "finalizado"
@@ -489,9 +531,6 @@ export function AprobadosTab({
                         const finalizadoPendiente = finalizado && !done;
                         // en curso pero ya cobrado todo → listo para cerrar.
                         const listo = done && !finalizado;
-                        const faltas: string[] = [];
-                        if (Number(job.remainingToPay || 0) > 1) faltas.push(`a cobrar ${money(job.remainingToPay)}`);
-                        if (Number(job.commissionPending || 0) > 1) faltas.push(`comisión ${money(job.commissionPending)}`);
                         return (
                         <tr
                           key={job.id}
@@ -499,7 +538,7 @@ export function AprobadosTab({
                           // (se leen numeros y letras igual). Nicolas, 2026-10-14. Regla CSS al pie del archivo.
                           className={completado ? "fila-trabajo-terminado" : undefined}
                           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); setCtxMenu({ x: e.clientX, y: e.clientY, job }); }}
-                          title={finalizadoPendiente ? `Figura finalizado pero falta: ${faltas.join(", ")}` : "Click derecho: resumen del cliente y abrir ficha"}
+                          title={(finalizadoPendiente ? "⚠ Figura finalizado pero falta algo\n" : "") + textoDesglose(job)}
                           style={
                             completado
                               ? { background: "#dbeafe", color: "#075985" }
