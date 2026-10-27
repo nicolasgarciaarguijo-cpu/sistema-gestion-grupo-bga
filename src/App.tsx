@@ -403,7 +403,7 @@ import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { ProveedoresPanel, ProveedorModal, formDeProveedor, type ProveedorForm } from "./tabs/Proveedores";
 import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
 import { programadosEnRenglones } from "./domain/programadosEnRenglones";
-import { precargaCobros } from "./domain/precargaCobros";
+import { anticipoPorCircuito, precargaCobros } from "./domain/precargaCobros";
 import { ResumenMovimientos, type FilaResumen } from "./ui/ResumenMovimientos";
 import { viaticosFijos, RENGLON_VIATICOS } from "./domain/viaticos";
 import { entradasInversiones, destinoInversion, previsionesDeRescate, renglonDeRescate } from "./domain/inversionesCalendario";
@@ -5415,17 +5415,15 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
             avisosFacturacion.push(`La factura ${item.invoiceNumber || "sin número"} tiene IVA ${money(Number(item.vat || 0))}; el ${vatPctTrabajo}% de su neto es ${money(esperado)}.`);
         });
         // Manda el trabajo aprobado: el % anticipo se resuelve del job (fallback forma de pago). Anticipo = %anticipo x
-        // neto + IVA del trabajo (el IVA va entero en el anticipo). Partido por circuito (27/10/2026): blanco = la parte
-        // facturada del anticipo + el IVA; negro = %anticipo x neto x (100 - %facturado), sin IVA.
+        // neto + IVA de lo facturado; se llena primero el blanco y el resto va al negro (anticipoPorCircuito).
         const anticipoPctResolved = resolveAdvancePct(
           job.advancePct,
           job.snapshot?.budget?.paymentTerms || ""
         );
-        const fraccionFacturada = Math.min(100, Math.max(0, Number(job.billedPct || 0))) / 100;
-        const anticipoNetoTotal = job.soldNetPrice * (anticipoPctResolved / 100);
-        const anticipoBlanco = Number((anticipoNetoTotal * fraccionFacturada + invoiceVatAmount).toFixed(2));
-        const anticipoNegro = Number((anticipoNetoTotal * (1 - fraccionFacturada)).toFixed(2));
-        const anticipoToCharge = Number((anticipoBlanco + anticipoNegro).toFixed(2));
+        const anticipo = anticipoPorCircuito({ neto: job.soldNetPrice, facturadoPct: Number(job.billedPct || 0), anticipoPct: anticipoPctResolved, ivaPct: vatPctTrabajo });
+        const anticipoBlanco = anticipo.blanco;
+        const anticipoNegro = anticipo.negro;
+        const anticipoToCharge = anticipo.total;
         const saldoToCharge = Math.max(0, valueToCollect - anticipoToCharge);
         const estimatedProductionDays =
           totalAvailableHours > 0 ? job.estimatedJobHours / (totalAvailableHours / 22 || 1) : 0;

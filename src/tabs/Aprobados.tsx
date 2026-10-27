@@ -1030,16 +1030,16 @@ export function AprobadosTab({
                     value={money(selectedApprovedJob.anticipoToCharge)}
                   />
                   <SummaryRow
-                    label={`  Anticipo blanco (${pct(selectedApprovedJob.billedPct)} facturado + IVA)`}
+                    label={`  Anticipo blanco (lo facturado + su IVA)`}
                     value={money(selectedApprovedJob.anticipoBlanco || 0)}
                     color="blanco"
                   />
                   <SummaryRow
-                    label={`  Anticipo negro (${pct(100 - Number(selectedApprovedJob.billedPct || 0))} sin factura)`}
+                    label={`  Anticipo negro (el resto del anticipo, sin factura)`}
                     value={money(selectedApprovedJob.anticipoNegro || 0)}
                     color="negro"
                   />
-                  <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
+                  <SummaryRow label="Saldo después del anticipo (lo acordado)" value={money(selectedApprovedJob.saldoToCharge)} />
                   <SummaryRow
                     label="Cobrado (plata)"
                     value={money(Number(selectedApprovedJob.collectedTotal || 0) - Number(selectedApprovedJob.retentionsTotal || 0))}
@@ -1064,7 +1064,7 @@ export function AprobadosTab({
                     value={money(selectedApprovedJob.collectedTotal)}
                     tone="in"
                   />
-                  <SummaryRow label="Saldo" value={money(selectedApprovedJob.remainingToPay)} strong />
+                  <SummaryRow label="Saldo pendiente (a cobrar − cobrado)" value={money(selectedApprovedJob.remainingToPay)} strong />
                   {(Number(selectedApprovedJob.soldNetPriceUsd || 0) > 0 ||
                     Number(selectedApprovedJob.paymentsUsdTotal || 0) > 0 ||
                     Number(selectedApprovedJob.additionalsUsdTotal || 0) > 0) && (

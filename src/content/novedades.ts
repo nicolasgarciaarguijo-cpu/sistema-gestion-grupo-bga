@@ -28,7 +28,7 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Anticipo blanco y negro",
-        que: "El Resumen económico muestra el anticipo partido: la parte facturada con su IVA (blanco) y la parte sin factura (negro), según el % acordado.",
+        que: "El anticipo es el % de anticipo del neto más el IVA de lo facturado. Primero se completa el blanco (lo facturado con todo su IVA) y lo que sobra del anticipo va al negro. Ej.: neto $7.104.323, 50% facturado, 70% de anticipo: blanco $4.298.115 y negro $1.420.865. La precarga de cobros usa la misma cuenta.",
         como: "Trabajos aprobados → ficha → Resumen económico → Anticipo a cobrar.",
         tab: "aprobados",
       },

@@ -24,16 +24,34 @@ export type Precarga = { anticipoBlanco: number; anticipoNegro: number; saldoBla
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
+// ANTICIPO POR CIRCUITO (Nicolas, 27/10/2026, caso 3430): el anticipo es el % de anticipo del NETO + el IVA de lo
+// facturado. Se llena PRIMERO el blanco (la parte facturada del neto, con todo su IVA) y lo que sobra del anticipo
+// va al negro. Ej.: neto 7.104.323, 50% facturado, 70% anticipo -> anticipo neto 4.973.026; blanco = 3.552.162 +
+// IVA 745.954 = 4.298.115; negro = 4.973.026 - 3.552.162 = 1.420.865.
+export function anticipoPorCircuito(d: { neto: number; facturadoPct: number; anticipoPct: number; ivaPct?: number }): { blanco: number; negro: number; total: number } {
+  const neto = Number(d.neto || 0);
+  const b = Math.min(100, Math.max(0, Number(d.facturadoPct || 0))) / 100;
+  const a = Math.min(100, Math.max(0, Number(d.anticipoPct || 0))) / 100;
+  if (!(a > 0)) return { blanco: 0, negro: 0, total: 0 };
+  const anticipoNeto = neto * a;
+  const facturadoNeto = neto * b;
+  const ivaFacturado = facturadoNeto * (Number(d.ivaPct ?? 21) / 100);
+  const blancoNeto = Math.min(anticipoNeto, facturadoNeto);
+  const blanco = r2(blancoNeto + ivaFacturado);
+  const negro = r2(anticipoNeto - blancoNeto);
+  return { blanco, negro, total: r2(blanco + negro) };
+}
+
 export function precargaCobros(d: DatosPrecarga): Precarga {
   const iva = 1 + Number(d.ivaPct ?? 21) / 100;
   const b = Math.min(100, Math.max(0, Number(d.facturadoPct || 0))) / 100;
-  const a = Math.min(100, Math.max(0, Number(d.anticipoPct || 0))) / 100;
   const neto = Number(d.neto || 0);
   const totalBlanco = (neto * b + Number(d.adicionalesBlancos || 0)) * iva;
   const totalNegro = Math.max(0, Number(d.valorACobrar || 0) - totalBlanco);
+  const ant = anticipoPorCircuito({ neto, facturadoPct: d.facturadoPct, anticipoPct: d.anticipoPct, ivaPct: d.ivaPct });
   return {
-    anticipoBlanco: r2(neto * b * a * iva),
-    anticipoNegro: r2(neto * (1 - b) * a),
+    anticipoBlanco: ant.blanco,
+    anticipoNegro: ant.negro,
     saldoBlanco: r2(Math.max(0, totalBlanco - Number(d.cobradoBlanco || 0) - Number(d.programadoBlanco || 0))),
     saldoNegro: r2(Math.max(0, totalNegro - Number(d.cobradoNegro || 0) - Number(d.programadoNegro || 0))),
   };

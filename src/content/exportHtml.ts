@@ -520,14 +520,14 @@ export function buildJobClientSummaryHtml(job: any, banking?: ClientSummaryBanki
       : `<tr class="tot"><td>Saldo pendiente</td><td class="num">${money(Math.max(0, saldo))}</td></tr>`;
 
   // ---- Anticipo pactado, partido por circuito. Es el mismo "Anticipo a cobrar" del sistema
-  // (% anticipo x neto + IVA del trabajo): blanco = la parte facturada + el IVA; negro = el resto, sin IVA. Cada
+  // (% anticipo x neto + IVA de lo facturado; primero se llena el blanco y el resto va al negro). Cada
   // tarjeta sale solo si hay monto. Al cliente NUNCA se le dice blanco/negro: el blanco figura como "transferible" y
   // el negro como "efectivo".
   const advancePct = Number(job.anticipoPctResolved || 0);
   const billedPct = Math.max(0, Math.min(100, Number(job.billedPct ?? 100)));
   const advanceNet = Number(job.soldNetPrice || 0) * (advancePct / 100);
-  const advanceWhite = advancePct > 0 ? Number(job.anticipoBlanco ?? advanceNet * (billedPct / 100) + Number(job.invoiceVatAmount || 0)) : 0;
-  const advanceBlack = advancePct > 0 ? Number(job.anticipoNegro ?? advanceNet * (1 - billedPct / 100)) : 0;
+  const advanceWhite = advancePct > 0 ? Number(job.anticipoBlanco ?? Math.min(advanceNet, Number(job.soldNetPrice || 0) * (billedPct / 100)) + Number(job.invoiceVatAmount || 0)) : 0;
+  const advanceBlack = advancePct > 0 ? Number(job.anticipoNegro ?? Math.max(0, advanceNet - Number(job.soldNetPrice || 0) * (billedPct / 100))) : 0;
   const advanceCards =
     advanceWhite > 0.5 || advanceBlack > 0.5
       ? `<div class="grid">${

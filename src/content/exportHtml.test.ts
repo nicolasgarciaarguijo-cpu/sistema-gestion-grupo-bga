@@ -345,12 +345,12 @@ describe("buildJobClientSummaryHtml · anticipo blanco / negro", () => {
     remainingToPay: 1063000,
   };
 
-  it("parte el anticipo: 50% de 1.000.000 = 500.000 -> 150.000 + IVA 63.000 blanco, 350.000 negro", () => {
+  it("parte el anticipo: 50% de 1.000.000 = 500.000 -> primero lo facturado 300.000 + IVA 63.000 blanco, el resto 200.000 negro", () => {
     const html = buildJobClientSummaryHtml(job);
     expect(html).toContain("Anticipo transferible (c/IVA)");
-    expect(html).toContain("213.000,00");
+    expect(html).toContain("363.000,00");
     expect(html).toContain("Anticipo en efectivo");
-    expect(html).toContain("350.000,00");
+    expect(html).toContain("200.000,00");
   });
 
   it("todo facturado: no hay anticipo negro", () => {
