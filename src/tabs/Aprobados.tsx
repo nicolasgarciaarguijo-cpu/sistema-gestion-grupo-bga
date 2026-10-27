@@ -671,6 +671,14 @@ export function AprobadosTab({
           )}
 
           {selectedApprovedJob && (
+            <div
+              onClick={() => setSelectedApprovedJobId(null)}
+              style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 70, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "40px 12px" }}
+            >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: "#ffffff", borderRadius: 12, width: "min(1200px, 100%)", padding: 6, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}
+            >
             <Panel
               title={`Detalle ${selectedApprovedJob.isUpdate ? `${selectedApprovedJob.budgetNumber} · Act. ${selectedApprovedJob.revisionNumber - 1}` : selectedApprovedJob.budgetNumber}`}
               green={selectedApprovedJob.executionStatus === "finalizado"}
@@ -2188,6 +2196,8 @@ export function AprobadosTab({
                 )}
               </Panel>
             </Panel>
+            </div>
+            </div>
           )}
         </div>
   );

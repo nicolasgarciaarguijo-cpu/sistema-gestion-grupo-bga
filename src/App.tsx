@@ -149,6 +149,7 @@ import {
   buildCostRows,
   fiscalMonthKeys,
   isAutoCostGroup,
+  COST_GROUP_PETTY_CASH,
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
@@ -10163,7 +10164,10 @@ Escribi CERRAR para confirmar:`
     setCostGroups(
       keepAccessibleByCompany(
         (data.costGroups || []).length > 0 ? data.costGroups : defaultCostGroups
-      ).map((item) => ({ ...item, auto: isAutoCostGroup(item.name) }))
+      )
+        // El grupo "Caja chica" se saco (27/10/2026): la caja chica es solo rendicion de gastos.
+        .filter((item) => item.name !== COST_GROUP_PETTY_CASH)
+        .map((item) => ({ ...item, auto: isAutoCostGroup(item.name) }))
     );
     setCostEntries(
       keepAccessibleByCompany(data.costEntries || defaultCostEntries).map((item) => ({ ...item }))
@@ -17636,7 +17640,9 @@ Escribi CERRAR para confirmar:`
           meses.filter((m) => m >= mesActual)
         ),
         sueldos,
-        facturas: facturasAPagar,
+        // Las de un proveedor con DEBITO AUTOMATICO en tarjeta se pagan con el resumen (ya programado como
+        // tarjeta): programarlas aparte seria pagarlas dos veces.
+        facturas: facturasAPagar.filter((f) => f.tarjetaDebitoId == null),
         // Las ya pagadas siguen en el calendario, tachadas (no desaparecen al pagarlas).
         facturasPagadas: facturasPagadasProgramadas(
           purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company) && !facturasEnConvenioMap.has(i.id)) as any,
@@ -21127,6 +21133,8 @@ Escribi CERRAR para confirmar:`
   // ALTA / EDICION DE UN PROVEEDOR (listado y ficha). Si se corrige el NOMBRE, lo ya cargado a su nombre
   // (facturas, pagos, gastos de caja chica, notas de credito) pasa al nombre nuevo: el vinculo es por
   // CUIT o por nombre, y sin esto la correccion dejaba la cuenta corriente partida en dos.
+  // Un proveedor puede ser de una empresa o de LAS DOS ("General"): la ficha separa la cuenta por empresa.
+  const opcionesEmpresaProveedor = [...COMPANY_OPTIONS, { value: "General", label: "Las dos empresas", short: "Las dos" }];
   const guardarProveedor = (p: ProveedorForm) => {
     const datos = {
       company: p.company as any,
@@ -21163,7 +21171,7 @@ Escribi CERRAR para confirmar:`
       ledgers={(purchaseLedger?.ledgers || []) as any}
       pagosSinFactura={pendientesSinFactura}
       empresaPorDefecto={String(budget.company)}
-      companyOptions={COMPANY_OPTIONS as any}
+      companyOptions={opcionesEmpresaProveedor as any}
       money={money}
       onGuardar={guardarProveedor}
       onQuitar={(id) => removeSupplier(id)}
@@ -22206,7 +22214,7 @@ Escribi CERRAR para confirmar:`
         <div style={{ position: "relative", zIndex: 4700 }}>
           <ProveedorModal
             inicial={editProveedor}
-            companyOptions={COMPANY_OPTIONS as any}
+            companyOptions={opcionesEmpresaProveedor as any}
             onGuardar={(p) => {
               guardarProveedor(p);
               // La ficha abierta sigue al proveedor aunque se le haya corregido el nombre.
@@ -22241,6 +22249,17 @@ Escribi CERRAR para confirmar:`
             taxId={fichaProveedor.taxId}
             proveedor={prov}
             ledger={ledger}
+            tarjetas={visibleCreditCards.map((c) => ({ id: c.id, nombre: `${c.name} · ${getCompanyMeta(c.company as CompanyName).short}`, company: String(c.company) }))}
+            ledgersPorEmpresa={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)).flatMap((c) => {
+              const l = computeSupplierLedgers({
+                invoices: purchaseLedgerInvoices,
+                payments: purchaseLedgerPayments,
+                creditNotes: visibleCreditNotes as any,
+                currentAccountKeys: ledger?.esCuentaCorriente ? [key] : [],
+                companyScope: c.value,
+              }).ledgers.find((x: any) => x.key === key);
+              return l && l.movimientos.length ? [{ company: c.value, short: c.short, ledger: l as any }] : [];
+            })}
             porPagar={porPagar}
             convenios={deudasAccesibles
               .filter((d) => bloqueDeDeuda(d as any) === "cuenta_corriente" && d.active)

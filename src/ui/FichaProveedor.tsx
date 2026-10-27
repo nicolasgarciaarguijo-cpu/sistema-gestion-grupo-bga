@@ -12,8 +12,8 @@ export function FichaProveedor({
   nombre,
   taxId,
   proveedor,
-  ledger,
-  porPagar,
+  ledger: ledgerTodas,
+  porPagar: porPagarTodas,
   renglonesEgreso,
   fvPorRenglon,
   money,
@@ -21,12 +21,12 @@ export function FichaProveedor({
   onAltaProveedor,
   onFechaFactura,
   onCerrar,
-  facturas = [],
+  facturas: facturasTodas = [],
   onCargarFactura,
   onAbrirFactura,
-  pagosSinFactura = [],
+  pagosSinFactura: pagosSinFacturaTodos = [],
   onPagoSinFactura,
-  notasCredito = [],
+  notasCredito: notasCreditoTodas = [],
   onNotaCredito,
   personas = [],
   onResolverSinFactura,
@@ -38,7 +38,14 @@ export function FichaProveedor({
   onSoltarDebito,
   convenios = [],
   onAbrirConvenio,
+  tarjetas = [],
+  ledgersPorEmpresa = [],
 }: {
+  // Tarjetas de credito para el debito automatico (las de las empresas que ve el usuario).
+  tarjetas?: Array<{ id: number; nombre: string; company: string }>;
+  // La cuenta del proveedor POR EMPRESA (solo las que ve el usuario y tienen movimientos). Con dos, la
+  // ficha las muestra por separado: se elige cual mirar.
+  ledgersPorEmpresa?: Array<{ company: string; short: string; ledger: NonNullable<Parameters<typeof FichaProveedor>[0]["ledger"]> }>;
   // Convenios de cuenta corriente con este proveedor (Desendeudamiento): su plan de cuotas.
   convenios?: Array<{ id: number; concepto: string; total: number; pagado: number; pendiente: number; proxima?: { fecha: string; monto: number }; facturas: number }>;
   onAbrirConvenio?: (deudaId: number) => void;
@@ -53,6 +60,8 @@ export function FichaProveedor({
     grupoCosto?: string;
     tipoGastoLocked?: boolean;
     condicionPago?: CondicionPago;
+    debitoAutomatico?: boolean;
+    tarjetaDebitoId?: number | null;
     notes: string;
     direccion?: string;
     contacto?: string;
@@ -89,6 +98,16 @@ export function FichaProveedor({
   onBorrarFactura?: (id: number) => void;
   onSoltarDebito?: (bankEntryId: number) => void;
 }) {
+  // Proveedor de las dos empresas: la evolucion se mira separada, una empresa por vez.
+  const separado = ledgersPorEmpresa.length > 1;
+  const [empresaVista, setEmpresaVista] = React.useState<string>(ledgersPorEmpresa[0]?.company || "");
+  const deLaVista = (company: string) => !separado || company === empresaVista;
+  const ledger = separado ? ledgersPorEmpresa.find((x) => x.company === empresaVista)?.ledger : ledgerTodas;
+  const porPagar = porPagarTodas.filter((f) => deLaVista(f.company));
+  const facturas = facturasTodas.filter((f) => deLaVista(f.company));
+  const pagosSinFactura = pagosSinFacturaTodos.filter((p) => deLaVista(p.company));
+  const notasCredito = notasCreditoTodas.filter((n) => deLaVista(n.company));
+  const nombreTarjeta = (id?: number | null) => tarjetas.find((t) => t.id === id)?.nombre || "tarjeta";
   const [menuPago, setMenuPago] = React.useState<null | { x: number; y: number; id: number }>(null);
   // Click derecho sobre un renglon del historial: abrir la factura, editar o quitar el pago, abrir la nota.
   const [menuMov, setMenuMov] = React.useState<null | { x: number; y: number; mov: Movimiento }>(null);
@@ -163,6 +182,22 @@ export function FichaProveedor({
           </span>
         </div>
 
+        {separado && (
+          <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12.5, color: "#64748b" }}>Proveedor de las dos empresas · ver la cuenta de:</span>
+            {ledgersPorEmpresa.map((x) => (
+              <button
+                key={x.company}
+                type="button"
+                onClick={() => setEmpresaVista(x.company)}
+                style={{ ...input, cursor: "pointer", fontWeight: 800, ...(x.company === empresaVista ? { background: "#0f172a", color: "#fff", borderColor: "#0f172a" } : {}) }}
+              >
+                {x.short}
+              </button>
+            ))}
+          </div>
+        )}
+
         {!proveedor && (
           <div style={{ ...caja, marginTop: 12, background: "#fffbeb", borderColor: "#fde68a" }}>
             Este proveedor no está en el listado. Dalo de alta para poder fijarle el tipo de gasto y la condición de pago.{" "}
@@ -234,6 +269,29 @@ export function FichaProveedor({
                 <input type="checkbox" checked={!!proveedor.currentAccount} onChange={(e) => onUpdateProveedor(proveedor.id, "currentAccount", e.target.checked)} />
                 Tiene cuenta corriente (convenio de pago diferido)
               </label>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, fontSize: 13 }}>
+                <input type="checkbox" checked={!!proveedor.debitoAutomatico} onChange={(e) => onUpdateProveedor(proveedor.id, "debitoAutomatico", e.target.checked)} />
+                Débito automático
+              </label>
+              {proveedor.debitoAutomatico && (
+                <div style={{ marginTop: 6, fontSize: 13 }}>
+                  <select
+                    style={{ ...input, width: "100%" }}
+                    value={proveedor.tarjetaDebitoId ?? ""}
+                    onChange={(e) => onUpdateProveedor(proveedor.id, "tarjetaDebitoId", e.target.value ? Number(e.target.value) : null)}
+                  >
+                    <option value="">De la cuenta del banco (sin tarjeta)</option>
+                    {tarjetas.map((t) => (
+                      <option key={t.id} value={t.id}>Tarjeta {t.nombre}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                    {proveedor.tarjetaDebitoId != null
+                      ? `Sus facturas se pagan con el resumen de la tarjeta ${nombreTarjeta(proveedor.tarjetaDebitoId)} (Bancos y tarjetas): no se programan aparte, para no pagarlas dos veces.`
+                      : "Lo debita el banco: sus facturas se programan con la condición de pago y el débito del extracto las paga."}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -404,6 +462,7 @@ export function FichaProveedor({
                     <td style={{ padding: "4px 6px", fontSize: 11.5, color: "#64748b" }}>
                       {f.fechaElegida ? "fecha elegida" : "según la condición"}
                       {f.administration === "negro" ? " · negro" : " · blanco"}
+                      {f.tarjetaDebitoId != null && <strong style={{ color: "#7c3aed" }}> · se debita de la tarjeta {nombreTarjeta(f.tarjetaDebitoId)}</strong>}
                     </td>
                   </tr>
                 ))}

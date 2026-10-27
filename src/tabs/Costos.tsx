@@ -249,7 +249,32 @@ export function CostosTab({
   const filteredEntries = costEntries.filter(matchesSearch);
 
   // Vista jerarquica fijo/variable -> grupo (con total) -> gastos asignados debajo. Respeta el buscador.
-  const composition = composeCostEntriesByGroup(filteredEntries, costGroups, companyScope);
+  // Se filtra por MES y va ordenada por FECHA DE FACTURA (27/10/2026): la del pago si no tiene factura.
+  const [mesComposicion, setMesComposicion] = React.useState<string>("");
+  const fechaFacturaDePago = React.useMemo(() => {
+    const m = new Map<number, string>();
+    purchaseInvoices.forEach((i: any) => {
+      if (!i.invoiceDate) return;
+      [i.paidByCostEntryId, ...(i.pagosIds || [])].forEach((id: number | null | undefined) => {
+        if (id != null && !m.has(id)) m.set(id, i.invoiceDate);
+      });
+    });
+    return m;
+  }, [purchaseInvoices]);
+  const fechaFactura = (e: { id: number; date: string }) => fechaFacturaDePago.get(e.id) || e.date || "";
+  const mesesComposicion = Array.from(new Set(filteredEntries.map((e) => fechaFactura(e).slice(0, 7)).filter(Boolean))).sort().reverse();
+  const compositionBase = composeCostEntriesByGroup(
+    mesComposicion ? filteredEntries.filter((e) => fechaFactura(e).startsWith(mesComposicion)) : filteredEntries,
+    costGroups,
+    companyScope
+  );
+  const porFechaFactura = <T extends { id: number; date: string }>(es: T[]) => [...es].sort((a, b) => fechaFactura(a).localeCompare(fechaFactura(b)) || a.id - b.id);
+  const composition = {
+    fijos: compositionBase.fijos.map((c) => ({ ...c, entries: porFechaFactura(c.entries) })),
+    variables: compositionBase.variables.map((c) => ({ ...c, entries: porFechaFactura(c.entries) })),
+    sinClasificar: { ...compositionBase.sinClasificar, entries: porFechaFactura(compositionBase.sinClasificar.entries) },
+  };
+  const nombreMes = (m: string) => new Date(`${m}-15T12:00:00`).toLocaleDateString("es-AR", { month: "long", year: "numeric" });
 
   // Bloque de caja chica: gastos que entraron por caja chica, para clasificarlos a un grupo de costo.
   const cajaChicaList = pettyCashExpenses
@@ -449,7 +474,7 @@ export function CostosTab({
 
       {vista === "grupos" && (
       <Panel
-        title="Grupos de costos" span="half"
+        title="Grupos de costos" span="full"
         actions={<ButtonLike onClick={addCostGroup}>Agregar grupo</ButtonLike>}
       >
         <div style={styles.sectionNote}>
@@ -1211,10 +1236,21 @@ export function CostosTab({
       )}
 
       {vista === "composicion" && (
-      <Panel title="Composicion: fijos / variables → grupo → gastos" span="half">
+      <Panel
+        title="Composicion: fijos / variables → grupo → gastos"
+        span="full"
+        actions={
+          <select style={{ ...styles.input, maxWidth: 220 }} value={mesComposicion} onChange={(e) => setMesComposicion(e.target.value)} title="Mes de la factura">
+            <option value="">Todos los meses</option>
+            {mesesComposicion.map((m) => (
+              <option key={m} value={m}>{nombreMes(m)}</option>
+            ))}
+          </select>
+        }
+      >
         <div style={styles.sectionNote}>
-          Cada grupo con su TOTAL y, debajo, los gastos asignados: así ves cómo se compone cada tipo de
-          costo a medida que cargás. El buscador de "Gastos cargados" también filtra esta vista.
+          Cada grupo con su TOTAL y, debajo, los gastos asignados ordenados por fecha de factura: así ves cómo se
+          compone cada tipo de costo. Se filtra por el mes de la factura; el buscador de "Gastos cargados" también filtra esta vista.
         </div>
         {[
           { title: "COSTOS FIJOS", comps: composition.fijos },
@@ -1264,7 +1300,7 @@ export function CostosTab({
                               {money(e.amount)}
                             </td>
                             <td style={{ ...tdFlexible, color: "#64748b" }}>
-                              {e.date}
+                              {fechaFactura(e)}
                               <span style={{ color: "#94a3b8" }}> · {e.supplier || "sin proveedor"}</span>
                             </td>
                           </tr>
@@ -1305,7 +1341,7 @@ export function CostosTab({
                     </td>
                     <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(e.amount)}</td>
                     <td style={{ ...tdFlexible, color: "#64748b" }}>
-                      {e.date}
+                      {fechaFactura(e)}
                       <span style={{ color: "#94a3b8" }}> · {e.supplier || "sin proveedor"}</span>
                     </td>
                   </tr>

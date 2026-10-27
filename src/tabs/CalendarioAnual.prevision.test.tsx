@@ -100,6 +100,15 @@ describe("la previsión de seguros en la planilla", () => {
     expect(host.textContent).not.toContain("≈ 5000");
   });
 
+  it("una factura programada se ve aunque en el mes ya se le pagó otra al mismo proveedor (Lacapol)", () => {
+    const factura = { ...prevision, amount: 7000, porDocumento: true };
+    const host = render({ previsiones: [factura], entries: [debitoReal] });
+    expect(host.textContent).toContain("≈ 7000");
+    // Sin la marca de documento (un seguro) el pago del mes sí la da por cubierta.
+    const host2 = render({ previsiones: [{ ...factura, porDocumento: false }], entries: [debitoReal] });
+    expect(host2.textContent).not.toContain("≈ 7000");
+  });
+
   it("sin previsiones la planilla se dibuja igual que siempre", () => {
     const host = render({});
     expect(celdas(host).length).toBeGreaterThan(0);

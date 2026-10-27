@@ -22,6 +22,8 @@ export type ProveedorLike = {
   tipoGasto?: string;
   tipoGastoLocked?: boolean;
   condicionPago?: CondicionPago;
+  debitoAutomatico?: boolean;
+  tarjetaDebitoId?: number | null;
 };
 
 const digits = (v: string) => String(v || "").replace(/\D/g, "");
@@ -125,7 +127,14 @@ export type FacturaPorPagar = {
   fechaElegida: boolean; // true = cargada en la factura; false = sale de la condicion del proveedor
   administration: "blanco" | "negro";
   conceptKey?: string;
+  // El proveedor la debita de esta tarjeta: se paga con el resumen, no es un pago aparte.
+  tarjetaDebitoId?: number;
 };
+
+// La tarjeta de la que debita el proveedor (solo si tiene debito automatico con tarjeta).
+export function tarjetaDeDebito(prov: ProveedorLike | undefined): number | undefined {
+  return prov?.debitoAutomatico && prov.tarjetaDebitoId != null ? prov.tarjetaDebitoId : undefined;
+}
 
 // Facturas YA PAGADAS que estaban programadas (Nicolas, 2026-10-23: "cuando realizo un pago no quiero que
 // desaparezca el item; quiero que figure tachado para saber que ya lo realice"). Misma fecha que tenian
@@ -178,6 +187,7 @@ export function facturasPorPagar(facturas: FacturaLike[], proveedores: Proveedor
       fechaElegida: !!f.fechaPagoPrevista,
       administration: f.administration === "negro" ? "negro" : "blanco",
       conceptKey: tipoGastoEfectivo(f.conceptKey, prov),
+      ...(tarjetaDeDebito(prov) != null ? { tarjetaDebitoId: tarjetaDeDebito(prov) } : {}),
     });
   });
   return out;

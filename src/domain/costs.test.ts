@@ -1,6 +1,7 @@
 import {
   COST_GROUP_PAYROLL,
   COST_GROUP_PETTY_CASH,
+  COST_GROUP_SIN_CLASIFICAR,
   COST_GROUP_PURCHASES,
   DEFAULT_COST_GROUP_SEEDS,
   aggregateCosts,
@@ -91,7 +92,8 @@ describe("resolveGroupKind / isAutoCostGroup", () => {
   it("reconoce los grupos automaticos", () => {
     // Compras dejo de ser automatico: la factura ya no es el gasto, se le imputan los PAGOS a mano.
     expect(isAutoCostGroup(COST_GROUP_PURCHASES)).toBe(false);
-    expect(isAutoCostGroup(COST_GROUP_PETTY_CASH)).toBe(true);
+    // Caja chica dejo de ser grupo (27/10/2026): sus gastos van a los grupos existentes.
+    expect(isAutoCostGroup(COST_GROUP_PETTY_CASH)).toBe(false);
     expect(isAutoCostGroup(COST_GROUP_PAYROLL)).toBe(true);
     expect(isAutoCostGroup("Edilicios")).toBe(false);
   });
@@ -108,7 +110,7 @@ describe("buildCostRows", () => {
 
     expect(rows.find((r) => r.origin === "manual")?.group).toBe(COST_GROUP_PURCHASES);
     expect(rows.some((r) => r.origin === "compras")).toBe(false);
-    expect(rows.find((r) => r.origin === "cajaChica")?.group).toBe(COST_GROUP_PETTY_CASH);
+    expect(rows.find((r) => r.origin === "cajaChica")?.group).toBe(COST_GROUP_SIN_CLASIFICAR);
     const payrollRows = rows.filter((r) => r.origin === "personal");
     expect(payrollRows).toHaveLength(2);
     expect(payrollRows.find((r) => r.administration === "blanco")?.amount).toBe(900);
@@ -329,7 +331,7 @@ describe("composeCostEntriesByGroup", () => {
 });
 
 describe("buildCostRows: caja chica clasificable", () => {
-  it("caja chica va a su grupo asignado si lo tiene; si no, al grupo auto Caja chica", () => {
+  it("caja chica va a su grupo asignado si lo tiene; si no, queda Sin clasificar", () => {
     const rows = buildCostRows({
       entries: [],
       pettyCash: [
@@ -339,7 +341,7 @@ describe("buildCostRows: caja chica clasificable", () => {
       payroll: [],
     });
     expect(rows.find((r) => r.amount === 100)?.group).toBe("Edilicios");
-    expect(rows.find((r) => r.amount === 50)?.group).toBe(COST_GROUP_PETTY_CASH);
+    expect(rows.find((r) => r.amount === 50)?.group).toBe(COST_GROUP_SIN_CLASIFICAR);
     // sigue siendo origen cajaChica (no se convierte en CostEntry -> no hay doble conteo)
     expect(rows.every((r) => r.origin === "cajaChica")).toBe(true);
   });

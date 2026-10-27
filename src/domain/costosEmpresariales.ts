@@ -36,7 +36,7 @@ export type CostoEmpresarial = {
 };
 
 // Si nunca se eligio: los grupos fijos cargados a mano impactan en su empresa. Los variables y los
-// automaticos (Personal, Caja chica) no, porque ya entran al presupuesto por otro lado (materiales,
+// automaticos (Personal) no, porque ya entran al presupuesto por otro lado (materiales,
 // mano de obra) y se contarian dos veces.
 export function impactoPorDefecto(kind: CostKind, auto: boolean): ImpactoCosto {
   return kind === "fijo" && !auto ? "empresa" : "ninguna";

@@ -405,7 +405,7 @@ export function PersonalTab(props: PersonalTabProps) {
             </div>
           )}
 
-          {!selectedEmployee && (
+          {(
           <div style={{ order: 1, gridColumn: "1 / -1" }}>
           {(() => {
             let rojo = 0;
@@ -575,7 +575,7 @@ export function PersonalTab(props: PersonalTabProps) {
           </Panel>
           </div>
 
-          {!selectedEmployee && (
+          {(
           <div style={{ order: 3, gridColumn: "1 / -1" }}>
           <Panel title="Empleados" span="full">
             <div style={{ ...planillaWrap, ...anchosNomina.vars }}>
@@ -986,7 +986,7 @@ export function PersonalTab(props: PersonalTabProps) {
           </div>
           )}
 
-          {!selectedEmployee && (() => {
+          {(() => {
             // LIQUIDACION MENSUAL: se elige el mes y, cuando TODA la nomina lo tiene guardado, se
             // exporta el PDF con la situacion de todos, separado por empresa. Mientras falte guardar
             // alguno, el boton queda apagado y se dice quien falta (asi no sale un PDF a medio cargar).
@@ -1136,7 +1136,7 @@ export function PersonalTab(props: PersonalTabProps) {
             );
           })()}
 
-          {!selectedEmployee && (
+          {(
             <div style={{ order: 3, gridColumn: "1 / -1" }}>
               <Panel title="Reglas de liquidacion" span="full">
                 <ReglasLiquidacion config={employeeBaseConfig} />
@@ -1144,7 +1144,7 @@ export function PersonalTab(props: PersonalTabProps) {
             </div>
           )}
 
-          {!selectedEmployee && (
+          {(
             <div style={{ order: 3, gridColumn: "1 / -1" }}>
               <CategoriasInternas
                 categorias={categoriasInternas}
@@ -1526,7 +1526,7 @@ export function PersonalTab(props: PersonalTabProps) {
 
           {/* BAJAS. El que deja de trabajar no se borra: sale de la nomina y queda aca, con su ficha,
               su asistencia, sus recibos y sus liquidaciones. Se puede reincorporar. */}
-          {!selectedEmployee && formerEmployees.length > 0 && (
+          {formerEmployees.length > 0 && (
           <div style={{ order: 6, gridColumn: "1 / -1" }}>
             <Panel title={`Bajas (${formerEmployees.length})`} span="full">
               <div style={styles.muted}>
@@ -1707,8 +1707,17 @@ export function PersonalTab(props: PersonalTabProps) {
           </div>
           )}
 
+          {/* La ficha como VENTANA EMERGENTE (como la del proveedor): el listado queda atras. zIndex 70: arriba
+              de la barra y el chat, abajo de las ventanas del sistema que se abren desde la ficha. */}
           {selectedEmployee && (
-            <div style={{ order: 3, gridColumn: "1 / -1" }}>
+            <div
+              onClick={() => setSelectedEmployeeId(null)}
+              style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 70, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "40px 12px" }}
+            >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ background: "#ffffff", borderRadius: 12, width: "min(1200px, 100%)", padding: 6, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}
+            >
             <Panel
               span="full"
               title={`Ficha del empleado: ${selectedEmployee.name || "Empleado"}`}
@@ -3119,6 +3128,7 @@ export function PersonalTab(props: PersonalTabProps) {
                 );
               })()}
             </Panel>
+            </div>
             </div>
           )}
         </div>

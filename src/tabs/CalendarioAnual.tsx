@@ -196,6 +196,9 @@ export function CalendarioAnualTab({
     estado?: string;
     administration?: "blanco" | "negro";
     cuentaId?: string; // de que cuenta sale (si se eligio)
+    // Atada a una factura / cuota / resumen: se ve hasta que se paga ESE documento, aunque en el mes ya
+    // haya otros pagos en la misma fila (no se concilia por mes).
+    porDocumento?: boolean;
   }>;
   // Ver SOLO una seccion de la planilla (ej. "cobranzas" para el reflejo en Facturacion y cobranzas).
   // Es el MISMO componente con los mismos datos y los mismos handlers: por eso las dos vistas quedan
@@ -747,6 +750,8 @@ export function CalendarioAnualTab({
     const porFila = enVista.map((p) => ({ ...p, conceptKey: p.titulo ? `${p.conceptKey}|${p.titulo}` : p.conceptKey }));
     const porDia = previsionPorConceptoYDia(porFila);
     const porMes = previsionPorConceptoYMes(porFila);
+    // Lo de documentos (facturas, cuotas, resumenes) por dia: eso se dibuja aunque el mes ya tenga pagos.
+    const porDiaDoc = previsionPorConceptoYDia(porFila.filter((p) => p.porDocumento));
     // El peor estado del dia en cada fila (vencido > hoy > proximo > el resto), para el color.
     const PESO: Record<string, number> = { vencido: 4, hoy: 3, proximo: 2, en_ventana: 1 };
     const estadoDia = new Map<string, string>();
@@ -798,7 +803,7 @@ export function CalendarioAnualTab({
       if (!titulosPorRenglon.has(p.conceptKey)) titulosPorRenglon.set(p.conceptKey, new Set());
       titulosPorRenglon.get(p.conceptKey)!.add(p.titulo);
     });
-    return { porDia, porMes, realPorMes, detalle, estadoDia, titulosPorRenglon, empresaDia };
+    return { porDia, porDiaDoc, porMes, realPorMes, detalle, estadoDia, titulosPorRenglon, empresaDia };
   }, [previsiones, companyScope, dayCols, agg]);
 
   // SUMA ESTIMADA (Nicolas, 2026-10-20): "si bien no suma en el valor real, una fila con la suma estimada
@@ -839,7 +844,7 @@ export function CalendarioAnualTab({
       const fila = p.titulo ? `${p.conceptKey}|${p.titulo}` : p.conceptKey;
       const mes = p.date.slice(0, 7);
       const real = prev.realPorMes.get(fila)?.get(mes) || 0;
-      if (real > 0) return;
+      if (real > 0 && !p.porDocumento) return;
       const monto = Number(p.amount || 0);
       if (!(monto > 0)) return;
       const negro = p.administration === "negro";
@@ -898,9 +903,10 @@ export function CalendarioAnualTab({
     if (!(previstoMes > 0)) return null;
     const realMes = prev.realPorMes.get(fila)?.get(mes) || 0;
     const estado = estadoDePrevision(previstoMes, realMes);
-    const previstoDia = prev.porDia.get(fila)?.get(iso) || 0;
+    // Pendiente por mes, o una factura/cuota que todavia no se pago (aunque el mes ya tenga otros pagos).
+    const previstoDia = estado === "pendiente" ? prev.porDia.get(fila)?.get(iso) || 0 : prev.porDiaDoc.get(fila)?.get(iso) || 0;
     const que = prev.detalle.get(`${fila}|${iso}`) || "";
-    if (!real && previstoDia > 0 && estado === "pendiente") {
+    if (!real && previstoDia > 0) {
       const est = prev.estadoDia.get(`${fila}|${iso}`) || "";
       return {
         texto: `≈ ${money(previstoDia)}`,
@@ -1241,6 +1247,12 @@ export function CalendarioAnualTab({
   useEffect(() => {
     window.localStorage.setItem("calendarioAnual.dayW", String(dayW));
   }, [dayW]);
+  // Alto de las FILAS FIJADAS de arriba (totales, plata disponible, neto): segun la resolucion el numero
+  // (y mas el "≈" de lo estimado, que va en dos lineas) no entra. Se agranda o achica; queda en el navegador.
+  const [totRowH, setTotRowH] = useState(() => readW("calendarioAnual.totRowH", TOT_ROW_H));
+  useEffect(() => {
+    window.localStorage.setItem("calendarioAnual.totRowH", String(totRowH));
+  }, [totRowH]);
   // Vista compacta: un solo botón para achicar todo de una (el arrastre sigue estando para el fino).
   const esCompacto = labelW <= LABEL_W_COMPACT && dayW <= DAY_W_COMPACT;
   // Encabezado inmovilizado: la fila de MESES queda arriba de todo y la de DÍAS pegada abajo de ella,
@@ -2295,6 +2307,15 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
             >
               {esCompacto ? "Ancho normal" : "Compacto"}
             </button>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 2 }} title="Alto de las filas fijadas de arriba (totales, plata disponible, neto)">
+              <span style={{ fontSize: 12, color: "#475569", marginRight: 2 }}>Filas fijadas</span>
+              <button style={btnSecondary} disabled={totRowH <= TOT_ROW_H_MIN} onClick={() => setTotRowH((h) => Math.max(TOT_ROW_H_MIN, h - 4))} title="Achicar las filas fijadas">
+                −
+              </button>
+              <button style={btnSecondary} disabled={totRowH >= TOT_ROW_H_MAX} onClick={() => setTotRowH((h) => Math.min(TOT_ROW_H_MAX, h + 4))} title="Agrandar las filas fijadas">
+                +
+              </button>
+            </span>
             {(flags || []).length > 0 && (
               <button
                 style={{ ...btnSecondary, borderColor: "#fca5a5", color: "#b91c1c", fontWeight: 700 }}
@@ -2497,11 +2518,11 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   (el desglose por empresa solo aparece con scope = Todas). */}
               {(() => {
                 let idx = 0;
-                const nextTop = () => monthRowH + dayRowH + idx++ * TOT_ROW_H;
+                const nextTop = () => monthRowH + dayRowH + idx++ * totRowH;
                 const rowSticky = (top: number) => ({
                   position: "sticky" as const,
                   top,
-                  height: TOT_ROW_H,
+                  height: totRowH,
                   zIndex: 5,
                 });
                 const labelSticky = (top: number, bg: string) => ({
@@ -2820,8 +2841,9 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                 const previstoMes = prev.porMes.get(it.key)?.get(mesDeLaCelda) || 0;
                                 const realMes = prev.realPorMes.get(it.key)?.get(mesDeLaCelda) || 0;
                                 const estadoPrev = previstoMes > 0 ? estadoDePrevision(previstoMes, realMes) : null;
-                                const previstoDia = prev.porDia.get(it.key)?.get(c.iso) || 0;
-                                const mostrarPrev = !v && previstoDia > 0 && estadoPrev === "pendiente";
+                                const previstoDia =
+                                  estadoPrev === "pendiente" ? prev.porDia.get(it.key)?.get(c.iso) || 0 : prev.porDiaDoc.get(it.key)?.get(c.iso) || 0;
+                                const mostrarPrev = !v && previstoDia > 0;
                                 const colorPrev = mostrarPrev ? COLOR_PROGRAMADO[prev.estadoDia.get(`${it.key}|${c.iso}`) || ""] : undefined;
                                 const fondoPrev = mostrarPrev ? fondoProgramado(it.key, c.iso) : {};
                                 const quePrev = prev.detalle.get(`${it.key}|${c.iso}`) || "";
@@ -4781,7 +4803,10 @@ const tdStickyLabel: React.CSSProperties = {
 };
 // Alto fijo de cada fila de TOTALES. Es fijo a proposito: con el alto conocido se puede calcular el
 // `top` de cada una sin medirlas, y quedan todas parejas una abajo de la otra pegadas al encabezado.
+// Es el alto de arranque: desde la barra se agranda o achica (el top se sigue calculando con el alto elegido).
 const TOT_ROW_H = 22;
+const TOT_ROW_H_MIN = 18;
+const TOT_ROW_H_MAX = 64;
 
 const tdCell: React.CSSProperties = {
   padding: "4px 6px", borderBottom: "1px solid #f1f5f9", textAlign: "right", ...dayWidth,

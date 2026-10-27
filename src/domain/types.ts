@@ -1316,6 +1316,10 @@ export type Supplier = {
   tipoGastoLocked?: boolean;
   // Condicion de pago habitual: de aca sale la fecha de pago de cada factura sin pagar.
   condicionPago?: { tipo: "contado" } | { tipo: "dias"; dias: number } | { tipo: "diaDelMes"; dia: number };
+  // DEBITO AUTOMATICO (27/10/2026): el proveedor cobra solo. Con tarjeta, sus facturas se pagan en el
+  // resumen de ESA tarjeta (Bancos y tarjetas): no se programan aparte, si no se pagarian dos veces.
+  debitoAutomatico?: boolean;
+  tarjetaDebitoId?: number | null;
   // GRUPO DE COSTO del proveedor ("tipo|nombre", ej. "fijo|Administrativos"): a ese grupo van sus pagos
   // en el cash flow (EGRESOS · PROVEEDORES / CUENTAS CORRIENTES) si la factura no dice otro.
   grupoCosto?: string;

@@ -289,12 +289,13 @@ export function FichaCajaChica({
                   <th style={th}>Caja</th>
                   <th style={th}>Comprobante</th>
                   <th style={{ ...th, textAlign: "right" }}>Monto</th>
+                  <th style={th} />
                 </tr>
               </thead>
               <tbody>
                 {gastosVisibles.length === 0 && (
                   <tr>
-                    <td style={{ ...td, color: "#94a3b8" }} colSpan={7}>Sin gastos rendidos.</td>
+                    <td style={{ ...td, color: "#94a3b8" }} colSpan={8}>Sin gastos rendidos.</td>
                   </tr>
                 )}
                 {gastosVisibles.map((g) => {
@@ -334,6 +335,11 @@ export function FichaCajaChica({
                         >
                           {g.administration === "negro" ? "N" : "B"}
                         </span>
+                      </td>
+                      <td style={{ ...td, whiteSpace: "nowrap" }}>
+                        <button type="button" style={{ ...boton, padding: "2px 8px" }} title="Abrir el gasto para corregirlo" onClick={() => onAbrirGasto(g.id)}>
+                          ✎ Editar
+                        </button>
                       </td>
                     </tr>
                   );

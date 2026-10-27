@@ -15,13 +15,17 @@
 import type { CostEntry, CostGroup, CostKind, CompanyName } from "./types";
 
 export const COST_GROUP_PURCHASES = "Compras y materiales";
+// "Caja chica" YA NO ES UN GRUPO (Nicolas, 27/10/2026): la caja chica es solo la rendicion; cada gasto se
+// asigna a uno de los grupos existentes. El nombre queda para sacar el grupo viejo de los datos guardados.
 export const COST_GROUP_PETTY_CASH = "Caja chica";
+// Lo rendido que todavia no tiene grupo (no deberia pasar: rendir exige el grupo). Se ve como aviso.
+export const COST_GROUP_SIN_CLASIFICAR = "Sin clasificar";
 export const COST_GROUP_PAYROLL = "Personal";
 
 // Grupos automaticos: se alimentan de otras solapas, no admiten carga manual.
 // "Compras y materiales" SALIO de esta lista (2026-07-19): la factura de compra ya no es el gasto,
 // el gasto es el PAGO. Ahora es un grupo comun, para poder imputarle los pagos a proveedores.
-export const AUTO_COST_GROUPS: readonly string[] = [COST_GROUP_PETTY_CASH, COST_GROUP_PAYROLL];
+export const AUTO_COST_GROUPS: readonly string[] = [COST_GROUP_PAYROLL];
 
 // Semilla de grupos. Los 5 primeros son los mismos "grandes grupos" que Marcadores ya usa
 // en "costos fijos por grupo" (DEFAULT_FIXED_MARKER_GROUPS en App.tsx).
@@ -33,7 +37,6 @@ export const DEFAULT_COST_GROUP_SEEDS: Array<{ name: string; kind: CostKind; aut
   { name: "Operativos", kind: "fijo", auto: false },
   { name: COST_GROUP_PAYROLL, kind: "fijo", auto: true },
   { name: COST_GROUP_PURCHASES, kind: "variable", auto: false },
-  { name: COST_GROUP_PETTY_CASH, kind: "variable", auto: true },
 ];
 
 export function isAutoCostGroup(name: string): boolean {
@@ -184,8 +187,8 @@ export function buildCostRows(input: CostSourcesInput): CostSourceRow[] {
     rows.push({
       company: exp.company,
       date: exp.date,
-      // Si el usuario clasifico el gasto de caja chica a un grupo, va ahi; si no, al grupo auto.
-      group: exp.costGroup && exp.costGroup.trim() ? exp.costGroup.trim() : COST_GROUP_PETTY_CASH,
+      // Cada gasto de caja chica va al grupo que se le asigno al rendirlo; sin grupo queda "Sin clasificar".
+      group: exp.costGroup && exp.costGroup.trim() ? exp.costGroup.trim() : COST_GROUP_SIN_CLASIFICAR,
       amount,
       administration: exp.administration,
       origin: "cajaChica",

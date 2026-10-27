@@ -16,6 +16,49 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-27c",
+    fecha: "27/10/2026",
+    titulo: "Facturas programadas en el cash flow, fichas emergentes y débito automático",
+    items: [
+      {
+        titulo: "Toda factura programada se ve en el cash flow",
+        que: "Si a un proveedor ya se le había pagado otra factura en el mes, la planilla daba por cubierta la que faltaba y no mostraba su ≈ (pasaba con Expocolor y con cuatro de Dac). Ahora cada factura programada se ve hasta que se paga ESA factura.",
+        como: "Calendario anual: la fila del proveedor muestra el ≈ el día que vence.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Alto de las filas fijadas",
+        que: "Las filas fijadas de arriba del cash flow (totales, plata disponible, neto) se agrandan o achican, para que los números se vean en cualquier pantalla.",
+        como: "Calendario anual → 'Filas fijadas' − / + al lado de Compacto.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "La ficha del trabajo y la del personal se abren como ventana",
+        que: "Igual que la ficha del proveedor: se abre encima de la solapa y se cierra con Cerrar o tocando afuera.",
+        como: "Trabajos aprobados → abrir un trabajo · Personal → abrir una persona.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Débito automático y proveedores de las dos empresas",
+        que: "En la condición de pago del proveedor se marca 'Débito automático' y se elige la tarjeta: sus facturas se pagan con el resumen de esa tarjeta y no se programan aparte. Un proveedor puede ser de las dos empresas; su ficha muestra la cuenta de cada empresa por separado (solo las que puede ver cada uno).",
+        como: "Ficha del proveedor → Condición de pago habitual. Al dar de alta: Empresa → Las dos empresas.",
+        tab: "compras",
+      },
+      {
+        titulo: "Caja chica ya no es un grupo de costos",
+        que: "La caja chica es solo la rendición: cada gasto rendido va a uno de los grupos existentes (Operativos, Compras y materiales…). Al rendir, el grupo es obligatorio. Y en la ficha de caja chica cada gasto tiene un botón ✎ Editar para abrirlo y corregirlo.",
+        como: "Caja chica → ficha de la persona → Rendiciones → ✎ Editar.",
+        tab: "cajaChica",
+      },
+      {
+        titulo: "Composición fijos / variables por mes",
+        que: "Los bloques Composición y Grupos de costos ocupan todo el ancho. La composición se filtra por mes y los gastos van ordenados por fecha de factura.",
+        como: "Compras y análisis de gastos → Composición → elegir el mes arriba a la derecha.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-10-27b",
     fecha: "27/10/2026",
     titulo: "Costos empresariales: promedio de 3 meses por empresa",
@@ -28,7 +71,7 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Cada costo elige en qué empresa impacta",
-        que: "Click derecho sobre un grupo: impacta solo en los presupuestos de su empresa, en los de las dos o en ninguno. Por defecto impactan los grupos fijos cargados a mano; los variables y los automáticos (Personal, Caja chica) no, porque ya entran al presupuesto por materiales y mano de obra. Ahora un presupuesto de BGA ya no toma los costos fijos de De Raíz (y al revés), salvo los marcados 'las dos'.",
+        que: "Click derecho sobre un grupo: impacta solo en los presupuestos de su empresa, en los de las dos o en ninguno. Por defecto impactan los grupos fijos cargados a mano; los variables y los automáticos (Personal) no, porque ya entran al presupuesto por materiales y mano de obra. Ahora un presupuesto de BGA ya no toma los costos fijos de De Raíz (y al revés), salvo los marcados 'las dos'.",
         como: "Marcadores → Costos empresariales → click derecho en el grupo.",
         tab: "marcadores",
       },

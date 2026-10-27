@@ -88,6 +88,8 @@ export function GastoCajaChicaModal({
   if (!g.supplier.trim()) faltan.push("el proveedor");
   if (!g.date) faltan.push("la fecha");
   if (!(Number(g.amount) > 0)) faltan.push("el monto");
+  // Todo gasto de caja chica va a un grupo de costos existente (la caja chica no es un grupo).
+  if (!grupoEfectivo) faltan.push("el grupo de costo");
   if (g.administration === "blanco" && !g.invoiceNumber.trim()) faltan.push("el número de factura (blanco = con factura; si no tiene, es negro)");
 
   return (

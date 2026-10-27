@@ -33,6 +33,9 @@ export type PrevisionDeRenglon = {
   descripcion: string;
   administration: "blanco" | "negro";
   cuentaId?: string;
+  // Atada a UN documento (factura, cuota, resumen): desaparece sola cuando se paga ESE documento. No se
+  // concilia por mes contra la fila: otro pago al mismo proveedor en el mes no la cubre (Lacapol, 27/10).
+  porDocumento?: boolean;
 };
 
 const FINANCIEROS = renglonProveedor(SECCION_PROVEEDORES, SECCIONES_REEMPLAZADAS.bancos);
@@ -68,6 +71,7 @@ export function programadosEnRenglones(
       estado: i.estado,
       descripcion: i.titulo,
       administration: i.administration === "negro" ? "negro" : "blanco",
+      porDocumento: true,
     });
   });
   return out;
