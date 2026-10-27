@@ -339,9 +339,10 @@ export const styles: Record<string, CSSProperties> = {
     gap: 16,
     width: "100%",
   },
+  // Ficha de personal (27/10/2026): todo a lo ancho de la ficha; la liquidacion del mes va DEBAJO del calendario.
   personalAttendancePayrollGrid: {
     display: "grid",
-    gridTemplateColumns: "minmax(720px, 3fr) minmax(320px, 1fr)",
+    gridTemplateColumns: "minmax(0, 1fr)",
     gap: 16,
     width: "100%",
     alignItems: "start",
@@ -353,12 +354,12 @@ export const styles: Record<string, CSSProperties> = {
     width: "100%",
   },
   personalPayrollPane: {
-    minWidth: 320,
+    minWidth: 0,
     width: "100%",
   },
   liquidationColumn: {
     display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr)",
+    gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))",
     gap: 10,
   },
   employeeSubsection: {

@@ -3004,20 +3004,22 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                               />
                             </Field>
-                            <Field label="Notas de liquidacion">
-                              <textarea
-                                style={styles.textarea}
-                                value={payroll.notes}
-                                onChange={(e) =>
-                                  updateEmployeePayrollManual(
-                                    selectedEmployee.id,
-                                    payrollMonth,
-                                    "notes",
-                                    e.target.value
-                                  )
-                                }
-                              />
-                            </Field>
+                            <div style={{ gridColumn: "1 / -1" }}>
+                              <Field label="Notas de liquidacion">
+                                <textarea
+                                  style={styles.textarea}
+                                  value={payroll.notes}
+                                  onChange={(e) =>
+                                    updateEmployeePayrollManual(
+                                      selectedEmployee.id,
+                                      payrollMonth,
+                                      "notes",
+                                      e.target.value
+                                    )
+                                  }
+                                />
+                              </Field>
+                            </div>
                           </div>
 
                           <div style={{ ...styles.metricGrid, marginTop: 12 }}>
