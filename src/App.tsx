@@ -5336,13 +5336,17 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const approvedJobsSummary = useMemo(
     () =>
       visibleApprovedJobs.map((job) => {
+        // IVA DEL TRABAJO SIEMPRE POR FORMULA (Nicolas, 27/10/2026, caso 3430): neto x % de facturacion ACORDADO x IVA.
+        // Las facturas cargadas NO cambian lo que se cobra: si una se carga mal (o vacia, en $0) se cobra igual lo
+        // acordado y el sistema AVISA que hay que acomodarla (avisosFacturacion).
+        const vatPctTrabajo = Number(job.snapshot?.params?.vatPct ?? INVOICE_VAT_PCT);
         const billedNetFromPct = job.soldNetPrice * (job.billedPct / 100);
-        const billedNet = job.invoices.length > 0
-          ? job.invoices.reduce((acc, item) => acc + Number(item.subtotal || 0), 0)
-          : billedNetFromPct;
-        const invoiceVatAmount = job.invoices.length > 0
-          ? job.invoices.reduce((acc, item) => acc + Number(item.vat || 0), 0)
-          : billedNet * (Number(job.snapshot?.params?.vatPct ?? INVOICE_VAT_PCT) / 100);
+        const facturasReales = (job.invoices || []).filter((item) => Number(item.subtotal || 0) > 0 || Number(item.total || 0) > 0);
+        const facturasVacias = (job.invoices || []).length - facturasReales.length;
+        const invoicedNet = facturasReales.reduce((acc, item) => acc + Number(item.subtotal || 0), 0);
+        const invoicedVat = facturasReales.reduce((acc, item) => acc + Number(item.vat || 0), 0);
+        const billedNet = billedNetFromPct;
+        const invoiceVatAmount = billedNetFromPct * (vatPctTrabajo / 100);
         const billedGross = billedNet + invoiceVatAmount;
         const blackNet = Math.max(0, Number(job.soldNetPrice || 0) - billedNet);
         // Adicionales por circuito: blanco discrimina IVA (suma al blanco), negro va sin IVA (al negro).
@@ -5378,8 +5382,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           (acc, item) => acc + Number(item.amount || 0),
           0
         );
-        // A COBRAR = neto + adicionales (blancos y negros, por su monto) - descuentos + IVA FACTURADO
-        //           + IVA de los adicionales BLANCOS que todavia NO se facturaron.
+        // A COBRAR = neto + adicionales (blancos y negros, por su monto) - descuentos + IVA POR FORMULA
+        //           (neto x %facturado x IVA) + IVA de los adicionales BLANCOS. Las facturas no lo cambian (27/10/2026);
+        // lo de abajo queda para el desglose "sin facturar".
         // El IVA de cada adicional blanco se cuenta UNA sola vez:
         //   - ya facturado -> viene dentro de invoiceVatAmount (antes se sumaba ademas additionalsVat y
         //     quedaba DOBLE: ej. 3169 Mitre, saldo = 22.575 = ese IVA);
@@ -5395,17 +5400,32 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         );
         const additionalsVatPendiente =
           additionalsWhiteNet > 0 ? adicionalesBlancosSinFacturar * (additionalsVat / additionalsWhiteNet) : 0;
-        const valueToCollect =
-          job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount + additionalsVatPendiente;
-        // Manda el trabajo aprobado: el % anticipo se resuelve del job (fallback forma de pago) y
-        // el IVA va SOLO sobre lo facturado (invoiceVatAmount). Anticipo = %anticipo x neto + IVA facturado.
+        // Por formula, el IVA de los adicionales blancos va SIEMPRE (esten o no facturados).
+        const valueToCollect = job.soldNetPrice + additionalsTotal - discountsTotal + invoiceVatAmount + additionalsVat;
+        // Lo que hay que acomodar en las facturas (no cambia lo que se cobra).
+        const facturaEsperadaNet = billedNetFromPct + additionalsWhiteNet;
+        const avisosFacturacion: string[] = [];
+        if (facturasVacias > 0) avisosFacturacion.push(`${facturasVacias} factura(s) vacía(s) (sin importe): borrala(s) o completala(s).`);
+        // Tolerancia: no avisar por redondeos (hasta $500 de neto o 5 pesos / 0,5% de IVA).
+        if (invoicedNet > facturaEsperadaNet + 500)
+          avisosFacturacion.push(`Se facturó ${money(invoicedNet - facturaEsperadaNet)} de neto por ENCIMA de lo acordado (${money(facturaEsperadaNet)}).`);
+        facturasReales.forEach((item) => {
+          const esperado = Number(item.subtotal || 0) * (vatPctTrabajo / 100);
+          if (Math.abs(Number(item.vat || 0) - esperado) > Math.max(5, esperado * 0.005))
+            avisosFacturacion.push(`La factura ${item.invoiceNumber || "sin número"} tiene IVA ${money(Number(item.vat || 0))}; el ${vatPctTrabajo}% de su neto es ${money(esperado)}.`);
+        });
+        // Manda el trabajo aprobado: el % anticipo se resuelve del job (fallback forma de pago). Anticipo = %anticipo x
+        // neto + IVA del trabajo (el IVA va entero en el anticipo). Partido por circuito (27/10/2026): blanco = la parte
+        // facturada del anticipo + el IVA; negro = %anticipo x neto x (100 - %facturado), sin IVA.
         const anticipoPctResolved = resolveAdvancePct(
           job.advancePct,
           job.snapshot?.budget?.paymentTerms || ""
         );
-        const anticipoToCharge = Number(
-          (job.soldNetPrice * (anticipoPctResolved / 100) + invoiceVatAmount).toFixed(2)
-        );
+        const fraccionFacturada = Math.min(100, Math.max(0, Number(job.billedPct || 0))) / 100;
+        const anticipoNetoTotal = job.soldNetPrice * (anticipoPctResolved / 100);
+        const anticipoBlanco = Number((anticipoNetoTotal * fraccionFacturada + invoiceVatAmount).toFixed(2));
+        const anticipoNegro = Number((anticipoNetoTotal * (1 - fraccionFacturada)).toFixed(2));
+        const anticipoToCharge = Number((anticipoBlanco + anticipoNegro).toFixed(2));
         const saldoToCharge = Math.max(0, valueToCollect - anticipoToCharge);
         const estimatedProductionDays =
           totalAvailableHours > 0 ? job.estimatedJobHours / (totalAvailableHours / 22 || 1) : 0;
@@ -5477,6 +5497,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           additionalsBlackNet,
           additionalsVat,
           additionalsVatPendiente,
+          invoicedNetReal: invoicedNet,
+          invoicedVatReal: invoicedVat,
+          avisosFacturacion,
           additionalsUsdWhiteNet,
           additionalsUsdBlackNet,
           additionalsUsdVat,
@@ -5499,6 +5522,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           soldGrossPrice: Number((job.soldNetPrice + invoiceVatAmount).toFixed(2)),
           anticipoPctResolved,
           anticipoToCharge,
+          anticipoBlanco,
+          anticipoNegro,
           saldoToCharge,
           precarga,
           estimatedProductionDays,

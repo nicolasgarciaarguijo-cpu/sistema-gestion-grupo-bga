@@ -956,6 +956,14 @@ export function AprobadosTab({
                 </Panel>
 
                 <Panel title="Resumen economico" nested>
+                  {(selectedApprovedJob.avisosFacturacion || []).length > 0 && (
+                    <div style={{ background: "#fff7ed", border: "1px solid #fdba74", borderRadius: 8, padding: "8px 10px", marginBottom: 8, fontSize: 12.5, color: "#9a3412" }}>
+                      <strong>⚠ Hay que acomodar las facturas</strong> (lo que se cobra no cambia: sale del % acordado)
+                      <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+                        {(selectedApprovedJob.avisosFacturacion || []).map((x: string) => <li key={x}>{x}</li>)}
+                      </ul>
+                    </div>
+                  )}
                   <SummaryRow label="Neto presupuesto (s/IVA)" value={money(selectedApprovedJob.soldNetPrice)} />
                   <SummaryRow label="Descuentos" value={money(selectedApprovedJob.totalDiscountAmount)} />
                   <SummaryRow label="% facturado" value={pct(selectedApprovedJob.billedPct)} />
@@ -989,7 +997,7 @@ export function AprobadosTab({
                   })()}
                   <SummaryRow label="Neto facturado (s/IVA)" value={money(selectedApprovedJob.billedNet)} />
                   <SummaryRow label="Circuito negro" value={money(selectedApprovedJob.blackNet)} />
-                  <SummaryRow label="IVA 21% (sobre lo facturado)" value={money(selectedApprovedJob.invoiceVatAmount)} />
+                  <SummaryRow label={`IVA 21% (sobre el ${pct(selectedApprovedJob.billedPct)} acordado)`} value={money(selectedApprovedJob.invoiceVatAmount)} />
                   <SummaryRow label="Bruto facturado (c/IVA)" value={money(selectedApprovedJob.billedGross)} />
                   <SummaryRow
                     label="Adicionales blanco (neto)"
@@ -1018,8 +1026,18 @@ export function AprobadosTab({
                   )}
                   <SummaryRow label="Valor a cobrar (c/IVA)" value={money(selectedApprovedJob.valueToCollect)} strong />
                   <SummaryRow
-                    label={`Anticipo a cobrar (${pct(selectedApprovedJob.anticipoPctResolved)} neto + IVA facturado)`}
+                    label={`Anticipo a cobrar (${pct(selectedApprovedJob.anticipoPctResolved)} del neto)`}
                     value={money(selectedApprovedJob.anticipoToCharge)}
+                  />
+                  <SummaryRow
+                    label={`  Anticipo blanco (${pct(selectedApprovedJob.billedPct)} facturado + IVA)`}
+                    value={money(selectedApprovedJob.anticipoBlanco || 0)}
+                    color="blanco"
+                  />
+                  <SummaryRow
+                    label={`  Anticipo negro (${pct(100 - Number(selectedApprovedJob.billedPct || 0))} sin factura)`}
+                    value={money(selectedApprovedJob.anticipoNegro || 0)}
+                    color="negro"
                   />
                   <SummaryRow label="Saldo a cobrar" value={money(selectedApprovedJob.saldoToCharge)} />
                   <SummaryRow
