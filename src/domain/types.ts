@@ -73,6 +73,8 @@ export type Material = {
   sortOrder?: number;
   sourceMarkerId?: number;
   sourceCompany?: CompanyName;
+  // Vino de los materiales de los tipos de mueble (27/10/2026): al volver a pasarlos se reemplazan, no se duplican.
+  desdeMuebles?: boolean;
 };
 
 export type LaborRow = {

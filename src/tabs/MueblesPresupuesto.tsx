@@ -34,6 +34,8 @@ export function MueblesPresupuesto({
   manoDeObra,
   money,
   onPasarAManoDeObra,
+  materialesDeMuebles = 0,
+  onPasarMateriales,
   nuevoId,
   soloMuebles = false,
   titulo = "Muebles del presupuesto",
@@ -51,6 +53,9 @@ export function MueblesPresupuesto({
   manoDeObra: Array<{ employeeId?: number; jobHours: number; hourlyRate: number }>;
   money: (n: number) => string;
   onPasarAManoDeObra: (plan: PlanDeMuebles) => void;
+  // Materiales de los tipos de mueble (con su desperdicio): cuantos items hay y como pasarlos al bloque de materiales.
+  materialesDeMuebles?: number;
+  onPasarMateriales?: () => void;
   // En Fabricacion (muebles de un trabajo) no va lo de mano de obra: solo la lista y sus horas.
   soloMuebles?: boolean;
   titulo?: string;
@@ -240,6 +245,15 @@ export function MueblesPresupuesto({
             >
               {alDia ? "Mano de obra al día ✓" : "Pasar a mano de obra (por persona)"}
             </ButtonLike>
+            {onPasarMateriales && (
+              <ButtonLike
+                secondary
+                disabled={!materialesDeMuebles}
+                onClick={onPasarMateriales}
+              >
+                {materialesDeMuebles ? `Pasar materiales de los muebles (${materialesDeMuebles})` : "Los tipos no tienen materiales cargados"}
+              </ButtonLike>
+            )}
           </div>
         </div>
       )}

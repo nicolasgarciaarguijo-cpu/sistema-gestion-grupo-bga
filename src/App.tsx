@@ -253,6 +253,7 @@ import { Mantenimiento } from "./tabs/Mantenimiento";
 import { costosEmpresariales, marcadoresParaPresupuesto, ultimosMesesCerrados } from "./domain/costosEmpresariales";
 import { esMaquinaOHerramienta, motivoNoDisponible, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
+import { materialesDeLosMuebles } from "./domain/tiposMueble";
 import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
@@ -22852,6 +22853,23 @@ Escribi CERRAR para confirmar:`
               personas={personasParaCotizar}
               manoDeObra={labor}
               money={money}
+              materialesDeMuebles={materialesDeLosMuebles(mueblesPpto, tiposMueble, stockSearchOptions).length}
+              onPasarMateriales={() => {
+                // Se reemplazan los que vinieron de los muebles antes; lo cargado a mano queda.
+                const filas = materialesDeLosMuebles(mueblesPpto, tiposMueble, stockSearchOptions).map((m) => ({
+                  id: newId(),
+                  description: m.description,
+                  qty: m.qty,
+                  unit: m.unit,
+                  unitPrice: m.unitPrice,
+                  stockCode: m.stockCode,
+                  stockGroup: m.stockGroup,
+                  stockLocation: m.stockLocation,
+                  sortOrder: m.sortOrder,
+                  desdeMuebles: true,
+                }));
+                setMaterials((prev) => [...prev.filter((x) => !x.desdeMuebles), ...filas]);
+              }}
               onPasarAManoDeObra={(plan) =>
                 setLabor(
                   plan.porPersona.map((p) => ({
@@ -23649,6 +23667,7 @@ Escribi CERRAR para confirmar:`
           tareas={tiposTarea}
           grupos={gruposTrabajo}
           rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
+          stock={stockSearchOptions}
           onGuardar={(t) => setTiposMueble((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [...prev, t]))}
           onBorrar={(id) => setTiposMueble((prev) => prev.filter((x) => x.id !== id))}
           nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}

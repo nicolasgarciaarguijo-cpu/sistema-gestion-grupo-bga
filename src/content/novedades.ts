@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-27g",
+    fecha: "27/10/2026",
+    titulo: "Materiales de cada tipo de mueble",
+    items: [
+      {
+        titulo: "Cada tipo de mueble lleva sus materiales",
+        que: "Los tipos de mueble se nombran por su medida y cada uno lleva su lista de materiales de Stock (con el precio de hoy), por cada mueble. La cantidad es la exacta y se le suma un % de desperdicio editable: el del tipo vale para todos y cada material puede tener el suyo.",
+        como: "Fabricación → Tipos de mueble → click derecho → Abrir ficha → Materiales: escribí para buscar en Stock.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Del mueble al presupuesto",
+        que: "En el presupuesto, 'Pasar materiales de los muebles' carga en Materiales todo lo que llevan los muebles elegidos (cantidad de muebles × cantidad con desperdicio, al precio de Stock). Si se vuelve a pasar, reemplaza lo anterior; lo cargado a mano queda.",
+        como: "Presupuesto → Muebles del presupuesto → Pasar materiales de los muebles.",
+        tab: "presupuesto",
+      },
+    ],
+  },
+  {
     id: "2026-10-27f",
     fecha: "27/10/2026",
     titulo: "El IVA de los trabajos sale del % de facturación acordado",

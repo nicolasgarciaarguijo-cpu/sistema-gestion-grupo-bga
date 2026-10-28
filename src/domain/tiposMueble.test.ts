@@ -121,3 +121,28 @@ describe("ficha del tipo de mueble: tildar las tareas", () => {
     expect(t.receta).toEqual([]);
   });
 });
+
+describe("materiales de los tipos de mueble", () => {
+  const { materialesDeLosMuebles, cantidadConDesperdicio } = require("./tiposMueble");
+  const stock = [
+    { id: 1, description: "Placa melamina blanca 18mm", unit: "m2", unitPrice: 10000 },
+    { id: 2, description: "Bisagra cazoleta", unit: "u", unitPrice: 500 },
+  ];
+  const tipos = [
+    { id: 7, nombre: "Bajo mesada melamina 60x72x56", receta: [], desperdicioPct: 10, materiales: [
+      { id: 1, stockItemId: 1, cantidad: 2 },
+      { id: 2, stockItemId: 2, cantidad: 2, desperdicioPct: 0 },
+    ] },
+  ];
+  it("la cantidad lleva el % de desperdicio del tipo, o el propio del material", () => {
+    expect(cantidadConDesperdicio(tipos[0], tipos[0].materiales[0])).toBeCloseTo(2.2);
+    expect(cantidadConDesperdicio(tipos[0], tipos[0].materiales[1])).toBe(2);
+  });
+  it("suma por item de Stock según la cantidad de muebles, con el precio de Stock", () => {
+    const r = materialesDeLosMuebles([{ tipoMuebleId: 7, cantidad: 3 }], tipos, stock);
+    expect(r.map((x: any) => [x.description, x.qty, x.unitPrice])).toEqual([
+      ["Placa melamina blanca 18mm", 6.6, 10000],
+      ["Bisagra cazoleta", 6, 500],
+    ]);
+  });
+});

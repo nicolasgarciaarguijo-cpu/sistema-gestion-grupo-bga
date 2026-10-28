@@ -18,6 +18,10 @@ import {
   gruposDeLaReceta,
   tareasDelGrupo,
   tildarGrupo,
+  cantidadConDesperdicio,
+  DESPERDICIO_POR_DEFECTO,
+  type ItemStockParaMateriales,
+  type MaterialDelTipo,
   rubrosDeLaReceta,
   pasoSiguiente,
   recetaOrdenada,
@@ -41,10 +45,13 @@ export function TiposMueble({
   tareas,
   grupos,
   rubros = [],
+  stock = [],
   onGuardar,
   onBorrar,
   nuevoId,
 }: {
+  // Items de Stock para la lista de materiales de cada tipo.
+  stock?: ItemStockParaMateriales[];
   tipos: TipoMueble[];
   tareas: TipoTarea[];
   grupos: GrupoTrabajo[];
@@ -202,7 +209,7 @@ export function TiposMueble({
         </QuickMenu>
       )}
 
-      {tipoAbierto && <EditorReceta tipo={tipoAbierto} tareas={tareas} grupos={grupos} rubros={rubros} onGuardar={onGuardar} onCerrar={() => setAbierto(null)} nuevoId={nuevoId} nombreTarea={nombreTarea} />}
+      {tipoAbierto && <EditorReceta tipo={tipoAbierto} tareas={tareas} grupos={grupos} rubros={rubros} stock={stock} onGuardar={onGuardar} onCerrar={() => setAbierto(null)} nuevoId={nuevoId} nombreTarea={nombreTarea} />}
     </Panel>
   );
 }
@@ -212,6 +219,7 @@ function EditorReceta({
   tareas,
   grupos,
   rubros,
+  stock,
   onGuardar,
   onCerrar,
   nuevoId,
@@ -221,6 +229,7 @@ function EditorReceta({
   tareas: TipoTarea[];
   grupos: GrupoTrabajo[];
   rubros: RubroFabricacion[];
+  stock: ItemStockParaMateriales[];
   onGuardar: (t: TipoMueble) => void;
   onCerrar: () => void;
   nuevoId: () => number;
@@ -233,6 +242,7 @@ function EditorReceta({
   const [ajustes, setAjustes] = useState<Record<number, number>>({});
   // Cantidades de materiales para probar (en el presupuesto salen solas de lo cotizado).
   const [materiales, setMateriales] = useState<Record<number, number>>({});
+  const [buscarMaterial, setBuscarMaterial] = useState("");
   const ordenada = recetaOrdenada(tipo.receta);
   const calc = tareasDelMueble(tipo, { tipoMuebleId: tipo.id, ...prueba, ajustes, materiales }, tareas);
   const rubrosMateriales = rubros.filter((r) => r.origen === "materiales" && r.activo !== false);
@@ -336,6 +346,107 @@ function EditorReceta({
               })}
           </div>
         )}
+
+        <div style={sub}>Materiales (por cada mueble)</div>
+        <div style={{ fontSize: 12, color: "#64748b" }}>
+          Lo que lleva UN mueble de esta medida, sacado de Stock (con su precio de hoy). La cantidad es la exacta; el % de desperdicio se suma
+          al presupuestar. El desperdicio del tipo vale para todos; cada material puede tener el suyo.
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+          Desperdicio del tipo:
+          <input
+            type="number"
+            min={0}
+            step={1}
+            style={{ width: 70, fontSize: 13, padding: "4px 6px", borderRadius: 6, border: "1px solid #cbd5e1" }}
+            value={tipo.desperdicioPct ?? DESPERDICIO_POR_DEFECTO}
+            onChange={(e) => onGuardar({ ...tipo, desperdicioPct: Math.max(0, Number(e.target.value) || 0) })}
+          />
+          %
+        </div>
+        {(tipo.materiales || []).length > 0 && (
+          <table className="planilla" style={planillaTable}>
+            <thead>
+              <tr>
+                <th style={thEsquina}>Material (Stock)</th>
+                <th style={{ ...thColumna, textAlign: "right" }}>Cantidad</th>
+                <th style={{ ...thColumna, textAlign: "right" }}>Desperdicio %</th>
+                <th style={{ ...thColumna, textAlign: "right" }}>Con desperdicio</th>
+                <th style={{ ...thColumna, textAlign: "right" }}>Precio</th>
+                <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
+                <th style={thFlexible} />
+              </tr>
+            </thead>
+            <tbody>
+              {(tipo.materiales || []).map((m) => {
+                const it = stock.find((x) => x.id === m.stockItemId);
+                const conDesp = cantidadConDesperdicio(tipo, m);
+                const guardarM = (cambio: Partial<MaterialDelTipo>) =>
+                  onGuardar({ ...tipo, materiales: (tipo.materiales || []).map((x) => (x.id === m.id ? { ...x, ...cambio } : x)) });
+                return (
+                  <tr key={m.id}>
+                    <td style={tdNombre}>{it ? it.description : <span style={{ color: "#b91c1c" }}>borrado de Stock</span>}</td>
+                    <td style={tdDato}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                        <input style={inputCeldaDerecha} type="number" min={0} step={0.01} value={m.cantidad} onChange={(e) => guardarM({ cantidad: Number(e.target.value) || 0 })} {...focoCelda} />
+                        <span style={{ fontSize: 11, color: "#94a3b8" }}>{it?.unit || ""}</span>
+                      </span>
+                    </td>
+                    <td style={tdDato}>
+                      <input
+                        style={inputCeldaDerecha}
+                        type="number"
+                        min={0}
+                        step={1}
+                        placeholder={String(tipo.desperdicioPct ?? DESPERDICIO_POR_DEFECTO)}
+                        value={m.desperdicioPct ?? ""}
+                        onChange={(e) => guardarM({ desperdicioPct: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value) || 0) })}
+                        {...focoCelda}
+                      />
+                    </td>
+                    <td style={{ ...tdDato, textAlign: "right" }}>{fmt(conDesp)}</td>
+                    <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{it ? `$ ${fmt(it.unitPrice)}` : "·"}</td>
+                    <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{it ? `$ ${fmt(conDesp * it.unitPrice)}` : "·"}</td>
+                    <td style={tdFlexible}>
+                      <button
+                        type="button"
+                        style={{ border: "none", background: "none", color: "#b91c1c", cursor: "pointer" }}
+                        title="Sacar el material"
+                        onClick={() => onGuardar({ ...tipo, materiales: (tipo.materiales || []).filter((x) => x.id !== m.id) })}
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <input
+            list={`stock-${tipo.id}`}
+            style={{ flex: 1, minWidth: 260, fontSize: 13, padding: "5px 8px", borderRadius: 6, border: "1px solid #cbd5e1" }}
+            placeholder="+ Material de Stock: escribí para buscar y elegí"
+            value={buscarMaterial}
+            onChange={(e) => {
+              const v = e.target.value;
+              const it = stock.find((x) => x.description === v);
+              if (it) {
+                onGuardar({ ...tipo, materiales: [...(tipo.materiales || []), { id: nuevoId(), stockItemId: it.id, cantidad: 1 }] });
+                setBuscarMaterial("");
+              } else setBuscarMaterial(v);
+            }}
+          />
+          <datalist id={`stock-${tipo.id}`}>
+            {stock.map((x) => <option key={x.id} value={x.description}>{x.group}</option>)}
+          </datalist>
+          {(tipo.materiales || []).length > 0 && (
+            <strong style={{ fontSize: 13 }}>
+              Materiales de un mueble: $ {fmt((tipo.materiales || []).reduce((a, m) => a + cantidadConDesperdicio(tipo, m) * Number(stock.find((x) => x.id === m.stockItemId)?.unitPrice || 0), 0))}
+            </strong>
+          )}
+        </div>
 
         <div style={sub}>Receta · por pasos</div>
         <div style={{ fontSize: 12, color: "#64748b" }}>

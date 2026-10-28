@@ -52,7 +52,14 @@ export type TipoMueble = {
   alto?: number;
   profundidad?: number;
   activa?: boolean;
+  // MATERIALES DEL TIPO (Nicolas, 27/10/2026): cada tipo esta nombrado por su medida y lleva su lista fija de materiales
+  // de Stock, por cada mueble. El % de desperdicio es editable: el del tipo vale para todos y cada material puede tener el suyo.
+  materiales?: MaterialDelTipo[];
+  desperdicioPct?: number;
 };
+
+export type MaterialDelTipo = { id: number; stockItemId: number; cantidad: number; desperdicioPct?: number };
+export const DESPERDICIO_POR_DEFECTO = 10;
 
 // Un mueble concreto (en el presupuesto o en el trabajo): su tipo, cuantos y sus medidas en metros.
 export type MuebleMedido = {
@@ -235,4 +242,34 @@ export const quitarGrupo = (receta: RenglonReceta[], grupoId: number): RenglonRe
 export function tildarGrupo(tipo: TipoMueble, grupoId: number, on: boolean, catalogo: TipoTarea[], grupos: GrupoTrabajo[], nuevoId: () => number): TipoMueble {
   if (!on) return { ...tipo, receta: quitarGrupo(tipo.receta, grupoId) };
   return { ...tipo, receta: agregarGrupo(tipo.receta, grupoId, tareasDelGrupo(grupoId, catalogo, grupos), nuevoId) };
+}
+
+// ---- MATERIALES DE LOS MUEBLES (Nicolas, 27/10/2026) --------------------------------------------------------
+// Cantidad a comprar de un material del tipo, por mueble: la cantidad exacta mas su % de desperdicio.
+export const desperdicioDe = (tipo: Pick<TipoMueble, "desperdicioPct">, m: MaterialDelTipo) =>
+  Number(m.desperdicioPct ?? tipo.desperdicioPct ?? DESPERDICIO_POR_DEFECTO);
+export const cantidadConDesperdicio = (tipo: Pick<TipoMueble, "desperdicioPct">, m: MaterialDelTipo) =>
+  Number(m.cantidad || 0) * (1 + desperdicioDe(tipo, m) / 100);
+
+export type ItemStockParaMateriales = { id: number; description: string; unit: string; unitPrice: number; code?: string; group?: string; location?: string; sortOrder?: number };
+
+// Los materiales que llevan los muebles del presupuesto, sumados por item de Stock (cantidad de muebles x cantidad con
+// desperdicio), con el precio de hoy del Stock. Es lo que pasa al bloque de materiales del presupuesto.
+export function materialesDeLosMuebles(
+  muebles: Array<{ tipoMuebleId: number; cantidad: number }>,
+  tipos: TipoMueble[],
+  stock: ItemStockParaMateriales[]
+): Array<{ stockItemId: number; description: string; qty: number; unit: string; unitPrice: number; stockCode?: string; stockGroup?: string; stockLocation?: string; sortOrder?: number }> {
+  const porItem = new Map<number, number>();
+  muebles.forEach((mb) => {
+    const tipo = tipos.find((t) => t.id === mb.tipoMuebleId);
+    (tipo?.materiales || []).forEach((m) => {
+      porItem.set(m.stockItemId, (porItem.get(m.stockItemId) || 0) + Number(mb.cantidad || 0) * cantidadConDesperdicio(tipo!, m));
+    });
+  });
+  return Array.from(porItem.entries()).flatMap(([id, qty]) => {
+    const it = stock.find((x) => x.id === id);
+    if (!it || !(qty > 0)) return [];
+    return [{ stockItemId: id, description: it.description, qty: Math.round(qty * 1000) / 1000, unit: it.unit, unitPrice: Number(it.unitPrice || 0), stockCode: it.code, stockGroup: it.group, stockLocation: it.location, sortOrder: it.sortOrder }];
+  });
 }
