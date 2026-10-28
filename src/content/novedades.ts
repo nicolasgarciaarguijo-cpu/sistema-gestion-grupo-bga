@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-28b",
+    fecha: "28/10/2026",
+    titulo: "Organización diaria con la asistencia",
+    items: [
+      {
+        titulo: "Se ve quién está y quién no",
+        que: "Cada empleado muestra si está o no está ese día según Asistencia (reloj, ausencias y vacaciones). El que no está no cuenta como gente para las tareas, y si tiene tareas armadas avisa para reasignarlas. 'Copiar el día anterior' no copia a los que no están.",
+        como: "Fabricación → Organización diaria: al lado del nombre (✓ está / ✗ no está) y en los avisos del día.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-10-28a",
     fecha: "28/10/2026",
     titulo: "Personas por tipo de mueble y aviso de falta de gente",

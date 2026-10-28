@@ -13,6 +13,8 @@ import {
   horasDelDia,
   linkMapa,
   minutosReales,
+  presenciaDelDia,
+  type RegistroAsistencia,
   turnoExtraSiguiente,
   turnosPorDefecto,
   type AsignacionDiaria,
@@ -33,7 +35,8 @@ import { GRUPOS_MAQUINAS, herramientasFaltantes, type Faltante, type FichaMaquin
 import { claveTarea, faltaDeGente, type NecesidadDeTarea } from "../domain/tiposMueble";
 import { capacidadesDelEmpleado, capacidadesPorTareaEntera, categoriaPrincipal, etiquetaCategoria, tieneCategorias, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
 
-export type EmpleadoOrg = { id: number; name: string; company: string; categoriasInternas?: number[] };
+// asistencia: la de Personal (reloj, ausencias, vacaciones), para saber quien esta ese dia.
+export type EmpleadoOrg = { id: number; name: string; company: string; categoriasInternas?: number[]; asistencia?: RegistroAsistencia[] };
 export type TrabajoOrg = { id: number; budgetNumber: string; client: string; company: string; direccion?: string };
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -130,6 +133,9 @@ export function OrganizacionDiaria({
     return t ? `${t.budgetNumber} · ${t.client}` : "Obra";
   };
   const tipoDe = (id?: number | null) => tipos.find((t) => t.id === id);
+  // Si esta o no esta ese dia segun Asistencia (Personal: reloj, ausencias, vacaciones).
+  const presenciaDe = (e: EmpleadoOrg) => presenciaDelDia(e.asistencia, dia, hoyIso);
+  const ausentes = new Set(empleados.filter((e) => presenciaDe(e) === "no_esta").map((e) => e.name));
 
   // La asignacion del empleado ese dia (o una nueva, en fabrica, con los turnos de siempre).
   const asignacionDe = (e: EmpleadoOrg): AsignacionDiaria =>
@@ -151,7 +157,11 @@ export function OrganizacionDiaria({
     const desde = anteriores[anteriores.length - 1];
     if (!desde) return window.alert("No hay un día anterior con tareas cargadas.");
     const ya = new Set(delDia.map((a) => a.empleadoId));
-    const copiar = (porDia.get(desde) || []).filter((a) => !ya.has(a.empleadoId));
+    const delAnterior = (porDia.get(desde) || []).filter((a) => !ya.has(a.empleadoId));
+    const empleadoDe = (id: number) => empleados.find((e) => e.id === id);
+    const copiar = delAnterior.filter((a) => { const e = empleadoDe(a.empleadoId); return !e || presenciaDe(e) !== "no_esta"; });
+    const salteados = delAnterior.filter((a) => !copiar.includes(a)).map((a) => a.empleado);
+    if (salteados.length) window.alert(`No se copian ${salteados.join(", ")}: no están ese día según Asistencia.`);
     if (!copiar.length) return window.alert("Todos los empleados ya tienen el día armado.");
     if (!window.confirm(`¿Copiar ${copiar.length} ficha(s) del ${desde.split("-").reverse().join("/")} a este día?`)) return;
     copiar.forEach((a) =>
@@ -261,22 +271,29 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
               const clave = claveTarea(Number(x.tipoTareaId), tipos);
               const k = `${jobId}|${clave}`;
               const g = juntos.get(k) || { jobId, clave, gente: new Set<string>() };
-              g.gente.add(a.empleado);
+              if (!ausentes.has(a.empleado)) g.gente.add(a.empleado);
               juntos.set(k, g);
             })
           );
           const fh = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
           const avisos = Array.from(juntos.values()).flatMap(({ jobId, clave, gente }) => {
             const n = necesidades?.get(jobId)?.get(clave);
+            if (n && gente.size === 0) return [`${nombreObra(jobId)} · ${n.nombre}: no está ninguno de los asignados. Pide ${n.personas} personas y ${fh(n.horas)} h.`];
             const f = n ? faltaDeGente(n, gente.size) : null;
             if (!n || !f) return [];
             return [
               `${nombreObra(jobId)} · ${n.nombre}: los muebles piden ${n.personas} personas y hay ${gente.size} (${Array.from(gente).join(", ")}). Con ${n.personas} lleva ${fh(n.horas)} h (${fh(n.horasHombre)} horas-hombre); con ${gente.size} serían unas ${fh(f.horasConLaQueHay)} h. Revalorizá los horarios a mano o considerá horas extras.`,
             ];
           });
+          // Asistencia: el que no esta y tiene tareas (hay que reasignarlas).
+          const deAsistencia = empleados.flatMap((e) => {
+            const pend = (delDia.find((x) => x.empleadoId === e.id)?.tareas || []).filter((x) => !x.hecha);
+            return pend.length && presenciaDe(e) === "no_esta" ? [`${e.name} no está y tiene ${pend.length} tarea(s): reasignalas.`] : [];
+          });
+          avisos.push(...deAsistencia);
           return avisos.length ? (
             <div style={{ ...caja, marginBottom: 10, background: "#fffbeb", borderColor: "#fde68a" }}>
-              <div style={{ ...titulo, color: "#b45309" }}>Falta gente para lo que piden los muebles</div>
+              <div style={{ ...titulo, color: "#b45309" }}>Avisos del día · gente y asistencia</div>
               {avisos.map((x) => <div key={x} style={{ fontSize: 12.5, color: "#92400e", marginBottom: 3 }}>⚠ {x}</div>)}
             </div>
           ) : null;
@@ -300,6 +317,11 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
                 >
                   <div>
                     <strong>{e.name}</strong> <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{companyShort(e.company)}</span>
+                    {presenciaDe(e) !== "sin_dato" && (
+                      <span title="Según Asistencia (Personal)" style={{ fontSize: 11.5, fontWeight: 700, marginLeft: 6, color: presenciaDe(e) === "esta" ? "#15803d" : "#b91c1c" }}>
+                        {presenciaDe(e) === "esta" ? "✓ está" : "✗ no está"}
+                      </span>
+                    )}
                     {(() => {
                       const cp = categoriaPrincipal(e.categoriasInternas, categorias);
                       return cp ? <span style={{ fontSize: 11.5, color: "#0f766e", marginLeft: 6 }}>{etiquetaCategoria(cp, categorias)}</span> : <span style={{ fontSize: 11.5, color: "#b45309", marginLeft: 6 }}>sin categoría interna</span>;

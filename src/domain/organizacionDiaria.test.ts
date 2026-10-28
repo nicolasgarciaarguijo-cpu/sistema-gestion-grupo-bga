@@ -80,3 +80,17 @@ describe("máquinas y herramientas elegidas en la tarea", () => {
     expect(r[2].herramientas).toBeUndefined();
   });
 });
+
+describe("asistencia en la organización diaria (28/10/2026)", () => {
+  const { presenciaDelDia } = require("./organizacionDiaria");
+  const asis = [
+    { date: "2026-10-28", status: "presente", checkIn: "07:25" },
+    { date: "2026-10-29", status: "vacaciones" },
+  ];
+  it("solo dice si está o no está", () => {
+    expect(presenciaDelDia(asis, "2026-10-28", "2026-10-28")).toBe("esta");
+    expect(presenciaDelDia(asis, "2026-10-29", "2026-10-28")).toBe("no_esta");
+    expect(presenciaDelDia([], "2026-10-28", "2026-10-28")).toBe("no_esta");
+    expect(presenciaDelDia([], "2026-10-30", "2026-10-28")).toBe("sin_dato");
+  });
+});

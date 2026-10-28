@@ -23527,7 +23527,13 @@ Escribi CERRAR para confirmar:`
       )}
       {activeTab === "fabricacion" && (
         <OrganizacionDiaria
-          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
+          empleados={empleadosFabrica.map((e) => ({
+            id: e.id,
+            name: e.name,
+            company: e.company,
+            categoriasInternas: e.categoriasInternas,
+            asistencia: (e.attendance || []).map((r) => ({ date: r.date, status: r.status, checkIn: r.checkIn })),
+          }))}
           trabajos={visibleApprovedJobs.map((j) => ({ id: j.id, budgetNumber: j.budgetNumber, client: j.client, company: j.company, direccion: j.deliveryDestination }))}
           asignaciones={asignacionesDiarias.filter((a) => canAccessCompany(a.company))}
           grupos={gruposTrabajo}

@@ -45,6 +45,20 @@ export type TipoTarea = {
   activa?: boolean;
 };
 
+// ---- ASISTENCIA DEL DIA (Nicolas, 28/10/2026: "asegurate que este vinculado con asistencia para que la organizacion sea
+// efectiva") ----------------------------------------------------------------------------------------------------------
+// Sale de la asistencia de Personal (reloj Dahua, ausencias y vacaciones cargadas). Un ausente no cuenta como gente
+// disponible y si tiene tareas se avisa para reasignarlas. "Menos ruido: solo necesitamos saber si esta o no esta."
+export type EstadoPresencia = "esta" | "no_esta" | "sin_dato";
+export type RegistroAsistencia = { date: string; status: string; checkIn?: string };
+export function presenciaDelDia(asistencia: RegistroAsistencia[] | undefined, fecha: string, hoy: string): EstadoPresencia {
+  const r = (asistencia || []).find((x) => x.date === fecha);
+  if (r && ["vacaciones", "ausente_justificado", "ausente_injustificado"].includes(r.status)) return "no_esta";
+  if (r?.checkIn || r?.status === "presente") return "esta";
+  // Hoy sin fichada todavia no esta; para adelante solo se sabe lo cargado (vacaciones, ausencias avisadas).
+  return fecha === hoy ? "no_esta" : "sin_dato";
+}
+
 // ---- El dia de cada empleado ---------------------------------------------------------------------
 export type LugarDelDia = "fabrica" | "obra";
 export type TurnoDia = { id: string; nombre: string; desde: string; hasta: string };
