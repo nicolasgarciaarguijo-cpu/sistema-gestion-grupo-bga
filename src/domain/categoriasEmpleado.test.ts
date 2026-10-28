@@ -108,3 +108,12 @@ describe("categorias internas", () => {
     expect(categoriaPrincipal([9, 50], conExtra)?.nombre).toBe("Armador general");
   });
 });
+
+describe("capacidad por Tarea entera (28/10/2026)", () => {
+  const { capacidadesPorTareaEntera } = require("./categoriasEmpleado");
+  it("quien domina un paso de una Tarea domina todos sus pasos", () => {
+    const tipos = [{ id: 1, grupoId: 10 }, { id: 2, grupoId: 10 }, { id: 3, grupoId: 11 }];
+    const caps = capacidadesPorTareaEntera([{ tareaId: 1, prioridad: 3, categoriaId: 4, heredada: false }], tipos);
+    expect(caps.map((c: any) => c.tareaId)).toEqual([1, 2]);
+  });
+});

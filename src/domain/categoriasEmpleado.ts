@@ -136,6 +136,23 @@ export function capacidadesDelEmpleado(tildadas: number[] | undefined, catalogo:
   return Array.from(porTarea.values()).sort((a, b) => b.prioridad - a.prioridad || a.tareaId - b.tareaId);
 }
 
+// TAREA ENTERA (Nicolas, 28/10/2026: "convertilo a capacidades por tareas"): quien domina un paso de una Tarea domina la
+// Tarea entera, con todo su paso a paso (los que se sumen despues tambien). Asi lo que estaba tildado por paso vale solo.
+export function capacidadesPorTareaEntera(caps: Capacidad[], tipos: Array<{ id: number; grupoId?: number | null }>): Capacidad[] {
+  const out = new Map(caps.map((c) => [c.tareaId, c]));
+  caps.forEach((c) => {
+    const g = tipos.find((t) => t.id === c.tareaId)?.grupoId;
+    if (g == null) return;
+    tipos
+      .filter((t) => t.grupoId === g)
+      .forEach((t) => {
+        const prev = out.get(t.id);
+        if (!prev || c.prioridad > prev.prioridad) out.set(t.id, { ...c, tareaId: t.id });
+      });
+  });
+  return Array.from(out.values()).sort((a, b) => b.prioridad - a.prioridad || a.tareaId - b.tareaId);
+}
+
 // Un empleado sin categorias cargadas todavia NO se restringe (si no, la organizacion diaria quedaria
 // trabada hasta cargar a todos). Con categorias, solo lo que ellas dan.
 export function puedeHacer(tildadas: number[] | undefined, tareaId: number, catalogo: CategoriaEmpleado[]): boolean {

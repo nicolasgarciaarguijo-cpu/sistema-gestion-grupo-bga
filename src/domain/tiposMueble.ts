@@ -40,6 +40,9 @@ export type RenglonReceta = {
   // El grupo de tareas del que vino (Nicolas, 2026-10-26: "el tipo de mueble determina el grupo de trabajos, y dentro
   // las tareas"). Sirve para actualizar la receta cuando el grupo cambia en el catalogo.
   grupoId?: number;
+  // Horas de reloj de la tarea POR MUEBLE, hechas por la cuadrilla del tipo (Nicolas, 28/10/2026: "los tiempos que se
+  // estipulan por tipo de mueble es teniendo en cuenta la cantidad de personas"). Ausente = cantidad x tiempo del catalogo.
+  horas?: number;
 };
 
 export type TipoMueble = {
@@ -56,6 +59,9 @@ export type TipoMueble = {
   // de Stock, por cada mueble. El % de desperdicio es editable: el del tipo vale para todos y cada material puede tener el suyo.
   materiales?: MaterialDelTipo[];
   desperdicioPct?: number;
+  // CUADRILLA (Nicolas, 28/10/2026): "si el tipo de mueble solicita 2 personas, las tareas las hacen las 2". Vale para
+  // todas sus tareas. Ausente = lo que diga cada tarea del catalogo (o 1).
+  personas?: number;
 };
 
 export type MaterialDelTipo = { id: number; stockItemId: number; cantidad: number; desperdicioPct?: number };
@@ -148,8 +154,11 @@ export function tareasDelMueble(tipo: TipoMueble, mueble: MuebleMedido, catalogo
     const ajuste = mueble.ajustes?.[r.id];
     const ajustada = ajuste != null && Number.isFinite(ajuste);
     const cantidad = r2(ajustada ? Number(ajuste) : pos(r.factor) * medida);
-    const horasPorUnidad = pos(t?.horasEstimadas);
-    const personas = Math.max(1, Math.round(pos(t?.personas)) || 1);
+    // Las horas cargadas en el tipo (por mueble) le ganan al tiempo estandar del catalogo.
+    const porMueble = r.horas != null && pos(r.horas) > 0;
+    const horasPorUnidad = porMueble ? pos(r.horas) : pos(t?.horasEstimadas);
+    const personas = Math.max(1, Math.round(pos(tipo.personas) || pos(t?.personas)) || 1);
+    const horas = porMueble ? r2(pos(r.horas) * pos(mueble.cantidad)) : r2(cantidad * horasPorUnidad);
     return {
       renglonId: r.id,
       tareaId: r.tareaId,
@@ -160,9 +169,9 @@ export function tareasDelMueble(tipo: TipoMueble, mueble: MuebleMedido, catalogo
       cantidad,
       ajustada,
       horasPorUnidad,
-      horas: r2(cantidad * horasPorUnidad),
+      horas,
       personas,
-      horasHombre: r2(cantidad * horasPorUnidad * personas),
+      horasHombre: r2(horas * personas),
       sinTiempo: !horasPorUnidad,
       sinMaterial: rubroId != null && deMaterial == null && !ajustada,
     };
@@ -182,6 +191,47 @@ export function resumenDeTiempos(tareas: TareaCalculada[]): { horasHombre: numbe
     horasReloj: r2(pasos.reduce((s, p) => s + p.horasReloj, 0)),
     pasos,
   };
+}
+
+// ---- GENTE QUE PIDE CADA TAREA (Nicolas, 28/10/2026) ---------------------------------------------------------
+// "Si no hubiese esa cantidad de personas disponibles a la hora de preparar la organizacion diaria deberia avisarlo y
+// revalorizar la duracion de la tarea de forma manual (falta un empleado, hay que ir sin aviso a una obra, una entrega
+// urgente). Se debe avisar la cantidad de horas necesarias y la cantidad de personas para ver si hacemos horas extras."
+// Una tarea del dia se reconoce por su TAREA (el grupo) aunque se haya elegido cualquiera de sus pasos.
+export const claveTarea = (tareaId: number, catalogo: Array<Pick<TipoTarea, "id" | "grupoId">>): string => {
+  const g = catalogo.find((t) => t.id === tareaId)?.grupoId;
+  return g != null ? `g${g}` : `t${tareaId}`;
+};
+
+export type NecesidadDeTarea = { nombre: string; personas: number; horas: number; horasHombre: number };
+
+// Lo que piden los muebles de un trabajo, por tarea: la cuadrilla mas grande que la pide y las horas de reloj sumadas.
+export function necesidadPorTarea(muebles: MuebleMedido[], tipos: TipoMueble[], catalogo: TipoTarea[], grupos: GrupoTrabajo[] = []): Map<string, NecesidadDeTarea> {
+  const out = new Map<string, NecesidadDeTarea>();
+  muebles.forEach((m) => {
+    const tipo = tipos.find((t) => t.id === m.tipoMuebleId);
+    if (!tipo) return;
+    tareasDelMueble(tipo, m, catalogo).forEach((t) => {
+      const clave = claveTarea(t.tareaId, catalogo);
+      const g = catalogo.find((x) => x.id === t.tareaId)?.grupoId;
+      const nombre = (g != null && grupos.find((x) => x.id === g)?.nombre) || t.nombre;
+      const prev = out.get(clave);
+      out.set(clave, {
+        nombre,
+        personas: Math.max(prev?.personas || 0, t.personas),
+        horas: r2((prev?.horas || 0) + t.horas),
+        horasHombre: r2((prev?.horasHombre || 0) + t.horasHombre),
+      });
+    });
+  });
+  return out;
+}
+
+// Con menos gente de la que pide: las horas-hombre no cambian, la duracion se estira. Es una referencia para
+// revalorizar a mano y decidir horas extras.
+export function faltaDeGente(n: Pick<NecesidadDeTarea, "personas" | "horas" | "horasHombre">, hay: number): null | { faltan: number; horasConLaQueHay: number } {
+  if (hay <= 0 || hay >= n.personas) return null;
+  return { faltan: n.personas - hay, horasConLaQueHay: r2(n.horasHombre / hay) };
 }
 
 // Puente con lo que ya habia: un grupo de trabajo se convierte en receta (cada tarea, un paso).

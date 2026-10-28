@@ -253,7 +253,7 @@ import { Mantenimiento } from "./tabs/Mantenimiento";
 import { costosEmpresariales, marcadoresParaPresupuesto, ultimosMesesCerrados } from "./domain/costosEmpresariales";
 import { esMaquinaOHerramienta, motivoNoDisponible, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
-import { materialesDeLosMuebles } from "./domain/tiposMueble";
+import { materialesDeLosMuebles, necesidadPorTarea } from "./domain/tiposMueble";
 import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
@@ -16689,6 +16689,11 @@ Escribi CERRAR para confirmar:`
         } as TrabajoDeFabrica;
       });
   }, [approvedJobs, effectiveIsAdmin, allowedCompaniesForSession, isSupabaseLoggedIn, retrabajoPorTrabajo]);
+  // Personas y horas que piden los muebles de cada trabajo, por tarea (aviso de falta de gente en la organizacion diaria).
+  const necesidadesPorTrabajo = useMemo(
+    () => new Map(trabajosCronograma.map((t) => [t.jobId, necesidadPorTarea(t.muebles, tiposMueble, tiposTarea, gruposTrabajo)])),
+    [trabajosCronograma, tiposMueble, tiposTarea, gruposTrabajo]
+  );
   const guardarFabricacionDeTrabajo = (jobId: number, cambios: { muebles?: MuebleDelPresupuesto[]; inicio?: string; holguraDias?: number }) => {
     setApprovedJobs((prev) =>
       prev.map((j) =>
@@ -23534,6 +23539,7 @@ Escribi CERRAR para confirmar:`
           fichasMaquinas={fichasMaquinas}
           onRetrabajo={(p) => setRetrabajoPrecargado({ ...p, jobId: p.jobId ?? undefined })}
           mostrarCatalogo={false}
+          necesidades={necesidadesPorTrabajo}
           onBorrarAsignacion={(id) => setAsignacionesDiarias((prev) => prev.filter((x) => x.id !== id))}
           onGuardarGrupo={(g) => setGruposTrabajo((prev) => (prev.some((x) => x.id === g.id) ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]))}
           onBorrarGrupo={(id) => {

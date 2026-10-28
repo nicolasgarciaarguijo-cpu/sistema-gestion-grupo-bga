@@ -30,7 +30,8 @@ import {
 } from "../domain/organizacionDiaria";
 import { timeToMinutes } from "../domain/attendance";
 import { GRUPOS_MAQUINAS, herramientasFaltantes, type Faltante, type FichaMaquina, type MaquinaStock } from "../domain/mantenimiento";
-import { capacidadesDelEmpleado, categoriaPrincipal, etiquetaCategoria, tieneCategorias, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
+import { claveTarea, faltaDeGente, type NecesidadDeTarea } from "../domain/tiposMueble";
+import { capacidadesDelEmpleado, capacidadesPorTareaEntera, categoriaPrincipal, etiquetaCategoria, tieneCategorias, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
 
 export type EmpleadoOrg = { id: number; name: string; company: string; categoriasInternas?: number[] };
 export type TrabajoOrg = { id: number; budgetNumber: string; client: string; company: string; direccion?: string };
@@ -73,7 +74,10 @@ export function OrganizacionDiaria({
   fichasMaquinas = [],
   onRetrabajo,
   mostrarCatalogo = true,
+  necesidades,
 }: {
+  // Lo que piden los muebles de cada trabajo por tarea (personas y horas), para avisar si ese dia hay menos gente.
+  necesidades?: Map<number, Map<string, NecesidadDeTarea>>;
   // El catalogo de grupos de trabajo y tareas puede ir aparte (en Fabricacion va al fondo: CatalogoTareas).
   mostrarCatalogo?: boolean;
   // Click derecho en una tarea del dia: registrar que hubo que rehacerla (Retrabajos, en Fabricacion).
@@ -246,6 +250,37 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
           </span>
         </div>
 
+        {(() => {
+          // FALTA GENTE (Nicolas, 28/10/2026): el tipo de mueble pide N personas y sus horas cuentan con ellas. Si ese dia hay
+          // menos en la tarea del trabajo, se avisa con las horas que lleva para revalorizar a mano o decidir horas extras.
+          const juntos = new Map<string, { jobId: number; clave: string; gente: Set<string> }>();
+          delDia.forEach((a) =>
+            a.tareas.forEach((x) => {
+              const jobId = x.jobId ?? a.jobId;
+              if (jobId == null || x.tipoTareaId == null) return;
+              const clave = claveTarea(Number(x.tipoTareaId), tipos);
+              const k = `${jobId}|${clave}`;
+              const g = juntos.get(k) || { jobId, clave, gente: new Set<string>() };
+              g.gente.add(a.empleado);
+              juntos.set(k, g);
+            })
+          );
+          const fh = (n: number) => n.toLocaleString("es-AR", { maximumFractionDigits: 2 });
+          const avisos = Array.from(juntos.values()).flatMap(({ jobId, clave, gente }) => {
+            const n = necesidades?.get(jobId)?.get(clave);
+            const f = n ? faltaDeGente(n, gente.size) : null;
+            if (!n || !f) return [];
+            return [
+              `${nombreObra(jobId)} · ${n.nombre}: los muebles piden ${n.personas} personas y hay ${gente.size} (${Array.from(gente).join(", ")}). Con ${n.personas} lleva ${fh(n.horas)} h (${fh(n.horasHombre)} horas-hombre); con ${gente.size} serían unas ${fh(f.horasConLaQueHay)} h. Revalorizá los horarios a mano o considerá horas extras.`,
+            ];
+          });
+          return avisos.length ? (
+            <div style={{ ...caja, marginBottom: 10, background: "#fffbeb", borderColor: "#fde68a" }}>
+              <div style={{ ...titulo, color: "#b45309" }}>Falta gente para lo que piden los muebles</div>
+              {avisos.map((x) => <div key={x} style={{ fontSize: 12.5, color: "#92400e", marginBottom: 3 }}>⚠ {x}</div>)}
+            </div>
+          ) : null;
+        })()}
         {verLinea && delDia.length > 0 && <LineaTemporal asignaciones={delDia} nombreObra={nombreObra} trabajoDe={trabajoDe} />}
 
         <div style={{ display: "grid", gap: 6 }}>
@@ -286,7 +321,7 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
                     trabajos={trabajos}
                     tipos={tipos}
                     grupos={grupos}
-                    capacidades={tieneCategorias(e.categoriasInternas) ? capacidadesDelEmpleado(e.categoriasInternas, categorias) : null}
+                    capacidades={tieneCategorias(e.categoriasInternas) ? capacidadesPorTareaEntera(capacidadesDelEmpleado(e.categoriasInternas, categorias), tipos) : null}
                     faltanPara={faltanPara}
                     onGuardar={guardar}
                     onBorrar={existe ? () => { if (window.confirm(`¿Borrar el día de ${e.name}?`)) { onBorrarAsignacion(a.id); setAbierta(null); } } : undefined}

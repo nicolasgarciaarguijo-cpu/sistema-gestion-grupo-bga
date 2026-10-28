@@ -296,6 +296,24 @@ function EditorReceta({
           value={tipo.descripcion || ""}
           onChange={(e) => onGuardar({ ...tipo, descripcion: e.target.value })}
         />
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, flexWrap: "wrap" }}>
+          <strong>Personas que lo hacen:</strong>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            style={{ width: 70, fontSize: 13, padding: "4px 6px", borderRadius: 6, border: "1px solid #cbd5e1" }}
+            placeholder="1"
+            value={tipo.personas ?? ""}
+            onChange={(e) => {
+              const n = Math.round(Number(e.target.value) || 0);
+              onGuardar({ ...tipo, personas: n > 0 ? n : undefined });
+            }}
+          />
+          <span style={{ fontSize: 12, color: "#64748b" }}>
+            Todas sus tareas las hace esta cantidad de personas y las horas se cargan contando con ellas. Si en la organización diaria hay menos, avisa.
+          </span>
+        </label>
 
         <div style={sub}>Tareas que lleva</div>
         <div style={{ fontSize: 12, color: "#64748b" }}>
@@ -475,7 +493,7 @@ function EditorReceta({
                   <PlanillaManija onMouseDown={(ev) => anchos.startResize(ev, "col")} onDoubleClick={anchos.resetCol} />
                 </th>
                 <th style={thColumna}>Sale de</th>
-                <th style={{ ...thColumna, textAlign: "right" }} title="Tiempo estándar de la tarea (se edita en el catálogo)">h / unidad</th>
+                <th style={{ ...thColumna, textAlign: "right" }} title="Horas de reloj por mueble, hechas por las personas del tipo. Vacío = cantidad × tiempo estándar de la tarea">Horas x mueble</th>
                 <th style={thFlexible}>Nota</th>
               </tr>
             </thead>
@@ -555,8 +573,17 @@ function EditorReceta({
                         )}
                       </select>
                     </td>
-                    <td style={{ ...tdDato, textAlign: "right", color: t?.horasEstimadas ? undefined : "#b45309" }}>
-                      {t?.horasEstimadas ? fmt(t.horasEstimadas) : "falta"}
+                    <td style={tdDato}>
+                      <input
+                        style={inputCeldaDerecha}
+                        type="number"
+                        min={0}
+                        step={0.25}
+                        placeholder={t?.horasEstimadas ? `${fmt(t.horasEstimadas)}/u` : "falta"}
+                        value={r.horas ?? ""}
+                        onChange={(e) => guardarRenglon({ ...r, horas: e.target.value === "" ? undefined : Math.max(0, Number(e.target.value) || 0) })}
+                        {...focoCelda}
+                      />
                     </td>
                     <td style={tdFlexible}>
                       <input style={inputCelda} value={r.nota || ""} onChange={(e) => guardarRenglon({ ...r, nota: e.target.value || undefined })} {...focoCelda} />

@@ -42,9 +42,11 @@ const filaTitulo: React.CSSProperties = { background: "#f8fafc", fontSize: 11, f
 function tareasPorGrupo(tipos: TipoTarea[], grupos: GrupoTrabajo[]) {
   const activos = tipos.filter((t) => t.activa !== false);
   const orden = [...grupos].sort((a, b) => (a.orden ?? 0) - (b.orden ?? 0) || a.nombre.localeCompare(b.nombre));
-  const out = orden.map((g) => ({ nombre: g.nombre, tareas: activos.filter((t) => t.grupoId === g.id) })).filter((x) => x.tareas.length);
+  const out: Array<{ nombre: string; grupoId: number | null; tareas: TipoTarea[] }> = orden
+    .map((g) => ({ nombre: g.nombre, grupoId: g.id as number | null, tareas: activos.filter((t) => t.grupoId === g.id) }))
+    .filter((x) => x.tareas.length);
   const sueltas = activos.filter((t) => !t.grupoId || !grupos.some((g) => g.id === t.grupoId));
-  if (sueltas.length) out.push({ nombre: "Sin grupo", tareas: sueltas });
+  if (sueltas.length) out.push({ nombre: "Sin grupo", grupoId: null, tareas: sueltas });
   return out;
 }
 
@@ -308,13 +310,41 @@ export function CategoriasInternas({
           <div style={caja} onClick={(e) => e.stopPropagation()}>
             <strong style={{ fontSize: 15 }}>Tareas de {etiquetaCategoria(catTareas, categorias)}</strong>
             <div style={{ fontSize: 12.5, color: "#64748b" }}>
-              Tildá las tareas propias de esta categoría. Las que ya da una categoría que incluye aparecen como heredadas: no hace falta repetirlas.
+              Tildá las Tareas propias de esta categoría: cada una va entera, con todo su paso a paso. Las que ya da una categoría que incluye aparecen como heredadas: no hace falta repetirlas.
             </div>
             {(() => {
               const heredadas = new Set(tareasHeredadas(catTareas, categorias));
               const bloques = tareasPorGrupo(tipos, grupos);
               if (!bloques.length) return <div style={{ fontSize: 13, color: "#b45309" }}>No hay tareas en el catálogo de Fabricación.</div>;
-              return bloques.map((b) => (
+              const tareasEnteras = bloques.filter((b) => b.grupoId != null);
+              const sueltas = bloques.filter((b) => b.grupoId == null);
+              return (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 4 }}>
+                    {tareasEnteras.map((b) => {
+                      const ids = b.tareas.map((t) => t.id);
+                      const propia = ids.some((id) => catTareas.tareaIds.includes(id));
+                      const heredada = !propia && ids.some((id) => heredadas.has(id));
+                      return (
+                        <label key={b.nombre} style={{ ...check, color: heredada ? "#94a3b8" : undefined }} title={b.tareas.map((t) => t.nombre).join(" → ")}>
+                          <input
+                            type="checkbox"
+                            checked={propia || heredada}
+                            disabled={heredada}
+                            onChange={(e) =>
+                              onGuardar({
+                                ...catTareas,
+                                tareaIds: e.target.checked ? Array.from(new Set([...catTareas.tareaIds, ...ids])) : catTareas.tareaIds.filter((x) => !ids.includes(x)),
+                              })
+                            }
+                          />
+                          {b.nombre}
+                          {heredada && <span style={{ fontSize: 11.5, color: "#94a3b8" }}>· heredada</span>}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {sueltas.map((b) => (
                 <div key={b.nombre}>
                   <div style={sub}>{b.nombre}</div>
                   {b.tareas.map((t) => {
@@ -338,7 +368,9 @@ export function CategoriasInternas({
                     );
                   })}
                 </div>
-              ));
+                  ))}
+                </>
+              );
             })()}
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <ButtonLike onClick={() => setEditTareas(null)}>Listo</ButtonLike>

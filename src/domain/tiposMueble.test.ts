@@ -146,3 +146,34 @@ describe("materiales de los tipos de mueble", () => {
     ]);
   });
 });
+
+describe("personas del tipo de mueble y falta de gente (28/10/2026)", () => {
+  const { necesidadPorTarea, faltaDeGente, claveTarea } = require("./tiposMueble");
+  const catalogo: TipoTarea[] = [
+    { id: 1, nombre: "Armado de módulos", grupoId: 10, horasEstimadas: 5 },
+    { id: 2, nombre: "Montaje de módulos", grupoId: 11 },
+  ];
+  const tipo: TipoMueble = {
+    id: 7,
+    nombre: "Bajo mesada 1,80",
+    personas: 2,
+    receta: [
+      { id: 1, tareaId: 1, paso: 1, factor: 1, horas: 3 },
+      { id: 2, tareaId: 2, paso: 2, factor: 1 },
+    ],
+  };
+
+  it("las horas cargadas en el tipo le ganan al catalogo y la cuadrilla vale para todas sus tareas", () => {
+    const calc = tareasDelMueble(tipo, { tipoMuebleId: 7, cantidad: 2 }, catalogo);
+    expect(calc[0]).toEqual(expect.objectContaining({ horas: 6, personas: 2, horasHombre: 12, sinTiempo: false }));
+    expect(calc[1]).toEqual(expect.objectContaining({ personas: 2, sinTiempo: true }));
+  });
+
+  it("suma lo que piden los muebles del trabajo por tarea y avisa cuando hay menos gente", () => {
+    const n = necesidadPorTarea([{ tipoMuebleId: 7, cantidad: 2 }], [tipo], catalogo, [{ id: 10, nombre: "Armado" }]);
+    const armado = n.get(claveTarea(1, catalogo));
+    expect(armado).toEqual({ nombre: "Armado", personas: 2, horas: 6, horasHombre: 12 });
+    expect(faltaDeGente(armado, 1)).toEqual({ faltan: 1, horasConLaQueHay: 12 });
+    expect(faltaDeGente(armado, 2)).toBeNull();
+  });
+});

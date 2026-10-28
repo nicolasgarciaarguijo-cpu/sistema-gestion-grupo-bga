@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-28a",
+    fecha: "28/10/2026",
+    titulo: "Personas por tipo de mueble y aviso de falta de gente",
+    items: [
+      {
+        titulo: "El tipo de mueble dice cuántas personas lo hacen",
+        que: "Cada tipo de mueble lleva la cantidad de personas que hacen sus tareas y las horas de cada tarea por mueble, contando con esa gente. Si no se cargan horas, sale del tiempo estándar de la tarea.",
+        como: "Fabricación → Tipos de mueble → click derecho → Abrir ficha → Personas que lo hacen, y la columna Horas x mueble de la receta.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "La organización diaria avisa si falta gente",
+        que: "Si ese día hay menos personas en una tarea de un trabajo que las que piden sus muebles, avisa cuántas horas lleva con la gente pedida y cuántas serían con la que hay, para revalorizar los horarios a mano o decidir horas extras.",
+        como: "Fabricación → Organización diaria: el aviso aparece arriba de la línea temporal.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Categorías internas por Tarea entera",
+        que: "En las categorías internas se tildan Tareas enteras (con todo su paso a paso). Lo que estaba tildado por paso vale para la Tarea completa.",
+        como: "Personal → Categorías internas → click derecho → Tareas…",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-10-27g",
     fecha: "27/10/2026",
     titulo: "Materiales de cada tipo de mueble",
