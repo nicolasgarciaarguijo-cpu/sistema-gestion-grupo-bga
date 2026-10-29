@@ -18042,7 +18042,7 @@ Escribi CERRAR para confirmar:`
 
   // Lo que baja a la planilla por el carril de previsiones (no suma al neto): los seguros y los
   // vencimientos cargados a mano con fecha CONFIRMADA y renglon. Y desde el 2026-10-20 los PAGOS
-  // PROGRAMADOS (tarjetas, cuotas de deuda; las facturas por pagar NO desde el 28/10/2026), cada uno en el renglon
+  // PROGRAMADOS (tarjetas, cuotas de deuda y el saldo de las facturas con pago programado a mano), cada uno en el renglon
   // de su proveedor o de su seccion: ya no tienen bloque propio (domain/programadosEnRenglones.ts).
   const previsionesPlanilla = useMemo(() => {
     const meses = fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear);
@@ -18087,7 +18087,8 @@ Escribi CERRAR para confirmar:`
       // El cheque entregado ya figura en la planilla por su pago: no se dibuja otra prevision encima.
       // Cheques y pagos ya cargados con fecha propia estan en Costos: no se prevén otra vez.
       // LAS FACTURAS NO CARGAN EL CASH FLOW (Nicolas, 28/10/2026): lo cargan los cobros y los pagos; la factura solo se
-      // asocia a ellos como constancia. Una factura sin pago no se ve en el cash flow.
+      // asocia a ellos como constancia. Una factura sin pago no se ve en el cash flow, salvo que se le haya PROGRAMADO el
+      // pago del saldo (fecha elegida + cuenta): eso es un pago programado y va como egreso (esPago, 29/10/2026).
       ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => esPago(i) && i.origen !== "cheque" && i.origen !== "pago"), filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
       // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
     ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
@@ -20659,7 +20660,6 @@ Escribi CERRAR para confirmar:`
   const facturaDeId = (id: number): FacturaForm | null => {
     const inv = purchaseInvoicesWithBankLink.find((i) => i.id === id);
     if (!inv) return null;
-    const prevista = facturasAPagar.find((x) => x.id === id);
     const marca = vencimientoMarcas.find((m) => m.clave === `factura:${id}`);
     const pagos = pagosDeFactura(inv)
       .map((pid) => costEntries.find((c) => c.id === pid))
@@ -20693,7 +20693,9 @@ Escribi CERRAR para confirmar:`
       notes: inv.notes || "",
       remitoIds: remitos.filter((r) => r.purchaseInvoiceId === id).map((r) => r.id),
       pagos,
-      saldo: { fechaPrevista: inv.fechaPagoPrevista || prevista?.fechaPago, estadoPrevisto: marca?.estadoPago || "programado", cuentaId: inv.cuentaPrevista },
+      // Solo la fecha PROGRAMADA a mano: si se rellenara con la de la condicion del proveedor, al guardar quedaria como
+      // elegida y la factura pasaria a ser un pago programado sin que nadie lo programe (29/10/2026).
+      saldo: { fechaPrevista: inv.fechaPagoPrevista, estadoPrevisto: marca?.estadoPago || "programado", cuentaId: inv.cuentaPrevista },
       porBanco: inv.paidByBankEntryId != null && pagos.length === 0 ? "Pagada por un débito del banco (conciliado en Bancos y tarjetas)." : undefined,
     };
   };

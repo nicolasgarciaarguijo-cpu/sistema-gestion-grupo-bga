@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-29a",
+    fecha: "29/10/2026",
+    titulo: "Pagos programados desde la factura",
+    items: [
+      {
+        titulo: "El pago programado en la factura vuelve a verse",
+        que: "Si en la factura cargás la fecha prevista del saldo y de qué cuenta sale, ese pago figura en Pagos programados y como egreso en el cash flow, en su fecha. La factura sola, sin pago programado, sigue sin aparecer.",
+        como: "Compras → la factura → Fecha prevista del saldo + Sale de.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-28c",
     fecha: "28/10/2026",
     titulo: "Pagos programados más claros",

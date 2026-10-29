@@ -205,4 +205,17 @@ describe("calendario de PAGOS, no de facturas (28/10/2026)", () => {
     expect(esPago({ origen: "pago" })).toBe(true);
     expect(esPago({ origen: "tarjeta" })).toBe(true);
   });
+  it("el saldo de una factura con fecha ELEGIDA es un pago programado; con la de la condicion, no (29/10/2026)", () => {
+    const { esPago } = require("./agendaInamovibles");
+    expect(esPago({ origen: "factura", fechaElegida: true })).toBe(true);
+    expect(esPago({ origen: "factura", fechaElegida: false })).toBe(false);
+    const f = vacio();
+    f.facturas = [
+      { id: 7, company: "De Raiz", supplier: "Hoch", invoiceNumber: "22426", total: 44630.61, fechaPago: "2026-10-29", fechaElegida: true, administration: "blanco" },
+      { id: 8, company: "De Raiz", supplier: "Hoch", invoiceNumber: "1", total: 100, fechaPago: "2026-11-27", fechaElegida: false, administration: "blanco" },
+    ];
+    const a = agendaInamovibles(f, "2026-10-01", "2026-12-31", "2026-10-29").filter(esPago);
+    expect(a.find((i) => i.clave === "factura:7")).toMatchObject({ estado: "hoy", monto: 44630.61 });
+    expect(a.find((i) => i.clave === "factura:8")).toBeUndefined();
+  });
 });

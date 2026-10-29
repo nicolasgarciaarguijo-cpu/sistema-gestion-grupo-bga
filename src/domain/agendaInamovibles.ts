@@ -18,9 +18,11 @@ import {
 import { cuotaPagada, cuotasDeDeuda, type CuotaDeuda } from "./desendeudamiento";
 export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos" | "factura" | "cheque" | "pago";
 
-// Lo que se ve en el calendario de Pagos programados: solo PAGOS. Las facturas por pagar quedan en la agenda para las
-// previsiones del cash flow, pero no son un pago (Nicolas, 28/10/2026).
-export const esPago = (i: { origen: OrigenInamovible }) => i.origen !== "factura";
+// Lo que se ve en el calendario de Pagos programados y baja al cash flow: solo PAGOS (Nicolas, 28/10/2026). La factura
+// sola no es un pago; pero si se le PROGRAMO el pago del saldo (fecha elegida + de que cuenta sale, en la factura), eso
+// SI es un pago programado y va como egreso en su fecha (Nicolas, 29/10/2026: los 3 de Hoch del 29/10 no se veian).
+// La fecha que sale de la condicion del proveedor no cuenta: nadie la programo.
+export const esPago = (i: { origen: OrigenInamovible; fechaElegida?: boolean }) => i.origen !== "factura" || !!i.fechaElegida;
 
 export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
   manual: "Vencimiento",
@@ -59,6 +61,7 @@ export type ItemInamovible = {
   titulo: string;
   detalle: string;
   proveedor?: string; // facturas y cheques: a quien se le paga (para ir a su ficha)
+  fechaElegida?: boolean; // facturas: el pago del saldo se programo a mano (fecha elegida), no sale de la condicion
   ventanaDesde: string;
   fechaLimite: string;
   fechaConfirmada?: string;
@@ -371,6 +374,7 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             titulo: `Pago de factura ${x.invoiceNumber || "s/n"} · ${x.supplier || "proveedor"}`,
             detalle: x.fechaElegida ? "fecha elegida" : "según la condición del proveedor",
             proveedor: x.supplier || undefined,
+            fechaElegida: x.fechaElegida,
             ventanaDesde: x.fechaPago,
             fechaLimite: x.fechaPago,
             monto: Number(x.total || 0),
