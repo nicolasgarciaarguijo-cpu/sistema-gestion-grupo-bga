@@ -2660,15 +2660,20 @@ const readSupabasePersistedAppStateWithRows = async (): Promise<{
   let moduleRecords: Awaited<ReturnType<typeof readSupabasePersistedModuleRecords>> = [];
 
   try {
-    legacyRecord = await readSupabasePersistedLegacyAppStateRecord();
-  } catch (error) {
-    throw new Error(`No pude leer Supabase: ${getSupabaseErrorMessage(error)}`);
-  }
-
-  try {
     moduleRecords = await readSupabasePersistedModuleRecords();
   } catch (error) {
     if (!isSupabaseMissingTableError(error, SUPABASE_APP_STATE_MODULES_V2_TABLE)) {
+      throw new Error(`No pude leer Supabase: ${getSupabaseErrorMessage(error)}`);
+    }
+  }
+
+  // La copia vieja (app_state_snapshots/main, 12,6 MB guardada el 04/06/2026) quedo tapada entera por los modulos: lo
+  // unico que aportaba eran selecciones de pantalla de junio (solapa activa, mes elegido). Se lee solo si no hay modulos
+  // (base nueva o tabla v2 faltante), asi no se baja en cada apertura (29/10/2026, corte por egress).
+  if (moduleRecords.length === 0) {
+    try {
+      legacyRecord = await readSupabasePersistedLegacyAppStateRecord();
+    } catch (error) {
       throw new Error(`No pude leer Supabase: ${getSupabaseErrorMessage(error)}`);
     }
   }
