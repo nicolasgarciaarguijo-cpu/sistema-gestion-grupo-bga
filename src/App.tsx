@@ -2437,8 +2437,46 @@ const normalizePersistedAppStateModule = (
   };
 };
 
+// AHORRO DE DESCARGA (29/10/2026: Supabase corto el servicio por "exceed_egress_quota"). Antes cada sesion abierta bajaba
+// la base ENTERA (todas las filas con su payload, mas la fila vieja) cada 30 s, en cada aviso de realtime y al volver a la
+// pestaña. Ahora se baja primero solo el SELLO de cada fila (modulo, empresa, saved_at, updated_at: unos bytes) y el
+// payload solo de las filas que cambiaron desde la ultima lectura; el resto sale de esta copia en memoria. El resultado es
+// el mismo; la descarga, una fraccion. La copia es por usuario (RLS): si cambia la sesion, se vacia.
+type FilaModuloLeida = { module_key: string; company: string; payload: unknown; saved_at: string; updated_by: string | null };
+const copiaLectura: {
+  userId: string | null;
+  legacy: { sello: string; record: SupabaseSnapshotRecord | null } | null;
+  filas: Map<string, { sello: string; fila: FilaModuloLeida }>;
+} = { userId: null, legacy: null, filas: new Map() };
+const copiaDelUsuario = async () => {
+  const userId = (await supabase.auth.getSession()).data.session?.user?.id || null;
+  if (copiaLectura.userId !== userId) {
+    copiaLectura.userId = userId;
+    copiaLectura.legacy = null;
+    copiaLectura.filas = new Map();
+  }
+  return copiaLectura;
+};
+
 const readSupabasePersistedLegacyAppStateRecord =
   async (): Promise<SupabaseSnapshotRecord | null> => {
+    const copia = await copiaDelUsuario();
+    // Primero el sello: si la fila vieja no cambio, no se vuelve a bajar su payload.
+    const { data: sello, error: selloError } = await supabase
+      .from(SUPABASE_APP_STATE_TABLE)
+      .select("saved_at")
+      .eq("id", SUPABASE_APP_STATE_RECORD_KEY)
+      .maybeSingle();
+    if (selloError) {
+      throw selloError;
+    }
+    if (!sello) {
+      copia.legacy = { sello: "", record: null };
+      return null;
+    }
+    const selloActual = String(sello.saved_at || "");
+    if (copia.legacy && copia.legacy.sello === selloActual) return copia.legacy.record;
+
     const { data, error } = await supabase
       .from(SUPABASE_APP_STATE_TABLE)
       .select("payload,saved_at,updated_by")
@@ -2449,14 +2487,16 @@ const readSupabasePersistedLegacyAppStateRecord =
       throw error;
     }
 
-    if (!data?.payload) return null;
-
-    return {
-      payload: data.payload,
-      saved_at:
-        typeof data.saved_at === "string" ? data.saved_at : new Date().toISOString(),
-      updated_by: typeof data.updated_by === "string" ? data.updated_by : null,
-    };
+    const record: SupabaseSnapshotRecord | null = data?.payload
+      ? {
+          payload: data.payload,
+          saved_at:
+            typeof data.saved_at === "string" ? data.saved_at : new Date().toISOString(),
+          updated_by: typeof data.updated_by === "string" ? data.updated_by : null,
+        }
+      : null;
+    copia.legacy = { sello: selloActual, record };
+    return record;
   };
 
 const readSupabasePersistedModuleRecords = async (): Promise<
@@ -2469,22 +2509,59 @@ const readSupabasePersistedModuleRecords = async (): Promise<
   }[]
 > => {
   // Lee v2 (1 fila por module_key+company). RLS ya limita a las empresas del usuario.
-  const { data, error } = await supabase
+  // Primero los SELLOS (sin payload); despues el payload solo de los modulos con alguna fila nueva o cambiada.
+  const copia = await copiaDelUsuario();
+  const { data: sellos, error: sellosError } = await supabase
     .from(SUPABASE_APP_STATE_MODULES_V2_TABLE)
-    .select("module_key,company,payload,saved_at,updated_by")
+    .select("module_key,company,saved_at,updated_at")
     .order("module_key", { ascending: true });
 
-  if (error) {
-    throw error;
+  if (sellosError) {
+    throw sellosError;
   }
 
-  return (data || []).map((item) => ({
-    module_key: String(item.module_key || ""),
-    company: typeof item.company === "string" ? item.company : GENERAL_COMPANY,
-    payload: item.payload,
-    saved_at: typeof item.saved_at === "string" ? item.saved_at : new Date().toISOString(),
-    updated_by: typeof item.updated_by === "string" ? item.updated_by : null,
-  }));
+  const claveDe = (item: any) => `${String(item.module_key || "")}|${typeof item.company === "string" ? item.company : GENERAL_COMPANY}`;
+  const selloDe = (item: any) => `${item.saved_at || ""}|${item.updated_at || ""}`;
+  const vivas = new Set<string>();
+  const aBajar = new Set<string>();
+  (sellos || []).forEach((item: any) => {
+    const clave = claveDe(item);
+    vivas.add(clave);
+    if (copia.filas.get(clave)?.sello !== selloDe(item)) aBajar.add(String(item.module_key || ""));
+  });
+
+  if (aBajar.size > 0) {
+    const { data, error } = await supabase
+      .from(SUPABASE_APP_STATE_MODULES_V2_TABLE)
+      .select("module_key,company,payload,saved_at,updated_at,updated_by")
+      .in("module_key", Array.from(aBajar));
+
+    if (error) {
+      throw error;
+    }
+
+    (data || []).forEach((item: any) => {
+      copia.filas.set(claveDe(item), {
+        sello: selloDe(item),
+        fila: {
+          module_key: String(item.module_key || ""),
+          company: typeof item.company === "string" ? item.company : GENERAL_COMPANY,
+          payload: item.payload,
+          saved_at: typeof item.saved_at === "string" ? item.saved_at : new Date().toISOString(),
+          updated_by: typeof item.updated_by === "string" ? item.updated_by : null,
+        },
+      });
+    });
+  }
+
+  // Las filas que ya no estan en la base salen de la copia.
+  Array.from(copia.filas.keys()).forEach((clave) => {
+    if (!vivas.has(clave)) copia.filas.delete(clave);
+  });
+
+  return Array.from(copia.filas.values())
+    .map((x) => x.fila)
+    .sort((a, b) => a.module_key.localeCompare(b.module_key));
 };
 
 const mergeSupabaseAppStateRecords = (
