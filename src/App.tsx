@@ -60,6 +60,7 @@ import {
 import {
   agendaInamovibles,
   alertasActivas,
+  esPago,
   pagosAReclamar,
   type ItemInamovible,
   type VencimientoMarca,
@@ -17708,10 +17709,12 @@ Escribi CERRAR para confirmar:`
         // Las de un proveedor con DEBITO AUTOMATICO en tarjeta se pagan con el resumen (ya programado como
         // tarjeta): programarlas aparte seria pagarlas dos veces.
         facturas: facturasAPagar.filter((f) => f.tarjetaDebitoId == null),
-        // Las ya pagadas siguen en el calendario, tachadas (no desaparecen al pagarlas).
+        // Los PAGOS de las facturas, cada uno en su fecha (pendiente / tachado). La factura no va al calendario.
         facturasPagadas: facturasPagadasProgramadas(
           purchaseInvoicesWithBankLink.filter((i) => canAccessCompany(i.company) && !facturasEnConvenioMap.has(i.id)) as any,
-          suppliers as any
+          suppliers as any,
+          costEntries.map((c) => ({ id: c.id, date: c.date, amount: Number(c.amount || 0), paymentMethod: c.paymentMethod, bankEntryId: c.bankEntryId })),
+          hoyIso
         ),
         // Cheques entregados (pagos con medio cheque): inamovibles el dia que se debitan. Cubiertos cuando el
         // debito queda conciliado con el banco o pasa la fecha.
@@ -17744,11 +17747,13 @@ Escribi CERRAR para confirmar:`
       [
         ...cashFlowEntriesPlanilla.map((e: any) => egresoDeEntrada(e as any)),
         // El cheque entregado ya es un pago cargado (esta en las entradas): no se suma otra vez.
-        ...agendaInamoviblesItems.filter((p) => p.origen !== "cheque").map((p) => egresoDePrevisto(p as any)),
+        ...agendaInamoviblesItems.filter((p) => esPago(p) && p.origen !== "cheque" && p.origen !== "pago").map((p) => egresoDePrevisto(p as any)),
       ].filter((e): e is Egreso => !!e),
     [cashFlowEntriesPlanilla, agendaInamoviblesItems]
   );
-  const alertasInamovibles = useMemo(() => alertasActivas(agendaInamoviblesItems), [agendaInamoviblesItems]);
+  // El calendario de Pagos programados (y sus avisos) muestra solo PAGOS, no facturas (Nicolas, 28/10/2026).
+  const agendaDePagos = useMemo(() => agendaInamoviblesItems.filter(esPago), [agendaInamoviblesItems]);
+  const alertasInamovibles = useMemo(() => alertasActivas(agendaDePagos), [agendaDePagos]);
 
   // PRE-CIERRE (domain/preCierre): por empresa, al fin del ejercicio EN CURSO, lo que pasa al ejercicio nuevo
   // (cobros, pagos, cuentas, cajas) y lo que queda guardado. Solo se arma en la solapa de Balance.
@@ -17808,7 +17813,7 @@ Escribi CERRAR para confirmar:`
       // Pagos: todo lo de Pagos programados sin pagar (facturas, cuotas, tarjetas, seguros, haberes, a mano).
       const ORIGEN: Record<string, string> = { manual: "A mano", deuda: "Cuota", tarjeta: "Tarjeta", cashflow: "Cash flow", seguro: "Seguro", sueldos: "Haberes", factura: "Factura", cheque: "Cheque entregado" };
       const pagos = agendaInamoviblesItems
-        .filter((i) => String(i.company) === company && !i.pagado)
+        .filter((i) => esPago(i) && String(i.company) === company && !i.pagado)
         .map((i) => ({
           id: i.clave,
           origen: ORIGEN[i.origen] || i.origen,
@@ -17845,7 +17850,7 @@ Escribi CERRAR para confirmar:`
     });
     // planDelCierre usa casi todo el estado: se recalcula al entrar a Balance y cuando cambian las fuentes.
   }, [alcanceEmpresa, activeTab, approvedJobsSummary, agendaInamoviblesItems, purchaseLedgerInvoices, purchaseLedgerPayments, visibleCreditNotes, pendientesSinFactura, visiblePettyCashFunds, visiblePettyCashExpenses, companyCatalog, costEntries, bankStatementEntries, financialItems, issuedInvoices, purchaseInvoices]);
-  const pagosVencidosAReclamar = useMemo(() => pagosAReclamar(agendaInamoviblesItems), [agendaInamoviblesItems]);
+  const pagosVencidosAReclamar = useMemo(() => pagosAReclamar(agendaDePagos), [agendaDePagos]);
 
   // Marca de un pago de la agenda (por clave): se fusiona con la que ya hubiera.
   const upsertMarcaInamovible = (item: ItemInamovible, cambio: Partial<VencimientoMarca>) => {
@@ -17955,8 +17960,8 @@ Escribi CERRAR para confirmar:`
 
   // Lo que baja a la planilla por el carril de previsiones (no suma al neto): los seguros y los
   // vencimientos cargados a mano con fecha CONFIRMADA y renglon. Y desde el 2026-10-20 los PAGOS
-  // PROGRAMADOS (facturas por pagar, tarjetas, cuotas de deuda), cada uno en el renglon de su proveedor o
-  // de su seccion: ya no tienen bloque propio (domain/programadosEnRenglones.ts).
+  // PROGRAMADOS (tarjetas, cuotas de deuda; las facturas por pagar NO desde el 28/10/2026), cada uno en el renglon
+  // de su proveedor o de su seccion: ya no tienen bloque propio (domain/programadosEnRenglones.ts).
   const previsionesPlanilla = useMemo(() => {
     const meses = fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear);
     const desde = `${meses[0]}-01`;
@@ -17998,7 +18003,10 @@ Escribi CERRAR para confirmar:`
         hasta
       ),
       // El cheque entregado ya figura en la planilla por su pago: no se dibuja otra prevision encima.
-      ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => i.origen !== "cheque"), filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
+      // Cheques y pagos ya cargados con fecha propia estan en Costos: no se prevén otra vez.
+      // LAS FACTURAS NO CARGAN EL CASH FLOW (Nicolas, 28/10/2026): lo cargan los cobros y los pagos; la factura solo se
+      // asocia a ellos como constancia. Una factura sin pago no se ve en el cash flow.
+      ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => esPago(i) && i.origen !== "cheque" && i.origen !== "pago"), filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
       // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
     ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
   }, [alcanceEmpresa, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans, inversiones]);
@@ -18079,6 +18087,7 @@ Escribi CERRAR para confirmar:`
       sueldos: "personal",
       factura: "compras",
       cheque: "costos",
+      pago: "costos",
     };
     const tab = destino[item.origen];
     if (tab) setActiveTab(tab);
@@ -22130,7 +22139,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "calendarioAnual" && (
         <PagosInamovibles
-          items={agendaInamoviblesItems}
+          items={agendaDePagos}
           hoy={hoyIso}
           vencimientos={porEmpresa(vencimientos)}
           companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value))}

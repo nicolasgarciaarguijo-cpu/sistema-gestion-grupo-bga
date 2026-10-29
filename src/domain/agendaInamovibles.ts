@@ -16,7 +16,11 @@ import {
 } from "./vencimientos";
 
 import { cuotaPagada, cuotasDeDeuda, type CuotaDeuda } from "./desendeudamiento";
-export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos" | "factura" | "cheque";
+export type OrigenInamovible = "manual" | "deuda" | "tarjeta" | "cashflow" | "seguro" | "sueldos" | "factura" | "cheque" | "pago";
+
+// Lo que se ve en el calendario de Pagos programados: solo PAGOS. Las facturas por pagar quedan en la agenda para las
+// previsiones del cash flow, pero no son un pago (Nicolas, 28/10/2026).
+export const esPago = (i: { origen: OrigenInamovible }) => i.origen !== "factura";
 
 export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
   manual: "Vencimiento",
@@ -27,6 +31,7 @@ export const ORIGEN_LABEL: Record<OrigenInamovible, string> = {
   sueldos: "Sueldos",
   factura: "Factura de proveedor",
   cheque: "Cheque entregado",
+  pago: "Pago de factura",
 };
 
 // Marca sobre un pago de la agenda: "pagado" (para los origenes que no tienen el suyo), REPROGRAMADO a
@@ -150,7 +155,9 @@ export type FuentesInamovibles = {
   // Facturas de proveedores SIN pagar con fecha de pago (elegida o por la condicion del proveedor).
   facturas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
   // Facturas ya pagadas que estaban programadas: quedan en la agenda, tachadas (no desaparecen).
-  facturasPagadas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
+  // Con pagoId es UN pago de la factura cargado con fecha propia (pendiente hasta su dia): ya esta en Costos, asi que
+  // no baja otra vez al cash flow (origen "pago", como el cheque).
+  facturasPagadas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string; pagoId?: number; pagoHecho?: boolean }>;
   // CHEQUES ENTREGADOS (Nicolas, 2026-10-23): "el pago ya se hizo, pero ese dia tengo que tener la plata para
   // que el cheque se pueda cobrar". Son los pagos con medio cheque: su fecha es la del cobro (el debito).
   cheques?: Array<{ id: number; company: string; date: string; amount: number; supplier: string; administration: "blanco" | "negro"; conceptKey?: string; cobrado: boolean; detalle?: string }>;
@@ -361,8 +368,8 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             origen: "factura",
             refId: x.id,
             company: x.company,
-            titulo: `Factura ${x.supplier || "proveedor"}`,
-            detalle: `${x.invoiceNumber || "sin número"} · ${x.fechaElegida ? "fecha elegida" : "según la condición del proveedor"}`,
+            titulo: `Pago de factura ${x.invoiceNumber || "s/n"} · ${x.supplier || "proveedor"}`,
+            detalle: x.fechaElegida ? "fecha elegida" : "según la condición del proveedor",
             proveedor: x.supplier || undefined,
             ventanaDesde: x.fechaPago,
             fechaLimite: x.fechaPago,
@@ -383,6 +390,33 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
   (f.facturasPagadas || [])
     .filter((x) => enRango(x.fechaPago))
     .forEach((x) => {
+      if (x.pagoId != null) {
+        const clave = `pago:${x.pagoId}`;
+        out.push(
+          conEstado(
+            {
+              clave,
+              origen: "pago",
+              refId: x.pagoId,
+              company: x.company,
+              titulo: `Pago de factura ${x.invoiceNumber || "s/n"} · ${x.supplier || "proveedor"}`,
+              detalle: "pago ya cargado en Costos con esta fecha",
+              proveedor: x.supplier || undefined,
+              ventanaDesde: x.fechaPago,
+              fechaLimite: x.fechaPago,
+              monto: Number(x.total || 0),
+              currency: "ARS",
+              administration: x.administration,
+              conceptKey: x.conceptKey,
+              avisoDias: AVISO_DEFAULT,
+              pagado: !!x.pagoHecho || marcado.has(clave),
+              pagadoComo: x.pagoHecho ? "pagado" : marcado.has(clave) ? "a mano" : "",
+            },
+            hoy
+          )
+        );
+        return;
+      }
       out.push(
         conEstado(
           {
@@ -390,8 +424,8 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             origen: "factura",
             refId: x.id,
             company: x.company,
-            titulo: `Factura ${x.supplier || "proveedor"}`,
-            detalle: `${x.invoiceNumber || "sin número"} · pagada`,
+            titulo: `Pago de factura ${x.invoiceNumber || "s/n"} · ${x.supplier || "proveedor"}`,
+            detalle: "pagada",
             proveedor: x.supplier || undefined,
             ventanaDesde: x.fechaPago,
             fechaLimite: x.fechaPago,

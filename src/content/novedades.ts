@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-28c",
+    fecha: "28/10/2026",
+    titulo: "Pagos programados más claros",
+    items: [
+      {
+        titulo: "Cada pago dice de qué factura es",
+        que: "En el calendario de Pagos programados los pagos de facturas figuran como 'Pago de factura 7189 · Proveedor'.",
+        como: "Calendario anual → Pagos programados.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Es un calendario de pagos, no de facturas",
+        que: "Cargar una factura ya no aparece en Pagos programados ni en el cash flow: los cargan los pagos y los cobros, y la factura se asocia a ellos como constancia. Cada pago figura en su fecha: pendiente hasta que llega el día y tachado después.",
+        como: "Calendario anual → Pagos programados.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-10-28b",
     fecha: "28/10/2026",
     titulo: "Organización diaria con la asistencia",

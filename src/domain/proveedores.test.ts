@@ -1,4 +1,4 @@
-import { buscarProveedor, fechaDePago, facturasPorPagar, tipoGastoEfectivo } from "./proveedores";
+import { buscarProveedor, fechaDePago, facturasPorPagar, facturasPagadasProgramadas, tipoGastoEfectivo } from "./proveedores";
 
 const DAC = {
   id: 1,
@@ -57,5 +57,30 @@ describe("facturasPorPagar", () => {
     expect(r.map((f) => f.id)).toEqual([1, 4]);
     expect(r[0]).toMatchObject({ fechaPago: "2026-10-31", conceptKey: "cm_materiales", fechaElegida: false });
     expect(r[1]).toMatchObject({ fechaPago: "2026-10-25", conceptKey: undefined, fechaElegida: true });
+  });
+});
+
+describe("calendario de pagos: los pagos de la factura en su fecha (Trumar, 28/10/2026)", () => {
+  const factura = {
+    id: 1, company: "De raiz s.r.l", supplier: "Trumar S.A.I.C.", taxId: "", invoiceNumber: "7189", invoiceDate: "2026-10-23",
+    total: 4168213.11, administration: "blanco" as const, fechaPagoPrevista: "2026-10-30", paidByCostEntryId: 11, pagosIds: [10, 11],
+  };
+  const pagos = [
+    { id: 10, date: "2026-11-26", amount: 2000000, paymentMethod: "transferencia" },
+    { id: 11, date: "2026-12-22", amount: 2168213.11, paymentMethod: "transferencia" },
+  ];
+  it("cada pago va en su fecha, pendiente, y no la factura tachada el 30/10", () => {
+    const r = facturasPagadasProgramadas([factura], [], pagos, "2026-10-28");
+    expect(r.map((x) => [x.fechaPago, x.total, x.pagoId, x.pagoHecho])).toEqual([
+      ["2026-11-26", 2000000, 10, false],
+      ["2026-12-22", 2168213.11, 11, false],
+    ]);
+  });
+  it("es un calendario de pagos: con los pagos ya hechos siguen siendo los pagos, tachados (nunca la factura)", () => {
+    const r = facturasPagadasProgramadas([factura], [], pagos, "2027-01-05");
+    expect(r.map((x) => [x.fechaPago, x.pagoId, x.pagoHecho])).toEqual([
+      ["2026-11-26", 10, true],
+      ["2026-12-22", 11, true],
+    ]);
   });
 });

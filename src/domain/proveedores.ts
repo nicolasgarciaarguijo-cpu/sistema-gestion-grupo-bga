@@ -115,6 +115,8 @@ export type FacturaLike = {
   paidByCostEntryId?: number | null;
   paidByBankEntryId?: number | null;
   paidByPerson?: string;
+  // Los pagos (Costos) de una factura pagada en varias partes.
+  pagosIds?: number[];
 };
 
 export type FacturaPorPagar = {
@@ -129,7 +131,13 @@ export type FacturaPorPagar = {
   conceptKey?: string;
   // El proveedor la debita de esta tarjeta: se paga con el resumen, no es un pago aparte.
   tarjetaDebitoId?: number;
+  // Renglon de UN pago de la factura (cargado con fecha propia): su id en Costos y si ya se hizo.
+  pagoId?: number;
+  pagoHecho?: boolean;
 };
+
+// Un pago a proveedor cargado en Costos (lo justo para ubicarlo en el calendario).
+export type PagoDeFactura = { id: number; date: string; amount: number; paymentMethod?: string; bankEntryId?: number | null };
 
 // La tarjeta de la que debita el proveedor (solo si tiene debito automatico con tarjeta).
 export function tarjetaDeDebito(prov: ProveedorLike | undefined): number | undefined {
@@ -139,27 +147,38 @@ export function tarjetaDeDebito(prov: ProveedorLike | undefined): number | undef
 // Facturas YA PAGADAS que estaban programadas (Nicolas, 2026-10-23: "cuando realizo un pago no quiero que
 // desaparezca el item; quiero que figure tachado para saber que ya lo realice"). Misma fecha que tenian
 // programada; Pagos programados las muestra tachadas. Mismas exclusiones que las por pagar.
-export function facturasPagadasProgramadas(facturas: FacturaLike[], proveedores: ProveedorLike[]): FacturaPorPagar[] {
+//
+// ES UN CALENDARIO DE PAGOS, NO DE FACTURAS (Nicolas, 28/10/2026: "cualquier carga de factura no deberia impactar en el
+// calendario de pagos, porque no es un pago"). Lo que sale de aca son los PAGOS de las facturas, cada uno en su fecha:
+// pendiente hasta que llega el dia (o cae en el banco), tachado despues. Los cheques ya van aparte. (Caso Trumar: 2
+// pagos para el 26/11 y el 22/12 que figuraban como la factura tachada el 30/10.)
+export function facturasPagadasProgramadas(facturas: FacturaLike[], proveedores: ProveedorLike[], pagos: PagoDeFactura[] = [], hoy = ""): FacturaPorPagar[] {
   const out: FacturaPorPagar[] = [];
+  const pagoPorId = new Map(pagos.map((p) => [p.id, p]));
   facturas.forEach((f) => {
     if (f.paidByCostEntryId == null && f.paidByBankEntryId == null) return;
     if (f.source === "caja_chica") return;
     if (String(f.paidByPerson || "").trim()) return;
     if (!(Number(f.total || 0) > 0)) return;
     const prov = buscarProveedor(proveedores, f.supplier, f.taxId);
-    const fecha = f.fechaPagoPrevista || fechaDePago(f.invoiceDate, prov?.condicionPago);
-    if (!fecha) return;
-    out.push({
-      id: f.id,
-      company: f.company,
-      supplier: f.supplier,
-      invoiceNumber: f.invoiceNumber,
-      total: Number(f.total || 0),
-      fechaPago: fecha,
-      fechaElegida: !!f.fechaPagoPrevista,
-      administration: f.administration === "negro" ? "negro" : "blanco",
-      conceptKey: tipoGastoEfectivo(f.conceptKey, prov),
-    });
+    const suyos = Array.from(new Set([...(f.pagosIds || []), ...(f.paidByCostEntryId != null ? [f.paidByCostEntryId] : [])]))
+      .map((id) => pagoPorId.get(id))
+      .filter((p): p is PagoDeFactura => !!p && p.paymentMethod !== "cheque");
+    suyos.forEach((p) =>
+        out.push({
+          id: f.id,
+          company: f.company,
+          supplier: f.supplier,
+          invoiceNumber: f.invoiceNumber,
+          total: Number(p.amount || 0),
+          fechaPago: p.date,
+          fechaElegida: true,
+          administration: f.administration === "negro" ? "negro" : "blanco",
+          conceptKey: tipoGastoEfectivo(f.conceptKey, prov),
+          pagoId: p.id,
+          pagoHecho: (!!hoy && p.date <= hoy) || p.bankEntryId != null,
+        })
+      );
   });
   return out;
 }

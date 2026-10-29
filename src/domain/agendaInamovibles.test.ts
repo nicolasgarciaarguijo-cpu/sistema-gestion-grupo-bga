@@ -197,3 +197,12 @@ describe("agendaInamovibles · lo pagado no desaparece", () => {
     expect(a.find((i) => i.clave === "factura:3")).toMatchObject({ pagado: true, origen: "factura" });
   });
 });
+
+describe("calendario de PAGOS, no de facturas (28/10/2026)", () => {
+  it("esPago deja afuera las facturas por pagar y deja los pagos", () => {
+    const { esPago } = require("./agendaInamovibles");
+    expect(esPago({ origen: "factura" })).toBe(false);
+    expect(esPago({ origen: "pago" })).toBe(true);
+    expect(esPago({ origen: "tarjeta" })).toBe(true);
+  });
+});
