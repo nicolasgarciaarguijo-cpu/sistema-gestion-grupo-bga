@@ -174,6 +174,8 @@ import {
   PERSONAL_SECTIONS,
 } from "./domain/folderPaths";
 import { allocateMaterialNeeds } from "./domain/materialNeeds";
+import { estadoChecklist, renglonesDelTrabajo, type ChecklistProduccion, type EstadoChecklist, type RubroChecklist } from "./domain/checklistProduccion";
+import { ChecklistProduccionPanel } from "./tabs/ChecklistProduccion";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, readSpreadsheetRows, suggestGroupForConcept, SHEETJS_CDN, type BankStatementRow } from "./lib/bankStatement";
 import { rowsToArcaInvoices, arcaInvoiceKey } from "./lib/arcaInvoices";
@@ -4874,6 +4876,18 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     [accessibleEmployees]
   );
   const empleadosFabrica = visibleEmployees.filter((e) => !empresaQueFabrica || e.company === empresaQueFabrica);
+  // Organizacion diaria <-> ficha de Personal (Nicolas, 30/10/2026: "vincularme rapido con la ficha de personal, sin
+  // andar saltando de solapa"). Se abre la ficha de la persona y al cerrarla se vuelve a Fabricacion con el mismo dia y
+  // la misma ficha del dia abierta (la vista se guarda aca porque la solapa se desmonta).
+  const [vistaOrganizacion, setVistaOrganizacion] = useState<{ dia: string; abierta: number | null } | undefined>(undefined);
+  const [volverAFabricacion, setVolverAFabricacion] = useState(false);
+  useEffect(() => {
+    if (!volverAFabricacion) return;
+    if (activeTab === "personal" && selectedEmployeeId === null) {
+      setVolverAFabricacion(false);
+      setActiveTab("fabricacion" as TabKey);
+    } else if (activeTab !== "personal") setVolverAFabricacion(false);
+  }, [volverAFabricacion, activeTab, selectedEmployeeId]);
 
   // RESPONSABLE / FIRMANTE (Nicolas, 2026-10-16): es SIEMPRE el usuario que opera, sin selector. Se graba
   // solo (firmante + firmadoEn) al crear y al editar cada movimiento de plata: queda el ultimo responsable.
@@ -8175,6 +8189,9 @@ Escribi CERRAR para confirmar:`
     }
   };
 
+  // Lo que pide cada trabajo para COMPRAR: lo suelto y lo de cada bloque por su cantidad (30/10/2026: los presupuestos
+  // armados en bloques guardan todo ahi y antes figuraban sin faltantes). Los insumos basicos quedan para el checklist.
+  const materialesDelTrabajo = (snapshot: any) => renglonesDelTrabajo(snapshot).filter((r) => r.rubro !== "insumos");
   const stockNeedRows = useMemo(() => {
     const grouped = new Map<
       string,
@@ -8193,7 +8210,7 @@ Escribi CERRAR para confirmar:`
     approvedJobsSummary
       .filter((job) => job.executionStatus !== "finalizado")
       .forEach((job) => {
-        job.snapshot.materials.forEach((material) => {
+        materialesDelTrabajo(job.snapshot).forEach((material) => {
           const key = material.description.trim().toLowerCase();
           const stockMatch = matchStockForMaterial(material, stockByCode, stockByDescription);
           const available = Number(stockMatch?.quantity || 0);
@@ -8243,7 +8260,7 @@ Escribi CERRAR para confirmar:`
           id: job.id,
           // El stock se reparte primero a los que lo necesitan antes (segun el Gantt).
           startDate: fechaLimiteCompraById.get(job.id)?.fecha || job.startDate || "",
-          materials: job.snapshot.materials.map((material) => {
+          materials: materialesDelTrabajo(job.snapshot).map((material) => {
             const stockMatch = matchStockForMaterial(material, stockByCode, stockByDescription);
             return {
               description: material.description,
@@ -8260,6 +8277,40 @@ Escribi CERRAR para confirmar:`
     needs.forEach((need) => map.set(need.jobId, need));
     return map;
   }, [approvedJobsSummary, stockByCode, stockByDescription, fechaLimiteCompraById]);
+
+  // CHECKLIST ANTES DE PRODUCCION (Nicolas, 30/10/2026; domain/checklistProduccion): materiales, insumos y herrajes de
+  // cada trabajo abierto contra el stock, repartido entre los trabajos por la fecha en que lo necesitan.
+  const checklistPorTrabajo = useMemo(() => {
+    const abiertos = approvedJobs.filter((j) => tienePermisoEmpresa(j.company) && j.executionStatus !== "finalizado");
+    const renglones = new Map(abiertos.map((j) => [j.id, renglonesDelTrabajo(j.snapshot as any)]));
+    const needs = allocateMaterialNeeds(
+      abiertos.map((j) => ({
+        id: j.id,
+        startDate: fechaLimiteCompraById.get(j.id)?.fecha || j.fabricacion?.inicio || j.startDate || "",
+        materials: (renglones.get(j.id) || []).map((m) => {
+          const stockMatch = matchStockForMaterial(m, stockByCode, stockByDescription);
+          return { description: m.description, unit: m.unit, qty: m.qty, unitPrice: Number(m.unitPrice || 0), stockKey: stockMatch ? String(stockMatch.id) : null, stockQty: Number(stockMatch?.quantity || 0) };
+        }),
+      }))
+    );
+    const out = new Map<number, EstadoChecklist>();
+    abiertos.forEach((j, i) => {
+      const r = renglones.get(j.id) || [];
+      const faltantes = needs[i].rows.map((row, k) => ({ rubro: r[k].rubro, description: row.description, unit: row.unit, missing: row.missing }));
+      out.set(j.id, estadoChecklist(r, faltantes, j.fabricacion?.checklist));
+    });
+    return out;
+  }, [approvedJobs, stockByCode, stockByDescription, fechaLimiteCompraById, effectiveIsAdmin, allowedCompaniesForSession, isSupabaseLoggedIn]);
+  const marcarChecklist = (jobId: number, rubro: RubroChecklist, ok: boolean, nota?: string) =>
+    setApprovedJobs((prev) =>
+      prev.map((j) => {
+        if (j.id !== jobId) return j;
+        const checklist: ChecklistProduccion = { ...(j.fabricacion?.checklist || {}) };
+        if (ok) checklist[rubro] = { ok: true, ...firma(), ...(nota ? { nota } : {}) };
+        else delete checklist[rubro];
+        return { ...j, fabricacion: { ...(j.fabricacion || {}), checklist } };
+      })
+    );
 
   // COMPRAS PENDIENTES POR TRABAJO (Nicolas, 2026-10-23): en la ficha del trabajo y como reporte en Compras,
   // con el contador de dias que quedan hasta que arranca su fabricacion. Los mas urgentes primero.
@@ -8296,7 +8347,7 @@ Escribi CERRAR para confirmar:`
           client: job.client,
           startDate: job.startDate,
           deadlineDate: job.startDate,
-          missingCount: job.snapshot.materials.filter((material) => {
+          missingCount: materialesDelTrabajo(job.snapshot).filter((material) => {
             const stockMatch = matchStockForMaterial(material, stockByCode, stockByDescription);
             return Number(stockMatch?.quantity || 0) < Number(material.qty || 0);
           }).length,
@@ -23652,6 +23703,13 @@ Escribi CERRAR para confirmar:`
             setActiveTab("aprobados" as TabKey);
           }}
           nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
+          vista={vistaOrganizacion}
+          onVista={setVistaOrganizacion}
+          onAbrirFichaPersonal={!(effectiveIsAdmin || supabaseAllowedTabs.includes("personal" as TabKey)) ? undefined : (empleadoId) => {
+            setSelectedEmployeeId(empleadoId);
+            setVolverAFabricacion(true);
+            setActiveTab("personal" as TabKey);
+          }}
         />
       )}
       {activeTab === "fabricacion" && (
@@ -23721,7 +23779,16 @@ Escribi CERRAR para confirmar:`
         />
       )}
       {activeTab === "fabricacion" && (
+        <ChecklistProduccionPanel
+          trabajos={trabajosCronograma.map((t) => ({ jobId: t.jobId, nombre: t.nombre, company: t.company, inicio: t.inicio, estado: checklistPorTrabajo.get(t.jobId)! })).filter((t) => !!t.estado)}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+          onMarcar={marcarChecklist}
+          onIrAStock={() => setActiveTab("stock" as TabKey)}
+        />
+      )}
+      {activeTab === "fabricacion" && (
         <CronogramaFabricacion
+          checklist={checklistPorTrabajo}
           trabajos={trabajosCronograma.filter((t) => t.muebles.length > 0)}
           sinMuebles={trabajosCronograma.filter((t) => t.muebles.length === 0).map((t) => ({ jobId: t.jobId, nombre: t.nombre, company: t.company, inicio: t.inicio }))}
           tipos={tiposMueble}

@@ -14,6 +14,7 @@ import type { TipoMueble } from "../domain/tiposMueble";
 import type { MaquinaDelTaller, MuebleDelPresupuesto, PersonaParaCotizar } from "../domain/presupuestoMuebles";
 import { cronogramaDeTrabajos, HOLGURA_POR_DEFECTO, ocupacionDelTaller, primerHabil, tareasPorPersonaYDia, type EstadoEntrega, type TrabajoParaCronograma } from "../domain/cronograma";
 import { MueblesPresupuesto } from "./MueblesPresupuesto";
+import { ETIQUETA_RUBRO, type EstadoChecklist } from "../domain/checklistProduccion";
 
 export type TrabajoDeFabrica = TrabajoParaCronograma & { company: string; deCotizacion: boolean };
 
@@ -41,7 +42,10 @@ export function CronogramaFabricacion({
   onGuardarFabricacion,
   onPasarAOrganizacion,
   nuevoId,
+  checklist,
 }: {
+  // Checklist antes de produccion por trabajo (materiales, insumos, herrajes): se ve en el estado y avisa al lanzar.
+  checklist?: Map<number, EstadoChecklist>;
   trabajos: TrabajoDeFabrica[];
   // Trabajos en curso que todavia no tienen muebles (para cargarselos).
   sinMuebles: Array<{ jobId: number; nombre: string; company: string; inicio: string }>;
@@ -171,6 +175,14 @@ export function CronogramaFabricacion({
                     <td style={tdFlexible}>
                       <span style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                         <span style={{ fontSize: 12, fontWeight: 700, color: e.color, background: e.fondo, borderRadius: 999, padding: "1px 8px" }}>{e.texto}</span>
+                        {checklist?.get(r.jobId) && (
+                          <span
+                            title="Checklist antes de producción (materiales, insumos, herrajes)"
+                            style={{ fontSize: 12, fontWeight: 700, color: checklist.get(r.jobId)!.listo ? "#166534" : "#991b1b" }}
+                          >
+                            {checklist.get(r.jobId)!.listo ? "✓ listo para producción" : `checklist ${checklist.get(r.jobId)!.cumplidos}/3`}
+                          </span>
+                        )}
                         {r.trabadas.length > 0 && (
                           <span
                             style={{ fontSize: 12, fontWeight: 700, color: "#991b1b" }}
@@ -270,6 +282,10 @@ export function CronogramaFabricacion({
               <ButtonLike secondary onClick={() => setDetalleDe(null)}>Cerrar</ButtonLike>
               <ButtonLike
                 onClick={() => {
+                  // Lanzar a produccion pide el checklist completo: si falta algo, se avisa y se decide (el stock todavia no esta completo).
+                  const ck = checklist?.get(detalle.jobId);
+                  const faltan = ck ? ck.rubros.filter((x) => x.estado === "falta" || x.estado === "sin_detalle").map((x) => ETIQUETA_RUBRO[x.rubro].toLowerCase()) : [];
+                  if (faltan.length && !window.confirm(`El checklist antes de producción no está completo: falta ${faltan.join(", ")}. ¿Pasar las tareas igual?`)) return;
                   if (window.confirm(`¿Pasar estas ${filasDetalle.length} tareas a la organización diaria de cada persona? Lo que ya está en esos días queda; si se aprieta dos veces no se duplica.`)) {
                     onPasarAOrganizacion(detalle.jobId, filasDetalle);
                     setDetalleDe(null);

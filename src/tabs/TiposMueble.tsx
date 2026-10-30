@@ -79,7 +79,7 @@ export function TiposMueble({
   return (
     <Panel
       span="full"
-      title="Tipos de mueble"
+      title="Tipos de mueble o trabajo"
       actions={
         <span style={{ display: "flex", gap: 6 }}>
           {grupos.length > 0 && (
@@ -95,15 +95,15 @@ export function TiposMueble({
               {grupos.map((g) => <option key={g.id} value={g.id}>{g.nombre}</option>)}
             </select>
           )}
-          <ButtonLike onClick={() => nuevo()}>+ Tipo de mueble</ButtonLike>
+          <ButtonLike onClick={() => nuevo()}>+ Tipo de mueble o trabajo</ButtonLike>
         </span>
       }
     >
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
-        Cada tipo de mueble lleva las tareas que se le tildan en su ficha (cada una con su paso a paso), ordenadas por pasos: las del mismo paso (3.1, 3.2) las pueden hacer distintas personas a la vez y el paso siguiente arranca cuando terminó todo el anterior. Cada tarea saca su cantidad de las medidas del mueble (por mueble, ml, m² o m³); con el tiempo estándar de la tarea da las horas. Click derecho: abrir la ficha (tareas, receta y prueba de tiempos), duplicar, pausar o borrar. El nombre se corrige en la misma fila y la lista se ordena sola por nombre.
+        Cada tipo de mueble o trabajo lleva las tareas que se le tildan en su ficha (cada una con su paso a paso), ordenadas por pasos: las del mismo paso (3.1, 3.2) las pueden hacer distintas personas a la vez y el paso siguiente arranca cuando terminó todo el anterior. Cada tarea saca su cantidad de las medidas del mueble (por mueble, ml, m² o m³); con el tiempo estándar de la tarea da las horas. Click derecho: abrir la ficha (tareas, receta y prueba de tiempos), duplicar, pausar o borrar. El nombre se corrige en la misma fila y la lista se ordena sola por nombre.
       </div>
       {ordenados.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Todavía no hay tipos de mueble. Creá uno o partí de una tarea.</div>
+        <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Todavía no hay tipos de mueble o trabajo. Creá uno o partí de una tarea.</div>
       ) : (
         <div style={{ ...planillaWrap, ...anchos.vars }}>
           <table className="planilla" style={planillaTable}>
@@ -118,7 +118,7 @@ export function TiposMueble({
             <thead>
               <tr>
                 <th style={thEsquina}>
-                  Tipo de mueble
+                  Tipo de mueble o trabajo
                   <PlanillaManija onMouseDown={(ev) => anchos.startResize(ev, "label")} onDoubleClick={anchos.resetLabel} />
                 </th>
                 <th style={{ ...thColumna, textAlign: "right" }}>
@@ -200,7 +200,7 @@ export function TiposMueble({
             type="button"
             style={{ ...quickMenuItem, color: "#b91c1c" }}
             onClick={() => {
-              if (window.confirm(`¿Borrar el tipo de mueble "${menu.tipo.nombre}"?`)) onBorrar(menu.tipo.id);
+              if (window.confirm(`¿Borrar el tipo de mueble o trabajo "${menu.tipo.nombre}"?`)) onBorrar(menu.tipo.id);
               setMenu(null);
             }}
           >
@@ -317,7 +317,7 @@ function EditorReceta({
 
         <div style={sub}>Tareas que lleva</div>
         <div style={{ fontSize: 12, color: "#64748b" }}>
-          Tildá las tareas que lleva este tipo de mueble. Cada una entra con su paso a paso (siempre el mismo). Las tareas, su paso a paso y las máquinas que usan se arman al fondo de Fabricación.
+          Tildá las tareas que lleva este tipo de mueble o trabajo. Cada una entra con su paso a paso (siempre el mismo). Las tareas, su paso a paso y las máquinas que usan se arman al fondo de Fabricación.
         </div>
         {grupos.length === 0 ? (
           <div style={{ fontSize: 12.5, color: "#b45309" }}>Todavía no hay tareas (se arman al fondo de Fabricación).</div>
@@ -337,7 +337,7 @@ function EditorReceta({
                         type="checkbox"
                         checked={asignado}
                         onChange={(e) => {
-                          if (!e.target.checked && !window.confirm(`¿Sacar la tarea "${g.nombre}" de este tipo de mueble?`)) return;
+                          if (!e.target.checked && !window.confirm(`¿Sacar la tarea "${g.nombre}" de este tipo de mueble o trabajo?`)) return;
                           onGuardar(tildarGrupo(tipo, g.id, e.target.checked, tareas, grupos, nuevoId));
                         }}
                       />
@@ -627,7 +627,7 @@ function EditorReceta({
             type="button"
             style={{ fontSize: 12, border: "1px solid #cbd5e1", borderRadius: 6, background: "#fff", padding: "5px 8px", cursor: "pointer" }}
             onClick={() => onGuardar({ ...tipo, largo: prueba.largo, alto: prueba.alto, profundidad: prueba.profundidad })}
-            title="Guardar estas medidas como las habituales del tipo de mueble"
+            title="Guardar estas medidas como las habituales del tipo de mueble o trabajo"
           >
             Usar como medidas habituales
           </button>

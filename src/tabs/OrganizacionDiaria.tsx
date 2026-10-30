@@ -3,7 +3,7 @@
 // hora con su casilla de hecha), el PDF de cada empleado para pasarle las tareas y la LINEA TEMPORAL de donde
 // esta cada uno (cuantos hay juntos en cada lugar). Abajo, el catalogo de grupos de trabajo y tipos de tarea
 // para no tipear todo cada vez. La logica vive en domain/organizacionDiaria.ts.
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
 import {
   avisosDelDia,
@@ -78,7 +78,15 @@ export function OrganizacionDiaria({
   onRetrabajo,
   mostrarCatalogo = true,
   necesidades,
+  onAbrirFichaPersonal,
+  vista,
+  onVista,
 }: {
+  // Ir a la ficha de Personal de la persona (y volver: ver App). Para no andar saltando de solapa (Nicolas, 30/10/2026).
+  onAbrirFichaPersonal?: (empleadoId: number) => void;
+  // Dia elegido y ficha abierta guardados afuera: al volver de la ficha de Personal queda todo como estaba.
+  vista?: { dia: string; abierta: number | null };
+  onVista?: (v: { dia: string; abierta: number | null }) => void;
   // Lo que piden los muebles de cada trabajo por tarea (personas y horas), para avisar si ese dia hay menos gente.
   necesidades?: Map<number, Map<string, NecesidadDeTarea>>;
   // El catalogo de grupos de trabajo y tareas puede ir aparte (en Fabricacion va al fondo: CatalogoTareas).
@@ -109,10 +117,21 @@ export function OrganizacionDiaria({
   const faltanPara = (tipoId: number) => herramientasFaltantes(tiposConHerramientas.find((x) => x.id === tipoId)?.herramientas, maquinas, fichasMaquinas);
   const hoy = new Date();
   const hoyIso = `${hoy.getFullYear()}-${pad(hoy.getMonth() + 1)}-${pad(hoy.getDate())}`;
-  const [mes, setMes] = useState(hoyIso.slice(0, 7));
-  const [dia, setDia] = useState<string>(hoyIso);
-  const [abierta, setAbierta] = useState<number | null>(null); // empleadoId con la ficha abierta
+  const [mes, setMes] = useState((vista?.dia || hoyIso).slice(0, 7));
+  const [diaLocal, setDiaLocal] = useState<string>(vista?.dia || hoyIso);
+  const [abiertaLocal, setAbiertaLocal] = useState<number | null>(vista?.abierta ?? null); // empleadoId con la ficha abierta
+  const dia = vista?.dia || diaLocal;
+  const abierta = vista ? vista.abierta : abiertaLocal;
+  const setDia = (d: string) => { setDiaLocal(d); onVista?.({ dia: d, abierta }); };
+  const setAbierta = (id: number | null) => { setAbiertaLocal(id); onVista?.({ dia, abierta: id }); };
   const [verLinea, setVerLinea] = useState(true);
+  // Escape cierra la ficha del dia.
+  useEffect(() => {
+    if (abierta == null) return;
+    const alTeclear = (ev: KeyboardEvent) => { if (ev.key === "Escape") setAbierta(null); };
+    window.addEventListener("keydown", alTeclear);
+    return () => window.removeEventListener("keydown", alTeclear);
+  }, [abierta, dia]);
 
   const [y, m] = mes.split("-").map(Number);
   const primerDow = (new Date(y, m - 1, 1).getDay() + 6) % 7;
@@ -212,10 +231,14 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
             <button type="button" style={btn()} onClick={() => mover(-1)}>◀</button>
             <strong style={{ minWidth: 120, textAlign: "center", textTransform: "capitalize" }}>{MESES[m - 1]} {y}</strong>
             <button type="button" style={btn()} onClick={() => mover(1)}>▶</button>
-            <button type="button" style={btn()} onClick={() => { setMes(hoyIso.slice(0, 7)); setDia(hoyIso); }}>Hoy</button>
+            <button type="button" style={btn()} onClick={() => { setMes(hoyIso.slice(0, 7)); setDiaLocal(hoyIso); setAbiertaLocal(null); onVista?.({ dia: hoyIso, abierta: null }); }}>Hoy</button>
           </span>
         }
       >
+        {/* CALENDARIO Y GENTE LADO A LADO (Nicolas, 30/10/2026): la lista de empleados del dia elegido se ve junto al
+            calendario; cada uno abre su ficha del dia en una VENTANA EMERGENTE. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 14, alignItems: "start" }}>
+        <div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3, marginBottom: 12 }}>
           {DIAS.map((d) => (
             <div key={d} style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textAlign: "center" }}>{d}</div>
@@ -232,7 +255,7 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
               <button
                 key={iso}
                 type="button"
-                onClick={() => { setDia(iso); setAbierta(null); }}
+                onClick={() => { setDiaLocal(iso); setAbiertaLocal(null); onVista?.({ dia: iso, abierta: null }); }}
                 style={{
                   minHeight: 58, textAlign: "left", borderRadius: 6, padding: 4, cursor: "pointer",
                   border: elegido ? "2px solid #0f172a" : iso === hoyIso ? "2px solid #94a3b8" : "1px solid #e2e8f0",
@@ -252,12 +275,57 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
           })}
         </div>
 
+        </div>
+        <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
           <div style={{ fontSize: 17, fontWeight: 800, textTransform: "capitalize" }}>{fmtLargo(dia)}</div>
           <span style={{ display: "inline-flex", gap: 6 }}>
             <button type="button" style={btn()} onClick={copiarDiaAnterior}>Copiar el día anterior</button>
             <button type="button" style={btn()} onClick={() => setVerLinea((v) => !v)}>{verLinea ? "Ocultar" : "Ver"} línea temporal</button>
           </span>
+        </div>
+
+        <div style={{ display: "grid", gap: 4 }}>
+          {empleados.length === 0 && <div style={{ fontSize: 13, color: "#64748b" }}>No hay empleados activos en Personal.</div>}
+          {empleados.map((e) => {
+            const a = asignacionDe(e);
+            const existe = !!a.id;
+            const t = trabajoDe(a.jobId);
+            const h = horasDelDia(a);
+            const hechas = a.tareas.filter((x) => x.hecha).length;
+            const pr = presenciaDe(e);
+            const cp = categoriaPrincipal(e.categoriasInternas, categorias);
+            return (
+              <div
+                key={e.id}
+                onClick={() => setAbierta(e.id)}
+                title="Abrir la ficha del día"
+                style={{ border: "1px solid #e2e8f0", borderLeft: `4px solid ${existe ? COLOR_LUGAR[a.lugar] : "#cbd5e1"}`, borderRadius: 8, background: abierta === e.id ? "#f1f5f9" : "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "6px 8px", cursor: "pointer" }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <strong>{e.name}</strong> <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{companyShort(e.company)}</span>
+                    {pr !== "sin_dato" && (
+                      <span title="Según Asistencia (Personal)" style={{ fontSize: 11.5, fontWeight: 700, marginLeft: 6, color: pr === "esta" ? "#15803d" : "#b91c1c" }}>{pr === "esta" ? "✓ está" : "✗ no está"}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {cp ? <span style={{ color: "#0f766e" }}>{etiquetaCategoria(cp, categorias)}</span> : <span style={{ color: "#b45309" }}>sin categoría interna</span>}
+                    {" · "}
+                    {existe
+                      ? `${a.lugar === "obra" ? `🏗 ${t ? `${t.budgetNumber} · ${t.client}` : "obra sin elegir"}` : "🏭 fábrica"} · ${h.total} h · ${a.tareas.length} tarea(s)${a.tareas.length ? ` (${hechas} hechas)` : ""}`
+                      : "sin armar"}
+                  </div>
+                </div>
+                <span style={{ display: "inline-flex", gap: 4, flexShrink: 0 }} onClick={(ev) => ev.stopPropagation()}>
+                  {onAbrirFichaPersonal && <button type="button" style={btn()} title="Ficha de personal" onClick={() => onAbrirFichaPersonal(e.id)}>👤</button>}
+                  <button type="button" style={btn()} onClick={() => setAbierta(e.id)}>{existe ? "✎ Ficha" : "+ Armar"}</button>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+        </div>
         </div>
 
         {(() => {
@@ -299,64 +367,54 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
           ) : null;
         })()}
         {verLinea && delDia.length > 0 && <LineaTemporal asignaciones={delDia} nombreObra={nombreObra} trabajoDe={trabajoDe} />}
-
-        <div style={{ display: "grid", gap: 6 }}>
-          {empleados.length === 0 && <div style={{ fontSize: 13, color: "#64748b" }}>No hay empleados activos en Personal.</div>}
-          {empleados.map((e) => {
-            const a = asignacionDe(e);
-            const existe = !!a.id;
-            const t = trabajoDe(a.jobId);
-            const h = horasDelDia(a);
-            const hechas = a.tareas.filter((x) => x.hecha).length;
-            const open = abierta === e.id;
-            return (
-              <div key={e.id} style={{ border: "1px solid #e2e8f0", borderLeft: `4px solid ${existe ? COLOR_LUGAR[a.lugar] : "#cbd5e1"}`, borderRadius: 8, background: "#fff" }}>
-                <div
-                  onClick={() => setAbierta(open ? null : e.id)}
-                  style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 10px", cursor: "pointer", flexWrap: "wrap" }}
-                >
-                  <div>
-                    <strong>{e.name}</strong> <span style={{ fontSize: 11.5, color: "#94a3b8" }}>{companyShort(e.company)}</span>
-                    {presenciaDe(e) !== "sin_dato" && (
-                      <span title="Según Asistencia (Personal)" style={{ fontSize: 11.5, fontWeight: 700, marginLeft: 6, color: presenciaDe(e) === "esta" ? "#15803d" : "#b91c1c" }}>
-                        {presenciaDe(e) === "esta" ? "✓ está" : "✗ no está"}
-                      </span>
-                    )}
-                    {(() => {
-                      const cp = categoriaPrincipal(e.categoriasInternas, categorias);
-                      return cp ? <span style={{ fontSize: 11.5, color: "#0f766e", marginLeft: 6 }}>{etiquetaCategoria(cp, categorias)}</span> : <span style={{ fontSize: 11.5, color: "#b45309", marginLeft: 6 }}>sin categoría interna</span>;
-                    })()}
-                    <div style={{ fontSize: 12, color: "#64748b" }}>
-                      {existe
-                        ? `${a.lugar === "obra" ? `🏗 ${t ? `${t.budgetNumber} · ${t.client}` : "Obra sin elegir"}` : "🏭 Fábrica"} · ${a.turnos.map((x) => `${x.desde}-${x.hasta}`).join(" / ") || "sin turnos"} · ${h.total} h · ${a.tareas.length} tarea(s)${a.tareas.length ? ` (${hechas} hechas)` : ""}`
-                        : "Sin armar"}
-                    </div>
-                  </div>
-                  <span style={{ display: "inline-flex", gap: 6 }} onClick={(ev) => ev.stopPropagation()}>
-                    {existe && <button type="button" style={btn()} onClick={() => pdfEmpleado(a)}>🖨 PDF</button>}
-                    <button type="button" style={btn()} onClick={() => setAbierta(open ? null : e.id)}>{open ? "Cerrar" : existe ? "✎ Ficha" : "+ Armar el día"}</button>
-                  </span>
-                </div>
-                {open && (
-                  <FichaDelDia
-                    a={a}
-                    trabajos={trabajos}
-                    tipos={tipos}
-                    grupos={grupos}
-                    capacidades={tieneCategorias(e.categoriasInternas) ? capacidadesPorTareaEntera(capacidadesDelEmpleado(e.categoriasInternas, categorias), tipos) : null}
-                    faltanPara={faltanPara}
-                    onGuardar={guardar}
-                    onBorrar={existe ? () => { if (window.confirm(`¿Borrar el día de ${e.name}?`)) { onBorrarAsignacion(a.id); setAbierta(null); } } : undefined}
-                    onAbrirTrabajo={onAbrirTrabajo}
-                    onRetrabajo={onRetrabajo}
-                    nuevoId={nuevoId}
-                  />
-                )}
-              </div>
-            );
-          })}
-        </div>
       </Panel>
+
+      {(() => {
+        // LA FICHA DEL DIA EN VENTANA EMERGENTE (Nicolas, 30/10/2026), como el resto del sistema.
+        const e = empleados.find((x) => x.id === abierta);
+        if (!e) return null;
+        const a = asignacionDe(e);
+        const existe = !!a.id;
+        const pr = presenciaDe(e);
+        const cp = categoriaPrincipal(e.categoriasInternas, categorias);
+        return (
+          <div
+            onClick={() => setAbierta(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 70, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "40px 12px" }}
+          >
+            <div onClick={(ev) => ev.stopPropagation()} style={{ background: "#ffffff", borderRadius: 12, width: "min(980px, 100%)", padding: 14, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", padding: "0 10px 10px" }}>
+                <div>
+                  <div style={{ fontSize: 19, fontWeight: 800 }}>{e.name} <span style={{ fontSize: 12.5, color: "#94a3b8", fontWeight: 600 }}>{companyShort(e.company)}</span></div>
+                  <div style={{ fontSize: 12.5, color: "#64748b", textTransform: "capitalize" }}>
+                    {fmtLargo(dia)}
+                    {pr !== "sin_dato" && <span style={{ textTransform: "none", fontWeight: 700, marginLeft: 6, color: pr === "esta" ? "#15803d" : "#b91c1c" }}>{pr === "esta" ? "✓ está" : "✗ no está"}</span>}
+                    <span style={{ textTransform: "none", marginLeft: 6, color: cp ? "#0f766e" : "#b45309" }}>{cp ? etiquetaCategoria(cp, categorias) : "sin categoría interna"}</span>
+                  </div>
+                </div>
+                <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
+                  {onAbrirFichaPersonal && <button type="button" style={btn()} onClick={() => onAbrirFichaPersonal(e.id)}>👤 Ficha de personal</button>}
+                  {existe && <button type="button" style={btn()} onClick={() => pdfEmpleado(a)}>🖨 PDF</button>}
+                  <button type="button" style={btn()} onClick={() => setAbierta(null)}>✕ Cerrar</button>
+                </span>
+              </div>
+              <FichaDelDia
+                a={a}
+                trabajos={trabajos}
+                tipos={tipos}
+                grupos={grupos}
+                capacidades={tieneCategorias(e.categoriasInternas) ? capacidadesPorTareaEntera(capacidadesDelEmpleado(e.categoriasInternas, categorias), tipos) : null}
+                faltanPara={faltanPara}
+                onGuardar={guardar}
+                onBorrar={existe ? () => { if (window.confirm(`¿Borrar el día de ${e.name}?`)) { onBorrarAsignacion(a.id); setAbierta(null); } } : undefined}
+                onAbrirTrabajo={onAbrirTrabajo}
+                onRetrabajo={onRetrabajo}
+                nuevoId={nuevoId}
+              />
+            </div>
+          </div>
+        );
+      })()}
 
       {mostrarCatalogo && (
         <Catalogo grupos={grupos} tipos={tipos} maquinas={maquinas} onGuardarGrupo={onGuardarGrupo} onBorrarGrupo={onBorrarGrupo} onGuardarTipo={onGuardarTipo} onBorrarTipo={onBorrarTipo} nuevoId={nuevoId} />
@@ -811,7 +869,7 @@ function Catalogo({
   return (
     <Panel span="full" title="Tareas y su paso a paso">
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
-        Se arma una vez y queda: cada tarea (Corte CNC, Pegado de cantos, Armado…) con su paso a paso, que siempre es el mismo, y las máquinas y herramientas que necesita. Cada paso lleva su unidad y sus horas por unidad. "Pegar paso a paso…" carga todos los pasos de una vez (1. … 2. … o uno por renglón); un paso que ya está escrito en otra tarea se llama con "+ Paso existente…" y es el mismo (mismo tiempo). Los tipos de mueble eligen estas tareas desde su ficha.
+        Se arma una vez y queda: cada tarea (Corte CNC, Pegado de cantos, Armado…) con su paso a paso, que siempre es el mismo, y las máquinas y herramientas que necesita. Cada paso lleva su unidad y sus horas por unidad. "Pegar paso a paso…" carga todos los pasos de una vez (1. … 2. … o uno por renglón); un paso que ya está escrito en otra tarea se llama con "+ Paso existente…" y es el mismo (mismo tiempo). Los tipos de mueble o trabajo eligen estas tareas desde su ficha.
       </div>
       <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
         <ButtonLike onClick={() => onGuardarGrupo({ id: nuevoId(), nombre: "Tarea nueva", orden: grupos.length + 1 })}>+ Tarea</ButtonLike>

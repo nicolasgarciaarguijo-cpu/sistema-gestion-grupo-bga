@@ -16,6 +16,37 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-30a",
+    fecha: "30/10/2026",
+    titulo: "Organización diaria más ágil",
+    items: [
+      {
+        titulo: "La gente al lado del calendario",
+        que: "La lista de empleados del día elegido se ve junto al calendario, con si está, su categoría y cómo tiene armado el día.",
+        como: "Fabricación → Organización diaria.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "La ficha del día en ventana",
+        que: "La ficha para cargar las tareas de cada persona se abre en una ventana emergente. Tiene el botón 👤 Ficha de personal: al cerrarla volvés a Fabricación con el mismo día y la misma ficha abierta.",
+        como: "Click en la persona (o ✎ Ficha). Escape cierra.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Checklist antes de producción",
+        que: "Cada trabajo abierto muestra si tiene materiales, insumos y herrajes y accesorios. Se cumple solo si el stock alcanza (repartido entre los trabajos según cuándo lo necesitan) o se da el ok a mano, que queda firmado. El cronograma muestra si está listo y avisa si se pasan tareas sin estarlo.",
+        como: "Fabricación → Checklist antes de producción → click en el trabajo.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Faltantes de los presupuestos en bloques",
+        que: "Los materiales guardados dentro de los bloques (subpresupuestos) ahora cuentan en los faltantes de stock y en las compras pendientes por trabajo. Antes esos trabajos figuraban sin faltantes.",
+        como: "Fabricación y Compras: se ve solo.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-10-29a",
     fecha: "29/10/2026",
     titulo: "Pagos programados desde la factura",

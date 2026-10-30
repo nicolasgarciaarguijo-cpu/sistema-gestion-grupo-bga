@@ -90,7 +90,7 @@ export function MueblesPresupuesto({
             value=""
             onChange={(e) => e.target.value && agregar(Number(e.target.value))}
             style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: "6px 8px", fontSize: 13, fontWeight: 700, cursor: "pointer" }}
-            title="Sumar un mueble de un tipo (Fabricación → Tipos de mueble)"
+            title="Sumar un mueble de un tipo (Fabricación → Tipos de mueble o trabajo)"
           >
             <option value="">+ Mueble…</option>
             {activos.map((t) => (
@@ -102,11 +102,11 @@ export function MueblesPresupuesto({
       }
     >
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 6 }}>
-        Las horas salen de la receta de cada tipo de mueble: las tareas por medida usan las medidas, y las que salen de materiales usan lo cotizado en este bloque
+        Las horas salen de la receta de cada tipo de mueble o trabajo: las tareas por medida usan las medidas, y las que salen de materiales usan lo cotizado en este bloque
         (si dos muebles usan el mismo rubro, se reparte según cuántos son). Click derecho: ver tareas, fijar materiales a mano, quitar.
       </div>
       {activos.length === 0 && muebles.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Todavía no hay tipos de mueble. Se arman en Fabricación → Tipos de mueble.</div>
+        <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Todavía no hay tipos de mueble o trabajo. Se arman en Fabricación → Tipos de mueble o trabajo.</div>
       ) : muebles.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Este bloque no tiene muebles. Sumá uno con "+ Mueble…".</div>
       ) : (
@@ -170,7 +170,7 @@ export function MueblesPresupuesto({
                     </td>
                     <td style={{ ...tdDato, textAlign: "right" }}>{fmt(c.horasReloj)}</td>
                     <td style={{ ...tdFlexible, fontSize: 12, color: "#64748b" }}>
-                      {c.tipo ? c.tipo.nombre : <span style={{ color: "#b91c1c" }}>El tipo de mueble ya no existe</span>}
+                      {c.tipo ? c.tipo.nombre : <span style={{ color: "#b91c1c" }}>El tipo de mueble o trabajo ya no existe</span>}
                       {mats.length ? ` · ${mats.join(" · ")}` : ""}
                     </td>
                   </tr>
@@ -373,7 +373,7 @@ export function MueblesPresupuesto({
                 ))}
               </tbody>
             </table>
-            {abierto.tareas.length === 0 && <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Este tipo de mueble no tiene receta (Fabricación → Tipos de mueble).</div>}
+            {abierto.tareas.length === 0 && <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Este tipo de mueble o trabajo no tiene receta (Fabricación → Tipos de mueble o trabajo).</div>}
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <ButtonLike onClick={() => setDetalle(null)}>Listo</ButtonLike>
             </div>

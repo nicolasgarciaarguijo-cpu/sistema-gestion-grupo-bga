@@ -555,7 +555,8 @@ export type ApprovedJob = {
   snapshot: BudgetSnapshot;
   // Fabricacion (fase 4, 2026-10-26): los muebles del trabajo (del presupuesto, o cargados en Fabricacion para los
   // presupuestos viejos), desde cuando arranca en fabrica y la holgura pedida (dias habiles). Ver domain/cronograma.ts.
-  fabricacion?: { muebles?: MuebleDelPresupuesto[]; inicio?: string; holguraDias?: number };
+  // checklist: el ok antes de lanzar a produccion (materiales, insumos, herrajes) dado A MANO, con firma (30/10/2026).
+  fabricacion?: { muebles?: MuebleDelPresupuesto[]; inicio?: string; holguraDias?: number; checklist?: import("./checklistProduccion").ChecklistProduccion };
 };
 
 export type FinancialItemType = "facturacion" | "cobranza" | "pago";
