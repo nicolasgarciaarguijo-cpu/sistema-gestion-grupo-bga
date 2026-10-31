@@ -256,7 +256,8 @@ import { Mantenimiento } from "./tabs/Mantenimiento";
 import { costosEmpresariales, marcadoresParaPresupuesto, ultimosMesesCerrados } from "./domain/costosEmpresariales";
 import { esMaquinaOHerramienta, motivoNoDisponible, registrarTareasHechas, TAREAS_MANTENIMIENTO_BASE, type FichaMaquina } from "./domain/mantenimiento";
 import type { TipoMueble } from "./domain/tiposMueble";
-import { materialesDeLosMuebles, necesidadPorTarea } from "./domain/tiposMueble";
+import { convertidorVigente, necesidadPorTarea, type ConvertidorMateriales } from "./domain/tiposMueble";
+import { EquivalenciasYCriterios } from "./tabs/Equivalencias";
 import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
@@ -1876,6 +1877,7 @@ type PersistedAppStateData = {
   escalonesInternos: string[];
   // Mantenimiento: la ficha de cada maquina/herramienta de Stock (por id de stock), con preventivos e historial.
   fichasMaquinas: FichaMaquina[];
+  convertidorMateriales?: Partial<ConvertidorMateriales>;
   // Retrabajos (fase 6): cada uno de un trabajo y de su empresa. Ver domain/retrabajos.ts.
   retrabajos: Retrabajo[];
   // Fabricacion · tipos de mueble: receta ordenada por pasos sobre el catalogo de tareas (global).
@@ -1952,7 +1954,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "organizacion-diaria",
     label: "Fabricación · organización diaria",
-    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble", "fichasMaquinas", "retrabajos"] as const,
+    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble", "fichasMaquinas", "retrabajos", "convertidorMateriales"] as const,
   },
   {
     key: "cuentas",
@@ -3251,6 +3253,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [tiposMueble, setTiposMueble] = useState<TipoMueble[]>([]);
   const [escalonesInternos, setEscalonesInternos] = useState<string[]>([]);
   const [fichasMaquinas, setFichasMaquinas] = useState<FichaMaquina[]>([]);
+  // Convertidor de materiales (30/10/2026): equivalencias, como se compra y lo que acompaña. Lo que nunca se calibro vale lo de
+  // Nicolas (placa 4,5 m2, laca 0,3 L, fondo 0,2 L, laca de color minimo 3 L, catalizador = mitad de la laca).
+  const [convertidorMateriales, setConvertidorMateriales] = useState<Partial<ConvertidorMateriales> | undefined>(undefined);
+  const convertidorVigenteMateriales = useMemo(() => convertidorVigente(convertidorMateriales), [convertidorMateriales]);
   const [retrabajos, setRetrabajos] = useState<Retrabajo[]>([]);
   const escalonesVigentes = escalonesInternos.length ? escalonesInternos : ESCALONES_POR_DEFECTO;
   // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
@@ -10060,6 +10066,7 @@ Escribi CERRAR para confirmar:`
     escalonesInternos: [...escalonesInternos],
     fichasMaquinas: fichasMaquinas.map((item) => ({ ...item, planes: item.planes.map((p) => ({ ...p })), historial: item.historial.map((r) => ({ ...r })) })),
     retrabajos: retrabajos.map((item) => ({ ...item })),
+    convertidorMateriales: convertidorMateriales ? JSON.parse(JSON.stringify(convertidorMateriales)) : undefined,
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
@@ -10409,6 +10416,7 @@ Escribi CERRAR para confirmar:`
     setTiposMueble((data.tiposMueble || []).map((item) => ({ ...item, receta: (item.receta || []).map((r) => ({ ...r })) })));
     setEscalonesInternos([...(data.escalonesInternos || [])]);
     setFichasMaquinas((data.fichasMaquinas || []).map((item) => ({ ...item, planes: (item.planes || []).map((p) => ({ ...p })), historial: (item.historial || []).map((r) => ({ ...r })) })));
+    setConvertidorMateriales(data.convertidorMateriales && typeof data.convertidorMateriales === "object" ? JSON.parse(JSON.stringify(data.convertidorMateriales)) : undefined);
     setRetrabajos(keepAccessibleByCompany(data.retrabajos || []).map((item) => ({ ...item })));
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
@@ -12739,6 +12747,7 @@ Escribi CERRAR para confirmar:`
     escalonesInternos,
     fichasMaquinas,
     retrabajos,
+    convertidorMateriales,
     cuentasGuardadas,
     fiscalClosings,
     inversiones,
@@ -23002,10 +23011,22 @@ Escribi CERRAR para confirmar:`
               personas={personasParaCotizar}
               manoDeObra={labor}
               money={money}
-              materialesDeMuebles={materialesDeLosMuebles(mueblesPpto, tiposMueble, stockSearchOptions).length}
-              onPasarMateriales={() => {
+              stock={stockSearchOptions}
+              convertidor={convertidorVigenteMateriales}
+              previos={Object.fromEntries(
+                materials.flatMap((x) => {
+                  if (!x.desdeMuebles || !x.generico) return [];
+                  const articuloId = x.articuloId ?? stockSearchOptions.find((s) => (x.stockCode && s.code === x.stockCode) || s.description === x.description)?.id;
+                  return [[x.generico, { articuloId, qty: x.cantidadManual ? x.qty : undefined }]];
+                })
+              )}
+              onPasarMateriales={(pasados) => {
                 // Se reemplazan los que vinieron de los muebles antes; lo cargado a mano queda.
-                const filas = materialesDeLosMuebles(mueblesPpto, tiposMueble, stockSearchOptions).map((m) => ({
+                const filas = pasados.map((m) => ({
+                  generico: m.generico,
+                  articuloId: m.stockItemId,
+                  cantidadManual: m.cantidadManual,
+                  sinPrecio: m.sinPrecio,
                   id: newId(),
                   description: m.description,
                   qty: m.qty,
@@ -23842,6 +23863,14 @@ Escribi CERRAR para confirmar:`
           stock={stockSearchOptions}
           onGuardar={(t) => setTiposMueble((prev) => (prev.some((x) => x.id === t.id) ? prev.map((x) => (x.id === t.id ? t : x)) : [...prev, t]))}
           onBorrar={(id) => setTiposMueble((prev) => prev.filter((x) => x.id !== id))}
+          nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
+        />
+      )}
+      {activeTab === "fabricacion" && (
+        <EquivalenciasYCriterios
+          convertidor={convertidorVigenteMateriales}
+          stock={stockSearchOptions}
+          onGuardar={setConvertidorMateriales}
           nuevoId={() => Date.now() * 1000 + Math.floor(Math.random() * 1000)}
         />
       )}

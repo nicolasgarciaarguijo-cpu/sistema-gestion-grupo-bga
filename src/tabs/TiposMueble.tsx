@@ -19,6 +19,7 @@ import {
   tareasDelGrupo,
   tildarGrupo,
   cantidadConDesperdicio,
+  genericoDe,
   DESPERDICIO_POR_DEFECTO,
   type ItemStockParaMateriales,
   type MaterialDelTipo,
@@ -243,6 +244,7 @@ function EditorReceta({
   // Cantidades de materiales para probar (en el presupuesto salen solas de lo cotizado).
   const [materiales, setMateriales] = useState<Record<number, number>>({});
   const [buscarMaterial, setBuscarMaterial] = useState("");
+  const gruposStock = Array.from(new Set(stock.map((x) => x.group || "").filter(Boolean))).sort((a, b) => a.localeCompare(b));
   const ordenada = recetaOrdenada(tipo.receta);
   const calc = tareasDelMueble(tipo, { tipoMuebleId: tipo.id, ...prueba, ajustes, materiales }, tareas);
   const rubrosMateriales = rubros.filter((r) => r.origen === "materiales" && r.activo !== false);
@@ -367,8 +369,9 @@ function EditorReceta({
 
         <div style={sub}>Materiales (por cada mueble)</div>
         <div style={{ fontSize: 12, color: "#64748b" }}>
-          Lo que lleva UN mueble de esta medida, sacado de Stock (con su precio de hoy). La cantidad es la exacta; el % de desperdicio se suma
-          al presupuestar. El desperdicio del tipo vale para todos; cada material puede tener el suyo.
+          Lo que lleva UN mueble de esta medida, por rubro y tipo de material: "4,2 m² de placa" (después es melamina blanca o símil madera),
+          "2 correderas" (después telescópicas u ocultas). El artículo concreto se elige al presupuestar, entre los del grupo de Stock. El
+          sugerido solo da un precio de referencia. La cantidad es la exacta; el % de desperdicio se suma al presupuestar.
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
           Desperdicio del tipo:
@@ -386,28 +389,40 @@ function EditorReceta({
           <table className="planilla" style={planillaTable}>
             <thead>
               <tr>
-                <th style={thEsquina}>Material (Stock)</th>
+                <th style={thEsquina}>Material (rubro y tipo)</th>
+                <th style={thColumna}>Grupo de Stock</th>
                 <th style={{ ...thColumna, textAlign: "right" }}>Cantidad</th>
                 <th style={{ ...thColumna, textAlign: "right" }}>Desperdicio %</th>
                 <th style={{ ...thColumna, textAlign: "right" }}>Con desperdicio</th>
-                <th style={{ ...thColumna, textAlign: "right" }}>Precio</th>
+                <th style={thColumna}>Sugerido (precio de referencia)</th>
                 <th style={{ ...thColumna, textAlign: "right" }}>Subtotal</th>
                 <th style={thFlexible} />
               </tr>
             </thead>
             <tbody>
               {(tipo.materiales || []).map((m) => {
-                const it = stock.find((x) => x.id === m.stockItemId);
+                const g = genericoDe(m, stock);
+                const it = g.sugeridoId != null ? stock.find((x) => x.id === g.sugeridoId) : undefined;
+                const delGrupo = stock.filter((x) => (x.group || "") === g.grupo);
                 const conDesp = cantidadConDesperdicio(tipo, m);
+                // Al tocar cualquier dato se fija el generico entero (los viejos solo tenian el articulo).
                 const guardarM = (cambio: Partial<MaterialDelTipo>) =>
-                  onGuardar({ ...tipo, materiales: (tipo.materiales || []).map((x) => (x.id === m.id ? { ...x, ...cambio } : x)) });
+                  onGuardar({ ...tipo, materiales: (tipo.materiales || []).map((x) => (x.id === m.id ? { ...x, nombre: g.nombre, unidad: g.unidad, grupo: g.grupo, ...cambio } : x)) });
                 return (
                   <tr key={m.id}>
-                    <td style={tdNombre}>{it ? it.description : <span style={{ color: "#b91c1c" }}>borrado de Stock</span>}</td>
+                    <td style={tdNombre}>
+                      <input style={inputCelda} value={m.nombre ?? g.nombre} placeholder="Ej. Placa, Corredera" onChange={(e) => guardarM({ nombre: e.target.value })} {...focoCelda} />
+                    </td>
+                    <td style={tdDato}>
+                      <select style={selectCelda} value={g.grupo} onChange={(e) => guardarM({ grupo: e.target.value, stockItemId: undefined })}>
+                        <option value="">(sin grupo)</option>
+                        {gruposStock.map((gr) => <option key={gr} value={gr}>{gr}</option>)}
+                      </select>
+                    </td>
                     <td style={tdDato}>
                       <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
                         <input style={inputCeldaDerecha} type="number" min={0} step={0.01} value={m.cantidad} onChange={(e) => guardarM({ cantidad: Number(e.target.value) || 0 })} {...focoCelda} />
-                        <span style={{ fontSize: 11, color: "#94a3b8" }}>{it?.unit || ""}</span>
+                        <input style={{ ...inputCelda, width: 44 }} value={m.unidad ?? g.unidad} title="Unidad" onChange={(e) => guardarM({ unidad: e.target.value })} {...focoCelda} />
                       </span>
                     </td>
                     <td style={tdDato}>
@@ -423,7 +438,12 @@ function EditorReceta({
                       />
                     </td>
                     <td style={{ ...tdDato, textAlign: "right" }}>{fmt(conDesp)}</td>
-                    <td style={{ ...tdDato, textAlign: "right", color: "#475569" }}>{it ? `$ ${fmt(it.unitPrice)}` : "·"}</td>
+                    <td style={tdDato}>
+                      <select style={selectCelda} value={g.sugeridoId ?? ""} onChange={(e) => guardarM({ stockItemId: e.target.value ? Number(e.target.value) : undefined })}>
+                        <option value="">(ninguno)</option>
+                        {delGrupo.map((x) => <option key={x.id} value={x.id}>{x.description} · $ {fmt(x.unitPrice)}/{x.unit}</option>)}
+                      </select>
+                    </td>
                     <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{it ? `$ ${fmt(conDesp * it.unitPrice)}` : "·"}</td>
                     <td style={tdFlexible}>
                       <button
@@ -442,16 +462,19 @@ function EditorReceta({
           </table>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          <ButtonLike secondary onClick={() => onGuardar({ ...tipo, materiales: [...(tipo.materiales || []), { id: nuevoId(), nombre: "", unidad: "u", grupo: "", cantidad: 1 }] })}>
+            + Material
+          </ButtonLike>
           <input
             list={`stock-${tipo.id}`}
             style={{ flex: 1, minWidth: 260, fontSize: 13, padding: "5px 8px", borderRadius: 6, border: "1px solid #cbd5e1" }}
-            placeholder="+ Material de Stock: escribí para buscar y elegí"
+            placeholder="+ A partir de un artículo de Stock (toma su grupo y unidad; después le ponés el nombre genérico)"
             value={buscarMaterial}
             onChange={(e) => {
               const v = e.target.value;
               const it = stock.find((x) => x.description === v);
               if (it) {
-                onGuardar({ ...tipo, materiales: [...(tipo.materiales || []), { id: nuevoId(), stockItemId: it.id, cantidad: 1 }] });
+                onGuardar({ ...tipo, materiales: [...(tipo.materiales || []), { id: nuevoId(), nombre: it.description, unidad: it.unit, grupo: it.group || "", stockItemId: it.id, cantidad: 1 }] });
                 setBuscarMaterial("");
               } else setBuscarMaterial(v);
             }}
@@ -461,7 +484,7 @@ function EditorReceta({
           </datalist>
           {(tipo.materiales || []).length > 0 && (
             <strong style={{ fontSize: 13 }}>
-              Materiales de un mueble: $ {fmt((tipo.materiales || []).reduce((a, m) => a + cantidadConDesperdicio(tipo, m) * Number(stock.find((x) => x.id === m.stockItemId)?.unitPrice || 0), 0))}
+              Materiales de un mueble (con los sugeridos): $ {fmt((tipo.materiales || []).reduce((a, m) => a + cantidadConDesperdicio(tipo, m) * Number(stock.find((x) => x.id === genericoDe(m, stock).sugeridoId)?.unitPrice || 0), 0))}
             </strong>
           )}
         </div>

@@ -141,9 +141,87 @@ describe("materiales de los tipos de mueble", () => {
   it("suma por item de Stock según la cantidad de muebles, con el precio de Stock", () => {
     const r = materialesDeLosMuebles([{ tipoMuebleId: 7, cantidad: 3 }], tipos, stock);
     expect(r.map((x: any) => [x.description, x.qty, x.unitPrice])).toEqual([
-      ["Placa melamina blanca 18mm", 6.6, 10000],
+      ["Placa melamina blanca 18mm", 7, 10000], // sin regla de compra: para arriba
       ["Bisagra cazoleta", 6, 500],
     ]);
+  });
+
+  it("genéricos (30/10/2026): suma por rubro y tipo entre muebles y el artículo se elige al presupuestar", () => {
+    const { genericosDeLosMuebles } = require("./tiposMueble");
+    const stockG = [
+      { id: 1, description: "Melamina blanca 18mm", unit: "m2", unitPrice: 10000, group: "Melaminas" },
+      { id: 3, description: "Melamina símil roble 18mm", unit: "m2", unitPrice: 14000, group: "Melaminas" },
+      { id: 4, description: "Corredera telescópica 45cm", unit: "u", unitPrice: 3000, group: "Herrajes" },
+    ];
+    const tiposG = [
+      { id: 1, nombre: "Bajo 60", receta: [], desperdicioPct: 0, materiales: [
+        { id: 1, nombre: "Placa", unidad: "m2", grupo: "Melaminas", cantidad: 4.2, stockItemId: 1 },
+        { id: 2, nombre: "Corredera", unidad: "u", grupo: "Herrajes", cantidad: 2 },
+      ] },
+      { id: 2, nombre: "Alacena 60", receta: [], desperdicioPct: 0, materiales: [{ id: 3, nombre: "placa ", unidad: "m2", grupo: "Melaminas", cantidad: 2 }] },
+    ];
+    const muebles = [{ tipoMuebleId: 1, cantidad: 2 }, { tipoMuebleId: 2, cantidad: 1 }];
+    const g = genericosDeLosMuebles(muebles, tiposG, stockG);
+    expect(g.map((x: any) => [x.nombre, x.qty, x.sugeridoId])).toEqual([["Placa", 10.4, 1], ["Corredera", 4, undefined]]);
+    // Sin elegir: va el sugerido; la corredera sin sugerido pasa con precio 0 para elegirla.
+    const sinElegir = materialesDeLosMuebles(muebles, tiposG, stockG);
+    expect(sinElegir.map((x: any) => [x.description, x.qty, x.unitPrice])).toEqual([
+      ["Melamina blanca 18mm", 10.4, 10000],
+      ["⚠ Corredera: SIN ARTÍCULO · FALTA PRECIO", 4, 0],
+    ]);
+    const elegidos = { [g[0].clave]: 3, [g[1].clave]: 4 };
+    expect(materialesDeLosMuebles(muebles, tiposG, stockG, { elegidos }).map((x: any) => [x.description, x.unitPrice, x.generico])).toEqual([
+      ["Melamina símil roble 18mm", 14000, "melaminas|placa"],
+      ["Corredera telescópica 45cm", 3000, "herrajes|corredera"],
+    ]);
+  });
+
+  it("convertidor (30/10/2026): pasa a la unidad del artículo, redondea según cómo se compra y suma el catalizador", () => {
+    const { CONVERTIDOR_POR_DEFECTO, equivalenciaPara, cantidadAComprar } = require("./tiposMueble");
+    const stockC = [
+      { id: 1, description: "Melamina blanca 18mm 2.75x1.84", unit: "u", unitPrice: 50000, group: "Melaminas" },
+      { id: 2, description: "Laca poliuretanica COLOR", unit: "lt", unitPrice: 20000, group: "Pinturas" },
+      { id: 3, description: "Fondo poliuretanico COLOR", unit: "u", unitPrice: 0, group: "Pinturas" },
+      { id: 4, description: "Melamina s/mdf 18mm Roble", unit: "u", unitPrice: 70000, group: "Melaminas" },
+    ];
+    const tipoC = [{ id: 1, nombre: "Frente laqueado", receta: [], desperdicioPct: 0, materiales: [
+      { id: 1, nombre: "Placa", unidad: "m2", grupo: "Melaminas", cantidad: 10, stockItemId: 1 },
+      { id: 2, nombre: "Laca", unidad: "m2", grupo: "Pinturas", cantidad: 7, stockItemId: 2 },
+      { id: 3, nombre: "Fondo", unidad: "m2", grupo: "Pinturas", cantidad: 7, stockItemId: 3 },
+    ] }];
+    const r = materialesDeLosMuebles([{ tipoMuebleId: 1, cantidad: 1 }], tipoC, stockC);
+    expect(r.map((x: any) => [x.nombre, x.uso, x.qty, x.unit, !!x.sinPrecio])).toEqual([
+      ["Placa", 2.222, 2.222, "u", false], // placa blanca = compra intensiva: exacto (10 m² / 4,5)
+      ["Laca", 2.1, 3, "lt", false], // laca de color: mínimo 3 L
+      ["Fondo", 1.4, 2, "u", true], // sin regla: para arriba; sin precio en Stock: marcado
+      ["Catalizador", 1.05, 2, "lata de 1 L", true], // la mitad del USO de laca, sin artículo elegido
+    ]);
+    expect(r[3].acompanaA).toBe("Laca");
+    expect(r[0].equivalencia).toBe("1 placa = 4,5 m2");
+    // Placa de color: no es intensiva, se redondea a placas enteras.
+    const roble = materialesDeLosMuebles([{ tipoMuebleId: 1, cantidad: 1 }], tipoC, stockC, { elegidos: { "melaminas|placa": 4 } })[0];
+    expect([roble.uso, roble.qty]).toEqual([2.222, 3]);
+    // Laca de color pasados los 3 L: de a 1 litro, no de a 3.
+    expect([cantidadAComprar(2, { id: 1, minimo: 3 }), cantidadAComprar(3.2, { id: 1, minimo: 3 }), cantidadAComprar(5, { id: 1, minimo: 3 })]).toEqual([3, 4, 5]);
+    // Corrección a mano: manda, pero se ve lo que da el tipo.
+    const a = materialesDeLosMuebles([{ tipoMuebleId: 1, cantidad: 1 }], tipoC, stockC, { cantidades: { "melaminas|placa": 3 } })[0];
+    expect([a.qty, a.qtyDelTipo, a.cantidadManual]).toEqual([3, 2.222, true]);
+    // La más puntual gana: la del artículo antes que la del material.
+    const propia = { id: 9, articuloId: 1, unidadMaterial: "m2", unidadArticulo: "placa", modo: "contiene", valor: 5 };
+    expect(equivalenciaPara({ nombre: "Placa", unidad: "m2" }, stockC[0], [...CONVERTIDOR_POR_DEFECTO.equivalencias, propia]).valor).toBe(5);
+    // Sin equivalencia y unidad distinta: pasa tal cual y avisa.
+    const sinEq = materialesDeLosMuebles([{ tipoMuebleId: 1, cantidad: 1 }], tipoC, stockC, { convertidor: { equivalencias: [] } })[0];
+    expect([sinEq.qty, sinEq.sinEquivalencia]).toEqual([10, "m2 → u"]);
+  });
+
+  it("los materiales viejos (solo artículo) valen como genérico con el nombre, unidad y grupo de su artículo", () => {
+    const { genericoDe } = require("./tiposMueble");
+    expect(genericoDe({ id: 1, stockItemId: 2, cantidad: 1 }, [{ id: 2, description: "Bisagra cazoleta", unit: "u", unitPrice: 500, group: "Herrajes" }])).toEqual({
+      nombre: "Bisagra cazoleta",
+      unidad: "u",
+      grupo: "Herrajes",
+      sugeridoId: 2,
+    });
   });
 });
 

@@ -64,7 +64,9 @@ export type TipoMueble = {
   personas?: number;
 };
 
-export type MaterialDelTipo = { id: number; stockItemId: number; cantidad: number; desperdicioPct?: number };
+// Generico (30/10/2026): nombre + unidad + grupo de Stock; stockItemId es solo el SUGERIDO (precio de referencia). Los
+// viejos traen solo stockItemId: ver genericoDe.
+export type MaterialDelTipo = { id: number; cantidad: number; desperdicioPct?: number; nombre?: string; unidad?: string; grupo?: string; stockItemId?: number };
 export const DESPERDICIO_POR_DEFECTO = 10;
 
 // Un mueble concreto (en el presupuesto o en el trabajo): su tipo, cuantos y sus medidas en metros.
@@ -303,23 +305,265 @@ export const cantidadConDesperdicio = (tipo: Pick<TipoMueble, "desperdicioPct">,
 
 export type ItemStockParaMateriales = { id: number; description: string; unit: string; unitPrice: number; code?: string; group?: string; location?: string; sortOrder?: number };
 
-// Los materiales que llevan los muebles del presupuesto, sumados por item de Stock (cantidad de muebles x cantidad con
-// desperdicio), con el precio de hoy del Stock. Es lo que pasa al bloque de materiales del presupuesto.
-export function materialesDeLosMuebles(
+// MATERIAL GENERICO (Nicolas, 30/10/2026): "guarda la cantidad de material por rubro. Si coloco 4,2 m2 de placa, pudiendo
+// ser melamina blanca o simil madera. 2 correderas, pudiendo ser telescopicas u ocultas". El tipo guarda nombre + unidad +
+// grupo de Stock; el articulo concreto se elige al presupuestar entre los de ese grupo. El sugerido solo da un precio de
+// referencia. Los cargados antes (solo stockItemId) valen como generico con el nombre, unidad y grupo de su articulo.
+export type GenericoDelTipo = { nombre: string; unidad: string; grupo: string; sugeridoId?: number };
+export function genericoDe(m: MaterialDelTipo, stock: ItemStockParaMateriales[]): GenericoDelTipo {
+  const it = m.stockItemId != null ? stock.find((x) => x.id === m.stockItemId) : undefined;
+  return { nombre: m.nombre || it?.description || "Material", unidad: m.unidad || it?.unit || "u", grupo: m.grupo ?? it?.group ?? "", sugeridoId: it?.id };
+}
+export const claveGenerico = (g: Pick<GenericoDelTipo, "nombre" | "grupo">) => `${g.grupo.trim().toLowerCase()}|${g.nombre.trim().toLowerCase()}`;
+
+export type GenericoDelPresupuesto = GenericoDelTipo & { clave: string; qty: number };
+
+// Los genericos que llevan los muebles del presupuesto, sumados (cantidad de muebles x cantidad con desperdicio). Si dos
+// tipos sugieren articulos distintos para el mismo generico, queda el primero.
+export function genericosDeLosMuebles(
   muebles: Array<{ tipoMuebleId: number; cantidad: number }>,
   tipos: TipoMueble[],
   stock: ItemStockParaMateriales[]
-): Array<{ stockItemId: number; description: string; qty: number; unit: string; unitPrice: number; stockCode?: string; stockGroup?: string; stockLocation?: string; sortOrder?: number }> {
-  const porItem = new Map<number, number>();
+): GenericoDelPresupuesto[] {
+  const porClave = new Map<string, GenericoDelPresupuesto>();
   muebles.forEach((mb) => {
     const tipo = tipos.find((t) => t.id === mb.tipoMuebleId);
     (tipo?.materiales || []).forEach((m) => {
-      porItem.set(m.stockItemId, (porItem.get(m.stockItemId) || 0) + Number(mb.cantidad || 0) * cantidadConDesperdicio(tipo!, m));
+      const g = genericoDe(m, stock);
+      const clave = claveGenerico(g);
+      const qty = Number(mb.cantidad || 0) * cantidadConDesperdicio(tipo!, m);
+      const prev = porClave.get(clave);
+      porClave.set(clave, prev ? { ...prev, qty: prev.qty + qty, sugeridoId: prev.sugeridoId ?? g.sugeridoId } : { ...g, clave, qty });
     });
   });
-  return Array.from(porItem.entries()).flatMap(([id, qty]) => {
-    const it = stock.find((x) => x.id === id);
-    if (!it || !(qty > 0)) return [];
-    return [{ stockItemId: id, description: it.description, qty: Math.round(qty * 1000) / 1000, unit: it.unit, unitPrice: Number(it.unitPrice || 0), stockCode: it.code, stockGroup: it.group, stockLocation: it.location, sortOrder: it.sortOrder }];
+  return Array.from(porClave.values())
+    .filter((g) => g.qty > 0)
+    .map((g) => ({ ...g, qty: Math.round(g.qty * 1000) / 1000 }));
+}
+
+// ---- CONVERTIDOR DE MATERIALES (Nicolas, 30/10/2026) ---------------------------------------------------------
+// "Tenemos que tener un convertidor establecido que se pueda calibrar: yo considero que la placa cuenta con 4,5 m2 y asi
+// contabilizaremos siempre; la laca 0,3 L por cada m2 terminado y de fondo 0,2 por cada m2". El tipo dice cuanto material
+// lleva en SU unidad (m2 de placa, m2 laqueados); el articulo de Stock se vende en otra (u = una placa, lt). Tres tablas:
+//  1. EQUIVALENCIAS: pasan de la unidad del material a la del articulo.
+//     - modo "contiene": 1 articulo contiene `valor` unidades del material (1 placa = 4,5 m2 → cantidad / 4,5).
+//     - modo "consume": cada 1 unidad del material consume `valor` del articulo (1 m2 laqueado = 0,3 L → cantidad x 0,3).
+//  2. COMPRA: "placas blancas o MDF son de compra intensiva, siempre voy a tener: queda el valor exacto con su desperdicio.
+//     En otros casos se redondea para arriba. Las lacas de color se compran minimamente de a 3 L; superados los 3 L se
+//     compra por litro". Sin regla = se redondea para arriba de a 1.
+//  3. ACOMPAÑAN: "los catalizadores son unicos para todos los colores, se compran de a 1 L, aunque el calculo de uso siempre
+//     sea la mitad de laca". Un material arrastra a otro en proporcion de su USO (antes de redondear).
+// En las tres vale la regla mas puntual: la de un articulo, despues la del material, despues la del grupo de Stock. `contiene`
+// filtra por palabras de la descripcion del articulo (todas tienen que estar: "laca color").
+type AQuien = {
+  material?: string; // nombre generico (Placa, Laca); vacio = cualquiera
+  grupo?: string; // grupo de Stock; vacio = cualquiera
+  articuloId?: number; // un articulo puntual (la mas fuerte)
+  contiene?: string; // palabras de la descripcion del articulo
+  // El CRITERIO, en palabras (Nicolas: "el bloque equivalencias y ahi las vamos dejando asentadas, equivalencias y criterios").
+  nota?: string;
+};
+export type Equivalencia = AQuien & {
+  id: number;
+  unidadMaterial: string; // m2, ml, u
+  unidadArticulo: string; // placa, L, u (solo para mostrar)
+  modo: "contiene" | "consume";
+  valor: number;
+};
+export type ReglaCompra = AQuien & {
+  id: number;
+  intensiva?: boolean; // compra intensiva: va el valor exacto (con desperdicio), sin redondear
+  minimo?: number; // lo minimo que se compra (laca de color: 3)
+  multiplo?: number; // de a cuanto se compra despues del minimo (default 1)
+};
+export type Acompanante = {
+  id: number;
+  material: string; // el que arrastra (Laca)
+  agrega: string; // el que se suma (Catalizador)
+  grupo?: string; // grupo de Stock del que se suma
+  unidad: string; // unidad del que se suma (L)
+  proporcion: number; // por cada 1 de uso del que arrastra (0,5)
+  articuloId?: number; // sugerido
+  nota?: string;
+};
+export type ConvertidorMateriales = { equivalencias: Equivalencia[]; compras: ReglaCompra[]; acompanantes: Acompanante[] };
+
+export const CONVERTIDOR_POR_DEFECTO: ConvertidorMateriales = {
+  equivalencias: [
+    { id: 1, material: "Placa", unidadMaterial: "m2", unidadArticulo: "placa", modo: "contiene", valor: 4.5, nota: "La placa cuenta con 4,5 m² aprovechables: así se contabiliza siempre" },
+    { id: 2, material: "Laca", unidadMaterial: "m2", unidadArticulo: "L", modo: "consume", valor: 0.3, nota: "0,3 L por cada m² terminado" },
+    { id: 3, material: "Fondo", unidadMaterial: "m2", unidadArticulo: "L", modo: "consume", valor: 0.2, nota: "0,2 por cada m²" },
+    { id: 4, material: "Catalizador", unidadMaterial: "L", unidadArticulo: "lata de 1 L", modo: "contiene", valor: 1, nota: "Se compra de a 1 L (a confirmar el tamaño de la lata)" },
+  ],
+  compras: [
+    { id: 11, grupo: "MDF", intensiva: true, nota: "Compra intensiva: siempre se compra y siempre hay" },
+    { id: 12, grupo: "Melaminas", contiene: "blanc", intensiva: true, nota: "Placas blancas: compra intensiva" },
+    { id: 13, grupo: "Pinturas", contiene: "laca color", minimo: 3, multiplo: 1, nota: "Se compra el color para el trabajo: mínimo 3 L; pasados los 3 L, por litro" },
+    { id: 14, grupo: "Pinturas", contiene: "laca incolora", intensiva: true, nota: "Se consigue en todos los formatos (1, 2, 3, 4, 5 L): compra intensiva" },
+    { id: 15, grupo: "Pinturas", contiene: "laca blanca", intensiva: true, nota: "Se consigue en todos los formatos (1, 2, 3, 4, 5 L): compra intensiva" },
+    { id: 16, grupo: "Pinturas", contiene: "laca negra", intensiva: true, nota: "Se consigue en todos los formatos (1, 2, 3, 4, 5 L): compra intensiva" },
+  ],
+  acompanantes: [{ id: 21, material: "Laca", agrega: "Catalizador", grupo: "Pinturas", unidad: "L", proporcion: 0.5, nota: "Único para todos los colores; el uso es siempre la mitad de la laca" }],
+};
+// Lo guardado puede no tener alguna de las tablas: esa vale la de Nicolas.
+export const convertidorVigente = (c?: Partial<ConvertidorMateriales>): ConvertidorMateriales => ({
+  equivalencias: c?.equivalencias ?? CONVERTIDOR_POR_DEFECTO.equivalencias,
+  compras: c?.compras ?? CONVERTIDOR_POR_DEFECTO.compras,
+  acompanantes: c?.acompanantes ?? CONVERTIDOR_POR_DEFECTO.acompanantes,
+});
+
+const normUnidad = (u?: string) => String(u || "").trim().toLowerCase().replace("²", "2").replace("³", "3").replace(/^lts?$|^litros?$/, "l");
+const normTexto = (s?: string) => String(s || "").trim().toLowerCase();
+
+// Cuanto le corresponde una regla a un material con su articulo (-1 = no le corresponde). Una regla sin a quien aplicar no
+// vale para todo.
+function puntaje(r: AQuien, nombre: string, it: Pick<ItemStockParaMateriales, "id" | "group" | "description"> | undefined): number {
+  if (r.articuloId != null && r.articuloId !== it?.id) return -1;
+  if (r.grupo && normTexto(r.grupo) !== normTexto(it?.group)) return -1;
+  if (r.material && normTexto(r.material) !== normTexto(nombre)) return -1;
+  // Cada palabra tiene que ser el COMIENZO de una palabra del articulo: "blanc" agarra blanco/blanca/Mont Blanc, y "color"
+  // no agarra "incolora".
+  if (r.contiene) {
+    const palabras = normTexto(it?.description).split(/[^a-z0-9áéíóúñü]+/).filter(Boolean);
+    if (!normTexto(r.contiene).split(/\s+/).filter(Boolean).every((p) => palabras.some((w) => w.startsWith(p)))) return -1;
+  }
+  if (r.articuloId == null && !r.material && !r.grupo && !r.contiene) return -1;
+  return (r.articuloId != null ? 8 : 0) + (r.material ? 4 : 0) + (r.contiene ? 2 : 0) + (r.grupo ? 1 : 0);
+}
+function laMasPuntual<T extends AQuien>(reglas: T[], nombre: string, it: Pick<ItemStockParaMateriales, "id" | "group" | "description"> | undefined, extra: (r: T) => boolean = () => true): T | undefined {
+  let mejor: { r: T; p: number } | undefined;
+  reglas.forEach((r) => {
+    const p = extra(r) ? puntaje(r, nombre, it) : -1;
+    if (p >= 0 && (!mejor || p > mejor.p)) mejor = { r, p };
+  });
+  return mejor?.r;
+}
+
+// La equivalencia que corresponde a un generico con el articulo elegido, o ninguna.
+export const equivalenciaPara = (g: Pick<GenericoDelTipo, "nombre" | "unidad">, it: Pick<ItemStockParaMateriales, "id" | "group" | "description"> | undefined, equivalencias: Equivalencia[]) =>
+  laMasPuntual(equivalencias, g.nombre, it, (eq) => Number(eq.valor) > 0 && (!eq.unidadMaterial || normUnidad(eq.unidadMaterial) === normUnidad(g.unidad)));
+export const reglaDeCompraPara = (nombre: string, it: Pick<ItemStockParaMateriales, "id" | "group" | "description"> | undefined, compras: ReglaCompra[]) => laMasPuntual(compras, nombre, it);
+
+export const convertirCantidad = (cantidad: number, eq: Equivalencia | undefined) =>
+  !eq ? cantidad : eq.modo === "contiene" ? cantidad / Number(eq.valor) : cantidad * Number(eq.valor);
+const num = (n: number) => Number(n).toLocaleString("es-AR", { maximumFractionDigits: 3 });
+export const textoEquivalencia = (eq: Equivalencia) =>
+  eq.modo === "contiene" ? `1 ${eq.unidadArticulo || "artículo"} = ${num(eq.valor)} ${eq.unidadMaterial}` : `1 ${eq.unidadMaterial} = ${num(eq.valor)} ${eq.unidadArticulo || "del artículo"}`;
+
+// Lo que se compra para un uso: exacto si es de compra intensiva; si no, para arriba, al menos el minimo y de a multiplo.
+export function cantidadAComprar(uso: number, regla: ReglaCompra | undefined): number {
+  if (!(uso > 0)) return 0;
+  if (regla?.intensiva) return uso;
+  const minimo = Number(regla?.minimo) > 0 ? Number(regla!.minimo) : 0;
+  const multiplo = Number(regla?.multiplo) > 0 ? Number(regla!.multiplo) : 1;
+  if (uso <= minimo) return minimo;
+  // Pasado el minimo se sigue de a multiplo desde el minimo (3, 4, 5... con multiplo 1). El 1e-9 evita que 2.0000001 suba a 3.
+  return minimo + Math.ceil((uso - minimo) / multiplo - 1e-9) * multiplo;
+}
+export const textoCompra = (r: ReglaCompra | undefined) =>
+  r?.intensiva
+    ? "compra intensiva: exacto"
+    : `para arriba${Number(r?.minimo) > 0 ? `, mínimo ${num(r!.minimo!)}` : ""}${Number(r?.multiplo) > 0 && Number(r?.multiplo) !== 1 ? `, de a ${num(r!.multiplo!)}` : ""}`;
+
+export type MaterialPasado = {
+  generico: string;
+  nombre: string;
+  grupoGenerico: string;
+  qtyGenerico: number; // en la unidad del material (m2 de placa)
+  unidadGenerico: string;
+  acompanaA?: string; // lo suma otro material (catalizador de la laca)
+  stockItemId?: number;
+  description: string;
+  qty: number;
+  unit: string;
+  unitPrice: number;
+  stockCode?: string;
+  stockGroup?: string;
+  stockLocation?: string;
+  sortOrder?: number;
+  uso: number; // lo que se usa, en la unidad del articulo (antes de redondear)
+  qtyDelTipo: number; // lo que se compra segun el tipo y las reglas (antes de la correccion a mano)
+  cantidadManual?: boolean;
+  equivalencia?: string;
+  compra: string;
+  // El articulo va en otra unidad y no hay equivalencia cargada: la cantidad paso tal cual.
+  sinEquivalencia?: string;
+  sinPrecio?: boolean;
+};
+
+// Lo que pasa al bloque de materiales del presupuesto: cada generico (y los que arrastra) con el articulo ELEGIDO (o el
+// sugerido), la cantidad del tipo pasada a la unidad del articulo y redondeada segun como se compra, y su precio de hoy. La
+// cantidad se puede corregir a mano (Nicolas: "siempre debe existir la posibilidad de correccion manual por el momento"). Sin
+// articulo, o con el articulo sin precio, queda en 0 y marcado: tiene que quedar bien claro que falta el precio.
+export function materialesDeLosMuebles(
+  muebles: Array<{ tipoMuebleId: number; cantidad: number }>,
+  tipos: TipoMueble[],
+  stock: ItemStockParaMateriales[],
+  opciones: { elegidos?: Record<string, number | undefined>; cantidades?: Record<string, number | undefined>; convertidor?: Partial<ConvertidorMateriales> } = {}
+): MaterialPasado[] {
+  const { elegidos = {}, cantidades = {} } = opciones;
+  const conv = convertidorVigente(opciones.convertidor);
+  const r3 = (n: number) => Math.round(n * 1000) / 1000;
+  const articulo = (id?: number) => (id != null ? stock.find((x) => x.id === id) : undefined);
+
+  // El uso de un generico en la unidad del articulo (sin articulo: con la equivalencia del material, si hay).
+  const usoDe = (g: { nombre: string; unidad: string; grupo: string; qty: number }, it: ItemStockParaMateriales | undefined) => {
+    if (it && normUnidad(it.unit) === normUnidad(g.unidad)) return { uso: g.qty };
+    const eq = equivalenciaPara(g, it ?? { id: -1, group: g.grupo, description: "" }, conv.equivalencias);
+    return { uso: convertirCantidad(g.qty, eq), eq, sinEq: it && !eq ? `${g.unidad} → ${it.unit}` : undefined };
+  };
+
+  const base = genericosDeLosMuebles(muebles, tipos, stock);
+  // Los que arrastran otros (catalizador = la mitad del uso de laca), sumados por generico.
+  const arrastrados = new Map<string, GenericoDelPresupuesto & { acompanaA: string }>();
+  base.forEach((g) => {
+    conv.acompanantes
+      .filter((a) => Number(a.proporcion) > 0 && a.agrega && normTexto(a.material) === normTexto(g.nombre))
+      .forEach((a) => {
+        const { uso } = usoDe(g, articulo(elegidos[g.clave] ?? g.sugeridoId));
+        const ng = { nombre: a.agrega, grupo: a.grupo || "", unidad: a.unidad || "u" };
+        const clave = claveGenerico(ng);
+        const prev = arrastrados.get(clave);
+        const qty = uso * Number(a.proporcion);
+        arrastrados.set(clave, prev ? { ...prev, qty: prev.qty + qty, acompanaA: `${prev.acompanaA}, ${g.nombre}` } : { ...ng, clave, qty, sugeridoId: a.articuloId, acompanaA: g.nombre });
+      });
+  });
+  const todos: Array<GenericoDelPresupuesto & { acompanaA?: string }> = [...base, ...Array.from(arrastrados.values()).filter((a) => !base.some((b) => b.clave === a.clave))];
+
+  return todos.map((g) => {
+    const it = articulo(elegidos[g.clave] ?? g.sugeridoId);
+    const { uso, eq, sinEq } = usoDe(g, it);
+    const regla = reglaDeCompraPara(g.nombre, it, conv.compras);
+    const delTipo = r3(cantidadAComprar(uso, regla));
+    const manual = cantidades[g.clave];
+    const precio = Number(it?.unitPrice || 0);
+    const comun = {
+      generico: g.clave,
+      nombre: g.nombre,
+      grupoGenerico: g.grupo,
+      qtyGenerico: r3(g.qty),
+      unidadGenerico: g.unidad,
+      acompanaA: g.acompanaA,
+      uso: r3(uso),
+      qtyDelTipo: delTipo,
+      qty: r3(manual != null ? manual : delTipo),
+      cantidadManual: manual != null || undefined,
+      equivalencia: eq ? textoEquivalencia(eq) : undefined,
+      compra: textoCompra(regla),
+    };
+    if (!it) return { ...comun, description: `⚠ ${g.nombre}: SIN ARTÍCULO · FALTA PRECIO`, unit: eq?.unidadArticulo || g.unidad, unitPrice: 0, stockGroup: g.grupo || undefined, sinPrecio: true };
+    return {
+      ...comun,
+      stockItemId: it.id,
+      description: it.description,
+      unit: it.unit,
+      unitPrice: precio,
+      stockCode: it.code,
+      stockGroup: it.group,
+      stockLocation: it.location,
+      sortOrder: it.sortOrder,
+      sinEquivalencia: sinEq,
+      sinPrecio: !(precio > 0) || undefined,
+    };
   });
 }

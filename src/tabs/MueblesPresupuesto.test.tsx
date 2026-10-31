@@ -54,4 +54,52 @@ describe("MueblesPresupuesto", () => {
     expect(pasar.mock.calls[0][0].porPersona).toEqual([{ personaId: 7, nombre: "Ana", horas: 3, costoHora: 1000, costo: 3000 }]);
     act(() => root.unmount());
   });
+
+  it("los materiales genéricos se eligen en una ventana: arranca con lo elegido antes y pasa lo nuevo", () => {
+    const pasar = jest.fn();
+    const div = document.createElement("div");
+    document.body.appendChild(div);
+    const root = createRoot(div);
+    act(() =>
+      root.render(
+        <MueblesPresupuesto
+          muebles={[{ id: 5, tipoMuebleId: 1, cantidad: 2, largo: 1, alto: 1 }]}
+          onCambiar={() => {}}
+          tipos={[{ ...alacena, desperdicioPct: 0, materiales: [{ id: 1, nombre: "Placa", unidad: "m2", grupo: "Melaminas", cantidad: 4.5, stockItemId: 1 }] }]}
+          tareas={tareas}
+          rubros={rubros}
+          materiales={[]}
+          personas={[{ id: 7, nombre: "Ana", costoHora: 1000, tareas: [1, 2] }]}
+          manoDeObra={[]}
+          money={(n) => "$" + n}
+          onPasarAManoDeObra={() => {}}
+          stock={[
+            { id: 1, description: "Melamina blanca", unit: "u", unitPrice: 100, group: "Melaminas" },
+            { id: 2, description: "Melamina roble", unit: "u", unitPrice: 150, group: "Melaminas" },
+            { id: 3, description: "Bisagra", unit: "u", unitPrice: 5, group: "Herrajes" },
+          ]}
+          previos={{ "melaminas|placa": { articuloId: 2 } }}
+          onPasarMateriales={pasar}
+          nuevoId={() => 1}
+        />
+      )
+    );
+    const abrir = Array.from(div.querySelectorAll("button")).find((b) => b.textContent?.includes("Pasar materiales de los muebles"))!;
+    act(() => abrir.click());
+    const select = div.querySelector('select[aria-label="Artículo para Placa"]') as HTMLSelectElement;
+    expect(select.value).toBe("2");
+    // Solo ofrece los artículos del grupo del genérico.
+    expect(Array.from(select.options).map((o) => o.textContent)).toEqual(["(sin elegir)", "Melamina blanca · $100/u", "Melamina roble · $150/u"]);
+    // 2 muebles × 4,5 m² = 9 m² → 2 placas (1 placa = 4,5 m²).
+    const cantidad = div.querySelector('input[aria-label="Cantidad de Placa"]') as HTMLInputElement;
+    expect(cantidad.value).toBe("2");
+    expect(div.textContent).toContain("1 placa = 4,5 m2");
+    act(() => {
+      select.value = "1";
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    act(() => Array.from(div.querySelectorAll("button")).find((b) => b.textContent === "Pasar al presupuesto")!.click());
+    expect(pasar.mock.calls[0][0].map((f: any) => [f.description, f.qty, f.unitPrice])).toEqual([["Melamina blanca", 2, 100]]);
+    act(() => root.unmount());
+  });
 });

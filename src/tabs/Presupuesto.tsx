@@ -768,9 +768,13 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   {displayedMaterials.map((item) => {
                     const stockMatch = matchStockForMaterial(item, stockByCode, stockByDescription);
                     const alcanza = stockMatch ? Number(stockMatch.quantity || 0) >= Number(item.qty || 0) : false;
+                    // Material sin precio (30/10/2026, Nicolas: "que quede bien claro que falta el precio en un articulo").
+                    const faltaPrecio = !!String(item.description || "").trim() && !(Number(item.unitPrice) > 0);
                     return (
                       <tr
                         key={item.id}
+                        style={faltaPrecio ? { background: "#fef2f2" } : undefined}
+                        title={faltaPrecio ? "Falta el precio de este material: suma $0 al presupuesto" : undefined}
                         onContextMenu={(ev) => {
                           ev.preventDefault();
                           ev.stopPropagation();
@@ -814,14 +818,14 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                         </td>
                         <td style={{ ...tdDato, padding: 0 }}>
                           <AmountInput
-                            style={inputCeldaDerecha}
+                            style={faltaPrecio ? { ...inputCeldaDerecha, color: "#b91c1c", fontWeight: 800, boxShadow: "inset 0 0 0 1px #fca5a5" } : inputCeldaDerecha}
                             {...focoCelda}
                             value={item.unitPrice}
                             onChange={(n) => updateArrayItem(setMaterials, item.id, "unitPrice", n)}
                           />
                         </td>
-                        <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
-                          {money(item.qty * item.unitPrice)}
+                        <td style={{ ...tdDato, textAlign: "right", fontWeight: 700, color: faltaPrecio ? "#b91c1c" : undefined }}>
+                          {faltaPrecio ? "⚠ FALTA PRECIO" : money(item.qty * item.unitPrice)}
                         </td>
                         <td style={{ ...tdFlexible, color: "#64748b" }}>
                           {stockMatch ? (

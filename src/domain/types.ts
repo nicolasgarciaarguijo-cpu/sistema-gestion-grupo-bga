@@ -75,6 +75,12 @@ export type Material = {
   sourceCompany?: CompanyName;
   // Vino de los materiales de los tipos de mueble (27/10/2026): al volver a pasarlos se reemplazan, no se duplican.
   desdeMuebles?: boolean;
+  // El material generico del tipo de mueble del que vino (30/10/2026): al volver a pasarlos se respeta el articulo elegido.
+  generico?: string;
+  articuloId?: number;
+  // La cantidad se corrigio a mano al pasarla (se respeta al volver a pasar) y el articulo no tiene precio (se marca en rojo).
+  cantidadManual?: boolean;
+  sinPrecio?: boolean;
 };
 
 export type LaborRow = {

@@ -16,6 +16,37 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-30b",
+    fecha: "30/10/2026",
+    titulo: "Materiales por rubro y tipo",
+    items: [
+      {
+        titulo: "El tipo de mueble o trabajo guarda materiales genéricos",
+        que: "Cada material del tipo es un rubro y tipo con su cantidad (\"4,2 m² de placa\", \"2 correderas\") y el grupo de Stock de donde sale. El artículo sugerido es opcional y solo da un precio de referencia.",
+        como: "Fabricación → Tipos de mueble o trabajo → abrir un tipo → Materiales.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Elegir el artículo al presupuestar",
+        que: "\"Pasar materiales de los muebles\" abre una ventana: la cantidad la da el tipo y vos elegís el artículo concreto entre los de su grupo (melamina blanca o símil madera, corredera telescópica u oculta). La cantidad se puede corregir a mano y se ve lo que daba el tipo. Al volver a pasarlos recuerda el artículo y la corrección.",
+        como: "Presupuesto → Muebles del presupuesto → Pasar materiales de los muebles.",
+        tab: "presupuesto",
+      },
+      {
+        titulo: "Equivalencias y criterios",
+        que: "Un bloque nuevo en Fabricación donde quedan asentados los criterios para pasar lo que dice el tipo a lo que se compra, cada uno con su porqué. Equivalencias: 1 placa = 4,5 m², 0,3 L de laca y 0,2 L de fondo por m². Cómo se compra: placas blancas, MDF y lacas incolora, blanca y negra son de compra intensiva (valor exacto con desperdicio); la laca de color, mínimo 3 L y después de a 1; el resto, para arriba. Lo que acompaña: el catalizador, la mitad de la laca usada.",
+        como: "Fabricación → Equivalencias y criterios → ✎ Editar.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Falta precio, bien a la vista",
+        que: "Un material sin artículo elegido o con precio 0 queda en rojo en el presupuesto con \"⚠ FALTA PRECIO\": suma $0 hasta que se complete.",
+        como: "Presupuesto → Materiales.",
+        tab: "presupuesto",
+      },
+    ],
+  },
+  {
     id: "2026-10-30a",
     fecha: "30/10/2026",
     titulo: "Organización diaria más ágil",
