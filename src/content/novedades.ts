@@ -16,6 +16,24 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31i",
+    fecha: "31/10/2026",
+    titulo: "La empresa se elige en la ficha",
+    items: [
+      {
+        titulo: "Empresa en Stock y en las máquinas",
+        que: "Click derecho en un artículo de Stock: se elige su empresa (BGA, De Raíz o Ambas, compartido). En la ficha de cada máquina se elige la empresa dueña (su valor impacta en esa; la usan las dos).",
+        como: "Stock → click derecho en el artículo → Empresa. Fabricación → Mantenimiento → ficha de la máquina → Empresa dueña.",
+        tab: "stock",
+      },
+      {
+        titulo: "Compartido se llama igual en todos lados",
+        que: "Lo que es de las dos empresas aparece como \"Ambas (compartido)\" en clientes, proveedores, remitos y Stock. Lo que mueve plata (pagos, facturas, cajas, deudas, cuentas) sigue siendo de una sola empresa: la que paga.",
+        como: "En cada ficha, campo Empresa.",
+      },
+    ],
+  },
+  {
     id: "2026-10-31h",
     fecha: "31/10/2026",
     titulo: "Cierres del mes separados por empresa",

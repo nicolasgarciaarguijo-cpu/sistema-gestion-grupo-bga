@@ -57,6 +57,7 @@ export function Mantenimiento({
   onGuardarAsignacion,
   onCrearEnStock,
   empresas = [],
+  onCambiarEmpresa,
   onPrepararCatalogo,
   onIrAStock,
   nuevoId,
@@ -75,6 +76,8 @@ export function Mantenimiento({
   // La maquina es de una empresa (su valor) y la usan las dos: se pregunta la duena.
   onCrearEnStock: (descripcion: string, grupo: string, empresa?: string) => number;
   empresas?: Array<{ value: string; label: string }>;
+  // Cambiar la empresa duena (su valor impacta en esa; el uso sigue siendo de las dos).
+  onCambiarEmpresa?: (stockItemId: number, empresa: string) => void;
   onPrepararCatalogo: () => void;
   onIrAStock: () => void;
   nuevoId: () => number;
@@ -324,6 +327,8 @@ export function Mantenimiento({
           onProgramar={(planId) => maqAbierta && setProgramar({ m: maqAbierta, planId })}
           onCerrar={() => setFichaAbierta(null)}
           nuevoId={nuevoId}
+          empresas={empresas}
+          onCambiarEmpresa={onCambiarEmpresa}
         />
       )}
 
@@ -357,7 +362,11 @@ function FichaDeMaquina({
   onProgramar,
   onCerrar,
   nuevoId,
+  empresas = [],
+  onCambiarEmpresa,
 }: {
+  empresas?: Array<{ value: string; label: string }>;
+  onCambiarEmpresa?: (stockItemId: number, empresa: string) => void;
   maquina?: MaquinaStock;
   stockItemId: number;
   ficha: FichaMaquina;
@@ -391,6 +400,15 @@ function FichaDeMaquina({
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 8 }}>
+          {onCambiarEmpresa && empresas.length > 1 && maquina && (
+            <label style={campo} title="La máquina es de una empresa (su valor impacta en esa); la usan las dos">
+              Empresa dueña
+              <select style={input} value={maquina.company} onChange={(e) => onCambiarEmpresa(stockItemId, e.target.value)}>
+                {empresas.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                {!empresas.some((x) => x.value === maquina.company) && <option value={maquina.company}>{maquina.company}</option>}
+              </select>
+            </label>
+          )}
           <label style={campo}>
             Estado
             <select style={input} value={ficha.estado || "operativa"} onChange={(e) => set({ estado: e.target.value as EstadoMaquina })}>

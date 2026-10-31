@@ -76,7 +76,7 @@ export function ProveedorModal({
           <label style={lbl}>Empresa
             <select style={input} value={p.company} onChange={(e) => set({ company: e.target.value })}>
               {companyOptions.map((c) => (
-                <option key={c.value} value={c.value}>{c.value === "General" ? "Las dos empresas" : c.label || c.value}</option>
+                <option key={c.value} value={c.value}>{c.value === "General" ? "Ambas (compartido)" : c.label || c.value}</option>
               ))}
             </select>
           </label>

@@ -2,6 +2,7 @@
 // gusto mucho. Que ahi figure la informacion, la cantidad de trabajos y todo lo que antes habia solicitado").
 // Misma estetica que FichaProveedor: datos, lo que le falta, sus numeros, presupuestos, trabajos y posibles
 // duplicados. Se abre desde el CRM (Historial).
+import { EmpresaSelect, etiquetaEmpresa } from "./EmpresaSelect";
 import React from "react";
 import type { CrmClient } from "../domain/types";
 import { faltantesDeCliente } from "../domain/clients";
@@ -99,7 +100,7 @@ export function FichaCliente({
             <div style={{ fontSize: 19, fontWeight: 800 }}>{cliente.name || "Cliente sin nombre"}</div>
             <div style={{ fontSize: 12.5, color: "#64748b" }}>
               CUIT {cliente.taxId || "—"}
-              {cliente.company ? ` · ${cliente.company === "General" ? "Ambas (compartido)" : companyOptions.find((c) => c.value === cliente.company)?.short || cliente.company}` : ""}
+              {cliente.company ? ` · ${etiquetaEmpresa(cliente.company, companyOptions)}` : ""}
               {cliente.createdAt ? ` · cliente desde ${fecha(cliente.createdAt)}` : ""}
               {aprobados > 0 && (
                 <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 800, color: "#166534", background: "#dcfce7", borderRadius: 999, padding: "1px 7px" }}>
@@ -150,17 +151,12 @@ export function FichaCliente({
             {campo("Dirección", "direccion")}
             <label style={etiqueta}>
               Empresa
+              {/* Compartido: lo ven las dos empresas (Nicolas, 31/10/2026: "en la ficha se hace la separacion"). */}
               {editando ? (
-                <select style={input} value={borrador.company} onChange={(e) => setBorrador({ ...borrador, company: e.target.value as CrmClient["company"] })}>
-                  {companyOptions.map((c) => (
-                    <option key={c.value} value={c.value}>{c.short}</option>
-                  ))}
-                  {/* Compartido: lo ven las dos empresas (Nicolas, 31/10/2026: "en la ficha se hace la separacion"). */}
-                  <option value="General">Ambas (compartido)</option>
-                </select>
+                <EmpresaSelect style={input} value={borrador.company} opciones={companyOptions} onChange={(v) => setBorrador({ ...borrador, company: v as CrmClient["company"] })} />
               ) : (
                 <span style={{ fontSize: 13, minHeight: 22, display: "flex", alignItems: "center" }}>
-                  {cliente.company === "General" ? "Ambas (compartido)" : companyOptions.find((c) => c.value === cliente.company)?.short || cliente.company || "—"}
+                  {etiquetaEmpresa(cliente.company, companyOptions)}
                 </span>
               )}
             </label>

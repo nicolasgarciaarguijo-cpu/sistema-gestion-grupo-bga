@@ -439,7 +439,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                   >
                     {COMPANY_OPTIONS.filter((option) => canAccessCompany(option.value)).map((option) => (
                       <option key={option.value} value={option.value}>
-                        {option.value}
+                        {option.short || option.value}
                       </option>
                     ))}
                   </select>

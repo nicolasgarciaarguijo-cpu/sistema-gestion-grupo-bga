@@ -498,6 +498,22 @@ export function StockTab({
                     Editar ubicacion…
                   </button>
                   <QuickMenuSep />
+                  {/* EMPRESA (Nicolas, 31/10/2026: en la ficha se elige la empresa). Compartido = lo ven las dos. */}
+                  <QuickMenuTitle>Empresa</QuickMenuTitle>
+                  {[...COMPANY_OPTIONS.map((c) => ({ value: c.value, label: c.short })), { value: "General", label: "Ambas (compartido)" }].map((op) => (
+                    <button
+                      key={op.value}
+                      style={{ ...quickMenuItem, fontWeight: it.company === op.value ? 800 : 400 }}
+                      onClick={() => {
+                        updateStockItem(it.id, "company", op.value);
+                        updateStockItem(it.id, "shared", op.value === "General");
+                        cerrar();
+                      }}
+                    >
+                      {it.company === op.value ? "● " : ""}{op.label}
+                    </button>
+                  ))}
+                  <QuickMenuSep />
                   <button
                     style={{ ...quickMenuItem, color: "#b91c1c" }}
                     onClick={() => {
@@ -648,7 +664,7 @@ export function StockTab({
                   <button
                     style={quickMenuItem}
                     onClick={() => {
-                      const opciones = ["General", ...COMPANY_OPTIONS.map((c) => c.short)]
+                      const opciones = ["Ambas (compartido)", ...COMPANY_OPTIONS.map((c) => c.short)]
                         .map((n, i) => `${i + 1}. ${n}`)
                         .join("\n");
                       const v = window.prompt(`Empresa:\n${opciones}`, "");
@@ -898,7 +914,7 @@ export function StockTab({
                           updateRemitoDraft(draft.id, "company", e.target.value)
                         }
                       >
-                        <option value="General">General</option>
+                        <option value="General">Ambas (compartido)</option>
                         {COMPANY_OPTIONS.map((company) => (
                           <option key={company.value} value={company.value}>
                             {company.short}
@@ -941,7 +957,7 @@ export function StockTab({
                                 updateRemitoDraftRow(draft.id, row.id, "company", e.target.value)
                               }
                             >
-                              <option value="General">General</option>
+                              <option value="General">Ambas (compartido)</option>
                               {COMPANY_OPTIONS.map((company) => (
                                 <option key={company.value} value={company.value}>
                                   {company.short}

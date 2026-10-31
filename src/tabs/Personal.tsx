@@ -1923,7 +1923,7 @@ export function PersonalTab(props: PersonalTabProps) {
                             >
                               {COMPANY_OPTIONS.map((company) => (
                                 <option key={company.value} value={company.value}>
-                                  {company.value}
+                                  {company.short || company.value}
                                 </option>
                               ))}
                             </select>

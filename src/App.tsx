@@ -21867,7 +21867,7 @@ Escribi CERRAR para confirmar:`
   // (facturas, pagos, gastos de caja chica, notas de credito) pasa al nombre nuevo: el vinculo es por
   // CUIT o por nombre, y sin esto la correccion dejaba la cuenta corriente partida en dos.
   // Un proveedor puede ser de una empresa o de LAS DOS ("General"): la ficha separa la cuenta por empresa.
-  const opcionesEmpresaProveedor = [...COMPANY_OPTIONS, { value: "General", label: "Las dos empresas", short: "Las dos" }];
+  const opcionesEmpresaProveedor = [...COMPANY_OPTIONS, { value: "General", label: "Ambas (compartido)", short: "Ambas" }];
   const guardarProveedor = (p: ProveedorForm) => {
     const datos = {
       company: p.company as any,
@@ -24418,6 +24418,7 @@ Escribi CERRAR para confirmar:`
             });
           }}
           onIrAStock={() => setActiveTab("stock" as TabKey)}
+          onCambiarEmpresa={(id, empresa) => setStockItems((prev) => prev.map((it) => (it.id === id ? { ...it, company: empresa as CompanyName, shared: true } : it)))}
           nuevoId={newId}
         />
       )}
