@@ -16,8 +16,8 @@ describe("impuestos del extracto y del resumen", () => {
       { id: 5, company: "BGA", bank: "Santander", date: "2026-10-04", movementType: "debito", concept: "PERCEPCION IIBB", amount: 300 },
     ]);
     expect(g.map((x) => [x.titulo, x.total, x.fecha])).toEqual([
-      ["Impuestos extracto bancario · Galicia · octubre 2026", 1500, "2026-10-15"],
-      ["Impuestos extracto bancario · Santander · octubre 2026", 300, "2026-10-04"],
+      ["Comisiones, tasas e intereses (cuenta) · Galicia · octubre 2026", 1500, "2026-10-15"],
+      ["Comisiones, tasas e intereses (cuenta) · Santander · octubre 2026", 300, "2026-10-04"],
     ]);
     expect(g[0].porCategoria).toEqual({ impuestos: 1000, comisiones: 500, intereses: 0 });
   });
@@ -32,7 +32,7 @@ describe("impuestos del extracto y del resumen", () => {
       [{ id: 1, name: "Visa Santander", bank: "Santander" }]
     );
     expect(g).toHaveLength(1);
-    expect(g[0]).toMatchObject({ total: 120, fecha: "2026-11-05", banco: "Santander", titulo: "Impuestos resumen de tarjeta · Visa Santander · octubre 2026" });
+    expect(g[0]).toMatchObject({ total: 120, fecha: "2026-11-05", banco: "Santander", titulo: "Comisiones, tasas e intereses (tarjeta) · Visa Santander · octubre 2026" });
   });
 });
 

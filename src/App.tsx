@@ -69,9 +69,32 @@ import {
 import { allSectionsWith, extraRowsOf } from "./domain/calendarStructure";
 import { PagosInamovibles } from "./tabs/PagosInamovibles";
 import { impuestosDeExtractos, impuestosDeResumenes, type GrupoImpuestos } from "./domain/impuestosBancarios";
-import { controlarResumen, cuotasEsperadas } from "./domain/controlTarjetas";
+import { cuotasEsperadas } from "./domain/controlTarjetas";
 import { ImpuestosBancariosPanel } from "./ui/ImpuestosBancariosPanel";
-import { ControlResumenesTarjeta } from "./ui/ControlResumenesTarjeta";
+import {
+  cuentaDeTarjeta,
+  cuentasDeTarjeta,
+  fichaDelResumen,
+  vinculosDeCuotas,
+  resumenesDelPago,
+  claveComisionesTarjeta,
+  esPagoDeComisiones,
+  LINKEO_OBLIGATORIO_DESDE,
+  TITULO_COMISIONES_TARJETA,
+  type FichaResumen,
+  type PagoF,
+  type TarjetaF,
+} from "./domain/fichaTarjeta";
+import { fichasDeExtracto, type MovimientoFicha } from "./domain/fichaExtracto";
+import { leerResumenTarjeta, type ResumenLeido } from "./domain/lectorResumenTarjeta";
+import { lineasDelPdf } from "./lib/pdfLineas";
+import { proveedorDeArca, accionPorDefecto, sugerenciaDe, type RenglonRevision } from "./domain/arcaRevision";
+import { FichaTarjeta } from "./ui/FichaTarjeta";
+import { FichaExtracto, type TipoLink } from "./ui/FichaExtracto";
+import { FichasLinkeoPanel } from "./ui/FichasLinkeoPanel";
+import { ImportarResumenTarjetaModal, type DecisionImportacion } from "./ui/ImportarResumenTarjetaModal";
+import { RevisionArcaModal } from "./ui/RevisionArcaModal";
+import { nombreParecido } from "./domain/arcaCruce";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
 import { ReclamoPagosVencidos } from "./ui/ReclamoPagosVencidos";
 import { ElegirEmpresa } from "./ui/ElegirEmpresa";
@@ -4835,6 +4858,38 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const visibleBankStatementEntries = useMemo(
     () => bankStatementEntries.filter((item) => canAccessCompany(item.company)),
     [alcanceEmpresa, bankStatementEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+
+  // COMPRAS CON TARJETA (2026-10-23): cada cuota en su resumen (domain/controlTarjetas). Desde la FICHA DE
+  // TARJETA (2026-10-31) el plastico se lleva a la cuenta que emite el resumen y la cuota linkeada a un renglon
+  // cae en ESE resumen: todos los pagos con la tarjeta se pagan el dia del vencimiento (domain/fichaTarjeta).
+  const tarjetasF = useMemo<TarjetaF[]>(() => visibleCreditCards.map((c) => ({ ...c, company: String(c.company) })), [visibleCreditCards]);
+  const resumenesF = useMemo(() => visibleCreditCardStatements.map((s) => ({ ...s, company: String(s.company) })), [visibleCreditCardStatements]);
+  const renglonesF = useMemo(() => visibleCreditCardConsumptions.map((c) => ({ ...c, company: String(c.company) })), [visibleCreditCardConsumptions]);
+  const comprasConTarjeta = useMemo<PagoF[]>(
+    () =>
+      costEntries
+        .filter((c) => c.paymentMethod === "tarjeta_credito" && c.tarjetaId != null && canAccessCompany(c.company))
+        .map((c) => ({
+          id: c.id,
+          company: String(c.company),
+          tarjetaId: Number(c.tarjetaId),
+          date: c.date,
+          amount: Number(c.amount || 0),
+          cuotas: c.cuotasTarjeta,
+          description: c.description || "",
+          supplier: c.supplier || "",
+          impuestosClave: c.impuestosClave,
+        })),
+    [alcanceEmpresa, costEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
+  );
+  const cuotasDeTarjeta = useMemo(
+    () =>
+      cuotasEsperadas(comprasConTarjeta, resumenesF, {
+        cuentaDe: (id) => cuentaDeTarjeta(id, tarjetasF, resumenesF),
+        vinculos: vinculosDeCuotas(renglonesF),
+      }),
+    [comprasConTarjeta, resumenesF, tarjetasF, renglonesF]
   );
 
   // --- Silos por mes (vista filtrada por fecha) ---
@@ -15579,7 +15634,15 @@ Escribi CERRAR para confirmar:`
     // plata ya llega por el débito del extracto y contarla dos veces rompería el cash flow.
     costEntries.forEach((item) => {
       if (!canAccessCompany(item.company)) return;
-      if (!item.date || !item.date.startsWith(String(analysisYear))) return;
+      // TARJETA DE CREDITO (2026-10-31): la compra no sale el dia de la compra sino en cada vencimiento del
+      // resumen donde aparece su cuota (domain/fichaTarjeta). Sin resumen todavia, queda el dia de la compra.
+      const enTarjeta = item.paymentMethod === "tarjeta_credito" && item.tarjetaId != null;
+      const cuotasItem = enTarjeta ? cuotasDeTarjeta.filter((q) => q.compraId === item.id && q.dueDate) : [];
+      const tramos = cuotasItem.length
+        ? cuotasItem.map((q) => ({ id: `cost-${item.id}-c${q.cuota}`, date: q.dueDate as string, amount: q.monto, sufijo: q.de > 1 ? ` · cuota ${q.cuota}/${q.de}` : "" }))
+        : [{ id: `cost-${item.id}`, date: item.date, amount: Number(item.amount || 0), sufijo: "" }];
+      tramos.forEach((tramo) => {
+      if (!tramo.date || !tramo.date.startsWith(String(analysisYear))) return;
       // Ya vino por el banco: importado del extracto, o conciliado contra un débito, o pagado por un
       // medio que pasa por la cuenta (transferencia, cheque, débito). La regla, con tests, vive en
       // domain/calendarFeeds.ts: es lo que impide contar el mismo peso dos veces.
@@ -15590,12 +15653,12 @@ Escribi CERRAR para confirmar:`
         : "(D) falta cómo se pagó";
       const grupo = costGroups.find((g) => g.name === item.group);
       entries.push({
-        id: `cost-${item.id}`,
-        date: item.date,
+        id: tramo.id,
+        date: tramo.date,
         company: item.company,
-        title: `${item.description || item.supplier || item.group || "Gasto"} · ${comoSePago}`,
+        title: `${item.description || item.supplier || item.group || "Gasto"}${tramo.sufijo} · ${comoSePago}`,
         kind: "gasto",
-        amount: Number(item.amount || 0),
+        amount: tramo.amount,
         // "debito" = egreso: es lo que mira el calendario para firmar el monto en Sin clasificar.
         statusLabel: "debito",
         conceptKey: item.conceptKey || undefined,
@@ -15605,6 +15668,7 @@ Escribi CERRAR para confirmar:`
         ...(item.conceptKey
           ? {}
           : { conceptKey: tipoGastoEfectivo(undefined, buscarProveedor(suppliers as any, item.supplier || "", "")) }),
+      });
       });
     });
 
@@ -15751,7 +15815,7 @@ Escribi CERRAR para confirmar:`
     }).forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
 
     return entries.sort((a, b) => a.date.localeCompare(b.date));
-  }, [alcanceEmpresa, 
+  }, [alcanceEmpresa, cuotasDeTarjeta,
     retirosSocietarios,
     inversiones,
     visibleViaticos,
@@ -17082,35 +17146,19 @@ Escribi CERRAR para confirmar:`
       const cuenta = cuentaDelBanco(String(c.company), c.bank, "ARS");
       return { id: c.id, name: c.name, company: String(c.company), bank: c.bank || "", cuentaId: cuenta?.id, cuentaNombre: cuenta?.nombre };
     });
-  // COMPRAS CON TARJETA (2026-10-23): cada cuota en su resumen (domain/controlTarjetas).
-  const comprasConTarjeta = useMemo(
-    () =>
-      costEntries
-        .filter((c) => c.paymentMethod === "tarjeta_credito" && c.tarjetaId != null && canAccessCompany(c.company))
-        .map((c) => ({
-          id: c.id,
-          company: String(c.company),
-          tarjetaId: Number(c.tarjetaId),
-          date: c.date,
-          amount: Number(c.amount || 0),
-          cuotas: c.cuotasTarjeta,
-          description: c.description || "",
-          supplier: c.supplier || "",
-        })),
-    [alcanceEmpresa, costEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
-  );
-  const cuotasDeTarjeta = useMemo(() => cuotasEsperadas(comprasConTarjeta, visibleCreditCardStatements as any), [comprasConTarjeta, visibleCreditCardStatements]);
-  const controlesTarjeta = useMemo(
-    () => visibleCreditCardStatements.map((s) => controlarResumen(s as any, visibleCreditCardConsumptions as any, cuotasDeTarjeta)),
-    [visibleCreditCardStatements, visibleCreditCardConsumptions, cuotasDeTarjeta]
-  );
   // IMPUESTOS DEL EXTRACTO Y DEL RESUMEN (domain/impuestosBancarios): una deuda por banco y mes, y por resumen.
   // Los debitos que ya se cargaron como pago (vinculados) no se vuelven a juntar.
   const gruposImpuestos = useMemo<GrupoImpuestos[]>(() => {
     const yaCargados = new Set(costEntries.filter((c) => c.bankEntryId != null).map((c) => Number(c.bankEntryId)));
     return [
       ...impuestosDeExtractos(visibleBankStatementEntries.filter((b) => !yaCargados.has(b.id)) as any),
-      ...impuestosDeResumenes(visibleCreditCardStatements as any, visibleCreditCardConsumptions as any, visibleCreditCards as any),
+      // Desde el 1/11/2026 los cargos del resumen van a la deuda "Comisiones, tasas e intereses (tarjeta)" que
+      // arma la ficha de la tarjeta (pagada con la tarjeta): aca quedan solo los resumenes anteriores.
+      ...impuestosDeResumenes(
+        visibleCreditCardStatements.filter((s) => (s.closingDate || "") < LINKEO_OBLIGATORIO_DESDE) as any,
+        visibleCreditCardConsumptions as any,
+        visibleCreditCards as any
+      ),
     ];
   }, [visibleBankStatementEntries, visibleCreditCardStatements, visibleCreditCardConsumptions, visibleCreditCards, costEntries]);
   const pagoDeImpuestos = (clave: string) => costEntries.find((c) => c.impuestosClave === clave);
@@ -17135,16 +17183,417 @@ Escribi CERRAR para confirmar:`
       cuentaId: cuenta.id,
       administration: "blanco",
       source: "manual",
-      supplier: "",
+      // La deuda es con el BANCO (proveedor "banco", Nicolas 2026-10-31): el mismo proveedor para las dos empresas.
+      supplier: proveedorBanco(g.banco).supplier.name,
+      supplierId: proveedorBanco(g.banco).supplier.id,
       notes: `Asentado desde ${g.origen === "banco" ? "el extracto bancario" : "el resumen de la tarjeta"} (${g.lineas.length} débito(s))`,
       paymentMethod: "debito",
       impuestosClave: g.clave,
       antesDeApertura: decidirAntesDeApertura(undefined, cuenta.id, g.fecha, g.total, g.titulo),
       ...firma(),
     };
+    const banco = proveedorBanco(g.banco);
+    if (banco.nuevo) setSuppliers((prev) => [...prev, banco.supplier]);
     setCostEntries((prev) => [pago, ...prev]);
   };
 
+  // ---- FICHAS DE TARJETA Y DE EXTRACTO (Nicolas, 2026-10-31) ----------------------------------------------
+  // Linkeo obligatorio (desde el 1/11/2026) de cada renglon del resumen de la tarjeta y de cada movimiento del
+  // extracto contra lo que ya esta en el sistema. Ver domain/fichaTarjeta.ts y domain/fichaExtracto.ts.
+  const ddmmCorta = (iso?: string | null) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "—");
+  const sinAcentosMin = (t: string) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  // El proveedor "banco" de la deuda de comisiones: uno por banco, de las dos empresas (la empresa la dice el pago).
+  const proveedorBanco = (banco: string): { supplier: Supplier; nuevo: boolean } => {
+    const propio = sinAcentosMin(banco).replace(/\bbanco\b/g, "").trim();
+    const hit = suppliers.find((x) => x.active !== false && /\bbanco\b/.test(sinAcentosMin(x.name)) && !!propio && sinAcentosMin(x.name).includes(propio));
+    if (hit) return { supplier: hit, nuevo: false };
+    return {
+      supplier: { id: newId(), company: "General", name: `Banco ${String(banco || "").replace(/^banco\s+/i, "").trim()}`.trim(), taxId: "", aliases: "", active: true, notes: "Alta automática: comisiones, tasas e intereses de tarjetas y cuentas" },
+      nuevo: true,
+    };
+  };
+
+  const fichasResumen = useMemo<FichaResumen[]>(
+    () => resumenesF.map((st) => fichaDelResumen(st, renglonesF, comprasConTarjeta, tarjetasF, resumenesF)),
+    [resumenesF, renglonesF, comprasConTarjeta, tarjetasF]
+  );
+  const facturaDelPago = (pagoId: number) => purchaseInvoices.find((f) => f.paidByCostEntryId === pagoId || (f.pagosIds || []).includes(pagoId));
+  const etiquetaPago = (pagoId: number) => {
+    const c = costEntries.find((x) => x.id === pagoId);
+    if (!c) return "pago borrado";
+    if (String(c.impuestosClave || "").startsWith("comisiones-tarjeta:")) return TITULO_COMISIONES_TARJETA;
+    const f = facturaDelPago(pagoId);
+    return `${c.supplier || c.description || "Pago"} · ${f ? `factura ${[f.receiptLetter, f.invoiceNumber].filter(Boolean).join(" ") || "s/n"}` : "sin factura"}`;
+  };
+  // Desde la factura (Compras y Pago a proveedores) se ve el resumen donde se pago.
+  const resumenDeLaFactura = (inv: PurchaseInvoice, idsPagos: number[]) => {
+    const ids = Array.from(new Set([...(idsPagos || []), ...(inv.paidByCostEntryId != null ? [inv.paidByCostEntryId] : [])]));
+    const conTarjeta = ids.map((id) => costEntries.find((c) => c.id === id)).filter((c): c is CostEntry => !!c && c.paymentMethod === "tarjeta_credito" && c.tarjetaId != null);
+    if (!conTarjeta.length) return undefined;
+    const cuentaId = cuentaDeTarjeta(Number(conTarjeta[0].tarjetaId), tarjetasF, resumenesF);
+    const lista = conTarjeta.flatMap((c) => resumenesDelPago(c.id, renglonesF, resumenesF)).sort((a, b) => a.closingDate.localeCompare(b.closingDate));
+    if (!lista.length) return { texto: "💳 falta linkear en el resumen", cuentaId, statementId: null };
+    const ult = lista[lista.length - 1];
+    return { texto: `💳 resumen ${ddmmCorta(ult.closingDate)} · se paga ${ddmmCorta(ult.dueDate)}${lista.length > 1 ? ` (${lista.length} cuotas)` : ""}`, cuentaId, statementId: ult.id };
+  };
+
+  // La deuda "Comisiones, tasas e intereses (tarjeta)": la suma de lo que no es una compra, con el banco como
+  // proveedor, PAGADA CON LA TARJETA (cae en ese resumen y se paga el dia del vencimiento). Se rehace con cada
+  // cambio de linkeo. Solo desde el ejercicio nuevo: lo anterior sigue en "Impuestos y comisiones".
+  const sincronizarComisionesTarjeta = (
+    stmts: CreditCardStatement[],
+    renglonesNext: CreditCardConsumption[],
+    cards: CreditCard[],
+    todosStmts: CreditCardStatement[]
+  ) => {
+    const tF = cards.map((c) => ({ ...c, company: String(c.company) }));
+    const sF = todosStmts.map((x) => ({ ...x, company: String(x.company) }));
+    const rF = renglonesNext.map((c) => ({ ...c, company: String(c.company) }));
+    const cambios = new Map<string, CostEntry | null>();
+    let altaBanco: Supplier | null = null;
+    stmts.forEach((st) => {
+      if ((st.closingDate || "") < LINKEO_OBLIGATORIO_DESDE) return;
+      const clave = claveComisionesTarjeta(st.id);
+      const previo = costEntries.find((c) => c.impuestosClave === clave);
+      const ficha = fichaDelResumen({ ...st, company: String(st.company) }, rF, comprasConTarjeta, tF, sF);
+      if (!(ficha.comisionesArs > 0)) {
+        if (previo) cambios.set(clave, null);
+        return;
+      }
+      const cuentaId = cuentaDeTarjeta(st.cardId, tF, sF);
+      const card = tF.find((t) => t.id === cuentaId);
+      const banco = altaBanco && sinAcentosMin(altaBanco.name).includes(sinAcentosMin(card?.bank || "")) ? { supplier: altaBanco, nuevo: false } : proveedorBanco(card?.bank || "");
+      if (banco.nuevo) altaBanco = banco.supplier;
+      cambios.set(clave, {
+        ...(previo || {}),
+        id: previo?.id ?? newId(),
+        company: st.company,
+        date: st.closingDate,
+        group: "Impuestos y comisiones bancarias",
+        description: `${TITULO_COMISIONES_TARJETA} · ${card?.name || "tarjeta"} · cierre ${ddmmCorta(st.closingDate)}`,
+        amount: ficha.comisionesArs,
+        cuentaId: cuentaDelBanco(String(st.company), card?.bank || "", "ARS")?.id,
+        administration: "blanco",
+        source: "manual",
+        supplier: banco.supplier.name,
+        supplierId: banco.supplier.id,
+        notes: `${ficha.comisiones.length} renglón(es) del resumen (sellos, intereses, comisiones, IVA)`,
+        paymentMethod: "tarjeta_credito",
+        tarjetaId: cuentaId,
+        cuotasTarjeta: 1,
+        impuestosClave: clave,
+        ...firma(),
+      } as CostEntry);
+    });
+    if (altaBanco) {
+      const nuevo = altaBanco as Supplier;
+      setSuppliers((prev) => [...prev, nuevo]);
+    }
+    if (!cambios.size) return;
+    setCostEntries((prev) => {
+      const out = prev
+        .map((c) => (c.impuestosClave && cambios.has(c.impuestosClave) ? cambios.get(c.impuestosClave) : c))
+        .filter((c): c is CostEntry => !!c);
+      cambios.forEach((v) => {
+        if (v && !out.some((c) => c.id === v.id)) out.unshift(v);
+      });
+      return out;
+    });
+  };
+
+  // Un cambio de linkeo en los renglones del resumen (y la deuda de comisiones al dia).
+  const actualizarRenglones = (cambiar: (c: CreditCardConsumption) => CreditCardConsumption | null) => {
+    const next = creditCardConsumptions.map((c) => cambiar(c) || c);
+    const tocados = next.filter((c, i) => c !== creditCardConsumptions[i]);
+    if (!tocados.length) return;
+    if (tocados.some((c) => bloqueadoPorCierre(c.company, c.date))) return;
+    setCreditCardConsumptions(next);
+    const sids = new Set(tocados.map((c) => Number(c.statementId)).filter(Boolean));
+    sincronizarComisionesTarjeta(creditCardStatements.filter((x) => sids.has(x.id)), next, creditCards, creditCardStatements);
+  };
+  const linkearRenglon = (id: number, pagoId: number, cuota: number) =>
+    actualizarRenglones((c) => (c.id === id ? { ...c, pagoId, cuotaNro: cuota, aComisiones: false } : null));
+  const soltarRenglon = (id: number) => actualizarRenglones((c) => (c.id === id ? { ...c, pagoId: null, cuotaNro: undefined } : null));
+  const renglonAComisiones = (id: number, si: boolean) =>
+    actualizarRenglones((c) => (c.id === id ? { ...c, aComisiones: si, ...(si ? { pagoId: null, cuotaNro: undefined } : {}) } : null));
+  const aceptarSugerencias = (statementId: number) => {
+    const f = fichasResumen.find((x) => x.resumen.id === statementId);
+    if (!f) return;
+    const sug = new Map(f.renglones.filter((r) => r.sugerencia).map((r) => [r.renglon.id, r.sugerencia!]));
+    actualizarRenglones((c) => {
+      const x = sug.get(c.id);
+      return x ? { ...c, pagoId: x.pagoId, cuotaNro: x.cuota, aComisiones: false } : null;
+    });
+  };
+
+  const [fichaTarjetaAbierta, setFichaTarjetaAbierta] = useState<null | { cuentaId: number; statementId?: number | null }>(null);
+  const [fichaCuentaAbierta, setFichaCuentaAbierta] = useState<string | null>(null);
+  const [resumenesALeer, setResumenesALeer] = useState<Array<{ leido: ResumenLeido; archivo: string; empresa: string }>>([]);
+  const [leyendoPdf, setLeyendoPdf] = useState("");
+  const [revisionArca, setRevisionArca] = useState<null | {
+    renglones: RenglonRevision[];
+    emitidas: IssuedInvoice[];
+    compras: PurchaseInvoice[];
+    notas: NotaCreditoCompra[];
+    cruzadas: Array<[number, Partial<PurchaseInvoice>]>;
+  }>(null);
+
+  // LECTOR DEL RESUMEN DE TARJETA: lee el PDF y lo deja para confirmar (empresa, tarjeta, plasticos).
+  const empresaDelResumen = (r: ResumenLeido): string => {
+    const empresas = COMPANY_OPTIONS.filter((o) => o.value !== "General" && canAccessCompany(o.value as CompanyName));
+    const porCuit = empresas.find((o) => r.cuitTitular && String(getCompanyMeta(o.value as CompanyName).taxId || "").replace(/\D/g, "") === r.cuitTitular);
+    if (porCuit) return String(porCuit.value);
+    const porCuenta = creditCards.find((c) => c.numeroCuenta && c.numeroCuenta === r.numeroCuenta && canAccessCompany(c.company));
+    if (porCuenta) return String(porCuenta.company);
+    const titular = sinAcentosMin(r.titular);
+    const porNombre = empresas.find((o) => {
+      const corto = sinAcentosMin(String(getCompanyMeta(o.value as CompanyName).short || o.value));
+      return corto && titular.includes(corto);
+    });
+    return porNombre ? String(porNombre.value) : "";
+  };
+  const leerPdfTarjeta = async (files: File[]) => {
+    const leidos: Array<{ leido: ResumenLeido; archivo: string; empresa: string }> = [];
+    const avisos: string[] = [];
+    for (const f of files) {
+      try {
+        setLeyendoPdf(`Leyendo ${f.name}…`);
+        const leido = leerResumenTarjeta(await lineasDelPdf(f));
+        if (!leido) {
+          avisos.push(`${f.name}: no es un resumen de tarjeta que el lector conozca (Patagonia o Santander)`);
+          continue;
+        }
+        leidos.push({ leido, archivo: f.name, empresa: empresaDelResumen(leido) });
+      } catch (err: any) {
+        avisos.push(`${f.name}: ${err?.message || String(err)}`);
+      }
+    }
+    setLeyendoPdf(avisos.join(" · "));
+    if (leidos.length) setResumenesALeer((prev) => [...prev, ...leidos]);
+  };
+  const titulo = (t: string) => String(t || "").toLowerCase().replace(/\b\w/g, (x) => x.toUpperCase());
+  const confirmarResumenLeido = (item: { leido: ResumenLeido; archivo: string }, d: DecisionImportacion) => {
+    const { leido } = item;
+    const company = d.company as CompanyName;
+    let cards = [...creditCards];
+    let cuentaId = d.cuentaId;
+    if (cuentaId == null) {
+      const nueva: CreditCard = { id: newId(), company, name: leido.producto, bank: leido.banco, lastDigits: "", active: true, notes: `Alta desde el resumen ${item.archivo}`, numeroCuenta: leido.numeroCuenta };
+      cards.push(nueva);
+      cuentaId = nueva.id;
+    } else {
+      cards = cards.map((c) => (c.id === cuentaId && !c.numeroCuenta && leido.numeroCuenta ? { ...c, numeroCuenta: leido.numeroCuenta } : c));
+    }
+    const cuenta = cuentaId;
+    // Tarjetas fisicas: nuevas con su responsable; si el banco cambio el plastico, queda el numero nuevo y el viejo.
+    d.plasticos.forEach((pl) => {
+      if (pl.tarjetaId == null) {
+        cards.push({ id: newId(), company, name: `${leido.producto} ${pl.digits}`, bank: leido.banco, lastDigits: pl.digits, active: true, notes: `Alta desde el resumen ${item.archivo}`, cuentaTarjetaId: cuenta, responsable: titulo(pl.holder) });
+        return;
+      }
+      cards = cards.map((c) =>
+        c.id !== pl.tarjetaId
+          ? c
+          : {
+              ...c,
+              cuentaTarjetaId: c.id === cuenta ? c.cuentaTarjetaId : c.cuentaTarjetaId ?? cuenta,
+              responsable: c.responsable || titulo(pl.holder),
+              ...(pl.cambioDeNumero ? { lastDigits: pl.digits, numerosAnteriores: [c.numerosAnteriores, c.lastDigits].filter(Boolean).join(", ") } : {}),
+            }
+      );
+    });
+    const st: CreditCardStatement = {
+      id: newId(),
+      company,
+      cardId: cuenta,
+      closingDate: leido.closingDate,
+      dueDate: leido.dueDate,
+      totalArs: leido.totalArs,
+      totalUsd: leido.totalUsd,
+      minPaymentArs: leido.minPaymentArs,
+      paid: false,
+      notes: `Leído de ${item.archivo}`,
+      saldoAnteriorArs: leido.saldoAnteriorArs,
+      archivo: item.archivo,
+    };
+    // Los "SU PAGO" del resumen anterior no se cargan (ya estan en el banco), igual que en la carga a mano.
+    const nuevos: CreditCardConsumption[] = leido.renglones
+      .filter((r) => r.tipo !== "pago")
+      .map((r) => ({
+        id: newId(),
+        company,
+        cardId: cuenta,
+        statementId: st.id,
+        date: r.date,
+        description: r.description,
+        amount: r.amount,
+        currency: r.currency,
+        group: "",
+        installments: r.installments,
+        recurring: false,
+        notes: "",
+        cardDigits: r.cardDigits || undefined,
+        holder: r.holder || undefined,
+      }));
+    const next = [...creditCardConsumptions, ...nuevos];
+    setCreditCards(cards);
+    setCreditCardStatements((prev) => [...prev, st]);
+    setCreditCardConsumptions(next);
+    sincronizarComisionesTarjeta([st], next, cards, [...creditCardStatements, st]);
+    setResumenesALeer((prev) => prev.slice(1));
+    setFichaTarjetaAbierta({ cuentaId: cuenta, statementId: st.id });
+  };
+
+  // FICHAS DEL EXTRACTO: por cuenta y mes.
+  const fichasCuentas = useMemo(
+    () =>
+      fichasDeExtracto(
+        visibleBankStatementEntries.map((b) => ({ ...b, company: String(b.company) })) as any,
+        costEntries
+          .filter((c) => canAccessCompany(c.company) && c.paymentMethod !== "tarjeta_credito")
+          .map((c) => ({ id: c.id, company: String(c.company), date: c.date, amount: Number(c.amount || 0), supplier: c.supplier || "", description: c.description || "", paymentMethod: c.paymentMethod, bankEntryId: c.bankEntryId })),
+        resumenesF.map((x) => ({ ...x, nombre: tarjetasF.find((t) => t.id === x.cardId)?.name || "Tarjeta" }))
+      ),
+    [alcanceEmpresa, visibleBankStatementEntries, costEntries, resumenesF, tarjetasF]
+  );
+  const claveCuenta = (f: { company: string; bank: string; currency: string }) => `${f.company}||${f.bank}||${f.currency}`;
+  const filasPanelTarjetas = useMemo(
+    () =>
+      cuentasDeTarjeta(tarjetasF, resumenesF)
+        .filter((t) => resumenesF.some((x) => cuentaDeTarjeta(x.cardId, tarjetasF, resumenesF) === t.id))
+        .map((t) => {
+          const fs = fichasResumen
+            .filter((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === t.id)
+            .sort((a, b) => b.resumen.closingDate.localeCompare(a.resumen.closingDate));
+          return {
+            id: t.id,
+            nombre: `${t.name}${t.bank ? ` · ${t.bank}` : ""}`,
+            empresa: getCompanyMeta(t.company as CompanyName).short,
+            resumenes: fs.length,
+            pendientes: fs.filter((f) => f.obligatorio).reduce((a, f) => a + f.pendientes, 0),
+            ultimo: fs[0] ? { closingDate: fs[0].resumen.closingDate, completo: fs[0].completo, obligatorio: fs[0].obligatorio } : undefined,
+          };
+        }),
+    [tarjetasF, resumenesF, fichasResumen]
+  );
+  const filasPanelCuentas = useMemo(() => {
+    const porCuenta = new Map<string, typeof fichasCuentas>();
+    fichasCuentas.forEach((f) => porCuenta.set(claveCuenta(f), [...(porCuenta.get(claveCuenta(f)) || []), f]));
+    return Array.from(porCuenta.entries()).map(([clave, fs]) => {
+      const orden = [...fs].sort((a, b) => b.mes.localeCompare(a.mes));
+      return {
+        clave,
+        nombre: `${orden[0].bank} · ${orden[0].currency === "USD" ? "U$S" : "$"}`,
+        empresa: getCompanyMeta(orden[0].company as CompanyName).short,
+        meses: orden.length,
+        pendientes: orden.filter((f) => f.obligatorio).reduce((a, f) => a + f.pendientes + f.desconocidos, 0),
+        ultimo: { mes: orden[0].mes, completo: orden[0].completo, obligatorio: orden[0].obligatorio },
+      };
+    });
+  }, [fichasCuentas]);
+
+  const movimientoEditable = (movId: number) => {
+    const b = bankStatementEntries.find((x) => x.id === movId);
+    return b && !bloqueadoPorCierre(b.company, b.date) ? b : null;
+  };
+  const opcionesMovimiento = (tipo: TipoLink, m: MovimientoFicha) => {
+    const monto = Math.abs(Number(m.mov.amount || 0));
+    if (tipo === "pago")
+      return costEntries
+        .filter((c) => String(c.company) === m.mov.company && c.paymentMethod !== "efectivo" && c.paymentMethod !== "tarjeta_credito" && (c.bankEntryId == null || c.bankEntryId === m.mov.id))
+        .map((c) => ({ id: String(c.id), texto: `${etiquetaPago(c.id)} · ${money(Number(c.amount || 0))}`, detalle: `${ddmmCorta(c.date)} · ${c.description || c.group || ""}`, destacada: Math.abs(Number(c.amount || 0) - monto) <= 1 }));
+    if (tipo === "resumen")
+      return resumenesF
+        .filter((x) => x.company === m.mov.company)
+        .map((x) => ({ id: String(x.id), texto: `${tarjetasF.find((t) => t.id === x.cardId)?.name || "Tarjeta"} · cierre ${ddmmCorta(x.closingDate)} · vence ${ddmmCorta(x.dueDate)}`, detalle: money(Number(x.totalArs || 0)), destacada: Math.abs(Number(x.totalArs || 0) - monto) <= 1 }));
+    return visibleApprovedJobs
+      .filter((j) => String(j.company) === m.mov.company)
+      .map((j) => ({ id: String(j.budgetNumber), texto: `${j.budgetNumber} · ${j.client}`, detalle: "" }));
+  };
+  const linkearMovimiento = (movId: number, tipo: TipoLink, id: string) => {
+    const b = movimientoEditable(movId);
+    if (!b) return;
+    if (tipo === "pago") {
+      const pagoId = Number(id);
+      const pago = costEntries.find((c) => c.id === pagoId);
+      setCostEntries((prev) => prev.map((c) => (c.id === pagoId ? { ...c, bankEntryId: movId } : c.bankEntryId === movId ? { ...c, bankEntryId: undefined } : c)));
+      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "pago" as const, assignedParty: pago?.supplier || x.assignedParty, desconocido: null } : x)));
+    } else if (tipo === "resumen") {
+      const sid = Number(id);
+      const st = creditCardStatements.find((x) => x.id === sid);
+      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedCardStatementId: sid, assignedKind: "pago" as const, assignedParty: creditCards.find((t) => t.id === st?.cardId)?.name || x.assignedParty, desconocido: null } : x)));
+      if (st && !st.paid) setCreditCardStatements((prev) => prev.map((x) => (x.id === sid ? { ...x, paid: true } : x)));
+    } else {
+      const job = visibleApprovedJobs.find((j) => String(j.budgetNumber) === id);
+      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "cobro" as const, assignedJobBudget: id, assignedParty: job?.client || x.assignedParty, desconocido: null } : x)));
+    }
+  };
+  const tipoMovimiento = (movId: number, kind: "interno" | "aporte" | "otro") => {
+    if (!movimientoEditable(movId)) return;
+    setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: kind, desconocido: null } : x)));
+  };
+  const desconocerMovimiento = (movId: number, nota: string | null) => {
+    if (!movimientoEditable(movId)) return;
+    setBankStatementEntries((prev) =>
+      prev.map((x) => (x.id === movId ? { ...x, desconocido: nota === null ? null : { firmante: usuarioFirmante, fecha: todayIso(), nota } } : x))
+    );
+  };
+  const soltarMovimiento = (movId: number) => {
+    if (!movimientoEditable(movId)) return;
+    setCostEntries((prev) => prev.map((c) => (c.bankEntryId === movId ? { ...c, bankEntryId: undefined } : c)));
+    setBankStatementEntries((prev) =>
+      prev.map((x) => (x.id === movId ? { ...x, assignedKind: undefined, assignedJobBudget: undefined, assignedPurchaseInvoiceId: null, assignedCardStatementId: null } : x))
+    );
+  };
+
+  // ARCA: lo confirmado en la ventana de revision. Solo se carga lo tildado; el proveedor es el elegido (al
+  // existente se le completa el CUIT si no lo tenia) o el alta confirmada, nunca los CUIT del grupo.
+  const confirmarRevisionArca = (renglones: RenglonRevision[]) => {
+    const r = revisionArca;
+    if (!r) return;
+    const decide = new Map(renglones.map((x) => [x.key, x]));
+    const elegido = (id: number) => decide.get(`n${id}`);
+    const dig = (t: string) => String(t || "").replace(/\D/g, "");
+    const fmtCuit = (c: string) => c.replace(/^(\d{2})(\d{8})(\d)$/, "$1-$2-$3");
+    const cuitsGrupo = COMPANY_OPTIONS.map((o) => dig(getCompanyMeta(o.value as CompanyName).taxId || "")).filter((c) => c.length >= 11);
+    const altas: Supplier[] = [];
+    const parches = new Map<number, Partial<Supplier>>();
+    const compras: PurchaseInvoice[] = [];
+    r.compras.forEach((inv) => {
+      const d = elegido(inv.id);
+      if (!d || !d.cargar) return;
+      const cuit = dig(inv.taxId);
+      let nombre = inv.supplier;
+      const acc = d.accionProveedor;
+      if (acc.tipo === "existente") {
+        const prov = suppliers.find((x) => x.id === acc.proveedorId);
+        if (prov) {
+          nombre = prov.name;
+          if (cuit.length >= 11 && dig(prov.taxId).length < 11) parches.set(prov.id, { taxId: fmtCuit(cuit) });
+        }
+      } else if (acc.tipo === "alta" && cuit.length >= 11 && !cuitsGrupo.includes(cuit) && !suppliers.some((x) => dig(x.taxId) === cuit) && !altas.some((x) => dig(x.taxId) === cuit)) {
+        altas.push({ id: newId(), company: "General", name: inv.supplier || `CUIT ${cuit}`, taxId: fmtCuit(cuit), aliases: "", active: true, notes: "Alta desde el listado de ARCA (confirmada en la revisión)" });
+      }
+      compras.push({ ...inv, supplier: nombre });
+    });
+    const emitidas = r.emitidas.filter((e) => elegido(e.id)?.cargar);
+    const notas = r.notas.filter((n) => elegido(n.id)?.cargar);
+    const cruzadas = new Map(r.cruzadas);
+    if (emitidas.length) setIssuedInvoices((prev) => [...prev, ...emitidas]);
+    if (notas.length) setCreditNotes((prev) => [...prev, ...notas]);
+    if (compras.length || cruzadas.size)
+      setPurchaseInvoices((prev) => [...prev.map((x) => (cruzadas.has(x.id) ? { ...x, ...cruzadas.get(x.id) } : x)), ...compras]);
+    if (altas.length || parches.size) setSuppliers((prev) => [...prev.map((x) => (parches.has(x.id) ? { ...x, ...parches.get(x.id) } : x)), ...altas]);
+    setRevisionArca(null);
+    setDocumentsMessage(
+      `ARCA confirmado: ${compras.length} factura(s) de compra (quedan SIN PAGAR para asignarles el pago), ${emitidas.length} emitida(s), ${notas.length} nota(s) de crédito` +
+        (cruzadas.size ? `, ${cruzadas.size} ya cargada(s) marcadas ✓ ARCA` : "") +
+        (altas.length ? ` y ${altas.length} proveedor(es) dados de alta.` : ".")
+    );
+  };
+  // Para que la ficha del pago con tarjeta no muestre el pago de comisiones como algo a linkear.
+  const pagosDeLaCuenta = (cuentaId: number, company: string) =>
+    comprasConTarjeta.filter((x) => x.company === company && !esPagoDeComisiones(x) && cuentaDeTarjeta(x.tarjetaId, tarjetasF, resumenesF) === cuentaId);
   const plataMovidaSistema = useMemo(
     () =>
       plataDelSistema({
@@ -18503,6 +18952,38 @@ Escribi CERRAR para confirmar:`
     // encontradas en ARCA y se completan los datos que les falten (CUIT, neto, IVA).
     const cruzadas = new Map<number, Partial<PurchaseInvoice>>();
     let yaCargadas = 0;
+    // REVISION (Nicolas, 2026-10-31): cada comprobante es un renglon de la ventana de revision, con lo que el
+    // sistema sugiere. Nada se guarda hasta confirmar (domain/arcaRevision, ui/RevisionArcaModal).
+    const filasRevision: RenglonRevision[] = [];
+    const nombreGrupoArca = (clave?: string) => String(clave || "").split("|").slice(1).join("|");
+    const filaArca = (
+      inv: { date: string; pointOfSale: string; number: string; kind: string; counterpartyName: string; counterpartyTaxId: string; total: number },
+      direccion: "recibidas" | "emitidas",
+      esNC: boolean,
+      company: string,
+      duplicadaDe: { id: number; texto: string } | null,
+      objId?: number
+    ) => {
+      const proveedor = direccion === "recibidas" && !esNC ? proveedorDeArca(inv.counterpartyName, inv.counterpartyTaxId, suppliers as any) : undefined;
+      const acc = accionPorDefecto({ direccion, proveedor, duplicadaDe });
+      filasRevision.push({
+        key: objId != null ? `n${objId}` : `d${filasRevision.length}`,
+        direccion,
+        esNotaCredito: esNC,
+        company,
+        fecha: inv.date,
+        numero: `${inv.pointOfSale}-${inv.number}`,
+        tipo: inv.kind,
+        contraparte: inv.counterpartyName,
+        cuit: inv.counterpartyTaxId,
+        total: Number(inv.total || 0),
+        duplicadaDe,
+        proveedor,
+        cargar: acc.cargar,
+        accionProveedor: acc.accionProveedor,
+        sugerencia: sugerenciaDe(proveedor, nombreGrupoArca),
+      });
+    };
     const clavesEmitidas = new Set(issuedInvoices.map((inv) => arcaInvoiceKey(inv)));
     const clavesCompras = new Set(
       purchaseInvoices.map((inv) =>
@@ -18535,7 +19016,11 @@ Escribi CERRAR para confirmar:`
         for (const inv of invoices) {
           const clave = arcaInvoiceKey(inv);
           if (direction === "emitidas") {
-            if (clavesEmitidas.has(clave)) continue;
+            if (clavesEmitidas.has(clave)) {
+              const ya = issuedInvoices.find((x) => arcaInvoiceKey(x) === clave);
+              filaArca(inv, "emitidas", false, String(empresa.value), { id: ya?.id || 0, texto: ya ? `emitida ${ya.pointOfSale}-${ya.number} del ${fmtCorta(ya.date)}` : "repetida en el listado" });
+              continue;
+            }
             clavesEmitidas.add(clave);
             emitidasNuevas.push({
               id: newId(),
@@ -18552,6 +19037,7 @@ Escribi CERRAR para confirmar:`
               total: inv.total,
               source: "arca",
             });
+            filaArca(inv, "emitidas", false, String(empresa.value), null, emitidasNuevas[emitidasNuevas.length - 1].id);
           } else {
             // NOTA DE CREDITO recibida: no es una compra, va al bloque de notas de credito del proveedor.
             if (esNotaDeCredito(inv.kind)) {
@@ -18559,6 +19045,7 @@ Escribi CERRAR para confirmar:`
               const kAlt = `${empresa.value}|${inv.counterpartyTaxId}|${(String(inv.pointOfSale || "") + String(inv.number || "")).replace(/\D/g, "").replace(/^0+/, "")}`;
               if (clavesNotas.has(k) || clavesNotas.has(kAlt)) {
                 yaCargadas += 1;
+                filaArca(inv, "recibidas", true, String(empresa.value), { id: 0, texto: "nota de crédito ya cargada" });
                 continue;
               }
               clavesNotas.add(kAlt);
@@ -18579,10 +19066,12 @@ Escribi CERRAR para confirmar:`
                 source: "arca",
                 notes: "Importado del listado de ARCA",
               });
+              filaArca(inv, "recibidas", true, String(empresa.value), null, notasNuevas[notasNuevas.length - 1].id);
               continue;
             }
             if (clavesCompras.has(clave)) {
               yaCargadas += 1;
+              filaArca(inv, "recibidas", false, String(empresa.value), { id: 0, texto: "ya cargada (mismo comprobante)" });
               continue;
             }
             const existente = buscarFacturaCargada(inv, String(empresa.value), [
@@ -18604,6 +19093,10 @@ Escribi CERRAR para confirmar:`
                 }
                 cruzadas.set(existente.id, { ...(cruzadas.get(existente.id) || {}), ...patch });
               }
+              filaArca(inv, "recibidas", false, String(empresa.value), {
+                id: existente.id,
+                texto: `${existente.supplier} ${existente.invoiceNumber || "s/n"} del ${fmtCorta(existente.invoiceDate)}`,
+              });
               continue;
             }
             clavesCompras.add(clave);
@@ -18627,6 +19120,7 @@ Escribi CERRAR para confirmar:`
               notes: "Importado del listado de ARCA",
               extractedAutomatically: true,
             });
+            filaArca(inv, "recibidas", false, String(empresa.value), null, compraNuevas[compraNuevas.length - 1].id);
           }
           nuevas += 1;
         }
@@ -18634,50 +19128,17 @@ Escribi CERRAR para confirmar:`
           `${getCompanyMeta(empresa.value).short} ${direction}: ${nuevas} de ${invoices.length}`
         );
       }
-      // ALTA AUTOMATICA DE PROVEEDORES: el archivo de comprobantes recibidos trae el nombre y el CUIT
-      // del emisor, que es justo lo que hace falta para cotejar los pagos contra el banco. Se dan de
-      // alta solo los CUIT que no estan, y NUNCA los de las propias empresas del grupo (esos giros
-      // son cuenta corriente entre empresas, no compras a un proveedor).
-      const cuitsGrupo = COMPANY_OPTIONS.map((option) =>
-        String(getCompanyMeta(option.value).taxId || "").replace(/\D/g, "")
-      ).filter((c) => c.length >= 11);
-      const cuitsConocidos = new Set(
-        suppliers.map((s) => String(s.taxId || "").replace(/\D/g, "")).filter(Boolean)
-      );
-      const proveedoresNuevos: Supplier[] = [];
-      for (const inv of compraNuevas) {
-        const cuit = String(inv.taxId || "").replace(/\D/g, "");
-        if (cuit.length < 11) continue;
-        if (cuitsGrupo.includes(cuit)) continue;
-        if (cuitsConocidos.has(cuit)) continue;
-        cuitsConocidos.add(cuit);
-        proveedoresNuevos.push({
-          id: newId(),
-          company: "General", // los proveedores son de las dos empresas; el pago define cual
-          name: inv.supplier || `CUIT ${cuit}`,
-          taxId: cuit.replace(/^(\d{2})(\d{8})(\d)$/, "$1-$2-$3"),
-          aliases: "",
-          active: true,
-          notes: "Alta automatica desde el listado de ARCA",
-        });
+      // Nada se guarda aca: se abre la ventana de revision. El alta de proveedores y la carga van al confirmar.
+      if (!filasRevision.length) {
+        const vacio = `ARCA: no hay comprobantes para revisar. ${resumen.join(" · ")}`;
+        setDocumentsMessage(vacio);
+        return vacio;
       }
-
-      if (emitidasNuevas.length > 0) setIssuedInvoices((prev) => [...prev, ...emitidasNuevas]);
-      if (notasNuevas.length > 0) setCreditNotes((prev) => [...prev, ...notasNuevas]);
-      if (compraNuevas.length > 0 || cruzadas.size > 0) {
-        setPurchaseInvoices((prev) => [
-          ...prev.map((p) => (cruzadas.has(p.id) ? { ...p, ...cruzadas.get(p.id) } : p)),
-          ...compraNuevas,
-        ]);
-      }
-      if (proveedoresNuevos.length > 0) setSuppliers((prev) => [...prev, ...proveedoresNuevos]);
+      setRevisionArca({ renglones: filasRevision, emitidas: emitidasNuevas, compras: compraNuevas, notas: notasNuevas, cruzadas: Array.from(cruzadas.entries()) });
       const mensaje =
-        `ARCA: ${emitidasNuevas.length} factura(s) emitida(s), ${compraNuevas.length} de compra nueva(s)` +
-        (compraNuevas.length > 0 ? " (quedan SIN PAGAR para asignarles el pago)" : "") +
-        (notasNuevas.length > 0 ? `, ${notasNuevas.length} nota(s) de crédito` : "") +
-        (yaCargadas > 0 ? `, ${yaCargadas} ya estaban cargadas (no se duplican)` : "") +
-        (proveedoresNuevos.length > 0 ? ` y ${proveedoresNuevos.length} proveedor(es) dados de alta.` : ".") +
-        ` ${resumen.join(" · ")}`;
+        `ARCA: ${filasRevision.length} comprobante(s) leído(s)` +
+        (yaCargadas > 0 ? `, ${yaCargadas} ya estaban cargados` : "") +
+        `. Revisalos en la ventana: no se carga nada hasta confirmar. ${resumen.join(" · ")}`;
       setDocumentsMessage(mensaje);
       return mensaje;
     } catch (err: any) {
@@ -20674,8 +21135,9 @@ Escribi CERRAR para confirmar:`
         cajaResponsable: cajaResponsable || undefined,
         tienePagoCargado: estadoPagos.ids.length > 0,
         arca: purchaseInvoiceOrigin(inv) === "arca" ? "importada" : inv.arcaCruzada ? "cruzada" : undefined,
+        resumenTarjeta: resumenDeLaFactura(inv, estadoPagos.ids),
       } as FilaFactura;
-    }), [alcanceEmpresa, purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas, pettyCashExpenses, pettyCashFunds]);
+    }), [alcanceEmpresa, purchaseInvoicesWithBankLink, costEntries, suppliers, facturasAPagar, vencimientoMarcas, pettyCashExpenses, pettyCashFunds, renglonesF, resumenesF, tarjetasF]);
   const facturaVacia = (supplier = "", taxId = "", company = ""): FacturaForm => {
     const prov = buscarProveedor(suppliers as any, supplier, taxId) as any;
     const mono = prov?.condicionIva === "monotributo";
@@ -21306,6 +21768,7 @@ Escribi CERRAR para confirmar:`
   const renderFacturasCompra = () => (
     <FacturasCompraPanel
       filas={filasFacturas.filter((x) => !(x.pagada && ocultoPorCierre(x.company, x.invoiceDate)))}
+      onAbrirResumen={(cuentaId, statementId) => setFichaTarjetaAbierta({ cuentaId, statementId })}
       companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
       money={money}
       onExportarEstudio={({ empresa, desde, hasta }) => {
@@ -22570,6 +23033,7 @@ Escribi CERRAR para confirmar:`
             onEditarDatos={prov ? () => setEditProveedor(formDeProveedor(prov as any)) : undefined}
             onBorrarFactura={(id) => borrarFacturaPreguntando(id, true)}
             onSoltarDebito={(bankId) => unlinkBankInvoice([bankId])}
+            onAbrirResumen={(cuentaId, statementId) => setFichaTarjetaAbierta({ cuentaId, statementId })}
             facturas={filasFacturas.filter(
               (f) => buscarProveedor(prov ? [prov] : [], f.supplier, f.taxId) || supplierKey(f.supplier, f.taxId) === supplierKey(fichaProveedor.nombre, fichaProveedor.taxId)
             )}
@@ -22715,6 +23179,80 @@ Escribi CERRAR para confirmar:`
           />
         );
       })()}
+      {fichaTarjetaAbierta &&
+        (() => {
+          const cuenta = tarjetasF.find((t) => t.id === fichaTarjetaAbierta.cuentaId);
+          if (!cuenta) return null;
+          return (
+            <FichaTarjeta
+              key={cuenta.id}
+              cuenta={cuenta}
+              plasticos={tarjetasF.filter((t) => t.id !== cuenta.id && cuentaDeTarjeta(t.id, tarjetasF, resumenesF) === cuenta.id)}
+              fichas={fichasResumen.filter((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === cuenta.id)}
+              pagos={pagosDeLaCuenta(cuenta.id, cuenta.company)}
+              etiquetaPago={etiquetaPago}
+              pagoComisiones={(sid) => {
+                const c = costEntries.find((x) => x.impuestosClave === claveComisionesTarjeta(sid));
+                return c ? { amount: Number(c.amount || 0), date: c.date, supplier: c.supplier || "el banco" } : null;
+              }}
+              companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+              money={money}
+              statementInicial={fichaTarjetaAbierta.statementId}
+              onLinkear={linkearRenglon}
+              onSoltar={soltarRenglon}
+              onComisiones={renglonAComisiones}
+              onAceptarSugerencias={aceptarSugerencias}
+              onPlastico={(id, patch) => Object.entries(patch).forEach(([k, v]) => updateCreditCard(id, k as keyof CreditCard, v))}
+              onCerrar={() => setFichaTarjetaAbierta(null)}
+            />
+          );
+        })()}
+      {fichaCuentaAbierta &&
+        (() => {
+          const meses = fichasCuentas.filter((f) => claveCuenta(f) === fichaCuentaAbierta);
+          if (!meses.length) return null;
+          return (
+            <FichaExtracto
+              key={fichaCuentaAbierta}
+              titulo={`${meses[0].bank} · ${getCompanyMeta(meses[0].company as CompanyName).short} · ${meses[0].currency === "USD" ? "U$S" : "$"}`}
+              meses={meses}
+              money={money}
+              opciones={opcionesMovimiento}
+              onLink={linkearMovimiento}
+              onTipo={tipoMovimiento}
+              onDesconocer={desconocerMovimiento}
+              onSoltar={soltarMovimiento}
+              onCerrar={() => setFichaCuentaAbierta(null)}
+            />
+          );
+        })()}
+      {resumenesALeer.length > 0 && (
+        <ImportarResumenTarjetaModal
+          key={`${resumenesALeer[0].archivo}-${resumenesALeer[0].leido.closingDate}`}
+          leido={resumenesALeer[0].leido}
+          archivo={resumenesALeer[0].archivo}
+          empresaSugerida={resumenesALeer[0].empresa}
+          companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)).map((c) => ({ value: String(c.value), label: String((c as any).label || c.value) }))}
+          tarjetas={tarjetasF}
+          resumenes={resumenesF}
+          money={money}
+          onConfirmar={(d) => confirmarResumenLeido(resumenesALeer[0], d)}
+          onCerrar={() => setResumenesALeer((prev) => prev.slice(1))}
+        />
+      )}
+      {revisionArca && (
+        <RevisionArcaModal
+          renglones={revisionArca.renglones}
+          proveedores={suppliers as any}
+          companyShort={(c) => getCompanyMeta(c as CompanyName).short}
+          money={money}
+          onConfirmar={confirmarRevisionArca}
+          onCerrar={() => {
+            setRevisionArca(null);
+            setDocumentsMessage("ARCA: revisión cancelada, no se cargó nada.");
+          }}
+        />
+      )}
       {notaCreditoModal && (
         <NotaCreditoModal
           key={notaCreditoModal.id}
@@ -23339,10 +23877,13 @@ Escribi CERRAR para confirmar:`
           money={money}
           onPagado={setImpuestosPagados}
         />
-        <ControlResumenesTarjeta
-          tarjetas={visibleCreditCards.map((c) => ({ id: c.id, name: c.name, company: String(c.company) }))}
-          controles={controlesTarjeta}
-          money={money}
+        <FichasLinkeoPanel
+          tarjetas={filasPanelTarjetas}
+          cuentas={filasPanelCuentas}
+          leyendo={leyendoPdf}
+          onLeerPdf={leerPdfTarjeta}
+          onAbrirTarjeta={(id) => setFichaTarjetaAbierta({ cuentaId: id })}
+          onAbrirCuenta={setFichaCuentaAbierta}
         />
         </>
       )}

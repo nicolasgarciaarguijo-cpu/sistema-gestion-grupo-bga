@@ -345,6 +345,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
           { type: "p", text: "Cada factura en una fila con su estado de pago: ✓ pagada (fecha y cómo), sin pagar con su fecha prevista y su estado, o sin pagar sin fecha. La marca 'cta cte' o 'nuevo' dice si el proveedor tiene cuenta corriente o todavía no está en el listado." },
           { type: "steps", items: ["Tocá '+ Agregar factura'.", "1 · Proveedor: elegilo de la lista de habituales o escribí uno nuevo (y tildá darlo de alta).", "2 · Factura: letra, número, fecha, neto, IVA, total, circuito y tipo de gasto.", "3 · Pago: si se pagó, registrá fecha, monto, cómo y de qué cuenta (o vinculá un pago ya cargado); si no, la fecha prevista y el estado.", "Guardá. El pago queda en el cash flow; lo que falta pagar va a Pagos programados."] },
           { type: "tip", text: "Click en una factura para verla o editarla; 'Asignar pago' en las que faltan pagar; click derecho para abrir la ficha del proveedor." },
+          { type: "p", text: "Pagada con tarjeta: la pill 💳 dice en qué resumen se pagó y qué día se paga (el vencimiento del resumen). En rojo, falta linkearla en la ficha de la tarjeta. Click para abrirla." },
+        ],
+      },
+      {
+        heading: "Importar el listado de ARCA (con revisión)",
+        blocks: [
+          { type: "steps", items: ["Facturas de compra → Importar listado de ARCA → elegí el Excel de 'Mis comprobantes' (recibidos o emitidos).", "Se abre la ventana de revisión: no se guarda nada hasta confirmar.", "Las ya cargadas vienen marcadas y no se pueden tildar (no se duplican; la factura existente queda con ✓ ARCA).", "Proveedor reconocido: dice adónde va y su grupo. Proveedor nuevo con nombres parecidos: elegí si es el mismo o uno nuevo.", "Confirmar y cargar: las facturas quedan SIN PAGAR para asignarles el pago."] },
+          { type: "warn", text: "Si hay una factura tildada sin proveedor elegido, no deja confirmar: es para que no aparezcan proveedores duplicados." },
         ],
       },
       {
@@ -1177,6 +1185,22 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         blocks: [
           { type: "p", text: "Arriba de la solapa: por empresa, cada cuenta y cada tarjeta con sus comisiones, impuestos, intereses y consumos, en el mes o en el ejercicio." },
           { type: "bullets", items: ["Cuentas: salen de los débitos del extracto según su renglón (el pago de la tarjeta y las cuotas de créditos no cuentan como costo bancario).", "Tarjetas: por cierre de resumen, con sus cargos y sus consumos por tipo de gasto; avisa si lo cargado no coincide con el total del resumen.", "'⚠ revisar': el texto del banco no parece de ese renglón (por ejemplo, sueldos cargados como impuesto). Corregí el renglón del movimiento."] }
+        ],
+      },
+      {
+        heading: "Ficha de la tarjeta y lector de resúmenes",
+        blocks: [
+          { type: "steps", items: ["Fichas de tarjetas y extractos → 📄 Leer resumen de tarjeta (PDF). Sirve para Patagonia (Visa Business y Corporate) y Santander.", "Revisá lo leído: la empresa (BGA o De Raíz), la tarjeta, las tarjetas físicas con su responsable y si el resumen cierra al centavo. Guardar abre la ficha.", "En la ficha, cada renglón del resumen se linkea con el pago cargado con esa tarjeta (en la factura, el pago a cuenta o la cuota de una deuda) y con su cuota. Lo sugerido viene en amarillo: click derecho → Aceptar, o 'Aceptar las sugerencias' de una.", "Lo que no es una compra (sellos, intereses, IVA, percepciones) va solo a 'Comisiones, tasas e intereses (tarjeta)', una deuda con el banco pagada con la misma tarjeta."] },
+          { type: "p", text: "El renglón del resumen es control, no gasto: el gasto es el pago cargado. Todos los pagos con la tarjeta se pagan el día del vencimiento del resumen; recién ese día bajan de la cuenta del banco y figuran en el cash flow." },
+          { type: "bullets", items: ["✓ verde: revisado y linkeado. 'N sin linkear': falta. 'histórico': resumen anterior al 1/11/2026, no es obligatorio.", "Si el banco cambia el plástico, el lector lo reconoce por el responsable: queda el número nuevo y el viejo en 'Números anteriores'.", "'Cargadas con esta tarjeta que no aparecen': un pago con la tarjeta que debería estar en el resumen. Revisá la tarjeta, el monto o la fecha (o va en el siguiente)."] },
+          { type: "tip", text: "Desde Compras y desde la ficha del proveedor, la factura pagada con tarjeta muestra 💳 con el resumen y el día de pago. Click para abrir la ficha." }
+        ],
+      },
+      {
+        heading: "Ficha del extracto (por cuenta y mes)",
+        blocks: [
+          { type: "p", text: "El extracto constata, no carga. Cada movimiento se linkea con lo que ya está en el sistema: click derecho → pago cargado (con su factura), pago del resumen de una tarjeta, cobro de un trabajo, movimiento interno o aporte." },
+          { type: "bullets", items: ["Los impuestos, comisiones e intereses van solos a 'Comisiones, tasas e intereses (cuenta)' y se tildan pagados en Impuestos y comisiones.", "'! Desconocer': lo que no reconocés queda marcado para reclamarlo al banco, y el mes no tiene tilde.", "El tilde verde 'revisado y linkeado' pide todo linkeado, nada desconocido y la cadena de saldos cerrada."] }
         ],
       },
     ],

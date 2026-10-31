@@ -28,6 +28,7 @@ export function FichaProveedor({
   onPagoSinFactura,
   notasCredito: notasCreditoTodas = [],
   onNotaCredito,
+  onAbrirResumen,
   personas = [],
   onResolverSinFactura,
   onCargarFacturaDePago,
@@ -76,7 +77,9 @@ export function FichaProveedor({
   onFechaFactura: (invoiceId: number, fecha: string) => void;
   onCerrar: () => void;
   // Todas las facturas del proveedor con su situacion de pago, y la ventana para cargar una nueva.
-  facturas?: Array<{ id: number; invoiceDate: string; receiptLetter: string; invoiceNumber: string; total: number; pagada: boolean; pagoTexto: string; fechaPrevista?: string; company: string }>;
+  facturas?: Array<{ id: number; invoiceDate: string; receiptLetter: string; invoiceNumber: string; total: number; pagada: boolean; pagoTexto: string; fechaPrevista?: string; company: string; resumenTarjeta?: { texto: string; cuentaId: number; statementId: number | null } }>;
+  // Pagada con tarjeta: abre la ficha de la tarjeta en el resumen donde se pago (2026-10-31).
+  onAbrirResumen?: (cuentaId: number, statementId: number | null) => void;
   onCargarFactura?: () => void;
   onAbrirFactura?: (id: number) => void;
   // Pagos a cuenta que todavia esperan su factura, y la ventana para cargar uno nuevo.
@@ -360,6 +363,18 @@ export function FichaProveedor({
                       <td style={{ padding: "3px 6px", textAlign: "right", fontWeight: 700 }}>{money(f.total)}</td>
                       <td style={{ padding: "3px 6px", color: f.pagada ? "#166534" : "#b45309", fontWeight: 700 }}>
                         {f.pagada ? `✓ Pagada · ${f.pagoTexto}` : f.fechaPrevista ? `Sin pagar · vence ${f.fechaPrevista.slice(8, 10)}/${f.fechaPrevista.slice(5, 7)}` : "Sin pagar"}
+                        {f.resumenTarjeta && (
+                          <span
+                            title="Abrir la ficha de la tarjeta en este resumen"
+                            onClick={(ev) => {
+                              ev.stopPropagation();
+                              onAbrirResumen?.(f.resumenTarjeta!.cuentaId, f.resumenTarjeta!.statementId);
+                            }}
+                            style={{ marginLeft: 6, cursor: "pointer", fontSize: 11, padding: "1px 7px", borderRadius: 999, color: f.resumenTarjeta.statementId ? "#1e40af" : "#b91c1c", background: f.resumenTarjeta.statementId ? "#dbeafe" : "#fee2e2" }}
+                          >
+                            {f.resumenTarjeta.texto}
+                          </span>
+                        )}
                       </td>
                       {acciones([
                         { texto: "✎ Editar", titulo: "Abrir la factura para corregirla", run: onAbrirFactura ? () => onAbrirFactura(f.id) : undefined },

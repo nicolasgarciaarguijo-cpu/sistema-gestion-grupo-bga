@@ -16,6 +16,49 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31a",
+    fecha: "31/10/2026",
+    titulo: "Fichas de tarjetas y extractos, y ARCA con revisión",
+    items: [
+      {
+        titulo: "Lector de resúmenes de tarjeta",
+        que: "Se sube el PDF del resumen (Patagonia Visa Business y Corporate, Santander Visa) y el sistema lo lee: cierre, vencimiento (que es la fecha de pago), saldo, cuotas, dólares y cada renglón separado por tarjeta física y su responsable. Antes de guardar pregunta la empresa y la tarjeta y avisa si el resumen cierra al centavo. Si el banco cambió el plástico, lo reconoce por el responsable y guarda los dos números, el nuevo y el viejo.",
+        como: "Bancos y tarjetas → Fichas de tarjetas y extractos → 📄 Leer resumen de tarjeta (PDF).",
+        tab: "bancos",
+      },
+      {
+        titulo: "Ficha por tarjeta, con la ficha de cada resumen",
+        que: "Cada renglón del resumen es control: se linkea con el pago que se cargó con esa tarjeta (y la factura que paga) y con su cuota. El sistema sugiere el link cuando reconoce el monto y la fecha. Todos los pagos con esa tarjeta se pagan el día del vencimiento del resumen: recién ese día bajan de la cuenta del banco y figuran en el cash flow. Desde el 1/11/2026 linkear es obligatorio; con todo linkeado aparece el tilde verde «revisado y linkeado».",
+        como: "Bancos y tarjetas → Fichas → Abrir ficha. Click derecho en un renglón: aceptar la sugerencia, linkear con un pago, mandar a comisiones o soltar.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Comisiones, tasas e intereses",
+        que: "Lo que en el resumen no es una compra (sellos, intereses, punitorios, IVA, percepciones) se suma solo en una deuda con el banco llamada «Comisiones, tasas e intereses (tarjeta)», asentada pagada con la misma tarjeta y con vencimiento el del resumen. Las del extracto se llaman «Comisiones, tasas e intereses (cuenta)». El banco es un solo proveedor para las dos empresas: la empresa la dice el pago.",
+        como: "Se ve en la ficha del resumen y en Impuestos y comisiones.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Ficha del extracto por cuenta y mes",
+        que: "Cada movimiento del banco se linkea con lo que ya está en el sistema: el pago cargado (con su factura), el pago del resumen de una tarjeta, el cobro de un trabajo o un movimiento interno. Los impuestos y comisiones van solos a su deuda. Lo que no reconocés lo marcás como desconocido para reclamarlo. Con todo linkeado, nada desconocido y la cadena de saldos cerrada, el mes lleva el tilde verde.",
+        como: "Bancos y tarjetas → Fichas → Cuentas → Abrir ficha. Click derecho en el movimiento.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Desde la factura se ve el resumen",
+        que: "Una factura pagada con tarjeta muestra en qué resumen se pagó y qué día se paga (💳). Si todavía no se linkeó, lo avisa en rojo. Con un click se abre la ficha de la tarjeta en ese resumen.",
+        como: "Compras → Facturas de compra, y la ficha del proveedor en Pago a proveedores.",
+        tab: "compras",
+      },
+      {
+        titulo: "ARCA sugiere, no carga sola",
+        que: "Al subir el listado de ARCA se abre una ventana de revisión y no se guarda nada hasta confirmar. Las facturas que ya están cargadas vienen marcadas y no se pueden duplicar. Si reconoce al proveedor, dice adónde va (y su grupo). Si es un proveedor nuevo pero hay otro con nombre parecido, hay que elegir si es el mismo o uno nuevo, para no duplicar proveedores.",
+        como: "Compras → Facturas de compra → Importar listado de ARCA → revisar → Confirmar y cargar.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-10-30b",
     fecha: "30/10/2026",
     titulo: "Materiales por rubro y tipo",

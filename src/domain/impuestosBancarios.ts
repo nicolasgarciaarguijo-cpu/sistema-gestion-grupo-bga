@@ -71,7 +71,8 @@ export function impuestosDeExtractos(debitos: DebitoBanco[]): GrupoImpuestos[] {
         clave,
         origen: "banco",
         company: d.company,
-        titulo: `Impuestos extracto bancario · ${banco} · ${nombreMes(mes)}`,
+        // Nombre fijado por Nicolas (2026-10-31): el mismo para cuentas y tarjetas, aclarando de donde sale.
+        titulo: `Comisiones, tasas e intereses (cuenta) · ${banco} · ${nombreMes(mes)}`,
         banco,
         moneda,
         mes,
@@ -114,7 +115,7 @@ export function impuestosDeResumenes(resumenes: ResumenTarjeta[], lineas: LineaR
         clave: `tarjeta:${s.id}${moneda === "USD" ? ":usd" : ""}`,
         origen: "tarjeta",
         company: s.company,
-        titulo: `Impuestos resumen de tarjeta · ${card?.name || "tarjeta"} · ${nombreMes((s.closingDate || fecha).slice(0, 7))}`,
+        titulo: `Comisiones, tasas e intereses (tarjeta) · ${card?.name || "tarjeta"} · ${nombreMes((s.closingDate || fecha).slice(0, 7))}`,
         banco: card?.bank || "",
         moneda,
         mes: (s.closingDate || fecha).slice(0, 7),

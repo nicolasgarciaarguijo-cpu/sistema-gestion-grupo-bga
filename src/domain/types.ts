@@ -949,6 +949,10 @@ export type BankStatementEntry = {
   conceptKey?: string;
   attachmentName?: string;
   extractedAutomatically: boolean;
+  // FICHA DEL EXTRACTO (Nicolas, 2026-10-31): el debito que paga el resumen de una tarjeta, y el gasto que
+  // no se reconoce (queda marcado para reclamarlo al banco). Ver domain/fichaExtracto.ts.
+  assignedCardStatementId?: number | null;
+  desconocido?: { firmante: string; fecha: string; nota: string } | null;
 };
 
 export type StockMovement = {
@@ -1198,6 +1202,16 @@ export type CreditCard = {
   lastDigits: string;
   active: boolean;
   notes: string;
+  // FICHA DE TARJETA (Nicolas, 2026-10-31): el resumen es por banco (una CUENTA de tarjeta) y adentro trae
+  // varias tarjetas fisicas, cada una con su responsable. Un plastico apunta a la cuenta que lo resume;
+  // ausente = es la cuenta (la que tiene los resumenes). Ver domain/fichaTarjeta.ts.
+  cuentaTarjetaId?: number | null;
+  // Numero de cuenta del resumen (ej. 1108711683): con esto el lector del PDF sabe a que tarjeta va.
+  numeroCuenta?: string;
+  // Responsable de la tarjeta fisica. Si el banco cambia el plastico, todo sigue sobre el responsable y
+  // quedan los dos numeros: el nuevo en lastDigits y los viejos aca (separados por coma).
+  responsable?: string;
+  numerosAnteriores?: string;
 };
 
 // Resumen/cierre de la tarjeta: para ver vencimientos y saldos (previsión de pago). Pesos y dólares
@@ -1213,6 +1227,9 @@ export type CreditCardStatement = {
   minPaymentArs: number;
   paid: boolean;
   notes: string;
+  // Saldo anterior y archivo leido (lector de resumenes, 2026-10-31): para verificar que el resumen cierre.
+  saldoAnteriorArs?: number;
+  archivo?: string;
 };
 
 // Consumo itemizado de la tarjeta, clasificado a un grupo de costo (fijo/variable lo define el grupo,
@@ -1233,6 +1250,15 @@ export type CreditCardConsumption = {
   installments: string; // "3/12" cuotas (texto libre)
   recurring: boolean; // consumo mensual que se repite (útil para el marcador)
   notes: string;
+  // Tarjeta fisica y responsable tal como vienen en el resumen ("Tarjeta 5279 Total Consumos de ...").
+  cardDigits?: string;
+  holder?: string;
+  // LINK OBLIGATORIO (Nicolas, 2026-10-31): el renglon del resumen es CONTROL, no gasto. Se linkea con el
+  // pago con tarjeta (CostEntry) que lo cargo, y con que cuota; o se manda a la deuda "Comisiones, tasas e
+  // intereses (tarjeta)" con el banco. Ver domain/fichaTarjeta.ts.
+  pagoId?: number | null;
+  cuotaNro?: number;
+  aComisiones?: boolean;
 };
 
 // REGLA DE CLASIFICACION con memoria: cuando el usuario clasifica un gasto a un grupo, se aprende una

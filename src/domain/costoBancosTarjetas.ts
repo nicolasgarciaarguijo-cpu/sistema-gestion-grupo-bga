@@ -32,9 +32,9 @@ const sinAcentos = (s: string) =>
 // Linea del resumen de tarjeta -> categoria por su texto.
 export function categoriaDeLineaTarjeta(descripcion: string): CategoriaCosto {
   const d = sinAcentos(descripcion);
-  if (/\binteres|financiac|punitorio/.test(d)) return "intereses";
-  if (/sellos|iibb|percep|db\.?\s*rg|\brg\s*\d|db iva|\biva\b|impuesto|ley 25\.?413/.test(d)) return "impuestos";
-  if (/comision|mant\.?\s*cuenta|mantenimiento|cargo por|renovacion|seguro de vida|administrativ/.test(d)) return "comisiones";
+  if (/\binteres|financiac|punit/.test(d)) return "intereses";
+  if (/sellos|iibb|percep|db\.?\s*rg|\brg\s*\d|db iva|\biva\b|impuesto|ley 25\.?413|\bimp\.?\s*d[be]|db\/cr/.test(d)) return "impuestos";
+  if (/comis|mant\.?\s*cuenta|mantenimiento|cargo por|renovacion|seguro de vida|administrativ/.test(d)) return "comisiones";
   return "consumos";
 }
 

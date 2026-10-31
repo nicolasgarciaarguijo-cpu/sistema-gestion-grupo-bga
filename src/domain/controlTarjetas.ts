@@ -34,18 +34,33 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const TOL = 1;
 
 // Las cuotas de cada compra, cada una en su resumen (por orden de cierre de la tarjeta).
-export function cuotasEsperadas(compras: CompraTarjeta[], resumenes: ResumenCtrl[]): CuotaEsperada[] {
+// FICHA DE TARJETA (2026-10-31): `cuentaDe` lleva la tarjeta fisica a la cuenta que emite el resumen, y
+// `vinculos` son las cuotas que ya se linkearon a mano a un renglon de un resumen: esas caen en ESE resumen,
+// no en el que tocaria por orden. Ver domain/fichaTarjeta.ts.
+export type OpcionesCuotas = {
+  cuentaDe?: (tarjetaId: number) => number;
+  vinculos?: Array<{ pagoId: number; cuota: number; statementId: number }>;
+};
+
+export function cuotasEsperadas(compras: CompraTarjeta[], resumenes: ResumenCtrl[], opciones: OpcionesCuotas = {}): CuotaEsperada[] {
+  const cuentaDe = opciones.cuentaDe || ((id: number) => id);
   const porTarjeta = new Map<number, ResumenCtrl[]>();
-  resumenes.forEach((s) => porTarjeta.set(s.cardId, [...(porTarjeta.get(s.cardId) || []), s]));
+  resumenes.forEach((s) => {
+    const k = cuentaDe(s.cardId);
+    porTarjeta.set(k, [...(porTarjeta.get(k) || []), s]);
+  });
   porTarjeta.forEach((l) => l.sort((a, b) => a.closingDate.localeCompare(b.closingDate)));
+  const vinculo = new Map<string, number>();
+  (opciones.vinculos || []).forEach((v) => vinculo.set(`${v.pagoId}:${v.cuota}`, v.statementId));
   const out: CuotaEsperada[] = [];
   compras.forEach((c) => {
     const n = Math.max(1, Math.floor(Number(c.cuotas) || 1));
     const monto = r2(Number(c.amount || 0) / n);
-    const lista = porTarjeta.get(c.tarjetaId) || [];
+    const lista = porTarjeta.get(cuentaDe(c.tarjetaId)) || [];
     const primero = lista.findIndex((s) => s.closingDate >= c.date);
     for (let k = 0; k < n; k++) {
-      const s = primero >= 0 ? lista[primero + k] : undefined;
+      const linkeado = vinculo.get(`${c.id}:${k + 1}`);
+      const s = linkeado != null ? resumenes.find((x) => x.id === linkeado) : primero >= 0 ? lista[primero + k] : undefined;
       out.push({
         compraId: c.id,
         cuota: k + 1,

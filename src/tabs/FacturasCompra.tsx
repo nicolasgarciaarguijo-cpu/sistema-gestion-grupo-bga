@@ -26,6 +26,8 @@ export type FilaFactura = {
   tienePagoCargado?: boolean;
   // ARCA: "importada" = vino del listado (no la tenemos en mano); "cruzada" = la cargada se encontro en ARCA.
   arca?: "importada" | "cruzada";
+  // FICHA DE TARJETA (2026-10-31): pagada con tarjeta -> el resumen donde aparece (se paga el dia del vencimiento).
+  resumenTarjeta?: { texto: string; cuentaId: number; statementId: number | null };
 };
 
 const NOMBRE_MES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -50,6 +52,7 @@ export function FacturasCompraPanel({
   onEliminar,
   onImportarArca,
   onExportarEstudio,
+  onAbrirResumen,
 }: {
   filas: FilaFactura[];
   companyOptions: Array<{ value: string; short?: string }>;
@@ -64,6 +67,8 @@ export function FacturasCompraPanel({
   onImportarArca: (files: FileList | null) => Promise<string>;
   // EXCEL PARA EL ESTUDIO CONTABLE: las facturas de la empresa entre dos fechas. Devuelve cuantas salieron.
   onExportarEstudio?: (args: { empresa: string; desde: string; hasta: string }) => number;
+  // Abre la ficha de la tarjeta en el resumen donde se pago la factura.
+  onAbrirResumen?: (cuentaId: number, statementId: number | null) => void;
 }) {
   const archivoArca = useRef<HTMLInputElement>(null);
   const [avisoArca, setAvisoArca] = useState("");
@@ -268,7 +273,20 @@ export function FacturasCompraPanel({
                   <td style={td}>
                     {f.pagada ? (
                       <span style={{ color: "#166534", fontWeight: 700 }}>✓ Pagada · {f.pagoTexto}</span>
-                    ) : f.fechaPrevista ? (
+                    ) : null}
+                    {f.resumenTarjeta ? (
+                      <span
+                        style={{ ...pill(f.resumenTarjeta.statementId ? "#1e40af" : "#b91c1c", f.resumenTarjeta.statementId ? "#dbeafe" : "#fee2e2"), marginLeft: 6, cursor: "pointer" }}
+                        title="Abrir la ficha de la tarjeta en este resumen"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          onAbrirResumen?.(f.resumenTarjeta!.cuentaId, f.resumenTarjeta!.statementId);
+                        }}
+                      >
+                        {f.resumenTarjeta.texto}
+                      </span>
+                    ) : null}
+                    {f.pagada ? null : f.fechaPrevista ? (
                       <span style={pill(ESTADO[f.estadoPrevisto || "programado"].fg, ESTADO[f.estadoPrevisto || "programado"].bg)}>
                         Sin pagar · {fmt(f.fechaPrevista)} · {ESTADO[f.estadoPrevisto || "programado"].label}
                       </span>
