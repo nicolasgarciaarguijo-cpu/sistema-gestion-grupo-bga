@@ -36,6 +36,9 @@ export type CostoEmpresarial = {
   valorAUsar: number;
   impacta: ImpactoCosto;
   marcadores: FixedMarker[]; // los marcadores activos de este grupo y empresa
+  // Mano de obra de las rutinas de mantenimiento, orden y limpieza (por mes) que se suma al promedio. Ver
+  // domain/rutinasTaller.ts `manoDeObraPorGrupo`. Las facturas del grupo ya estan en porMes.
+  manoDeObra?: { montoMes: number; horasMes: number; rutinas: string[] };
 };
 
 // Si nunca se eligio: los grupos fijos cargados a mano impactan en su empresa. Los variables y los
@@ -54,14 +57,23 @@ export function costosEmpresariales(input: {
   groups: CostGroup[];
   rows: CostSourceRow[];
   marcadores: FixedMarker[];
+  manoDeObra?: Array<{ company: string; group: string; montoMes: number; horasMes: number; rutinas: string[] }>;
 }): CostoEmpresarial[] {
   const meses = ultimosMesesCerrados(input.hoy);
   const grupos = input.groups.filter((g) => g.company === input.company || g.company === "General");
   const agregado = aggregateCosts({ months: meses, groups: grupos, rows: input.rows, companyScope: input.company });
+  const moDeLaEmpresa = (input.manoDeObra || []).filter((x) => x.company === input.company && x.montoMes > 0);
+  // Un grupo con mano de obra de rutinas que no aparece (sin facturas ni alta en Costos) igual se muestra.
+  moDeLaEmpresa.forEach((x) => {
+    if (agregado.rows.some((r) => r.group === x.group)) return;
+    const g = grupos.find((y) => y.name === x.group);
+    agregado.rows.push({ group: x.group, kind: g?.kind || "fijo", auto: false, byMonth: Object.fromEntries(meses.map((m) => [m, 0])), total: 0, monthsWithData: 0 });
+  });
   return agregado.rows.map((r) => {
     const marcadores = input.marcadores.filter((m) => esDelGrupo(m, input.company, r.group));
     const manuales = marcadores.filter((m) => !m.sigueSugerido);
-    const promedio = r.total / MESES_DEL_PROMEDIO;
+    const mo = moDeLaEmpresa.find((x) => x.group === r.group);
+    const promedio = r.total / MESES_DEL_PROMEDIO + (mo?.montoMes || 0);
     const valorManual = manuales.length ? manuales.reduce((a, m) => a + Number(m.amount || 0), 0) : null;
     const elegido = marcadores.find((m) => m.impactaEn)?.impactaEn;
     return {
@@ -75,6 +87,7 @@ export function costosEmpresariales(input: {
       valorAUsar: valorManual ?? promedio,
       impacta: elegido ?? (manuales.length ? "empresa" : impactoPorDefecto(r.kind, r.auto)),
       marcadores,
+      ...(mo ? { manoDeObra: { montoMes: mo.montoMes, horasMes: mo.horasMes, rutinas: mo.rutinas } } : {}),
     };
   });
 }

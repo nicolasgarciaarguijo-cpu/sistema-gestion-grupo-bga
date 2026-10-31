@@ -76,6 +76,8 @@ export type TareaDelDia = {
   notas?: string;
   // Tarea de mantenimiento de una maquina (al marcarla hecha queda en su historial).
   mantenimiento?: { stockItemId: number; planId?: number };
+  // Rutina de mantenimiento, orden y limpieza del taller (domain/rutinasTaller.ts).
+  rutina?: { rutinaId: number };
 };
 export type AsignacionDiaria = {
   id: number;

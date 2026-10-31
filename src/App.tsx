@@ -285,7 +285,9 @@ import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, 
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
-import { conHerramientasDeLaTarea } from "./domain/organizacionDiaria";
+import { conHerramientasDeLaTarea, presenciaDelDia } from "./domain/organizacionDiaria";
+import { completarDiaConRutinas, manoDeObraPorGrupo, type CandidatoRutina, type RutinaTaller } from "./domain/rutinasTaller";
+import { RutinasTaller } from "./tabs/RutinasTaller";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
 import { EmitirFacturasTab } from "./tabs/EmitirFacturas";
@@ -1901,6 +1903,8 @@ type PersistedAppStateData = {
   // Mantenimiento: la ficha de cada maquina/herramienta de Stock (por id de stock), con preventivos e historial.
   fichasMaquinas: FichaMaquina[];
   convertidorMateriales?: Partial<ConvertidorMateriales>;
+  // Mantenimiento, orden y limpieza: rutinas diarias/semanales del taller (comunes a las dos empresas). Ver domain/rutinasTaller.ts.
+  rutinasTaller?: RutinaTaller[];
   // Retrabajos (fase 6): cada uno de un trabajo y de su empresa. Ver domain/retrabajos.ts.
   retrabajos: Retrabajo[];
   // Fabricacion · tipos de mueble: receta ordenada por pasos sobre el catalogo de tareas (global).
@@ -1977,7 +1981,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "organizacion-diaria",
     label: "Fabricación · organización diaria",
-    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble", "fichasMaquinas", "retrabajos", "convertidorMateriales"] as const,
+    fields: ["asignacionesDiarias", "tiposTarea", "gruposTrabajo", "planesFabricacion", "rubrosFabricacion", "categoriasEmpleado", "escalonesInternos", "tiposMueble", "fichasMaquinas", "retrabajos", "convertidorMateriales", "rutinasTaller"] as const,
   },
   {
     key: "cuentas",
@@ -3281,6 +3285,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [convertidorMateriales, setConvertidorMateriales] = useState<Partial<ConvertidorMateriales> | undefined>(undefined);
   const convertidorVigenteMateriales = useMemo(() => convertidorVigente(convertidorMateriales), [convertidorMateriales]);
   const [retrabajos, setRetrabajos] = useState<Retrabajo[]>([]);
+  const [rutinasTaller, setRutinasTaller] = useState<RutinaTaller[]>([]);
   const escalonesVigentes = escalonesInternos.length ? escalonesInternos : ESCALONES_POR_DEFECTO;
   // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
   const categoriasVigentes = categoriasEmpleado.length ? categoriasEmpleado : CATEGORIAS_POR_DEFECTO;
@@ -10122,6 +10127,7 @@ Escribi CERRAR para confirmar:`
     fichasMaquinas: fichasMaquinas.map((item) => ({ ...item, planes: item.planes.map((p) => ({ ...p })), historial: item.historial.map((r) => ({ ...r })) })),
     retrabajos: retrabajos.map((item) => ({ ...item })),
     convertidorMateriales: convertidorMateriales ? JSON.parse(JSON.stringify(convertidorMateriales)) : undefined,
+    rutinasTaller: rutinasTaller.map((item) => ({ ...item })),
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
@@ -10473,6 +10479,7 @@ Escribi CERRAR para confirmar:`
     setFichasMaquinas((data.fichasMaquinas || []).map((item) => ({ ...item, planes: (item.planes || []).map((p) => ({ ...p })), historial: (item.historial || []).map((r) => ({ ...r })) })));
     setConvertidorMateriales(data.convertidorMateriales && typeof data.convertidorMateriales === "object" ? JSON.parse(JSON.stringify(data.convertidorMateriales)) : undefined);
     setRetrabajos(keepAccessibleByCompany(data.retrabajos || []).map((item) => ({ ...item })));
+    setRutinasTaller((data.rutinasTaller || []).map((item) => ({ ...item })));
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
@@ -12803,6 +12810,7 @@ Escribi CERRAR para confirmar:`
     fichasMaquinas,
     retrabajos,
     convertidorMateriales,
+    rutinasTaller,
     cuentasGuardadas,
     fiscalClosings,
     inversiones,
@@ -16848,6 +16856,40 @@ Escribi CERRAR para confirmar:`
         })),
     [activeTab, employees, categoriasVigentes, escalonesVigentes, payrollMonth]
   );
+  // MANTENIMIENTO, ORDEN Y LIMPIEZA: toda la gente de fabrica (con o sin categorias) con su costo hora; aprendices y ayudantes
+  // primero. Los materiales de limpieza y mantenimiento tienen sus facturas; lo que falta es la MANO DE OBRA del tiempo de las
+  // rutinas, que se suma en Marcadores al grupo de costos de cada rutina (31/10/2026). No va al cash flow.
+  const candidatosRutina = useMemo<CandidatoRutina[]>(
+    () =>
+      (activeTab === "presupuesto" || activeTab === "fabricacion" || activeTab === "marcadores" ? visibleEmployees : [])
+        .filter((e) => !isEmployeeTerminated(e) && (!empresaQueFabrica || e.company === empresaQueFabrica))
+        .map((e) => {
+          const cat = categoriaPrincipal(e.categoriasInternas, categoriasVigentes);
+          return {
+            id: e.id,
+            nombre: String(e.name || "").trim(),
+            company: String(e.company),
+            costoHora: Number(costoHoraDe(e) || 0),
+            ayudante: !!cat && (/aprendiz|ayudante/i.test(nombreEscalon(cat.nivel, escalonesVigentes)) || /aprendiz|ayudante/i.test(cat.nombre)),
+            tareas: tieneCategorias(e.categoriasInternas) ? capacidadesDelEmpleado(e.categoriasInternas, categoriasVigentes).map((c) => c.tareaId) : undefined,
+          };
+        }),
+    [activeTab, visibleEmployees, empresaQueFabrica, categoriasVigentes, escalonesVigentes, payrollMonth]
+  );
+  const manoDeObraRutinas = useMemo(
+    () => manoDeObraPorGrupo(rutinasTaller, candidatosRutina, (empresaQueFabrica || "De Raíz") as string),
+    [rutinasTaller, candidatosRutina, empresaQueFabrica]
+  );
+  const completarDiaConRutinasTaller = (fecha: string) => {
+    const hoy = todayIso();
+    const conPresencia = candidatosRutina.map((c) => {
+      const e = visibleEmployees.find((x) => x.id === c.id);
+      return { ...c, presencia: presenciaDelDia((e?.attendance || []).map((r) => ({ date: r.date, status: r.status, checkIn: r.checkIn })), fecha, hoy) };
+    });
+    const r = completarDiaConRutinas(fecha, rutinasTaller, conPresencia, asignacionesDiarias, newId);
+    r.dias.forEach(guardarAsignacionDiaria);
+    return r;
+  };
   // CRONOGRAMA (fase 4): los trabajos en curso con sus muebles. Los muebles salen de lo cargado en Fabricacion o, si no,
   // de los bloques del presupuesto (cada bloque por su cantidad). Los ids se rehacen por trabajo para no chocar.
   const retrabajoPorTrabajo = useMemo(() => horasDeRetrabajoPorTrabajo(retrabajos), [retrabajos]);
@@ -18744,9 +18786,9 @@ Escribi CERRAR para confirmar:`
   const costosEmpresarialesTodas = useMemo(
     () =>
       COMPANY_OPTIONS.flatMap((c) =>
-        costosEmpresariales({ hoy: todayIso(), company: c.value as CompanyName, groups: costGroups, rows: costRows, marcadores: fixedMarkers })
+        costosEmpresariales({ hoy: todayIso(), company: c.value as CompanyName, groups: costGroups, rows: costRows, marcadores: fixedMarkers, manoDeObra: manoDeObraRutinas })
       ),
-    [COMPANY_OPTIONS, costGroups, costRows, fixedMarkers]
+    [COMPANY_OPTIONS, costGroups, costRows, fixedMarkers, manoDeObraRutinas]
   );
 
   const activeFixedMarkersForBudget = useMemo(
@@ -24337,6 +24379,20 @@ Escribi CERRAR para confirmar:`
             });
           }}
           onIrAStock={() => setActiveTab("stock" as TabKey)}
+          nuevoId={newId}
+        />
+      )}
+      {activeTab === "fabricacion" && (
+        <RutinasTaller
+          rutinas={rutinasTaller}
+          candidatos={candidatosRutina}
+          gruposCosto={costGroups.filter((g) => g.active && !g.auto && (g.company === "General" || g.company === empresaQueFabrica)).map((g) => g.name).sort((a, b) => a.localeCompare(b, "es"))}
+          tareas={tiposTarea}
+          money={money}
+          hoy={todayIso()}
+          onGuardar={(r) => setRutinasTaller((prev) => (prev.some((x) => x.id === r.id) ? prev.map((x) => (x.id === r.id ? r : x)) : [...prev, r]))}
+          onBorrar={(id) => setRutinasTaller((prev) => prev.filter((x) => x.id !== id))}
+          onCompletarDia={completarDiaConRutinasTaller}
           nuevoId={newId}
         />
       )}

@@ -39,6 +39,38 @@ let id = 100;
 const nuevoId = () => ++id;
 
 describe("costos empresariales", () => {
+  test("la mano de obra de las rutinas se suma al promedio de su grupo y de su empresa", () => {
+    const mo = [
+      { company: "De Raiz", group: "Edilicios", montoMes: 1000, horasMes: 10, rutinas: ["Barrido"] },
+      { company: "De Raiz", group: "Limpieza", montoMes: 500, horasMes: 5, rutinas: ["Orden"] },
+    ];
+    const dr = costosEmpresariales({ hoy: "2026-10-27", company: DR, groups, rows, marcadores: [], manoDeObra: mo });
+    expect(de(dr, "Edilicios").promedio).toBe(900 / 3 + 1000);
+    expect(de(dr, "Edilicios").manoDeObra).toEqual({ montoMes: 1000, horasMes: 10, rutinas: ["Barrido"] });
+    // Grupo sin facturas ni alta: aparece igual, como fijo que impacta en su empresa.
+    expect(de(dr, "Limpieza")).toMatchObject({ promedio: 500, kind: "fijo", impacta: "empresa" });
+    // A la otra empresa no le llega.
+    const bga = costosEmpresariales({ hoy: "2026-10-27", company: BGA, groups, rows, marcadores: [], manoDeObra: mo });
+    expect(de(bga, "Edilicios").manoDeObra).toBeUndefined();
+    expect(bga.some((c) => c.group === "Limpieza")).toBe(false);
+  });
+
+  test("la mano de obra de las rutinas se suma al promedio de su grupo y de su empresa", () => {
+    const mo = [
+      { company: "De Raiz", group: "Edilicios", montoMes: 1000, horasMes: 10, rutinas: ["Barrido"] },
+      { company: "De Raiz", group: "Limpieza", montoMes: 500, horasMes: 5, rutinas: ["Orden"] },
+    ];
+    const dr = costosEmpresariales({ hoy: "2026-10-27", company: DR, groups, rows, marcadores: [], manoDeObra: mo });
+    expect(de(dr, "Edilicios").promedio).toBe(900 / 3 + 1000);
+    expect(de(dr, "Edilicios").manoDeObra).toEqual({ montoMes: 1000, horasMes: 10, rutinas: ["Barrido"] });
+    // Grupo sin facturas ni alta: aparece igual, como fijo que impacta en su empresa.
+    expect(de(dr, "Limpieza")).toMatchObject({ promedio: 500, kind: "fijo", impacta: "empresa" });
+    // A la otra empresa no le llega.
+    const bga = costosEmpresariales({ hoy: "2026-10-27", company: BGA, groups, rows, marcadores: [], manoDeObra: mo });
+    expect(de(bga, "Edilicios").manoDeObra).toBeUndefined();
+    expect(bga.some((c) => c.group === "Limpieza")).toBe(false);
+  });
+
   test("los ultimos 3 meses cerrados, sin el mes en curso", () => {
     expect(ultimosMesesCerrados("2026-10-27")).toEqual(["2026-07", "2026-08", "2026-09"]);
     expect(ultimosMesesCerrados("2026-02-03")).toEqual(["2025-11", "2025-12", "2026-01"]);

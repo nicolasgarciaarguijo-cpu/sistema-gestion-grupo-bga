@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31b",
+    fecha: "31/10/2026",
+    titulo: "Mantenimiento, orden y limpieza",
+    items: [
+      {
+        titulo: "Rutinas del taller, diarias y semanales",
+        que: "Un bloque nuevo en Fabricación con los trabajos que se repiten (barrido, orden del depósito...), sus horas y cuántas personas. Los hacen primero aprendices y ayudantes, del más económico al más costoso; si la rutina tiene una tarea del catálogo, solo quienes la tienen en sus categorías.",
+        como: "Fabricación → Mantenimiento, orden y limpieza → + Rutina. Click derecho en la fila: editar, pausar o borrar.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Completar los huecos del día",
+        que: "Elegís un día y el sistema pone cada rutina que toca al final del hueco libre de la persona que corresponde, en la organización diaria. Saltea a los que no están o están en obra, no repite lo ya puesto y avisa si a alguna no le encontró lugar.",
+        como: "Fabricación → Mantenimiento, orden y limpieza → elegir la fecha → Completar huecos del día.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "La mano de obra de las rutinas, en Marcadores",
+        que: "Los materiales de limpieza y mantenimiento van con sus facturas; lo que se suma es la mano de obra del tiempo de cada rutina, con el costo hora de quienes la hacen. Cada rutina elige su grupo de costos y en Marcadores → Costos empresariales ese grupo suma su mano de obra por mes. No va al cash flow ni al calendario.",
+        como: "Fabricación → Mantenimiento, orden y limpieza → editar la rutina → Grupo de costos. Se ve en Marcadores, debajo del nombre del grupo.",
+        tab: "marcadores",
+      },
+    ],
+  },
+  {
     id: "2026-10-31a",
     fecha: "31/10/2026",
     titulo: "Fichas de tarjetas y extractos, y ARCA con revisión",

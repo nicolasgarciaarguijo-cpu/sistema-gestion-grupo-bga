@@ -360,6 +360,14 @@ export function MarcadoresTab({
                               <td style={{ ...tdNombre, fontWeight: 400, opacity: apagado ? 0.55 : 1 }}>
                                 {c.group}
                                 {c.auto && <span style={{ ...styles.chatStatus, marginLeft: 6 }}>auto</span>}
+                                {c.manoDeObra && (
+                                  <div
+                                    style={{ fontSize: 11, color: "#64748b" }}
+                                    title={`Mano de obra de: ${c.manoDeObra.rutinas.join(", ")} (Fabricación → Mantenimiento, orden y limpieza). Las facturas del grupo van en los meses.`}
+                                  >
+                                    + mano de obra de rutinas {money(c.manoDeObra.montoMes)}/mes ({c.manoDeObra.horasMes.toLocaleString("es-AR", { maximumFractionDigits: 1 })} hs)
+                                  </div>
+                                )}
                               </td>
                               {c.porMes.map((v, i) => (
                                 <td key={i} style={{ ...tdDato, textAlign: "right", color: v > 0 ? "#475569" : "#cbd5e1" }}>
