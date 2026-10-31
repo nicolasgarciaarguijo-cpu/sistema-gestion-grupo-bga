@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31f",
+    fecha: "31/10/2026",
+    titulo: "Más listados editables",
+    items: [
+      {
+        titulo: "Nueve listados más en Listados del sistema",
+        que: "Provisiones de personal, motivos de baja, estados de máquinas, unidades de las tareas, medios de pago, tipos de deuda, grupos del análisis de gastos y tipos de seguro e inversión. En los que usan las cuentas (medios de pago, motivos de baja, estados, unidades, tipos de deuda, grupos del análisis) se cambia cómo se llaman y se suman nuevos, pero los de siempre no se borran.",
+        como: "Acceso → Listados del sistema.",
+        tab: "acceso",
+      },
+      {
+        titulo: "Grupos de Stock: rubro del checklist y máquinas",
+        que: "Cada grupo de Stock dice a qué rubro del checklist antes de producción van sus artículos (materiales, insumos, herrajes o no se pide) y si son máquinas o herramientas, para que aparezcan en Mantenimiento.",
+        como: "Acceso → Listados del sistema → Grupos de Stock → columnas Checklist y Máquinas.",
+        tab: "acceso",
+      },
+    ],
+  },
+  {
     id: "2026-10-31e",
     fecha: "31/10/2026",
     titulo: "Listados del sistema editables",

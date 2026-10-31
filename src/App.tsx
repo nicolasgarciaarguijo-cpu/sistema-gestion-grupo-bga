@@ -289,7 +289,7 @@ import { conHerramientasDeLaTarea, presenciaDelDia } from "./domain/organizacion
 import { completarDiaConRutinas, manoDeObraPorGrupo, type CandidatoRutina, type RutinaTaller } from "./domain/rutinasTaller";
 import { RutinasTaller } from "./tabs/RutinasTaller";
 import { ListadosSistema } from "./tabs/ListadosSistema";
-import { nombresActivos, prefijoDeGrupo, type ListaKey, type ListasSistema, type ItemLista } from "./domain/listasSistema";
+import { aplicarListasVigentes, nombresActivos, prefijoDeGrupo, type ListaKey, type ListasSistema, type ItemLista } from "./domain/listasSistema";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
 import { EmitirFacturasTab } from "./tabs/EmitirFacturas";
@@ -3532,6 +3532,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   runtimeCompanyOptions = companyCatalog.length > 0 ? companyCatalog : DEFAULT_COMPANY_OPTIONS;
   const COMPANY_OPTIONS = companyCatalog.length > 0 ? companyCatalog : DEFAULT_COMPANY_OPTIONS;
   runtimeListasSistema = listasSistema;
+  aplicarListasVigentes(listasSistema);
   const categoriasGremioVigentes = nombresActivos(listasSistema, "categoriasGremio");
   const gruposStockVigentes = nombresActivos(listasSistema, "gruposStock");
   const tiposTrabajoVigentes = nombresActivos(listasSistema, "tiposTrabajo");
@@ -22790,6 +22791,7 @@ Escribi CERRAR para confirmar:`
             gruposStock: stockItems.filter((it) => it.kind === "general").reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.group]: (acc[it.group] || 0) + 1 }), {}),
             tiposTrabajo: [...fixedMarkers, ...supplyMarkers, ...laborMarkers, budget].reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.workType]: (acc[it.workType] || 0) + 1 }), {}),
             gruposMarcadores: fixedMarkers.reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.group]: (acc[it.group] || 0) + 1 }), {}),
+            provisionesPersonal: stockItems.reduce<Record<string, number>>((acc, it) => ({ ...acc, [String(it.kind)]: (acc[String(it.kind)] || 0) + 1 }), {}),
           }}
           onGuardar={(key, lista) => setListasSistema((prev) => ({ ...prev, [key]: lista }))}
           onRenombrar={renombrarEnListado}

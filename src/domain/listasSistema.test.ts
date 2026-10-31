@@ -30,3 +30,43 @@ describe("listados del sistema (Nicolas, 31/10/2026)", () => {
     expect(prefijoDeGrupo({}, "Vidrios")).toBe("VID");
   });
 });
+
+describe("aplicarListasVigentes", () => {
+  const { aplicarListasVigentes } = require("./listasSistema");
+  const { PAYMENT_METHOD_OPTIONS } = require("./types");
+  const { GRUPOS_MAQUINAS, ESTADOS_MAQUINA } = require("./mantenimiento");
+  const { rubroDeRenglon } = require("./checklistProduccion");
+  const { GRUPOS_GASTO } = require("./analisisGastos");
+  afterAll(() => aplicarListasVigentes({}));
+
+  it("vuelca lo editado en las listas que leen las pantallas, sin perder los valores internos", () => {
+    aplicarListasVigentes({
+      mediosPago: [{ nombre: "Transferencia bancaria", valor: "transferencia" }, { nombre: "Mercado Pago", valor: "Mercado Pago" }, { nombre: "Cheque", valor: "cheque", activo: false }],
+      estadosMaquina: [{ nombre: "Anda", valor: "operativa" }, { nombre: "Prestada", valor: "Prestada" }],
+      gruposStock: [{ nombre: "Vidrios", rubro: "materiales" }, { nombre: "Electricidad", rubro: "fuera" }, { nombre: "Compresores", maquinas: true }],
+      gruposGasto: [{ nombre: "Sueldos y cargas", valor: "personal" }],
+    });
+    expect(PAYMENT_METHOD_OPTIONS).toEqual([{ value: "transferencia", label: "Transferencia bancaria" }, { value: "Mercado Pago", label: "Mercado Pago" }]);
+    expect(ESTADOS_MAQUINA[0]).toMatchObject({ value: "operativa", label: "Anda", color: "#16a34a" });
+    expect(ESTADOS_MAQUINA[1].color).toBe("#64748b");
+    expect(GRUPOS_MAQUINAS).toEqual(["Maquinas pesadas", "Maquinas manuales", "Herramientas", "Compresores"]);
+    expect(rubroDeRenglon("Electricidad", false)).toBeNull();
+    expect(rubroDeRenglon("Insumos carpinteria", false)).toBe("insumos");
+    expect(GRUPOS_GASTO.find((g: any) => g.key === "personal").label).toBe("Sueldos y cargas");
+    expect(GRUPOS_GASTO.find((g: any) => g.key === "bancos").label).toBe("Bancos y tarjetas");
+    aplicarListasVigentes({});
+    expect(PAYMENT_METHOD_OPTIONS).toHaveLength(6);
+    expect(rubroDeRenglon("Electricidad", false)).toBe("herrajes");
+  });
+
+  it("en las listas por valor se renombran también los del sistema, pero no se borran", () => {
+    const { renombrar, quitar, agregar, listaVigente } = require("./listasSistema");
+    const l = listaVigente({}, "mediosPago");
+    const r = renombrar("mediosPago", l, "Efectivo", "Efectivo en mano");
+    expect(r.ok && r.lista.find((x: any) => x.valor === "efectivo").nombre).toBe("Efectivo en mano");
+    expect(quitar("mediosPago", l, "Efectivo", 0).ok).toBe(false);
+    const a = agregar(l, "Mercado Pago", undefined, "mediosPago");
+    expect(a.ok && a.lista[a.lista.length - 1]).toEqual({ nombre: "Mercado Pago", valor: "Mercado Pago" });
+    expect(agregar(listaVigente({}, "gruposGasto"), "Nuevo", undefined, "gruposGasto").ok).toBe(false);
+  });
+});

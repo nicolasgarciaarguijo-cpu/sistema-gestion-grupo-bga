@@ -152,7 +152,8 @@ export function tareasDelMueble(tipo: TipoMueble, mueble: MuebleMedido, catalogo
     const base = r.base || unidad;
     const rubroId = rubroDeBase(base);
     const deMaterial = rubroId != null ? mueble.materiales?.[rubroId] : undefined;
-    const medida = rubroId != null ? pos(deMaterial) : medidas[base as UnidadTarea] || 0;
+    // Una unidad nueva (Listados del sistema) que no sale de las medidas se cuenta por mueble.
+    const medida = rubroId != null ? pos(deMaterial) : base in medidas ? medidas[base as UnidadTarea] || 0 : medidas.u;
     const ajuste = mueble.ajustes?.[r.id];
     const ajustada = ajuste != null && Number.isFinite(ajuste);
     const cantidad = r2(ajustada ? Number(ajuste) : pos(r.factor) * medida);

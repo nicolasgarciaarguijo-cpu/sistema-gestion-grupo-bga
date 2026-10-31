@@ -25,7 +25,13 @@ export type ChecklistProduccion = Partial<Record<RubroChecklist, MarcaChecklist>
 
 // A que rubro del checklist va un renglon del presupuesto. Los insumos basicos del presupuesto son insumos; del resto
 // manda el grupo de Stock. Los servicios (corte tercerizado, flete) no son algo que se tenga: quedan afuera.
+// Lo elegido por grupo de Stock en Acceso → Listados del sistema (nombre normalizado → rubro); manda sobre el nombre.
+export const RUBRO_POR_GRUPO_STOCK: Record<string, RubroChecklist | "fuera"> = {};
+const normGrupo = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+
 export function rubroDeRenglon(stockGroup: string | undefined, deInsumosBasicos: boolean): RubroChecklist | null {
+  const elegido = deInsumosBasicos ? undefined : RUBRO_POR_GRUPO_STOCK[normGrupo(String(stockGroup || ""))];
+  if (elegido) return elegido === "fuera" ? null : elegido;
   const g = String(stockGroup || "").toLowerCase();
   if (/servicio/.test(g)) return null;
   if (deInsumosBasicos || /insumo/.test(g)) return "insumos";

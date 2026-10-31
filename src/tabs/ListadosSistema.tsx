@@ -11,6 +11,7 @@ import {
   mover,
   quitar,
   renombrar,
+  definicionDe,
   type Edicion,
   type ItemLista,
   type ListaKey,
@@ -80,13 +81,17 @@ export function ListadosSistema({
           <tr>
             <th style={th}>Nombre</th>
             {def.conCodigo && <th style={th}>Prefijo del código</th>}
+            {key === "gruposStock" && <th style={th} title="A qué rubro del checklist antes de producción van sus artículos">Checklist</th>}
+            {key === "gruposStock" && <th style={{ ...th, textAlign: "center" }} title="Sus artículos son máquinas o herramientas (Mantenimiento)">Máquinas</th>}
             <th style={{ ...th, textAlign: "right" }}>En uso</th>
             <th style={th}></th>
           </tr>
         </thead>
         <tbody>
           {lista.map((it, i) => {
-            const fijo = esFijo(key, it.nombre);
+            const fijo = esFijo(key, it);
+            // En las listas por valor, lo del sistema se renombra igual (cambia como se ve, no lo que leen las cuentas).
+            const renombrable = !fijo || !!def.porValor;
             const pausado = it.activo === false;
             const enEdicion = editando?.nombre === it.nombre;
             return (
@@ -103,11 +108,11 @@ export function ListadosSistema({
                     />
                   ) : (
                     <span
-                      onDoubleClick={() => !fijo && setEditando({ nombre: it.nombre, texto: it.nombre })}
-                      title={fijo ? "Lo usan las cuentas del sistema: no se renombra ni se borra" : "Doble click para renombrar"}
-                      style={{ cursor: fijo ? "default" : "text" }}
+                      onDoubleClick={() => renombrable && setEditando({ nombre: it.nombre, texto: it.nombre })}
+                      title={!renombrable ? "Lo usan las cuentas del sistema: no se renombra ni se borra" : fijo ? "Del sistema: se renombra (doble click) pero no se borra" : "Doble click para renombrar"}
+                      style={{ cursor: renombrable ? "text" : "default" }}
                     >
-                      {it.nombre}{fijo && <span style={{ fontSize: 11, color: "#7c3aed", marginLeft: 6 }}>del sistema</span>}{pausado && <span style={{ fontSize: 11, color: "#64748b", marginLeft: 6 }}>(pausado)</span>}
+                      {it.nombre}{fijo && <span style={{ fontSize: 11, color: "#7c3aed", marginLeft: 6 }}>del sistema</span>}{def.porValor && it.valor && it.valor !== it.nombre && definicionDe(key).porDefecto.some((d) => d.valor === it.valor) && <span style={{ fontSize: 11, color: "#94a3b8", marginLeft: 6 }}>({definicionDe(key).porDefecto.find((d) => d.valor === it.valor)?.nombre})</span>}{pausado && <span style={{ fontSize: 11, color: "#64748b", marginLeft: 6 }}>(pausado)</span>}
                     </span>
                   )}
                 </td>
@@ -116,12 +121,28 @@ export function ListadosSistema({
                     <input style={{ ...input, textTransform: "uppercase" }} value={it.codigo || ""} placeholder="auto" onChange={(e) => onGuardar(key, cambiar(lista, it.nombre, { codigo: e.target.value.toUpperCase() || undefined }))} />
                   </td>
                 )}
+                {key === "gruposStock" && (
+                  <>
+                    <td style={{ ...td, width: 170 }}>
+                      <select style={input} value={it.rubro || ""} onChange={(e) => onGuardar(key, cambiar(lista, it.nombre, { rubro: (e.target.value || undefined) as ItemLista["rubro"] }))}>
+                        <option value="">Por el nombre</option>
+                        <option value="materiales">Materiales</option>
+                        <option value="insumos">Insumos</option>
+                        <option value="herrajes">Herrajes y accesorios</option>
+                        <option value="fuera">No se pide</option>
+                      </select>
+                    </td>
+                    <td style={{ ...td, textAlign: "center" }}>
+                      <input type="checkbox" disabled={fijo} checked={!!it.maquinas || fijo} onChange={(e) => onGuardar(key, cambiar(lista, it.nombre, { maquinas: e.target.checked || undefined }))} />
+                    </td>
+                  </>
+                )}
                 <td style={{ ...td, textAlign: "right", color: usoDe(it.nombre) ? "#0f172a" : "#94a3b8" }}>{usoDe(it.nombre)}</td>
                 <td style={{ ...td, whiteSpace: "nowrap", textAlign: "right" }}>
                   <button type="button" style={btn} disabled={i === 0} onClick={() => onGuardar(key, mover(lista, it.nombre, -1))} title="Subir">↑</button>{" "}
                   <button type="button" style={btn} disabled={i === lista.length - 1} onClick={() => onGuardar(key, mover(lista, it.nombre, 1))} title="Bajar">↓</button>{" "}
-                  {!fijo && <button type="button" style={btn} onClick={() => setEditando({ nombre: it.nombre, texto: it.nombre })}>Renombrar</button>}{" "}
-                  {!fijo && <button type="button" style={btn} onClick={() => onGuardar(key, cambiar(lista, it.nombre, { activo: pausado ? undefined : false }))}>{pausado ? "Reanudar" : "Pausar"}</button>}{" "}
+                  {renombrable && <button type="button" style={btn} onClick={() => setEditando({ nombre: it.nombre, texto: it.nombre })}>Renombrar</button>}{" "}
+                  {(!fijo || def.porValor) && !def.sinAgregar && <button type="button" style={btn} onClick={() => onGuardar(key, cambiar(lista, it.nombre, { activo: pausado ? undefined : false }))}>{pausado ? "Reanudar" : "Pausar"}</button>}{" "}
                   {!fijo && (
                     <button
                       type="button"
@@ -141,20 +162,20 @@ export function ListadosSistema({
           })}
         </tbody>
       </table>
-      <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
+      {!def.sinAgregar && <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input style={{ ...input, maxWidth: 280 }} placeholder={`Nuevo en ${def.titulo.toLowerCase()}`} value={nuevo.nombre} onChange={(e) => setNuevo({ ...nuevo, nombre: e.target.value })} />
         {def.conCodigo && <input style={{ ...input, maxWidth: 110, textTransform: "uppercase" }} placeholder="Prefijo" value={nuevo.codigo} onChange={(e) => setNuevo({ ...nuevo, codigo: e.target.value })} />}
         <ButtonLike
           disabled={!nuevo.nombre.trim()}
           onClick={() => {
-            const r = agregar(lista, nuevo.nombre, nuevo.codigo);
+            const r = agregar(lista, nuevo.nombre, nuevo.codigo, key);
             aplicar(r);
             if (r.ok) setNuevo({ nombre: "", codigo: "" });
           }}
         >
           + Agregar
         </ButtonLike>
-      </div>
+      </div>}
     </Panel>
   );
 }
