@@ -170,3 +170,23 @@ describe("applyCompanyModuleSlice (realtime)", () => {
     expect(mi.General.internalTransfers).toEqual([]);
   });
 });
+
+describe("podarPorEmpresa (cierres mensuales, 31/10/2026)", () => {
+  const { podarPorEmpresa, PER_COMPANY_MODULE_FIELDS } = require("./companyState");
+  it("deja lo de la empresa y lo compartido; lo que no es lista pasa igual", () => {
+    const data = {
+      approvedJobs: [{ id: 1, company: "BGA" }, { id: 2, company: "DE RAIZ" }, { id: 3, company: "General" }, { id: 4 }],
+      companyCatalog: [{ value: "BGA" }, { value: "DE RAIZ" }],
+      operationalMonth: "2026-10",
+    };
+    const r = podarPorEmpresa(data, "DE RAIZ");
+    expect(r.approvedJobs.map((x: any) => x.id)).toEqual([2, 3, 4]);
+    expect(r.companyCatalog).toHaveLength(2);
+    expect(r.operationalMonth).toBe("2026-10");
+  });
+  it("las fotos del mes se guardan en la fila de su empresa", () => {
+    expect(PER_COMPANY_MODULE_FIELDS.mensuales).toEqual(["monthlyHistorySnapshots"]);
+    // Los clientes (con su ficha) se guardan por empresa; los compartidos en General.
+    expect(PER_COMPANY_MODULE_FIELDS["historial-crm"]).toContain("crmClients");
+  });
+});

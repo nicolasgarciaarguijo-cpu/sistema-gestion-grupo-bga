@@ -11,7 +11,7 @@ import {
 } from "./lib/format";
 import { WORK_TYPE_OPTIONS, saleDelBanco, PAYMENT_METHOD_OPTIONS } from "./domain/types";
 import { getScaleForCategory as getScaleForCategoryPure } from "./domain/scale";
-import {
+import { podarPorEmpresa,
   splitModuleDataByCompany,
   mergeModuleDataByCompany,
   applyCompanyModuleSlice,
@@ -1754,6 +1754,8 @@ type MonthlyHistorySnapshot = {
   month: string;
   monthLabel: string;
   companyScope: CompanyScope;
+  // La empresa de la foto (para guardarla en su fila). Las viejas no lo tienen: valen como su companyScope.
+  company?: string;
   savedAt: string;
   savedBy?: string;
   data: Record<string, unknown>;
@@ -1984,7 +1986,9 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "historial-crm",
     label: "Historial de presupuestos",
-    fields: ["savedBudgets"] as const,
+    // crmClients (31/10/2026): los clientes con su ficha no estaban en ningun modulo y no se guardaban. Van por empresa;
+    // los compartidos ("Ambas") quedan en General y los ven las dos.
+    fields: ["savedBudgets", "crmClients"] as const,
   },
   {
     key: "trabajos-aprobados",
@@ -7887,22 +7891,23 @@ Escribi CERRAR para confirmar:`
       : null;
 
   // --- CRM: clientes como entidad ---
-  const addCrmClient = () => {
-    setCrmClients((prev) => [
-      {
-        id: newId(),
-        name: "",
-        taxId: "",
-        contactName: "",
-        contactPhone: "",
-        contactEmail: "",
-        notes: "",
-        company: budget.company,
-        createdAt: todayIso(),
-      },
-      ...prev,
-    ]);
-  };
+  const addCrmClient = () =>
+    conEmpresa("el cliente", (empresaElegida) =>
+      setCrmClients((prev) => [
+        {
+          id: newId(),
+          name: "",
+          taxId: "",
+          contactName: "",
+          contactPhone: "",
+          contactEmail: "",
+          notes: "",
+          company: empresaElegida,
+          createdAt: todayIso(),
+        },
+        ...prev,
+      ])
+    );
 
   const updateCrmClient = (
     id: number,
@@ -10293,6 +10298,7 @@ Escribi CERRAR para confirmar:`
     setMonthlyHistorySnapshots(
       (data.monthlyHistorySnapshots || []).map((item) => ({
         ...item,
+        company: item.company || String(item.companyScope || "General"),
         data: { ...(item.data || {}) },
       }))
     );
@@ -10807,26 +10813,27 @@ Escribi CERRAR para confirmar:`
     if (!isMonthlyHistoryTab(activeTab)) return;
 
     const baseData = buildPersistedAppData();
-    const snapshot: MonthlyHistorySnapshot = {
+    // UNA FOTO POR EMPRESA (31/10/2026): viendo "las dos" se guarda una de cada empresa, cada una solo con lo suyo, y va a
+    // la fila de su empresa: nadie de una sola empresa recibe los numeros de la otra.
+    const datosTab = pickMonthlySnapshotDataForTab(activeTab, baseData);
+    const empresasFoto = workspaceCompanyScope === "General" ? empresasDeLaVista.map((c) => String(c.value)) : [String(workspaceCompanyScope)];
+    const fotos: MonthlyHistorySnapshot[] = empresasFoto.map((empresa) => ({
       id: newId(),
       tabKey: activeTab,
       tabLabel: getTabLabel(activeTab),
       month: operationalMonth,
       monthLabel: monthLabel(operationalMonth),
-      companyScope: workspaceCompanyScope,
+      companyScope: empresa as CompanyScope,
+      company: empresa,
       savedAt: new Date().toISOString(),
       savedBy: supabaseProfile?.full_name || supabaseSession?.user?.email || "Usuario",
-      data: pickMonthlySnapshotDataForTab(activeTab, baseData),
-    };
+      data: podarPorEmpresa(datosTab, empresa),
+    }));
+    const snapshot = { ...fotos[0], companyScope: workspaceCompanyScope };
     const nextSnapshots = [
-      snapshot,
+      ...fotos,
       ...monthlyHistorySnapshots.filter(
-        (item) =>
-          !(
-            item.tabKey === snapshot.tabKey &&
-            item.month === snapshot.month &&
-            item.companyScope === snapshot.companyScope
-          )
+        (item) => !fotos.some((f) => item.tabKey === f.tabKey && item.month === f.month && item.companyScope === f.companyScope)
       ),
     ];
 
@@ -20495,7 +20502,8 @@ Escribi CERRAR para confirmar:`
     ? monthlyHistorySnapshots.filter(
         (item) =>
           item.tabKey === activeMonthlyTab &&
-          item.companyScope === workspaceCompanyScope &&
+          // Viendo "las dos" se ven las fotos de cada empresa permitida (y las viejas de "todas").
+          (item.companyScope === workspaceCompanyScope || (workspaceCompanyScope === "General" && item.companyScope !== "General")) &&
           // Una foto de "todas" lleva datos de las dos empresas: solo la ve quien puede ver las dos.
           (item.companyScope !== "General" || effectiveIsAdmin || empresasDeLaVista.length === COMPANY_OPTIONS.length) &&
           (item.companyScope === "General" || tienePermisoEmpresa(item.companyScope as CompanyName))

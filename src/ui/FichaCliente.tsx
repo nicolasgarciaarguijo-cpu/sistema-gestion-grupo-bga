@@ -99,7 +99,7 @@ export function FichaCliente({
             <div style={{ fontSize: 19, fontWeight: 800 }}>{cliente.name || "Cliente sin nombre"}</div>
             <div style={{ fontSize: 12.5, color: "#64748b" }}>
               CUIT {cliente.taxId || "—"}
-              {cliente.company ? ` · ${companyOptions.find((c) => c.value === cliente.company)?.short || cliente.company}` : ""}
+              {cliente.company ? ` · ${cliente.company === "General" ? "Ambas (compartido)" : companyOptions.find((c) => c.value === cliente.company)?.short || cliente.company}` : ""}
               {cliente.createdAt ? ` · cliente desde ${fecha(cliente.createdAt)}` : ""}
               {aprobados > 0 && (
                 <span style={{ marginLeft: 8, fontSize: 10.5, fontWeight: 800, color: "#166534", background: "#dcfce7", borderRadius: 999, padding: "1px 7px" }}>
@@ -155,10 +155,12 @@ export function FichaCliente({
                   {companyOptions.map((c) => (
                     <option key={c.value} value={c.value}>{c.short}</option>
                   ))}
+                  {/* Compartido: lo ven las dos empresas (Nicolas, 31/10/2026: "en la ficha se hace la separacion"). */}
+                  <option value="General">Ambas (compartido)</option>
                 </select>
               ) : (
                 <span style={{ fontSize: 13, minHeight: 22, display: "flex", alignItems: "center" }}>
-                  {companyOptions.find((c) => c.value === cliente.company)?.short || cliente.company || "—"}
+                  {cliente.company === "General" ? "Ambas (compartido)" : companyOptions.find((c) => c.value === cliente.company)?.short || cliente.company || "—"}
                 </span>
               )}
             </label>

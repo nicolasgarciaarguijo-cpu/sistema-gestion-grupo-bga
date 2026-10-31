@@ -16,6 +16,24 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31h",
+    fecha: "31/10/2026",
+    titulo: "Cierres del mes separados por empresa",
+    items: [
+      {
+        titulo: "Una foto por empresa al guardar el mes",
+        que: "Al guardar el cierre del mes viendo las dos empresas, ahora se guarda una foto de cada empresa con solo sus datos, y cada una queda en el lugar de su empresa. Quien trabaja con una sola empresa ya no recibe los números de la otra.",
+        como: "Igual que siempre: botón de guardar el mes en cada solapa.",
+      },
+      {
+        titulo: "Los clientes se guardan, con su empresa en la ficha",
+        que: "La ficha de cada cliente (contacto, dirección, notas) ahora se guarda: antes se perdía al recargar. En la ficha se elige la empresa: BGA, De Raíz o Ambas (compartido); el compartido lo ven las dos y quien trabaja con una sola empresa ve los suyos y los compartidos. Al agregar un cliente pregunta de qué empresa es.",
+        como: "Historial → click en un cliente → Editar → Empresa.",
+        tab: "historial",
+      },
+    ],
+  },
+  {
     id: "2026-10-31g",
     fecha: "31/10/2026",
     titulo: "Estructura del Calendario y tipos de documento editables",

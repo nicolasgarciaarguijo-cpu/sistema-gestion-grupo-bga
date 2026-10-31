@@ -49,7 +49,10 @@ export const PER_COMPANY_MODULE_FIELDS: Record<string, readonly string[]> = {
   "organizacion-diaria": ["asignacionesDiarias", "planesFabricacion", "retrabajos"],
   // Cada factura emitida es de la empresa que la emitio.
   "facturas-emitidas": ["issuedInvoices"],
-  "historial-crm": ["savedBudgets"],
+  // Cierres mensuales (31/10/2026): cada foto es de UNA empresa y lleva solo lo suyo (ver podarPorEmpresa). Antes vivian
+  // todas en la fila General y la foto de "las dos" llevaba los datos de ambas. Las viejas siguen en General.
+  mensuales: ["monthlyHistorySnapshots"],
+  "historial-crm": ["savedBudgets", "crmClients"],
   // Marcadores aislados por empresa (decision 2026-06-17; reversible si F3 los comparte).
   marcadores: [
     "fixedMarkers",
@@ -167,3 +170,19 @@ export const applyCompanyModuleSlice = (
 
   return next;
 };
+
+// Lo de UNA empresa dentro de un pedazo de estado (la foto de un cierre mensual): de cada campo que es una lista de items
+// con empresa quedan los de esa empresa y los compartidos (General o sin empresa). Lo demas pasa igual.
+export function podarPorEmpresa(data: Record<string, unknown>, company: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  Object.entries(data).forEach(([k, v]) => {
+    out[k] = Array.isArray(v)
+      ? v.filter((it) => {
+          if (!it || typeof it !== "object" || !("company" in (it as Item))) return true;
+          const c = itemOwnCompany(it as Item);
+          return c === company || c === GENERAL_COMPANY;
+        })
+      : v;
+  });
+  return out;
+}
