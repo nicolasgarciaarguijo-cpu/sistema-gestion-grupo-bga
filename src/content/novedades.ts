@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31k",
+    fecha: "31/10/2026",
+    titulo: "Categorías internas armadas",
+    items: [
+      {
+        titulo: "Las categorías ya traen sus Tareas y su gremio",
+        que: "Aprendiz y Ayudante general (gremio Ayudante), Ayudante especializado por rumbo (Medio oficial), los oficios (Oficial general) y los Responsables de fábrica y de obra (Oficial especializado), con las 39 Tareas repartidas. Todo se puede editar: tareas, gremio, nombres, escalones. Falta asignarle a cada persona su categoría y tildar las tareas que domina.",
+        como: "Personal → Categorías internas (para editar) y Personal → ficha de cada persona → Categorías y tareas que domina.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-10-31j",
     fecha: "31/10/2026",
     titulo: "Fichas en seguros, inversiones, tarjetas, stock, movimientos internos y marcadores",

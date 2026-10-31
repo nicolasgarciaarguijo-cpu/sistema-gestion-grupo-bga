@@ -165,3 +165,25 @@ describe("tareas que domina y listo para aumento (Nicolas, 31/10/2026)", () => {
     expect(listoParaAumento([10, 20, 30], "Oficial especializado", cats, tipos, valor)).toBeNull();
   });
 });
+
+describe("propuesta de categorías (31/10/2026)", () => {
+  const { categoriasPropuestas, PROPUESTA_TAREAS } = require("./categoriasEmpleado");
+  it("cada Tarea por nombre entra con todos sus pasos y cada categoría trae su gremio", () => {
+    const grupos = [{ id: 1, nombre: "Armado de módulos" }, { id: 2, nombre: "Control de stock", tareaIds: [20, 21] }];
+    const tipos = [{ id: 10, grupoId: 1 }, { id: 11, grupoId: 1 }, { id: 20 }, { id: 21 }];
+    const cats = categoriasPropuestas(tipos, grupos);
+    const armador = cats.find((c: any) => c.id === 9);
+    expect(armador.tareaIds).toEqual([10, 11]);
+    expect(armador.categoriaGremio).toBe("Oficial general");
+    expect(cats.find((c: any) => c.id === 2).tareaIds).toEqual([20, 21]);
+    expect(cats.find((c: any) => c.id === 1).categoriaGremio).toBe("Ayudante");
+    expect(cats.find((c: any) => c.id === 3).categoriaGremio).toBe("Medio oficial");
+    expect(cats.find((c: any) => c.id === 15).categoriaGremio).toBe("Oficial especializado");
+    expect(cats.find((c: any) => c.id === 19).categoriaGremio).toBeUndefined();
+  });
+  it("las 39 Tareas están repartidas una sola vez", () => {
+    const todas = Object.values(PROPUESTA_TAREAS).flat();
+    expect(todas).toHaveLength(39);
+    expect(new Set(todas).size).toBe(39);
+  });
+});

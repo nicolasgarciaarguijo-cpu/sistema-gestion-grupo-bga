@@ -281,7 +281,7 @@ import { esMaquinaOHerramienta, motivoNoDisponible, registrarTareasHechas, TAREA
 import type { TipoMueble } from "./domain/tiposMueble";
 import { convertidorVigente, necesidadPorTarea, type ConvertidorMateriales } from "./domain/tiposMueble";
 import { EquivalenciasYCriterios } from "./tabs/Equivalencias";
-import { tieneCapacidades, CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
+import { tieneCapacidades, categoriasPropuestas, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
@@ -3255,7 +3255,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const [rutinasTaller, setRutinasTaller] = useState<RutinaTaller[]>([]);
   const escalonesVigentes = escalonesInternos.length ? escalonesInternos : ESCALONES_POR_DEFECTO;
   // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
-  const categoriasVigentes = categoriasEmpleado.length ? categoriasEmpleado : CATEGORIAS_POR_DEFECTO;
+  // Mientras nadie las edite, la propuesta del 31/10 (las de siempre con sus Tareas y su gremio); al primer cambio se guardan.
+  const categoriasPorDefecto = useMemo(() => categoriasPropuestas(tiposTarea, gruposTrabajo), [tiposTarea, gruposTrabajo]);
+  const categoriasVigentes = categoriasEmpleado.length ? categoriasEmpleado : categoriasPorDefecto;
   const [cuentasGuardadas, setCuentasGuardadas] = useState<Cuenta[]>([]);
   const [inversionesCompanyScope, setInversionesCompanyScope] = useState<string>("__ALL__");
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
@@ -24409,7 +24411,7 @@ Escribi CERRAR para confirmar:`
             setGruposTrabajo((prev) => [...prev, { id: grupoId, nombre: "Mantenimiento", descripcion: "Mantenimiento de máquinas y herramientas", orden: prev.length + 1 }]);
             setTiposTarea((prev) => [...prev, ...tareas]);
             setCategoriasEmpleado((prev) => {
-              const base = prev.length ? prev : CATEGORIAS_POR_DEFECTO;
+              const base = prev.length ? prev : categoriasPorDefecto;
               const mant = base.find((x) => x.extra && /manten/i.test(x.nombre));
               const ids = tareas.map((t) => t.id);
               return mant
@@ -24720,7 +24722,7 @@ Escribi CERRAR para confirmar:`
           gruposTrabajo={gruposTrabajo}
           onGuardarCategoria={(c: CategoriaEmpleado) =>
             setCategoriasEmpleado((prev) => {
-              const base = prev.length ? prev : CATEGORIAS_POR_DEFECTO;
+              const base = prev.length ? prev : categoriasPorDefecto;
               return base.some((x) => x.id === c.id) ? base.map((x) => (x.id === c.id ? c : x)) : [...base, c];
             })
           }
@@ -24731,7 +24733,7 @@ Escribi CERRAR para confirmar:`
           }}
           onBorrarCategoria={(id: number) => {
             setCategoriasEmpleado((prev) =>
-              (prev.length ? prev : CATEGORIAS_POR_DEFECTO).filter((x) => x.id !== id).map((x) => ({ ...x, incluye: x.incluye.filter((i) => i !== id) }))
+              (prev.length ? prev : categoriasPorDefecto).filter((x) => x.id !== id).map((x) => ({ ...x, incluye: x.incluye.filter((i) => i !== id) }))
             );
             setEmployees((prev) => prev.map((e) => (e.categoriasInternas?.includes(id) ? { ...e, categoriasInternas: e.categoriasInternas.filter((i) => i !== id) } : e)));
           }}

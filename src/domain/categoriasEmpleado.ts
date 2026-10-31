@@ -284,3 +284,44 @@ export function coberturaDeTareas(
     .map((e) => ({ id: e.id, tareas: new Set(capacidadesDelEmpleado(e.categoriasInternas, catalogo, e.tareasDominadas).map((x) => x.tareaId)) }));
   return tareaIds.map((tareaId) => ({ tareaId, empleadoIds: caps.filter((x) => x.tareas.has(tareaId)).map((x) => x.id) }));
 }
+
+// ---- PROPUESTA DEL 31/10/2026 (Nicolas: "hacelo asi y dejame la posibilidad de edicion") --------------------------------
+// Las categorias de siempre con sus Tareas (por nombre: los ids los pone la carga de cada base) y su categoria del gremio.
+// Es lo que se ve mientras nadie las edite; al primer cambio quedan guardadas y se editan en Personal → Categorias internas.
+export const PROPUESTA_TAREAS: Record<number, string[]> = {
+  1: ["Limpieza total de módulos", "Limpieza del conjunto terminado", "Limpieza final, desarmado y embalaje de módulos + marcado de bultos", "Organizar carros de carga y control de bultos", "Descarga en obra y separar bultos"],
+  2: ["Control de stock", "Control y separación de piezas", "Control de piezas y separación", "Limpieza primaria y control de armado y detalles constructivos", "Armado de equipos de instalación", "Cargar flete + control de bultos + herramientas + certificado de cobertura", "Desembalar en orden y empezar la presentación"],
+  3: ["Armado de cajones", "Armado de bandejas", "Instalación de accesorios internos", "Instalación de herrajes externos"],
+  4: ["Pegado de cantos (manual)", "Mecanizados de piezas secundarios"],
+  5: ["Preparación de chapas", "Encolado de piezas"],
+  6: ["Preparación de piezas para laquear"],
+  7: ["Marcar líneas, trazar niveles con láser y chocla", "Mecanizar calados"],
+  9: ["Armado de módulos", "Colocación de frentes o puertas", "Montaje de módulos", "Regulación de puertas, cajones y terminaciones", "Instalación de iluminación y accesorios finales"],
+  10: ["Routeo de piezas", "Corte de piezas", "Pegado de cantos (pegadora)"],
+  11: ["Enchapado de cantos (bimodal)"],
+  13: ["Marcar calados y tomar decisiones de inicio de instalación", "Comenzar a presentar y vincular el 1er grupo", "Regulación del conjunto de módulos vinculados (1er grupo, 2do grupo… hasta el último)"],
+  15: ["Revisión de planos", "Control de calidad y marcación de módulos"],
+  16: ["Revisión de detalles y terminaciones", "Foto final + comentarios"],
+};
+const GREMIO_PROPUESTO = (c: CategoriaEmpleado): string | undefined =>
+  c.extra ? undefined : c.nivel <= 2 ? "Ayudante" : c.nivel === 3 ? "Medio oficial" : c.nivel === 4 ? "Oficial general" : "Oficial especializado";
+
+const normNombre = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+
+// Las categorias de siempre con las Tareas de la propuesta: cada Tarea (grupo) se busca por nombre y entran todos sus pasos.
+export function categoriasPropuestas(
+  tipos: Array<{ id: number; grupoId?: number | null }>,
+  grupos: Array<{ id: number; nombre: string; tareaIds?: number[] }>
+): CategoriaEmpleado[] {
+  const pasosDe = (nombre: string): number[] => {
+    const g = grupos.find((x) => normNombre(x.nombre) === normNombre(nombre));
+    if (!g) return [];
+    const ids = g.tareaIds ?? tipos.filter((t) => t.grupoId === g.id).map((t) => t.id);
+    return ids.filter((id) => tipos.some((t) => t.id === id));
+  };
+  return CATEGORIAS_POR_DEFECTO.map((c) => ({
+    ...c,
+    tareaIds: Array.from(new Set((PROPUESTA_TAREAS[c.id] || []).flatMap(pasosDe))),
+    ...(GREMIO_PROPUESTO(c) ? { categoriaGremio: GREMIO_PROPUESTO(c) } : {}),
+  }));
+}
