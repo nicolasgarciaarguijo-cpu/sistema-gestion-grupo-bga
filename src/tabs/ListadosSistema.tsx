@@ -81,6 +81,7 @@ export function ListadosSistema({
           <tr>
             <th style={th}>Nombre</th>
             {def.conCodigo && <th style={th}>Prefijo del código</th>}
+            {key === "tiposDocumento" && <th style={th} title="Carpetas de primer nivel que lo reconocen al sincronizar, separadas por coma">Carpetas que lo reconocen</th>}
             {key === "gruposStock" && <th style={th} title="A qué rubro del checklist antes de producción van sus artículos">Checklist</th>}
             {key === "gruposStock" && <th style={{ ...th, textAlign: "center" }} title="Sus artículos son máquinas o herramientas (Mantenimiento)">Máquinas</th>}
             <th style={{ ...th, textAlign: "right" }}>En uso</th>
@@ -119,6 +120,16 @@ export function ListadosSistema({
                 {def.conCodigo && (
                   <td style={{ ...td, width: 110 }}>
                     <input style={{ ...input, textTransform: "uppercase" }} value={it.codigo || ""} placeholder="auto" onChange={(e) => onGuardar(key, cambiar(lista, it.nombre, { codigo: e.target.value.toUpperCase() || undefined }))} />
+                  </td>
+                )}
+                {key === "tiposDocumento" && (
+                  <td style={td}>
+                    <input
+                      style={input}
+                      placeholder={fijo ? "las de siempre" : "ej.: Contratos, Pólizas"}
+                      defaultValue={(it.carpetas || []).join(", ")}
+                      onBlur={(e) => onGuardar(key, cambiar(lista, it.nombre, { carpetas: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) }))}
+                    />
                   </td>
                 )}
                 {key === "gruposStock" && (

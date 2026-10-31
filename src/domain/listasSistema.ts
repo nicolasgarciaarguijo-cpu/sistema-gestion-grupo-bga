@@ -19,6 +19,8 @@ import { GRUPOS_GASTO } from "./analisisGastos";
 import { TIPOS_SEGURO_SUGERIDOS } from "./seguros";
 import { TIPOS_INVERSION_SUGERIDOS } from "./inversiones";
 import { RUBRO_POR_GRUPO_STOCK, type RubroChecklist } from "./checklistProduccion";
+import { TIPOS_DOCUMENTO } from "./tiposDocumento";
+import { CARPETAS_EXTRA, normCarpeta } from "../lib/folderSync";
 
 export type ItemLista = {
   nombre: string;
@@ -30,6 +32,8 @@ export type ItemLista = {
   // sus articulos son maquinas o herramientas (Mantenimiento).
   rubro?: RubroChecklist | "fuera";
   maquinas?: boolean;
+  // Tipos de documento: nombres de carpeta (de primer nivel) que lo reconocen al sincronizar.
+  carpetas?: string[];
 };
 export type ListaKey =
   | "categoriasGremio"
@@ -44,7 +48,8 @@ export type ListaKey =
   | "tiposSeguro"
   | "tiposInversion"
   | "mediosPago"
-  | "tiposDeuda";
+  | "tiposDeuda"
+  | "tiposDocumento";
 export type ListasSistema = Partial<Record<ListaKey, ItemLista[]>>;
 
 export type DefinicionLista = {
@@ -91,6 +96,7 @@ const ORIGINALES = {
   provisionesPersonal: items(PERSONAL_PROVISION_KINDS),
   tiposSeguro: items(TIPOS_SEGURO_SUGERIDOS),
   tiposInversion: items(TIPOS_INVERSION_SUGERIDOS),
+  tiposDocumento: porValor(TIPOS_DOCUMENTO),
   colores: Object.fromEntries(ESTADOS_MAQUINA.map((e) => [e.value, e.color])) as Record<string, string>,
   detalleGasto: Object.fromEntries(GRUPOS_GASTO.map((g) => [g.key, g.detalle])) as Record<string, string>,
 };
@@ -179,6 +185,14 @@ export const LISTAS: DefinicionLista[] = [
     sinAgregar: true,
     porDefecto: ORIGINALES.gruposGasto,
     fijos: ORIGINALES.gruposGasto.map((x) => x.valor as string),
+  },
+  {
+    key: "tiposDocumento",
+    titulo: "Tipos de documento",
+    descripcion: "Los de Documentos y la carpeta sincronizada. Los de siempre la carpeta los reconoce por su nombre (Compras, Remitos, Personal...): se renombran pero no se borran. Uno nuevo se reconoce por las carpetas que le pongas (de primer nivel, separadas por coma). Lo ya guardado no se mueve.",
+    porValor: true,
+    porDefecto: ORIGINALES.tiposDocumento,
+    fijos: ORIGINALES.tiposDocumento.map((x) => x.valor as string),
   },
   {
     key: "tiposSeguro",
@@ -276,6 +290,9 @@ export function aplicarListasVigentes(listas: ListasSistema | undefined) {
   });
   reemplazar(PERSONAL_PROVISION_KINDS, act("provisionesPersonal").map(valorDe) as typeof PERSONAL_PROVISION_KINDS);
   reemplazar(TIPOS_SEGURO_SUGERIDOS as readonly string[], act("tiposSeguro").map(valorDe));
+  reemplazar(TIPOS_DOCUMENTO, etiquetas("tiposDocumento"));
+  Object.keys(CARPETAS_EXTRA).forEach((k) => delete CARPETAS_EXTRA[k]);
+  act("tiposDocumento").forEach((t) => (t.carpetas || []).forEach((c) => c.trim() && (CARPETAS_EXTRA[normCarpeta(c)] = valorDe(t))));
   reemplazar(TIPOS_INVERSION_SUGERIDOS as readonly string[], act("tiposInversion").map(valorDe));
   // Grupos de Stock: cuales son de maquinas (los de siempre siempre lo son) y a que rubro del checklist va cada uno.
   const grupos = listaVigente(listas, "gruposStock");

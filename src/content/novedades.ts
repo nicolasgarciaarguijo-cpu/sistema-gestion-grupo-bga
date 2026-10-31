@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31g",
+    fecha: "31/10/2026",
+    titulo: "Estructura del Calendario y tipos de documento editables",
+    items: [
+      {
+        titulo: "Estructura del Calendario anual",
+        que: "Un bloque para editar cómo se llaman las secciones y los renglones del Calendario, en qué orden van, cuáles no se muestran y los renglones y secciones propios. Lo que vincula cada renglón con su solapa no cambia, así que no mueve plata. Solo se oculta o borra lo que no tiene movimientos, y si a algo oculto le llega plata vuelve a verse.",
+        como: "Acceso → Estructura del Calendario anual (solo administradores).",
+        tab: "acceso",
+      },
+      {
+        titulo: "Tipos de documento",
+        que: "Se renombran los de siempre y se suman nuevos, cada uno con las carpetas que lo reconocen al sincronizar (por ejemplo, Contratos).",
+        como: "Acceso → Listados del sistema → Tipos de documento.",
+        tab: "acceso",
+      },
+    ],
+  },
+  {
     id: "2026-10-31f",
     fecha: "31/10/2026",
     titulo: "Más listados editables",

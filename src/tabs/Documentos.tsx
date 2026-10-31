@@ -3,6 +3,7 @@ import { styles } from "../ui/styles";
 import { Panel, ButtonLike } from "../ui/primitives";
 import { formatDateDisplay } from "../lib/format";
 import type { LinkedDocument, LinkedDocumentType } from "../domain/types";
+import { TIPOS_DOCUMENTO, etiquetaTipoDocumento } from "../domain/tiposDocumento";
 
 type DocumentosTabProps = {
   linkedDocuments: LinkedDocument[];
@@ -34,33 +35,9 @@ type DocumentosTabProps = {
   onExportAll: () => void;
 };
 
-const DOC_TYPE_LABELS: Record<LinkedDocumentType, string> = {
-  compras: "Facturas de compra",
-  "facturas-emitidas": "Facturas emitidas",
-  remitos: "Remitos",
-  presupuestos: "Presupuestos",
-  recibos: "Recibos",
-  banco: "Banco",
-  cobranzas: "Cobranzas",
-  "caja-chica": "Caja chica",
-  escalas: "Escalas salariales",
-  documentacion: "Documentacion",
-  personal: "Personal",
-};
-
-const DOC_TYPE_ORDER: LinkedDocumentType[] = [
-  "compras",
-  "facturas-emitidas",
-  "remitos",
-  "presupuestos",
-  "recibos",
-  "banco",
-  "cobranzas",
-  "caja-chica",
-  "escalas",
-  "documentacion",
-  "personal",
-];
+// Tipos de documento editables (Acceso → Listados del sistema). Un documento de un tipo pausado o que ya no esta igual se ve.
+const DOC_TYPE_LABEL = (t: string) => etiquetaTipoDocumento(t);
+const DOC_TYPE_ORDER = (): LinkedDocumentType[] => TIPOS_DOCUMENTO.map((t) => t.value as LinkedDocumentType);
 
 const humanSize = (bytes: number): string => {
   if (!bytes) return "";
@@ -105,9 +82,10 @@ export function DocumentosTab({
       list.push(doc);
       byType.set(doc.docType, list);
     }
-    return DOC_TYPE_ORDER.filter((type) => byType.has(type)).map((type) => ({
+    const orden = [...DOC_TYPE_ORDER(), ...Array.from(byType.keys()).filter((t) => !DOC_TYPE_ORDER().includes(t))];
+    return orden.filter((type) => byType.has(type)).map((type) => ({
       type,
-      label: DOC_TYPE_LABELS[type],
+      label: DOC_TYPE_LABEL(type),
       docs: (byType.get(type) || []).sort(
         (a, b) =>
           (b.month || "").localeCompare(a.month || "") ||
@@ -285,8 +263,8 @@ export function DocumentosTab({
                   <div key={doc.id} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "7px 10px", border: "1px solid #93c5fd", borderRadius: 8, fontSize: 13, background: "#f8fafc" }}>
                     <strong style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 260 }}>{doc.fileName}</strong>
                     <select style={{ ...styles.input, width: "auto" }} value={editando.docType} onChange={(e) => setEditando({ ...editando, docType: e.target.value as LinkedDocumentType })}>
-                      {DOC_TYPE_ORDER.map((t) => (
-                        <option key={t} value={t}>{DOC_TYPE_LABELS[t]}</option>
+                      {[...DOC_TYPE_ORDER(), ...(DOC_TYPE_ORDER().includes(editando.docType) ? [] : [editando.docType])].map((t) => (
+                        <option key={t} value={t}>{DOC_TYPE_LABEL(t)}</option>
                       ))}
                     </select>
                     <input type="month" style={{ ...styles.input, width: "auto" }} value={editando.month} onChange={(e) => setEditando({ ...editando, month: e.target.value })} />

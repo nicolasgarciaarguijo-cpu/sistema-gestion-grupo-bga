@@ -465,10 +465,20 @@ export function CalendarioAnualTab({
   );
 
   // La planilla que se dibuja: la estructura fija MAS las secciones propias del usuario.
+  // Una seccion oculta (Acceso → Estructura del Calendario) vuelve a verse si le llega plata: nunca se esconde un movimiento.
   const sections = useMemo(() => {
-    const todas = allSectionsWith(rowConfig);
+    const ocultas = rowConfig.hiddenSections || [];
+    const conPlata = new Set(
+      ocultas.length
+        ? entries.map((e) => {
+            const k = e.conceptKey || "";
+            return k.startsWith("custom:") ? k.split(":")[1] : CALENDAR_ITEM_INDEX[k]?.sectionKey;
+          })
+        : []
+    );
+    const todas = allSectionsWith(ocultas.length ? { ...rowConfig, hiddenSections: ocultas.filter((k) => !conPlata.has(k)) } : rowConfig);
     return onlySection ? todas.filter((sec) => sec.key === onlySection) : todas;
-  }, [rowConfig, onlySection]);
+  }, [rowConfig, onlySection, entries]);
   const sectionByKey = useMemo(() => new Map(sections.map((x) => [x.key, x])), [sections]);
 
   // CASH FLOW MINIMIZADO AL ENTRAR (Nicolas, 2026-10-20): todas las secciones arrancan plegadas (solo el
@@ -1658,6 +1668,8 @@ export function CalendarioAnualTab({
   const guardarConfig = (cambio: Partial<CalendarRowConfig>) => {
     if (!onRowConfigChange) return;
     onRowConfigChange({
+      // Lo demas (fijo/variable, estructura) se conserva.
+      ...rowConfig,
       labels: { ...rowLabels },
       hidden: [...(rowConfig.hidden || [])],
       extra: [...(rowConfig.extra || [])],

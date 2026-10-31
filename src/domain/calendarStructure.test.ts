@@ -139,3 +139,30 @@ describe("estructura final del cash flow (14/10/2026)", () => {
     expect(CALENDAR_ITEM_INDEX["inv_colocacion"].sectionKey).toBe("mov_internos_out");
   });
 });
+
+describe("estructura editable del Calendario (31/10/2026)", () => {
+  const { allSectionsWith, DEFAULT_CALENDAR_ROW_CONFIG } = require("./calendarStructure");
+  it("renombra secciones, las ordena dentro de su grupo, oculta y ordena renglones sin cambiar las claves", () => {
+    const base = allSectionsWith(DEFAULT_CALENDAR_ROW_CONFIG);
+    const ingresos = base.filter((s: any) => s.dir === "in").map((s: any) => s.key);
+    const cfg = {
+      ...DEFAULT_CALENDAR_ROW_CONFIG,
+      sectionLabels: { prestamos: "PRÉSTAMOS Y APORTES" },
+      sectionOrder: ["inversiones", "cobranzas"],
+      hiddenSections: ["ingresos_varios"],
+      rowOrder: { prestamos: ["mi_in_aporte", "prestamo_nicolas"] },
+    };
+    const r = allSectionsWith(cfg);
+    const ins = r.filter((s: any) => s.dir === "in").map((s: any) => s.key);
+    expect(ins[0]).toBe("inversiones");
+    expect(ins[1]).toBe("cobranzas");
+    expect(ins).not.toContain("ingresos_varios");
+    expect(ins.length).toBe(ingresos.filter((k: string) => k !== "ingresos_varios").length);
+    const prest = r.find((s: any) => s.key === "prestamos");
+    expect(prest.label).toBe("PRÉSTAMOS Y APORTES");
+    expect(prest.totalLabel).toBe("Total PRÉSTAMOS Y APORTES");
+    expect(prest.items.slice(0, 2).map((i: any) => i.key)).toEqual(["mi_in_aporte", "prestamo_nicolas"]);
+    // Los egresos siguen despues de todos los ingresos.
+    expect(r.findIndex((s: any) => s.dir === "out")).toBe(ins.length);
+  });
+});

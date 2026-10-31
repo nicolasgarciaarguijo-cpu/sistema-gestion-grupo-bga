@@ -289,6 +289,7 @@ import { conHerramientasDeLaTarea, presenciaDelDia } from "./domain/organizacion
 import { completarDiaConRutinas, manoDeObraPorGrupo, type CandidatoRutina, type RutinaTaller } from "./domain/rutinasTaller";
 import { RutinasTaller } from "./tabs/RutinasTaller";
 import { ListadosSistema } from "./tabs/ListadosSistema";
+import { EstructuraCalendario } from "./tabs/EstructuraCalendario";
 import { aplicarListasVigentes, nombresActivos, prefijoDeGrupo, type ListaKey, type ListasSistema, type ItemLista } from "./domain/listasSistema";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
@@ -10093,12 +10094,8 @@ Escribi CERRAR para confirmar:`
     regularizacionesBlanqueo: regularizacionesBlanqueo.map((item) => ({ ...item })),
     fiscalClosings: fiscalClosings.map((item) => ({ ...item })),
     retirosSocietarios: retirosSocietarios.map((item) => ({ ...item })),
-    calendarRowConfig: {
-      labels: { ...(calendarRowConfig.labels || {}) },
-      hidden: [...(calendarRowConfig.hidden || [])],
-      extra: [...(calendarRowConfig.extra || [])].map((item) => ({ ...item })),
-      sections: [...(calendarRowConfig.sections || [])].map((item) => ({ ...item })),
-    },
+    // Copia entera: antes se armaba campo por campo y el fijo/variable con candado (fv) no se guardaba.
+    calendarRowConfig: JSON.parse(JSON.stringify(calendarRowConfig)),
     stockItems: stockItems.map((item) => ({ ...item })),
     costAnalysisGroups: costAnalysisGroups.map((item) => ({ ...item })),
     costAnalysisEntries: costAnalysisEntries.map((item) => ({ ...item })),
@@ -10494,6 +10491,10 @@ Escribi CERRAR para confirmar:`
           .filter(([, v]: any) => v && (v.kind === "fijo" || v.kind === "variable"))
           .map(([k, v]: any) => [k, { kind: v.kind, locked: v.locked === true }])
       ),
+      sectionLabels: { ...((data.calendarRowConfig as any)?.sectionLabels || {}) },
+      sectionOrder: [...((data.calendarRowConfig as any)?.sectionOrder || [])].map(String),
+      hiddenSections: [...((data.calendarRowConfig as any)?.hiddenSections || [])].map(String),
+      rowOrder: JSON.parse(JSON.stringify((data.calendarRowConfig as any)?.rowOrder || {})),
     });
     // Reglas de clasificación (memoria): no se filtran por acceso (son memoria de clasificación,
     // incluye reglas "General"); se normalizan flags para datos viejos.
@@ -22795,6 +22796,20 @@ Escribi CERRAR para confirmar:`
           }}
           onGuardar={(key, lista) => setListasSistema((prev) => ({ ...prev, [key]: lista }))}
           onRenombrar={renombrarEnListado}
+        />
+      )}
+      {activeTab === "acceso" && effectiveIsAdmin && (
+        <EstructuraCalendario
+          config={calendarRowConfig}
+          onCambiar={setCalendarRowConfig}
+          movimientos={cashFlowEntriesConFirmante.reduce<Record<string, number>>((acc, e) => {
+            const k = e.conceptKey || "";
+            if (!k) return acc;
+            const sec = k.startsWith("custom:") ? k.split(":")[1] : CALENDAR_ITEM_INDEX[k]?.sectionKey;
+            acc[k] = (acc[k] || 0) + 1;
+            if (sec) acc[sec] = (acc[sec] || 0) + 1;
+            return acc;
+          }, {})}
         />
       )}
 

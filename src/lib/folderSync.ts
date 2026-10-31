@@ -68,6 +68,11 @@ const TOP_FOLDER_TO_TYPE: Record<string, LinkedDocumentType> = {
   personal: "personal",
 };
 
+// Carpetas sumadas desde Acceso → Listados del sistema (tipos de documento): nombre normalizado → tipo. Las vuelca
+// domain/listasSistema.ts; las de arriba (las de siempre) mandan.
+export const CARPETAS_EXTRA: Record<string, string> = {};
+export const normCarpeta = norm;
+
 // Mes: acepta "2026-03" (estructura vieja) y "2026-03 Marzo" (nueva, ordena cronologicamente).
 const MONTH_RE = /^(\d{4}-\d{2})(\s+.+)?$/;
 // Nivel de EMPRESA (va siempre primero en la estructura nueva). "General" es la conjunta (reportes).
@@ -146,7 +151,7 @@ export function classifyPath(relPath: string): PathClassification {
     return { docType: "remitos", month, company };
   }
 
-  const docType = TOP_FOLDER_TO_TYPE[top] ?? null;
+  const docType = TOP_FOLDER_TO_TYPE[top] ?? ((CARPETAS_EXTRA[top] as LinkedDocumentType | undefined) || null);
 
   if (docType === "personal" && segments.length >= 2) {
     // Nueva: Personal/<EMPRESA>/<empleado>/<subarea>/...  |  Vieja: Personal/<empleado>/<subarea>/...

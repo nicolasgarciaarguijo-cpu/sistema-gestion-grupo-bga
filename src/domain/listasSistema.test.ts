@@ -70,3 +70,20 @@ describe("aplicarListasVigentes", () => {
     expect(agregar(listaVigente({}, "gruposGasto"), "Nuevo", undefined, "gruposGasto").ok).toBe(false);
   });
 });
+
+describe("tipos de documento editables", () => {
+  const { aplicarListasVigentes } = require("./listasSistema");
+  const { classifyPath } = require("../lib/folderSync");
+  const { TIPOS_DOCUMENTO } = require("./tiposDocumento");
+  afterAll(() => aplicarListasVigentes({}));
+  it("un tipo nuevo se reconoce por sus carpetas; los de siempre mandan", () => {
+    aplicarListasVigentes({
+      tiposDocumento: [{ nombre: "Compras y gastos", valor: "compras" }, { nombre: "Contratos", valor: "Contratos", carpetas: ["Contratos", "Contratos firmados"] }],
+    });
+    expect(TIPOS_DOCUMENTO).toEqual([{ value: "compras", label: "Compras y gastos" }, { value: "Contratos", label: "Contratos" }]);
+    expect(classifyPath("Contratos firmados/2026-10 Octubre/alquiler.pdf").docType).toBe("Contratos");
+    expect(classifyPath("Compras/2026-10/factura.pdf").docType).toBe("compras");
+    aplicarListasVigentes({});
+    expect(classifyPath("Contratos/x.pdf").docType).toBeNull();
+  });
+});

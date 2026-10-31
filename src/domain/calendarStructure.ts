@@ -46,6 +46,13 @@ export type CalendarRowConfig = {
   // quedan fijados asi; sin candado es solo la sugerencia y cada pago puede tener el suyo
   // (Nicolas, 2026-10-14).
   fv?: Record<string, { kind: "fijo" | "variable"; locked: boolean }>;
+  // ESTRUCTURA EDITABLE (Nicolas, 31/10/2026: "los listados de todo el sistema los quiero poder editar"): como se llaman las
+  // secciones, en que orden van (dentro de ingresos y de egresos), cuales no se muestran (solo sin movimientos) y el orden
+  // de los renglones de cada seccion. La CLAVE de cada seccion y renglon no cambia: es lo que vincula las solapas.
+  sectionLabels?: Record<string, string>;
+  sectionOrder?: string[];
+  hiddenSections?: string[];
+  rowOrder?: Record<string, string[]>;
 };
 
 export const DEFAULT_CALENDAR_ROW_CONFIG: CalendarRowConfig = { labels: {}, hidden: [], extra: [], sections: [] };
@@ -64,6 +71,27 @@ export const sectionKeyFromLabel = (label: string): string =>
 // final de su grupo (las de ingreso despues de los ingresos fijos; las de egreso al final de todo),
 // asi los ingresos siguen arriba y los egresos abajo.
 export function allSectionsWith(config: CalendarRowConfig | undefined): CalSection[] {
+  const ocultas = new Set(config?.hiddenSections || []);
+  const orden = config?.sectionOrder || [];
+  const pos = (key: string) => {
+    const i = orden.indexOf(key);
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
+  const ordenar = (lista: CalSection[]) => lista.map((s, i) => ({ s, i })).sort((a, b) => pos(a.s.key) - pos(b.s.key) || a.i - b.i).map((x) => x.s);
+  const conRetoques = (s: CalSection): CalSection => {
+    const nombre = config?.sectionLabels?.[s.key]?.trim();
+    const filas = config?.rowOrder?.[s.key];
+    const items = filas?.length
+      ? s.items.map((it, i) => ({ it, i, p: filas.indexOf(it.key) })).sort((a, b) => (a.p < 0 ? 1e9 : a.p) - (b.p < 0 ? 1e9 : b.p) || a.i - b.i).map((x) => x.it)
+      : s.items;
+    return nombre ? { ...s, label: nombre, totalLabel: `Total ${nombre}`, items } : items === s.items ? s : { ...s, items };
+  };
+  const base = seccionesBase(config).filter((s) => !ocultas.has(s.key)).map(conRetoques);
+  return [...ordenar(base.filter((s) => s.dir === "in")), ...ordenar(base.filter((s) => s.dir === "out"))];
+}
+
+// Las secciones fijas (sin las reemplazadas) y las propias, en su orden de siempre y con sus nombres de siempre.
+export function seccionesBase(config: CalendarRowConfig | undefined): CalSection[] {
   const propias = (config?.sections || [])
     .filter((s) => s && s.key && s.label)
     .map((s): CalSection => ({
