@@ -739,6 +739,7 @@ function Catalogo({
   grupos,
   tipos,
   maquinas,
+  stock = [],
   onGuardarGrupo,
   onBorrarGrupo,
   onGuardarTipo,
@@ -748,6 +749,8 @@ function Catalogo({
   grupos: GrupoTrabajo[];
   tipos: TipoTarea[];
   maquinas: MaquinaStock[];
+  // Articulos de Stock para los insumos de cada tarea (el grupo y el sugerido).
+  stock?: Array<{ id: number; description: string; unit: string; unitPrice: number; group?: string }>;
   onGuardarGrupo: (g: GrupoTrabajo) => void;
   onBorrarGrupo: (id: number) => void;
   onGuardarTipo: (t: TipoTarea) => void;
@@ -760,6 +763,7 @@ function Catalogo({
   const sinGrupo = tipos.filter((t) => !enAlgunGrupo.has(t.id));
   const [herrDe, setHerrDe] = useState<number | null>(null);
   const [herrGrupo, setHerrGrupo] = useState<number | null>(null);
+  const [insumosDe, setInsumosDe] = useState<number | null>(null);
   const [pegarEn, setPegarEn] = useState<GrupoTrabajo | null>(null);
   const [textoPegado, setTextoPegado] = useState("");
   const listaDe = (g: GrupoTrabajo) => idsDeGrupo(g, tipos);
@@ -892,6 +896,14 @@ function Catalogo({
                 </button>
                 <button
                   type="button"
+                  style={{ ...btn(), maxWidth: 260, whiteSpace: "normal", textAlign: "left" }}
+                  title="Insumos que gasta la tarea (lija, cola, tornillos…): se suman a los materiales al presupuestar"
+                  onClick={() => setInsumosDe(g.id)}
+                >
+                  🧴 {(g.insumos || []).length ? (g.insumos || []).map((x) => x.nombre || "insumo").join(", ") : "Insumos…"}
+                </button>
+                <button
+                  type="button"
                   style={btn()}
                   onClick={() => {
                     const id = nuevoId();
@@ -1019,6 +1031,83 @@ function Catalogo({
           </div>
         </div>
       )}
+      {(() => {
+        const g = grupos.find((x) => x.id === insumosDe);
+        if (!g) return null;
+        const insumos = g.insumos || [];
+        const unidad = tipos.find((t) => t.id === idsDeGrupo(g, tipos)[0])?.unidad || "u";
+        const porCada = unidad === "u" ? "por mueble" : `por ${unidad === "m2" ? "m²" : unidad === "m3" ? "m³" : unidad} de la tarea`;
+        const gruposStock = Array.from(new Set(stock.map((x) => x.group || "").filter(Boolean))).sort((a, b) => a.localeCompare(b));
+        type Insumo = NonNullable<GrupoTrabajo["insumos"]>[number];
+        const guardar = (lista: Insumo[]) => onGuardarGrupo({ ...g, insumos: lista });
+        const cambiar = (id: number, cambios: Partial<Insumo>) => guardar(insumos.map((x) => (x.id === id ? { ...x, ...cambios } : x)));
+        return (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }} onClick={() => setInsumosDe(null)}>
+            <div style={{ background: "#fff", borderRadius: 12, width: "min(860px, 100%)", padding: 18, display: "grid", gap: 8 }} onClick={(e) => e.stopPropagation()}>
+              <strong style={{ fontSize: 15 }}>Insumos de "{g.nombre}"</strong>
+              <div style={{ fontSize: 12.5, color: "#64748b" }}>
+                Lo que gasta la tarea cada vez que se hace, <strong>{porCada}</strong> (la unidad de su paso a paso). Como los materiales del tipo de mueble, es un insumo genérico de un grupo de Stock:
+                el artículo se elige al presupuestar ("Pasar materiales de los muebles") y el sugerido solo da un precio de referencia. De ahí llegan al checklist antes de producción.
+              </div>
+              {insumos.length === 0 ? (
+                <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Sin insumos todavía.</div>
+              ) : (
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Insumo</th>
+                      <th style={th}>Grupo de Stock</th>
+                      <th style={th}>Cantidad {porCada}</th>
+                      <th style={th}>Unidad</th>
+                      <th style={th}>Sugerido</th>
+                      <th style={th}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {insumos.map((x) => (
+                      <tr key={x.id}>
+                        <td style={td}><input style={{ ...input, width: "100%" }} value={x.nombre || ""} placeholder="Lija 220" onChange={(e) => cambiar(x.id, { nombre: e.target.value })} /></td>
+                        <td style={td}>
+                          <select style={input} value={x.grupo || ""} onChange={(e) => cambiar(x.id, { grupo: e.target.value, stockItemId: undefined })}>
+                            <option value="">—</option>
+                            {[...gruposStock, ...(x.grupo && !gruposStock.includes(x.grupo) ? [x.grupo] : [])].map((gr) => <option key={gr} value={gr}>{gr}</option>)}
+                          </select>
+                        </td>
+                        <td style={td}><input style={{ ...input, width: 80, textAlign: "right" }} type="number" min={0} step={0.01} value={x.cantidad} onChange={(e) => cambiar(x.id, { cantidad: Math.max(0, Number(e.target.value) || 0) })} /></td>
+                        <td style={td}><input style={{ ...input, width: 60 }} value={x.unidad || ""} placeholder="u" onChange={(e) => cambiar(x.id, { unidad: e.target.value })} /></td>
+                        <td style={td}>
+                          <select style={{ ...input, maxWidth: 220 }} value={x.stockItemId ?? ""} onChange={(e) => cambiar(x.id, { stockItemId: e.target.value ? Number(e.target.value) : undefined })}>
+                            <option value="">— ninguno —</option>
+                            {stock.filter((it) => !x.grupo || it.group === x.grupo).map((it) => <option key={it.id} value={it.id}>{it.description}</option>)}
+                          </select>
+                        </td>
+                        <td style={td}><button type="button" style={btn(true)} onClick={() => guardar(insumos.filter((y) => y.id !== x.id))}>🗑</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                <ButtonLike secondary onClick={() => guardar([...insumos, { id: nuevoId(), nombre: "", unidad: "u", grupo: "", cantidad: 1 }])}>+ Insumo</ButtonLike>
+                <select
+                  style={{ ...input, maxWidth: 320 }}
+                  value=""
+                  title="Crear el insumo desde un artículo de Stock (toma su nombre, unidad y grupo)"
+                  onChange={(e) => {
+                    const it = stock.find((y) => y.id === Number(e.target.value));
+                    if (it) guardar([...insumos, { id: nuevoId(), nombre: it.description, unidad: it.unit || "u", grupo: it.group || "", cantidad: 1, stockItemId: it.id }]);
+                  }}
+                >
+                  <option value="">+ Desde un artículo de Stock…</option>
+                  {[...stock].sort((a, b) => a.description.localeCompare(b.description)).map((it) => <option key={it.id} value={it.id}>{it.description}{it.group ? ` · ${it.group}` : ""}</option>)}
+                </select>
+                <span style={{ flex: 1 }} />
+                <ButtonLike onClick={() => setInsumosDe(null)}>Listo</ButtonLike>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </Panel>
   );
 }

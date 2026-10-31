@@ -24,7 +24,11 @@ export const UNIDADES_TAREA: Array<{ value: UnidadTarea; label: string }> = [
 // `tareaIds` = la lista ordenada; ausente (grupos viejos) = las tareas que tienen ese grupoId, en el orden del catalogo.
 // En pantalla el GRUPO DE TRABAJO se llama TAREA (Nicolas, 27/10/2026: "Corte CNC" es una tarea) y sus tareas son su
 // PASO A PASO, siempre el mismo. Las maquinas y herramientas se eligen en la tarea y valen para todos sus pasos.
-export type GrupoTrabajo = { id: number; nombre: string; descripcion?: string; orden?: number; tareaIds?: number[]; herramientas?: number[] };
+// INSUMOS POR TAREA (Nicolas, 30/10/2026: "los insumos van por tarea"): lija, cola, tornillos... generico (nombre + unidad +
+// grupo de Stock, el articulo solo sugerido) con su cantidad POR CADA UNIDAD de la tarea en el mueble (la unidad de su paso:
+// u = por mueble, ml, m2). Al presupuestar se suman a los materiales de los muebles. Ver domain/tiposMueble.ts.
+export type InsumoDeTarea = { id: number; cantidad: number; nombre?: string; unidad?: string; grupo?: string; stockItemId?: number };
+export type GrupoTrabajo = { id: number; nombre: string; descripcion?: string; orden?: number; tareaIds?: number[]; herramientas?: number[]; insumos?: InsumoDeTarea[] };
 export type TipoTarea = {
   id: number;
   grupoId?: number | null;

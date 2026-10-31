@@ -316,14 +316,36 @@ export function genericoDe(m: MaterialDelTipo, stock: ItemStockParaMateriales[])
 }
 export const claveGenerico = (g: Pick<GenericoDelTipo, "nombre" | "grupo">) => `${g.grupo.trim().toLowerCase()}|${g.nombre.trim().toLowerCase()}`;
 
-export type GenericoDelPresupuesto = GenericoDelTipo & { clave: string; qty: number };
+// deTareas: las Tareas cuyos insumos lo suman (los materiales del tipo no lo llevan).
+export type GenericoDelPresupuesto = GenericoDelTipo & { clave: string; qty: number; deTareas?: string[] };
+export type TareasParaInsumos = { catalogo: TipoTarea[]; grupos: GrupoTrabajo[] };
+
+// Cuantas unidades de cada Tarea (grupo) lleva un mueble: la cantidad de sus pasos en la receta (todos van sobre lo mismo; se
+// toma la mayor). Un paso sin grupoId vale para la Tarea que lo tiene en su lista.
+export function unidadesDeTareas(tipo: TipoMueble, mueble: MuebleMedido, t: TareasParaInsumos): Map<number, number> {
+  const out = new Map<number, number>();
+  const calc = tareasDelMueble(tipo, mueble, t.catalogo);
+  t.grupos.forEach((g) => {
+    if (!(g.insumos || []).length) return;
+    const ids = idsDeGrupo(g, t.catalogo);
+    const cant = calc
+      .filter((c) => {
+        const r = tipo.receta.find((x) => x.id === c.renglonId);
+        return r?.grupoId != null ? r.grupoId === g.id : ids.includes(c.tareaId);
+      })
+      .reduce((m, c) => Math.max(m, c.cantidad), 0);
+    if (cant > 0) out.set(g.id, cant);
+  });
+  return out;
+}
 
 // Los genericos que llevan los muebles del presupuesto, sumados (cantidad de muebles x cantidad con desperdicio). Si dos
 // tipos sugieren articulos distintos para el mismo generico, queda el primero.
 export function genericosDeLosMuebles(
-  muebles: Array<{ tipoMuebleId: number; cantidad: number }>,
+  muebles: MuebleMedido[],
   tipos: TipoMueble[],
-  stock: ItemStockParaMateriales[]
+  stock: ItemStockParaMateriales[],
+  tareas?: TareasParaInsumos
 ): GenericoDelPresupuesto[] {
   const porClave = new Map<string, GenericoDelPresupuesto>();
   muebles.forEach((mb) => {
@@ -334,6 +356,19 @@ export function genericosDeLosMuebles(
       const qty = Number(mb.cantidad || 0) * cantidadConDesperdicio(tipo!, m);
       const prev = porClave.get(clave);
       porClave.set(clave, prev ? { ...prev, qty: prev.qty + qty, sugeridoId: prev.sugeridoId ?? g.sugeridoId } : { ...g, clave, qty });
+    });
+    // Los insumos de las Tareas que lleva el tipo, por las unidades de cada Tarea en este mueble (ya incluye la cantidad).
+    if (!tipo || !tareas) return;
+    unidadesDeTareas(tipo, mb, tareas).forEach((unidades, grupoId) => {
+      const g = tareas.grupos.find((x) => x.id === grupoId)!;
+      (g.insumos || []).forEach((ins) => {
+        const gen = genericoDe(ins, stock);
+        const clave = claveGenerico(gen);
+        const qty = unidades * Number(ins.cantidad || 0);
+        const prev = porClave.get(clave);
+        const deTareas = Array.from(new Set([...(prev?.deTareas || []), g.nombre]));
+        porClave.set(clave, prev ? { ...prev, qty: prev.qty + qty, sugeridoId: prev.sugeridoId ?? gen.sugeridoId, deTareas } : { ...gen, clave, qty, deTareas });
+      });
     });
   });
   return Array.from(porClave.values())
@@ -472,6 +507,7 @@ export type MaterialPasado = {
   qtyGenerico: number; // en la unidad del material (m2 de placa)
   unidadGenerico: string;
   acompanaA?: string; // lo suma otro material (catalizador de la laca)
+  deTareas?: string[]; // insumo de estas Tareas
   stockItemId?: number;
   description: string;
   qty: number;
@@ -496,10 +532,10 @@ export type MaterialPasado = {
 // cantidad se puede corregir a mano (Nicolas: "siempre debe existir la posibilidad de correccion manual por el momento"). Sin
 // articulo, o con el articulo sin precio, queda en 0 y marcado: tiene que quedar bien claro que falta el precio.
 export function materialesDeLosMuebles(
-  muebles: Array<{ tipoMuebleId: number; cantidad: number }>,
+  muebles: MuebleMedido[],
   tipos: TipoMueble[],
   stock: ItemStockParaMateriales[],
-  opciones: { elegidos?: Record<string, number | undefined>; cantidades?: Record<string, number | undefined>; convertidor?: Partial<ConvertidorMateriales> } = {}
+  opciones: { elegidos?: Record<string, number | undefined>; cantidades?: Record<string, number | undefined>; convertidor?: Partial<ConvertidorMateriales>; tareas?: TareasParaInsumos } = {}
 ): MaterialPasado[] {
   const { elegidos = {}, cantidades = {} } = opciones;
   const conv = convertidorVigente(opciones.convertidor);
@@ -513,7 +549,7 @@ export function materialesDeLosMuebles(
     return { uso: convertirCantidad(g.qty, eq), eq, sinEq: it && !eq ? `${g.unidad} → ${it.unit}` : undefined };
   };
 
-  const base = genericosDeLosMuebles(muebles, tipos, stock);
+  const base = genericosDeLosMuebles(muebles, tipos, stock, opciones.tareas);
   // Los que arrastran otros (catalizador = la mitad del uso de laca), sumados por generico.
   const arrastrados = new Map<string, GenericoDelPresupuesto & { acompanaA: string }>();
   base.forEach((g) => {
@@ -544,6 +580,7 @@ export function materialesDeLosMuebles(
       qtyGenerico: r3(g.qty),
       unidadGenerico: g.unidad,
       acompanaA: g.acompanaA,
+      deTareas: g.deTareas,
       uso: r3(uso),
       qtyDelTipo: delTipo,
       qty: r3(manual != null ? manual : delTipo),

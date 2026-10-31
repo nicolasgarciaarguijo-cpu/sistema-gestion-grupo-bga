@@ -11,7 +11,7 @@ import {
 } from "../ui/planilla";
 import NumInput from "../ui/NumInput";
 import type { RubroFabricacion } from "../domain/ganttFabricacion";
-import type { TipoTarea } from "../domain/organizacionDiaria";
+import type { GrupoTrabajo, TipoTarea } from "../domain/organizacionDiaria";
 import { materialesDeLosMuebles, rubrosDeLaReceta, type ConvertidorMateriales, type ItemStockParaMateriales, type MaterialPasado, type TipoMueble } from "../domain/tiposMueble";
 import { calcularMueblesDelPresupuesto, planificarMuebles, type MuebleDelPresupuesto, type PersonaParaCotizar, type PlanDeMuebles } from "../domain/presupuestoMuebles";
 
@@ -28,6 +28,7 @@ export function MueblesPresupuesto({
   onCambiar,
   tipos,
   tareas,
+  gruposTareas = [],
   rubros,
   materiales,
   personas,
@@ -46,6 +47,8 @@ export function MueblesPresupuesto({
   onCambiar: (muebles: MuebleDelPresupuesto[]) => void;
   tipos: TipoMueble[];
   tareas: TipoTarea[];
+  // Las Tareas (grupos) con sus INSUMOS: se suman a los materiales de los muebles al pasarlos (30/10/2026).
+  gruposTareas?: GrupoTrabajo[];
   rubros: RubroFabricacion[];
   // Los materiales del bloque (de ahi salen las cantidades de los rubros).
   materiales: Array<{ description: string; qty: number }>;
@@ -73,8 +76,9 @@ export function MueblesPresupuesto({
   // La ventana de elegir: articulo y cantidad corregida a mano por generico.
   const [elegir, setElegir] = useState<{ articulos: Record<string, number | undefined>; cantidades: Record<string, number | undefined> } | null>(null);
   // Lo que pasaria sin elegir nada (con los sugeridos): de ahi salen la lista y el arranque de la ventana.
-  const genericos = useMemo(() => materialesDeLosMuebles(muebles, tipos, stock, { convertidor }), [muebles, tipos, stock, convertidor]);
-  const filasElegidas = elegir ? materialesDeLosMuebles(muebles, tipos, stock, { elegidos: elegir.articulos, cantidades: elegir.cantidades, convertidor }) : [];
+  const conTareas = useMemo(() => ({ catalogo: tareas, grupos: gruposTareas }), [tareas, gruposTareas]);
+  const genericos = useMemo(() => materialesDeLosMuebles(muebles, tipos, stock, { convertidor, tareas: conTareas }), [muebles, tipos, stock, convertidor, conTareas]);
+  const filasElegidas = elegir ? materialesDeLosMuebles(muebles, tipos, stock, { elegidos: elegir.articulos, cantidades: elegir.cantidades, convertidor, tareas: conTareas }) : [];
   const activos = tipos.filter((t) => t.activa !== false).sort((a, b) => a.nombre.localeCompare(b.nombre));
   const res = useMemo(() => calcularMueblesDelPresupuesto(muebles, tipos, tareas, materiales, rubros), [muebles, tipos, tareas, materiales, rubros]);
   const cambiar = (id: number, cambios: Partial<MuebleDelPresupuesto>) => onCambiar(muebles.map((m) => (m.id === id ? { ...m, ...cambios } : m)));
@@ -425,6 +429,7 @@ export function MueblesPresupuesto({
                         <strong>{g.nombre}</strong>
                         <div style={{ fontSize: 11, color: "#94a3b8" }}>
                           {f.acompanaA ? `acompaña a ${f.acompanaA} · ` : ""}
+                          {f.deTareas?.length ? `insumo de ${f.deTareas.join(", ")} · ` : ""}
                           {fmt(g.qty)} {g.unidad} · {g.grupo || "sin grupo de Stock"}
                         </div>
                       </td>

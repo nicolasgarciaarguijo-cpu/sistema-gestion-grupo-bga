@@ -23586,6 +23586,7 @@ Escribi CERRAR para confirmar:`
               onCambiar={setMueblesPpto}
               tipos={tiposMueble}
               tareas={tiposTarea}
+              gruposTareas={gruposTrabajo}
               rubros={rubrosFabricacion.length ? rubrosFabricacion : RUBROS_POR_DEFECTO}
               materiales={materials}
               personas={personasParaCotizar}
@@ -24515,6 +24516,7 @@ Escribi CERRAR para confirmar:`
           grupos={gruposTrabajo}
           tipos={tiposTarea}
           maquinas={visibleStockItems.filter(esMaquinaOHerramienta) as any}
+          stock={stockSearchOptions}
           onGuardarGrupo={(g) => setGruposTrabajo((prev) => (prev.some((x) => x.id === g.id) ? prev.map((x) => (x.id === g.id ? g : x)) : [...prev, g]))}
           onBorrarGrupo={(id) => {
             setGruposTrabajo((prev) => prev.filter((x) => x.id !== id));

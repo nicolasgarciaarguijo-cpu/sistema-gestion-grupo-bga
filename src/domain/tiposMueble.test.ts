@@ -255,3 +255,41 @@ describe("personas del tipo de mueble y falta de gente (28/10/2026)", () => {
     expect(faltaDeGente(armado, 2)).toBeNull();
   });
 });
+
+describe("insumos por tarea (Nicolas, 30/10/2026)", () => {
+  it("se suman por las unidades de cada Tarea en el mueble, junto con los materiales del tipo", () => {
+    const { materialesDeLosMuebles, unidadesDeTareas } = require("./tiposMueble");
+    const pasos: TipoTarea[] = [
+      { id: 1, nombre: "Pegado de cantos", unidad: "ml", horasEstimadas: 0.1 },
+      { id: 2, nombre: "Armado", unidad: "u", horasEstimadas: 2 },
+    ];
+    const grupos = [
+      { id: 50, nombre: "Pegado de cantos", tareaIds: [1], insumos: [{ id: 1, nombre: "Cola termofusible", unidad: "kg", grupo: "Insumos", cantidad: 0.05 }] },
+      { id: 60, nombre: "Armado", tareaIds: [2], insumos: [{ id: 2, nombre: "Tornillo 4x40", unidad: "u", grupo: "Insumos", cantidad: 20, stockItemId: 9 }] },
+      { id: 70, nombre: "Laqueado", tareaIds: [], insumos: [{ id: 3, nombre: "Lija 220", unidad: "u", grupo: "Insumos", cantidad: 3 }] }, // no la lleva el tipo
+    ];
+    const tipo: TipoMueble = {
+      id: 1,
+      nombre: "Bajo 60",
+      receta: [
+        { id: 11, tareaId: 1, paso: 1, factor: 4, base: "ml", grupoId: 50 },
+        { id: 12, tareaId: 2, paso: 2, factor: 1, grupoId: 60 },
+      ],
+      desperdicioPct: 0,
+      materiales: [{ id: 5, nombre: "Tornillo 4x40", unidad: "u", grupo: "Insumos", cantidad: 10 }],
+    };
+    const mueble = { tipoMuebleId: 1, cantidad: 2, largo: 0.6 };
+    const tareas = { catalogo: pasos, grupos };
+    // 2 muebles de 0,6 m: 2 x 0,6 x 4 = 4,8 ml de canto; 2 armados.
+    expect(Array.from(unidadesDeTareas(tipo, mueble, tareas).entries())).toEqual([[50, 4.8], [60, 2]]);
+    const stock = [{ id: 9, description: "Tornillo 4x40 caja", unit: "u", unitPrice: 50, group: "Insumos" }];
+    const r = materialesDeLosMuebles([mueble], [tipo], stock, { tareas });
+    expect(r.map((x: any) => [x.nombre, x.qtyGenerico, x.deTareas])).toEqual([
+      // El tornillo del tipo (2 x 10) y el de la Tarea Armado (2 x 20) son el mismo generico.
+      ["Tornillo 4x40", 60, ["Armado"]],
+      ["Cola termofusible", 0.24, ["Pegado de cantos"]],
+    ]);
+    // Sin el catalogo de tareas, solo los materiales del tipo.
+    expect(materialesDeLosMuebles([mueble], [tipo], stock).map((x: any) => x.qtyGenerico)).toEqual([20]);
+  });
+});

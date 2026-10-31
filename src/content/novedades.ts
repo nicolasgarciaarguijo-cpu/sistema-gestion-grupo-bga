@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31c",
+    fecha: "31/10/2026",
+    titulo: "Insumos por tarea",
+    items: [
+      {
+        titulo: "Cada Tarea lleva sus insumos",
+        que: "Lija, cola, tornillos y demás se cargan en la Tarea (Corte CNC, Pegado de cantos, Armado...) con su cantidad por cada unidad de la tarea: por mueble, por metro lineal o por m², según su paso a paso. Son genéricos de un grupo de Stock, como los materiales del tipo de mueble.",
+        como: "Fabricación → Tareas y su paso a paso → botón 🧴 Insumos… de cada tarea.",
+        tab: "fabricacion",
+      },
+      {
+        titulo: "Se suman al pasar los materiales al presupuesto",
+        que: "\"Pasar materiales de los muebles\" suma los insumos de las Tareas que lleva cada tipo, según la cantidad de cada tarea en el mueble, junto con los materiales del tipo (si es el mismo genérico, se suma en un renglón). En la ventana dice de qué tarea sale cada insumo. Desde el presupuesto llegan al checklist antes de producción.",
+        como: "Presupuesto → Muebles del presupuesto → Pasar materiales de los muebles.",
+        tab: "presupuesto",
+      },
+    ],
+  },
+  {
     id: "2026-10-31b",
     fecha: "31/10/2026",
     titulo: "Mantenimiento, orden y limpieza",
