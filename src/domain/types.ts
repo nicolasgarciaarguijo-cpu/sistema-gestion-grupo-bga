@@ -1635,6 +1635,9 @@ export type Employee = {
   skills: string;
   // Categorias INTERNAS tildadas (capacidades, no las del convenio). Ver domain/categoriasEmpleado.
   categoriasInternas?: number[];
+  // Pasos del catalogo de Fabricacion que DOMINA (se marcan por Tarea entera). Con alguno marcado, son lo unico que puede
+  // hacer; sirven tambien para saber cuando esta listo para un aumento. Ver domain/categoriasEmpleado.ts.
+  tareasDominadas?: number[];
   notes: string;
   payrolls: EmployeePayroll[];
   // Baja del empleado. Si `terminationDate` tiene fecha (yyyy-mm-dd), sale de la nomina y pasa a la

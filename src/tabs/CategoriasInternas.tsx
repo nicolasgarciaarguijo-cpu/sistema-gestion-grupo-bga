@@ -9,8 +9,13 @@ import {
   inputCelda, inputCeldaDerecha, focoCelda,
 } from "../ui/planilla";
 import {
+  avanceDeCategoria,
   capacidadesDelEmpleado,
   categoriasEfectivas,
+  dominaPaso,
+  listoParaAumento,
+  marcarTarea,
+  type ListoParaAumento,
   ESCALONES_POR_DEFECTO,
   etiquetaCategoria,
   hayCiclo,
@@ -23,7 +28,7 @@ import {
 } from "../domain/categoriasEmpleado";
 import { UNIDADES_TAREA, type GrupoTrabajo, type TipoTarea } from "../domain/organizacionDiaria";
 
-type EmpleadoCat = { id: number; name: string; categoriasInternas?: number[] };
+type EmpleadoCat = { id: number; name: string; category?: string; categoriasInternas?: number[]; tareasDominadas?: number[] };
 
 const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" };
 const caja: React.CSSProperties = { background: "#fff", borderRadius: 12, width: "min(680px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" };
@@ -60,7 +65,10 @@ export function CategoriasInternas({
   nuevoId,
   escalones = ESCALONES_POR_DEFECTO,
   onGuardarEscalones,
+  categoriasGremio = [],
 }: {
+  // Las categorias del gremio (las de la escala salarial), para vincular cada interna con la suya.
+  categoriasGremio?: string[];
   categorias: CategoriaEmpleado[];
   tipos: TipoTarea[];
   grupos: GrupoTrabajo[];
@@ -114,7 +122,7 @@ export function CategoriasInternas({
   return (
     <Panel span="full" title="Categorías internas" actions={<ButtonLike onClick={() => nueva()}>+ Categoría</ButtonLike>}>
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
-        No son las del convenio (esas liquidan): son las capacidades de cada persona, por escalones. Aprendiz → Ayudante general → Ayudante especializado (con su rumbo) → el oficio → Responsable. Cada escalón suma lo de abajo, así que quien sube conserva lo que ya hacía, y se priorizan las tareas del escalón más alto. Las habilidades extra (Terminaciones) no son escalón: se suman a quien las tenga. Click derecho sobre una categoría: tareas, qué incluye, pausar o borrar. Click derecho sobre el título de un escalón: subirlo, bajarlo, sumar uno nuevo o quitarlo; el nombre se escribe ahí mismo.
+        No son las del convenio (esas liquidan): son las capacidades de cada persona, por escalones. Cada una se vincula con su categoría del gremio (columna Gremio): quien domina todas sus tareas y cobra una categoría más baja queda listo para un aumento. Aprendiz → Ayudante general → Ayudante especializado (con su rumbo) → el oficio → Responsable. Cada escalón suma lo de abajo, así que quien sube conserva lo que ya hacía, y se priorizan las tareas del escalón más alto. Las habilidades extra (Terminaciones) no son escalón: se suman a quien las tenga. Click derecho sobre una categoría: tareas, qué incluye, pausar o borrar. Click derecho sobre el título de un escalón: subirlo, bajarlo, sumar uno nuevo o quitarlo; el nombre se escribe ahí mismo.
       </div>
       {tipos.length === 0 && (
         <div style={{ fontSize: 12.5, color: "#b45309", marginBottom: 8 }}>
@@ -125,6 +133,7 @@ export function CategoriasInternas({
         <table className="planilla" style={planillaTable}>
           <colgroup>
             <col style={colLabel} />
+            <col style={colDato} />
             <col style={colDato} />
             <col style={colDato} />
             <col style={colDato} />
@@ -144,6 +153,7 @@ export function CategoriasInternas({
                 <PlanillaManija onMouseDown={(ev) => anchos.startResize(ev, "col")} onDoubleClick={anchos.resetCol} />
               </th>
               <th style={thColumna} title="Rumbo / área dentro del escalón (vacío = vale para todos)">Rumbo</th>
+              <th style={thColumna} title="Categoría del gremio (convenio) que le corresponde: sirve para saber quién está listo para un aumento">Gremio</th>
               <th style={thColumna}>Incluye a</th>
               <th style={{ ...thColumna, textAlign: "right" }}>Tareas propias</th>
               <th style={{ ...thColumna, textAlign: "right" }}>Con heredadas</th>
@@ -154,7 +164,7 @@ export function CategoriasInternas({
           <tbody>
             {filas.map((f) => {
               if (f.k === "titulo") {
-                if (f.nivel == null) return <tr key="t-extra"><td colSpan={8} style={filaTitulo}>Habilidades extra · se suman a cualquier escalón</td></tr>;
+                if (f.nivel == null) return <tr key="t-extra"><td colSpan={9} style={filaTitulo}>Habilidades extra · se suman a cualquier escalón</td></tr>;
                 const nivel = f.nivel;
                 return (
                   <tr
@@ -165,7 +175,7 @@ export function CategoriasInternas({
                       setMenuEscalon({ x: ev.clientX, y: ev.clientY, nivel });
                     }}
                   >
-                    <td colSpan={8} style={filaTitulo}>
+                    <td colSpan={9} style={filaTitulo}>
                       <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
                         Escalón {nivel} ·
                         <input
@@ -182,7 +192,7 @@ export function CategoriasInternas({
               if (f.k === "vacio") {
                 return (
                   <tr key={`v-${f.nivel}`}>
-                    <td colSpan={8} style={{ ...tdFlexible, fontSize: 12, color: "#94a3b8" }}>
+                    <td colSpan={9} style={{ ...tdFlexible, fontSize: 12, color: "#94a3b8" }}>
                       Sin categorías en este escalón ·{" "}
                       <button type="button" style={{ border: "none", background: "none", color: "#0f766e", cursor: "pointer", fontSize: 12, padding: 0 }} onClick={() => nueva(f.nivel)}>
                         + Categoría acá
@@ -224,6 +234,12 @@ export function CategoriasInternas({
                   </td>
                   <td style={tdDato}>
                     <input style={inputCelda} value={cat.area || ""} placeholder="—" onChange={(e) => onGuardar({ ...cat, area: e.target.value || undefined })} {...focoCelda} />
+                  </td>
+                  <td style={tdDato}>
+                    <select style={{ ...inputCelda, color: cat.categoriaGremio ? undefined : "#94a3b8" }} value={cat.categoriaGremio || ""} onChange={(e) => onGuardar({ ...cat, categoriaGremio: e.target.value || undefined })}>
+                      <option value="">—</option>
+                      {[...categoriasGremio, ...(cat.categoriaGremio && !categoriasGremio.includes(cat.categoriaGremio) ? [cat.categoriaGremio] : [])].map((g) => <option key={g} value={g}>{g}</option>)}
+                    </select>
                   </td>
                   <td style={{ ...tdDato, fontSize: 12, color: "#475569" }} title={cat.incluye.map(nombreCat).join(", ")}>
                     {cat.incluye.length ? cat.incluye.map(nombreCat).join(", ") : "—"}
@@ -414,79 +430,207 @@ export function CategoriasInternas({
 }
 
 // ---- En la ficha del empleado: tildar sus categorias y ver lo que puede hacer --------------------------
+// FICHA DEL EMPLEADO (Nicolas, 31/10/2026): las dos categorias a la vista (la del gremio, que cobra, y las internas); cada
+// categoria interna se abre con un click y muestra sus Tareas con la casilla "domina" (se marcan una por una: "hoy en dia no
+// todos dominan todo y tienen la misma categoria"). Al 100% de una categoria vinculada a una del gremio mas alta, avisa.
 export function CategoriasDelEmpleado({
   empleado,
   categorias,
   tipos,
+  grupos = [],
   onCambiar,
+  onCambiarDominadas,
   escalones,
+  valorGremio,
 }: {
   empleado: EmpleadoCat;
   categorias: CategoriaEmpleado[];
   tipos: TipoTarea[];
+  grupos?: GrupoTrabajo[];
   onCambiar: (ids: number[]) => void;
+  onCambiarDominadas?: (ids: number[]) => void;
   escalones?: string[];
+  // Valor hora de la escala del mes de una categoria del gremio (0 = sin escala).
+  valorGremio?: (categoria: string) => number;
 }) {
   const tildadas = empleado.categoriasInternas || [];
+  const dominadas = empleado.tareasDominadas || [];
   const efectivas = categoriasEfectivas(tildadas, categorias);
-  const caps = capacidadesDelEmpleado(tildadas, categorias);
-  const maxNivel = caps.length ? caps[0].prioridad : 0;
+  const caps = capacidadesDelEmpleado(tildadas, categorias, dominadas);
   const ordenadas = ordenarPorEscalon(categorias.filter((c) => c.activa !== false));
   const titulo = (c: CategoriaEmpleado) => tituloEscalon(c, escalones);
   const bloques = Array.from(new Set(ordenadas.map(titulo)));
-  // En los escalones con rumbo, el rumbo solo alcanza (bajo "Ayudante especializado": Armado, Laqueado...).
   const etiquetaEnBloque = (c: CategoriaEmpleado) => (c.area && ordenadas.filter((x) => titulo(x) === titulo(c) && x.nombre === c.nombre).length > 1 ? c.area : c.nombre);
+  const [abierta, setAbierta] = useState<number | null>(null);
+  const cat = categorias.find((c) => c.id === abierta) || null;
+  const listo: ListoParaAumento | null = valorGremio ? listoParaAumento(dominadas, empleado.category || "", categorias, tipos, valorGremio) : null;
+  const nombreTarea = (pasoId: number) => {
+    const t = tipos.find((x) => x.id === pasoId);
+    return (t?.grupoId != null ? grupos.find((g) => g.id === t.grupoId)?.nombre : undefined) || t?.nombre || "tarea borrada";
+  };
+  const pasosDeLaTarea = (pasoId: number) => {
+    const g = tipos.find((x) => x.id === pasoId)?.grupoId;
+    return g != null ? tipos.filter((x) => x.grupoId === g).map((x) => x.id) : [pasoId];
+  };
+  // Las Tareas de la categoria abierta (una por Tarea, propias primero).
+  const tareasDe = (c: CategoriaEmpleado) => {
+    const vistas = new Set<string>();
+    const out: Array<{ paso: number; heredada: boolean }> = [];
+    [...c.tareaIds.map((p) => ({ paso: p, heredada: false })), ...tareasHeredadas(c, categorias).map((p) => ({ paso: p, heredada: true }))].forEach((x) => {
+      const k = String(tipos.find((t) => t.id === x.paso)?.grupoId ?? `p${x.paso}`);
+      if (vistas.has(k)) return;
+      vistas.add(k);
+      out.push(x);
+    });
+    return out;
+  };
+  const chip = (c: CategoriaEmpleado) => {
+    const av = avanceDeCategoria(c, categorias, dominadas, tipos);
+    const tiene = tildadas.includes(c.id);
+    const incluida = !tiene && efectivas.has(c.id);
+    const sel = abierta === c.id;
+    return (
+      <button
+        key={c.id}
+        type="button"
+        onClick={() => setAbierta(sel ? null : c.id)}
+        title={`${etiquetaCategoria(c, categorias)}${c.categoriaGremio ? ` · gremio: ${c.categoriaGremio}` : ""} · domina ${av.dominadas} de ${av.total} tareas`}
+        style={{
+          display: "flex", justifyContent: "space-between", gap: 6, alignItems: "center", width: "100%", textAlign: "left",
+          border: `1px solid ${sel ? "#0f766e" : av.completa ? "#86efac" : "#e2e8f0"}`, borderRadius: 8, padding: "4px 8px", cursor: "pointer", fontSize: 12.5,
+          background: sel ? "#f0fdfa" : tiene ? "#ecfeff" : "#fff", fontWeight: tiene ? 700 : 400, color: incluida ? "#64748b" : "#0f172a",
+        }}
+      >
+        <span>{tiene ? "● " : incluida ? "◐ " : ""}{etiquetaEnBloque(c)}</span>
+        <span style={{ fontSize: 11, color: av.completa ? "#166534" : "#64748b", fontWeight: 600 }}>{av.total ? `${av.dominadas}/${av.total}` : "—"}{av.completa ? " ✓" : ""}</span>
+      </button>
+    );
+  };
   return (
-    <Panel title="Categorías internas y capacidades" span="full" nested>
-      <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 6 }}>
-        Tildá su escalón y su rumbo (lo de abajo se suma solo, en gris) y sus habilidades extra. En la organización diaria solo se le pueden dar estas tareas, priorizando las de su escalón más alto.
+    <Panel title="Categorías y tareas que domina" span="full" nested>
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 13, marginBottom: 6 }}>
+        <span>Gremio (cobra): <strong>{empleado.category || "—"}</strong>{valorGremio && empleado.category ? <span style={{ color: "#64748b" }}> · ${valorGremio(empleado.category).toLocaleString("es-AR", { maximumFractionDigits: 2 })}/h</span> : null}</span>
+        <span>Internas: <strong>{tildadas.length ? tildadas.map((id) => { const c = categorias.find((k) => k.id === id); return c ? etiquetaCategoria(c, categorias) : ""; }).filter(Boolean).join(", ") : "sin asignar"}</strong></span>
+        <span>Domina: <strong>{new Set(dominadas.map((d) => tipos.find((t) => t.id === d)?.grupoId ?? `p${d}`)).size}</strong> tareas</span>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "2px 14px" }}>
+      {listo && (
+        <div style={{ fontSize: 13, color: "#166534", background: "#f0fdf4", border: "1px solid #86efac", borderRadius: 8, padding: "6px 10px", marginBottom: 6 }}>
+          ⬆ Listo para pasar a <strong>{listo.gremio}</strong>: domina todas las tareas de {etiquetaCategoria(listo.categoria, categorias)} y cobra {listo.actual || "sin categoría"}.
+        </div>
+      )}
+      <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 6 }}>
+        Click en una categoría para ver sus tareas: ahí se asigna la categoría y se tilda cada tarea que domina. ● asignada · ◐ incluida por una superior · n/m tareas que domina · ✓ completa.
+        Con tareas tildadas, en la organización diaria, el cronograma y el presupuesto solo cuenta lo que domina; sin ninguna, las de sus categorías.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "4px 14px" }}>
         {bloques.map((b) => (
-          <div key={b}>
+          <div key={b} style={{ display: "grid", gap: 3, alignContent: "start" }}>
             <div style={sub}>{b.replace(" · se suman a cualquier escalón", "")}</div>
-            {ordenadas.filter((c) => titulo(c) === b).map((c) => {
-              const directa = tildadas.includes(c.id);
-              const porArrastre = !directa && efectivas.has(c.id);
-              return (
-                <label key={c.id} style={{ ...check, color: porArrastre ? "#94a3b8" : undefined }}>
-                  <input
-                    type="checkbox"
-                    checked={directa || porArrastre}
-                    onChange={(e) => onCambiar(e.target.checked ? [...tildadas, c.id] : tildadas.filter((id) => id !== c.id))}
-                  />
-                  {etiquetaEnBloque(c)}
-                  {porArrastre && <span style={{ fontSize: 11 }}>(incluida)</span>}
-                </label>
-              );
-            })}
+            {ordenadas.filter((c) => titulo(c) === b).map(chip)}
           </div>
         ))}
       </div>
+      {cat && (() => {
+        const lista = tareasDe(cat);
+        const tiene = tildadas.includes(cat.id);
+        const av = avanceDeCategoria(cat, categorias, dominadas, tipos);
+        return (
+          <div style={{ border: "1px solid #99f6e4", background: "#f0fdfa", borderRadius: 10, padding: "8px 12px", marginTop: 8, display: "grid", gap: 6 }}>
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <strong>{etiquetaCategoria(cat, categorias)}</strong>
+              <span style={{ fontSize: 12, color: "#475569" }}>gremio: {cat.categoriaGremio || "sin vincular"}</span>
+              <span style={{ fontSize: 12, color: av.completa ? "#166534" : "#475569", fontWeight: 600 }}>domina {av.dominadas} de {av.total}{av.completa ? " ✓" : ""}</span>
+              <label style={{ ...check, marginLeft: "auto" }}>
+                <input type="checkbox" checked={tiene} onChange={(e) => onCambiar(e.target.checked ? [...tildadas, cat.id] : tildadas.filter((id) => id !== cat.id))} />
+                Tiene esta categoría
+              </label>
+            </div>
+            {lista.length === 0 ? (
+              <div style={{ fontSize: 12.5, color: "#b45309" }}>Esta categoría todavía no tiene tareas (Personal → Categorías internas → click derecho → Tareas…).</div>
+            ) : (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: "2px 14px" }}>
+                {lista.map((x) => {
+                  const ok = dominaPaso(dominadas, x.paso, tipos);
+                  return (
+                    <label key={x.paso} style={{ ...check, color: x.heredada && !ok ? "#64748b" : undefined }}>
+                      <input type="checkbox" disabled={!onCambiarDominadas} checked={ok} onChange={(e) => onCambiarDominadas?.(marcarTarea(dominadas, pasosDeLaTarea(x.paso), e.target.checked))} />
+                      {nombreTarea(x.paso)}
+                      {x.heredada && <span style={{ fontSize: 11, color: "#94a3b8" }}>(de abajo)</span>}
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })()}
       <div style={{ ...sub, marginTop: 10 }}>Lo que puede hacer ({caps.length})</div>
-      {tildadas.length === 0 ? (
-        <div style={{ fontSize: 12.5, color: "#b45309" }}>Sin categorías: por ahora en la organización diaria se le puede dar cualquier tarea.</div>
+      {!tildadas.length && !dominadas.length ? (
+        <div style={{ fontSize: 12.5, color: "#b45309" }}>Sin categorías ni tareas tildadas: por ahora en la organización diaria se le puede dar cualquier tarea.</div>
       ) : caps.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "#b45309" }}>Sus categorías todavía no tienen tareas asignadas (Personal → Categorías internas).</div>
       ) : (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-          {caps.map((x) => {
-            const nueva = x.prioridad === maxNivel;
-            return (
-              <span
-                key={x.tareaId}
-                title={`De ${(() => { const c = categorias.find((k) => k.id === x.categoriaId); return c ? etiquetaCategoria(c, categorias) : ""; })()}${nueva ? " · prioritaria" : ""}`}
-                style={{
-                  fontSize: 12, borderRadius: 999, padding: "2px 8px",
-                  background: nueva ? "#ccfbf1" : "#f1f5f9", color: nueva ? "#115e59" : "#475569",
-                  border: `1px solid ${nueva ? "#99f6e4" : "#e2e8f0"}`,
-                }}
-              >
-                {tipos.find((t) => t.id === x.tareaId)?.nombre || "tarea borrada"}
-              </span>
-            );
-          })}
+          {Array.from(new Map(caps.map((x) => [String(tipos.find((t) => t.id === x.tareaId)?.grupoId ?? `p${x.tareaId}`), x])).values()).map((x) => (
+            <span key={x.tareaId} style={{ fontSize: 12, borderRadius: 999, padding: "2px 8px", background: "#f1f5f9", color: "#475569", border: "1px solid #e2e8f0" }}>
+              {nombreTarea(x.tareaId)}
+            </span>
+          ))}
         </div>
+      )}
+    </Panel>
+  );
+}
+
+// PERSONAL · LISTOS PARA AUMENTO: quienes dominan todas las tareas de una categoria interna vinculada a una del gremio que paga
+// mas que la que cobran (escala del mes).
+export function ListosParaAumento({
+  empleados,
+  categorias,
+  tipos,
+  valorGremio,
+  onAbrir,
+}: {
+  empleados: EmpleadoCat[];
+  categorias: CategoriaEmpleado[];
+  tipos: TipoTarea[];
+  valorGremio: (categoria: string) => number;
+  onAbrir?: (empleadoId: number) => void;
+}) {
+  const filas = empleados
+    .map((e) => ({ e, l: listoParaAumento(e.tareasDominadas, e.category || "", categorias, tipos, valorGremio) }))
+    .filter((x): x is { e: EmpleadoCat; l: ListoParaAumento } => !!x.l);
+  const fmt = (n: number) => `$${n.toLocaleString("es-AR", { maximumFractionDigits: 2 })}`;
+  return (
+    <Panel span="full" title={`Listos para aumento (${filas.length})`}>
+      <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 6 }}>
+        Quienes dominan el 100% de las tareas de una categoría interna vinculada a una categoría del gremio que paga más que la que cobran (valor hora de la escala del mes).
+        Las tareas que domina cada uno se tildan en su ficha.
+      </div>
+      {filas.length === 0 ? (
+        <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Nadie por ahora.</div>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              {["Persona", "Cobra", "Domina toda", "Pasaría a", "Valor hora", ""].map((h) => (
+                <th key={h} style={{ textAlign: "left", fontSize: 12, color: "#64748b", padding: "4px 6px", borderBottom: "1px solid #e2e8f0" }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filas.map(({ e, l }) => (
+              <tr key={e.id}>
+                <td style={{ padding: "4px 6px", fontWeight: 600, fontSize: 13 }}>{e.name}</td>
+                <td style={{ padding: "4px 6px", fontSize: 13 }}>{l.actual || "—"}</td>
+                <td style={{ padding: "4px 6px", fontSize: 13 }}>{etiquetaCategoria(l.categoria, categorias)}</td>
+                <td style={{ padding: "4px 6px", fontSize: 13, fontWeight: 700, color: "#166534" }}>{l.gremio}</td>
+                <td style={{ padding: "4px 6px", fontSize: 13 }}>{fmt(l.valorActual)} → {fmt(l.valor)}</td>
+                <td style={{ padding: "4px 6px" }}>{onAbrir && <ButtonLike secondary onClick={() => onAbrir(e.id)}>Ver ficha</ButtonLike>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
     </Panel>
   );

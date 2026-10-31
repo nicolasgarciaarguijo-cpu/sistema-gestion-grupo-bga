@@ -37,7 +37,8 @@ import type { DayAttendance } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
 import NumInput from "../ui/NumInput";
-import { CategoriasInternas, CategoriasDelEmpleado } from "./CategoriasInternas";
+import { CategoriasInternas, CategoriasDelEmpleado, ListosParaAumento } from "./CategoriasInternas";
+import { getScaleForCategory, normalizarCategoria } from "../domain/scale";
 import type { CategoriaEmpleado } from "../domain/categoriasEmpleado";
 import type { GrupoTrabajo, TipoTarea } from "../domain/organizacionDiaria";
 type PersonalTabProps = {
@@ -215,6 +216,11 @@ function ReglasLiquidacion({ config }: { config: any }) {
 }
 
 export function PersonalTab(props: PersonalTabProps) {
+  // Categorias del gremio: las de la escala, de la que paga menos a la que paga mas (valor hora basico del mes).
+  const valorGremio = (categoria: string) => Number(getScaleForCategory(props.scaleRows || [], categoria, props.payrollMonth || new Date().toISOString().slice(0, 7))?.baseHourly || 0);
+  const categoriasGremio = Array.from(new Map(((props.scaleRows || []) as any[]).map((r) => [normalizarCategoria(r.category), String(r.category || "").trim()])).values())
+    .filter(Boolean)
+    .sort((a, b) => valorGremio(a) - valorGremio(b) || a.localeCompare(b));
   const {
     employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, onFichaPagoHaberes, precargaAuto = true, onPrecargaAuto, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
     employeeBaseConfig, payrollMonth, newEmployeeDraft,
@@ -1156,9 +1162,20 @@ export function PersonalTab(props: PersonalTabProps) {
                 nuevoId={nuevoId}
                 escalones={escalonesInternos}
                 onGuardarEscalones={onGuardarEscalones}
+                categoriasGremio={categoriasGremio}
               />
             </div>
           )}
+
+          <div style={{ order: 3, gridColumn: "1 / -1" }}>
+            <ListosParaAumento
+              empleados={visibleEmployees}
+              categorias={categoriasInternas}
+              tipos={tiposTarea}
+              valorGremio={valorGremio}
+              onAbrir={(id) => setSelectedEmployeeId(id)}
+            />
+          </div>
 
           <div style={{ order: 4, gridColumn: "1 / -1" }}>
               <Panel title="Escalas salariales" span="full">
@@ -2381,8 +2398,11 @@ export function PersonalTab(props: PersonalTabProps) {
                       empleado={selectedEmployee}
                       categorias={categoriasInternas}
                       tipos={tiposTarea}
+                      grupos={gruposTrabajo}
                       escalones={escalonesInternos}
                       onCambiar={(ids) => updateEmployeeField(selectedEmployee.id, "categoriasInternas", ids)}
+                      onCambiarDominadas={(ids) => updateEmployeeField(selectedEmployee.id, "tareasDominadas", ids)}
+                      valorGremio={valorGremio}
                     />
 
                     <div style={styles.personalAttendancePayrollGrid}>

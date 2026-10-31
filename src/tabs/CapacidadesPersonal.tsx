@@ -9,18 +9,17 @@ import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
 } from "../ui/planilla";
-import {
+import { tieneCapacidades,
   capacidadesDelEmpleado,
   categoriaPrincipal,
   coberturaDeTareas,
   etiquetaCategoria,
   extrasDelEmpleado,
-  tieneCategorias,
   type CategoriaEmpleado,
 } from "../domain/categoriasEmpleado";
 import type { GrupoTrabajo, TipoTarea } from "../domain/organizacionDiaria";
 
-type EmpleadoCap = { id: number; name: string; company: string; categoriasInternas?: number[] };
+type EmpleadoCap = { id: number; name: string; company: string; categoriasInternas?: number[]; tareasDominadas?: number[] };
 
 const chip = (prioritaria: boolean): React.CSSProperties => ({
   fontSize: 11.5, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap",
@@ -46,7 +45,7 @@ export function CapacidadesPersonal({
   const nombreTarea = (id: number) => tipos.find((t) => t.id === id)?.nombre || "tarea borrada";
   const activas = tipos.filter((t) => t.activa !== false);
   const cobertura = coberturaDeTareas(activas.map((t) => t.id), empleados, categorias);
-  const sinCargar = empleados.filter((e) => !tieneCategorias(e.categoriasInternas));
+  const sinCargar = empleados.filter((e) => !tieneCapacidades(e.categoriasInternas, e.tareasDominadas));
   const grupoDe = (t?: TipoTarea) => grupos.find((g) => g.id === t?.grupoId)?.nombre || "Sin grupo";
   const sinNadie = cobertura.filter((c) => c.empleadoIds.length === 0).length;
   const unaSola = cobertura.filter((c) => c.empleadoIds.length === 1).length;
@@ -81,7 +80,7 @@ export function CapacidadesPersonal({
           </thead>
           <tbody>
             {empleados.map((e) => {
-              const caps = capacidadesDelEmpleado(e.categoriasInternas, categorias);
+              const caps = capacidadesDelEmpleado(e.categoriasInternas, categorias, e.tareasDominadas);
               const cp = categoriaPrincipal(e.categoriasInternas, categorias);
               const max = caps[0]?.prioridad ?? 0;
               return (
@@ -95,7 +94,7 @@ export function CapacidadesPersonal({
                       <span key={x.id} style={{ marginLeft: 4, fontSize: 10.5, color: "#7c3aed" }}>+ {x.nombre}</span>
                     ))}
                   </td>
-                  <td style={{ ...tdDato, textAlign: "right" }}>{tieneCategorias(e.categoriasInternas) ? caps.length : "—"}</td>
+                  <td style={{ ...tdDato, textAlign: "right" }}>{tieneCapacidades(e.categoriasInternas, e.tareasDominadas) ? caps.length : "—"}</td>
                   <td style={tdFlexible}>
                     <span style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
                       {caps.map((x) => <span key={x.tareaId} style={chip(x.prioridad === max)}>{nombreTarea(x.tareaId)}</span>)}

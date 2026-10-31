@@ -33,10 +33,10 @@ import {
 import { timeToMinutes } from "../domain/attendance";
 import { GRUPOS_MAQUINAS, herramientasFaltantes, type Faltante, type FichaMaquina, type MaquinaStock } from "../domain/mantenimiento";
 import { claveTarea, faltaDeGente, type NecesidadDeTarea } from "../domain/tiposMueble";
-import { capacidadesDelEmpleado, capacidadesPorTareaEntera, categoriaPrincipal, etiquetaCategoria, tieneCategorias, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
+import { capacidadesDelEmpleado, capacidadesPorTareaEntera, categoriaPrincipal, etiquetaCategoria, tieneCapacidades, type Capacidad, type CategoriaEmpleado } from "../domain/categoriasEmpleado";
 
 // asistencia: la de Personal (reloj, ausencias, vacaciones), para saber quien esta ese dia.
-export type EmpleadoOrg = { id: number; name: string; company: string; categoriasInternas?: number[]; asistencia?: RegistroAsistencia[] };
+export type EmpleadoOrg = { id: number; name: string; company: string; categoriasInternas?: number[]; tareasDominadas?: number[]; asistencia?: RegistroAsistencia[] };
 export type TrabajoOrg = { id: number; budgetNumber: string; client: string; company: string; direccion?: string };
 
 const MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
@@ -403,7 +403,7 @@ ${a.notas ? `<div class="m">${esc(a.notas)}</div>` : ""}
                 trabajos={trabajos}
                 tipos={tipos}
                 grupos={grupos}
-                capacidades={tieneCategorias(e.categoriasInternas) ? capacidadesPorTareaEntera(capacidadesDelEmpleado(e.categoriasInternas, categorias), tipos) : null}
+                capacidades={tieneCapacidades(e.categoriasInternas, e.tareasDominadas) ? capacidadesPorTareaEntera(capacidadesDelEmpleado(e.categoriasInternas, categorias, e.tareasDominadas), tipos) : null}
                 faltanPara={faltanPara}
                 onGuardar={guardar}
                 onBorrar={existe ? () => { if (window.confirm(`¿Borrar el día de ${e.name}?`)) { onBorrarAsignacion(a.id); setAbierta(null); } } : undefined}

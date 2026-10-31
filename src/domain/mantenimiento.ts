@@ -12,7 +12,7 @@
 // necesitan; el mantenimiento se programa como una tarea mas del dia (organizacion diaria) de alguien
 // idoneo, y al marcarla hecha queda en el historial de la maquina. Funciones puras.
 
-import { puedeHacer, tieneCategorias, type CategoriaEmpleado } from "./categoriasEmpleado";
+import { puedeHacer, tieneCapacidades, type CategoriaEmpleado } from "./categoriasEmpleado";
 import { turnosPorDefecto, type AsignacionDiaria, type TareaDelDia, type TipoTarea } from "./organizacionDiaria";
 import { timeToMinutes } from "./attendance";
 
@@ -149,9 +149,9 @@ export const tareasQueUsan = (stockItemId: number, tipos: TipoTarea[]) => tipos.
 // ---- Programar el mantenimiento como tarea del dia de alguien idoneo -----------------------------------
 // Idoneos: los que tienen la tarea en sus categorias internas. Si la tarea no esta en ninguna categoria
 // todavia, no hay idoneos marcados (se puede elegir igual a cualquiera).
-export function idoneosPara<E extends { id: number; categoriasInternas?: number[] }>(tareaId: number | null | undefined, empleados: E[], categorias: CategoriaEmpleado[]): E[] {
+export function idoneosPara<E extends { id: number; categoriasInternas?: number[]; tareasDominadas?: number[] }>(tareaId: number | null | undefined, empleados: E[], categorias: CategoriaEmpleado[]): E[] {
   if (!tareaId) return [];
-  return empleados.filter((e) => tieneCategorias(e.categoriasInternas) && puedeHacer(e.categoriasInternas, tareaId, categorias));
+  return empleados.filter((e) => tieneCapacidades(e.categoriasInternas, e.tareasDominadas) && puedeHacer(e.categoriasInternas, tareaId, categorias, e.tareasDominadas));
 }
 
 const hhmm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;

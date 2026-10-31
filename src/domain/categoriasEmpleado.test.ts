@@ -117,3 +117,51 @@ describe("capacidad por Tarea entera (28/10/2026)", () => {
     expect(caps.map((c: any) => c.tareaId)).toEqual([1, 2]);
   });
 });
+
+describe("tareas que domina y listo para aumento (Nicolas, 31/10/2026)", () => {
+  const {
+    avanceDeCategoria,
+    capacidadesDelEmpleado: caps,
+    dominaPaso,
+    listoParaAumento,
+    marcarTarea,
+    puedeHacer,
+  } = require("./categoriasEmpleado");
+  // Pasos: 10 y 11 son de la Tarea "Corte CNC" (grupo 1); 20 de "Armado" (grupo 2); 30 suelto.
+  const tipos = [{ id: 10, grupoId: 1 }, { id: 11, grupoId: 1 }, { id: 20, grupoId: 2 }, { id: 30, grupoId: null }];
+  const cats = [
+    { id: 1, nombre: "Ayudante", nivel: 2, incluye: [], tareaIds: [10, 11], categoriaGremio: "Ayudante" },
+    { id: 2, nombre: "Armador", nivel: 4, incluye: [1], tareaIds: [20, 30], categoriaGremio: "Oficial general" },
+    { id: 3, nombre: "Responsable", nivel: 5, incluye: [], tareaIds: [30], categoriaGremio: "Oficial especializado" },
+  ];
+  const escala: Record<string, number> = { Ayudante: 100, "Medio oficial": 120, "Oficial general": 150, "Oficial especializado": 180 };
+  const valor = (c: string) => escala[c] || 0;
+
+  it("dominar un paso es dominar la Tarea entera; marcar una Tarea marca todos sus pasos", () => {
+    expect(dominaPaso([11], 10, tipos)).toBe(true);
+    expect(dominaPaso([11], 20, tipos)).toBe(false);
+    expect(marcarTarea([20], [10, 11], true)).toEqual([20, 10, 11]);
+    expect(marcarTarea([20, 10, 11], [10, 11], false)).toEqual([20]);
+  });
+
+  it("el avance cuenta las Tareas propias y heredadas", () => {
+    expect(avanceDeCategoria(cats[1], cats, [10, 20], tipos)).toEqual({ total: 3, dominadas: 2, completa: false, faltan: [30] });
+    expect(avanceDeCategoria(cats[1], cats, [10, 20, 30], tipos).completa).toBe(true);
+  });
+
+  it("con tareas dominadas, solo esas valen (aunque tenga la categoría)", () => {
+    expect(caps([2], cats).map((c: any) => c.tareaId).sort()).toEqual([10, 11, 20, 30]);
+    expect(caps([2], cats, [20]).map((c: any) => c.tareaId)).toEqual([20]);
+    expect(puedeHacer([2], 30, cats, [20])).toBe(false);
+    // Domina algo de una categoría que no tiene: igual puede hacerlo.
+    expect(puedeHacer([1], 20, cats, [20])).toBe(true);
+    expect(puedeHacer(undefined, 20, cats, undefined)).toBe(true);
+  });
+
+  it("listo para aumento: 100% de una categoría que paga más que la que cobra; si hay varias, la más alta", () => {
+    expect(listoParaAumento([10, 20], "Ayudante", cats, tipos, valor)).toBeNull();
+    const l = listoParaAumento([10, 20, 30], "Ayudante", cats, tipos, valor);
+    expect(l).toMatchObject({ gremio: "Oficial especializado", actual: "Ayudante", valor: 180, valorActual: 100 });
+    expect(listoParaAumento([10, 20, 30], "Oficial especializado", cats, tipos, valor)).toBeNull();
+  });
+});

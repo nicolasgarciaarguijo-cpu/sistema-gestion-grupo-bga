@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31d",
+    fecha: "31/10/2026",
+    titulo: "Categorías del gremio, internas y tareas que domina",
+    items: [
+      {
+        titulo: "Cada categoría interna, vinculada con la del gremio",
+        que: "En el bloque de Categorías internas hay una columna Gremio: elegís a qué categoría del convenio (las de la escala salarial) corresponde cada interna.",
+        como: "Personal → Categorías internas → columna Gremio.",
+        tab: "personal",
+      },
+      {
+        titulo: "En la ficha: las dos categorías y las tareas que domina",
+        que: "La ficha muestra la categoría del gremio que cobra y sus internas. Con un click en una categoría interna ves sus tareas: ahí se asigna la categoría y se tilda cada tarea que domina (se marca la Tarea entera). Cada categoría dice cuántas de sus tareas domina. Con tareas tildadas, en la organización diaria, el cronograma y el presupuesto cuenta solo lo que domina.",
+        como: "Personal → ficha de la persona → Categorías y tareas que domina.",
+        tab: "personal",
+      },
+      {
+        titulo: "Listos para aumento",
+        que: "Quien domina el 100% de las tareas de una categoría interna vinculada a una categoría del gremio que paga más que la que cobra (escala del mes) aparece como listo para pasar a esa categoría, en su ficha y en un bloque de Personal.",
+        como: "Personal → Listos para aumento → Ver ficha.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-10-31c",
     fecha: "31/10/2026",
     titulo: "Insumos por tarea",

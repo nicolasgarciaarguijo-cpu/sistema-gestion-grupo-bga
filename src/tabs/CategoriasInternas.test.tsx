@@ -52,13 +52,33 @@ describe("CategoriasInternas", () => {
     div.remove();
   });
 
-  it("en la ficha, tildar Armador suma lo incluido y muestra lo que puede hacer", () => {
+  it("en la ficha: las dos categorías, click en una muestra sus tareas, tildar lo que domina y avisa el aumento", () => {
     const onCambiar = jest.fn();
-    const { div, root } = montar(<CategoriasDelEmpleado empleado={{ id: 1, name: "Juan", categoriasInternas: [9] }} categorias={cats} tipos={tipos} onCambiar={onCambiar} />);
-    expect(div.textContent).toContain("(incluida)");
-    expect(div.textContent).toContain("Lo que puede hacer (2)");
-    const labelAprendiz = Array.from(div.querySelectorAll("label")).find((l) => l.textContent?.startsWith("Aprendiz"))!;
-    expect((labelAprendiz.querySelector("input") as HTMLInputElement).checked).toBe(true);
+    const onDominadas = jest.fn();
+    const conGremio = cats.map((c) => (c.id === 4 ? { ...c, categoriaGremio: "Medio oficial" } : c));
+    const valor = (c: string) => ({ Ayudante: 100, "Medio oficial": 120 } as Record<string, number>)[c] || 0;
+    const { div, root } = montar(
+      <CategoriasDelEmpleado
+        empleado={{ id: 1, name: "Juan", category: "Ayudante", categoriasInternas: [9], tareasDominadas: [100, 400] }}
+        categorias={conGremio}
+        tipos={tipos}
+        onCambiar={onCambiar}
+        onCambiarDominadas={onDominadas}
+        valorGremio={valor}
+      />
+    );
+    expect(div.textContent).toContain("Gremio (cobra): Ayudante");
+    expect(div.textContent).toContain("Listo para pasar a Medio oficial");
+    // Domina 2 de 2 de Ayudante de fabricación; Armador general (incluye todo) también 2/2.
+    const chipAyudante = Array.from(div.querySelectorAll("button")).find((b) => b.textContent?.includes("Ayudante de fabricación"))!;
+    expect(chipAyudante.textContent).toContain("2/2 ✓");
+    act(() => chipAyudante.click());
+    const labelCortar = Array.from(div.querySelectorAll("label")).find((l) => l.textContent?.startsWith("Cortar placas"))!;
+    act(() => (labelCortar.querySelector("input") as HTMLInputElement).click());
+    expect(onDominadas).toHaveBeenCalledWith([100]);
+    const labelTiene = Array.from(div.querySelectorAll("label")).find((l) => l.textContent?.includes("Tiene esta categoría"))!;
+    act(() => (labelTiene.querySelector("input") as HTMLInputElement).click());
+    expect(onCambiar).toHaveBeenCalledWith([9, 4]);
     act(() => root.unmount());
     div.remove();
   });

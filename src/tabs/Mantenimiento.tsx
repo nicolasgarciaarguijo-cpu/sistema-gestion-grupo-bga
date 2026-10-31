@@ -32,7 +32,7 @@ import {
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "../domain/organizacionDiaria";
 import type { CategoriaEmpleado } from "../domain/categoriasEmpleado";
 
-type EmpleadoMant = { id: number; name: string; company: string; categoriasInternas?: number[] };
+type EmpleadoMant = { id: number; name: string; company: string; categoriasInternas?: number[]; tareasDominadas?: number[] };
 
 const overlay: React.CSSProperties = { position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4700, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" };
 const caja: React.CSSProperties = { background: "#fff", borderRadius: 12, width: "min(900px, 100%)", padding: 18, display: "grid", gap: 10, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" };

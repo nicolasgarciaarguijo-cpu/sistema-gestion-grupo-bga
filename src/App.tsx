@@ -281,7 +281,7 @@ import { esMaquinaOHerramienta, motivoNoDisponible, registrarTareasHechas, TAREA
 import type { TipoMueble } from "./domain/tiposMueble";
 import { convertidorVigente, necesidadPorTarea, type ConvertidorMateriales } from "./domain/tiposMueble";
 import { EquivalenciasYCriterios } from "./tabs/Equivalencias";
-import { CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, tieneCategorias, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
+import { tieneCapacidades, CATEGORIAS_POR_DEFECTO, ESCALONES_POR_DEFECTO, capacidadesDelEmpleado, categoriaPrincipal, nombreEscalon, type CategoriaEmpleado } from "./domain/categoriasEmpleado";
 import { RUBROS_POR_DEFECTO, diasRestantes, fechaLimiteCompra, type PlanFabricacion, type RubroFabricacion } from "./domain/ganttFabricacion";
 import { ComprasPendientesTrabajo, type CompraPendienteTrabajo } from "./ui/ComprasPendientesTrabajo";
 import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organizacionDiaria";
@@ -16840,12 +16840,12 @@ Escribi CERRAR para confirmar:`
   const personasParaCotizar = useMemo<PersonaParaCotizar[]>(
     () =>
       (activeTab === "presupuesto" || activeTab === "fabricacion" ? employees : [])
-        .filter((e) => !isEmployeeTerminated(e) && tieneCategorias(e.categoriasInternas) && (!empresaQueFabrica || e.company === empresaQueFabrica))
+        .filter((e) => !isEmployeeTerminated(e) && tieneCapacidades(e.categoriasInternas, e.tareasDominadas) && (!empresaQueFabrica || e.company === empresaQueFabrica))
         .map((e) => ({
           id: e.id,
           nombre: String(e.name || "").trim(),
           costoHora: Number(costoHoraDe(e) || 0),
-          tareas: capacidadesDelEmpleado(e.categoriasInternas, categoriasVigentes).map((c) => c.tareaId),
+          tareas: capacidadesDelEmpleado(e.categoriasInternas, categoriasVigentes, e.tareasDominadas).map((c) => c.tareaId),
           // Por su categoria INTERNA (el escalon mas alto tildado, nunca la de contratacion): aprendiz o ayudante
           // de cualquier rumbo = ayudante en las tareas de 2 o mas personas.
           ...(() => {
@@ -16871,7 +16871,7 @@ Escribi CERRAR para confirmar:`
             company: String(e.company),
             costoHora: Number(costoHoraDe(e) || 0),
             ayudante: !!cat && (/aprendiz|ayudante/i.test(nombreEscalon(cat.nivel, escalonesVigentes)) || /aprendiz|ayudante/i.test(cat.nombre)),
-            tareas: tieneCategorias(e.categoriasInternas) ? capacidadesDelEmpleado(e.categoriasInternas, categoriasVigentes).map((c) => c.tareaId) : undefined,
+            tareas: tieneCapacidades(e.categoriasInternas, e.tareasDominadas) ? capacidadesDelEmpleado(e.categoriasInternas, categoriasVigentes, e.tareasDominadas).map((c) => c.tareaId) : undefined,
           };
         }),
     [activeTab, visibleEmployees, empresaQueFabrica, categoriasVigentes, escalonesVigentes, payrollMonth]
@@ -24281,6 +24281,7 @@ Escribi CERRAR para confirmar:`
             name: e.name,
             company: e.company,
             categoriasInternas: e.categoriasInternas,
+            tareasDominadas: e.tareasDominadas,
             asistencia: (e.attendance || []).map((r) => ({ date: r.date, status: r.status, checkIn: r.checkIn })),
           }))}
           trabajos={visibleApprovedJobs.map((j) => ({ id: j.id, budgetNumber: j.budgetNumber, client: j.client, company: j.company, direccion: j.deliveryDestination }))}
@@ -24319,7 +24320,7 @@ Escribi CERRAR para confirmar:`
       )}
       {activeTab === "fabricacion" && (
         <CapacidadesPersonal
-          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
+          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas, tareasDominadas: e.tareasDominadas }))}
           categorias={categoriasVigentes}
           tipos={tiposTarea}
           grupos={gruposTrabajo}
@@ -24333,7 +24334,7 @@ Escribi CERRAR para confirmar:`
           tipos={conHerramientasDeLaTarea(tiposTarea, gruposTrabajo)}
           grupos={gruposTrabajo}
           categorias={categoriasVigentes}
-          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas }))}
+          empleados={empleadosFabrica.map((e) => ({ id: e.id, name: e.name, company: e.company, categoriasInternas: e.categoriasInternas, tareasDominadas: e.tareasDominadas }))}
           asignaciones={asignacionesDiarias.filter((a) => canAccessCompany(a.company))}
           hoy={todayIso()}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}

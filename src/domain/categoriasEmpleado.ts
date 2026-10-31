@@ -30,6 +30,9 @@ export type CategoriaEmpleado = {
   extra?: boolean;
   descripcion?: string;
   activa?: boolean;
+  // Categoria del GREMIO (la del convenio, la que liquida) a la que corresponde (Nicolas, 31/10/2026: "debo vincular las
+  // categorias internas con las categorias reales, para saber cuando estan listos para recibir un aumento").
+  categoriaGremio?: string;
 };
 
 // Los nombres de los escalones, del 1 para arriba (posicion = nivel). Editables: se suman, se renombran y
@@ -119,7 +122,11 @@ export type Capacidad = {
 };
 
 // Las tareas que puede hacer un empleado, de la mas nueva (prioritaria) a la mas vieja.
-export function capacidadesDelEmpleado(tildadas: number[] | undefined, catalogo: CategoriaEmpleado[]): Capacidad[] {
+// TAREAS QUE DOMINA (Nicolas, 31/10/2026): "hay que seleccionar las tareas que domina. Hoy en dia no todos dominan todo y tienen
+// la misma categoria." Con tareas dominadas marcadas, SOLO esas valen (aunque sean de una categoria que no tiene); la
+// categoria dice donde esta, no lo que sabe. Sin ninguna marcada, como antes: las de sus categorias.
+export function capacidadesDelEmpleado(tildadas: number[] | undefined, catalogo: CategoriaEmpleado[], dominadas?: number[]): Capacidad[] {
+  if (dominadas && dominadas.length) return capacidadesDominadas(tildadas, catalogo, dominadas);
   const efectivas = categoriasEfectivas(tildadas, catalogo);
   const directas = new Set(tildadas || []);
   const porTarea = new Map<number, Capacidad>();
@@ -153,14 +160,82 @@ export function capacidadesPorTareaEntera(caps: Capacidad[], tipos: Array<{ id: 
   return Array.from(out.values()).sort((a, b) => b.prioridad - a.prioridad || a.tareaId - b.tareaId);
 }
 
-// Un empleado sin categorias cargadas todavia NO se restringe (si no, la organizacion diaria quedaria
-// trabada hasta cargar a todos). Con categorias, solo lo que ellas dan.
-export function puedeHacer(tildadas: number[] | undefined, tareaId: number, catalogo: CategoriaEmpleado[]): boolean {
-  if (!tildadas || tildadas.length === 0) return true;
-  return capacidadesDelEmpleado(tildadas, catalogo).some((x) => x.tareaId === tareaId);
+// Un empleado sin categorias ni tareas dominadas cargadas todavia NO se restringe (si no, la organizacion diaria quedaria
+// trabada hasta cargar a todos). Con algo cargado, solo lo que sabe.
+export function puedeHacer(tildadas: number[] | undefined, tareaId: number, catalogo: CategoriaEmpleado[], dominadas?: number[]): boolean {
+  if (!tieneCapacidades(tildadas, dominadas)) return true;
+  return capacidadesDelEmpleado(tildadas, catalogo, dominadas).some((x) => x.tareaId === tareaId);
 }
 
 export const tieneCategorias = (tildadas: number[] | undefined) => !!tildadas && tildadas.length > 0;
+export const tieneCapacidades = (tildadas: number[] | undefined, dominadas?: number[]) => tieneCategorias(tildadas) || !!dominadas?.length;
+
+// Lo dominado como capacidades: la prioridad es la del escalon mas alto de SUS categorias que da la tarea; si ninguna de las
+// suyas la da (domina algo de mas arriba), la del escalon mas bajo que la da en el catalogo.
+function capacidadesDominadas(tildadas: number[] | undefined, catalogo: CategoriaEmpleado[], dominadas: number[]): Capacidad[] {
+  const propias = capacidadesDelEmpleado(tildadas, catalogo);
+  const lasDan = (id: number) => activas(catalogo).filter((c) => !c.extra && c.tareaIds.includes(id)).sort((a, b) => a.nivel - b.nivel);
+  return Array.from(new Set(dominadas))
+    .map((tareaId) => {
+      const p = propias.find((x) => x.tareaId === tareaId);
+      if (p) return p;
+      const c = lasDan(tareaId)[0];
+      return { tareaId, prioridad: c?.nivel || 1, categoriaId: c?.id ?? 0, heredada: false };
+    })
+    .sort((a, b) => b.prioridad - a.prioridad || a.tareaId - b.tareaId);
+}
+
+// ---- DOMINIO DE TAREAS Y AUMENTOS (Nicolas, 31/10/2026) ---------------------------------------------------------
+// "Se domina la Tarea" (entera): los pasos se guardan, pero dominar uno de una Tarea es dominar la Tarea (como en
+// capacidadesPorTareaEntera). Una TAREA = el grupo del paso; un paso suelto vale solo.
+type PasoConGrupo = { id: number; grupoId?: number | null };
+const unidadDeTarea = (id: number, tipos: PasoConGrupo[]) => {
+  const g = tipos.find((t) => t.id === id)?.grupoId;
+  return g != null ? `g${g}` : `p${id}`;
+};
+export const dominaPaso = (dominadas: number[] | undefined, pasoId: number, tipos: PasoConGrupo[]) => {
+  const u = unidadDeTarea(pasoId, tipos);
+  return (dominadas || []).some((d) => unidadDeTarea(d, tipos) === u);
+};
+// Marcar o desmarcar una Tarea entera (todos sus pasos).
+export function marcarTarea(dominadas: number[] | undefined, pasoIds: number[], on: boolean): number[] {
+  const sin = (dominadas || []).filter((d) => !pasoIds.includes(d));
+  return on ? [...sin, ...pasoIds] : sin;
+}
+
+// Avance de una categoria: de sus Tareas (propias y heredadas de las que incluye), cuantas domina. 100% = completa.
+export type AvanceCategoria = { total: number; dominadas: number; completa: boolean; faltan: number[] };
+export function avanceDeCategoria(cat: CategoriaEmpleado, catalogo: CategoriaEmpleado[], dominadas: number[] | undefined, tipos: PasoConGrupo[]): AvanceCategoria {
+  const pasos = [...cat.tareaIds, ...tareasHeredadas(cat, catalogo)];
+  const porUnidad = new Map<string, number>();
+  pasos.forEach((p) => {
+    const u = unidadDeTarea(p, tipos);
+    if (!porUnidad.has(u)) porUnidad.set(u, p);
+  });
+  const faltan = Array.from(porUnidad.values()).filter((p) => !dominaPaso(dominadas, p, tipos));
+  const total = porUnidad.size;
+  return { total, dominadas: total - faltan.length, completa: total > 0 && faltan.length === 0, faltan };
+}
+
+// LISTO PARA AUMENTO: domina el 100% de una categoria interna vinculada a una categoria del gremio que paga MAS que la que
+// cobra (por el valor de la escala del mes). Puede pasar con varias (alguien de categoria baja que domina todo): va la mas alta.
+export type ListoParaAumento = { categoria: CategoriaEmpleado; gremio: string; valor: number; actual: string; valorActual: number };
+export function listoParaAumento(
+  dominadas: number[] | undefined,
+  categoriaActual: string,
+  catalogo: CategoriaEmpleado[],
+  tipos: PasoConGrupo[],
+  valorGremio: (categoria: string) => number
+): ListoParaAumento | null {
+  if (!dominadas?.length) return null;
+  const valorActual = valorGremio(categoriaActual);
+  const candidatas = activas(catalogo)
+    .filter((c) => c.categoriaGremio && avanceDeCategoria(c, catalogo, dominadas, tipos).completa)
+    .map((c) => ({ categoria: c, gremio: c.categoriaGremio as string, valor: valorGremio(c.categoriaGremio as string) }))
+    .filter((x) => x.valor > valorActual)
+    .sort((a, b) => b.valor - a.valor || b.categoria.nivel - a.categoria.nivel);
+  return candidatas[0] ? { ...candidatas[0], actual: categoriaActual, valorActual } : null;
+}
 
 // La categoria "de cartel" del empleado: la tildada de mayor escalon (las habilidades extra no cuentan).
 export function categoriaPrincipal(tildadas: number[] | undefined, catalogo: CategoriaEmpleado[]): CategoriaEmpleado | undefined {
@@ -201,11 +276,11 @@ export function hayCiclo(catId: number, incluye: number[], catalogo: CategoriaEm
 export type Cobertura = { tareaId: number; empleadoIds: number[] };
 export function coberturaDeTareas(
   tareaIds: number[],
-  empleados: Array<{ id: number; categoriasInternas?: number[] }>,
+  empleados: Array<{ id: number; categoriasInternas?: number[]; tareasDominadas?: number[] }>,
   catalogo: CategoriaEmpleado[]
 ): Cobertura[] {
   const caps = empleados
-    .filter((e) => tieneCategorias(e.categoriasInternas))
-    .map((e) => ({ id: e.id, tareas: new Set(capacidadesDelEmpleado(e.categoriasInternas, catalogo).map((x) => x.tareaId)) }));
+    .filter((e) => tieneCapacidades(e.categoriasInternas, e.tareasDominadas))
+    .map((e) => ({ id: e.id, tareas: new Set(capacidadesDelEmpleado(e.categoriasInternas, catalogo, e.tareasDominadas).map((x) => x.tareaId)) }));
   return tareaIds.map((tareaId) => ({ tareaId, empleadoIds: caps.filter((x) => x.tareas.has(tareaId)).map((x) => x.id) }));
 }
