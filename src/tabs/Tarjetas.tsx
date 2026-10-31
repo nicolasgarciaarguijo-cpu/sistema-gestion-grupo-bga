@@ -4,6 +4,7 @@
 // costos fijos/variables y así COTIZAR y preparar los marcadores. NO suma al estado de resultados
 // (por eso no hay doble conteo con el pago del resumen que sale del banco). Reusa los grupos de costos
 // y el motor de reglas de la solapa Costos: un consumo recurrente (Netflix, Google...) se auto-sugiere.
+import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, AmountInput } from "../ui/primitives";
@@ -190,7 +191,35 @@ export function TarjetasTab({
   const anchosTarjetas = usePlanillaWidths("tarjetas.listado", { label: 260, col: 130, colCompact: 100 });
   const anchosResumenes = usePlanillaWidths("tarjetas.resumenes", { label: 240, col: 124, colCompact: 94 });
 
+  const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   return (
+    <>
+      {ficha && (() => {
+        const c = cards.find((x: CreditCard) => x.id === ficha.id);
+        if (!c) return null;
+        const campos: CampoFicha[] = [
+          { key: "company", label: "Empresa (la titular)", tipo: "empresa" },
+          { key: "name", label: "Nombre", tipo: "texto" },
+          { key: "bank", label: "Banco", tipo: "texto" },
+          { key: "lastDigits", label: "Últimos dígitos", tipo: "texto" },
+          { key: "numeroCuenta", label: "N.º de cuenta", tipo: "texto" },
+          { key: "responsable", label: "Responsable", tipo: "texto" },
+          { key: "numerosAnteriores", label: "Números anteriores", tipo: "texto" },
+          { key: "active", label: "Activa", tipo: "check" },
+          { key: "notes", label: "Notas", tipo: "area" },
+        ];
+        return (
+          <FichaRegistro
+            titulo={c.name || "Tarjeta"}
+            subtitulo={[c.bank, c.lastDigits && `···${c.lastDigits}`].filter(Boolean).join(" · ")}
+            valores={c}
+            campos={campos}
+            empresas={COMPANY_OPTIONS}
+            onCambiar={(k, v) => updateCreditCard(c.id, k as keyof CreditCard, v)}
+            onCerrar={() => setFicha(null)}
+          />
+        );
+      })()}
     <>
       <div style={{ ...styles.sectionNote, marginBottom: 12 }}>
         Las tarjetas sirven para <strong>identificar costos fijos y variables</strong> a partir de los
@@ -371,6 +400,7 @@ export function TarjetasTab({
                           </option>
                         ))}
                       </select>
+<BotonFicha onClick={() => setFicha({ tipo: "tarjeta", id: c.id })} />
                       <input
                         style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
                         {...focoCelda}
@@ -791,6 +821,7 @@ export function TarjetasTab({
       })()}
 
       <VerificacionDeTarjetas cards={cards} statements={statements} consumptions={consumptions} />
+    </>
     </>
   );
 }

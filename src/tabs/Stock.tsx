@@ -1,4 +1,5 @@
 import React from "react";
+import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import { styles } from "../ui/styles";
 import { Panel, SemaforoResumen, ButtonLike, MiniMetric, Field, AmountInput, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import {
@@ -187,7 +188,39 @@ export function StockTab({
     )
     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
     .slice(0, 25);
+  const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   return (
+    <>
+      {ficha && (() => {
+        const it = visibleStockItems.find((x: any) => x.id === ficha.id);
+        if (!it) return null;
+        const campos: CampoFicha[] = [
+          { key: "company", label: "Empresa", tipo: "empresa", compartido: true, ayuda: "Ambas = compartido: lo ven las dos empresas" },
+          { key: "code", label: "Código", tipo: "texto" },
+          { key: "description", label: "Descripción", tipo: "texto", ancho: "completo" },
+          { key: "group", label: "Grupo", tipo: "select", opciones: STOCK_GENERAL_GROUP_OPTIONS.map((g) => ({ value: g, label: g })) },
+          { key: "location", label: "Ubicación", tipo: "texto" },
+          { key: "unit", label: "Unidad", tipo: "texto" },
+          { key: "quantity", label: "Cantidad", tipo: "numero" },
+          { key: "unitPrice", label: "Precio unitario", tipo: "numero" },
+          { key: "active", label: "Activo", tipo: "check" },
+        ];
+        return (
+          <FichaRegistro
+            titulo={it.description || "Artículo"}
+            subtitulo={[it.code, it.group].filter(Boolean).join(" · ")}
+            valores={it}
+            campos={campos}
+            empresas={COMPANY_OPTIONS}
+            onCambiar={(k, v) => {
+              updateStockItem(it.id, k, v);
+              // Compartido = lo ven las dos (las maquinas siempre se comparten en el uso).
+              if (k === "company") updateStockItem(it.id, "shared", v === "General" || it.shared);
+            }}
+            onCerrar={() => setFicha(null)}
+          />
+        );
+      })()}
         <div style={styles.column}>
           <Panel span="wide" title="Semaforo de stock">
             <SemaforoResumen
@@ -433,7 +466,8 @@ export function StockTab({
                       <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
                         <span title="Grupo">{item.group || "—"}</span>
                         <span title="Ubicacion">{item.location || "—"}</span>
-                        <span title="Empresa">{item.company}</span>
+                        <span title="Empresa">{item.company === "General" ? "Ambas (compartido)" : COMPANY_OPTIONS.find((c: any) => c.value === item.company)?.short || item.company}</span>
+                        <BotonFicha onClick={() => setFicha({ tipo: "stock", id: item.id })} />
                       </span>
                     </td>
                     <AccionesFila
@@ -1706,6 +1740,7 @@ export function StockTab({
             )}
           </Panel>
         </div>
+    </>
   );
 }
 

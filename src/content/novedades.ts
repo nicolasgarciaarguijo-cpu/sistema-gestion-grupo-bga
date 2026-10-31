@@ -16,6 +16,18 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31j",
+    fecha: "31/10/2026",
+    titulo: "Fichas en seguros, inversiones, tarjetas, stock, movimientos internos y marcadores",
+    items: [
+      {
+        titulo: "Cada fila tiene su ficha",
+        que: "El botón 📋 de cada fila abre la ficha con todos sus datos y la empresa arriba, en una ventana emergente. Cada cambio se guarda al momento, igual que en la fila. En Stock la empresa puede ser Ambas (compartido); lo que mueve plata es siempre de una sola empresa.",
+        como: "Seguros, Inversiones, Tarjetas, Stock, Movimientos internos y Marcadores → botón 📋 en la fila.",
+      },
+    ],
+  },
+  {
     id: "2026-10-31i",
     fecha: "31/10/2026",
     titulo: "La empresa se elige en la ficha",

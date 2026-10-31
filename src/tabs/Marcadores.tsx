@@ -1,4 +1,5 @@
 import React from "react";
+import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, AmountInput, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
 import {
@@ -170,7 +171,43 @@ export function MarcadoresTab({
       valor > 0 ? fijarValor(prev, c, valor, newId, "Costos empresariales") : volverAlSugerido(prev, c)
     );
 
+  const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   return (
+    <>
+      {ficha && (() => {
+        const tipos = tiposTrabajo.map((t) => ({ value: t, label: t }));
+        const base: CampoFicha[] = [{ key: "company", label: "Empresa (la que paga)", tipo: "empresa" }];
+        const tipoTrabajo: CampoFicha = { key: "workType", label: "Tipo de trabajo", tipo: "select", opciones: tipos };
+        const fin: CampoFicha[] = [{ key: "active", label: "Activo", tipo: "check" }, { key: "notes", label: "Notas", tipo: "area" }];
+        const def: Record<string, { lista: any[]; setter: any; titulo: (x: any) => string; campos: CampoFicha[] }> = {
+          fijo: { lista: fixedMarkers, setter: setFixedMarkers, titulo: (x) => x.description || x.group || "Costo fijo", campos: [...base, tipoTrabajo,
+            { key: "group", label: "Grupo", tipo: "texto", sugerencias: fixedMarkerGroupOptions.map(String) },
+            { key: "description", label: "Concepto", tipo: "texto" }, { key: "amount", label: "Monto mensual", tipo: "numero" }, ...fin] },
+          insumo: { lista: supplyMarkers, setter: setSupplyMarkers, titulo: (x) => x.description || "Insumo", campos: [...base, tipoTrabajo,
+            { key: "description", label: "Insumo", tipo: "texto" }, { key: "qty", label: "Cantidad", tipo: "numero" }, { key: "unit", label: "Unidad", tipo: "texto" },
+            { key: "unitPrice", label: "Precio unitario", tipo: "numero" }, ...fin] },
+          mano: { lista: laborMarkers, setter: setLaborMarkers, titulo: (x) => x.category || "Mano de obra", campos: [...base, tipoTrabajo,
+            { key: "category", label: "Categoría", tipo: "texto" }, { key: "employees", label: "Personas", tipo: "numero" },
+            { key: "monthlyHoursPerEmployee", label: "Horas por mes c/u", tipo: "numero" }, { key: "hourlyRate", label: "Valor hora", tipo: "numero" },
+            { key: "hoursBase", label: "Horas base", tipo: "numero" }, ...fin] },
+          provision: { lista: personalProvisionMarkers, setter: setPersonalProvisionMarkers, titulo: (x) => x.description || x.kind || "Provisión", campos: [...base,
+            { key: "description", label: "Detalle", tipo: "texto" }, { key: "amountPerDelivery", label: "Monto por entrega", tipo: "numero" },
+            { key: "periodicityMonths", label: "Cada cuántos meses", tipo: "numero" }, { key: "shared", label: "Compartido", tipo: "check" }, ...fin] },
+        };
+        const d = def[ficha.tipo];
+        const valores = d?.lista.find((x: any) => x.id === ficha.id);
+        if (!d || !valores) return null;
+        return (
+          <FichaRegistro
+            titulo={d.titulo(valores)}
+            valores={valores}
+            campos={d.campos}
+            empresas={COMPANY_OPTIONS}
+            onCambiar={(k, v) => updateArrayItem(d.setter, ficha.id, k as any, v)}
+            onCerrar={() => setFicha(null)}
+          />
+        );
+      })()}
         <div style={styles.column}>
           <Panel span="wide" title="Parametros economicos (fuente de verdad)">
             <div style={styles.noticeBox}>
@@ -603,6 +640,7 @@ export function MarcadoresTab({
                             </option>
                           ))}
                         </select>
+<BotonFicha onClick={() => setFicha({ tipo: "fijo", id: item.id })} />
                         <input
                           style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
                           {...focoCelda}
@@ -771,6 +809,7 @@ export function MarcadoresTab({
                             </option>
                           ))}
                         </select>
+<BotonFicha onClick={() => setFicha({ tipo: "insumo", id: item.id })} />
                       </span>
                     </td>
                     <td style={{ ...tdDato, ...tdAcciones }}>
@@ -942,6 +981,7 @@ export function MarcadoresTab({
                             </option>
                           ))}
                         </select>
+<BotonFicha onClick={() => setFicha({ tipo: "mano", id: item.id })} />
                       </span>
                     </td>
                     <td style={{ ...tdDato, ...tdAcciones }}>
@@ -1104,6 +1144,7 @@ export function MarcadoresTab({
                               </option>
                             ))}
                           </select>
+<BotonFicha onClick={() => setFicha({ tipo: "provision", id: item.id })} />
                           <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#94a3b8" }}>
                             <input
                               type="checkbox"
@@ -1156,6 +1197,7 @@ export function MarcadoresTab({
             </div>
           </Panel>
         </div>
+    </>
   );
 }
 

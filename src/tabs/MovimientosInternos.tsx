@@ -1,4 +1,5 @@
 import React from "react";
+import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import { styles } from "../ui/styles";
 import type { ConteoPersona, PagoCruzado } from "../domain/pagosPorPersona";
 import { Panel, MiniMetric, ButtonLike, AmountInput, ColorTagToggle, moneyToneColor } from "../ui/primitives";
@@ -211,7 +212,83 @@ export function MovimientosInternosTab({
     .filter((t) => t.direction === "efectivo_a_banco" || t.direction === "banco_a_efectivo")
     .reduce((acc, t) => acc + (t.direction === "banco_a_efectivo" ? -1 : 1) * Number(t.amount || 0), 0);
 
+  const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   return (
+    <>
+      {ficha && (() => {
+        const comunes = (empresa: string): CampoFicha[] => [{ key: "company", label: empresa, tipo: "empresa" }];
+        const bn = [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }];
+        const mon = [{ value: "ARS", label: "Pesos" }, { value: "USD", label: "Dólares" }];
+        let titulo = "";
+        let valores: any = null;
+        let campos: CampoFicha[] = [];
+        let set: (k: string, v: any) => void = () => {};
+        if (ficha.tipo === "pase") {
+          valores = internalTransfers.find((x) => x.id === ficha.id);
+          titulo = valores?.description || "Pase entre cuentas";
+          campos = [
+            ...comunes("Empresa"),
+            { key: "date", label: "Fecha", tipo: "fecha" },
+            { key: "direction", label: "Sentido", tipo: "select", opciones: [
+              { value: "efectivo_a_banco", label: "Efectivo → banco" },
+              { value: "banco_a_efectivo", label: "Banco → efectivo" },
+              { value: "banco_a_banco", label: "Banco → banco" },
+              { value: "efectivo_a_efectivo", label: "Efectivo → efectivo" },
+            ] },
+            { key: "amount", label: "Monto", tipo: "numero" },
+            { key: "currency", label: "Moneda", tipo: "select", opciones: mon },
+            { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
+            { key: "bank", label: "Cuenta", tipo: "texto" },
+            { key: "description", label: "Descripción", tipo: "texto" },
+            { key: "notes", label: "Notas", tipo: "area" },
+          ];
+          set = (k, v) => updateArrayItem(setInternalTransfers, ficha.id, k as any, v);
+        } else if (ficha.tipo === "efectivo") {
+          valores = cashHoldingsAll.find((x) => x.id === ficha.id);
+          titulo = valores?.description || "Efectivo";
+          campos = [
+            ...comunes("Empresa"),
+            { key: "date", label: "Fecha", tipo: "fecha" },
+            { key: "kind", label: "Entra / sale", tipo: "select", opciones: [{ value: "ingreso", label: "Entra" }, { value: "egreso", label: "Sale" }] },
+            { key: "amount", label: "Monto", tipo: "numero" },
+            { key: "currency", label: "Moneda", tipo: "select", opciones: mon },
+            { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
+            { key: "description", label: "Descripción", tipo: "texto", ancho: "completo" },
+            { key: "notes", label: "Notas", tipo: "area" },
+          ];
+          set = (k, v) => updateArrayItem(setCashHoldings, ficha.id, k as any, v);
+        } else if (ficha.tipo === "capital") {
+          valores = capitalEntriesAll.find((x) => x.id === ficha.id);
+          titulo = valores ? `${valores.kind === "prestamo" ? "Préstamo" : "Aporte"} · ${valores.origin || ""}` : "Aporte / préstamo";
+          campos = [
+            ...comunes("Empresa (la que recibe o devuelve)"),
+            { key: "date", label: "Fecha", tipo: "fecha" },
+            { key: "origin", label: "De quién", tipo: "texto" },
+            { key: "kind", label: "Tipo", tipo: "select", opciones: [{ value: "aporte", label: "Aporte (no vuelve)" }, { value: "prestamo", label: "Préstamo (vuelve)" }] },
+            { key: "direction", label: "Sentido", tipo: "select", opciones: [{ value: "recibido", label: "Entró plata" }, { value: "devuelto", label: "Se devolvió" }] },
+            { key: "amount", label: "Monto", tipo: "numero" },
+            { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
+            { key: "notes", label: "Notas", tipo: "area" },
+          ];
+          set = (k, v) => updateArrayItem(setCapitalEntries, ficha.id, k as any, v);
+        } else if (ficha.tipo === "gente") {
+          valores = personLedgerEntries.find((x) => x.id === ficha.id);
+          titulo = valores ? `${valores.person || "Persona"} · ${valores.kind === "haber" ? "haber" : "debe"}` : "Cuenta con la gente";
+          campos = [
+            ...comunes("Empresa"),
+            { key: "person", label: "Persona", tipo: "texto" },
+            { key: "date", label: "Fecha", tipo: "fecha" },
+            { key: "kind", label: "Debe / haber", tipo: "select", opciones: [{ value: "debe", label: "Debe" }, { value: "haber", label: "Haber" }] },
+            { key: "amount", label: "Monto", tipo: "numero" },
+            { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
+            { key: "description", label: "Descripción", tipo: "texto", ancho: "completo" },
+            { key: "notes", label: "Notas", tipo: "area" },
+          ];
+          set = (k, v) => updateArrayItem(setPersonLedgerEntries, ficha.id, k as any, v);
+        }
+        if (!valores) return null;
+        return <FichaRegistro titulo={titulo} subtitulo={valores.firmante ? `Firmó ${valores.firmante}` : undefined} valores={valores} campos={campos} empresas={COMPANY_OPTIONS} onCambiar={set} onCerrar={() => setFicha(null)} />;
+      })()}
     <div style={styles.column}>
       <Panel
         title="Movimientos internos - efectivo y banco"
@@ -388,6 +465,7 @@ export function MovimientosInternosTab({
                             </option>
                           ))}
                         </select>
+<BotonFicha onClick={() => setFicha({ tipo: "pase", id: item.id })} />
                         <input
                           style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
                           {...focoCelda}
@@ -567,6 +645,7 @@ export function MovimientosInternosTab({
                           </option>
                         ))}
                       </select>
+<BotonFicha onClick={() => setFicha({ tipo: "efectivo", id: item.id })} />
                       <input
                         style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
                         {...focoCelda}
@@ -813,6 +892,7 @@ export function MovimientosInternosTab({
                           </option>
                         ))}
                       </select>
+<BotonFicha onClick={() => setFicha({ tipo: "capital", id: item.id })} />
                       <span style={{ color: "#94a3b8" }}>U$S</span>
                       <NumInput
                         style={{ ...inputCelda, width: 72, textAlign: "right" }}
@@ -1116,6 +1196,7 @@ export function MovimientosInternosTab({
                                       </option>
                                     ))}
                                   </select>
+<BotonFicha onClick={() => setFicha({ tipo: "gente", id: entry.id })} />
                                 </>
                               ) : (
                                 <span style={{ fontSize: 11, color: "#94a3b8" }}>
@@ -1453,5 +1534,6 @@ export function MovimientosInternosTab({
         )}
       </Panel>
     </div>
+    </>
   );
 }

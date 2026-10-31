@@ -8,6 +8,7 @@
 // renglon del Calendario anual (columna "Renglón"; si esta en automatico se deduce del tipo). La
 // prevision no suma al neto: es lo que se viene. Cuando cae el debito real del banco en ese renglon,
 // la prevision del mes se da por conciliada y en la planilla manda el numero real.
+import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, MiniMetric, ButtonLike, FileDropButton } from "../ui/primitives";
@@ -72,7 +73,39 @@ export function SegurosTab({
   const resumen = resumenSegurosPorEmpresa(seguros, companies, hoyIso);
   const visibles = seguros.filter((s) => companyScope === "__ALL__" || s.company === companyScope);
 
+  const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   return (
+    <>
+      {ficha && (() => {
+        const s = seguros.find((x) => x.id === ficha.id);
+        if (!s) return null;
+        const campos: CampoFicha[] = [
+          { key: "company", label: "Empresa (la que paga)", tipo: "empresa" },
+          { key: "tipo", label: "Tipo", tipo: "texto", sugerencias: [...TIPOS_SEGURO_SUGERIDOS] },
+          { key: "descripcion", label: "Bien asegurado / detalle", tipo: "texto" },
+          { key: "aseguradora", label: "Aseguradora", tipo: "texto" },
+          { key: "numeroPoliza", label: "N.º de póliza", tipo: "texto" },
+          { key: "costoMensual", label: "Costo mensual", tipo: "numero" },
+          { key: "diaDebito", label: "Día de débito", tipo: "numero" },
+          { key: "vigenciaDesde", label: "Vigencia desde", tipo: "fecha" },
+          { key: "vigenciaHasta", label: "Vigencia hasta", tipo: "fecha" },
+          { key: "administration", label: "Blanco / negro", tipo: "select", opciones: [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }] },
+          { key: "estado", label: "Estado", tipo: "select", opciones: [{ value: "activo", label: "Activo" }, { value: "baja", label: "Dado de baja" }] },
+          { key: "notas", label: "Notas", tipo: "area" },
+        ];
+        return (
+          <FichaRegistro
+            titulo={`${s.tipo || "Seguro"}${s.descripcion ? ` · ${s.descripcion}` : ""}`}
+            subtitulo={[s.aseguradora, s.numeroPoliza && `póliza ${s.numeroPoliza}`].filter(Boolean).join(" · ")}
+            valores={s}
+            campos={campos}
+            empresas={COMPANY_OPTIONS}
+            onCambiar={(k, v) => updateSeguro(s.id, k as keyof Seguro, v)}
+            onCerrar={() => setFicha(null)}
+            pie={s.polizaUrl ? <button type="button" onClick={() => onOpenPoliza(s)}>Ver póliza</button> : undefined}
+          />
+        );
+      })()}
     <>
       <Panel title="Seguros — resumen" span="full">
         <div style={styles.grid2}>
@@ -239,6 +272,7 @@ export function SegurosTab({
                           </option>
                         ))}
                       </select>
+<BotonFicha onClick={() => setFicha({ tipo: "seguro", id: s.id })} />
                     </td>
                     <td>
                       <input
@@ -389,6 +423,7 @@ export function SegurosTab({
           ))}
         </datalist>
       </Panel>
+    </>
     </>
   );
 }

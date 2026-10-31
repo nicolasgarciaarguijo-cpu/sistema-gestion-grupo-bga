@@ -4,6 +4,7 @@
 // La moneda importa: ARS y USD se muestran por separado (no se suman). La vinculacion con el Calendario
 // anual: la colocacion sale de su cuenta (EGRESOS · INVERSIONES) y el rescate vuelve a INGRESOS ·
 // INVERSIONES en el renglon de su tipo (ver domain/inversionesCalendario).
+import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import React from "react";
 import { styles } from "../ui/styles";
 import { Panel, Field, ButtonLike } from "../ui/primitives";
@@ -78,7 +79,36 @@ export function InversionesTab({
     );
   };
 
+  const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   return (
+    <>
+      {ficha && (() => {
+        const i = inversiones.find((x) => x.id === ficha.id);
+        if (!i) return null;
+        const campos: CampoFicha[] = [
+          { key: "company", label: "Empresa", tipo: "empresa" },
+          { key: "tipo", label: "Tipo", tipo: "texto", sugerencias: [...TIPOS_INVERSION_SUGERIDOS] },
+          { key: "descripcion", label: "Detalle", tipo: "texto" },
+          { key: "moneda", label: "Moneda", tipo: "select", opciones: [{ value: "ARS", label: "Pesos" }, { value: "USD", label: "Dólares" }] },
+          { key: "montoInvertido", label: "Monto invertido", tipo: "numero" },
+          { key: "valorActual", label: "Valor actual", tipo: "numero" },
+          { key: "fechaInicio", label: "Inicio", tipo: "fecha" },
+          { key: "fechaFin", label: "Fin", tipo: "fecha" },
+          { key: "estado", label: "Estado", tipo: "select", opciones: [{ value: "activa", label: "Activa" }, { value: "cerrada", label: "Cerrada" }] },
+          { key: "administration", label: "Blanco / negro", tipo: "select", opciones: [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }] },
+          { key: "notas", label: "Notas", tipo: "area" },
+        ];
+        return (
+          <FichaRegistro
+            titulo={`${i.tipo || "Inversión"}${i.descripcion ? ` · ${i.descripcion}` : ""}`}
+            valores={i}
+            campos={campos}
+            empresas={COMPANY_OPTIONS}
+            onCambiar={(k, v) => updateInversion(i.id, k as keyof Inversion, v)}
+            onCerrar={() => setFicha(null)}
+          />
+        );
+      })()}
     <>
       <Panel title="Inversiones — resumen" span="full">
         <div style={styles.grid2}>
@@ -168,6 +198,7 @@ export function InversionesTab({
                           </option>
                         ))}
                       </select>
+<BotonFicha onClick={() => setFicha({ tipo: "inversion", id: i.id })} />
                     </td>
                     <td>
                       <input
@@ -296,6 +327,7 @@ export function InversionesTab({
           ))}
         </datalist>
       </Panel>
+    </>
     </>
   );
 }
