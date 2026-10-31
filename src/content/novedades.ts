@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-10-31e",
+    fecha: "31/10/2026",
+    titulo: "Listados del sistema editables",
+    items: [
+      {
+        titulo: "Los listados se editan desde el sistema",
+        que: "Un bloque nuevo con los listados que usaba el sistema fijos: categorías del gremio, grupos de Stock (con el prefijo de sus códigos), tipos de trabajo y grupos de marcadores. Se puede sumar, renombrar (el nombre nuevo pasa a todo lo que usaba el viejo), ordenar, pausar y borrar lo que no está en uso. Los que usan las cuentas (\"General\" y los grupos de máquinas) quedan fijos.",
+        como: "Acceso → Listados del sistema (solo administradores).",
+        tab: "acceso",
+      },
+    ],
+  },
+  {
     id: "2026-10-31d",
     fecha: "31/10/2026",
     titulo: "Categorías del gremio, internas y tareas que domina",

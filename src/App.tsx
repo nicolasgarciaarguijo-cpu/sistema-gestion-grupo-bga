@@ -288,6 +288,8 @@ import type { AsignacionDiaria, GrupoTrabajo, TipoTarea } from "./domain/organiz
 import { conHerramientasDeLaTarea, presenciaDelDia } from "./domain/organizacionDiaria";
 import { completarDiaConRutinas, manoDeObraPorGrupo, type CandidatoRutina, type RutinaTaller } from "./domain/rutinasTaller";
 import { RutinasTaller } from "./tabs/RutinasTaller";
+import { ListadosSistema } from "./tabs/ListadosSistema";
+import { nombresActivos, prefijoDeGrupo, type ListaKey, type ListasSistema, type ItemLista } from "./domain/listasSistema";
 import { AprobadosTab } from "./tabs/Aprobados";
 import { MovimientosInternosTab } from "./tabs/MovimientosInternos";
 import { EmitirFacturasTab } from "./tabs/EmitirFacturas";
@@ -565,43 +567,9 @@ const DEFAULT_COMPANY_OPTIONS: CompanyOption[] = [
 let runtimeCompanyOptions: CompanyOption[] = [...DEFAULT_COMPANY_OPTIONS];
 const COMPANY_OPTIONS = DEFAULT_COMPANY_OPTIONS;
 
-const STOCK_GENERAL_GROUP_OPTIONS = [
-  "Melaminas",
-  "Enchapado",
-  "MDF",
-  "Maderas",
-  "Tapacantos",
-  "Insumos carpinteria",
-  "Insumos pintureria",
-  "Insumos herreria",
-  "Pinturas",
-  "Hierros",
-  "Aluminio",
-  "Herrajes",
-  "Maquinas pesadas",
-  "Maquinas manuales",
-  "Herramientas",
-] as const;
-
-type StockGeneralGroupName = (typeof STOCK_GENERAL_GROUP_OPTIONS)[number];
-
-const STOCK_GROUP_CODE_PREFIX: Record<StockGeneralGroupName, string> = {
-  Melaminas: "MEL",
-  Enchapado: "ENC",
-  MDF: "MDF",
-  Maderas: "MAD",
-  Tapacantos: "TPC",
-  "Insumos carpinteria": "ICA",
-  "Insumos pintureria": "IPI",
-  "Insumos herreria": "IHR",
-  Pinturas: "PIN",
-  Hierros: "HIE",
-  Aluminio: "ALU",
-  Herrajes: "HER",
-  "Maquinas pesadas": "MPS",
-  "Maquinas manuales": "MMA",
-  Herramientas: "HTA",
-};
+// Grupos de Stock y sus prefijos: editables en Acceso → Listados del sistema (domain/listasSistema.ts).
+type StockGeneralGroupName = string;
+let runtimeListasSistema: ListasSistema = {};
 
 // ORDEN DE LAS SOLAPAS. Lo fijo Nicolas el 2026-08-26: los titulos van en MAYUSCULA y el orden
 // dentro de cada grupo es el que sigue el trabajo diario, no el historico. El Calendario anual va
@@ -1032,14 +1000,6 @@ const categoryAliases: Record<string, string> = {
   "OPERARIO ACT INDUSTRIAL": "Operario act. industrial",
 };
 
-const CATEGORY_OPTIONS = [
-  "Ayudante",
-  "Medio oficial",
-  "Oficial especializado",
-  "Oficial general",
-  "Oficial multiple",
-  "Operario act. industrial",
-] as const;
 
 const seededScaleRows: ScaleRow[] = [
   { id: 1, month: "2026-04", category: "Oficial multiple", baseHourly: 7403.78, nonRemHourly: 347.98, vht: 7751.76, sourceFileName: "2026-04 a 05 Escala.pdf" },
@@ -1828,6 +1788,8 @@ const getReportModeForTab = (tab: TabKey): PrintMode =>
 
 type PersistedAppStateData = {
   companyCatalog: CompanyOption[];
+  // Listados editables (categorias del gremio, grupos de Stock, tipos de trabajo, grupos de marcadores). Ver domain/listasSistema.ts.
+  listasSistema?: ListasSistema;
   crmClients: CrmClient[];
   operationalMonth: string;
   monthlyHistorySnapshots: MonthlyHistorySnapshot[];
@@ -1951,7 +1913,7 @@ const APP_STATE_MODULE_DEFINITIONS = [
   {
     key: "configuracion",
     label: "configuracion general",
-    fields: ["companyCatalog", "allocationMode", "manualAllocationPct", "bankLoadsUntil"] as const,
+    fields: ["companyCatalog", "allocationMode", "manualAllocationPct", "bankLoadsUntil", "listasSistema"] as const,
   },
   {
     key: "mensuales",
@@ -3121,8 +3083,7 @@ const getNextStockCode = (
   group: string,
   excludeId?: number
 ) => {
-  const typedGroup = group as StockGeneralGroupName;
-  const prefix = STOCK_GROUP_CODE_PREFIX[typedGroup] || "ITM";
+  const prefix = prefijoDeGrupo(runtimeListasSistema, group);
   const maxSeq = items
     .filter(
       (item) =>
@@ -3165,6 +3126,7 @@ export default function App() {
   const [supabaseCompanyPermissions, setSupabaseCompanyPermissions] = useState<any[]>([]);
   const [supabaseTabPermissions, setSupabaseTabPermissions] = useState<any[]>([]);
   const [companyCatalog, setCompanyCatalog] = useState<CompanyOption[]>(DEFAULT_COMPANY_OPTIONS);
+  const [listasSistema, setListasSistema] = useState<ListasSistema>({});
   // La empresa elegida se recuerda en este navegador (es solo una comodidad de cada uno).
   const [workspaceCompanyScope, setWorkspaceCompanyScope] = useState<CompanyScope>(() => {
     try {
@@ -3569,6 +3531,11 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const isAssistantWidgetVisible = workspaceWidgetOpen && workspaceWidgetMode === "assistant";
   runtimeCompanyOptions = companyCatalog.length > 0 ? companyCatalog : DEFAULT_COMPANY_OPTIONS;
   const COMPANY_OPTIONS = companyCatalog.length > 0 ? companyCatalog : DEFAULT_COMPANY_OPTIONS;
+  runtimeListasSistema = listasSistema;
+  const categoriasGremioVigentes = nombresActivos(listasSistema, "categoriasGremio");
+  const gruposStockVigentes = nombresActivos(listasSistema, "gruposStock");
+  const tiposTrabajoVigentes = nombresActivos(listasSistema, "tiposTrabajo");
+  const gruposMarcadoresVigentes = nombresActivos(listasSistema, "gruposMarcadores");
 
   const getSupabaseAuthRedirectUrl = () => {
     if (typeof window !== "undefined") {
@@ -9494,12 +9461,12 @@ Escribi CERRAR para confirmar:`
     () =>
       Array.from(
         new Set([
-          ...DEFAULT_FIXED_MARKER_GROUPS,
+          ...gruposMarcadoresVigentes,
           ...fixedMarkers.map((item) => item.group.trim()).filter(Boolean),
           ...costAnalysisGroups.map((item) => item.name.trim()).filter(Boolean),
         ])
       ),
-    [fixedMarkers, costAnalysisGroups]
+    [fixedMarkers, costAnalysisGroups, listasSistema]
   );
 
   const activeCostAnalysisEntriesForBudget = useMemo(
@@ -10033,8 +10000,36 @@ Escribi CERRAR para confirmar:`
     setSubBudgetQuantity(1);
   };
 
+  // LISTADOS DEL SISTEMA: renombrar arrastra el nombre nuevo a los registros que usaban el viejo (31/10/2026).
+  const renombrarEnListado = (key: ListaKey, viejo: string, nuevo: string, lista: ItemLista[]) => {
+    setListasSistema((prev) => ({ ...prev, [key]: lista }));
+    if (key === "categoriasGremio") {
+      setEmployees((prev) => prev.map((e) => (e.category === viejo ? { ...e, category: nuevo } : e)));
+      setScaleRows((prev) => prev.map((r) => (r.category === viejo ? { ...r, category: nuevo } : r)));
+      setCategoriasEmpleado((prev) => prev.map((c) => (c.categoriaGremio === viejo ? { ...c, categoriaGremio: nuevo } : c)));
+    } else if (key === "gruposStock") {
+      const g = <T extends { grupo?: string }>(x: T): T => (x.grupo === viejo ? { ...x, grupo: nuevo } : x);
+      setStockItems((prev) => prev.map((it) => (it.kind === "general" && it.group === viejo ? { ...it, group: nuevo } : it)));
+      setTiposMueble((prev) => prev.map((t) => (t.materiales?.some((m) => m.grupo === viejo) ? { ...t, materiales: t.materiales.map(g) } : t)));
+      setGruposTrabajo((prev) => prev.map((t) => (t.insumos?.some((m) => m.grupo === viejo) ? { ...t, insumos: t.insumos.map(g) } : t)));
+      if (convertidorMateriales) {
+        const c = convertidorVigente(convertidorMateriales);
+        setConvertidorMateriales({ equivalencias: c.equivalencias.map(g), compras: c.compras.map(g), acompanantes: c.acompanantes.map(g) });
+      }
+    } else if (key === "tiposTrabajo") {
+      const w = <T extends { workType: string }>(x: T): T => (x.workType === viejo ? { ...x, workType: nuevo } : x);
+      setFixedMarkers((prev) => prev.map(w));
+      setSupplyMarkers((prev) => prev.map(w));
+      setLaborMarkers((prev) => prev.map(w));
+      setBudget((prev) => w(prev));
+    } else if (key === "gruposMarcadores") {
+      setFixedMarkers((prev) => prev.map((m) => (m.group === viejo ? { ...m, group: nuevo } : m)));
+    }
+  };
+
   const buildPersistedAppData = (): PersistedAppStateData => ({
     companyCatalog: companyCatalog.map((item) => ({ ...item })),
+    listasSistema: JSON.parse(JSON.stringify(listasSistema)),
     crmClients: crmClients.map((item) => ({ ...item })),
     operationalMonth,
     monthlyHistorySnapshots: monthlyHistorySnapshots.map((item) => ({
@@ -10556,6 +10551,7 @@ Escribi CERRAR para confirmar:`
     });
     setScaleRows((data.scaleRows || seededScaleRows).map((item) => ({ ...item })));
     setAllocationMode(data.allocationMode || "auto");
+    setListasSistema(data.listasSistema && typeof data.listasSistema === "object" ? JSON.parse(JSON.stringify(data.listasSistema)) : {});
     if (typeof data.bankLoadsUntil === "string") {
       // Lo guardado puede traer el cierre del ejercicio (31/10/2026), que era el corte viejo. La
       // decision del 29/08 lo adelanta, asi que nunca se toma una fecha posterior a esa.
@@ -12816,6 +12812,7 @@ Escribi CERRAR para confirmar:`
     inversiones,
     crmClients,
     companyCatalog,
+    listasSistema,
     linkedDocuments,
     bankLoadsUntil,
     isPersistenceReady,
@@ -20003,7 +20000,7 @@ Escribi CERRAR para confirmar:`
   const categoryBaseRows = useMemo(
     () =>
       COMPANY_OPTIONS.filter((company) => canAccessCompany(company.value)).flatMap((company) =>
-        CATEGORY_OPTIONS.map((category) => {
+        categoriasGremioVigentes.map((category) => {
           const payroll: EmployeePayroll = {
             month: payrollMonth,
             normalHours: employeeBaseConfig.normalHoursDefault,
@@ -20039,7 +20036,7 @@ Escribi CERRAR para confirmar:`
           };
         })
       ),
-    [alcanceEmpresa, payrollMonth, scaleRows, employeeBaseConfig, personalProvisionMarkers, stockItems]
+    [alcanceEmpresa, payrollMonth, scaleRows, employeeBaseConfig, personalProvisionMarkers, stockItems, listasSistema]
   );
 
   const companyCategoryCostRows = useMemo(() => {
@@ -22785,6 +22782,19 @@ Escribi CERRAR para confirmar:`
           imageMigrationBusy={imageMigrationBusy}
         />
       )}
+      {activeTab === "acceso" && effectiveIsAdmin && (
+        <ListadosSistema
+          listas={listasSistema}
+          usos={{
+            categoriasGremio: employees.reduce<Record<string, number>>((acc, e) => ({ ...acc, [e.category]: (acc[e.category] || 0) + 1 }), {}),
+            gruposStock: stockItems.filter((it) => it.kind === "general").reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.group]: (acc[it.group] || 0) + 1 }), {}),
+            tiposTrabajo: [...fixedMarkers, ...supplyMarkers, ...laborMarkers, budget].reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.workType]: (acc[it.workType] || 0) + 1 }), {}),
+            gruposMarcadores: fixedMarkers.reduce<Record<string, number>>((acc, it) => ({ ...acc, [it.group]: (acc[it.group] || 0) + 1 }), {}),
+          }}
+          onGuardar={(key, lista) => setListasSistema((prev) => ({ ...prev, [key]: lista }))}
+          onRenombrar={renombrarEnListado}
+        />
+      )}
 
       {activeTab === "calendarioAnual" && (
         <PagosInamovibles
@@ -22844,7 +22854,7 @@ Escribi CERRAR para confirmar:`
               .map((i) => ({ id: i.id, label: `${i.receiptLetter || ""} ${i.invoiceNumber || "s/n"} · ${i.invoiceDate || ""} · ${money(Number(i.total || 0))}` }))
           }
           companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
-          gruposStock={[...STOCK_GENERAL_GROUP_OPTIONS]}
+          gruposStock={gruposStockVigentes}
           money={money}
           onGuardar={(r) => guardarRemito(r, remitoModal.draftId)}
           onBorrar={remitoModal.existe ? quitarRemito : undefined}
@@ -23575,6 +23585,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "presupuesto" && (
         <PresupuestoTab
+          tiposTrabajo={tiposTrabajoVigentes}
           budget={budget}
           crmClients={crmClients}
           clientesCotizar={clientesParaCotizar(crmClients, savedBudgets, approvedJobs)}
@@ -23671,7 +23682,7 @@ Escribi CERRAR para confirmar:`
           companyTheme={companyTheme}
           employeesSortedByPay={employeesSortedByPay}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
-          STOCK_GENERAL_GROUP_OPTIONS={STOCK_GENERAL_GROUP_OPTIONS}
+          STOCK_GENERAL_GROUP_OPTIONS={gruposStockVigentes}
           LOGO_IMAGE_OPTS={LOGO_IMAGE_OPTS}
           getCompanyMeta={getCompanyMeta}
           getCompanyBankingLines={getCompanyBankingLines}
@@ -24001,6 +24012,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "marcadores" && (
         <MarcadoresTab
+          tiposTrabajo={tiposTrabajoVigentes}
           markupPct={markupPct}
           deviationPct={deviationPct}
           laborDeviationPct={laborDeviationPct}
@@ -24554,7 +24566,7 @@ Escribi CERRAR para confirmar:`
           visibleCompanyAssets={visibleCompanyAssets}
           activeAssetsMonthlyDepreciation={activeAssetsMonthlyDepreciation}
           stockNeedRows={stockNeedRows}
-          STOCK_GENERAL_GROUP_OPTIONS={STOCK_GENERAL_GROUP_OPTIONS}
+          STOCK_GENERAL_GROUP_OPTIONS={gruposStockVigentes}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
           getCompanyScopeLabel={getCompanyScopeLabel}
@@ -24624,7 +24636,7 @@ Escribi CERRAR para confirmar:`
           isEmployeeSetupModalOpen={isEmployeeSetupModalOpen}
           uploadMessage={uploadMessage}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
-          CATEGORY_OPTIONS={CATEGORY_OPTIONS}
+          CATEGORY_OPTIONS={categoriasGremioVigentes}
           companyCategoryCostRows={companyCategoryCostRows}
           canAccessCompany={canAccessCompany}
           totalCompanyPayroll={totalCompanyPayroll}

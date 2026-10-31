@@ -137,6 +137,8 @@ function ClientPicker({
 }
 
 type PresupuestoTabProps = {
+  // Tipos de trabajo editables (Acceso → Listados del sistema).
+  tiposTrabajo?: string[];
   budget: any;
   // Muebles del bloque (tipo de mueble → horas). Lo arma App con MueblesPresupuesto.
   bloqueMuebles?: React.ReactNode;
@@ -595,7 +597,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                     value={budget.workType}
                     onChange={(e) => setBudget({ ...budget, workType: e.target.value as WorkTypeName })}
                   >
-                    {WORK_TYPE_OPTIONS.map((option) => (
+                    {(props.tiposTrabajo || WORK_TYPE_OPTIONS).map((option) => (
                       <option key={option} value={option}>
                         {option}
                       </option>

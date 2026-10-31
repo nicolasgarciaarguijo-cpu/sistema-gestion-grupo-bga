@@ -15,7 +15,8 @@ export const WORK_TYPE_OPTIONS = [
   "Obra especial",
 ] as const;
 
-export type WorkTypeName = (typeof WORK_TYPE_OPTIONS)[number];
+// Editable en Acceso → Listados del sistema: WORK_TYPE_OPTIONS son solo los de siempre.
+export type WorkTypeName = string;
 
 export type TabKey =
   | "acceso"

@@ -38,7 +38,7 @@ import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
 
 import NumInput from "../ui/NumInput";
 import { CategoriasInternas, CategoriasDelEmpleado, ListosParaAumento } from "./CategoriasInternas";
-import { getScaleForCategory, normalizarCategoria } from "../domain/scale";
+import { getScaleForCategory } from "../domain/scale";
 import type { CategoriaEmpleado } from "../domain/categoriasEmpleado";
 import type { GrupoTrabajo, TipoTarea } from "../domain/organizacionDiaria";
 type PersonalTabProps = {
@@ -218,8 +218,8 @@ function ReglasLiquidacion({ config }: { config: any }) {
 export function PersonalTab(props: PersonalTabProps) {
   // Categorias del gremio: las de la escala, de la que paga menos a la que paga mas (valor hora basico del mes).
   const valorGremio = (categoria: string) => Number(getScaleForCategory(props.scaleRows || [], categoria, props.payrollMonth || new Date().toISOString().slice(0, 7))?.baseHourly || 0);
-  const categoriasGremio = Array.from(new Map(((props.scaleRows || []) as any[]).map((r) => [normalizarCategoria(r.category), String(r.category || "").trim()])).values())
-    .filter(Boolean)
+  // Las del listado editable (Acceso → Listados del sistema), de la que paga menos a la que paga mas.
+  const categoriasGremio = Array.from(new Set(((props.CATEGORY_OPTIONS || []) as string[]).map((c) => String(c).trim()).filter(Boolean)))
     .sort((a, b) => valorGremio(a) - valorGremio(b) || a.localeCompare(b));
   const {
     employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, onFichaPagoHaberes, precargaAuto = true, onPrecargaAuto, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,

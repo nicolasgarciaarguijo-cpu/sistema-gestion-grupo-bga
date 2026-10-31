@@ -27,6 +27,8 @@ const SECCIONES_COSTOS = [
 ];
 
 type MarcadoresTabProps = {
+  // Tipos de trabajo editables (Acceso → Listados del sistema).
+  tiposTrabajo?: string[];
   markupPct: number;
   deviationPct: number;
   laborDeviationPct: number;
@@ -86,6 +88,7 @@ type MarcadoresTabProps = {
 };
 
 export function MarcadoresTab({
+  tiposTrabajo = [...WORK_TYPE_OPTIONS],
   markupPct,
   deviationPct,
   laborDeviationPct,
@@ -583,7 +586,7 @@ export function MarcadoresTab({
                           value={item.workType}
                           onChange={(e) => updateArrayItem(setFixedMarkers, item.id, "workType", e.target.value as WorkTypeName)}
                         >
-                          {WORK_TYPE_OPTIONS.map((option) => (
+                          {tiposTrabajo.map((option) => (
                             <option key={option} value={option}>
                               {option}
                             </option>
@@ -751,7 +754,7 @@ export function MarcadoresTab({
                           value={item.workType}
                           onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "workType", e.target.value as WorkTypeName)}
                         >
-                          {WORK_TYPE_OPTIONS.map((option) => (
+                          {tiposTrabajo.map((option) => (
                             <option key={option} value={option}>
                               {option}
                             </option>
@@ -922,7 +925,7 @@ export function MarcadoresTab({
                           value={item.workType}
                           onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "workType", e.target.value as WorkTypeName)}
                         >
-                          {WORK_TYPE_OPTIONS.map((option) => (
+                          {tiposTrabajo.map((option) => (
                             <option key={option} value={option}>
                               {option}
                             </option>
