@@ -477,3 +477,13 @@ describe("serieDiariaDeBilletera: el banco se abre por cuenta", () => {
     expect(serie[0].bancos).toHaveLength(1);
   });
 });
+
+describe("arranque del ejercicio por color (02/11/2026)", () => {
+  const { buildReservaFromSources } = require("./reservaSources");
+  it("el efectivo negro del arqueo arranca como negro, no como blanco", () => {
+    const r = buildReservaFromSources({ openingCashArs: 0, openingCashArsNegro: 8910250 });
+    const ef = r.wallets.find((w: any) => w.currency === "ARS" && w.location === "efectivo");
+    expect(ef.byColor.blanco.closing).toBe(0);
+    expect(ef.byColor.negro.closing).toBe(8910250);
+  });
+});

@@ -417,6 +417,7 @@ import {
   ensureWritePermission,
   writeFileToFolder,
   ensureFolder,
+  readTextFromFolder,
   cleanOrphanHtmlFiles,
   scanDirectory,
 } from "./lib/folderSync";
@@ -7738,6 +7739,22 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   };
 
   // EL BOTON. Orquesta todo y no deja saltearse ningun paso.
+  // El cierre se guarda en la base EN EL MOMENTO (02/11/2026: los dos cierres del ejercicio 2025-26 quedaron solo en
+  // memoria y al recargar el sistema pedia cerrar de nuevo). Devuelve si quedo guardado.
+  const guardarCierresYa = async (lista: CierreEjercicio[]): Promise<boolean> => {
+    setFiscalClosings(lista);
+    try {
+      const r = await persistAppStateImmediately(buildPersistedAppDataWithOverrides({ fiscalClosings: lista }), {
+        moduleKeys: ["cash-flow" as AppStateModuleKey],
+        allowSupabaseWithPendingRemote: true,
+      });
+      return r.savedToSupabase;
+    } catch (err) {
+      console.error("[cierre] no se pudo guardar:", err);
+      return false;
+    }
+  };
+
   const cerrarEjercicio = async (company: CompanyName, fiscalStartYear: number) => {
     const meta = getCompanyMeta(company);
     const co = COMPANY_OPTIONS.find((c) => c.value === company);
@@ -7766,6 +7783,39 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         "Para cerrar el ejercicio hace falta la carpeta vinculada: el cierre GUARDA todo ahi antes de limpiar el sistema.\n\nVinculala en Documentos y volvé a intentar."
       );
       return;
+    }
+
+    // RECUPERAR (02/11/2026): el cierre se hizo (arqueo y archivos en la carpeta) pero no llego a guardarse en la base. Si
+    // la carpeta ya tiene el cierre.json de este ejercicio, se recupera tal cual, sin repetir el arqueo.
+    {
+      const limites = fiscalYearBounds(startMonth, fiscalStartYear);
+      const ruta = `Cierres/${companyFolderName(meta.short)}/${cierreFolderName(limites)}/cierre.json`;
+      const texto = await readTextFromFolder(handle, ruta);
+      let previo: CierreEjercicio | null = null;
+      try {
+        previo = texto ? (JSON.parse(texto)?.cierre as CierreEjercicio) : null;
+      } catch {
+        previo = null;
+      }
+      if (previo && previo.company === company && Number(previo.fiscalStartYear) === Number(fiscalStartYear)) {
+        const cuando = String(previo.closedAt || "").slice(0, 16).replace("T", " ");
+        if (
+          window.confirm(
+            `Este ejercicio de ${meta.short} ya se cerró (${cuando}, ${previo.closedBy || "—"}) con su arqueo, y está en la carpeta, ` +
+              `pero no había quedado guardado en el sistema.\n\n¿Recuperarlo tal cual, sin repetir el arqueo?`
+          )
+        ) {
+          const ok = await guardarCierresYa([...fiscalClosings.filter((x) => x.id !== previo!.id), previo]);
+          setCierreBusy(false);
+          setCierreMensaje(
+            ok
+              ? `Cierre de ${meta.short} recuperado desde la carpeta y guardado.`
+              : `Cierre de ${meta.short} recuperado, pero NO se pudo guardar en la base. No recargues y avisá.`
+          );
+          if (!ok) window.alert("El cierre se recuperó pero no se pudo guardar en la base. No recargues la página y avisá.");
+          return;
+        }
+      }
     }
 
     // ARQUEO: la plata de verdad en cada cuenta al ultimo dia del ejercicio, y el motivo de cada
@@ -7947,10 +7997,14 @@ Escribi CERRAR para confirmar:`
     } catch (err) {
       console.error("[cierre] al quitar imagenes:", err);
     }
-    setFiscalClosings((prev) => [...prev, cierre]);
+    const guardado = await guardarCierresYa([...fiscalClosings, cierre]);
     setCierreBusy(false);
+    if (!guardado)
+      window.alert(
+        "El ejercicio quedó cerrado pero NO se pudo guardar en la base. No recargues la página y avisá: si recargás, el cierre se recupera desde la carpeta al volver a cerrarlo."
+      );
     setCierreMensaje(
-      `Ejercicio ${cierre.startIso} al ${cierre.endIso} de ${meta.short} CERRADO. ` +
+      `Ejercicio ${cierre.startIso} al ${cierre.endIso} de ${meta.short} CERRADO${guardado ? "" : " (SIN GUARDAR EN LA BASE)"}. ` +
         `${escritos.length} archivo(s) del cierre en la carpeta. ` +
         `El ano se sigue viendo entero; para editarlo hace falta ser superadmin. ` +
         `Imagenes: ${imagenes.aStorage} pasaron a Storage` +
@@ -7998,8 +8052,8 @@ Escribi CERRAR para confirmar:`
       )
     )
       return;
-    setFiscalClosings((prev) =>
-      prev.map((x) =>
+    void guardarCierresYa(
+      fiscalClosings.map((x) =>
         x.id === cierreId
           ? { ...x, reopenedAt: new Date().toISOString(), reopenedBy: supabaseProfile?.full_name || "—" }
           : x
@@ -14871,11 +14925,14 @@ Escribi CERRAR para confirmar:`
   // eso el efectivo del cierre entra como saldo inicial y solo se cuentan los movimientos POSTERIORES.
   const arranqueDeEmpresa = (company: string) => {
     const c = ultimoCierre(fiscalClosings, company);
-    if (!c) return { desdeIso: "", cashArs: 0, cashUsd: 0 };
+    if (!c) return { desdeIso: "", cashArs: 0, cashUsd: 0, cashArsNegro: 0, cashUsdNegro: 0 };
+    // Por color (02/11/2026): el arqueo cuenta el efectivo blanco y el negro por separado; antes todo arrancaba como blanco.
     return {
       desdeIso: c.endIso,
-      cashArs: totalDeMoneda(c.billeteras, "ARS", { location: "efectivo" }),
-      cashUsd: totalDeMoneda(c.billeteras, "USD", { location: "efectivo" }),
+      cashArs: totalDeMoneda(c.billeteras, "ARS", { location: "efectivo", color: "blanco" }),
+      cashUsd: totalDeMoneda(c.billeteras, "USD", { location: "efectivo", color: "blanco" }),
+      cashArsNegro: totalDeMoneda(c.billeteras, "ARS", { location: "efectivo", color: "negro" }),
+      cashUsdNegro: totalDeMoneda(c.billeteras, "USD", { location: "efectivo", color: "negro" }),
     };
   };
   // Lo de antes del cierre ya se archivo: si quedo algo suelto en el estado, no vuelve a contarse.
@@ -14918,11 +14975,15 @@ Escribi CERRAR para confirmar:`
     );
     const arranqueCashArs = empresasDelScope.reduce((a, c) => a + arranqueDeEmpresa(c).cashArs, 0);
     const arranqueCashUsd = empresasDelScope.reduce((a, c) => a + arranqueDeEmpresa(c).cashUsd, 0);
+    const arranqueCashArsNegro = empresasDelScope.reduce((a, c) => a + arranqueDeEmpresa(c).cashArsNegro, 0);
+    const arranqueCashUsdNegro = empresasDelScope.reduce((a, c) => a + arranqueDeEmpresa(c).cashUsdNegro, 0);
     return buildReservaFromSources({
       openingBankArs,
       openingBankUsd,
       openingCashArs: arranqueCashArs,
       openingCashUsd: arranqueCashUsd,
+      openingCashArsNegro: arranqueCashArsNegro,
+      openingCashUsdNegro: arranqueCashUsdNegro,
       until: reservaUntil,
       extraMovements: usdPaymentMovements,
       pettyCashFunds: visiblePettyCashFunds
@@ -15010,6 +15071,7 @@ Escribi CERRAR para confirmar:`
       const serie = serieDiariaDeBilletera(
         {
           openingCashArs: arranqueDeEmpresa(String(company)).cashArs,
+          openingCashArsNegro: arranqueDeEmpresa(String(company)).cashArsNegro,
           bankBalanceEntries: visibleBankStatementEntries.filter(
             (e) => e.company === company && (e.currency || "ARS") !== "USD"
           ),
@@ -15304,6 +15366,8 @@ Escribi CERRAR para confirmar:`
         // Efectivo: arranca del cierre y solo cuenta lo posterior (ver arranqueDeEmpresa).
         openingCashArs: arranque.cashArs,
         openingCashUsd: arranque.cashUsd,
+        openingCashArsNegro: arranque.cashArsNegro,
+        openingCashUsdNegro: arranque.cashUsdNegro,
         pettyCashFunds: visiblePettyCashFunds
           .filter((f) => f.company === company && despuesDelCierre(String(company), f.deliveredDate))
           .map((f) => ({
@@ -15398,12 +15462,11 @@ Escribi CERRAR para confirmar:`
       // Dinero a cobrar (blanco = saldo facturado pendiente; negro = neto negro no cobrado).
       let aCobrarBlanco = 0;
       let aCobrarNegro = 0;
+      // Igual que Trabajos aprobados (02/11/2026): falta cobrar = blanco (con su IVA) + negro. Antes el "blanco" era el saldo
+      // TOTAL y se le volvia a sumar el negro: el negro se contaba dos veces.
       for (const j of approvedJobsSummary.filter((x) => x.company === company)) {
-        aCobrarBlanco += Number(j.remainingToPay || 0);
-        const blackCollected = (j.payments || [])
-          .filter((p: any) => p.administration === "negro" && p.currency !== "USD")
-          .reduce((a: number, p: any) => a + Number(p.amount || 0), 0);
-        aCobrarNegro += Math.max(0, Number(j.blackNet || 0) - blackCollected);
+        aCobrarBlanco += Number(j.pendienteBlanco || 0);
+        aCobrarNegro += Number(j.pendienteNegro || 0);
       }
       // Posicion de IVA de la empresa desde el ultimo VEP (debito ventas - credito compras blanco).
       const ivaPos = computeVatPosition({
@@ -15423,7 +15486,8 @@ Escribi CERRAR para confirmar:`
           // Nota de credito: baja el credito fiscal.
           ...visibleCreditNotes.map((n) => ({ company: n.company as CompanyName, date: n.date, vat: -Number(n.vat || 0), administration: n.administration })),
         ],
-        veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })),
+        // El cierre del ejercicio reinicia la posicion como un VEP (02/11/2026: "el IVA deberia estar en cero").
+          veps: [...visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })), ...cierresActivos(fiscalClosings).map((c) => ({ company: c.company, date: c.endIso }))],
       });
       // Deuda con la gente: facturas que puso alguien de su bolsillo y no se le reintegraron. La
       // regla vive en domain/purchaseLedger.ts; aca solo se corta por empresa.
@@ -15478,7 +15542,7 @@ Escribi CERRAR para confirmar:`
     approvedJobsSummary,
     effectiveIsAdmin,
     isSupabaseLoggedIn,
-    allowedCompaniesForSession,
+    allowedCompaniesForSession, fiscalClosings,
   ]);
 
   // DEUDAS Y APORTES (registro; ver domain/contributions.ts). Sigue el mismo selector de empresa.
@@ -15613,7 +15677,8 @@ Escribi CERRAR para confirmar:`
             })),
             ...visibleCreditNotes.map((n) => ({ company: n.company as CompanyName, date: n.date, vat: -Number(n.vat || 0), administration: n.administration })),
           ],
-          veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })),
+          // El cierre del ejercicio reinicia la posicion como un VEP (02/11/2026: "el IVA deberia estar en cero").
+          veps: [...visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })), ...cierresActivos(fiscalClosings).map((c) => ({ company: c.company, date: c.endIso }))],
         });
         const falta = faltaFacturaPorEmpresa.get(String(company));
         return {
@@ -15634,7 +15699,7 @@ Escribi CERRAR para confirmar:`
     visibleIvaVepPayments,
     effectiveIsAdmin,
     isSupabaseLoggedIn,
-    allowedCompaniesForSession,
+    allowedCompaniesForSession, fiscalClosings,
   ]);
 
   const annualCashFlowEntries = useMemo(() => {

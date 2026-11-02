@@ -57,8 +57,11 @@ export type PettyExpenseLike = {
 export type ReservaSourcesInput = {
   openingBankArs?: number; // cierre oct de banco/pesos (0 si no se pasa)
   openingBankUsd?: number; // = 0 hoy
-  openingCashArs?: number; // efectivo inicial (0 hoy)
+  openingCashArs?: number; // efectivo inicial BLANCO (0 hoy)
   openingCashUsd?: number;
+  // Efectivo inicial NEGRO (02/11/2026): el arqueo del cierre lo cuenta aparte; antes todo entraba como blanco.
+  openingCashArsNegro?: number;
+  openingCashUsdNegro?: number;
   bankEntries?: BankEntryLike[];
   pettyCashFunds?: PettyFundLike[];
   pettyCashExpenses?: PettyExpenseLike[];
@@ -412,6 +415,8 @@ export function buildReservaFromSources(input: ReservaSourcesInput): ReservaSumm
     { currency: "USD", location: "banco", color: "blanco", amount: num(input.openingBankUsd) },
     { currency: "ARS", location: "efectivo", color: "blanco", amount: num(input.openingCashArs) },
     { currency: "USD", location: "efectivo", color: "blanco", amount: num(input.openingCashUsd) },
+    { currency: "ARS", location: "efectivo", color: "negro", amount: num(input.openingCashArsNegro) },
+    { currency: "USD", location: "efectivo", color: "negro", amount: num(input.openingCashUsdNegro) },
   ];
 
   const movements: ReservaMovementInput[] = [
@@ -474,7 +479,7 @@ export function serieDiariaDeBilletera(
 
   const bancoEntries = input.bankBalanceEntries || [];
   let blanco = num(input.openingCashArs);
-  let negro = 0;
+  let negro = num(input.openingCashArsNegro);
   return dias.map((iso) => {
     const d = porDia.get(iso);
     if (d) {

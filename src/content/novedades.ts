@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-02b",
+    fecha: "02/11/2026",
+    titulo: "Arreglos del cierre",
+    items: [
+      {
+        titulo: "El cierre se guarda en el momento y se recupera de la carpeta",
+        que: "Los cierres del 02/11 quedaron en la carpeta pero no en el sistema. Ahora el cierre se guarda apenas se confirma, y si el ejercicio ya tiene su cierre en la carpeta, el asistente ofrece recuperarlo tal cual, sin repetir el arqueo.",
+        como: "Asistente de cierre → Cerrar → \"¿Recuperarlo tal cual?\" → Aceptar.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Efectivo, IVA y a cobrar desde el cierre",
+        que: "El efectivo arranca con lo contado en el arqueo, blanco y negro por separado (antes todo entraba como blanco). La posición de IVA arranca en cero desde el cierre. El \"a cobrar\" del tablero es igual al de Trabajos aprobados (blanco con IVA + negro): antes sumaba el negro dos veces.",
+        como: "Balance → tablero de cada empresa.",
+        tab: "cashflow",
+      },
+    ],
+  },
+  {
     id: "2026-11-02a",
     fecha: "02/11/2026",
     titulo: "Las solapas nuevas tienen su lugar en la carpeta",

@@ -304,6 +304,21 @@ export async function writeFileToFolder(
   await writable.close();
 }
 
+// Lee un archivo de texto de la carpeta (sin crear nada). null si no existe.
+export async function readTextFromFolder(rootHandle: any, relPath: string): Promise<string | null> {
+  try {
+    const parts = relPath.split("/").filter(Boolean);
+    const fileName = parts.pop();
+    if (!fileName) return null;
+    let dir = rootHandle;
+    for (const part of parts) dir = await dir.getDirectoryHandle(part);
+    const fh = await dir.getFileHandle(fileName);
+    return await (await fh.getFile()).text();
+  } catch {
+    return null;
+  }
+}
+
 // Recorre recursivamente el directorio y devuelve todos los archivos con su ruta relativa.
 export async function scanDirectory(rootHandle: any): Promise<ScannedFile[]> {
   const out: ScannedFile[] = [];
