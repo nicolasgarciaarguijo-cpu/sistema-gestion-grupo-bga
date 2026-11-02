@@ -1557,3 +1557,7 @@ export function buildPayrollMonthHtml(monthKey: string, rows: PayrollReportRow[]
     <script>window.addEventListener("load", function () { window.print(); });</script>`;
   return page(`Liquidacion ${monthKey}`, body);
 }
+
+// Para los resumenes de las solapas nuevas (content/resumenesHtml.ts): misma pagina y mismo escape.
+export const paginaHtml = page;
+export const escHtml = esc;

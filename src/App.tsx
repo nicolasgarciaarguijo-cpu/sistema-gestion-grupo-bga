@@ -486,6 +486,19 @@ import {
   buildPettyCashReceiptHtml,
   buildMarcadoresHtml,
 } from "./content/exportHtml";
+import {
+  resumenCatalogosFabricacion,
+  resumenClientes,
+  resumenCuentas,
+  resumenDeudas,
+  resumenFabricacion,
+  resumenInventario,
+  resumenInversiones,
+  resumenMovimientosInternos,
+  resumenPagosProgramados,
+  resumenSeguros,
+  type Periodo,
+} from "./content/resumenesHtml";
 
 declare global {
   interface Window {
@@ -7215,6 +7228,111 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   //  - "Marcadores": es una foto del mes en curso; los meses anteriores no se pueden regenerar y la
   //    limpieza (que borra todo .html que no se escribio en esta corrida) se llevaria el archivo entero.
   //  - "Documentacion": es un buzon, el sistema no escribe HTML ahi.
+  // SOLAPAS NUEVAS EN LA CARPETA (Nicolas, 02/11/2026: "cada cosa debe tener su lugar para guardar"). Seguros, inversiones,
+  // deudas, movimientos internos, cuentas, pagos programados, inventario y fabricacion: una planilla por empresa. En "Exportar
+  // TODO" la del mes (<Solapa>/<EMPRESA>/Ejercicio/<mes>/), en el cierre la del ejercicio entero. NO van en
+  // EXPORT_MANAGED_FOLDERS: solo se puede rearmar el mes en curso, la limpieza se llevaria el historico (como Marcadores).
+  const resumenesDeEmpresa = (company: string, periodo: Periodo): Array<{ top: string; nombre: string; html: string }> => {
+    const meta = getCompanyMeta(company as CompanyName);
+    const emp = meta.short;
+    const suyo = (x: { company?: string }) => x.company === company;
+    const suyoOCompartido = (x: { company?: string }) => !x.company || x.company === company || x.company === "General";
+    const nombreTrabajo = (id: number) => {
+      const j = approvedJobs.find((x) => x.id === id);
+      return j ? `${j.budgetNumber || ""} ${j.client || ""}`.trim() : `Trabajo ${id}`;
+    };
+    return [
+      { top: "Seguros", nombre: "Seguros", html: resumenSeguros(seguros.filter(suyo), emp, periodo) },
+      { top: "Inversiones", nombre: "Inversiones", html: resumenInversiones(inversiones.filter(suyo), emp, periodo) },
+      { top: "Desendeudamiento", nombre: "Desendeudamiento", html: resumenDeudas(debtPlans.filter(suyo), emp, periodo) },
+      {
+        top: "Movimientos internos",
+        nombre: "Movimientos internos",
+        html: resumenMovimientosInternos(
+          {
+            pases: internalTransfers.filter(suyo),
+            efectivo: cashHoldings.filter(suyo),
+            capital: capitalEntries.filter(suyo),
+            gente: personLedgerEntries.filter(suyo),
+            retiros: retirosSocietarios.filter(suyo),
+          },
+          emp,
+          periodo
+        ),
+      },
+      { top: "Cuentas", nombre: "Cuentas", html: resumenCuentas(saldosCuentasHoy.filter(suyo), emp, periodo) },
+      { top: "Pagos programados", nombre: "Pagos programados", html: resumenPagosProgramados(agendaDePagos.filter(suyo), emp, periodo) },
+      { top: "Inventario de stock", nombre: "Inventario", html: resumenInventario(stockItems.filter(suyoOCompartido), emp, periodo) },
+      {
+        top: "Fabricacion",
+        nombre: "Fabricacion",
+        html: resumenFabricacion({ dias: asignacionesDiarias.filter(suyo), retrabajos: retrabajos.filter(suyo), nombreTrabajo }, emp, periodo),
+      },
+    ];
+  };
+  // Los catalogos de Fabricacion (comunes, sin fecha) y los clientes de cada empresa (sin fecha: se buscan por nombre).
+  const resumenesSinFecha = (company: string): Array<{ ruta: string; html: string }> => {
+    const meta = getCompanyMeta(company as CompanyName);
+    return [
+      {
+        ruta: `${companyPath("Presupuestos", meta.short)}/Clientes.html`,
+        html: resumenClientes(crmClients.filter((c) => !c.company || c.company === company || c.company === "General"), meta.short, todayIso()),
+      },
+    ];
+  };
+  const catalogosFabricacionHtml = () =>
+    resumenCatalogosFabricacion(
+      {
+        tareas: gruposTrabajo,
+        tiposMueble,
+        categorias: categoriasVigentes,
+        rutinas: rutinasTaller,
+        maquinas: stockItems
+          .filter(esMaquinaOHerramienta)
+          .map((m) => {
+            const f = fichasMaquinas.find((x) => x.stockItemId === m.id);
+            return { description: m.description, group: m.group, estado: f?.estado, planes: f?.planes.length || 0, historial: f?.historial.length || 0 };
+          }),
+      },
+      todayIso()
+    );
+  const exportSolapasNuevasToFolder = async (): Promise<string[]> => {
+    const written: string[] = [];
+    setDocumentsBusy(true);
+    setDocumentsMessage("Exportando seguros, inversiones, deudas, movimientos internos, cuentas, inventario y fabricación...");
+    try {
+      const handle = await getWritableFolder();
+      if (!handle) {
+        setDocumentsBusy(false);
+        return written;
+      }
+      const mes = todayIso().slice(0, 7);
+      const [y, m] = mes.split("-").map(Number);
+      const periodo: Periodo = { desde: `${mes}-01`, hasta: `${mes}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`, etiqueta: monthLabelEs(mes) };
+      for (const c of empresasDeLaVista) {
+        const meta = getCompanyMeta(c.value as CompanyName);
+        for (const r of resumenesDeEmpresa(String(c.value), periodo)) {
+          const ruta = `${companyPeriodPath({ top: r.top, companyShort: meta.short, iso: mes, fiscalStartMonth: meta.fiscalYearStartMonth })}/${r.nombre} ${mes}.html`;
+          await writeFileToFolder(handle, ruta, r.html);
+          written.push(ruta);
+        }
+        for (const r of resumenesSinFecha(String(c.value))) {
+          await writeFileToFolder(handle, r.ruta, r.html);
+          written.push(r.ruta);
+        }
+      }
+      const rutaCatalogos = `${companyPath("Fabricacion", "General", "Catalogos")}/Catalogos de fabricacion.html`;
+      await writeFileToFolder(handle, rutaCatalogos, catalogosFabricacionHtml());
+      written.push(rutaCatalogos);
+      setDocumentsMessage(`Listo: ${written.length} planillas de las solapas nuevas.`);
+    } catch (err) {
+      console.error("[documentos] solapas nuevas:", err);
+      setDocumentsMessage("No pude exportar las solapas nuevas a la carpeta.");
+    }
+    setDocumentsBusy(false);
+    return written;
+  };
+
   const EXPORT_MANAGED_FOLDERS = [
     "Manuales",
     "Presupuestos",
@@ -7240,6 +7358,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     written.push(...(await exportPettyCashToFolder()));
     written.push(...(await exportDocumentacionToFolder()));
     written.push(...(await exportMarcadoresToFolder()));
+    written.push(...(await exportSolapasNuevasToFolder()));
     written.push(...(await exportSummaryToFolder()));
     let removed = 0;
     try {
@@ -7450,6 +7569,9 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           cierre,
           empresa: company,
           generado: new Date().toISOString(),
+          // TODO lo de la empresa (lo suyo y lo compartido), para poder reconstruir el ejercicio aunque falte algo de abajo
+          // (02/11/2026: las solapas nuevas no estaban en el respaldo).
+          estadoCompleto: podarPorEmpresa(buildPersistedAppData() as unknown as Record<string, unknown>, String(company)),
           archivado: {
             bankStatementEntries: plan.banco.archivar,
             costEntries: plan.gastos.archivar,
@@ -7509,6 +7631,12 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         meta.short
       )
     );
+    // Las solapas nuevas, con el ejercicio entero.
+    const periodoCierre: Periodo = { desde: cierre.startIso, hasta: cierre.endIso, etiqueta: `Ejercicio ${periodo}` };
+    const nuevas = resumenesDeEmpresa(String(company), periodoCierre);
+    for (const r of nuevas) await escribir(`${r.nombre}.html`, r.html);
+    await escribir("Clientes.html", resumenClientes(crmClients.filter((c) => !c.company || c.company === company || c.company === "General"), meta.short, cierre.endIso));
+    await escribir("Catalogos de fabricacion.html", catalogosFabricacionHtml());
     await escribir(
       "index.html",
       buildCierreIndiceHtml(
@@ -7521,7 +7649,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           { nombre: "Tarjetas.html", que: "Consumos de tarjeta" },
           { nombre: "Calendario anual.html", que: "Lo cargado a mano en el cash flow" },
           { nombre: "Asistencia.html", que: "Fichadas del personal, día por día" },
-          { nombre: "cierre.json", que: "Respaldo crudo para restaurar. No lo borres." },
+          ...nuevas.map((r) => ({ nombre: `${r.nombre}.html`, que: r.top })),
+          { nombre: "Clientes.html", que: "Clientes de la empresa (y los compartidos)" },
+          { nombre: "Catalogos de fabricacion.html", que: "Tareas, tipos de mueble, categorías, rutinas y máquinas" },
+          { nombre: "cierre.json", que: "Respaldo crudo para restaurar (con TODO lo de la empresa). No lo borres." },
         ],
         plan.resumen.detalle
       )

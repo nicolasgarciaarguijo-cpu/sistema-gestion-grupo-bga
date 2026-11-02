@@ -21,6 +21,13 @@ const gasto = {
   administration: "blanco",
 } as any;
 
+// La planilla abre en el mes de HOY: se fija la fecha del caso (si no, desde el 1/11/2026 abre en el ejercicio nuevo).
+beforeAll(() => {
+  jest.useFakeTimers("modern");
+  jest.setSystemTime(new Date("2026-10-20T12:00:00"));
+});
+afterAll(() => jest.useRealTimers());
+
 it("el gasto de caja chica cae en Proveedores, en su grupo y en su dia", () => {
   const r = aRenglonDeProveedores(gasto, () => undefined, {
     proveedor: "Juan carlos Barsi",

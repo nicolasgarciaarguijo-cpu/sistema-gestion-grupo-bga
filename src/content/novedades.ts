@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-02a",
+    fecha: "02/11/2026",
+    titulo: "Las solapas nuevas tienen su lugar en la carpeta",
+    items: [
+      {
+        titulo: "Exportar TODO guarda también las solapas nuevas",
+        que: "Seguros, Inversiones, Desendeudamiento, Movimientos internos (con retiros de socios), Cuentas, Pagos programados, Inventario de stock y Fabricación: una planilla por empresa y por mes en <Solapa>/<EMPRESA>/Ejercicio/<mes>. Los catálogos de Fabricación van en Fabricacion/GENERAL/Catalogos y los clientes en Presupuestos/<EMPRESA>/Clientes.html.",
+        como: "Documentos → Exportar TODO.",
+        tab: "documentos",
+      },
+      {
+        titulo: "El cierre guarda todo",
+        que: "El respaldo del cierre (cierre.json) ahora lleva todos los datos de la empresa, y la carpeta del cierre suma las planillas de las solapas nuevas con el ejercicio entero.",
+        como: "Al cerrar el ejercicio (se abre solo el asistente de cierre).",
+        tab: "cashflow",
+      },
+    ],
+  },
+  {
     id: "2026-10-31k",
     fecha: "31/10/2026",
     titulo: "Categorías internas armadas",
