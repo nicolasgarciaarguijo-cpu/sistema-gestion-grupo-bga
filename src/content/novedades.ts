@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-03a",
+    fecha: "03/11/2026",
+    titulo: "IVA anual, cierre del desendeudamiento y haberes previstos",
+    items: [
+      {
+        titulo: "IVA mes a mes; el VEP controla",
+        que: "La posición de IVA va por mes calendario: débito menos crédito de cada mes, y el saldo a favor pasa al mes siguiente. Arriba, el mes en curso; abajo, el ejercicio mes por mes. El VEP ya no reinicia nada: se asigna al mes que paga (\"Mes que paga\"; vacío = el mes anterior a su fecha) y se controla contra lo que el sistema dice a pagar: ✓ coincide, ⚠ faltan, ⚠ de más o ⚠ sin VEP.",
+        como: "Balance → Posición de IVA.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Desendeudamiento: cierre del ejercicio",
+        que: "Arriba, por cada deuda: lo que se pagó de las cuotas del ejercicio cerrado, lo que quedó sin pagar y pasa al año nuevo, y las cuotas que siguen.",
+        como: "Desendeudamiento → Cierre del ejercicio.",
+        tab: "desendeudamiento",
+      },
+      {
+        titulo: "Haberes por pagar en el Calendario",
+        que: "Lo que falta pagar de cada persona (lo mismo que se ve en Pagos programados) aparece como \"≈\" en su renglón de HABERES y suma en la fila de suma estimada, para ver cómo se está frente a ese egreso. Al cargar el pago desde su ficha, la previsión desaparece.",
+        como: "Calendario anual → HABERES.",
+        tab: "calendarioAnual",
+      },
+    ],
+  },
+  {
     id: "2026-11-02b",
     fecha: "02/11/2026",
     titulo: "Arreglos del cierre",

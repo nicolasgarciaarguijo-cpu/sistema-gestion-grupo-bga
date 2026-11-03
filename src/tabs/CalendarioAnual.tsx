@@ -2998,6 +2998,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                           </td>
                           {visibleDayCols.map((c) => {
                             const v = drow?.get(c.iso) || 0;
+                            // Lo que falta pagar de su haber (Pagos programados), como en el resto: "≈" en el dia previsto.
+                            const previsto = v ? 0 : prev.porDia.get(`custom:haberes:${emp.name}`)?.get(c.iso) || 0;
                             return (
                               <td
                                 key={`hab-${emp.name}-${c.iso}`}
@@ -3010,6 +3012,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                 title={
                                   v
                                     ? `${emp.name}: sueldo blanco (B) y negro (N). Click derecho: editar, pasar de blanco a negro, borrar o cargar otro pago`
+                                    : previsto
+                                    ? `Previsto: haber de ${emp.name} por pagar ≈ ${money(previsto)} (sale de su ficha de pago de haberes)`
                                     : `Click: cargar un pago a ${emp.name} · Click derecho: más opciones`
                                 }
                                 style={{ ...tdCell, cursor: "pointer", fontWeight: 600, color: v ? "#dc2626" : "#cbd5e1", ...hi(c.iso) }}
@@ -3021,6 +3025,8 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                                       c.iso,
                                       true
                                     )
+                                  : previsto
+                                  ? <span style={{ color: "#94a3b8", fontWeight: 500 }}>≈{money(previsto)}</span>
                                   : "+"}
                               </td>
                             );

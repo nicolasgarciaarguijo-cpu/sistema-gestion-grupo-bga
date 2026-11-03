@@ -118,7 +118,7 @@ import {
   buildCierreIndiceHtml,
   cierreFolderName,
 } from "./content/cierreHtml";
-import { computeVatPosition } from "./domain/vatBalance";
+import { ivaAnual } from "./domain/vatBalance";
 import { conteoBlanqueo, type ConteoBlanqueo, type MovFisco } from "./domain/faltaFactura";
 import { conteoPagosPorPersona, pagosCruzadosEntreEmpresas } from "./domain/pagosPorPersona";
 import { armarPreCierre, type PreCierre } from "./domain/preCierre";
@@ -247,7 +247,7 @@ import { workingDaysInMonth, paymentDateForPeriod, negroDelMes } from "./domain/
 import { buscarFacturaCargada } from "./domain/arcaCruce";
 import { esNotaDeCredito, creditoAplicadoPorFactura, saldoDeFactura, type NotaCreditoCompra } from "./domain/notasCredito";
 import { NotaCreditoModal } from "./ui/NotaCreditoModal";
-import { fichaDeHaberes, haberesPorPagar, periodoDePago, type CorrespondeHaber } from "./domain/fichaHaberes";
+import { fichaDeHaberes, haberesPorPagar, periodoDePago, renglonHaberes, type CorrespondeHaber } from "./domain/fichaHaberes";
 import { FichaPagoHaberes } from "./ui/FichaPagoHaberes";
 import { PagoHaberModal, type PagoHaberForm } from "./ui/PagoHaberModal";
 import { ComprasTab } from "./tabs/Compras";
@@ -14944,6 +14944,28 @@ Escribi CERRAR para confirmar:`
     return String(iso || "") > c.endIso;
   };
 
+  // IVA de una empresa MES A MES en el ejercicio en curso (03/11/2026): debito - credito de cada mes calendario, el saldo a favor
+  // que pasa al siguiente y cada VEP controlando el mes que paga. Ver domain/vatBalance.ts `ivaAnual`.
+  const ivaDeEmpresa = (company: string) => {
+    const meta = COMPANY_OPTIONS.find((c) => c.value === company);
+    const sm = meta?.fiscalYearStartMonth ?? DEFAULT_FISCAL_START_MONTH;
+    const ej = fiscalYearBounds(sm, currentFiscalStartYear(sm, new Date()));
+    const hoy = todayIso();
+    return ivaAnual({
+      company,
+      issued: issuedInvoices.map((inv) => ({ company: inv.company, date: inv.date, vat: Number(inv.vat || 0) })),
+      purchases: [
+        ...visiblePurchaseInvoices.map((p) => ({ company: p.company, date: p.invoiceDate, vat: Number(p.vat || 0), administration: p.administration })),
+        // Nota de credito: baja el credito fiscal.
+        ...visibleCreditNotes.map((n) => ({ company: n.company as CompanyName, date: n.date, vat: -Number(n.vat || 0), administration: n.administration })),
+      ],
+      veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date, amount: Number(v.amount || 0), periodoMes: v.periodoMes })),
+      desde: ej.startIso,
+      hasta: hoy < ej.endIso ? hoy : ej.endIso,
+      hoy,
+    });
+  };
+
   const reservaSummary = useMemo(() => {
     const inScope = (company: string) =>
       balanceCompanyScope === "__ALL__" || company === balanceCompanyScope;
@@ -15471,26 +15493,10 @@ Escribi CERRAR para confirmar:`
         aCobrarNegro += Number(j.pendienteNegro || 0);
       }
       // Posicion de IVA de la empresa desde el ultimo VEP (debito ventas - credito compras blanco).
-      const ivaPos = computeVatPosition({
-        company,
-        issued: issuedInvoices.map((inv) => ({
-          company: inv.company,
-          date: inv.date,
-          vat: Number(inv.vat || 0),
-        })),
-        purchases: [
-          ...visiblePurchaseInvoices.map((p) => ({
-            company: p.company,
-            date: p.invoiceDate,
-            vat: Number(p.vat || 0),
-            administration: p.administration,
-          })),
-          // Nota de credito: baja el credito fiscal.
-          ...visibleCreditNotes.map((n) => ({ company: n.company as CompanyName, date: n.date, vat: -Number(n.vat || 0), administration: n.administration })),
-        ],
-        // El cierre del ejercicio reinicia la posicion como un VEP (02/11/2026: "el IVA deberia estar en cero").
-          veps: [...visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })), ...cierresActivos(fiscalClosings).map((c) => ({ company: c.company, date: c.endIso }))],
-      });
+      // IVA MES A MES (03/11/2026): la posicion del tablero es la del MES EN CURSO (con el saldo a favor que viene); el VEP no
+      // reinicia nada, controla el mes que paga. Ver ivaDeEmpresa.
+      const ivaMes = ivaDeEmpresa(String(company)).mesActual;
+      const ivaPos = { debito: ivaMes?.debito || 0, credito: ivaMes?.credito || 0, posicion: ivaMes ? ivaMes.aPagar - ivaMes.aFavorQuePasa : 0 };
       // Deuda con la gente: facturas que puso alguien de su bolsillo y no se le reintegraron. La
       // regla vive en domain/purchaseLedger.ts; aca solo se corta por empresa.
       const deudaGente = computePersonDebts(purchaseLedgerInvoices, company);
@@ -15663,31 +15669,23 @@ Escribi CERRAR para confirmar:`
       .filter((c) => balanceCompanyScope === "__ALL__" || c.value === balanceCompanyScope)
       .map((c) => {
         const company = c.value as CompanyName;
-        const pos = computeVatPosition({
-          company,
-          issued: issuedInvoices.map((inv) => ({
-            company: inv.company,
-            date: inv.date,
-            vat: Number(inv.vat || 0),
-          })),
-          purchases: [
-            ...visiblePurchaseInvoices.map((p) => ({
-              company: p.company,
-              date: p.invoiceDate,
-              vat: Number(p.vat || 0),
-              administration: p.administration,
-            })),
-            ...visibleCreditNotes.map((n) => ({ company: n.company as CompanyName, date: n.date, vat: -Number(n.vat || 0), administration: n.administration })),
-          ],
-          // El cierre del ejercicio reinicia la posicion como un VEP (02/11/2026: "el IVA deberia estar en cero").
-          veps: [...visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date })), ...cierresActivos(fiscalClosings).map((c) => ({ company: c.company, date: c.endIso }))],
-        });
+        const anual = ivaDeEmpresa(String(company));
+        const m = anual.mesActual;
+        const pos = {
+          debito: m?.debito || 0,
+          credito: m?.credito || 0,
+          posicion: m ? m.aPagar - m.aFavorQuePasa : 0,
+          lastVepDate: null as string | null,
+          ventas: 0,
+          compras: 0,
+        };
         const falta = faltaFacturaPorEmpresa.get(String(company));
         return {
           company,
           short: c.short || company,
           primary: c.primary || "#475569",
           ...pos,
+          anual,
           falta: falta || null,
           posicionReal: pos.posicion + Number(falta?.ivaFaltante || 0),
         };
@@ -18832,6 +18830,13 @@ Escribi CERRAR para confirmar:`
       const grupo = d.grupoCosto || prov?.grupoCosto || "|Sin grupo";
       return { conceptKey: renglonProveedor(prov?.currentAccount ? SECCION_CTACTE : SECCION_PROVEEDORES, grupo), titulo: nombre };
     };
+    // Lo que falta pagar de haberes (clave "haber:<empleado>:<periodo>"): al renglon de esa persona en HABERES.
+    const filaDeSueldo = (refId: number | string) => {
+      const empId = Number(String(refId).split(":")[1]);
+      const emp = employees.find((e) => e.id === empId);
+      // Sin titulo: el renglon de la persona ya es la fila (no es un proveedor dentro de un grupo).
+      return emp ? { conceptKey: renglonHaberes(emp.name) } : null;
+    };
     return [
       ...segurosPrevisiones,
       // El rescate previsto de las inversiones activas con fecha de fin (desaparece al rescatarlas).
@@ -18846,10 +18851,10 @@ Escribi CERRAR para confirmar:`
       // LAS FACTURAS NO CARGAN EL CASH FLOW (Nicolas, 28/10/2026): lo cargan los cobros y los pagos; la factura solo se
       // asocia a ellos como constancia. Una factura sin pago no se ve en el cash flow, salvo que se le haya PROGRAMADO el
       // pago del saldo (fecha elegida + cuenta): eso es un pago programado y va como egreso (esPago, 29/10/2026).
-      ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => esPago(i) && i.origen !== "cheque" && i.origen !== "pago"), filaDeFactura, filaDeDeuda).filter((p) => p.date >= desde && p.date <= hasta),
+      ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => esPago(i) && i.origen !== "cheque" && i.origen !== "pago"), filaDeFactura, filaDeDeuda, filaDeSueldo).filter((p) => p.date >= desde && p.date <= hasta),
       // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
     ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
-  }, [alcanceEmpresa, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans, inversiones]);
+  }, [alcanceEmpresa, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans, inversiones, employees]);
 
   // Marcar pagado: si el origen tiene su propio "pagado", se usa ESE (queda vinculado en las dos
   // solapas); si no, se guarda una marca.
@@ -23685,6 +23690,10 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "desendeudamiento" && (
         <DesendeudamientoTab
+          ejercicioCerrado={(() => {
+            const c = cierresActivos(fiscalClosings).filter((x) => canAccessCompany(x.company as CompanyName)).sort((a, b) => b.endIso.localeCompare(a.endIso))[0];
+            return c ? { desde: c.startIso, hasta: c.endIso, etiqueta: `${c.startIso.slice(0, 7)} a ${c.endIso.slice(0, 7)}` } : undefined;
+          })()}
           deudas={visibleDebtPlans}
           hoy={hoyIso}
           companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}

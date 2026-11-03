@@ -17,6 +17,7 @@ import { totalDeMoneda, ultimoCierre } from "../domain/cierreEjercicio";
 import type { CierreEjercicio } from "../domain/cierreEjercicio";
 import { DEFAULT_FISCAL_START_MONTH, currentFiscalStartYear, fiscalYearLabel } from "../domain/fiscalYear";
 import { ETIQUETA_MOV_FISCO, type ConteoBlanqueo, type TipoMovFisco } from "../domain/faltaFactura";
+import type { IvaAnual } from "../domain/vatBalance";
 
 import NumInput from "../ui/NumInput";
 // Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
@@ -190,6 +191,8 @@ type CashflowTabProps = {
     // Conteo de blanqueo del ejercicio (ver domain/faltaFactura) y la posicion REAL.
     falta?: ConteoBlanqueo | null;
     posicionReal?: number;
+    // Contador anual del ejercicio (03/11/2026).
+    anual?: IvaAnual;
   }[];
   ivaVepPayments: any[];
   // Regularizaciones manuales del conteo de blanqueo (firmadas por quien las carga).
@@ -777,12 +780,12 @@ export function CashflowTab({
             })()}
           </Panel>
 
-          <Panel title="Posicion de IVA (desde el ultimo VEP)" span="wide">
+          <Panel title="Posicion de IVA · mes a mes, alineada al calendario" span="wide">
             <div style={{ ...styles.muted, marginBottom: 10 }}>
-              Debito (IVA de ventas emitidas) menos credito (IVA de compras en blanco), acumulado desde el
-              ultimo VEP de pago. Positivo = <strong>a pagar</strong> (conviene comprar en blanco con esa
-              empresa); negativo = <strong>a favor</strong> (conviene facturar con esa empresa). El IVA es
-              por CUIT: no se suma entre empresas.
+              Cada mes calendario: debito (IVA de ventas emitidas) menos credito (IVA de compras en blanco); el saldo a favor pasa
+              al mes siguiente. Arriba, el <strong>mes en curso</strong>: positivo = <strong>a pagar</strong> (conviene comprar en
+              blanco con esa empresa); negativo = <strong>a favor</strong> (conviene facturar). El VEP no reinicia nada: se
+              asigna al mes que paga y <strong>controla</strong> que lo pagado sea lo que el sistema dice. El IVA es por CUIT.
             </div>
             {vatPositionByCompany.length === 0 ? (
               <div style={styles.empty}>Sin empresas en el alcance seleccionado.</div>
@@ -791,18 +794,16 @@ export function CashflowTab({
                 <div key={v.company} style={{ marginBottom: 12 }}>
                   <div style={{ ...balanceSection, borderLeft: `4px solid ${v.primary}`, paddingLeft: 8 }}>
                     {v.short}
-                    {v.lastVepDate
-                      ? ` · desde el VEP del ${formatDateDisplay(v.lastVepDate)}`
-                      : " · sin VEP (cuenta todo el historico)"}
+                    {" · mes en curso"}
                   </div>
                   <div style={balanceGrid}>
                     <BalanceTile
-                      label={`IVA debito · ventas (${v.ventas})`}
+                      label="IVA débito del mes · ventas"
                       value={money(v.debito)}
                       tone="white"
                     />
                     <BalanceTile
-                      label={`IVA credito · compras blanco (${v.compras})`}
+                      label="IVA crédito del mes · compras blanco"
                       value={money(v.credito)}
                       tone="white"
                     />
@@ -818,6 +819,64 @@ export function CashflowTab({
                       tone={v.posicion > 1 ? "warn" : "strong"}
                     />
                   </div>
+                  {v.anual && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ ...styles.muted, fontSize: 12, marginBottom: 4 }}>
+                        <strong>El ejercicio</strong> desde {formatDateDisplay(v.anual.desde)}, mes por mes, con el control de cada VEP.
+                      </div>
+                      <div style={balanceGrid}>
+                        <BalanceTile label="Débito del ejercicio" value={money(v.anual.debito)} tone="white" />
+                        <BalanceTile label="Crédito del ejercicio" value={money(v.anual.credito)} tone="white" />
+                        <BalanceTile label="A pagar según el sistema" value={money(v.anual.aPagar)} tone="white" />
+                        <BalanceTile label="Pagado con VEP" value={money(v.anual.vepPagado)} tone="white" />
+                        <BalanceTile
+                          label={Math.abs(v.anual.diferencia) <= 1 ? "VEP vs sistema: coincide" : v.anual.diferencia < 0 ? "VEP vs sistema: falta pagar" : "VEP vs sistema: pagado de más"}
+                          value={money(Math.abs(v.anual.diferencia))}
+                          tone={Math.abs(v.anual.diferencia) <= 1 ? "strong" : "warn"}
+                        />
+                      </div>
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, marginTop: 6 }}>
+                        <thead>
+                          <tr style={{ color: "#64748b", textAlign: "right" }}>
+                            <th style={{ textAlign: "left", padding: "3px 6px" }}>Mes</th>
+                            <th style={{ padding: "3px 6px" }}>Débito</th>
+                            <th style={{ padding: "3px 6px" }}>Crédito</th>
+                            <th style={{ padding: "3px 6px" }}>A favor que viene</th>
+                            <th style={{ padding: "3px 6px" }}>A pagar</th>
+                            <th style={{ padding: "3px 6px" }}>A favor que pasa</th>
+                            <th style={{ padding: "3px 6px" }}>VEP</th>
+                            <th style={{ textAlign: "left", padding: "3px 6px" }}>Control</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {v.anual.meses.map((m) => {
+                            const ctl =
+                              m.control === "ok"
+                                ? { t: "✓ coincide", c: "#166534" }
+                                : m.control === "falta"
+                                ? { t: `⚠ faltan ${money(-m.diferencia)}`, c: "#b45309" }
+                                : m.control === "de_mas"
+                                ? { t: `⚠ ${money(m.diferencia)} de más`, c: "#b45309" }
+                                : m.control === "sin_vep"
+                                ? { t: "⚠ sin VEP", c: "#b91c1c" }
+                                : { t: "·", c: "#94a3b8" };
+                            return (
+                              <tr key={m.mes} style={{ textAlign: "right", borderTop: "1px solid #f1f5f9", fontVariantNumeric: "tabular-nums" }}>
+                                <td style={{ textAlign: "left", padding: "3px 6px" }}>{m.mes.slice(5, 7)}/{m.mes.slice(0, 4)}</td>
+                                <td style={{ padding: "3px 6px" }}>{money(m.debito)}</td>
+                                <td style={{ padding: "3px 6px" }}>{money(m.credito)}</td>
+                                <td style={{ padding: "3px 6px", color: "#64748b" }}>{m.arrastre ? money(m.arrastre) : "·"}</td>
+                                <td style={{ padding: "3px 6px", fontWeight: 700 }}>{money(m.aPagar)}</td>
+                                <td style={{ padding: "3px 6px", color: "#64748b" }}>{m.aFavorQuePasa ? money(m.aFavorQuePasa) : "·"}</td>
+                                <td style={{ padding: "3px 6px" }}>{m.vep ? money(m.vep) : "·"}</td>
+                                <td style={{ textAlign: "left", padding: "3px 6px", fontWeight: 700, color: ctl.c }}>{ctl.t}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                   {v.falta && (v.falta.sube > 0.5 || v.falta.baja > 0.5) && (() => {
                     const f = v.falta!;
                     const real = v.posicionReal ?? v.posicion;
@@ -879,15 +938,14 @@ export function CashflowTab({
             )}
 
             <div style={{ ...balanceSection, marginTop: 8 }}>
-              VEP de pago de IVA (al cargarlo se reinicia el contador de esa empresa)
+              VEP de pago de IVA (controla el mes que paga: tiene que coincidir con lo que el sistema dice a pagar)
             </div>
             <div style={{ marginBottom: 8 }}>
               <ButtonLike onClick={addIvaVepPayment}>Cargar VEP de pago</ButtonLike>
             </div>
             {ivaVepPayments.length === 0 ? (
               <div style={styles.empty}>
-                Sin VEP cargados. Al cargar el pago trimestral, el contador de esa empresa arranca de nuevo
-                desde la fecha del VEP.
+                Sin VEP cargados. Cada VEP se asigna al mes que paga y se controla contra lo que el sistema dice a pagar.
               </div>
             ) : (
               ivaVepPayments.map((v: any) => (
@@ -919,12 +977,13 @@ export function CashflowTab({
                         onChange={(e) => updateIvaVepPayment(v.id, "date", e.target.value)}
                       />
                     </Field>
-                    <Field label="Periodo">
+                    <Field label="Mes que paga">
                       <input
                         style={styles.input}
-                        value={v.period}
-                        placeholder="3T 2026"
-                        onChange={(e) => updateIvaVepPayment(v.id, "period", e.target.value)}
+                        type="month"
+                        value={v.periodoMes || ""}
+                        title="Mes de IVA que paga este VEP (vacío = el mes anterior a su fecha)"
+                        onChange={(e) => updateIvaVepPayment(v.id, "periodoMes", e.target.value)}
                       />
                     </Field>
                     <Field label="Monto pagado">

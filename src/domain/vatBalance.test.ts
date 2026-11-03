@@ -88,3 +88,30 @@ describe("computeVatPosition", () => {
     expect(vatPositionLabel(0).tone).toBe("neutral");
   });
 });
+
+describe("IVA mes a mes con el VEP como control (03/11/2026)", () => {
+  const { ivaAnual } = require("./vatBalance");
+  const base = {
+    company: "A",
+    issued: [{ company: "A", date: "2026-11-10", vat: 100 }, { company: "A", date: "2026-12-05", vat: 300 }, { company: "B", date: "2026-11-10", vat: 999 }],
+    purchases: [{ company: "A", date: "2026-11-20", vat: 250 }, { company: "A", date: "2026-11-21", vat: 70, administration: "negro" }, { company: "A", date: "2027-01-03", vat: 10 }],
+    desde: "2026-11-01",
+    hasta: "2027-01-31",
+    hoy: "2027-01-15",
+  };
+  it("el saldo a favor pasa al mes siguiente y el VEP no reinicia nada", () => {
+    const r = ivaAnual({ ...base, veps: [{ company: "A", date: "2027-01-18", amount: 150 }] });
+    expect(r.meses.map((m: any) => m.mes)).toEqual(["2026-11", "2026-12", "2027-01"]);
+    // nov: 100 - 250 = -150 a favor que pasa; dic: 300 - 150 = 150 a pagar; el VEP de enero sin periodo paga diciembre.
+    expect(r.meses[0]).toMatchObject({ posicion: -150, aPagar: 0, aFavorQuePasa: 150, control: "nada" });
+    expect(r.meses[1]).toMatchObject({ arrastre: 150, aPagar: 150, vep: 150, control: "ok" });
+    expect(r.mesActual.mes).toBe("2027-01");
+  });
+  it("controla el VEP contra lo que el sistema dice a pagar", () => {
+    const falta = ivaAnual({ ...base, veps: [{ company: "A", date: "2027-01-18", amount: 100, periodoMes: "2026-12" }] });
+    expect(falta.meses[1]).toMatchObject({ control: "falta", diferencia: -50 });
+    const sinVep = ivaAnual({ ...base, veps: [] });
+    expect(sinVep.meses[1].control).toBe("sin_vep");
+    expect(sinVep.diferencia).toBe(-150);
+  });
+});

@@ -36,3 +36,15 @@ describe("desendeudamiento", () => {
     expect(camposLegacy([])).toEqual({ nextDueDate: "", remainingInstallments: 0, nextInstallmentAmount: 0 });
   });
 });
+
+describe("cierreDeDeuda (03/11/2026)", () => {
+  const { cierreDeDeuda } = require("./desendeudamiento");
+  it("separa lo pagado y lo impago del ejercicio cerrado de lo que sigue", () => {
+    const d = { id: 1, active: true, cuotas: [
+      { id: "a", numero: 1, fecha: "2026-09-10", monto: 100, pagoCostEntryId: 5 },
+      { id: "b", numero: 2, fecha: "2026-10-10", monto: 100, pagoCostEntryId: null },
+      { id: "c", numero: 3, fecha: "2026-11-10", monto: 100, pagoCostEntryId: null },
+    ] } as any;
+    expect(cierreDeDeuda(d, "2025-11-01", "2026-10-31")).toEqual({ pagadoEnEjercicio: 100, cuotasPagadasEnEjercicio: 1, impagoDelEjercicio: 100, cuotasImpagasDelEjercicio: 1, sigue: 100, cuotasQueSiguen: 1 });
+  });
+});

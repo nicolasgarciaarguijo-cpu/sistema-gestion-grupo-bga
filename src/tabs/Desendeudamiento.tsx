@@ -15,6 +15,7 @@ import {
   type BloqueDeuda,
   cuotasDeDeuda,
   cuotaPagada,
+  cierreDeDeuda,
   generarCuotas,
   resumenDeuda,
   type CuotaDeuda,
@@ -71,7 +72,10 @@ export function DesendeudamientoTab({
   onAbrirProveedor,
   tarjetas = [],
   onIr,
+  ejercicioCerrado,
 }: {
+  // El ultimo ejercicio cerrado (03/11/2026): arriba se muestra que paso con cada deuda ese año y que sigue ahora.
+  ejercicioCerrado?: { desde: string; hasta: string; etiqueta: string };
   tarjetas?: TarjetaOpt[];
   deudas: DebtPlan[];
   hoy: string;
@@ -136,8 +140,54 @@ export function DesendeudamientoTab({
   const deudaMenu = menu ? deudas.find((d) => d.id === menu.deudaId) : undefined;
   const cuotaMenu = deudaMenu ? cuotasDeDeuda(deudaMenu).find((c) => c.id === menu!.cuotaId) : undefined;
 
+  const cierres = ejercicioCerrado
+    ? deudas
+        .map((d) => ({ d, c: cierreDeDeuda(d, ejercicioCerrado.desde, ejercicioCerrado.hasta) }))
+        .filter((x) => x.c.cuotasPagadasEnEjercicio + x.c.cuotasImpagasDelEjercicio + x.c.cuotasQueSiguen > 0)
+    : [];
+  const sumaCierre = (k: "pagadoEnEjercicio" | "impagoDelEjercicio" | "sigue") => cierres.reduce((a, x) => a + x.c[k], 0);
+  const corto = (c: string) => companyOptions.find((o) => o.value === c)?.short || c;
   return (
     <div style={styles.column}>
+      {ejercicioCerrado && (
+        <Panel span="full" title={`Cierre del ejercicio ${ejercicioCerrado.etiqueta} · lo que pasó y lo que sigue`}>
+          <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 6 }}>
+            De cada deuda: lo que se pagó de las cuotas del ejercicio cerrado, lo que de ese ejercicio quedó sin pagar (pasa al año nuevo) y las cuotas que siguen.
+          </div>
+          {cierres.length === 0 ? (
+            <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Ninguna deuda tuvo cuotas en ese ejercicio ni las tiene después.</div>
+          ) : (
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+              <thead>
+                <tr style={{ color: "#64748b", fontSize: 12, textAlign: "right" }}>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Deuda</th>
+                  <th style={{ textAlign: "left", padding: "4px 6px" }}>Empresa</th>
+                  <th style={{ padding: "4px 6px" }}>Pagado en el ejercicio</th>
+                  <th style={{ padding: "4px 6px" }}>Quedó impago (pasa)</th>
+                  <th style={{ padding: "4px 6px" }}>Sigue (cuotas nuevas)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cierres.map(({ d, c }) => (
+                  <tr key={d.id} style={{ borderTop: "1px solid #f1f5f9", textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
+                    <td style={{ textAlign: "left", padding: "4px 6px", fontWeight: 600 }}>{d.acreedor || d.concept}</td>
+                    <td style={{ textAlign: "left", padding: "4px 6px" }}>{corto(d.company)}</td>
+                    <td style={{ padding: "4px 6px" }}>{money(c.pagadoEnEjercicio)} <span style={{ color: "#94a3b8" }}>({c.cuotasPagadasEnEjercicio})</span></td>
+                    <td style={{ padding: "4px 6px", color: c.impagoDelEjercicio > 0 ? "#b45309" : undefined }}>{money(c.impagoDelEjercicio)} <span style={{ color: "#94a3b8" }}>({c.cuotasImpagasDelEjercicio})</span></td>
+                    <td style={{ padding: "4px 6px" }}>{money(c.sigue)} <span style={{ color: "#94a3b8" }}>({c.cuotasQueSiguen})</span></td>
+                  </tr>
+                ))}
+                <tr style={{ borderTop: "2px solid #e2e8f0", textAlign: "right", fontWeight: 800 }}>
+                  <td style={{ textAlign: "left", padding: "4px 6px" }} colSpan={2}>Total</td>
+                  <td style={{ padding: "4px 6px" }}>{money(sumaCierre("pagadoEnEjercicio"))}</td>
+                  <td style={{ padding: "4px 6px" }}>{money(sumaCierre("impagoDelEjercicio"))}</td>
+                  <td style={{ padding: "4px 6px" }}>{money(sumaCierre("sigue"))}</td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </Panel>
+      )}
       <Panel
         span="full"
         title="Desendeudamiento"

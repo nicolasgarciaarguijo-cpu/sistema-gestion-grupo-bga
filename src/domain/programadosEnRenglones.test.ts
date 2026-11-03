@@ -50,3 +50,14 @@ describe("programadosEnRenglones", () => {
     expect(r).toEqual([]);
   });
 });
+
+describe("haberes por pagar en el cash flow (03/11/2026)", () => {
+  const { programadosEnRenglones } = require("./programadosEnRenglones");
+  it("el sueldo que falta pagar va al renglón de la persona en HABERES", () => {
+    const items = [{ origen: "sueldos", refId: "haber:7:2026-10", company: "De raiz s.r.l", titulo: "Haber de Lucas", fechaLimite: "2026-11-06", monto: 500000, currency: "ARS", estado: "proximo" }];
+    const r = programadosEnRenglones(items, () => null, () => null, (refId: string) => (refId === "haber:7:2026-10" ? { conceptKey: "custom:haberes:LUCAS" } : null));
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ conceptKey: "custom:haberes:LUCAS", date: "2026-11-06", amount: 500000 });
+    expect(programadosEnRenglones(items, () => null, () => null)).toHaveLength(0);
+  });
+});

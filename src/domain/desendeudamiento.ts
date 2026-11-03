@@ -201,3 +201,30 @@ export function comprasDeConvenios(deudas: DeudaConBloque[], hoy: string): Compr
     })
     .filter((c) => c.total > 0 && !!c.acreedor);
 }
+
+// CIERRE DEL DESENDEUDAMIENTO (Nicolas, 03/11/2026: "el desendeudamiento deberia hacer un cierre tambien, mostrando lo que paso
+// el año pasado y lo que continua ahora"). Por deuda, las cuotas del ejercicio cerrado (pagadas e impagas) y las que siguen.
+export type CierreDeuda = {
+  pagadoEnEjercicio: number;
+  cuotasPagadasEnEjercicio: number;
+  impagoDelEjercicio: number; // cuotas del ejercicio que quedaron sin pagar (pasan al año nuevo)
+  cuotasImpagasDelEjercicio: number;
+  sigue: number; // cuotas posteriores al cierre sin pagar
+  cuotasQueSiguen: number;
+};
+export function cierreDeDeuda(d: DeudaBase, desde: string, hasta: string): CierreDeuda {
+  const todas = cuotasDeDeuda(d);
+  const delEj = todas.filter((c) => c.fecha >= desde && c.fecha <= hasta);
+  const pagadas = delEj.filter(cuotaPagada);
+  const impagas = delEj.filter((c) => !cuotaPagada(c));
+  const despues = d.active === false ? [] : todas.filter((c) => c.fecha > hasta && !cuotaPagada(c));
+  const suma = (xs: CuotaDeuda[]) => xs.reduce((a, c) => a + Number(c.monto || 0), 0);
+  return {
+    pagadoEnEjercicio: suma(pagadas),
+    cuotasPagadasEnEjercicio: pagadas.length,
+    impagoDelEjercicio: suma(impagas),
+    cuotasImpagasDelEjercicio: impagas.length,
+    sigue: suma(despues),
+    cuotasQueSiguen: despues.length,
+  };
+}

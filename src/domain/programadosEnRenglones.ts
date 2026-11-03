@@ -47,7 +47,10 @@ export function programadosEnRenglones(
   filaDeFactura: (refId: number | string) => { conceptKey: string; titulo: string; cuentaId?: string } | null,
   // La fila de una CUOTA de Desendeudamiento: la misma que va a tener su pago (el grupo de costo de la
   // deuda y el nombre del acreedor), para que el pago real la reemplace (2026-10-21).
-  filaDeDeuda?: (refId: number | string) => { conceptKey: string; titulo: string } | null
+  filaDeDeuda?: (refId: number | string) => { conceptKey: string; titulo: string } | null,
+  // Los HABERES por pagar (03/11/2026: "me interesa ver la proyeccion de como estamos frente a ese egreso"): el renglon de
+  // la persona en HABERES, el mismo donde cae su pago real desde la ficha de pago de haberes (que la reemplaza).
+  filaDeSueldo?: (refId: number | string) => { conceptKey: string; titulo?: string } | null
 ): PrevisionDeRenglon[] {
   const out: PrevisionDeRenglon[] = [];
   items.forEach((i) => {
@@ -60,8 +63,8 @@ export function programadosEnRenglones(
       fila =
         filaDeDeuda?.(i.refId) ||
         (ES_IMPUESTO.test(i.titulo) ? { conceptKey: `custom:impuestos:${i.titulo}` } : { conceptKey: FINANCIEROS, titulo: i.titulo });
-    // Los vencimientos a mano y los seguros ya bajan por su propio carril (con su renglon); los
-    // sueldos tienen la ficha de pago de haberes. Ninguno se repite aca.
+    else if (i.origen === "sueldos") fila = filaDeSueldo?.(i.refId) || null;
+    // Los vencimientos a mano y los seguros ya bajan por su propio carril (con su renglon). Ninguno se repite aca.
     if (!fila) return;
     out.push({
       ...fila,

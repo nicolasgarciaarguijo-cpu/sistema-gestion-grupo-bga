@@ -907,6 +907,8 @@ export type IvaVepPayment = {
   company: CompanyName;
   date: string; // "yyyy-mm-dd" — fecha del VEP; reinicia el contador de esa empresa
   period: string; // etiqueta del periodo pagado, ej. "3T 2026"
+  // Mes de IVA que paga (yyyy-mm). Ausente = el mes anterior a la fecha del VEP. El VEP CONTROLA ese mes (03/11/2026).
+  periodoMes?: string;
   amount: number; // monto pagado (informativo)
   // Cuenta de donde sale / a donde entra la plata (ver domain/cuentas.ts). Ausente = la por defecto.
   cuentaId?: string;
