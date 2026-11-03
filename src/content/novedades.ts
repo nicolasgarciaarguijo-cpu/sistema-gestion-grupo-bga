@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-03c",
+    fecha: "03/11/2026",
+    titulo: "Lector de PDF arreglado: facturas y escalas",
+    items: [
+      {
+        titulo: "Facturas y tickets en PDF",
+        que: "El lector entiende ahora las facturas de ARCA, Tango y similares (antes no sacaba nada y decía \"parece escaneado\"). Si el PDF es un escaneo, lo pasa por el OCR en vez de dar error. Toma el total, la fecha y la razón social; igual revisás antes de guardar.",
+        como: "Caja chica → ficha de la caja → leer comprobante.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Escala salarial desde el PDF",
+        que: "Lee la tabla por renglones, también el formato nuevo de USIMRA (oct-2026 en adelante, todo básico por mes, sin suma no remunerativa).",
+        como: "Personal → Escalas → subir el PDF.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-11-03b",
     fecha: "03/11/2026",
     titulo: "Haberes: elegir de dónde sale la plata",

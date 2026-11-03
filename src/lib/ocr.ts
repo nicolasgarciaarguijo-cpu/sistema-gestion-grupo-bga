@@ -2,6 +2,7 @@
 // parseTicket() extrae monto/fecha/proveedor del texto. Como el OCR de fotos no es 100% preciso, el
 // flujo SIEMPRE termina en una confirmacion del usuario (el parser precompleta, el usuario verifica).
 import { extractPdfRawText } from "./pdfExtract";
+import { hojaDelPdfComoImagen, pareceTexto, textoDelPdf } from "./pdfLineas";
 
 export type TicketData = {
   amount: number;
@@ -69,6 +70,8 @@ export function extractDate(text: string): string {
 
 // Proveedor: primera linea con letras y algo de largo (heuristica; el usuario confirma).
 export function extractSupplier(text: string): string {
+  const rs = text.match(/Raz[oó]n Social:\s*([^\n]+?)(?:\s{2,}|\n|$)/i);
+  if (rs && rs[1].trim().length >= 3) return rs[1].trim().slice(0, 60);
   const lines = text.split(/\r?\n/).map((l) => l.trim());
   const cand = lines.find((l) => l.length >= 3 && /[a-zA-Z]/.test(l) && !/^\d/.test(l));
   return (cand || "").slice(0, 60);
@@ -114,15 +117,21 @@ async function imageToText(file: File | Blob): Promise<string> {
 export async function extractTicketText(file: File): Promise<string> {
   const isPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
   if (isPdf) {
+    // 1) pdf.js (entiende las fuentes de ARCA/Tango y deja un renglon por linea); 2) el lector casero, solo si lo que
+    // saca es texto de verdad; 3) PDF escaneado: la primera hoja como imagen, al OCR (antes tiraba error).
+    try {
+      const text = await textoDelPdf(file);
+      if (text.replace(/\s/g, "").length > 40) return text;
+    } catch {
+      // sigue con el lector casero
+    }
     try {
       const text = await extractPdfRawText(file);
-      if (text && text.replace(/\s/g, "").length > 40) return text;
+      if (pareceTexto(text)) return text;
     } catch {
       // sigue al OCR
     }
-    throw new Error(
-      "El PDF parece escaneado (sin texto). Suibi una foto/imagen del ticket para el OCR."
-    );
+    return imageToText(await hojaDelPdfComoImagen(file, 1));
   }
   return imageToText(file);
 }

@@ -61,3 +61,18 @@ describe("parseTicket", () => {
     });
   });
 });
+
+describe("factura en PDF leida por renglones (pdf.js)", () => {
+  it("toma el total, la fecha de emision y la razon social", () => {
+    const t = parseTicket(
+      [
+        "Punto de Venta: 0001  Comp. Nro: 00000039",
+        "Razón Social: MADERERA EL ROBLE S.A.  Fecha de Emisión: 14/11/2017",
+        "Subtotal  $  55.785,12",
+        "Total IVA  $  11.714,88",
+        "Total  $  67.500,00",
+      ].join("\n")
+    );
+    expect(t).toEqual({ amount: 67500, date: "2017-11-14", supplier: "MADERERA EL ROBLE S.A." });
+  });
+});

@@ -130,3 +130,58 @@ export function parseScaleFromRawText(
 
   return { rows, months, categories: orderedCategories, warnings };
 }
+
+// ESCALA POR RENGLONES (03/11/2026): las lineas de pdf.js (lib/pdfLineas) traen la tabla ordenada, un renglon por
+// categoria: "1-OFICIAL MULTIPLE  8575,44  BASICO  8729,80  BASICO  8884,16 ...". El primer numero es el V.H.T. del
+// cierre anterior (si viene uno de mas) y despues uno por mes. Desde la escala de oct-2026 cada mes es todo BASICO
+// (sin suma no remunerativa): basico = V.H.T. = el valor del mes. Un nombre partido en dos renglones
+// ("2-OFICIAL" / "ESPECIALIZADO") se arma con los renglones vecinos sin numeros.
+const NUM_RE = /\d{1,3}(?:\.\d{3})+,\d{2}|\d{3,6},\d{2}/g;
+
+export function parseScaleFromLines(lines: string[], aliases: Record<string, string>): ScaleParseResult {
+  const up = lines.map((l) => deaccentUpper(l));
+  const monthNames = Object.keys(MONTH_MAP);
+  // Encabezado: el renglon con los nombres de los meses y, en ese o en los dos siguientes, los anios.
+  let months: string[] = [];
+  for (let i = 0; i < up.length && !months.length; i++) {
+    const nombres = (up[i].match(/[A-Z]+/g) || []).filter((w) => monthNames.includes(w));
+    if (nombres.length < 2 || /MESES|ACUERDO/.test(up[i])) continue;
+    const anios = [up[i], up[i + 1] || "", up[i + 2] || ""]
+      .map((l) => l.match(/\b20\d{2}\b/g) || [])
+      .find((a) => a.length === nombres.length);
+    if (!anios) continue;
+    months = nombres.map((n, k) => `${anios[k]}-${MONTH_MAP[n]}`);
+  }
+  if (!months.length) months = detectMonths(flatten(lines.join(" ")));
+  if (!months.length) return { rows: [], months: [], categories: [], warnings: ["No detecte meses de vigencia."] };
+
+  const claves = Object.keys(aliases)
+    .map((pdfName) => ({ pdfName, flat: deaccentUpper(pdfName).replace(/\s+/g, "") }))
+    .sort((a, b) => b.flat.length - a.flat.length);
+  const categoriaDe = (texto: string) => {
+    const f = deaccentUpper(texto).replace(/\s+/g, "");
+    const hit = claves.find((c) => f.includes(c.flat));
+    return hit ? aliases[hit.pdfName] : null;
+  };
+  const numeros = (l: string) => (l.match(NUM_RE) || []).map(parseNum);
+  const sinNumeros = (i: number) => i >= 0 && i < lines.length && numeros(lines[i]).length === 0;
+
+  const rows: ParsedScaleRow[] = [];
+  const categories: string[] = [];
+  lines.forEach((linea, i) => {
+    if (/V\.?\s*H\.?\s*T\.?\s*\d|S\.?\s*N\.?\s*R\./i.test(linea)) return; // formato viejo: lo lee parseScaleFromRawText
+    const nums = numeros(linea);
+    if (nums.length !== months.length && nums.length !== months.length + 1) return;
+    const textoPropio = linea.replace(NUM_RE, " ").replace(/BASICO/gi, " ");
+    const categoria =
+      categoriaDe(textoPropio) ||
+      categoriaDe([sinNumeros(i - 1) ? lines[i - 1] : "", textoPropio, sinNumeros(i + 1) ? lines[i + 1] : ""].join(" "));
+    if (!categoria || categories.includes(categoria)) return;
+    categories.push(categoria);
+    nums.slice(nums.length - months.length).forEach((v, m) =>
+      rows.push({ month: months[m], category: categoria, baseHourly: round2(v), nonRemHourly: 0, vht: round2(v) })
+    );
+  });
+  const warnings = rows.length ? [] : [`No encontre la tabla: ${months.length} meses y ninguna categoria con sus valores.`];
+  return { rows, months, categories, warnings };
+}

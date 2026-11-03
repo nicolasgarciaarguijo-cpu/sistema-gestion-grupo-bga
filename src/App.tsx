@@ -87,7 +87,7 @@ import {
 } from "./domain/fichaTarjeta";
 import { fichasDeExtracto, type MovimientoFicha } from "./domain/fichaExtracto";
 import { leerResumenTarjeta, type ResumenLeido } from "./domain/lectorResumenTarjeta";
-import { lineasDelPdf } from "./lib/pdfLineas";
+import { lineasDelPdf, pareceTexto, textoDelPdf } from "./lib/pdfLineas";
 import { proveedorDeArca, accionPorDefecto, sugerenciaDe, type RenglonRevision } from "./domain/arcaRevision";
 import { FichaTarjeta } from "./ui/FichaTarjeta";
 import { FichaExtracto, type TipoLink } from "./ui/FichaExtracto";
@@ -404,7 +404,7 @@ import type {
 import { DocumentosTab } from "./tabs/Documentos";
 import { ManualTab } from "./tabs/Manual";
 import { extractPdfRawText } from "./lib/pdfExtract";
-import { parseScaleFromRawText } from "./lib/scaleParse";
+import { parseScaleFromLines, parseScaleFromRawText } from "./lib/scaleParse";
 import { resolvePersonalDoc, type ResolvedPersonalDoc } from "./domain/personalDocs";
 import {
   classifyPath,
@@ -1549,9 +1549,18 @@ const cloneBudgetDiscounts = (items: BudgetDiscount[]) =>
 
 // Lee la escala salarial de un PDF (incluso comprimido) descomprimiendo los streams con la API nativa
 // del navegador y parseando el texto. Reusa la logica pura testeada (parseScaleFromRawText).
+// 03/11/2026: primero pdf.js (la tabla por renglones, que entiende la escala nueva con solo BASICO por mes); si no
+// sale, el formato viejo (BASICO / S.N.R. / V.H.T.) con el texto de pdf.js y, ultimo, con el lector casero.
 async function parseScalePdf(file: File): Promise<ScaleRow[]> {
-  const rawText = await extractPdfRawText(file);
-  const { rows, warnings } = parseScaleFromRawText(rawText, categoryAliases);
+  let lineas: string[] = [];
+  try {
+    lineas = await lineasDelPdf(file);
+  } catch {
+    // sin pdf.js: queda el lector casero
+  }
+  let { rows, warnings } = lineas.length ? parseScaleFromLines(lineas, categoryAliases) : { rows: [] as any[], warnings: [] as string[] };
+  if (rows.length === 0 && lineas.length) ({ rows, warnings } = parseScaleFromRawText(lineas.join(" "), categoryAliases));
+  if (rows.length === 0) ({ rows, warnings } = parseScaleFromRawText(await extractPdfRawText(file), categoryAliases));
   if (rows.length === 0) {
     const detail = warnings[0] ? ` (${warnings[0]})` : "";
     throw new Error(
@@ -18048,7 +18057,8 @@ Escribi CERRAR para confirmar:`
   const cargarReciboOficial = async (employee: Employee, month: string, file: File | null) => {
     if (!file) return;
     try {
-      const texto = await extractPdfRawText(file);
+      const crudo = await extractPdfRawText(file).catch(() => "");
+      const texto = pareceTexto(crudo) ? crudo : await textoDelPdf(file);
       const leido = leerReciboDeEmpleado(texto, { cuil: employee.cuil, name: employee.name });
       let storagePath: string | undefined;
       try {
