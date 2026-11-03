@@ -154,7 +154,7 @@ export type FuentesInamovibles = {
   seguros: Array<{ seguroId: number; company: string; date: string; amount: number; administration: "blanco" | "negro"; conceptKey: string; tipo: string; descripcion: string }>;
   // Sueldos: una fecha por empresa y periodo (4to dia habil del mes siguiente) y, si se sabe, el monto.
   // Haberes por pagar. Con `clave`/`titulo` es UNA PERSONA (ficha de pago de haberes); sin, la empresa entera.
-  sueldos: Array<{ company: string; periodo: string; fecha: string; monto: number; clave?: string; titulo?: string }>;
+  sueldos: Array<{ company: string; periodo: string; fecha: string; monto: number; clave?: string; titulo?: string; administration?: "blanco" | "negro" }>;
   // Facturas de proveedores SIN pagar con fecha de pago (elegida o por la condicion del proveedor).
   facturas?: Array<{ id: number; company: string; supplier: string; invoiceNumber: string; total: number; fechaPago: string; fechaElegida: boolean; administration: "blanco" | "negro"; conceptKey?: string }>;
   // Facturas ya pagadas que estaban programadas: quedan en la agenda, tachadas (no desaparecen).
@@ -350,6 +350,7 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
             fechaLimite: s.fecha,
             monto: Number(s.monto || 0),
             currency: "ARS",
+            administration: s.administration,
             avisoDias: AVISO_DEFAULT,
             pagado: marcado.has(clave),
             pagadoComo: marcado.has(clave) ? "a mano" : "",

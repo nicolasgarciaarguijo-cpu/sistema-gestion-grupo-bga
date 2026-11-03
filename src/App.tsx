@@ -18239,7 +18239,9 @@ Escribi CERRAR para confirmar:`
       fecha: fecha || todayIso(),
       monto: 0,
       administration: emp.employmentType === "temporal" ? "negro" : "blanco",
-      metodo: "transferencia",
+      metodo: emp.employmentType === "temporal" ? "efectivo" : "transferencia",
+      // El origen elegido en la ficha (se puede cambiar en el pago).
+      cuentaId: emp.employmentType === "temporal" ? emp.origenHaberNegro : emp.origenHaberBlanco,
       notas: "",
     });
   const abrirPagoHaber = (id: number) => {
@@ -18519,6 +18521,7 @@ Escribi CERRAR para confirmar:`
         monto: x.monto,
         clave: x.clave,
         titulo: x.titulo,
+        administration: x.administration,
       }))
     );
     return agendaInamovibles(
@@ -18834,8 +18837,10 @@ Escribi CERRAR para confirmar:`
     const filaDeSueldo = (refId: number | string) => {
       const empId = Number(String(refId).split(":")[1]);
       const emp = employees.find((e) => e.id === empId);
-      // Sin titulo: el renglon de la persona ya es la fila (no es un proveedor dentro de un grupo).
-      return emp ? { conceptKey: renglonHaberes(emp.name) } : null;
+      // Sin titulo: el renglon de la persona ya es la fila (no es un proveedor dentro de un grupo). La cuenta es el ORIGEN
+      // elegido en su ficha de pago de haberes (lo negro termina en ":negro").
+      const negro = String(refId).endsWith(":negro");
+      return emp ? { conceptKey: renglonHaberes(emp.name), cuentaId: negro ? emp.origenHaberNegro : emp.origenHaberBlanco } : null;
     };
     return [
       ...segurosPrevisiones,
@@ -23421,6 +23426,10 @@ Escribi CERRAR para confirmar:`
             }
             money={money}
             onNuevoPago={(periodo) => nuevoPagoHaber(emp, periodo)}
+            cuentas={(cuentasSistema as any[]).filter((c) => String(c.company) === String(emp.company) && c.activa !== false && (!c.moneda || c.moneda === "ARS"))}
+            origenBlanco={emp.origenHaberBlanco}
+            origenNegro={emp.origenHaberNegro}
+            onOrigen={(circuito, cuentaId) => updateEmployeeField(emp.id, circuito === "negro" ? "origenHaberNegro" : "origenHaberBlanco", cuentaId || "")}
             onAbrirPago={abrirPagoHaber}
             onCargarRecibo={(periodo, file) => cargarReciboOficial(emp, periodo, file)}
             onQuitarRecibo={(periodo) => setPayrollHaberes(emp.id, periodo, { reciboOficial: null })}
@@ -23445,6 +23454,7 @@ Escribi CERRAR para confirmar:`
             persona={emp.name}
             empresaCorta={getCompanyMeta(emp.company).short || String(emp.company)}
             cuentas={(cuentasSistema as any[]).filter((c) => String(c.company) === String(emp.company))}
+            origenPorCircuito={{ blanco: emp.origenHaberBlanco, negro: emp.origenHaberNegro }}
             sugerido={(periodo, adm) => {
               const p = ficha?.periodos.find((x) => x.periodo === periodo);
               if (!p) return 0;

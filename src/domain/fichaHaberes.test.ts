@@ -37,6 +37,15 @@ describe("ficha de pago de haberes", () => {
     expect(p).toMatchObject({ correspondeBlanco: 1100, correspondeNegro: 50, estado: "pendiente" });
   });
 
+  it("lo blanco y lo negro que faltan van por separado (cada uno sale de su cuenta)", () => {
+    const { periodos } = fichaDeHaberes([corr("2026-09", { blanco: 1000, negro: 500 })], []);
+    const items = haberesPorPagar({ id: 7, company: "BGA", name: "Nicolás" }, periodos, "2026-08");
+    expect(items.map((i) => [i.clave, i.monto, i.administration])).toEqual([
+      ["haber:7:2026-09", 1000, "blanco"],
+      ["haber:7:2026-09:negro", 500, "negro"],
+    ]);
+  });
+
   it("lo que falta pagar baja a Pagos programados, una por persona y periodo", () => {
     const { periodos } = fichaDeHaberes([corr("2026-09", { blanco: 1000 }), corr("2026-08", { blanco: 1000 })], [
       { id: 1, periodo: "2026-08", date: "2026-09-05", amount: 1000, administration: "blanco" },

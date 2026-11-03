@@ -33,7 +33,10 @@ export function PagoHaberModal({
   onGuardar,
   onBorrar,
   onCerrar,
+  origenPorCircuito,
 }: {
+  // El origen elegido en la ficha para cada circuito: al cambiar de blanco a negro, se propone el del otro (03/11/2026).
+  origenPorCircuito?: { blanco?: string; negro?: string };
   inicial: PagoHaberForm;
   persona: string;
   empresaCorta: string;
@@ -66,7 +69,11 @@ export function PagoHaberModal({
             <input style={input} type="date" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
           </label>
           <label style={lbl}>Administración
-            <select style={{ ...input, background: f.administration === "negro" ? "#1f2937" : "#fff", color: f.administration === "negro" ? "#fff" : "#0f172a" }} value={f.administration} onChange={(e) => set(e.target.value === "negro" ? { administration: "negro", metodo: "efectivo" } : { administration: e.target.value as any })}>
+            <select style={{ ...input, background: f.administration === "negro" ? "#1f2937" : "#fff", color: f.administration === "negro" ? "#fff" : "#0f172a" }} value={f.administration} onChange={(e) => {
+              const adm = e.target.value === "negro" ? "negro" : "blanco";
+              const origen = origenPorCircuito?.[adm];
+              set({ administration: adm, ...(adm === "negro" ? { metodo: "efectivo" as const } : {}), ...(origen ? { cuentaId: origen } : {}) });
+            }}>
               <option value="blanco">Blanco</option>
               <option value="negro">Negro</option>
             </select>
@@ -81,7 +88,7 @@ export function PagoHaberModal({
               ))}
             </select>
           </label>
-          <label style={lbl}>De qué cuenta salió
+          <label style={lbl}>De qué cuenta sale (origen)
             <select style={{ ...input, ...(f.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={f.cuentaId || ""} onChange={(e) => set({ cuentaId: e.target.value || undefined })}>
               <option value="">— Elegí la cuenta —</option>
               {cuentas.filter((c) => c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (

@@ -110,19 +110,21 @@ export function haberesPorPagar(
   periodos: PeriodoFicha[],
   desde: string // periodo minimo (yyyy-mm): no se reclama lo de ejercicios viejos
 ): Array<{ clave: string; company: string; titulo: string; periodo: string; fecha: string; monto: number; administration: "blanco" | "negro" }> {
+  // Por circuito (03/11/2026): lo blanco y lo negro van aparte, porque cada uno sale de su cuenta (origen de la ficha). El
+  // negro lleva ":negro" al final de la clave; lo blanco conserva la clave de siempre.
   return periodos
     .filter((p) => p.periodo >= desde && p.saldo > 1 && !!p.fechaPrevista)
-    .map((p) => {
-      const faltaBlanco = Math.max(0, p.correspondeBlanco - p.pagadoBlanco);
-      return {
-        clave: `haber:${empleado.id}:${p.periodo}`,
-        company: empleado.company,
-        titulo: `Haberes · ${empleado.name} · ${p.periodo.slice(5, 7)}/${p.periodo.slice(0, 4)}`,
-        periodo: p.periodo,
-        fecha: p.fechaPrevista,
-        monto: r2(p.saldo),
-        administration: (faltaBlanco > 1 ? "blanco" : "negro") as "blanco" | "negro",
-      };
+    .flatMap((p) => {
+      const titulo = `Haberes · ${empleado.name} · ${p.periodo.slice(5, 7)}/${p.periodo.slice(0, 4)}`;
+      const faltaBlanco = r2(Math.max(0, p.correspondeBlanco - p.pagadoBlanco));
+      const faltaNegro = r2(Math.max(0, p.correspondeNegro - p.pagadoNegro));
+      const base = { company: empleado.company, periodo: p.periodo, fecha: p.fechaPrevista };
+      return [
+        ...(faltaBlanco > 1 ? [{ ...base, clave: `haber:${empleado.id}:${p.periodo}`, titulo, monto: faltaBlanco, administration: "blanco" as const }] : []),
+        ...(faltaNegro > 1
+          ? [{ ...base, clave: `haber:${empleado.id}:${p.periodo}:negro`, titulo: `${titulo} (negro)`, monto: faltaNegro, administration: "negro" as const }]
+          : []),
+      ];
     });
 }
 

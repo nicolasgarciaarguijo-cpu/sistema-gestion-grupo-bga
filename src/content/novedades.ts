@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-03b",
+    fecha: "03/11/2026",
+    titulo: "Haberes: elegir de dónde sale la plata",
+    items: [
+      {
+        titulo: "Origen del pago de haberes",
+        que: "En la ficha de pago de haberes de cada persona se elige de qué cuenta sale lo blanco y de cuál lo negro (un banco, el efectivo o la caja de alguien). La proyección del Calendario descuenta de esa cuenta y, al cargar el pago, se propone esa misma (se puede cambiar). Lo blanco y lo negro que faltan pagar se prevén por separado.",
+        como: "Personal → click derecho → Ficha de pago de haberes → De dónde sale la plata.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-11-03a",
     fecha: "03/11/2026",
     titulo: "IVA anual, cierre del desendeudamiento y haberes previstos",

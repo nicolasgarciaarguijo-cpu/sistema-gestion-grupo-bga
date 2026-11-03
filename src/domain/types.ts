@@ -1638,6 +1638,11 @@ export type Employee = {
   skills: string;
   // Categorias INTERNAS tildadas (capacidades, no las del convenio). Ver domain/categoriasEmpleado.
   categoriasInternas?: number[];
+  // ORIGEN DEL PAGO DE HABERES (Nicolas, 03/11/2026: "necesito poder seleccionar desde donde sale el dinero, mas alla de que
+  // naturalmente sea de los bancos"): la cuenta de donde sale lo blanco y lo negro (ids de domain/cuentas.ts). Lo usan la
+  // prevision del Calendario y el pago (se propone, se puede cambiar).
+  origenHaberBlanco?: string;
+  origenHaberNegro?: string;
   // Pasos del catalogo de Fabricacion que DOMINA (se marcan por Tarea entera). Con alguno marcado, son lo unico que puede
   // hacer; sirven tambien para saber cuando esta listo para un aumento. Ver domain/categoriasEmpleado.ts.
   tareasDominadas?: number[];

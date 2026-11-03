@@ -44,7 +44,16 @@ export function FichaPagoHaberes({
   onVerArchivo,
   onAbrirFichaPersonal,
   onCerrar,
+  cuentas = [],
+  origenBlanco,
+  origenNegro,
+  onOrigen,
 }: {
+  // ORIGEN del pago (03/11/2026): de que cuenta sale lo blanco y lo negro. Lo usan la prevision del Calendario y el pago.
+  cuentas?: Array<{ id: string; nombre: string }>;
+  origenBlanco?: string;
+  origenNegro?: string;
+  onOrigen?: (circuito: "blanco" | "negro", cuentaId: string) => void;
   persona: string;
   empresaCorta: string;
   legajo: string;
@@ -91,6 +100,30 @@ export function FichaPagoHaberes({
             <button type="button" style={boton} onClick={onCerrar}>Cerrar</button>
           </span>
         </div>
+        {onOrigen && (
+          <div style={{ ...caja, display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center" }}>
+            <span style={{ ...titulo, marginBottom: 0 }}>De dónde sale la plata</span>
+            {(["blanco", "negro"] as const).map((circ) => {
+              const v = circ === "blanco" ? origenBlanco : origenNegro;
+              return (
+                <label key={circ} style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 13, fontWeight: 600 }}>
+                  {circ === "blanco" ? "Blanco" : "Negro"}
+                  <select
+                    value={v || ""}
+                    onChange={(e) => onOrigen(circ, e.target.value)}
+                    style={{ border: "1px solid #cbd5e1", borderRadius: 6, padding: "4px 6px", fontSize: 13, background: circ === "negro" ? "#1f2937" : "#fff", color: circ === "negro" ? "#fff" : "#0f172a" }}
+                  >
+                    <option value="">{circ === "blanco" ? "— El banco principal —" : "— El efectivo negro —"}</option>
+                    {cuentas.map((c) => (
+                      <option key={c.id} value={c.id}>{c.nombre}</option>
+                    ))}
+                  </select>
+                </label>
+              );
+            })}
+            <span style={{ fontSize: 12, color: "#64748b" }}>Es lo que usa la proyección del Calendario y lo que se propone al cargar el pago.</span>
+          </div>
+        )}
         <input
           ref={archivo}
           type="file"

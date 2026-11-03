@@ -50,7 +50,8 @@ export function programadosEnRenglones(
   filaDeDeuda?: (refId: number | string) => { conceptKey: string; titulo: string } | null,
   // Los HABERES por pagar (03/11/2026: "me interesa ver la proyeccion de como estamos frente a ese egreso"): el renglon de
   // la persona en HABERES, el mismo donde cae su pago real desde la ficha de pago de haberes (que la reemplaza).
-  filaDeSueldo?: (refId: number | string) => { conceptKey: string; titulo?: string } | null
+  // La cuenta es el ORIGEN elegido en la ficha de la persona (03/11/2026).
+  filaDeSueldo?: (refId: number | string) => { conceptKey: string; titulo?: string; cuentaId?: string } | null
 ): PrevisionDeRenglon[] {
   const out: PrevisionDeRenglon[] = [];
   items.forEach((i) => {
