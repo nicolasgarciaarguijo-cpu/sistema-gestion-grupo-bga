@@ -8017,7 +8017,9 @@ Escribi CERRAR para confirmar:`
   // Que ejercicios terminaron y no se cerraron (solo para el administrador, de las empresas que puede operar).
   const porCerrar = useMemo(
     () =>
-      effectiveIsAdmin && isSupabaseLoggedIn
+      // Recien con los datos de la base cargados (03/11/2026: se abria en el primer instante, con los cierres todavia sin
+      // bajar, y la ventana quedaba pidiendo un cierre que ya estaba hecho).
+      effectiveIsAdmin && isSupabaseLoggedIn && isSupabaseSnapshotReady
         ? ejerciciosPorCerrar(
             fiscalClosings,
             COMPANY_OPTIONS.filter((c) => tienePermisoEmpresa(c.value as CompanyName)).map((c) => ({
@@ -8027,7 +8029,7 @@ Escribi CERRAR para confirmar:`
             todayIso()
           ).map((x) => ({ ...x, short: getCompanyMeta(x.company as CompanyName).short }))
         : [],
-    [fiscalClosings, effectiveIsAdmin, isSupabaseLoggedIn, COMPANY_OPTIONS, tienePermisoEmpresa, getCompanyMeta]
+    [fiscalClosings, effectiveIsAdmin, isSupabaseLoggedIn, isSupabaseSnapshotReady, COMPANY_OPTIONS, tienePermisoEmpresa, getCompanyMeta]
   );
   useEffect(() => {
     if (porCerrar.length && !asistenteCierreMostrado.current) {
@@ -22927,7 +22929,7 @@ Escribi CERRAR para confirmar:`
           </div>
         );
       })()}
-      {asistenteCierre && (
+      {asistenteCierre && porCerrar.length > 0 && (
         <AsistenteCierre
           porCerrar={porCerrar}
           busy={cierreBusy}
