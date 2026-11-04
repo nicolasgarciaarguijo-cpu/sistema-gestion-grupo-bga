@@ -28,7 +28,7 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Conteo de horas y candados",
-        que: "El botón de precarga ahora se llama \"Conteo de horas\". Un día con candado queda como lo dejaste: ni el fichero ni el conteo le cambian horario u horas, y si está en blanco no suma. Al encender el conteo, el total del mes se recalcula con lo que tiene cada día.",
+        que: "El botón de precarga ahora se llama \"Conteo de horas\". Las horas de cada día son el reflejo de su entrada y su salida: si las corregís a mano se recalculan siempre, con el botón encendido o apagado. El candado frena al fichero: un día con candado no cambia por el reloj y, si está en blanco, no suma. Al encender el botón en la ficha de una persona, el total del mes sale del calendario, aunque la liquidación esté guardada.",
         como: "Personal → ficha de la persona → calendario del mes.",
         tab: "personal",
       },

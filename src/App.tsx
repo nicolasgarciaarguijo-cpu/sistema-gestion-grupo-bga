@@ -48,7 +48,7 @@ import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./
 import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
 import { porcentajePorAsistencia } from "./domain/presentismo";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
-import { classifyFichada, dayHoursTotal, deriveConvenioHours, horasDelMesDesdeCalendario, horasTrabajadasEnMes, summarizeMonthAttendance } from "./domain/attendance";
+import { classifyFichada, dayHoursTotal, deriveConvenioHours, horasDelMesDesdeCalendario, horasTrabajadasEnMes, reflejarHorario, summarizeMonthAttendance } from "./domain/attendance";
 import { esFeriado } from "./domain/feriadosArgentina";
 import { leerIdHaber, sacarHaberesDuplicados } from "./domain/haberes";
 import { leerReciboDeEmpleado } from "./domain/reciboOficial";
@@ -16355,24 +16355,37 @@ Escribi CERRAR para confirmar:`
 
   // Al ENCENDER el conteo, el total del mes vuelve a salir del calendario, tal como esta cada dia: antes solo se
   // recalculaba si habia un dia para calcular, y con todos los dias con candado seguian las horas viejas.
+  const contarHorasDelMes = (employee: Employee): Employee => {
+    if (employee.employmentType === "fuera_convenio") return employee;
+    if (!(employee.attendance || []).some((item) => item.date.startsWith(`${payrollMonth}-`))) return employee;
+    const standardDayHours = Number(
+      ((employee.nominalHours || employeeBaseConfig.normalHoursDefault || 176) / 22).toFixed(2)
+    );
+    const horas = horasDelMesDesdeCalendario(employee.attendance, payrollMonth, standardDayHours);
+    const existe = employee.payrolls.some((item) => item.month === payrollMonth);
+    return {
+      ...employee,
+      payrolls: existe
+        ? employee.payrolls.map((item) => (item.month === payrollMonth ? { ...item, ...horas, manualOverride: false } : item))
+        : [...employee.payrolls, { ...ensureEmployeePayroll(employee, payrollMonth), ...horas, manualOverride: false }],
+    };
+  };
   const setPrecargaHorasAuto = (activa: boolean) => {
     setEmployeeBaseConfig((prev) => ({ ...prev, precargaHorasAuto: activa }));
     if (!activa) return;
     const visibles = new Set(visibleEmployees.map((e) => e.id));
     setEmployees((prev) =>
       prev.map((employee) => {
-        if (!visibles.has(employee.id) || employee.employmentType === "fuera_convenio") return employee;
-        if (!(employee.attendance || []).some((item) => item.date.startsWith(`${payrollMonth}-`))) return employee;
-        const delMes = employee.payrolls.find((item) => item.month === payrollMonth);
-        if (!delMes || delMes.savedAt) return employee; // mes liquidado a mano: no se toca
-        const standardDayHours = Number(
-          ((employee.nominalHours || employeeBaseConfig.normalHoursDefault || 176) / 22).toFixed(2)
-        );
-        const horas = horasDelMesDesdeCalendario(employee.attendance, payrollMonth, standardDayHours);
-        return { ...employee, payrolls: employee.payrolls.map((item) => (item === delMes ? { ...item, ...horas } : item)) };
+        // Encendido general: el mes con liquidacion guardada de los demas no se toca.
+        const guardado = employee.payrolls.some((item) => item.month === payrollMonth && item.savedAt);
+        return visibles.has(employee.id) && !guardado ? contarHorasDelMes(employee) : employee;
       })
     );
   };
+  // Desde la ficha de UNA persona es pedirlo a proposito: se cuenta su mes aunque tenga la liquidacion guardada (antes el
+  // boton "no hacia nada" en esos meses, que son la mayoria).
+  const contarHorasDeLaPersona = (employeeId: number) =>
+    setEmployees((prev) => prev.map((employee) => (employee.id === employeeId ? contarHorasDelMes(employee) : employee)));
 
   const precargarHorasDesdeFichadas = (
     month: string | null,
@@ -16474,51 +16487,14 @@ Escribi CERRAR para confirmar:`
                 [field]: value,
               },
             ];
-        // Precarga de horas del convenio al cargar/editar entrada o salida: si el día ya tiene las dos,
-        // se estiman normales/extra 50/extra 100/nocturna 50 (editable después). Ver deriveConvenioHours.
-        // Con la precarga APAGADA, editar la entrada o la salida a mano no toca las horas: se cargan a
-        // mano. El boton "Precargar horas" (fromAutofill) calcula igual, porque es pedirlo a proposito.
+        // LAS HORAS DEL DIA SON EL REFLEJO DE SU ENTRADA Y SU SALIDA (04/11/2026: "que sea un reflejo, no deberia importarle
+        // el boton de conteo de horas"): al corregir el horario se recalculan siempre, con o sin candado y con el conteo
+        // encendido o apagado. El candado frena al fichero (ver arriba), no a la correccion a mano. Lo que hace el boton
+        // de conteo es decidir si el total del mes de la liquidacion sigue al calendario.
         const calcularHoras = employeeBaseConfig.precargaHorasAuto !== false || fromAutofill;
         const attendanceWithHours =
           field === "checkIn" || field === "checkOut"
-            ? nextAttendance.map((item) => {
-                if (item.date !== date) return item;
-                // Dia EN BLANCO (sin entrada ni salida): no suma nada, este encendido o apagado el conteo. Con
-                // solo una de las dos, las horas se van a 0 con el conteo encendido, salvo en un dia con candado.
-                const enBlanco = !item.checkIn && !item.checkOut;
-                // Candado puesto de antes: corregir el horario no recalcula las horas (se cargan a mano).
-                if (!enBlanco && (yaBloqueado || !calcularHoras)) return item;
-                // Si se borro la entrada o la salida, el dia ya no tiene jornada: sus horas se van a 0
-                // (antes quedaban las del calculo anterior y se liquidaban igual).
-                if (!item.checkIn || !item.checkOut) {
-                  return {
-                    ...item,
-                    normalHours: 0,
-                    extra50Hours: 0,
-                    extra100Hours: 0,
-                    night50Hours: 0,
-                    holidayHours: 0,
-                    night100Hours: 0,
-                  };
-                }
-                // Feriado nacional (por fecha) o marcado a mano => todo el día al 100%.
-                const derived = deriveConvenioHours(
-                  item.date,
-                  item.checkIn,
-                  item.checkOut,
-                  item.status === "feriado" ? true : undefined
-                );
-                return {
-                  ...item,
-                  status: item.status === "sin_cargar" ? ("presente" as AttendanceStatus) : item.status,
-                  normalHours: derived.normalHours,
-                  extra50Hours: derived.extra50Hours,
-                  extra100Hours: derived.extra100Hours,
-                  night50Hours: derived.night50Hours,
-                  holidayHours: derived.holidayHours,
-                  night100Hours: derived.night100Hours,
-                };
-              })
+            ? nextAttendance.map((item) => (item.date === date ? reflejarHorario(item) : item))
             : nextAttendance;
         // Edicion a mano => se bloquea el dia (la carga manual le gana a la precarga del reloj).
         const attendanceFinal = shouldLock
@@ -24939,6 +24915,7 @@ Escribi CERRAR para confirmar:`
           onPayrollMonthReport={openPayrollMonthReport}
           onCargarReciboOficial={cargarReciboOficial}
           precargaAuto={employeeBaseConfig.precargaHorasAuto !== false}
+          onContarHorasMes={contarHorasDeLaPersona}
           onPrecargaAuto={setPrecargaHorasAuto}
           setPayrollHaberes={setPayrollHaberes}
           onFichaPagoHaberes={(emp: any) => setFichaHaberesEmpId(emp.id)}

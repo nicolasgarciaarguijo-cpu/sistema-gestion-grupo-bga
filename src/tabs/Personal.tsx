@@ -31,7 +31,7 @@ import {
   terminationReasonLabel,
 } from "../domain/employeeStatus";
 import type { CompanyName } from "../domain/types";
-import { computeMonthAttendance, dayHoursTotal, deriveConvenioHours, horasTrabajadasEnMes } from "../domain/attendance";
+import { computeMonthAttendance, dayHoursTotal, deriveConvenioHours, horasTrabajadasEnMes, reflejarHorario } from "../domain/attendance";
 import { reglasDeLiquidacion } from "../domain/reglasLiquidacion";
 import type { DayAttendance } from "../domain/attendance";
 import { esFinDeSemana, mapaDeFeriados } from "../domain/feriadosArgentina";
@@ -51,6 +51,7 @@ type PersonalTabProps = {
   onFichaPagoHaberes?: (employee: any) => void;
   precargaAuto?: boolean;
   onPrecargaAuto?: (activa: boolean) => void;
+  onContarHorasMes?: (employeeId: number) => void;
   visibleEmployees: any[];
   formerEmployees: any[];
   selectedEmployee: any;
@@ -222,7 +223,7 @@ export function PersonalTab(props: PersonalTabProps) {
   const categoriasGremio = Array.from(new Set(((props.CATEGORY_OPTIONS || []) as string[]).map((c) => String(c).trim()).filter(Boolean)))
     .sort((a, b) => valorGremio(a) - valorGremio(b) || a.localeCompare(b));
   const {
-    employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, onFichaPagoHaberes, precargaAuto = true, onPrecargaAuto, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
+    employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, onFichaPagoHaberes, precargaAuto = true, onPrecargaAuto, onContarHorasMes, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
     employeeBaseConfig, payrollMonth, newEmployeeDraft,
     employeeProvisionModal, employeeDocumentModal, stockPersonalItems, personalReminders, scaleRows,
     isEmployeeSetupModalOpen, uploadMessage, COMPANY_OPTIONS, CATEGORY_OPTIONS,
@@ -1822,14 +1823,18 @@ export function PersonalTab(props: PersonalTabProps) {
                     : level === "off"
                     ? "#2563eb"
                     : "#cbd5e1";
-                // Precarga en masa: recalcula las horas de todos los dias del mes que ya tienen entrada
-                // y salida (util para los dias traidos del reloj). Reaplica checkOut -> dispara la precarga.
+                // Conteo en masa: recalcula las horas de los dias del mes que tienen entrada y salida y no coinciden con
+                // ellas (util para los dias traidos del reloj). Reaplica checkOut -> dispara el calculo. Con candado no se toca.
                 const precargarMesDesdeFichadas = () => {
                   (selectedEmployee.attendance || [])
                     .filter((r: any) => {
                       if (!r.date.startsWith(`${payrollMonth}-`) || !r.checkIn || !r.checkOut) return false;
                       if (r.locked) return false; // bloqueado: la carga manual gana
-                      return dayHoursTotal(r) === 0; // solo los que no tienen horas todavia
+                      if (["vacaciones", "ausente_justificado", "ausente_injustificado"].includes(r.status)) return false;
+                      const h: any = reflejarHorario(r);
+                      return ["normalHours", "extra50Hours", "extra100Hours", "night50Hours", "holidayHours", "night100Hours"].some(
+                        (k) => Math.abs(Number(r[k] || 0) - Number(h[k] || 0)) >= 0.01
+                      );
                     })
                     .forEach((r: any) =>
                       updateAttendanceRecord(selectedEmployee.id, r.date, "checkOut", r.checkOut, {
@@ -2443,7 +2448,10 @@ export function PersonalTab(props: PersonalTabProps) {
                               activa={precargaAuto}
                               onChange={(v) => {
                                 onPrecargaAuto(v);
-                                if (v) precargarMesDesdeFichadas();
+                                if (v) {
+                                  precargarMesDesdeFichadas();
+                                  onContarHorasMes?.(selectedEmployee.id);
+                                }
                               }}
                             />
                           ) : (
@@ -2561,7 +2569,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                           type="button"
                                           title={
                                             isLocked
-                                              ? "Con candado: ni el fichero ni el conteo de horas lo tocan, aunque esté en blanco. Click para desbloquear."
+                                              ? "Con candado: el fichero no lo toca, aunque esté en blanco. Si corregís la entrada o la salida a mano, las horas se recalculan. Click para desbloquear."
                                               : "Sin candado: el conteo de horas puede recalcularlo desde el fichero. Click para bloquear."
                                           }
                                           onClick={() =>

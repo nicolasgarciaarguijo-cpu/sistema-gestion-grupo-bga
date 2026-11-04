@@ -9,8 +9,8 @@ export function InterruptorPrecarga({ activa, onChange }: { activa: boolean; onC
       onClick={() => onChange(!activa)}
       title={
         activa
-          ? "ENCENDIDO: las horas se calculan solas desde la entrada y la salida, y se suman solas a la liquidación del mes. Los días con candado no se tocan. Tocá para apagarlo."
-          : "APAGADO: las horas y la liquidación del mes se cargan a mano (según los recibos). Tocá para encenderlo."
+          ? "ENCENDIDO: las horas del fichero se calculan solas y el total del mes de la liquidación sale del calendario. Al encenderlo se cuenta el mes. Los días con candado no se recalculan desde el fichero. Tocá para apagarlo."
+          : "APAGADO: el total del mes de la liquidación se carga a mano (según los recibos). Las horas de cada día siguen a su entrada y su salida. Tocá para encenderlo."
       }
       style={{
         display: "inline-flex",

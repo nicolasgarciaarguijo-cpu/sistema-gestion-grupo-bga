@@ -440,3 +440,14 @@ export const horasDelMesDesdeCalendario = (attendance: AttendanceRecord[], month
     vacationsDays: delMes.filter((item) => item.status === "vacaciones").length,
   };
 };
+
+// Las horas de un dia segun su entrada y su salida: sin las dos (o sin salida creible), cero. El feriado marcado a mano va
+// al 100%, igual que el nacional. Un dia sin cargar con jornada pasa a presente.
+export const reflejarHorario = <T extends AttendanceRecord>(dia: T): T => {
+  const horas = deriveConvenioHours(dia.date, dia.checkIn, dia.checkOut, dia.status === "feriado" ? true : undefined);
+  return {
+    ...dia,
+    ...horas,
+    status: dia.checkIn && dia.checkOut && dia.status === "sin_cargar" ? "presente" : dia.status,
+  };
+};

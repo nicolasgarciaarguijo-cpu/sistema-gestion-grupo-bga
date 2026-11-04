@@ -1,5 +1,6 @@
 import {
   horasDelMesDesdeCalendario,
+  reflejarHorario,
   computeMonthAttendance,
   summarizeMonthAttendance,
   scheduleForDate,
@@ -343,5 +344,29 @@ describe("horasDelMesDesdeCalendario", () => {
     const r = horasDelMesDesdeCalendario(dias, "2026-10", 8);
     expect(r.normalHours).toBe(13);
     expect(r.extra50Hours).toBe(1);
+  });
+});
+
+describe("reflejarHorario: las horas del dia siguen a su entrada y salida", () => {
+  const base: any = { date: "2026-10-28", status: "presente", normalHours: 9, extra50Hours: 3, extra100Hours: 0, attachmentName: "", notes: "", locked: true };
+
+  it("corregir el horario cambia las horas, aunque el dia tenga candado", () => {
+    const r = reflejarHorario({ ...base, checkIn: "07:30", checkOut: "12:30" });
+    expect([r.normalHours, r.extra50Hours, r.locked]).toEqual([5, 0, true]);
+  });
+
+  it("lo que pasa de las 17 es extra y el almuerzo no computa", () => {
+    const r = reflejarHorario({ ...base, checkIn: "07:30", checkOut: "18:00" });
+    expect([r.normalHours, r.extra50Hours]).toEqual([9, 1]);
+  });
+
+  it("sin entrada o sin salida, cero horas", () => {
+    expect(reflejarHorario({ ...base, checkIn: "07:30", checkOut: "" }).normalHours).toBe(0);
+    expect(reflejarHorario({ ...base, checkIn: "", checkOut: "" }).extra50Hours).toBe(0);
+  });
+
+  it("un dia sin cargar con jornada pasa a presente; una ausencia sigue siendo ausencia", () => {
+    expect(reflejarHorario({ ...base, status: "sin_cargar", checkIn: "07:30", checkOut: "17:00" }).status).toBe("presente");
+    expect(reflejarHorario({ ...base, status: "ausente_justificado", checkIn: "", checkOut: "" }).status).toBe("ausente_justificado");
   });
 });
