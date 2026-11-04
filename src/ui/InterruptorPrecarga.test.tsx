@@ -13,19 +13,19 @@ function montar(activa: boolean, onChange: (v: boolean) => void) {
 }
 
 describe("InterruptorPrecarga", () => {
-  it("encendida: dice ENCENDIDA y tocarlo la apaga", () => {
+  it("encendida: dice ENCENDIDO y tocarlo la apaga", () => {
     const onChange = jest.fn();
     const { div, root } = montar(true, onChange);
-    expect(div.textContent).toContain("ENCENDIDA");
+    expect(div.textContent).toContain("ENCENDIDO");
     act(() => (div.querySelector("button") as HTMLButtonElement).click());
     expect(onChange).toHaveBeenCalledWith(false);
     act(() => root.unmount());
     div.remove();
   });
-  it("apagada: dice APAGADA y tocarlo la enciende", () => {
+  it("apagada: dice APAGADO y tocarlo la enciende", () => {
     const onChange = jest.fn();
     const { div, root } = montar(false, onChange);
-    expect(div.textContent).toContain("APAGADA");
+    expect(div.textContent).toContain("APAGADO");
     act(() => (div.querySelector("button") as HTMLButtonElement).click());
     expect(onChange).toHaveBeenCalledWith(true);
     act(() => root.unmount());

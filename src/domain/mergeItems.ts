@@ -68,6 +68,8 @@ export function mergeObjects3<T extends WithId>(base: T, ours: T, theirs: T, idK
     let v: unknown;
     if (sameContent(o, b)) v = t; // nosotros no lo tocamos: manda la base
     else if (sameContent(t, b)) v = o; // solo lo cambiamos nosotros
+    else if (k === "attendance" && (o === undefined || Array.isArray(o)) && (t === undefined || Array.isArray(t)))
+      v = mergeAsistencia((Array.isArray(b) ? b : []) as WithId[], (o || []) as WithId[], (t || []) as WithId[]);
     else if (
       (isArrayOfItemsWithId(o, idKey) || isArrayOfItemsWithId(t, idKey) || isArrayOfItemsWithId(b, idKey)) &&
       (o === undefined || Array.isArray(o)) &&
@@ -78,6 +80,22 @@ export function mergeObjects3<T extends WithId>(base: T, ours: T, theirs: T, idK
     if (v !== undefined) out[k] = v;
   });
   return out as T;
+}
+
+// ASISTENCIA (04/11/2026): sus dias no tienen id, asi que el que guardaba pisaba el mes entero y se perdian los candados
+// de la otra sesion (o las fichadas del reloj). Se fusiona dia por dia, y un candado que puso la otra sesion se queda
+// con ese dia completo: el calculo automatico de esta sesion no le gana.
+function mergeAsistencia(base: WithId[], ours: WithId[], theirs: WithId[]): WithId[] {
+  const fechaDe = (dia: WithId) => (dia as any).date;
+  const enBase = new Map(base.map((dia) => [fechaDe(dia), dia]));
+  const nuestros = new Map(ours.map((dia) => [fechaDe(dia), dia]));
+  const ajenos = new Map(theirs.map((dia) => [fechaDe(dia), dia]));
+  return mergeItemsById(base, ours, theirs, "date").map((dia) => {
+    const fecha = fechaDe(dia);
+    const ajeno: any = ajenos.get(fecha);
+    const candadoAjenoNuevo = ajeno?.locked === true && (enBase.get(fecha) as any)?.locked !== true && (nuestros.get(fecha) as any)?.locked !== true;
+    return candadoAjenoNuevo ? ajeno : dia;
+  });
 }
 
 export function mergeItemsById<T extends WithId>(

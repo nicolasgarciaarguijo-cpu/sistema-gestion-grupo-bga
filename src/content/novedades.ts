@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-04a",
+    fecha: "04/11/2026",
+    titulo: "El candado le gana al fichero y cada ejercicio con su botón",
+    items: [
+      {
+        titulo: "Balance: cada ejercicio detrás de su botón",
+        que: "Arriba de Balance y del Calendario hay un botón por ejercicio con sus fechas. Se arranca en el ejercicio en curso; lo anterior, sus resultados y su cierre solo se ven al tocar su botón. El resumen de registros y los 12 meses del balance también son del ejercicio elegido. En las demás solapas, el botón dice las fechas del ejercicio cerrado.",
+        como: "Balance → botones de arriba.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Conteo de horas y candados",
+        que: "El botón de precarga ahora se llama \"Conteo de horas\". Un día con candado queda como lo dejaste: ni el fichero ni el conteo le cambian horario u horas, y si está en blanco no suma. Al encender el conteo, el total del mes se recalcula con lo que tiene cada día.",
+        como: "Personal → ficha de la persona → calendario del mes.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-11-03d",
     fecha: "03/11/2026",
     titulo: "El ejercicio nuevo arranca en cero",

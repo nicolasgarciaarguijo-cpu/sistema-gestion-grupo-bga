@@ -48,7 +48,7 @@ import { CalendarMark, CalendarNote, setCalendarMark, setCalendarNote } from "./
 import { esReflejoDeTrabajo, borrarOrigenDelReflejo, editarOrigenDelReflejo } from "./domain/jobMirror";
 import { porcentajePorAsistencia } from "./domain/presentismo";
 import { serieDiariaDeBilletera } from "./domain/reservaSources";
-import { classifyFichada, dayHoursTotal, deriveConvenioHours, horasTrabajadasEnMes, summarizeMonthAttendance } from "./domain/attendance";
+import { classifyFichada, dayHoursTotal, deriveConvenioHours, horasDelMesDesdeCalendario, horasTrabajadasEnMes, summarizeMonthAttendance } from "./domain/attendance";
 import { esFeriado } from "./domain/feriadosArgentina";
 import { leerIdHaber, sacarHaberesDuplicados } from "./domain/haberes";
 import { leerReciboDeEmpleado } from "./domain/reciboOficial";
@@ -8051,6 +8051,12 @@ Escribi CERRAR para confirmar:`
   const ocultoPorCierre = (company: string, iso: string | undefined) =>
     !verCerrado && !!iso && !!cierreQueBloquea(fiscalClosings, company, iso);
   const hayEjercicioCerrado = cierresActivos(fiscalClosings).some((c) => canAccessCompany(c.company as CompanyName));
+  const fechasUltimoCerrado = (() => {
+    const c = cierresActivos(fiscalClosings)
+      .filter((x) => canAccessCompany(x.company as CompanyName))
+      .sort((a, b) => b.endIso.localeCompare(a.endIso))[0];
+    return c ? `${formatDateDisplay(c.startIso)} – ${formatDateDisplay(c.endIso)}` : "";
+  })();
 
   const reabrirEjercicio = (cierreId: number) => {
     const c = fiscalClosings.find((x) => x.id === cierreId);
@@ -14955,10 +14961,10 @@ Escribi CERRAR para confirmar:`
 
   // IVA de una empresa MES A MES en el ejercicio en curso (03/11/2026): debito - credito de cada mes calendario, el saldo a favor
   // que pasa al siguiente y cada VEP controlando el mes que paga. Ver domain/vatBalance.ts `ivaAnual`.
-  const ivaDeEmpresa = (company: string) => {
+  const ivaDeEmpresa = (company: string, anioInicio?: number) => {
     const meta = COMPANY_OPTIONS.find((c) => c.value === company);
     const sm = meta?.fiscalYearStartMonth ?? DEFAULT_FISCAL_START_MONTH;
-    const ej = fiscalYearBounds(sm, currentFiscalStartYear(sm, new Date()));
+    const ej = fiscalYearBounds(sm, anioInicio ?? currentFiscalStartYear(sm, new Date()));
     const hoy = todayIso();
     return ivaAnual({
       company,
@@ -15678,7 +15684,7 @@ Escribi CERRAR para confirmar:`
       .filter((c) => balanceCompanyScope === "__ALL__" || c.value === balanceCompanyScope)
       .map((c) => {
         const company = c.value as CompanyName;
-        const anual = ivaDeEmpresa(String(company));
+        const anual = ivaDeEmpresa(String(company), balanceFiscalStartYear);
         const m = anual.mesActual;
         const pos = {
           debito: m?.debito || 0,
@@ -15699,7 +15705,7 @@ Escribi CERRAR para confirmar:`
           posicionReal: pos.posicion + Number(falta?.ivaFaltante || 0),
         };
       });
-  }, [alcanceEmpresa, 
+  }, [balanceFiscalStartYear, alcanceEmpresa, 
     faltaFacturaPorEmpresa,
     COMPANY_OPTIONS,
     balanceCompanyScope,
@@ -16347,8 +16353,26 @@ Escribi CERRAR para confirmar:`
     return objetivos;
   };
 
-  const setPrecargaHorasAuto = (activa: boolean) =>
+  // Al ENCENDER el conteo, el total del mes vuelve a salir del calendario, tal como esta cada dia: antes solo se
+  // recalculaba si habia un dia para calcular, y con todos los dias con candado seguian las horas viejas.
+  const setPrecargaHorasAuto = (activa: boolean) => {
     setEmployeeBaseConfig((prev) => ({ ...prev, precargaHorasAuto: activa }));
+    if (!activa) return;
+    const visibles = new Set(visibleEmployees.map((e) => e.id));
+    setEmployees((prev) =>
+      prev.map((employee) => {
+        if (!visibles.has(employee.id) || employee.employmentType === "fuera_convenio") return employee;
+        if (!(employee.attendance || []).some((item) => item.date.startsWith(`${payrollMonth}-`))) return employee;
+        const delMes = employee.payrolls.find((item) => item.month === payrollMonth);
+        if (!delMes || delMes.savedAt) return employee; // mes liquidado a mano: no se toca
+        const standardDayHours = Number(
+          ((employee.nominalHours || employeeBaseConfig.normalHoursDefault || 176) / 22).toFixed(2)
+        );
+        const horas = horasDelMesDesdeCalendario(employee.attendance, payrollMonth, standardDayHours);
+        return { ...employee, payrolls: employee.payrolls.map((item) => (item === delMes ? { ...item, ...horas } : item)) };
+      })
+    );
+  };
 
   const precargarHorasDesdeFichadas = (
     month: string | null,
@@ -16376,57 +16400,16 @@ Escribi CERRAR para confirmar:`
     setEmployees((prev) =>
       prev.map((employee) => {
         if (employee.id !== employeeId) return employee;
+        // EL CANDADO LE GANA AL FICHERO (04/11/2026: "deberia leer siempre el candado por sobre las horas del fichero,
+        // incluso si el dia esta en blanco"). Se mira aca, sobre el dato fresco: la lista de dias a calcular pudo armarse antes.
+        const yaBloqueado = employee.attendance.some((item) => item.date === date && item.locked === true);
+        if (fromAutofill && yaBloqueado) return employee;
         const month = date.slice(0, 7);
         const standardDayHours = Number(
           ((employee.nominalHours || employeeBaseConfig.normalHoursDefault || 176) / 22).toFixed(2)
         );
-        const recalcMonthPayroll = (attendanceRows: AttendanceRecord[]) => {
-          const monthAttendance = attendanceRows.filter((item) => item.date.startsWith(`${month}-`));
-          const normalHours = monthAttendance.reduce(
-            (acc, item) => acc + Number(item.normalHours || 0),
-            0
-          );
-          const extra50Hours = monthAttendance.reduce(
-            (acc, item) => acc + Number(item.extra50Hours || 0),
-            0
-          );
-          const extra100Hours = monthAttendance.reduce(
-            (acc, item) => acc + Number(item.extra100Hours || 0),
-            0
-          );
-          const night50Hours = monthAttendance.reduce(
-            (acc, item) => acc + Number(item.night50Hours || 0),
-            0
-          );
-          // Feriado trabajado (al 100%, renglon propio) y nocturnas al 100%.
-          const holidayWorkedHours = monthAttendance.reduce(
-            (acc, item) => acc + Number(item.holidayHours || 0),
-            0
-          );
-          const night100Hours = monthAttendance.reduce(
-            (acc, item) => acc + Number(item.night100Hours || 0),
-            0
-          );
-          const justifiedAbsenceHours =
-            monthAttendance.filter((item) => item.status === "ausente_justificado").length *
-            standardDayHours;
-          const unjustifiedAbsenceHours =
-            monthAttendance.filter((item) => item.status === "ausente_injustificado").length *
-            standardDayHours;
-          const vacationsDays = monthAttendance.filter((item) => item.status === "vacaciones").length;
-
-          return {
-            normalHours,
-            extra50Hours,
-            extra100Hours,
-            night50Hours,
-            holidayWorkedHours,
-            night100Hours,
-            justifiedAbsenceHours,
-            unjustifiedAbsenceHours,
-            vacationsDays,
-          };
-        };
+        const recalcMonthPayroll = (attendanceRows: AttendanceRecord[]) =>
+          horasDelMesDesdeCalendario(attendanceRows, month, standardDayHours);
 
         const exists = employee.attendance.some((item) => item.date === date);
         const nextAttendance = exists
@@ -16497,9 +16480,14 @@ Escribi CERRAR para confirmar:`
         // mano. El boton "Precargar horas" (fromAutofill) calcula igual, porque es pedirlo a proposito.
         const calcularHoras = employeeBaseConfig.precargaHorasAuto !== false || fromAutofill;
         const attendanceWithHours =
-          calcularHoras && (field === "checkIn" || field === "checkOut")
+          field === "checkIn" || field === "checkOut"
             ? nextAttendance.map((item) => {
                 if (item.date !== date) return item;
+                // Dia EN BLANCO (sin entrada ni salida): no suma nada, este encendido o apagado el conteo. Con
+                // solo una de las dos, las horas se van a 0 con el conteo encendido, salvo en un dia con candado.
+                const enBlanco = !item.checkIn && !item.checkOut;
+                // Candado puesto de antes: corregir el horario no recalcula las horas (se cargan a mano).
+                if (!enBlanco && (yaBloqueado || !calcularHoras)) return item;
                 // Si se borro la entrada o la salida, el dia ya no tiene jornada: sus horas se van a 0
                 // (antes quedaban las del calculo anterior y se liquidaban igual).
                 if (!item.checkIn || !item.checkOut) {
@@ -18033,6 +18021,28 @@ Escribi CERRAR para confirmar:`
       };
     });
   }, [analysisYear, cashFlowEntries]);
+
+  // EL BALANCE MIRA EL EJERCICIO ELEGIDO, mes por mes (04/11/2026): antes eran enero a diciembre, con meses del ejercicio
+  // anterior mezclados.
+  const mesesDelEjercicioBalance = useMemo(
+    () =>
+      fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear).map((key) => ({
+        key,
+        label: new Date(Number(key.slice(0, 4)), Number(key.slice(5, 7)) - 1, 1).toLocaleDateString("es-AR", { month: "long" }),
+      })),
+    [balanceFiscalStartYear]
+  );
+  const cashFlowPorMesDelEjercicio = useMemo(
+    () => mesesDelEjercicioBalance.map((m) => ({ ...m, items: cashFlowEntries.filter((item) => item.date.startsWith(m.key)) })),
+    [mesesDelEjercicioBalance, cashFlowEntries]
+  );
+  const cuotasPorMesDelEjercicio = useMemo(() => {
+    const cuotas = visibleDebtPlans.flatMap((d) => cuotasPendientes(d).map((c) => ({ date: c.fecha, amount: Number(c.monto || 0) })));
+    return mesesDelEjercicioBalance.map((m) => {
+      const items = cuotas.filter((c) => c.date.startsWith(m.key));
+      return { ...m, items, total: items.reduce((acc, c) => acc + c.amount, 0) };
+    });
+  }, [mesesDelEjercicioBalance, visibleDebtPlans]);
 
   // Cambia datos de haberes / recibo oficial de un mes del empleado (crea el mes si no existe).
   const setPayrollHaberes = (
@@ -20083,6 +20093,30 @@ Escribi CERRAR para confirmar:`
     );
   };
 
+
+  // Resumen de registros del Balance: lo del periodo elegido. Lo pendiente sigue siendo a la fecha (es lo que hay hoy).
+  const resumenRegistrosDelPeriodo = useMemo(() => {
+    const b =
+      balancePeriodMode === "month"
+        ? monthBounds(balanceMonth)
+        : fiscalYearBounds(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear);
+    const entra = (company: unknown, iso: string) =>
+      (balanceCompanyScope === "__ALL__" || company === balanceCompanyScope) && isIsoInRange(iso, b.startIso, b.endIso);
+    const caja = (circuito: string) =>
+      visiblePettyCashExpenses
+        .filter((item) => item.administration === circuito && entra(item.company, item.date))
+        .reduce((acc, item) => acc + Number(item.amount || 0), 0);
+    return {
+      ...cashFlowSummary,
+      billedGross: billingBalance.invoicedTotal,
+      collected: billingBalance.collectedTotal,
+      purchaseInvoicesTotal: purchaseInvoicesWithPettyCashWhite
+        .filter((item) => String(item.currency || "").toUpperCase() !== "USD" && entra(item.company, item.invoiceDate))
+        .reduce((acc, item) => acc + Number(item.total || 0), 0),
+      pettyCashBlackTotal: caja("negro"),
+      pettyCashWhiteTotal: caja("blanco"),
+    };
+  }, [cashFlowSummary, billingBalance, balancePeriodMode, balanceMonth, balanceFiscalStartYear, balanceCompanyScope, visiblePettyCashExpenses, purchaseInvoicesWithPettyCashWhite]);
 
   const periodStatement = useMemo(() => {
     const monthRange = monthBounds(balanceMonth);
@@ -22928,27 +22962,50 @@ Escribi CERRAR para confirmar:`
           {verCerrado
             ? "Estás viendo también lo del ejercicio ANTERIOR (cerrado, solo lectura)."
             : "Ejercicio corriente: lo terminado del ejercicio cerrado está escondido (lo que sigue abierto se ve)."}
-          <ButtonLike secondary onClick={() => setVerCerrado((v) => !v)}>{verCerrado ? "Esconder el ejercicio cerrado" : "Ver ejercicio cerrado"}</ButtonLike>
+          <ButtonLike secondary onClick={() => setVerCerrado((v) => !v)}>{verCerrado ? `Esconder ${fechasUltimoCerrado}` : `Ver ejercicio ${fechasUltimoCerrado}`}</ButtonLike>
         </div>
       )}
       {(activeTab === "calendarioAnual" || activeTab === "cashflow") && (() => {
-        // QUE EJERCICIO SE ESTA MIRANDO (27/10/2026): el anterior queda para mirar, y tiene que quedar claro.
+        // UN BOTON POR EJERCICIO, CON SUS FECHAS (04/11/2026: "que queden guardados detras de un boton que diga las fechas de
+        // su ejercicio... no quiero ver nada viejo"). Se arranca en el corriente; lo anterior se ve solo si se lo llama.
         const corriente = currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date());
         const anio = balanceFiscalStartYear;
-        const cerrado = cierresActivos(fiscalClosings).some((c) => c.fiscalStartYear === anio && canAccessCompany(c.company as CompanyName));
-        const esCorriente = anio === corriente;
+        const cerrados = cierresActivos(fiscalClosings).filter((c) => canAccessCompany(c.company as CompanyName)).map((c) => c.fiscalStartYear);
+        const ejercicios = Array.from(new Set([corriente, corriente - 1, anio, ...cerrados])).sort((a, b) => b - a);
+        const fechas = (y: number) => {
+          const b = fiscalYearBounds(DEFAULT_FISCAL_START_MONTH, y);
+          return `${formatDateDisplay(b.startIso)} – ${formatDateDisplay(b.endIso)}`;
+        };
         return (
-          <div
-            style={{
-              display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderRadius: 10, padding: "6px 12px", margin: "0 0 10px", fontSize: 13,
-              background: esCorriente ? "#f0fdf4" : "#fef2f2", border: `1px solid ${esCorriente ? "#bbf7d0" : "#fecaca"}`,
-              color: esCorriente ? "#166534" : "#991b1b", fontWeight: 700,
-            }}
-          >
-            {esCorriente
-              ? `Ejercicio corriente ${nombreEjercicio(anio)}`
-              : `Estás viendo el ejercicio ${anio < corriente ? "ANTERIOR" : "SIGUIENTE"} ${nombreEjercicio(anio)}${cerrado ? " · cerrado: solo lectura" : ""}`}
-            {!esCorriente && <ButtonLike secondary onClick={() => setBalanceFiscalStartYear(corriente)}>Volver al corriente ({nombreEjercicio(corriente)})</ButtonLike>}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 10px", fontSize: 13 }}>
+            {ejercicios.map((y) => {
+              const elegido = y === anio && (balancePeriodMode !== "all");
+              return (
+                <button
+                  key={y}
+                  type="button"
+                  onClick={() => {
+                    setBalanceFiscalStartYear(y);
+                    setBalancePeriodMode("fiscalYear");
+                  }}
+                  style={{
+                    padding: "5px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700, fontSize: 12.5,
+                    border: `1px solid ${elegido ? (y === corriente ? "#15803d" : "#b91c1c") : "#cbd5e1"}`,
+                    background: elegido ? (y === corriente ? "#16a34a" : "#b91c1c") : "#fff",
+                    color: elegido ? "#fff" : "#334155",
+                  }}
+                >
+                  {y === corriente ? "En curso · " : ""}
+                  {fechas(y)}
+                  {cerrados.includes(y) ? " · cerrado" : ""}
+                </button>
+              );
+            })}
+            {anio !== corriente && (
+              <span style={{ color: "#991b1b", fontWeight: 700 }}>
+                Estás viendo otro ejercicio{cerrados.includes(anio) ? " (cerrado: solo lectura)" : ""}.
+              </span>
+            )}
           </div>
         );
       })()}
@@ -23653,7 +23710,8 @@ Escribi CERRAR para confirmar:`
             );
           })()}
           purchaseLedger={purchaseLedger}
-          cashFlowSummary={cashFlowSummary}
+          cashFlowSummary={resumenRegistrosDelPeriodo}
+          hayCierrePendiente={porCerrar.length > 0}
           billingBalance={billingBalance}
           periodStatement={periodStatement}
           balanceCompanyScope={balanceCompanyScope}
@@ -23697,7 +23755,7 @@ Escribi CERRAR para confirmar:`
           addIvaVepPayment={addIvaVepPayment}
           updateIvaVepPayment={updateIvaVepPayment}
           removeIvaVepPayment={removeIvaVepPayment}
-          annualCashFlowByMonth={annualCashFlowByMonth}
+          annualCashFlowByMonth={cashFlowPorMesDelEjercicio}
           getCompanyMeta={getCompanyMeta}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           updateArrayItem={updateArrayItem}
@@ -23705,7 +23763,7 @@ Escribi CERRAR para confirmar:`
           setDebtPlans={setDebtPlans}
           addDebtPlan={addDebtPlan}
           removeDebtPlan={removeDebtPlan}
-          annualDebtByMonth={annualDebtByMonth}
+          annualDebtByMonth={cuotasPorMesDelEjercicio}
         />
       )}
 

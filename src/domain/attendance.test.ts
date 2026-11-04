@@ -1,4 +1,5 @@
 import {
+  horasDelMesDesdeCalendario,
   computeMonthAttendance,
   summarizeMonthAttendance,
   scheduleForDate,
@@ -328,5 +329,19 @@ describe("horasTrabajadasEnMes (acuerdo por hora, 2026-10-21)", () => {
         "2026-10"
       )
     ).toBe(18.5);
+  });
+});
+
+describe("horasDelMesDesdeCalendario", () => {
+  it("un dia con candado suma lo que tiene escrito; en blanco no suma, aunque tenga fichada", () => {
+    const dias: any[] = [
+      { date: "2026-10-01", status: "presente", normalHours: 8, extra50Hours: 1, extra100Hours: 0, attachmentName: "", notes: "" },
+      { date: "2026-10-02", status: "presente", locked: true, checkIn: "07:30", checkOut: "17:00", normalHours: 5, extra50Hours: 0, extra100Hours: 0, attachmentName: "", notes: "" },
+      { date: "2026-10-03", status: "sin_cargar", locked: true, checkOut: "17:00", fichadas: ["07:30", "17:00"], normalHours: 0, extra50Hours: 0, extra100Hours: 0, attachmentName: "", notes: "" },
+      { date: "2026-11-01", status: "presente", normalHours: 8, extra50Hours: 0, extra100Hours: 0, attachmentName: "", notes: "" },
+    ];
+    const r = horasDelMesDesdeCalendario(dias, "2026-10", 8);
+    expect(r.normalHours).toBe(13);
+    expect(r.extra50Hours).toBe(1);
   });
 });

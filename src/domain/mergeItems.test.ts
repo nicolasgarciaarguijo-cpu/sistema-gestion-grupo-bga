@@ -181,3 +181,32 @@ describe("la copia vieja en la fila de otra empresa no se conserva (2026-10-21)"
     expect(mergeItemsById([], [], [viejo, ajeno], "id", true, new Set([7]))).toEqual([ajeno]);
   });
 });
+
+describe("asistencia: se fusiona dia por dia y los candados no se pierden", () => {
+  const empleado = (attendance: any[]) => ({ id: 7, attendance });
+  const dia = (date: string, extra: any = {}) => ({ date, normalHours: 0, ...extra });
+
+  it("cada sesion conserva lo suyo en dias distintos", () => {
+    const base = empleado([dia("2026-10-01"), dia("2026-10-02")]);
+    const ours = empleado([dia("2026-10-01", { normalHours: 8 }), dia("2026-10-02")]);
+    const theirs = empleado([dia("2026-10-01"), dia("2026-10-02", { locked: true, normalHours: 5 })]);
+    expect(mergeObjects3(base, ours, theirs).attendance).toEqual([
+      dia("2026-10-01", { normalHours: 8 }),
+      dia("2026-10-02", { locked: true, normalHours: 5 }),
+    ]);
+  });
+
+  it("el calculo automatico de una sesion vieja no le gana a un candado nuevo de la otra", () => {
+    const base = empleado([dia("2026-10-02", { checkIn: "07:30", checkOut: "17:00" })]);
+    const ours = empleado([dia("2026-10-02", { checkIn: "07:30", checkOut: "17:00", normalHours: 9 })]);
+    const theirs = empleado([dia("2026-10-02", { locked: true })]);
+    expect(mergeObjects3(base, ours, theirs).attendance).toEqual([dia("2026-10-02", { locked: true })]);
+  });
+
+  it("un dia que agrego el reloj no se pierde", () => {
+    const base = empleado([dia("2026-10-01")]);
+    const ours = empleado([dia("2026-10-01", { locked: true })]);
+    const theirs = empleado([dia("2026-10-01"), dia("2026-10-02", { checkIn: "07:30" })]);
+    expect((mergeObjects3(base, ours, theirs).attendance as any[]).map((d) => d.date)).toEqual(["2026-10-01", "2026-10-02"]);
+  });
+});

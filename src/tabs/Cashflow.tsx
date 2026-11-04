@@ -153,6 +153,8 @@ type CashflowTabProps = {
   updateCompanyFiscalStartMonth: (companyValue: string, month: number) => void;
   // Cierre de ejercicio: la foto del año cerrado y el saldo con el que arranca el siguiente.
   fiscalClosings: CierreEjercicio[];
+  // Falta cerrar el ejercicio anterior: solo entonces el cierre y el pre-cierre se ven en el ejercicio en curso.
+  hayCierrePendiente?: boolean;
   // Pre-cierre: por empresa, lo que pasa al ejercicio nuevo y lo que queda guardado (domain/preCierre).
   preCierre?: Array<{ company: string; short: string; primary: string; fin: string; data: PreCierre }>;
   // Cargas hechas a mano en la planilla, para pasarlas a su solapa (domain/cargasPlanilla).
@@ -265,6 +267,7 @@ export function CashflowTab({
   updateCompanyFiscalStartMonth,
   fiscalClosings,
   preCierre = [],
+  hayCierrePendiente = false,
   cargasPlanilla = [],
   onIrASolapa,
   onBorrarCargaPlanilla,
@@ -276,19 +279,23 @@ export function CashflowTab({
   retirosSlot,
 }: CashflowTabProps) {
   const anchosDeudas = usePlanillaWidths("cashflow.deudas", { label: 280, col: 116, colCompact: 88 });
+  // Lo del ejercicio elegido (los botones con las fechas, arriba de la solapa).
+  const mesesEjercicio = annualCashFlowByMonth.map((m: any) => m.key as string);
+  const delEjercicio = (iso?: string) => mesesEjercicio.some((k: string) => String(iso || "").startsWith(k));
+  const esEjercicioEnCurso = balanceFiscalStartYear >= currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date());
 
   return (
         <div style={styles.column}>
-          <Panel title={`Calendario anual ${analysisYear} · unificado y desendeudamiento`} span="full">
-            <div style={styles.sectionHeader}>Unificado — todo lo que pasa en el año</div>
+          <Panel title={`Ejercicio ${fiscalYearLabel(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear)} · unificado y desendeudamiento`} span="full">
+            <div style={styles.sectionHeader}>Unificado — todo lo que pasa en el ejercicio</div>
             <div style={styles.metricGrid}>
-              <MiniMetric label="Eventos del año" value={String(annualCashFlowEntries.length)} />
-              <MiniMetric label="Mov. bancarios" value={String(bankStatementEntries.length)} />
-              <MiniMetric label="Compromisos deuda" value={String(annualDebtRows.length)} />
+              <MiniMetric label="Eventos del ejercicio" value={String(annualCashFlowByMonth.reduce((acc: number, m: any) => acc + m.items.length, 0))} />
+              <MiniMetric label="Mov. bancarios" value={String(bankStatementEntries.filter((e: any) => delEjercicio(e.date)).length)} />
+              <MiniMetric label="Compromisos deuda" value={String(annualDebtByMonth.reduce((acc: number, m: any) => acc + m.items.length, 0))} />
               <MiniMetric label="Ultimo saldo banco" value={money(bankStatementSummary.lastBalance)} />
             </div>
             <div style={styles.noticeBox}>
-              Un vistazo del año en <strong>12 columnas</strong> (una por mes): cantidad de eventos y
+              Un vistazo del ejercicio en <strong>12 columnas</strong> (una por mes): cantidad de eventos y
               monto movido. El detalle día por día está abajo, en la lista de movimientos del mes.
             </div>
             {(() => {
@@ -330,7 +337,7 @@ export function CashflowTab({
                 </div>
               );
             })()}
-            <div style={styles.sectionHeader}>Desendeudamiento — los compromisos del año</div>
+            <div style={styles.sectionHeader}>Desendeudamiento — los compromisos del ejercicio</div>
             <div style={styles.noticeBox}>
               La cuota de cada mes en <strong>12 columnas</strong>: la barra baja a medida que las
               cuotas se terminan de pagar, así se ve el desendeudamiento avanzar.
@@ -392,31 +399,17 @@ export function CashflowTab({
                   value={balancePeriodMode}
                   onChange={(e) => setBalancePeriodMode(e.target.value as "fiscalYear" | "month" | "all")}
                 >
-                  <option value="fiscalYear">Ano fiscal</option>
-                  <option value="month">Mes</option>
-                  <option value="all">Todo</option>
+                  <option value="fiscalYear">Todo el ejercicio</option>
+                  <option value="month">Un mes</option>
                 </select>
               </Field>
-              {balancePeriodMode === "fiscalYear" && (
-                <Field label="Ano fiscal">
-                  <select
-                    style={styles.input}
-                    value={balanceFiscalStartYear}
-                    onChange={(e) => setBalanceFiscalStartYear(Number(e.target.value))}
-                  >
-                    {balanceFiscalYearOptions.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-              )}
               {balancePeriodMode === "month" && (
                 <Field label="Mes">
                   <input
                     style={styles.input}
                     type="month"
+                    min={mesesEjercicio[0]}
+                    max={mesesEjercicio[mesesEjercicio.length - 1]}
                     value={balanceMonth}
                     onChange={(e) => setBalanceMonth(e.target.value)}
                   />
@@ -485,11 +478,12 @@ export function CashflowTab({
               de solo lectura. Los datos NO se borran; lo único que sale del sistema son las
               imágenes, que es donde está el peso. Vive acá, junto al balance, porque es la foto con
               la que arranca el año siguiente. */}
-          {preCierre.length > 0 && <PreCierrePanel preCierre={preCierre} />}
+          {hayCierrePendiente && esEjercicioEnCurso && preCierre.length > 0 && <PreCierrePanel preCierre={preCierre} />}
           {cargasPlanilla.some((e) => e.filas.length > 0) && (
             <CargasPlanillaPanel empresas={cargasPlanilla} onIr={onIrASolapa} onBorrar={onBorrarCargaPlanilla} />
           )}
 
+          {(hayCierrePendiente || !esEjercicioEnCurso) && (
           <Panel title="Cierre de ejercicio" span="full">
             <div style={{ ...styles.sectionNote, marginBottom: 10 }}>
               El cierre <strong>guarda todo el ejercicio en la carpeta</strong> y deja el año{" "}
@@ -591,6 +585,7 @@ export function CashflowTab({
               confirmación dos veces y la segunda hay que escribirla.
             </div>
           </Panel>
+          )}
 
           <Panel title="Cash flow y estado de resultados del período" span="full">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(330px, 1fr))", gap: 14, alignItems: "start" }}>

@@ -2561,8 +2561,8 @@ export function PersonalTab(props: PersonalTabProps) {
                                           type="button"
                                           title={
                                             isLocked
-                                              ? "Bloqueado: la precarga del reloj no lo toca. Click para desbloquear."
-                                              : "Sin bloquear: la precarga del reloj puede recalcular las horas. Click para bloquear."
+                                              ? "Con candado: ni el fichero ni el conteo de horas lo tocan, aunque esté en blanco. Click para desbloquear."
+                                              : "Sin candado: el conteo de horas puede recalcularlo desde el fichero. Click para bloquear."
                                           }
                                           onClick={() =>
                                             updateAttendanceRecord(

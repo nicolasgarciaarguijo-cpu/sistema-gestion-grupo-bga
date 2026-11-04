@@ -421,3 +421,22 @@ export const horasTrabajadasEnMes = (
   Math.round(
     (attendance || []).filter((a) => a.date?.startsWith(monthKey)).reduce((acc, a) => acc + dayHoursTotal(a), 0) * 100
   ) / 100;
+
+// LO QUE EL CALENDARIO LE PASA A LA LIQUIDACION DEL MES: las horas cargadas en cada dia. Un dia con candado suma lo
+// que tiene escrito (en blanco, nada), diga lo que diga el fichero.
+export const horasDelMesDesdeCalendario = (attendance: AttendanceRecord[], month: string, standardDayHours: number) => {
+  const delMes = attendance.filter((item) => item.date.startsWith(`${month}-`));
+  const suma = (campo: keyof ConvenioHours) => delMes.reduce((acc, item) => acc + Number(item[campo] || 0), 0);
+  return {
+    normalHours: suma("normalHours"),
+    extra50Hours: suma("extra50Hours"),
+    extra100Hours: suma("extra100Hours"),
+    night50Hours: suma("night50Hours"),
+    // Feriado trabajado (al 100%, renglon propio) y nocturnas al 100%.
+    holidayWorkedHours: suma("holidayHours"),
+    night100Hours: suma("night100Hours"),
+    justifiedAbsenceHours: delMes.filter((item) => item.status === "ausente_justificado").length * standardDayHours,
+    unjustifiedAbsenceHours: delMes.filter((item) => item.status === "ausente_injustificado").length * standardDayHours,
+    vacationsDays: delMes.filter((item) => item.status === "vacaciones").length,
+  };
+};
