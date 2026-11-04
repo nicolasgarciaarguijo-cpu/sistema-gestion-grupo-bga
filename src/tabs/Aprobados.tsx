@@ -28,6 +28,7 @@ import { resolveAdvancePct } from "../domain/budgetTerms";
 import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency, type PlanoTone } from "../domain/planos";
 import { getInvoicingSemaphore } from "../domain/semaphores";
 import type { SemaphoreLevel } from "../ui/theme";
+import { totalesAdicionales, totalesCobranzas, totalesComisiones, totalesFacturas, totalesRetenciones } from "../domain/totalesTrabajo";
 
 // % de facturacion real de un trabajo (neto facturado por facturas reales) contra el neto comprometido
 // (soldNetPrice x billedPct). Devuelve el nivel del semaforo para el circulo verde/amarillo/rojo.
@@ -1478,6 +1479,15 @@ export function AprobadosTab({
                   nested
                   actions={<ButtonLike onClick={() => addInvoice(selectedApprovedJob.id)}>Agregar factura</ButtonLike>}
                 >
+                  {(() => {
+                    const t = totalesFacturas(selectedApprovedJob.invoices);
+                    return t.cantidad > 0 ? (
+                      <TotalesBloque
+                        titulo={`${t.cantidad} factura${t.cantidad === 1 ? "" : "s"}`}
+                        filas={[["Neto facturado", t.neto], ["IVA", t.iva], ["Total facturado", t.total, true]]}
+                      />
+                    ) : null;
+                  })()}
                   {selectedApprovedJob.invoices.length === 0 ? (
                     <div style={styles.empty}>No hay facturas cargadas.</div>
                   ) : (
@@ -1634,6 +1644,24 @@ export function AprobadosTab({
                     </>
                   }
                 >
+                  {(() => {
+                    // Solo lo cobrado (los cobros estimados/inamovibles todavia no son plata).
+                    const t = totalesCobranzas(selectedApprovedJob.payments || [], Number((selectedApprovedJob as any).snapshot?.params?.vatPct ?? 21));
+                    return t.cantidad > 0 ? (
+                      <TotalesBloque
+                        titulo={`${t.cantidad} cobranza${t.cantidad === 1 ? "" : "s"}`}
+                        filas={[
+                          ["Cobrado en blanco (c/IVA)", t.blanco],
+                          ["  Neto del blanco", t.netoBlanco],
+                          ["  IVA del blanco", t.ivaBlanco],
+                          ["Cobrado en negro", t.negro],
+                          ["Neto cobrado", t.neto],
+                          ["Total cobrado", t.total, true],
+                          ...(t.usd > 0 ? ([["Cobrado en U$S", t.usd, true, "U$S"]] as FilaTotal[]) : []),
+                        ]}
+                      />
+                    ) : null;
+                  })()}
                   {/* PRECARGA segun lo acordado (Nicolas, 2026-10-20): anticipo blanco y negro, y despues el
                       saldo de cada circuito. Entran como cobro ESTIMADO (violeta) con el monto puesto: se
                       ajusta la fecha y, cuando entra la plata, se pasa a Realizado. */}
@@ -1914,6 +1942,25 @@ export function AprobadosTab({
                   nested
                   actions={<ButtonLike onClick={() => addAdditional(selectedApprovedJob.id)}>Agregar adicional</ButtonLike>}
                 >
+                  {(() => {
+                    const t = totalesAdicionales(selectedApprovedJob.additionals, Number((selectedApprovedJob as any).snapshot?.params?.vatPct ?? 21));
+                    return t.cantidad > 0 ? (
+                      <TotalesBloque
+                        titulo={`${t.cantidad} adicional${t.cantidad === 1 ? "" : "es"}`}
+                        filas={[
+                          ["Neto blanco", t.netoBlanco],
+                          ["IVA", t.iva],
+                          ["Total blanco (c/IVA)", t.totalBlanco],
+                          ["Negro", t.negro],
+                          ["Neto", t.neto],
+                          ["Total", t.total, true],
+                          ...(t.usdBlanco + t.usdNegro > 0
+                            ? ([["U$S blanco (neto)", t.usdBlanco, false, "U$S"], ["U$S negro", t.usdNegro, false, "U$S"]] as FilaTotal[])
+                            : []),
+                        ]}
+                      />
+                    ) : null;
+                  })()}
                   {selectedApprovedJob.additionals.length === 0 ? (
                     <div style={styles.empty}>
                       No hay adicionales cargados. Funcionan como continuidad del presupuesto original y suman al saldo a cobrar.
@@ -2140,6 +2187,15 @@ export function AprobadosTab({
                   nested
                   actions={<ButtonLike onClick={() => addCommissionPayment(selectedApprovedJob.id)}>Agregar pago de comision</ButtonLike>}
                 >
+                  {(() => {
+                    const t = totalesComisiones(selectedApprovedJob.commissionPayments);
+                    return t.cantidad > 0 ? (
+                      <TotalesBloque
+                        titulo={`${t.cantidad} pago${t.cantidad === 1 ? "" : "s"} de comisión`}
+                        filas={[["Pagado en blanco", t.blanco], ["Pagado en negro", t.negro], ["Total pagado", t.total, true]]}
+                      />
+                    ) : null;
+                  })()}
                   <div style={styles.metricGrid}>
                     <MiniMetric label="Comision" value={money(selectedApprovedJob.commissionAmount)} />
                     <MiniMetric label="Pagado" value={money(selectedApprovedJob.commissionPaidTotal)} />
@@ -2223,6 +2279,12 @@ export function AprobadosTab({
                 nested
                 actions={<ButtonLike onClick={() => addRetention(selectedApprovedJob.id)}>Agregar retencion</ButtonLike>}
               >
+                {(() => {
+                  const t = totalesRetenciones(selectedApprovedJob.retentions);
+                  return t.cantidad > 0 ? (
+                    <TotalesBloque titulo={`${t.cantidad} retenci${t.cantidad === 1 ? "ón" : "ones"}`} filas={[["Total retenido", t.total, true]]} />
+                  ) : null;
+                })()}
                 {selectedApprovedJob.retentions.length === 0 ? (
                   <div style={styles.empty}>No hay retenciones cargadas.</div>
                 ) : (
@@ -2369,6 +2431,24 @@ const ESTADO_COBRO_COLOR = {
 
 // Boton "Guardar este trabajo" de la ficha: guarda en el servidor y muestra el resultado de la
 // VERIFICACION (relectura). Verde = esta en el servidor tal cual se ve; rojo = hay que volver a probar.
+// [etiqueta, monto, destacado?, moneda?]
+type FilaTotal = [string, number, boolean?, string?];
+
+// TOTALES DEL BLOQUE (03/11/2026): lo que suma lo cargado en el bloque (ver domain/totalesTrabajo).
+function TotalesBloque({ titulo, filas }: { titulo: string; filas: FilaTotal[] }) {
+  return (
+    <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "8px 12px", marginBottom: 10, fontSize: 13 }}>
+      <div style={{ fontWeight: 700, color: "#475569", marginBottom: 4 }}>Totales · {titulo}</div>
+      {filas.map(([label, monto, destacado, moneda]) => (
+        <div key={label} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontWeight: destacado ? 700 : 400, color: label.startsWith("  ") ? "#64748b" : "#0f172a", fontVariantNumeric: "tabular-nums" }}>
+          <span style={{ whiteSpace: "pre" }}>{label}</span>
+          <span>{moneda ? `${moneda} ${monto.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : money(monto)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function BotonGuardarTrabajo({ onGuardar }: { onGuardar: () => Promise<{ ok: boolean; texto: string }> }) {
   const [estado, setEstado] = React.useState<"" | "guardando" | "ok" | "error">("");
   const [texto, setTexto] = React.useState("");

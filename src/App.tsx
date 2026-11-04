@@ -22915,7 +22915,10 @@ Escribi CERRAR para confirmar:`
           <ButtonLike onClick={() => setAsistenteCierre(true)}>Hacer el cierre</ButtonLike>
         </div>
       )}
-      {hayEjercicioCerrado && ["compras", "costos", "cajaChica", "aprobados"].includes(activeTab) && (
+      {/* EL EJERCICIO NUEVO ARRANCA EN CERO (03/11/2026: "quiero que todo vuelva a cero desde la situacion actual, si quisiese
+          ver algo del año pasado lo deberia llamar"): en todas las solapas con movimientos fechados, lo del ejercicio
+          cerrado se esconde y se llama con este boton. Lo que sigue abierto (deudas, cobros pendientes) se sigue viendo. */}
+      {hayEjercicioCerrado && ["compras", "costos", "cajaChica", "aprobados", "facturacion", "bancos", "movimientosInternos", "seguros", "inversiones", "desendeudamiento"].includes(activeTab) && (
         <div
           style={{
             display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", borderRadius: 10, padding: "6px 12px", margin: "0 0 10px", fontSize: 13, fontWeight: 700,
@@ -23714,7 +23717,12 @@ Escribi CERRAR para confirmar:`
             const c = cierresActivos(fiscalClosings).filter((x) => canAccessCompany(x.company as CompanyName)).sort((a, b) => b.endIso.localeCompare(a.endIso))[0];
             return c ? { desde: c.startIso, hasta: c.endIso, etiqueta: `${c.startIso.slice(0, 7)} a ${c.endIso.slice(0, 7)}` } : undefined;
           })()}
-          deudas={visibleDebtPlans}
+          // Terminada de pagar en el ejercicio cerrado: se esconde (se llama con "Ver ejercicio cerrado").
+          deudas={visibleDebtPlans.filter((d) => {
+            const cuotas = cuotasDeDeuda(d as any);
+            if (!cuotas.length || cuotasPendientes(d as any).length) return true;
+            return !ocultoPorCierre(d.company, cuotas.reduce((m, c) => (c.fecha > m ? c.fecha : m), ""));
+          })}
           hoy={hoyIso}
           companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
           grupos={gruposCostoLista.map((g) => ({ key: g.clave, label: etiquetaGrupo(g.clave) }))}
@@ -24024,7 +24032,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "seguros" && (
         <SegurosTab
-          seguros={porEmpresa(seguros)}
+          seguros={porEmpresa(seguros).filter((x) => !(x.vigenciaHasta && (x.estado === "baja" || x.vigenciaHasta < todayIso()) && ocultoPorCierre(x.company, x.vigenciaHasta)))}
           hoyIso={todayIso()}
           months={fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear)}
           companyScope={segurosCompanyScope}
@@ -24042,7 +24050,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "inversiones" && (
         <InversionesTab
-          inversiones={porEmpresa(inversiones)}
+          inversiones={porEmpresa(inversiones).filter((x) => !(x.estado === "cerrada" && ocultoPorCierre(x.company, x.fechaFin)))}
           companyScope={inversionesCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
@@ -24087,7 +24095,7 @@ Escribi CERRAR para confirmar:`
           discardStatementDraft={discardCostStatementDraft}
           bankStatementSummary={bankStatementSummary}
           monthBankStatementEntries={monthBankStatementEntries}
-          allBankStatementEntries={visibleBankStatementEntries}
+          allBankStatementEntries={visibleBankStatementEntries.filter((x) => !ocultoPorCierre(x.company, x.date))}
           operationalMonth={operationalMonth}
           monthLabel={monthLabel}
           shiftOperationalMonth={shiftOperationalMonth}
@@ -24211,15 +24219,15 @@ Escribi CERRAR para confirmar:`
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
           updateArrayItem={updateArrayItemFirmado}
-          internalTransfers={visibleInternalTransfers}
+          internalTransfers={visibleInternalTransfers.filter((x) => !ocultoPorCierre(x.company, x.date))}
           setInternalTransfers={setInternalTransfers}
           addInternalTransfer={addInternalTransfer}
           removeInternalTransfer={removeInternalTransfer}
-          cashHoldings={visibleCashHoldings}
+          cashHoldings={visibleCashHoldings.filter((x) => !ocultoPorCierre(x.company, x.date))}
           setCashHoldings={setCashHoldings}
           addCashHolding={addCashHolding}
           removeCashHolding={removeCashHolding}
-          capitalEntries={visibleCapitalEntries}
+          capitalEntries={visibleCapitalEntries.filter((x) => !ocultoPorCierre(x.company, x.date))}
           setCapitalEntries={setCapitalEntries}
           addCapitalEntry={addCapitalEntry}
           removeCapitalEntry={removeCapitalEntry}
@@ -24467,7 +24475,7 @@ Escribi CERRAR para confirmar:`
       {activeTab === "facturacion" && (
         <FacturacionTab
           calendarioCobranzasSlot={renderCalendarioAnual("cobranzas")}
-          issuedInvoices={visibleIssuedInvoices}
+          issuedInvoices={visibleIssuedInvoices.filter((x) => !ocultoPorCierre(x.company, x.date))}
           updateIssuedInvoice={updateIssuedInvoice}
           onBorrarEmitida={(id) => setIssuedInvoices((prev) => prev.filter((inv) => inv.id !== id))}
           onRegularizaBlanqueo={(id, on) =>

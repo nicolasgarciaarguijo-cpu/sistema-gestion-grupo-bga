@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-03d",
+    fecha: "03/11/2026",
+    titulo: "El ejercicio nuevo arranca en cero",
+    items: [
+      {
+        titulo: "Totales en cada bloque del trabajo",
+        que: "En Trabajos aprobados, arriba de Facturación, Cobranzas, Retenciones, Adicionales y Comisión: cuántos hay cargados y lo que suman. Facturas: neto, IVA y total. Cobranzas: lo cobrado en blanco con su neto e IVA, lo cobrado en negro, el neto y el total (los U$S aparte). Adicionales: neto, IVA y total por circuito.",
+        como: "Trabajos aprobados → abrir un trabajo.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Lo del año pasado se llama, no se ve solo",
+        que: "Con el ejercicio cerrado, todas las solapas con movimientos muestran solo el ejercicio en curso: Facturación, Bancos, Movimientos internos, Seguros (vencidos o dados de baja), Inversiones (cerradas) y Desendeudamiento (deudas terminadas de pagar), además de Compras, Costos, Caja chica y Trabajos aprobados. Lo que sigue abierto (cobros y deudas pendientes) se sigue viendo.",
+        como: "Arriba de cada solapa: \"Ver ejercicio cerrado\" para traer lo del año pasado (solo lectura).",
+        tab: "cashflow",
+      },
+    ],
+  },
+  {
     id: "2026-11-03c",
     fecha: "03/11/2026",
     titulo: "Lector de PDF arreglado: facturas y escalas",
