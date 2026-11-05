@@ -10,6 +10,7 @@ import {
 } from "./attendance";
 import { PRESENTISMO_PCT_DEL_BRUTO, porcentajePorAsistencia } from "./presentismo";
 import { MULT_EXTRA_50, MULT_EXTRA_100, RECARGO_NOCTURNO } from "./payroll";
+import { HORAS_JORNADA_HABIL } from "./recibo";
 
 export type ReglaSeccion = { titulo: string; reglas: string[] };
 
@@ -73,6 +74,16 @@ export function reglasDeLiquidacion(config: ReglasConfig = {}): ReglaSeccion[] {
         `1 ausencia: ${p(0, 1)}. 2 o más ausencias: ${p(0, 2)}. Las ausencias cuentan igual, justificadas o no.`,
         `Si hay tardes y ausencias, manda la peor (no se suman): 1 tarde + 1 ausencia = ${p(1, 1)}.`,
         `Se puede fijar a mano con los botones 25/50/75/100 de la ficha; "Volver a la asistencia" lo deja automático.`,
+      ],
+    },
+    {
+      titulo: "Acuerdos en negro",
+      reglas: [
+        `Lo acordado en negro es neto: no lleva descuentos de ley, presentismo ni anticipos.`,
+        `Fuera de convenio (administrativos y socios): cobra el valor acordado entero, sin horas ni horas extra.`,
+        `Para el resto, el acuerdo se paga por horas: acuerdo ÷ horas laborables del mes × horas trabajadas, sin pasar del acuerdo. Las horas laborables son los días hábiles de lunes a viernes, sin feriados, por ${num(HORAS_JORNADA_HABIL)} horas.`,
+        `El premio en negro es un monto fijo: sale entero.`,
+        `Si el acuerdo fuera de convenio es en blanco con descuentos, los descuentos de ley se hacen sobre ese valor. El presentismo se elige por persona en su ficha.`,
       ],
     },
     {

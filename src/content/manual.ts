@@ -899,7 +899,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
           },
           {
             type: "p",
-            text: "En negro hay dos renglones distintos. El ACUERDO se prorratea por los dias trabajados del mes (total / dias laborables x dias trabajados). El PREMIO es un monto fijo no remunerativo: sale entero, sin importar los dias trabajados. Los dos salen en el recibo negro, cada uno en su renglon.",
+            text: "Lo acordado en negro es neto: no lleva descuentos de ley, presentismo ni anticipos. En negro hay dos renglones distintos. Los administrativos y socios (fuera de convenio) cobran el valor acordado entero, sin horas ni horas extra; si es en blanco con descuentos, los descuentos se hacen sobre ese valor y el presentismo se elige en su ficha. Para el resto, el ACUERDO se prorratea por las horas trabajadas del mes (total / horas laborables x horas trabajadas). Las horas laborables son los dias habiles de lunes a viernes, sin feriados, por 9 horas. El PREMIO es un monto fijo no remunerativo: sale entero, sin importar las horas trabajadas. Los dos salen en el recibo negro, cada uno en su renglon.",
           },
           {
             type: "warn",

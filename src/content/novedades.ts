@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-05c",
+    fecha: "05/11/2026",
+    titulo: "Recibo negro: se calcula por horas",
+    items: [
+      {
+        titulo: "El acuerdo en negro se paga por horas trabajadas",
+        que: "El acuerdo se divide por las horas laborables del mes (días hábiles de lunes a viernes, sin feriados, por 9 horas) y se multiplica por las horas trabajadas. El recibo negro y la ficha de pago usan la misma cuenta. Los sábados ya no cuentan como días laborables. Lo acordado en negro es neto: sin descuentos, presentismo ni anticipos.",
+        como: "Personal → ficha del empleado → Recibo negro. El recibo muestra los días hábiles, las horas y el cálculo.",
+        tab: "personal",
+      },
+      {
+        titulo: "Administrativos y socios cobran el valor acordado",
+        que: "Todo el personal fuera de convenio cobra lo acordado entero: no se liquida por horas ni tiene horas extra. Si el acuerdo es en blanco con descuentos, se hacen sobre ese valor, y el presentismo se elige por persona.",
+        como: "Personal → ficha del empleado → casilla 'Aplicar presentismo sobre el blanco acordado'.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-11-05b",
     fecha: "05/11/2026",
     titulo: "Movimientos internos: menos bloques y deudas que se migran",

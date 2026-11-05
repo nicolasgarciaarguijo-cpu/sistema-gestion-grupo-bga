@@ -1,37 +1,28 @@
-import { workingDaysInMonth, reciboNegroAmount, numeroALetras, negroDelMes } from "./recibo";
+import { diasHabilesDelMes, reciboNegroAmount, numeroALetras, negroDelMes } from "./recibo";
 
-describe("workingDaysInMonth", () => {
-  it("julio 2026 (L-S, sin domingos)", () => {
-    // Julio 2026: 31 días. Domingos: 5, 12, 19, 26 => 4 domingos. 31 - 4 = 27.
-    expect(workingDaysInMonth("2026-07")).toBe(27);
+describe("diasHabilesDelMes", () => {
+  it("cuenta de lunes a viernes, sin sabados, domingos ni feriados", () => {
+    // Noviembre 2026: 21 dias de lunes a viernes, menos un feriado.
+    expect(diasHabilesDelMes("2026-11")).toBe(20);
   });
-  it("sin sábados (solo L-V)", () => {
-    // Sábados de julio 2026: 4, 11, 18, 25 => 4. 27 - 4 = 23.
-    expect(workingDaysInMonth("2026-07", { includeSaturday: false })).toBe(23);
-  });
-  it("descuenta feriados", () => {
-    expect(workingDaysInMonth("2026-07", { holidays: ["2026-07-09"] })).toBe(26);
-  });
-  it("mes inválido => 0", () => {
-    expect(workingDaysInMonth("")).toBe(0);
+  it("mes invalido => 0", () => {
+    expect(diasHabilesDelMes("")).toBe(0);
   });
 });
 
 describe("reciboNegroAmount", () => {
-  it("prorratea por días trabajados", () => {
-    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: 26 })).toBe(600000);
-    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: 24 })).toBeCloseTo(
-      (600000 / 26) * 24,
-      2
-    );
+  it("el arreglo dividido las horas laborables por las horas trabajadas", () => {
+    expect(reciboNegroAmount({ totalBlack: 900000, horasLaborables: 180, horasTrabajadas: 180 })).toBe(900000);
+    expect(reciboNegroAmount({ totalBlack: 900000, horasLaborables: 180, horasTrabajadas: 90 })).toBe(450000);
+    expect(reciboNegroAmount({ totalBlack: 900000, horasLaborables: 180, horasTrabajadas: 171 })).toBe(855000);
   });
-  it("nunca supera el total ni baja de 0", () => {
-    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: 30 })).toBe(600000);
-    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: -3 })).toBe(0);
+  it("nunca pasa del arreglo ni baja de cero", () => {
+    expect(reciboNegroAmount({ totalBlack: 900000, horasLaborables: 180, horasTrabajadas: 200 })).toBe(900000);
+    expect(reciboNegroAmount({ totalBlack: 900000, horasLaborables: 180, horasTrabajadas: -3 })).toBe(0);
   });
-  it("sin total o sin días => 0", () => {
-    expect(reciboNegroAmount({ totalBlack: 0, workingDays: 26, daysWorked: 10 })).toBe(0);
-    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 0, daysWorked: 10 })).toBe(0);
+  it("sin monto o sin horas laborables da cero", () => {
+    expect(reciboNegroAmount({ totalBlack: 0, horasLaborables: 180, horasTrabajadas: 10 })).toBe(0);
+    expect(reciboNegroAmount({ totalBlack: 900000, horasLaborables: 0, horasTrabajadas: 10 })).toBe(0);
   });
 });
 
@@ -52,31 +43,31 @@ describe("numeroALetras", () => {
   });
 });
 
-// El recibo del socio no se prorratea: cobra lo acordado aunque no haya fichado ningun dia.
+// El recibo del socio no se prorratea: cobra lo acordado aunque no haya fichado ninguna hora.
 describe("reciboNegroAmount · socio", () => {
-  it("sin prorrateo, devuelve el total acordado sin mirar los dias", () => {
-    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: 0, sinProrrateo: true })).toBe(600000);
-    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 0, daysWorked: 0, sinProrrateo: true })).toBe(600000);
+  it("sin prorrateo, devuelve el total acordado sin mirar las horas", () => {
+    expect(reciboNegroAmount({ totalBlack: 600000, horasLaborables: 180, horasTrabajadas: 0, sinProrrateo: true })).toBe(600000);
+    expect(reciboNegroAmount({ totalBlack: 600000, horasLaborables: 0, horasTrabajadas: 0, sinProrrateo: true })).toBe(600000);
   });
 
   it("sin el flag sigue prorrateando igual que siempre", () => {
-    expect(reciboNegroAmount({ totalBlack: 600000, workingDays: 26, daysWorked: 0 })).toBe(0);
+    expect(reciboNegroAmount({ totalBlack: 600000, horasLaborables: 180, horasTrabajadas: 0 })).toBe(0);
   });
 });
 
 describe("negroDelMes (recibo negro y ficha de pago, misma regla)", () => {
-  it("el acuerdo se prorratea por dias trabajados y el premio va entero", () => {
-    const r = negroDelMes({ acordadoPorTipo: 0, acuerdoDelMes: 260000, premio: 50000, workingDays: 26, daysWorked: 13 });
+  it("el acuerdo se prorratea por horas trabajadas y el premio va entero", () => {
+    const r = negroDelMes({ acordadoPorTipo: 0, acuerdoDelMes: 260000, premio: 50000, horasLaborables: 180, horasTrabajadas: 90 });
     expect(r).toEqual({ acuerdoTotal: 260000, acuerdoAEntregar: 130000, premio: 50000, total: 180000 });
   });
 
   it("fuera de convenio: su negro acordado + el acuerdo del mes, prorrateados", () => {
-    const r = negroDelMes({ acordadoPorTipo: 500000, acuerdoDelMes: 20000, premio: 0, workingDays: 26, daysWorked: 26 });
+    const r = negroDelMes({ acordadoPorTipo: 500000, acuerdoDelMes: 20000, premio: 0, horasLaborables: 180, horasTrabajadas: 180 });
     expect(r.total).toBe(520000);
   });
 
   it("socio o temporal por dia: sin prorrateo", () => {
-    const r = negroDelMes({ acordadoPorTipo: 800000, acuerdoDelMes: 0, premio: 0, workingDays: 26, daysWorked: 3, sinProrrateo: true });
+    const r = negroDelMes({ acordadoPorTipo: 800000, acuerdoDelMes: 0, premio: 0, horasLaborables: 180, horasTrabajadas: 27, sinProrrateo: true });
     expect(r.total).toBe(800000);
   });
 });

@@ -42,6 +42,19 @@ const run = (over: Partial<EmployeePayroll> = {}, extra: Partial<Parameters<type
     ...extra,
   });
 
+describe("lo acordado en negro es neto", () => {
+  it("presentismo y anticipos no cambian el negro", () => {
+    const base = run({ cashBonus: 10000, blackPrize: 5000 });
+    const conTodo = run({ cashBonus: 10000, blackPrize: 5000, presentismoPctOverride: 10, presentismoAsistenciaPct: 0, anticipos: 3000 });
+    expect(conTodo.blackMonthly).toBe(15000);
+    expect(conTodo.blackMonthly).toBe(base.blackMonthly);
+  });
+
+  it("el negro no entra a la base de los descuentos de ley", () => {
+    expect(run({ cashBonus: 50000, blackPrize: 5000 }).descuentos).toBeCloseTo(run().descuentos);
+  });
+});
+
 describe("computePayrollSummary", () => {
   it("bruto normal = valor hora x horas", () => {
     expect(run().grossNormal).toBe(200000);
@@ -335,14 +348,14 @@ describe("socio / socio gerente", () => {
   it("cobra el acordado completo aunque no tenga horas cargadas", () => {
     const r = run(
       { normalHours: 0 },
-      { isFueraConvenio: true, isPartner: true, agreedWhite: 900000, agreedBlack: 600000, computeWhiteCharges: false }
+      { isFueraConvenio: true, agreedWhite: 900000, agreedBlack: 600000, computeWhiteCharges: false }
     );
     expect(r.net).toBe(900000);
     expect(r.blackMonthly).toBe(600000);
   });
 
   it("las horas no le cambian el sueldo: 0 hs y 200 hs liquidan igual", () => {
-    const opts = { isFueraConvenio: true, isPartner: true, agreedWhite: 900000, agreedBlack: 600000, computeWhiteCharges: false };
+    const opts = { isFueraConvenio: true, agreedWhite: 900000, agreedBlack: 600000, computeWhiteCharges: false };
     const sinHoras = run({ normalHours: 0 }, opts);
     const conHoras = run({ normalHours: 200, extra50Hours: 20 }, opts);
     expect(conHoras.net).toBeCloseTo(sinHoras.net);
@@ -351,7 +364,7 @@ describe("socio / socio gerente", () => {
   });
 
   it("una ausencia injustificada no le descuenta nada", () => {
-    const opts = { isFueraConvenio: true, isPartner: true, agreedWhite: 900000, computeWhiteCharges: false };
+    const opts = { isFueraConvenio: true, agreedWhite: 900000, computeWhiteCharges: false };
     const presente = run({ normalHours: 200 }, opts);
     const ausente = run({ normalHours: 200, unjustifiedAbsenceHours: 40 }, opts);
     expect(ausente.net).toBeCloseTo(presente.net);
@@ -360,17 +373,43 @@ describe("socio / socio gerente", () => {
   it("aunque su categoria matchee una fila de escala, la escala no se le aplica", () => {
     const r = run(
       { normalHours: 200 },
-      { isFueraConvenio: true, isPartner: true, agreedWhite: 900000, computeWhiteCharges: false }
+      { isFueraConvenio: true, agreedWhite: 900000, computeWhiteCharges: false }
     );
     expect(r.grossNormal).toBe(0); // la escala del run() es 1000/hora: sin la regla seria 200.000
-    expect(r.partnerFlat).toBe(true);
+    expect(r.acuerdoEnValor).toBe(true);
   });
 
-  it("isPartner sin fuera de convenio no cambia nada (solo aplica a fuera de convenio)", () => {
-    const conFlag = run({ normalHours: 200 }, { isPartner: true });
-    const sinFlag = run({ normalHours: 200 });
-    expect(conFlag.totalGross).toBeCloseTo(sinFlag.totalGross);
-    expect(conFlag.partnerFlat).toBe(false);
+  it("sin ser fuera de convenio se sigue liquidando por horas", () => {
+    expect(run({ normalHours: 200 }).grossNormal).toBe(200000);
+    expect(run({ normalHours: 200 }).acuerdoEnValor).toBe(false);
+  });
+});
+
+describe("acuerdo en valor en blanco", () => {
+  const acuerdo = { isFueraConvenio: true, agreedWhite: 1000000, computeWhiteCharges: true };
+
+  it("los descuentos de ley se hacen sobre ese valor", () => {
+    const r = run({ normalHours: 200, presentismoPctOverride: 10 }, acuerdo);
+    expect(r.grossRem).toBe(1000000);
+    expect(r.jubilacion).toBeCloseTo(110000);
+  });
+
+  it("el presentismo aplica solo si se elige, sobre el blanco y segun la asistencia", () => {
+    const mes = { presentismoPctOverride: 10, presentismoAsistenciaPct: 50 };
+    expect(run(mes, acuerdo).presentismo).toBe(0);
+    expect(run(mes, { ...acuerdo, aplicaPresentismo: true }).presentismo).toBeCloseTo(50000);
+  });
+
+  it("sin descuentos sobre el blanco no hay presentismo", () => {
+    const r = run({ presentismoPctOverride: 10 }, { ...acuerdo, computeWhiteCharges: false, aplicaPresentismo: true });
+    expect(r.presentismo).toBe(0);
+    expect(r.net).toBe(1000000);
+  });
+
+  it("el negro nunca lleva presentismo", () => {
+    const r = run({ presentismoPctOverride: 10 }, { isFueraConvenio: true, agreedBlack: 800000, aplicaPresentismo: true });
+    expect(r.presentismo).toBe(0);
+    expect(r.blackMonthly).toBe(800000);
   });
 });
 

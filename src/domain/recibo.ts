@@ -1,14 +1,11 @@
 // Núcleo del recibo de sueldo (blanco legal + negro interno). Puro y testeable.
+import { esFeriado } from "./feriadosArgentina";
 
-// Días laborables de un mes (para el recibo NEGRO: total ÷ días laborables × días trabajados).
-// Por defecto cuenta Lunes a Sábado (la jornada del taller incluye el sábado); domingos NO.
-// `holidays` (yyyy-mm-dd) se descuentan si se pasan.
-export function workingDaysInMonth(
-  monthKey: string,
-  opts: { includeSaturday?: boolean; holidays?: string[] } = {}
-): number {
-  const includeSaturday = opts.includeSaturday !== false;
-  const holidays = new Set(opts.holidays || []);
+// Jornada de lunes a viernes: 07:30 a 17:00 con media hora de almuerzo.
+export const HORAS_JORNADA_HABIL = 9;
+
+// Días HÁBILES de un mes: lunes a viernes sin feriados (Nicolás, 05/11/2026). El sábado no cuenta.
+export function diasHabilesDelMes(monthKey: string): number {
   const m = /^(\d{4})-(\d{2})$/.exec(monthKey || "");
   if (!m) return 0;
   const year = Number(m[1]);
@@ -17,10 +14,8 @@ export function workingDaysInMonth(
   let count = 0;
   for (let d = 1; d <= daysInMonth; d += 1) {
     const dow = new Date(year, month - 1, d).getDay(); // 0=Dom ... 6=Sáb
-    if (dow === 0) continue; // domingo nunca
-    if (dow === 6 && !includeSaturday) continue; // sábado según jornada
-    const iso = `${m[1]}-${m[2]}-${String(d).padStart(2, "0")}`;
-    if (holidays.has(iso)) continue;
+    if (dow === 0 || dow === 6) continue;
+    if (esFeriado(`${m[1]}-${m[2]}-${String(d).padStart(2, "0")}`)) continue;
     count += 1;
   }
   return count;
@@ -51,28 +46,28 @@ export function paymentDateForPeriod(monthKey: string): string {
   return nthBusinessDay(ny, nm, 4);
 }
 
-// Prorrateo del negro por dias trabajados. Sin descuentos salvo por dias no trabajados.
-// negro = totalBlack / diasLaborables x diasTrabajados (clamp 0..total).
+// Prorrateo del negro por HORAS (Nicolás, 05/11/2026): el arreglo dividido las horas laborables del mes
+// (días hábiles en horas) por las horas trabajadas. Nunca pasa del arreglo.
 // EXCEPCION `sinProrrateo`: el socio / socio gerente cobra su acordado entero, no ficha horas.
 export function reciboNegroAmount({
   totalBlack,
-  workingDays,
-  daysWorked,
+  horasLaborables,
+  horasTrabajadas,
   sinProrrateo,
 }: {
   totalBlack: number;
-  workingDays: number;
-  daysWorked: number;
-  // Socio / socio gerente: cobra el acordado COMPLETO, no se prorratea por dias trabajados.
+  horasLaborables: number;
+  horasTrabajadas: number;
+  // Socio / socio gerente: cobra el acordado COMPLETO, no se prorratea por horas trabajadas.
   sinProrrateo?: boolean;
 }): number {
   const t = Number(totalBlack || 0);
   if (!(t > 0)) return 0;
   if (sinProrrateo) return Math.round(t * 100) / 100;
-  const wd = Number(workingDays || 0);
-  const dw = Math.max(0, Number(daysWorked || 0));
-  if (!(wd > 0)) return 0;
-  const raw = (t / wd) * dw;
+  const laborables = Number(horasLaborables || 0);
+  const trabajadas = Math.max(0, Number(horasTrabajadas || 0));
+  if (!(laborables > 0)) return 0;
+  const raw = (t / laborables) * trabajadas;
   return Math.max(0, Math.min(t, Math.round(raw * 100) / 100));
 }
 
@@ -129,26 +124,26 @@ export function numeroALetras(value: number): string {
 // LO QUE SE ENTREGA EN NEGRO EN EL MES (Nicolas, 2026-10-16): la MISMA regla para el recibo negro y para la
 // ficha de pago de haberes, asi no dicen montos distintos.
 //   - ACUERDO = lo acordado por el tipo de empleado (fuera de convenio: su negro acordado; temporal: su
-//     sueldo) + el acuerdo del mes (cashBonus). Se PRORRATEA por dias trabajados, salvo el socio / socio
+//     sueldo) + el acuerdo del mes (cashBonus). Se PRORRATEA por horas trabajadas, salvo el socio / socio
 //     gerente y el temporal por dia (ese ya sale de tarifa x dias).
 //   - PREMIO = monto fijo, va entero.
 export function negroDelMes({
   acordadoPorTipo,
   acuerdoDelMes,
   premio,
-  workingDays,
-  daysWorked,
+  horasLaborables,
+  horasTrabajadas,
   sinProrrateo,
 }: {
   acordadoPorTipo: number;
   acuerdoDelMes: number;
   premio: number;
-  workingDays: number;
-  daysWorked: number;
+  horasLaborables: number;
+  horasTrabajadas: number;
   sinProrrateo?: boolean;
 }): { acuerdoTotal: number; acuerdoAEntregar: number; premio: number; total: number } {
   const acuerdoTotal = Math.round((Math.max(0, Number(acordadoPorTipo || 0)) + Math.max(0, Number(acuerdoDelMes || 0))) * 100) / 100;
-  const acuerdoAEntregar = reciboNegroAmount({ totalBlack: acuerdoTotal, workingDays, daysWorked, sinProrrateo });
+  const acuerdoAEntregar = reciboNegroAmount({ totalBlack: acuerdoTotal, horasLaborables, horasTrabajadas, sinProrrateo });
   const p = Math.max(0, Number(premio || 0));
   return { acuerdoTotal, acuerdoAEntregar, premio: p, total: Math.round((acuerdoAEntregar + p) * 100) / 100 };
 }

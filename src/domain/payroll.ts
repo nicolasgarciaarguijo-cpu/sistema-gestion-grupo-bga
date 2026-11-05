@@ -106,9 +106,8 @@ export type PayrollSummaryInput = {
   agreedWhite?: number;
   agreedBlack?: number;
   computeWhiteCharges?: boolean;
-  // Socio / socio gerente (solo aplica junto con isFueraConvenio): cobra el acordado COMPLETO, sin
-  // liquidar horas. Ver isPartnerCategory.
-  isPartner?: boolean;
+  // Se elige por persona: el presentismo se calcula sobre el blanco acordado con descuentos.
+  aplicaPresentismo?: boolean;
 };
 
 // Multiplicadores de la hora (los usa el calculo Y el bloque "Reglas de liquidacion" de Personal,
@@ -134,7 +133,7 @@ export function computePayrollSummary({
   agreedWhite,
   agreedBlack,
   computeWhiteCharges,
-  isPartner,
+  aplicaPresentismo,
 }: PayrollSummaryInput) {
   const baseHourly = hourlyGrossManual || scale?.baseHourly || scale?.vht || 0;
   const nonRemConceptos = (scale?.nonRemItems || []).filter((i) => Number(i.hourly) > 0);
@@ -149,12 +148,16 @@ export function computePayrollSummary({
     payroll.justifiedAbsenceHours -
     payroll.unjustifiedAbsenceHours;
 
-  // Socio/socio gerente fuera de convenio: NO se liquida por horas. Se apagan todos los conceptos
-  // que salen de la escala y del reloj (bruto por hora, extras, nocturnidad, antiguedad, presentismo,
-  // no remunerativo). Lo unico que cobra es el sueldo acordado, entero. Si su categoria llegara a
-  // coincidir con una fila de escala, esa escala tampoco se le aplica.
-  const partnerFlat = !!isFueraConvenio && !!isPartner;
-  const hourWeight = partnerFlat ? 0 : 1;
+  // ACUERDO EN VALOR (Nicolas, 05/11/2026): administrativos y socios, todo el fuera de convenio, NO se
+  // liquidan por horas. Se apagan los conceptos que salen de la escala y del reloj (bruto por hora,
+  // extras, nocturnidad, antiguedad, no remunerativo). Cobra lo acordado, aunque su categoria coincida
+  // con una fila de escala.
+  const acuerdoEnValor = !!isFueraConvenio;
+  const hourWeight = acuerdoEnValor ? 0 : 1;
+  // Blanco acordado. Con descuentos => entra al bruto remunerativo (descuentos de ley y cargas sobre ese
+  // valor); sin descuentos => se suma "tal cual" al neto e impacto blanco (mas abajo, como flatAgreedWhite).
+  const chargedAgreedWhite = isFueraConvenio && computeWhiteCharges ? Number(agreedWhite || 0) : 0;
+  const flatAgreedWhite = isFueraConvenio && !computeWhiteCharges ? Number(agreedWhite || 0) : 0;
   const grossNormal = baseHourly * payroll.normalHours * hourWeight;
   const grossHoliday = baseHourly * payroll.holidayHours * hourWeight;
   const extra50 = baseHourly * MULT_EXTRA_50 * payroll.extra50Hours * hourWeight;
@@ -180,7 +183,9 @@ export function computePayrollSummary({
     payroll.presentismoAsistenciaPct === null || payroll.presentismoAsistenciaPct === undefined
       ? 100
       : Math.min(100, Math.max(0, Number(payroll.presentismoAsistenciaPct)));
-  const presentismo = grossNormal * (presentismoPct / 100) * (asistenciaPct / 100);
+  // Acuerdo en valor: solo si se eligio para esa persona, y sobre su blanco acordado con descuentos. El negro nunca.
+  const presentismoBase = acuerdoEnValor ? (aplicaPresentismo ? chargedAgreedWhite : 0) : grossNormal;
+  const presentismo = presentismoBase * (presentismoPct / 100) * (asistenciaPct / 100);
   const nonRem = nonRemHourly * Math.max(payableHours, 0) * hourWeight;
   // El no remunerativo concepto por concepto (para el recibo). Un solo concepto si la escala no los separa.
   const nonRemItems = (nonRemConceptos.length ? nonRemConceptos : [{ label: "", hourly: nonRemHourly }]).map((i) => ({
@@ -191,11 +196,6 @@ export function computePayrollSummary({
   // Premio BLANCO: remunerativo. Entra al bruto despues de antiguedad/presentismo (no los multiplica),
   // y por estar en grossRem paga descuentos de ley y genera cargas patronales y SAC.
   const whiteBonus = Number(payroll.whiteBonus || 0);
-  // Fuera de convenio: sueldo blanco acordado. Con cargas => entra al bruto remunerativo (paga
-  // descuentos de ley y genera cargas patronales); sin cargas => se suma "tal cual" al neto e impacto
-  // blanco, sin descuentos (más abajo, como flatAgreedWhite).
-  const chargedAgreedWhite = isFueraConvenio && computeWhiteCharges ? Number(agreedWhite || 0) : 0;
-  const flatAgreedWhite = isFueraConvenio && !computeWhiteCharges ? Number(agreedWhite || 0) : 0;
   const grossRem =
     grossNormal + grossHoliday + extra50 + extra100 + night50 + night + holidayWorked + night100 + seniorityBonus + presentismo + whiteBonus + chargedAgreedWhite;
   const totalGross = grossRem + nonRem;
@@ -363,6 +363,6 @@ export function computePayrollSummary({
     annualBaseHours,
     hourlyCost,
     netHourly,
-    partnerFlat,
+    acuerdoEnValor,
   };
 }

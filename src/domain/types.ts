@@ -1626,6 +1626,8 @@ export type Employee = {
   // Si es true, al sueldo blanco acordado se le calculan descuentos de ley + cargas patronales (sueldo
   // registrado). Si es false/ausente, el blanco entra tal cual (acordado, sin cargas).
   computeWhiteCharges?: boolean;
+  // Fuera de convenio: si cobra presentismo sobre el blanco acordado con descuentos. Se elige por persona.
+  aplicaPresentismo?: boolean;
   nominalHours: number;
   seniorityYears: number;
   hourlyNetManual: number;

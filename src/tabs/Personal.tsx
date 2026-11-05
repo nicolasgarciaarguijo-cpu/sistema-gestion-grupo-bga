@@ -24,7 +24,6 @@ import {
 } from "../ui/planilla";
 import { money, pct, localMonthKey, formatDateDisplay } from "../lib/format";
 import { PERSONAL_PROVISION_KINDS } from "../domain/types";
-import { isPartnerCategory } from "../domain/payroll";
 import {
   TERMINATION_REASON_OPTIONS,
   employedYears,
@@ -2062,9 +2061,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                   ))}
                                 </datalist>
                                 <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
-                                  {isPartnerCategory(selectedEmployee.category || "")
-                                    ? "Socio: cobra el acordado completo, no se liquida por horas ni se prorratea por dias."
-                                    : "Fuera de convenio: la categoria no sale de la escala, se escribe libre."}
+                                  Cobra el valor acordado: no se liquida por horas ni tiene horas extra. La categoría se escribe libre.
                                 </div>
                               </Field>
                               <Field label="Sueldo blanco acordado ($)">
@@ -2094,6 +2091,24 @@ export function PersonalTab(props: PersonalTabProps) {
                                   />
                                   Calcular descuentos + cargas sobre el blanco
                                 </label>
+                              </Field>
+                              <Field label="Presentismo">
+                                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 0" }}>
+                                  <input
+                                    type="checkbox"
+                                    disabled={!selectedEmployee.computeWhiteCharges}
+                                    checked={!!selectedEmployee.aplicaPresentismo && !!selectedEmployee.computeWhiteCharges}
+                                    onChange={(e) =>
+                                      updateEmployeeField(selectedEmployee.id, "aplicaPresentismo", e.target.checked)
+                                    }
+                                  />
+                                  Aplicar presentismo sobre el blanco acordado
+                                </label>
+                                {!selectedEmployee.computeWhiteCharges && (
+                                  <div style={{ ...styles.muted, fontSize: 11, marginTop: 2 }}>
+                                    Se habilita con los descuentos sobre el blanco.
+                                  </div>
+                                )}
                               </Field>
                             </>
                           ) : (
@@ -2976,7 +2991,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                 }
                               />
                             </Field>
-                            <Field label="Acuerdo (negro · por días trabajados)">
+                            <Field label="Acuerdo (negro · por horas trabajadas)">
                               <AmountInput
                                 style={styles.input}
                                 value={payroll.cashBonus}

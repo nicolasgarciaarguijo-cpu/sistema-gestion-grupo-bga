@@ -28,7 +28,7 @@ import {
   type PriceChange,
 } from "./domain/budgetPriceRefresh";
 import { ordenarSubpresupuestos } from "./domain/budgetSections";
-import { computePayrollSummary, isPartnerCategory, monthlyBlackPay, WORK_DAYS_PER_MONTH } from "./domain/payroll";
+import { computePayrollSummary, monthlyBlackPay, WORK_DAYS_PER_MONTH } from "./domain/payroll";
 import {
   pagoAlimentaCalendario,
   devolucionDeCajaChica,
@@ -244,7 +244,7 @@ import { CashflowTab } from "./tabs/Cashflow";
 import { CalendarioAnualTab } from "./tabs/CalendarioAnual";
 import { segurosPrevisionMensual } from "./domain/segurosCalendar";
 import { ReciboBlancoDocument, ReciboNegroDocument } from "./content/ReciboDocuments";
-import { workingDaysInMonth, paymentDateForPeriod, negroDelMes } from "./domain/recibo";
+import { diasHabilesDelMes, HORAS_JORNADA_HABIL, paymentDateForPeriod, negroDelMes } from "./domain/recibo";
 import { buscarFacturaCargada } from "./domain/arcaCruce";
 import { esNotaDeCredito, creditoAplicadoPorFactura, saldoDeFactura, type NotaCreditoCompra } from "./domain/notasCredito";
 import { NotaCreditoModal } from "./ui/NotaCreditoModal";
@@ -3408,7 +3408,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     logo?: string;
     sussDeposit?: { date: string; amount: number } | null;
     ivaVep?: { date: string; amount: number } | null;
-    negro?: { totalBlack: number; workingDays: number; daysWorked: number; negroAmount: number; acuerdoAmount?: number; premio?: number };
+    negro?: { totalBlack: number; diasHabiles: number; horasLaborables: number; horasTrabajadas: number; negroAmount: number; acuerdoAmount?: number; premio?: number };
   }>(null);
   const [allocationMode, setAllocationMode] = useState<"auto" | "manual">("auto");
   // EL BANCO CORROBORA, NO CARGA (regla de Nicolas, 2026-08-26). El extracto solo alimenta el
@@ -10055,13 +10055,12 @@ Escribi CERRAR para confirmar:`
   };
 
   // LO QUE SE ENTREGA EN NEGRO en un mes (domain/recibo negroDelMes): la MISMA cuenta para el recibo negro y
-  // para la ficha de pago de haberes. El acuerdo se prorratea por dias trabajados; el premio va entero.
+  // para la ficha de pago de haberes. El acuerdo se prorratea por horas trabajadas; el premio va entero.
   const negroDeEmpleado = (employee: Employee, monthKey: string, payroll?: EmployeePayroll) => {
     const pr = payroll || (employee.payrolls || []).find((p) => p.month === monthKey);
-    const workingDays = workingDaysInMonth(monthKey);
-    const daysWorked = (employee.attendance || []).filter(
-      (a) => a.date?.startsWith(monthKey) && (a.status === "presente" || !!a.checkIn)
-    ).length;
+    const diasHabiles = diasHabilesDelMes(monthKey);
+    const horasLaborables = diasHabiles * HORAS_JORNADA_HABIL;
+    const horasTrabajadas = horasTrabajadasEnMes(employee.attendance || [], monthKey);
     // Temporal por dia: ya sale de tarifa x dias trabajados (effectiveAgreedSalary): no se prorratea de nuevo.
     // Por dia y por hora: ya sale de lo trabajado; no se prorratea de nuevo.
     const temporalDiario =
@@ -10076,24 +10075,24 @@ Escribi CERRAR para confirmar:`
       acordadoPorTipo,
       acuerdoDelMes: Number(pr?.cashBonus || 0),
       premio: Number(pr?.blackPrize || 0),
-      workingDays,
-      daysWorked,
-      // Socio / socio gerente y temporal por dia: entero, sin prorratear.
-      sinProrrateo: temporalDiario || (employee.employmentType === "fuera_convenio" && isPartnerCategory(employee.category)),
+      horasLaborables,
+      horasTrabajadas,
+      // Acuerdo en valor (administrativos y socios) y temporal por dia u hora: entero, sin prorratear.
+      sinProrrateo: temporalDiario || employee.employmentType === "fuera_convenio",
     });
-    return { ...n, workingDays, daysWorked };
+    return { ...n, diasHabiles, horasLaborables, horasTrabajadas };
   };
 
   const exportReciboNegro = (employee: Employee) => {
     const { company, logo } = buildReciboContext(employee);
     const monthKey = payrollMonth;
     const n = negroDeEmpleado(employee, monthKey, getCurrentPayroll(employee) || undefined);
-    const { workingDays, daysWorked } = n;
+    const { diasHabiles, horasLaborables, horasTrabajadas } = n;
     const totalBlack = n.acuerdoTotal;
     const premio = n.premio;
     const acuerdoAmount = n.acuerdoAEntregar;
     const totalEntregar = n.total;
-    setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, workingDays, daysWorked, negroAmount: totalEntregar, acuerdoAmount, premio } });
+    setReciboData({ employee, monthKey, summary: null, company, logo, negro: { totalBlack, diasHabiles, horasLaborables, horasTrabajadas, negroAmount: totalEntregar, acuerdoAmount, premio } });
     void guardarReciboEnCarpeta(
       employee,
       monthKey,
@@ -10103,8 +10102,9 @@ Escribi CERRAR para confirmar:`
         company={company}
         monthKey={monthKey}
         totalBlack={totalBlack}
-        workingDays={workingDays}
-        daysWorked={daysWorked}
+        diasHabiles={diasHabiles}
+        horasLaborables={horasLaborables}
+        horasTrabajadas={horasTrabajadas}
         acuerdoAmount={acuerdoAmount}
         premio={premio}
         negroAmount={totalEntregar}
@@ -16972,6 +16972,7 @@ Escribi CERRAR para confirmar:`
     agreedWhite,
     agreedBlack,
     computeWhiteCharges,
+    aplicaPresentismo,
   }: {
     company: CompanyName;
     category: string;
@@ -16985,6 +16986,7 @@ Escribi CERRAR para confirmar:`
     agreedWhite?: number;
     agreedBlack?: number;
     computeWhiteCharges?: boolean;
+    aplicaPresentismo?: boolean;
   }) =>
     computePayrollSummary({
       seniorityYears,
@@ -17000,10 +17002,7 @@ Escribi CERRAR para confirmar:`
       agreedWhite,
       agreedBlack,
       computeWhiteCharges,
-      // Socio / socio gerente fuera de convenio: cobra su acordado COMPLETO, no se liquida por horas.
-      // Se resuelve aca (y no en cada llamador) para que valga igual en el recibo, en el costo hora,
-      // en el estado de resultados y en el resumen por empresa.
-      isPartner: !!isFueraConvenio && isPartnerCategory(category),
+      aplicaPresentismo,
     });
 
   // Cuanto del presentismo le corresponde a este empleado ESTE mes segun su asistencia. Es el valor
@@ -17061,6 +17060,7 @@ Escribi CERRAR para confirmar:`
       agreedWhite: Number(employee.agreedWhite || 0),
       agreedBlack: Number(employee.agreedBlack || 0),
       computeWhiteCharges: !!employee.computeWhiteCharges,
+      aplicaPresentismo: !!employee.aplicaPresentismo,
     });
   };
   const costoHoraDe = (employee: Employee) => costoHoraSummaryFor(employee).hourlyCost;
@@ -17209,6 +17209,7 @@ Escribi CERRAR para confirmar:`
       agreedWhite: Number(employee.agreedWhite || 0),
       agreedBlack: Number(employee.agreedBlack || 0),
       computeWhiteCharges: !!employee.computeWhiteCharges,
+      aplicaPresentismo: !!employee.aplicaPresentismo,
     });
   };
 
@@ -18152,7 +18153,9 @@ Escribi CERRAR para confirmar:`
         const contar = (status: string) => delMes.filter((a) => a.status === status).length;
         const representa = Number(payroll.presentismoPctOverride ?? 0);
         const conPresentismo =
-          (employee.employmentType || "convenio") === "convenio" && representa > 0;
+          ((employee.employmentType || "convenio") === "convenio" ||
+            (employee.employmentType === "fuera_convenio" && !!employee.aplicaPresentismo && !!employee.computeWhiteCharges)) &&
+          representa > 0;
         const cobra =
           payroll.presentismoAsistenciaPct === null || payroll.presentismoAsistenciaPct === undefined
             ? presentismoPorAsistencia(employee, month)
@@ -18503,8 +18506,8 @@ Escribi CERRAR para confirmar:`
           : Number(recibo?.neto || 0) > 0
           ? Number(recibo!.neto)
           : Number(payrollSummaryFor(emp, pr.month).net || 0);
-      // Negro: lo que se ENTREGA en el mes, igual que el recibo negro (acuerdo prorrateado por dias
-      // trabajados + premio entero).
+      // Negro: lo que se ENTREGA en el mes, igual que el recibo negro (acuerdo prorrateado por horas
+      // trabajadas + premio entero).
       const negro = negroDeEmpleado(emp, pr.month, pr).total;
       porPeriodo.set(pr.month, {
         ...base(pr.month),
@@ -19011,6 +19014,7 @@ Escribi CERRAR para confirmar:`
           agreedWhite: Number(emp.agreedWhite || 0),
           agreedBlack: Number(emp.agreedBlack || 0),
           computeWhiteCharges: !!emp.computeWhiteCharges,
+          aplicaPresentismo: !!emp.aplicaPresentismo,
         });
         const key = `${emp.company}|${pr.month}`;
         const acc = byKey.get(key) || { company: emp.company, month: pr.month, white: 0, black: 0 };
@@ -20238,6 +20242,7 @@ Escribi CERRAR para confirmar:`
           agreedWhite: Number(emp.agreedWhite || 0),
           agreedBlack: Number(emp.agreedBlack || 0),
           computeWhiteCharges: !!emp.computeWhiteCharges,
+          aplicaPresentismo: !!emp.aplicaPresentismo,
         });
         laborWhite += Number(summary.employerImpact || 0);
         laborBlack += Number(summary.blackImpact || 0);
@@ -25344,8 +25349,9 @@ Escribi CERRAR para confirmar:`
               company={reciboData.company}
               monthKey={reciboData.monthKey}
               totalBlack={reciboData.negro.totalBlack}
-              workingDays={reciboData.negro.workingDays}
-              daysWorked={reciboData.negro.daysWorked}
+              diasHabiles={reciboData.negro.diasHabiles}
+              horasLaborables={reciboData.negro.horasLaborables}
+              horasTrabajadas={reciboData.negro.horasTrabajadas}
               acuerdoAmount={reciboData.negro.acuerdoAmount}
               premio={reciboData.negro.premio}
               negroAmount={reciboData.negro.negroAmount}

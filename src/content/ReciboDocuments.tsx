@@ -281,16 +281,17 @@ export function ReciboBlancoDocument({
 }
 
 export function ReciboNegroDocument({
-  employee, company, monthKey, totalBlack, workingDays, daysWorked, negroAmount, acuerdoAmount, premio, logo,
+  employee, company, monthKey, totalBlack, diasHabiles, horasLaborables, horasTrabajadas, negroAmount, acuerdoAmount, premio, logo,
 }: {
   employee: ReciboEmployee;
   company: ReciboCompany;
   monthKey: string;
   totalBlack: number;
-  workingDays: number;
-  daysWorked: number;
+  diasHabiles: number;
+  horasLaborables: number;
+  horasTrabajadas: number;
   negroAmount: number;
-  // Lo que sale del acuerdo ya prorrateado por dias. Ausente (datos viejos) = el total.
+  // Lo que sale del acuerdo ya prorrateado por horas. Ausente (datos viejos) = el total.
   acuerdoAmount?: number;
   // Premio en negro: monto fijo, NO se prorratea. Va en su propio renglon.
   premio?: number;
@@ -320,11 +321,14 @@ export function ReciboNegroDocument({
           </tr>
           <tr>
             <td style={lbl}>Acuerdo total (mes)</td><td style={right}>{money(Number(totalBlack || 0))}</td>
-            <td style={lbl}>Días laborables</td><td style={cell}>{workingDays}</td>
+            <td style={lbl}>Días hábiles (lunes a viernes)</td><td style={cell}>{diasHabiles}</td>
           </tr>
           <tr>
-            <td style={lbl}>Días trabajados</td><td style={cell}>{daysWorked}</td>
-            <td style={lbl}>Cálculo</td><td style={cell}>{money(Number(totalBlack || 0))} ÷ {workingDays} × {daysWorked}</td>
+            <td style={lbl}>Horas laborables</td><td style={cell}>{horasLaborables}</td>
+            <td style={lbl}>Horas trabajadas</td><td style={cell}>{horasTrabajadas}</td>
+          </tr>
+          <tr>
+            <td style={lbl}>Cálculo</td><td style={cell} colSpan={3}>{money(Number(totalBlack || 0))} ÷ {horasLaborables} hs × {horasTrabajadas} hs</td>
           </tr>
           <tr>
             <td style={lbl}>Acuerdo a entregar</td>
@@ -348,8 +352,8 @@ export function ReciboNegroDocument({
 
       <div style={{ fontSize: 10, color: "#555", marginTop: 8 }}>
         Documento interno. Deja constancia de la entrega efectiva del acuerdo del período, prorrateado por
-        los días trabajados (sin descuentos salvo por días no trabajados)
-        {premioN > 0 ? ", y del premio no remunerativo, que es un monto fijo y no depende de los días trabajados" : ""}.
+        las horas trabajadas (sin descuentos salvo por horas no trabajadas)
+        {premioN > 0 ? ", y del premio no remunerativo, que es un monto fijo y no depende de las horas trabajadas" : ""}.
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 46, fontSize: 11 }}>
