@@ -21,6 +21,9 @@ import type { CapitalEntry } from "../domain/contributions";
 import { summarizeContributions } from "../domain/contributions";
 import { buildLoanLines, sameLender, type CalendarLoan } from "../domain/loanLines";
 import { FirmanteCelda } from "../ui/FirmanteSelect";
+import { PaseModal } from "../ui/PaseModal";
+import type { PaseForm } from "../domain/pases";
+import { cuentaImplicita, type Cuenta } from "../domain/cuentas";
 
 import NumInput from "../ui/NumInput";
 // MOVIMIENTOS INTERNOS
@@ -117,7 +120,8 @@ type MovimientosInternosTabProps = {
   // 1) pases efectivo <-> banco
   internalTransfers: InternalTransfer[];
   setInternalTransfers: React.Dispatch<React.SetStateAction<InternalTransfer[]>>;
-  addInternalTransfer: () => void;
+  onGuardarPase: (f: PaseForm) => void;
+  cuentas: Cuenta[];
   removeInternalTransfer: (entryId: number) => void;
   // 2) efectivo fuera del banco
   cashHoldings: CashHolding[];
@@ -144,6 +148,8 @@ type MovimientosInternosTabProps = {
   intercompanyAccount: {
     transfers: any[];
     summary: { totalTransferred: number; pairs: any[] };
+    posicion?: Array<{ deudor: string; acreedor: string; saldo: number }>;
+    posicionUsd?: Array<{ deudor: string; acreedor: string; saldo: number }>;
   };
 };
 
@@ -158,7 +164,8 @@ export function MovimientosInternosTab({
   updateArrayItem,
   internalTransfers,
   setInternalTransfers,
-  addInternalTransfer,
+  onGuardarPase,
+  cuentas,
   removeInternalTransfer,
   cashHoldings: cashHoldingsAll,
   setCashHoldings,
@@ -189,7 +196,10 @@ export function MovimientosInternosTab({
       .filter((item) => enScope(String(item.company)))
       .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
 
-  const transfers = ordenar(internalTransfers);
+  // Un pase entre empresas se ve desde las dos: la de origen y la de destino.
+  const transfers = internalTransfers
+    .filter((t) => enScope(String(t.company)) || (!!t.companyDestino && enScope(String(t.companyDestino))))
+    .sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.id - a.id);
   const cashHoldings = ordenar(cashHoldingsAll);
   const capitalEntries = ordenar(capitalEntriesAll);
 
@@ -213,8 +223,57 @@ export function MovimientosInternosTab({
     .reduce((acc, t) => acc + (t.direction === "banco_a_efectivo" ? -1 : 1) * Number(t.amount || 0), 0);
 
   const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
+  const empresasReales = COMPANY_OPTIONS.filter((c: any) => c.value && c.value !== "General" && cuentas.some((x) => x.company === c.value));
+  const [pase, setPase] = React.useState<null | { form: PaseForm; firmante?: string }>(null);
+  const nombreCuenta = (id?: string) => (id ? cuentas.find((c) => c.id === id)?.nombre || cuentaImplicita(id).nombre : "");
+  const abrirPase = (item: InternalTransfer) =>
+    setPase({
+      firmante: item.firmante,
+      form: {
+        id: item.id,
+        date: item.date,
+        amount: Number(item.amount || 0),
+        currency: item.currency === "USD" ? "USD" : "ARS",
+        company: String(item.company),
+        cuentaId: item.cuentaId || "",
+        companyDestino: String(item.companyDestino || item.company),
+        cuentaDestinoId: item.cuentaDestinoId || "",
+        description: item.description || "",
+        notes: item.notes || "",
+      },
+    });
+  const nuevoPase = () => {
+    const empresa = String(companyScope !== "__ALL__" ? companyScope : empresasReales[0]?.value || "");
+    setPase({
+      form: {
+        date: new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10),
+        amount: 0,
+        currency: "ARS",
+        company: empresa,
+        cuentaId: "",
+        companyDestino: empresa,
+        cuentaDestinoId: "",
+        description: "",
+        notes: "",
+      },
+    });
+  };
   return (
     <>
+      {pase && (
+        <PaseModal
+          inicial={pase.form}
+          firmanteAnterior={pase.firmante}
+          empresas={empresasReales.map((c: any) => ({ value: String(c.value), short: c.short }))}
+          cuentas={cuentas}
+          money={money}
+          onGuardar={(f) => {
+            onGuardarPase(f);
+            setPase(null);
+          }}
+          onCerrar={() => setPase(null)}
+        />
+      )}
       {ficha && (() => {
         const comunes = (empresa: string): CampoFicha[] => [{ key: "company", label: empresa, tipo: "empresa" }];
         const bn = [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }];
@@ -223,27 +282,7 @@ export function MovimientosInternosTab({
         let valores: any = null;
         let campos: CampoFicha[] = [];
         let set: (k: string, v: any) => void = () => {};
-        if (ficha.tipo === "pase") {
-          valores = internalTransfers.find((x) => x.id === ficha.id);
-          titulo = valores?.description || "Pase entre cuentas";
-          campos = [
-            ...comunes("Empresa"),
-            { key: "date", label: "Fecha", tipo: "fecha" },
-            { key: "direction", label: "Sentido", tipo: "select", opciones: [
-              { value: "efectivo_a_banco", label: "Efectivo → banco" },
-              { value: "banco_a_efectivo", label: "Banco → efectivo" },
-              { value: "banco_a_banco", label: "Banco → banco" },
-              { value: "efectivo_a_efectivo", label: "Efectivo → efectivo" },
-            ] },
-            { key: "amount", label: "Monto", tipo: "numero" },
-            { key: "currency", label: "Moneda", tipo: "select", opciones: mon },
-            { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
-            { key: "bank", label: "Cuenta", tipo: "texto" },
-            { key: "description", label: "Descripción", tipo: "texto" },
-            { key: "notes", label: "Notas", tipo: "area" },
-          ];
-          set = (k, v) => updateArrayItem(setInternalTransfers, ficha.id, k as any, v);
-        } else if (ficha.tipo === "efectivo") {
+        if (ficha.tipo === "efectivo") {
           valores = cashHoldingsAll.find((x) => x.id === ficha.id);
           titulo = valores?.description || "Efectivo";
           campos = [
@@ -307,13 +346,14 @@ export function MovimientosInternosTab({
                 </option>
               ))}
             </select>
-            <ButtonLike onClick={addInternalTransfer}>Agregar pase</ButtonLike>
+            <ButtonLike onClick={nuevoPase}>Agregar pase</ButtonLike>
           </span>
         }
       >
         <div style={styles.noticeBox}>
-          La plata que <strong>cambia de bolsillo dentro de la misma empresa</strong>: deposito la caja
-          en el banco, o saco del cajero para pagar en efectivo. <strong>No es ingreso ni egreso</strong>:
+          La plata que <strong>cambia de bolsillo</strong>: deposito la caja en el banco, saco del cajero, paso de un banco
+          a otro. En cada pase se elige <strong>de dónde sale y a dónde va</strong>. Si es entre <strong>dos empresas</strong>, queda
+          el debe y haber en la cuenta corriente entre las empresas (abajo). <strong>No es ingreso ni egreso</strong>:
           el total de la empresa no cambia, cambia donde esta. Sirve para que el mismo peso no se cuente
           dos veces: el <strong>saldo del banco ya sale del extracto</strong>, asi que el pase solo mueve
           el <strong>efectivo</strong>; sin el, un deposito subiria el banco y la caja nunca bajaria.
@@ -361,7 +401,7 @@ export function MovimientosInternosTab({
                     />
                   </th>
                   <th style={thColumna}>Fecha</th>
-                  <th style={thFlexible}>Sentido - moneda - color - cuenta - empresa - notas</th>
+                  <th style={thFlexible}>De dónde sale → a dónde va · moneda · color · notas</th>
                 </tr>
               </thead>
               <tbody>
@@ -418,54 +458,26 @@ export function MovimientosInternosTab({
                     <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
                         <FirmanteCelda value={item.firmante} firmadoEn={item.firmadoEn} />
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.direction}
-                          onChange={(e) =>
-                            updateArrayItem(setInternalTransfers, item.id, "direction", e.target.value as any)
-                          }
-                        >
-                          <option value="efectivo_a_banco">Efectivo al banco (deposito)</option>
-                          <option value="banco_a_efectivo">Banco al efectivo (extraccion)</option>
-                          <option value="banco_a_banco">Banco a banco (pase entre cuentas)</option>
-                          <option value="efectivo_a_efectivo">Efectivo a efectivo (entre cajas)</option>
-                        </select>
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.currency}
-                          onChange={(e) =>
-                            updateArrayItem(setInternalTransfers, item.id, "currency", e.target.value as any)
-                          }
-                        >
-                          <option value="ARS">$ Pesos</option>
-                          <option value="USD">U$S Dolares</option>
-                        </select>
-                        <ColorTagToggle
-                          value={item.color}
-                          onSet={(v) => updateArrayItem(setInternalTransfers, item.id, "color", v)}
-                          size={16}
-                        />
-                        <input
-                          style={{ ...inputCelda, width: 110 }}
-                          {...focoCelda}
-                          value={item.bank}
-                          placeholder="cuenta"
-                          onChange={(e) => updateArrayItem(setInternalTransfers, item.id, "bank", e.target.value)}
-                        />
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.company}
-                          onChange={(e) =>
-                            updateArrayItem(setInternalTransfers, item.id, "company", e.target.value as any)
-                          }
-                        >
-                          {COMPANY_OPTIONS.map((company: any) => (
-                            <option key={company.value} value={company.value}>
-                              {company.short}
-                            </option>
-                          ))}
-                        </select>
-<BotonFicha onClick={() => setFicha({ tipo: "pase", id: item.id })} />
+                        {(() => {
+                          const faltaAlgo = !item.cuentaId || !item.cuentaDestinoId;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => abrirPase(item)}
+                              title="Abrir la ficha del pase"
+                              style={{ border: "none", background: "none", padding: 0, cursor: "pointer", fontSize: 12.5, fontWeight: 600, color: faltaAlgo ? "#b91c1c" : "#0f172a" }}
+                            >
+                              {faltaAlgo ? "⚠ Falta elegir de dónde sale y a dónde va" : `${nombreCuenta(item.cuentaId)} → ${nombreCuenta(item.cuentaDestinoId)}`}
+                            </button>
+                          );
+                        })()}
+                        {item.companyDestino && item.companyDestino !== item.company && (
+                          <span style={{ fontSize: 11.5, fontWeight: 700, color: "#92400e", background: "#fef3c7", borderRadius: 999, padding: "1px 8px" }}>
+                            entre empresas: {getCompanyMeta(item.company)?.short} → {getCompanyMeta(item.companyDestino)?.short}
+                          </span>
+                        )}
+                        <span>{item.currency === "USD" ? "U$S" : "$"} · {item.color === "negro" ? "negro" : "blanco"}</span>
+<BotonFicha onClick={() => abrirPase(item)} />
                         <input
                           style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
                           {...focoCelda}
@@ -1369,16 +1381,21 @@ export function MovimientosInternosTab({
           Lo que una empresa le gira a la otra <strong>no es un pago ni un cobro</strong>: para el grupo
           no entro ni salio nada, solo cambio de bolsillo. Por eso no suma al resultado. Pero cada giro
           se cruza con una <strong>factura entre las dos</strong> o con una <strong>devolucion</strong>,
-          y lo que no esta cruzado es lo que hay que definir. Los giros se detectan por el CUIT de la
-          otra empresa en la referencia del banco.
+          y lo que no esta cruzado es lo que hay que definir. Los giros salen de los <strong>pases entre empresas</strong> que
+          se cargan arriba y del CUIT de la otra empresa en la referencia del banco (si son el mismo, cuentan una vez).
         </div>
+        {[...(intercompanyAccount.posicion || []).map((p) => ({ ...p, moneda: "ARS" as const })), ...(intercompanyAccount.posicionUsd || []).map((p) => ({ ...p, moneda: "USD" as const }))].map((p) => (
+          <div key={`${p.moneda}-${p.deudor}`} style={{ margin: "8px 0", padding: "8px 12px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 14, color: "#92400e" }}>
+            Cómo estamos: <strong>{getCompanyMeta(p.deudor as CompanyName)?.short || p.deudor} le debe {money(p.saldo, p.moneda)} a {getCompanyMeta(p.acreedor as CompanyName)?.short || p.acreedor}</strong>
+          </div>
+        ))}
         <div style={styles.metricGrid}>
           <MiniMetric
             label="Girado entre empresas"
             value={money(intercompanyAccount.summary.totalTransferred)}
           />
           <MiniMetric
-            label="Giros detectados"
+            label="Giros"
             value={String(intercompanyAccount.transfers.length)}
           />
           <MiniMetric
@@ -1391,8 +1408,8 @@ export function MovimientosInternosTab({
         </div>
         {intercompanyAccount.transfers.length === 0 ? (
           <div style={{ ...styles.muted, marginTop: 8 }}>
-            No se detectaron giros entre las empresas. Se necesitan los movimientos del banco cargados
-            y el CUIT de cada empresa configurado.
+            No hay giros entre las empresas: ni pases entre empresas cargados, ni movimientos del banco con el
+            CUIT de la otra.
           </div>
         ) : (
           <>

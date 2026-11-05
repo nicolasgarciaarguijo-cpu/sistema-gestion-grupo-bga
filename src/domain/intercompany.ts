@@ -159,3 +159,53 @@ export function summarizeIntercompany(input: {
     totalPending: list.reduce((a, p) => a + p.pending, 0),
   };
 }
+
+// PASES CARGADOS ENTRE EMPRESAS (Nicolas, 05/11/2026: "generaria un debe y haber entre empresas que debemos registrar para
+// saber finalmente como estamos"). Cada pase que cruza de empresa es un giro, en cualquier cuenta y color.
+export function girosDePases(
+  pases: ReadonlyArray<{ id: number; company: unknown; companyDestino?: unknown; date: string; amount: number; currency?: string; description?: string }>,
+  moneda: "ARS" | "USD"
+): IntercompanyTransfer[] {
+  return pases
+    .filter((t) => !!t.companyDestino && t.companyDestino !== t.company && (t.currency === "USD" ? "USD" : "ARS") === moneda && Number(t.amount) > 0)
+    .map((t) => ({
+      id: t.id,
+      from: String(t.company),
+      to: String(t.companyDestino),
+      date: t.date,
+      amount: Number(t.amount),
+      text: `Pase cargado${t.description ? ` · ${t.description}` : ""}`,
+      declaresInvoice: /factura/i.test(t.description || ""),
+    }));
+}
+
+const DIAS_MISMO_GIRO = 5;
+const diasEntre = (a: string, b: string) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000;
+
+// Los giros de los pases mas los del extracto, sin contar dos veces el mismo: un debito del banco con igual sentido y monto,
+// a pocos dias de un pase, es ese pase visto desde el banco. Cada pase tapa un solo debito.
+export function unirGiros(dePases: IntercompanyTransfer[], delBanco: IntercompanyTransfer[]): IntercompanyTransfer[] {
+  const libres = [...dePases];
+  const soloBanco = delBanco.filter((b) => {
+    const i = libres.findIndex((p) => p.from === b.from && p.to === b.to && Math.abs(p.amount - b.amount) < 0.01 && diasEntre(p.date, b.date) <= DIAS_MISMO_GIRO);
+    if (i < 0) return true;
+    libres.splice(i, 1);
+    return false;
+  });
+  return [...dePases, ...soloBanco];
+}
+
+// COMO ESTAMOS entre cada par de empresas: lo que A giro y no se cruzo con una factura de B, contra lo de B hacia A.
+export function posicionEntreEmpresas(pairs: IntercompanyPair[]): Array<{ deudor: string; acreedor: string; saldo: number }> {
+  const out: Array<{ deudor: string; acreedor: string; saldo: number }> = [];
+  const vistos = new Set<string>();
+  pairs.forEach((p) => {
+    if (vistos.has(`${p.from}>${p.to}`)) return;
+    vistos.add(`${p.to}>${p.from}`);
+    const vuelta = pairs.find((q) => q.from === p.to && q.to === p.from);
+    const saldo = Math.round((p.pending - (vuelta?.pending || 0)) * 100) / 100;
+    if (Math.abs(saldo) < 0.01) return;
+    out.push(saldo > 0 ? { deudor: p.to, acreedor: p.from, saldo } : { deudor: p.from, acreedor: p.to, saldo: -saldo });
+  });
+  return out;
+}

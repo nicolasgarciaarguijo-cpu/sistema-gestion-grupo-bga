@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-05a",
+    fecha: "05/11/2026",
+    titulo: "Pases: de dónde sale y a dónde va",
+    items: [
+      {
+        titulo: "Pase entre cuentas, en la misma empresa o entre dos",
+        que: "El pase se carga en una ficha que exige de qué empresa y cuenta sale la plata y a cuál va. Cada cuenta baja y sube sola. Si es entre dos empresas, queda el debe y haber: la cuenta corriente entre las empresas dice quién le debe a quién, y los giros que también aparecen en el extracto cuentan una sola vez.",
+        como: "Movimientos internos → Agregar pase. Los pases viejos que dicen \"Falta elegir\" se completan tocándolos.",
+        tab: "movimientosInternos",
+      },
+    ],
+  },
+  {
     id: "2026-11-04a",
     fecha: "04/11/2026",
     titulo: "El candado le gana al fichero y cada ejercicio con su botón",

@@ -38,6 +38,7 @@ export type PaseInterno = {
   amount: number;
   cuentaId?: string;
   cuentaDestinoId?: string;
+  companyDestino?: string; // si entra a otra empresa
   bank?: string;
   description?: string;
 };
@@ -121,7 +122,8 @@ export function entradasMovimientosInternos(input: {
     const colorEfectivo = t.color === "negro" ? "negro" : "blanco";
     const currency = t.currency === "USD" ? "USD" : "ARS";
     const origen = nombre(t.cuentaId, t.company, desde);
-    const destino = nombre(t.cuentaDestinoId, t.company, hacia);
+    const companyDestino = t.companyDestino || t.company;
+    const destino = nombre(t.cuentaDestinoId, companyDestino, hacia);
     const detalle = t.description ? ` · ${t.description}` : "";
     out.push({
       id: `movint-pase-${t.id}-sale`,
@@ -138,7 +140,7 @@ export function entradasMovimientosInternos(input: {
     out.push({
       id: `movint-pase-${t.id}-entra`,
       date: t.date,
-      company: t.company,
+      company: companyDestino,
       title: `Pase desde ${origen}${detalle}`,
       kind: "mov-interno",
       amount: monto,

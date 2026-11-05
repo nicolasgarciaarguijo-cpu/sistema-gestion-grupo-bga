@@ -859,6 +859,8 @@ export type InternalTransfer = {
   // Cuentas de cada punta (ver domain/cuentas.ts). Ausentes = efectivo de su color / banco principal.
   cuentaId?: string; // de donde sale
   cuentaDestinoId?: string; // a donde entra
+  // Empresa a donde entra, si es otra que `company` (la de donde sale): genera un debe y haber entre las dos.
+  companyDestino?: CompanyName;
   bank: string; // que cuenta (texto libre): de donde salio o a donde entro
   description: string;
   notes: string;

@@ -105,6 +105,7 @@ import {
   saldosDeCuentas,
   saldosDiarios,
   type Cuenta,
+  cuentaImplicita,
 } from "./domain/cuentas";
 import { plataDelSistema } from "./domain/plataDelSistema";
 import { CuentasPanel } from "./tabs/CuentasPanel";
@@ -185,7 +186,7 @@ import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
 import { aggregateCardCosts } from "./domain/cardCosts";
 import { TarjetasTab } from "./tabs/Tarjetas";
 import { BancosTab } from "./tabs/Bancos";
-import { detectIntercompanyTransfers, summarizeIntercompany } from "./domain/intercompany";
+import { detectIntercompanyTransfers, summarizeIntercompany, girosDePases, posicionEntreEmpresas, unirGiros } from "./domain/intercompany";
 import {
   companyFolderName,
   companyPath,
@@ -450,6 +451,7 @@ import { filasDeArqueo, billeterasDesdeArqueo, movimientosDelArqueo, diferencia,
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, facturasPagadasProgramadas, tipoGastoEfectivo, fechaDePago } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
+import { datosDelPase, pasesParaReserva, type PaseForm } from "./domain/pases";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
@@ -14110,24 +14112,38 @@ Escribi CERRAR para confirmar:`
     setCashHoldings((prev) => prev.filter((item) => item.id !== entryId));
   };
 
-  const addInternalTransfer = () => conEmpresa("el movimiento interno", (empresaElegida) => {
-    setInternalTransfers((prev) => [
-      {
-        id: newId(),
-        ...firma(),
-        company: empresaElegida,
-        date: todayIso(),
-        direction: "efectivo_a_banco",
-        currency: "ARS",
-        color: "blanco",
-        amount: 0,
-        bank: "",
-        description: "",
-        notes: "",
-      },
-      ...prev,
-    ]);
-  });
+  // El pase se carga y se corrige desde su ficha: origen y destino obligatorios (ver ui/PaseModal). Firma el usuario.
+  const guardarPase = (f: PaseForm) => {
+    const previo = f.id ? internalTransfers.find((t) => t.id === f.id) : undefined;
+    if (
+      bloqueadoPorCierre(f.company as CompanyName, f.date) ||
+      bloqueadoPorCierre(f.companyDestino as CompanyName, f.date) ||
+      (previo && bloqueadoPorCierre(previo.company, previo.date))
+    ) {
+      window.alert("Ese pase cae en un ejercicio cerrado: no se puede cargar ni cambiar.");
+      return;
+    }
+    const buscar = (id: string) => cuentasSistema.find((c) => c.id === id);
+    const cruza = f.companyDestino !== f.company;
+    const datos = {
+      company: f.company as CompanyName,
+      companyDestino: cruza ? (f.companyDestino as CompanyName) : undefined,
+      date: f.date,
+      amount: Number(f.amount),
+      currency: f.currency,
+      cuentaId: f.cuentaId,
+      cuentaDestinoId: f.cuentaDestinoId,
+      ...datosDelPase(buscar(f.cuentaId), buscar(f.cuentaDestinoId)),
+      description: f.description,
+      notes: f.notes,
+      ...firma(),
+    };
+    setInternalTransfers((prev) =>
+      f.id
+        ? prev.map((t) => (t.id === f.id ? { ...t, ...datos } : t))
+        : [{ id: newId(), bank: "", ...datos }, ...prev]
+    );
+  };
 
   const removeInternalTransfer = (entryId: number) => {
     setInternalTransfers((prev) => prev.filter((item) => item.id !== entryId));
@@ -15069,8 +15085,7 @@ Escribi CERRAR para confirmar:`
           bankEntryId: e.bankEntryId ?? null,
           paymentMethod: e.paymentMethod,
         })),
-      internalTransfers: visibleInternalTransfers
-        .filter((t) => inScope(String(t.company)) && despuesDelCierre(String(t.company), t.date))
+      internalTransfers: pasesParaReserva(visibleInternalTransfers, (c, d) => inScope(c) && despuesDelCierre(c, d))
         .map((t) => ({
           date: t.date,
           direction: t.direction,
@@ -15151,8 +15166,7 @@ Escribi CERRAR para confirmar:`
               bankEntryId: e.bankEntryId ?? null,
               paymentMethod: e.paymentMethod,
             })),
-          internalTransfers: visibleInternalTransfers
-            .filter((t) => t.company === company && despuesDelCierre(String(company), t.date))
+          internalTransfers: pasesParaReserva(visibleInternalTransfers, (c, d) => c === String(company) && despuesDelCierre(c, d))
             .map((t) => ({
               date: t.date,
               direction: t.direction,
@@ -15447,8 +15461,7 @@ Escribi CERRAR para confirmar:`
             bankEntryId: e.bankEntryId ?? null,
             paymentMethod: e.paymentMethod,
           })),
-        internalTransfers: visibleInternalTransfers
-          .filter((t) => t.company === company && despuesDelCierre(String(company), t.date))
+        internalTransfers: pasesParaReserva(visibleInternalTransfers, (c, d) => c === String(company) && despuesDelCierre(c, d))
           .map((t) => ({
             date: t.date,
             direction: t.direction,
@@ -16038,6 +16051,7 @@ Escribi CERRAR para confirmar:`
       empresas: COMPANY_OPTIONS.filter((o) => o.value !== "General").map((o) => String(o.value)),
       nombreCuenta: (id, company, tipo) =>
         cuentasGuardadas.find((c) => c.id === id)?.nombre ||
+        (id ? cuentaImplicita(id).nombre : "") ||
         (tipo === "efectivo" ? "efectivo" : visibleInternalTransfers.find((t) => t.company === company && t.bank)?.bank || "banco"),
     }).forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
 
@@ -19169,7 +19183,8 @@ Escribi CERRAR para confirmar:`
       movementType: entry.movementType as "credito" | "debito",
       text: `${entry.concept || ""} ${entry.notes || ""}`.trim(),
     }));
-    const transfers = detectIntercompanyTransfers(movements, companies);
+    // Los giros que salen del extracto y los que se cargaron como pase entre empresas (el mismo, una sola vez).
+    const transfers = unirGiros(girosDePases(visibleInternalTransfers, "ARS"), detectIntercompanyTransfers(movements, companies));
     // Las facturas ENTRE las dos empresas: las que le emitimos a una empresa del propio grupo.
     // Con esto el pendiente deja de ser "lo que no declara factura" y pasa a ser el saldo real.
     const porCuit = new Map(companies.map((c) => [c.taxId.replace(/\D/g, ""), c.company]));
@@ -19185,8 +19200,16 @@ Escribi CERRAR para confirmar:`
         };
       })
       .filter(Boolean) as { from: string; to: string; date: string; amount: number }[];
-    return { transfers, invoices, summary: summarizeIntercompany({ transfers, invoices }) };
-  }, [visibleBankStatementEntries, issuedInvoices, companyCatalog, COMPANY_OPTIONS]);
+    const summary = summarizeIntercompany({ transfers, invoices });
+    return {
+      transfers,
+      invoices,
+      summary,
+      posicion: posicionEntreEmpresas(summary.pairs),
+      // En dolares va aparte: no se suma con los pesos ni se cruza con las facturas, que son en pesos.
+      posicionUsd: posicionEntreEmpresas(summarizeIntercompany({ transfers: girosDePases(visibleInternalTransfers, "USD") }).pairs),
+    };
+  }, [visibleBankStatementEntries, visibleInternalTransfers, issuedInvoices, companyCatalog, COMPANY_OPTIONS]);
 
   // Import de ARCA, "Mis Comprobantes EMITIDOS" o "RECIBIDOS": el propio archivo dice cual es y de
   // que CUIT, asi que la empresa sale del titulo y no de la empresa activa. Acepta varios archivos
@@ -24255,7 +24278,8 @@ Escribi CERRAR para confirmar:`
           updateArrayItem={updateArrayItemFirmado}
           internalTransfers={visibleInternalTransfers.filter((x) => !ocultoPorCierre(x.company, x.date))}
           setInternalTransfers={setInternalTransfers}
-          addInternalTransfer={addInternalTransfer}
+          onGuardarPase={guardarPase}
+          cuentas={cuentasSistema as any}
           removeInternalTransfer={removeInternalTransfer}
           cashHoldings={visibleCashHoldings.filter((x) => !ocultoPorCierre(x.company, x.date))}
           setCashHoldings={setCashHoldings}
