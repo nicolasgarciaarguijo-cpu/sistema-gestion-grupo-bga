@@ -5,7 +5,8 @@
 // como el de una factura): ese pago es el que llega al cash flow, en EGRESOS · PROVEEDORES, en el grupo
 // de la deuda y con el nombre del acreedor. La cuota pendiente va a la agenda de pagos inamovibles.
 //
-// Los prestamos entre socios o entre las empresas NO van aca: son movimientos internos.
+// Los prestamos entre socios o de un tercero nacen en Movimientos internos (Deudas y aportes) y se MIGRAN aca
+// cuando hay que definir su devolucion (ver deudaDesdeRegistro).
 //
 // Compatibilidad: las deudas viejas solo tienen "proxima cuota / cuotas restantes / proximo vencimiento".
 // Mientras no se le estipulen cuotas, se generan una por mes con esos datos (lo mismo que se hacia antes).
@@ -200,6 +201,35 @@ export function comprasDeConvenios(deudas: DeudaConBloque[], hoy: string): Compr
       };
     })
     .filter((c) => c.total > 0 && !!c.acreedor);
+}
+
+// MIGRAR DE DEUDAS Y APORTES (Nicolas, 05/11/2026: "deberia tener un boton para migrar la deuda o aporte a desendeudamiento para
+// establecer despues como seria la devolucion"). La deuda nace sin cuotas, como prestamo, vinculada al asiento de la plata que entro.
+export function deudaDesdeRegistro(
+  e: { id: number; company: any; date: string; origin: string; kind: string; color?: string; amount: number },
+  id: number,
+  hoy: string
+) {
+  const origen = String(e.origin || "").trim();
+  return {
+    id,
+    company: e.company,
+    concept: `${e.kind === "aporte" ? "Aporte" : "Préstamo"} de ${origen}`,
+    acreedor: origen,
+    dueDay: 1,
+    nextInstallmentAmount: 0,
+    remainingInstallments: 0,
+    nextDueDate: hoy,
+    notes: "Migrado de Deudas y aportes",
+    active: true,
+    tipo: "prestamo" as const,
+    bloque: "prestamo" as const,
+    administration: (e.color === "negro" ? "negro" : "blanco") as "blanco" | "negro",
+    capital: Number(e.amount || 0),
+    fechaInicio: e.date,
+    ingresoCapitalId: e.id,
+    cuotas: [] as CuotaDeuda[],
+  };
 }
 
 // CIERRE DEL DESENDEUDAMIENTO (Nicolas, 03/11/2026: "el desendeudamiento deberia hacer un cierre tambien, mostrando lo que paso

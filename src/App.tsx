@@ -121,7 +121,7 @@ import {
 } from "./content/cierreHtml";
 import { ivaAnual } from "./domain/vatBalance";
 import { conteoBlanqueo, type ConteoBlanqueo, type MovFisco } from "./domain/faltaFactura";
-import { conteoPagosPorPersona, pagosCruzadosEntreEmpresas } from "./domain/pagosPorPersona";
+import { pagosCruzadosEntreEmpresas } from "./domain/pagosPorPersona";
 import { armarPreCierre, type PreCierre } from "./domain/preCierre";
 import { cargasDePlanilla, type FilaCarga } from "./domain/cargasPlanilla";
 import { pagosSinFactura, resumenPagosSinFactura } from "./domain/pagosACuenta";
@@ -186,7 +186,7 @@ import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
 import { aggregateCardCosts } from "./domain/cardCosts";
 import { TarjetasTab } from "./tabs/Tarjetas";
 import { BancosTab } from "./tabs/Bancos";
-import { detectIntercompanyTransfers, summarizeIntercompany, girosDePases, posicionEntreEmpresas, unirGiros } from "./domain/intercompany";
+import { detectIntercompanyTransfers, summarizeIntercompany, girosDePases, posicionEntreEmpresas, repartirPorEjercicio, unirGiros, type CrossInvoice, type IntercompanyTransfer } from "./domain/intercompany";
 import {
   companyFolderName,
   companyPath,
@@ -253,7 +253,7 @@ import { FichaPagoHaberes } from "./ui/FichaPagoHaberes";
 import { PagoHaberModal, type PagoHaberForm } from "./ui/PagoHaberModal";
 import { ComprasTab } from "./tabs/Compras";
 import { DesendeudamientoTab, type PagoCuotaForm, type OtraDeuda } from "./tabs/Desendeudamiento";
-import { acreedoresDeDeudas, bloqueDeDeuda, camposLegacy, comprasDeConvenios, cuotasDeDeuda, cuotasPendientes, facturasEnConvenio, pagosDeCuotas, resumenDeuda } from "./domain/desendeudamiento";
+import { acreedoresDeDeudas, bloqueDeDeuda, camposLegacy, comprasDeConvenios, cuotasDeDeuda, cuotasPendientes, deudaDesdeRegistro, facturasEnConvenio, pagosDeCuotas, resumenDeuda } from "./domain/desendeudamiento";
 import { GastoCajaChicaModal, type GastoCajaForm } from "./ui/GastoCajaChicaModal";
 import { CajaChicaListado } from "./tabs/CajaChicaListado";
 import { FichaCajaChica } from "./ui/FichaCajaChica";
@@ -7860,7 +7860,15 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
         .filter((j) => j.company === company)
         .reduce((a, j) => a + Number(j.remainingToPay || 0), 0),
       aPagar: Number(deudaProveedoresPorEmpresa.get(String(company)) || 0),
-      cuentaCorrienteGrupo: Number(intercompanyAccount.summary.netByCompany?.[String(company)] || 0),
+      // Solo lo de este ejercicio: el siguiente arranca en cero.
+      cuentaCorrienteGrupo: Number(
+        summarizeIntercompany({
+          transfers: intercompanyAccount.transfers.filter((t) => {
+            const b = fiscalYearBounds(startMonth, fiscalStartYear);
+            return t.date >= b.startIso && t.date <= b.endIso;
+          }),
+        }).netByCompany?.[String(company)] || 0
+      ),
       resultado: (() => {
         const r: any = reservaDeEmpresaAlCierre(company, fiscalYearBounds(startMonth, fiscalStartYear).endIso);
         const ars = r.totals.find((t: any) => t.currency === "ARS");
@@ -13968,6 +13976,8 @@ Escribi CERRAR para confirmar:`
 
   const removeDebtPlan = (debtId: number) => {
     setDebtPlans((prev) => prev.filter((item) => item.id !== debtId));
+    // Lo que vino de Deudas y aportes vuelve a sumar ahi, en vez de quedar colgado de una deuda que ya no esta.
+    setCapitalEntries((prev) => prev.map((c) => (c.deudaId === debtId ? { ...c, deudaId: undefined } : c)));
   };
 
   // DESENDEUDAMIENTO: cambiar una deuda. Si cambian las cuotas, los campos viejos (proxima cuota,
@@ -14088,6 +14098,34 @@ Escribi CERRAR para confirmar:`
 
   const removeCapitalEntry = (entryId: number) => {
     setCapitalEntries((prev) => prev.filter((item) => item.id !== entryId));
+  };
+
+  // DEUDAS Y APORTES -> DESENDEUDAMIENTO (05/11/2026): la deuda nace vinculada al asiento y se abre su ficha para definir la devolucion.
+  const [abrirDeudaId, setAbrirDeudaId] = useState<number | null>(null);
+  const irADeuda = (deudaId: number) => {
+    if (!effectiveIsAdmin && !supabaseAllowedTabs.includes("desendeudamiento" as any)) {
+      window.alert("La deuda está en la solapa Desendeudamiento, pero no tenés permiso para abrirla.");
+      return;
+    }
+    setAbrirDeudaId(deudaId);
+    setActiveTab("desendeudamiento" as TabKey);
+  };
+  const migrarADesendeudamiento = (capitalId: number) => {
+    const e = capitalEntries.find((c) => c.id === capitalId);
+    if (!e || e.deudaId != null) return;
+    if (!String(e.origin || "").trim() || !(Number(e.amount) > 0)) {
+      window.alert("Para migrarlo, completá de quién es y el monto.");
+      return;
+    }
+    const aviso =
+      e.kind === "aporte"
+        ? `El aporte de ${e.origin} pasa a ser una deuda a devolver. ¿Migrarlo a Desendeudamiento?`
+        : `¿Migrar el préstamo de ${e.origin} a Desendeudamiento?`;
+    if (!window.confirm(aviso)) return;
+    const id = newId();
+    setDebtPlans((prev) => [...prev, deudaDesdeRegistro(e, id, todayIso()) as DebtPlan]);
+    setCapitalEntries((prev) => prev.map((c) => (c.id === capitalId ? { ...c, kind: "prestamo", deudaId: id, ...firma() } : c)));
+    irADeuda(id);
   };
 
   const addCashHolding = () => conEmpresa("el efectivo", (empresaElegida) => {
@@ -19168,6 +19206,18 @@ Escribi CERRAR para confirmar:`
   // CUENTA CORRIENTE ENTRE LAS EMPRESAS DEL GRUPO. Los giros entre BGA y De Raiz no son pagos ni
   // cobros (para el grupo no entro ni salio nada), pero cada uno se cruza con una factura entre las
   // dos o con una devolucion. Lo que no esta cruzado es lo que hay que definir.
+  const armarCuentaGrupo = (transfers: IntercompanyTransfer[], invoices: CrossInvoice[], transfersUsd: IntercompanyTransfer[]) => {
+    const summary = summarizeIntercompany({ transfers, invoices });
+    return {
+      transfers,
+      invoices,
+      transfersUsd,
+      summary,
+      posicion: posicionEntreEmpresas(summary.pairs),
+      // En dolares va aparte: no se suma con los pesos ni se cruza con las facturas, que son en pesos.
+      posicionUsd: posicionEntreEmpresas(summarizeIntercompany({ transfers: transfersUsd }).pairs),
+    };
+  };
   const intercompanyAccount = useMemo(() => {
     const companies = COMPANY_OPTIONS.filter((option) => option.value !== "General")
       .map((option) => ({
@@ -19200,16 +19250,20 @@ Escribi CERRAR para confirmar:`
         };
       })
       .filter(Boolean) as { from: string; to: string; date: string; amount: number }[];
-    const summary = summarizeIntercompany({ transfers, invoices });
-    return {
-      transfers,
-      invoices,
-      summary,
-      posicion: posicionEntreEmpresas(summary.pairs),
-      // En dolares va aparte: no se suma con los pesos ni se cruza con las facturas, que son en pesos.
-      posicionUsd: posicionEntreEmpresas(summarizeIntercompany({ transfers: girosDePases(visibleInternalTransfers, "USD") }).pairs),
-    };
+    return armarCuentaGrupo(transfers, invoices, girosDePases(visibleInternalTransfers, "USD"));
   }, [visibleBankStatementEntries, visibleInternalTransfers, issuedInvoices, companyCatalog, COMPANY_OPTIONS]);
+
+  // La cuenta de la solapa: el ejercicio corriente arranca en cero y el cerrado queda aparte, para consultarlo.
+  const cuentaGrupoPorEjercicio = useMemo(() => {
+    const cierreDe = (company: string) => ultimoCierre(fiscalClosings, company);
+    const giros = repartirPorEjercicio(intercompanyAccount.transfers, cierreDe);
+    const facturas = repartirPorEjercicio(intercompanyAccount.invoices, cierreDe);
+    const usd = repartirPorEjercicio(intercompanyAccount.transfersUsd, cierreDe);
+    return {
+      corriente: armarCuentaGrupo(giros.corriente, facturas.corriente, usd.corriente),
+      anterior: armarCuentaGrupo(giros.anterior, facturas.anterior, usd.anterior),
+    };
+  }, [intercompanyAccount, fiscalClosings]);
 
   // Import de ARCA, "Mis Comprobantes EMITIDOS" o "RECIBIDOS": el propio archivo dice cual es y de
   // que CUIT, asi que la empresa sale del titulo y no de la empresa activa. Acepta varios archivos
@@ -23770,6 +23824,8 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "desendeudamiento" && (
         <DesendeudamientoTab
+          abrirFichaId={abrirDeudaId}
+          onFichaAbierta={() => setAbrirDeudaId(null)}
           ejercicioCerrado={(() => {
             const c = cierresActivos(fiscalClosings).filter((x) => canAccessCompany(x.company as CompanyName)).sort((a, b) => b.endIso.localeCompare(a.endIso))[0];
             return c ? { desde: c.startIso, hasta: c.endIso, etiqueta: `${c.startIso.slice(0, 7)} a ${c.endIso.slice(0, 7)}` } : undefined;
@@ -24263,14 +24319,11 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "movimientosInternos" && (
         <MovimientosInternosTab
-          devolucionesCruzadas={devolucionesCruzadas}
+          devolucionesCruzadas={devolucionesCruzadas.filter((d) => !ocultoPorCierre(String(d.company), d.fecha))}
           pagosCruzados={pagosCruzadosEntreEmpresas(
             purchaseInvoices.filter((i) => canAccessCompany(i.company)) as any,
             costEntries as any
-          )}
-          pagosPorPersona={conteoPagosPorPersona(
-            costEntries.filter((c) => canAccessCompany(c.company)).map((c) => ({ ...c, company: String(c.company) })) as any
-          )}
+          ).filter((p) => !ocultoPorCierre(p.empresaPaga, p.date))}
           companyScope={internalCompanyScope}
           setCompanyScope={setInternalCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
@@ -24289,13 +24342,20 @@ Escribi CERRAR para confirmar:`
           setCapitalEntries={setCapitalEntries}
           addCapitalEntry={addCapitalEntry}
           removeCapitalEntry={removeCapitalEntry}
-          calendarLoans={calendarLoans}
+          calendarLoans={calendarLoans.filter((l) => !ocultoPorCierre(l.company, l.date))}
           personLedger={personLedgerSummary}
           personLedgerEntries={visiblePersonLedgerEntries}
           setPersonLedgerEntries={setPersonLedgerEntries}
           addPersonLedgerEntry={addPersonLedgerEntry}
           removePersonLedgerEntry={removePersonLedgerEntry}
-          intercompanyAccount={intercompanyAccount}
+          intercompanyAccount={cuentaGrupoPorEjercicio.corriente}
+          intercompanyAnterior={verCerrado && hayEjercicioCerrado ? cuentaGrupoPorEjercicio.anterior : undefined}
+          ejercicioCerrado={hayEjercicioCerrado ? fechasUltimoCerrado : undefined}
+          cierreAnterior={hayEjercicioCerrado ? cuentaGrupoPorEjercicio.anterior : undefined}
+          viendoEjercicioCerrado={verCerrado}
+          onVerEjercicioCerrado={() => setVerCerrado((v) => !v)}
+          onMigrarADesendeudamiento={migrarADesendeudamiento}
+          onAbrirDeuda={irADeuda}
         />
       )}
 

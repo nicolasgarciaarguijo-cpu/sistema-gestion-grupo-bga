@@ -4,7 +4,7 @@
 // pago que la salda (uno nuevo o uno ya cargado): ese pago es el que llega al cash flow.
 // Los prestamos entre socios o entre empresas NO van aca (son movimientos internos).
 // Abajo, de referencia, las otras deudas que tiene el sistema y se manejan en su propia solapa.
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel, MiniMetric, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import type { DebtPlan } from "../domain/types";
@@ -49,6 +49,8 @@ const btnFila: React.CSSProperties = { border: "1px solid #cbd5e1", background: 
 const ESTADOS: Record<EstadoCuota, string> = { programado: "Programado", estimado: "Estimado", inamovible: "Inamovible" };
 
 export function DesendeudamientoTab({
+  abrirFichaId,
+  onFichaAbierta,
   deudas,
   hoy,
   companyOptions,
@@ -89,6 +91,9 @@ export function DesendeudamientoTab({
   pagosVinculables: (company: string, acreedor: string) => Array<{ id: number; date: string; amount: number; description: string }>;
   otrasDeudas: OtraDeuda[];
   onAgregar: () => number | void; // devuelve el id de la deuda nueva (se abre su ficha)
+  // Deuda que llega desde Movimientos internos: se abre su ficha al entrar.
+  abrirFichaId?: number | null;
+  onFichaAbierta?: () => void;
   onActualizar: (id: number, patch: Partial<DebtPlan>) => void;
   onBorrar: (id: number) => void;
   onRegistrarPago: (deudaId: number, cuotaId: string, pago: PagoCuotaForm) => void;
@@ -117,6 +122,11 @@ export function DesendeudamientoTab({
   // La deuda cuya ficha esta abierta.
   const [fichaId, setFichaId] = useState<number | null>(null);
   const fichaDeuda = fichaId != null ? deudas.find((d) => d.id === fichaId) : undefined;
+  useEffect(() => {
+    if (abrirFichaId == null) return;
+    setFichaId(abrirFichaId);
+    onFichaAbierta?.();
+  }, [abrirFichaId]);
 
   const activas = deudas.filter((d) => d.active);
   const resumenes = activas.map((d) => resumenDeuda(d, hoy));

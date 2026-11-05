@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-05b",
+    fecha: "05/11/2026",
+    titulo: "Movimientos internos: menos bloques y deudas que se migran",
+    items: [
+      {
+        titulo: "La cuenta entre empresas arranca en cero",
+        que: "La cuenta corriente entre las empresas suma solo el ejercicio en curso. Del ejercicio cerrado queda una línea con cómo cerró, que no se suma con lo nuevo.",
+        como: "Movimientos internos → Cuenta corriente entre las empresas → Ver el desglose, para entrar al ejercicio anterior.",
+        tab: "movimientosInternos",
+      },
+      {
+        titulo: "Migrar una deuda o un aporte a Desendeudamiento",
+        que: "Cada fila de Deudas y aportes tiene un botón que la pasa a Desendeudamiento, vinculada, para definir cómo se devuelve. Un aporte migrado pasa a ser un préstamo.",
+        como: "Movimientos internos → Deudas y aportes → Migrar a Desendeudamiento. Se abre la ficha de la deuda para cargarle las cuotas.",
+        tab: "movimientosInternos",
+      },
+      {
+        titulo: "Se quitó \"Pagos en efectivo negro hechos por personas\"",
+        que: "El bloque ya no aparece en Movimientos internos. Lo que una persona pone de su bolsillo se sigue en la Cuenta corriente con la gente.",
+        como: "No hay que hacer nada.",
+        tab: "movimientosInternos",
+      },
+    ],
+  },
+  {
     id: "2026-11-05a",
     fecha: "05/11/2026",
     titulo: "Pases: de dónde sale y a dónde va",

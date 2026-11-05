@@ -1,7 +1,7 @@
 import React from "react";
 import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import { styles } from "../ui/styles";
-import type { ConteoPersona, PagoCruzado } from "../domain/pagosPorPersona";
+import type { PagoCruzado } from "../domain/pagosPorPersona";
 import { Panel, MiniMetric, ButtonLike, AmountInput, ColorTagToggle, moneyToneColor } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
@@ -140,22 +140,32 @@ type MovimientosInternosTabProps = {
   setPersonLedgerEntries: React.Dispatch<React.SetStateAction<PersonLedgerEntry[]>>;
   addPersonLedgerEntry: (kind?: "debe" | "haber") => void;
   removePersonLedgerEntry: (entryId: number) => void;
-  // 6) quien pago en efectivo negro (informativo, ver domain/pagosPorPersona)
-  pagosPorPersona?: ConteoPersona[];
   // 7) facturas de una empresa pagadas por la otra (informativo)
   pagosCruzados?: PagoCruzado[];
   // 5) cuenta corriente entre empresas
   intercompanyAccount: {
     transfers: any[];
+    transfersUsd?: any[];
     summary: { totalTransferred: number; pairs: any[] };
     posicion?: Array<{ deudor: string; acreedor: string; saldo: number }>;
     posicionUsd?: Array<{ deudor: string; acreedor: string; saldo: number }>;
   };
+  // El ejercicio cerrado de esa cuenta: se muestra aparte y solo cuando se lo llama.
+  intercompanyAnterior?: MovimientosInternosTabProps["intercompanyAccount"];
+  ejercicioCerrado?: string;
+  // Como cerro el ejercicio anterior: siempre se ve en una linea; el desglose solo si se entra a ese ejercicio.
+  cierreAnterior?: MovimientosInternosTabProps["intercompanyAccount"];
+  viendoEjercicioCerrado?: boolean;
+  onVerEjercicioCerrado?: () => void;
+  // Deudas y aportes <-> Desendeudamiento
+  onMigrarADesendeudamiento: (capitalId: number) => void;
+  onAbrirDeuda: (deudaId: number) => void;
 };
+
+const botonDeuda: React.CSSProperties = { border: "1px solid #c4b5fd", background: "#f5f3ff", color: "#5b21b6", borderRadius: 6, padding: "1px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" };
 
 export function MovimientosInternosTab({
   devolucionesCruzadas = [],
-  pagosPorPersona = [],
   pagosCruzados = [],
   companyScope,
   setCompanyScope,
@@ -182,6 +192,13 @@ export function MovimientosInternosTab({
   addPersonLedgerEntry,
   removePersonLedgerEntry,
   intercompanyAccount,
+  intercompanyAnterior,
+  ejercicioCerrado,
+  cierreAnterior,
+  viendoEjercicioCerrado,
+  onVerEjercicioCerrado,
+  onMigrarADesendeudamiento,
+  onAbrirDeuda,
 }: MovimientosInternosTabProps) {
   const anchosPases = usePlanillaWidths("movint.pases", { label: 260, col: 120, colCompact: 92 });
   const anchosEfectivo = usePlanillaWidths("movint.efectivo", { label: 260, col: 120, colCompact: 92 });
@@ -204,7 +221,7 @@ export function MovimientosInternosTab({
   const capitalEntries = ordenar(capitalEntriesAll);
 
   const contributionsSummary = React.useMemo(
-    () => summarizeContributions(capitalEntriesAll.filter((item) => enScope(String(item.company)))),
+    () => summarizeContributions(capitalEntriesAll.filter((item) => enScope(String(item.company)) && item.deudaId == null)),
     [capitalEntriesAll, companyScope]
   );
   const loanLines = React.useMemo(
@@ -303,8 +320,13 @@ export function MovimientosInternosTab({
             ...comunes("Empresa (la que recibe o devuelve)"),
             { key: "date", label: "Fecha", tipo: "fecha" },
             { key: "origin", label: "De quién", tipo: "texto" },
-            { key: "kind", label: "Tipo", tipo: "select", opciones: [{ value: "aporte", label: "Aporte (no vuelve)" }, { value: "prestamo", label: "Préstamo (vuelve)" }] },
-            { key: "direction", label: "Sentido", tipo: "select", opciones: [{ value: "recibido", label: "Entró plata" }, { value: "devuelto", label: "Se devolvió" }] },
+            // Ya en Desendeudamiento: es un prestamo recibido, la devolucion se maneja alla.
+            ...((valores?.deudaId != null
+              ? []
+              : [
+                  { key: "kind", label: "Tipo", tipo: "select", opciones: [{ value: "aporte", label: "Aporte (no vuelve)" }, { value: "prestamo", label: "Préstamo (vuelve)" }] },
+                  { key: "direction", label: "Sentido", tipo: "select", opciones: [{ value: "recibido", label: "Entró plata" }, { value: "devuelto", label: "Se devolvió" }] },
+                ]) as CampoFicha[]),
             { key: "amount", label: "Monto", tipo: "numero" },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
             { key: "notes", label: "Notas", tipo: "area" },
@@ -700,7 +722,9 @@ export function MovimientosInternosTab({
           <strong>préstamo</strong> = se devuelve. Los dólares son un valor congelado de referencia,
           no se suman con los pesos. Lo que se clasifica como <strong>PRÉSTAMO en el Calendario
           anual</strong> arma solo su línea acá, con el nombre del prestamista; si ya lo habías
-          asentado a mano, no se cuenta dos veces.
+          asentado a mano, no se cuenta dos veces. Con <strong>"Migrar a Desendeudamiento"</strong> la
+          deuda o el aporte pasa a esa solapa para definir cómo se devuelve: desde ahí se sigue y deja de
+          sumar en este resumen.
         </div>
         <div style={styles.metricGrid}>
           <MiniMetric label="Aportes (capital)" value={money(contributionsSummary.aportes.total)} tone="in" />
@@ -874,6 +898,7 @@ export function MovimientosInternosTab({
                       <FirmanteCelda value={item.firmante} firmadoEn={item.firmadoEn} />
                       <select
                         style={{ ...inputCelda, width: "auto" }}
+                        disabled={item.deudaId != null}
                         value={item.kind}
                         onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "kind", e.target.value)}
                       >
@@ -882,6 +907,7 @@ export function MovimientosInternosTab({
                       </select>
                       <select
                         style={{ ...inputCelda, width: "auto" }}
+                        disabled={item.deudaId != null}
                         value={item.direction}
                         onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "direction", e.target.value)}
                       >
@@ -905,6 +931,15 @@ export function MovimientosInternosTab({
                         ))}
                       </select>
 <BotonFicha onClick={() => setFicha({ tipo: "capital", id: item.id })} />
+                      {item.deudaId != null ? (
+                        <button type="button" style={botonDeuda} title="Abrir la deuda en Desendeudamiento" onClick={() => onAbrirDeuda(item.deudaId as number)}>
+                          En Desendeudamiento →
+                        </button>
+                      ) : item.direction === "recibido" ? (
+                        <button type="button" style={botonDeuda} title="Pasar a Desendeudamiento para definir la devolución" onClick={() => onMigrarADesendeudamiento(item.id)}>
+                          Migrar a Desendeudamiento
+                        </button>
+                      ) : null}
                       <span style={{ color: "#94a3b8" }}>U$S</span>
                       <NumInput
                         style={{ ...inputCelda, width: 72, textAlign: "right" }}
@@ -1287,59 +1322,6 @@ export function MovimientosInternosTab({
       )}
 
       {(() => {
-        // Solo lo de la empresa elegida (o todas).
-        const filas = pagosPorPersona
-          .map((c) => {
-            const pagos = c.pagos.filter((p) => companyScope === "__ALL__" || p.company === companyScope);
-            return { ...c, pagos, total: pagos.reduce((a, p) => a + p.amount, 0), cantidad: pagos.length, ultimo: pagos[0]?.date || "" };
-          })
-          .filter((c) => c.cantidad > 0);
-        const fecha = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
-        return (
-          <Panel title="Pagos en efectivo negro hechos por personas" span="full">
-            <div style={{ ...styles.muted, marginBottom: 8 }}>
-              Facturas pagadas en efectivo negro donde se eligió quién hizo el pago (no salió de una caja chica). Es
-              solo para saber cuánta plata pasó por las manos de cada uno: no suma ni resta en ningún lado.
-            </div>
-            {filas.length === 0 ? (
-              <div style={styles.empty}>Todavía no hay pagos con persona. Se elige en la factura: pago en efectivo, circuito negro → "Quién pagó".</div>
-            ) : (
-              <table className="planilla" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                <thead>
-                  <tr style={{ background: "#f8fafc", color: "#475569", fontSize: 12 }}>
-                    <th style={{ textAlign: "left", padding: "4px 8px" }}>Persona · pago</th>
-                    <th style={{ textAlign: "left", padding: "4px 8px" }}>Fecha</th>
-                    <th style={{ textAlign: "left", padding: "4px 8px" }}>Empresa</th>
-                    <th style={{ textAlign: "right", padding: "4px 8px" }}>Monto</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filas.map((c) => (
-                    <React.Fragment key={c.persona}>
-                      <tr style={{ background: "#f1f5f9" }}>
-                        <td style={{ padding: "4px 8px", fontWeight: 800 }}>👤 {c.persona} <span style={{ fontWeight: 400, color: "#64748b" }}>({c.cantidad} pago{c.cantidad === 1 ? "" : "s"})</span></td>
-                        <td style={{ padding: "4px 8px", color: "#64748b" }}>último {fecha(c.ultimo)}</td>
-                        <td style={{ padding: "4px 8px" }} />
-                        <td style={{ padding: "4px 8px", textAlign: "right", fontWeight: 800 }}>{money(c.total)}</td>
-                      </tr>
-                      {c.pagos.map((p) => (
-                        <tr key={p.id}>
-                          <td style={{ padding: "3px 8px 3px 26px", color: "#334155" }}>{p.detalle || "Pago"}</td>
-                          <td style={{ padding: "3px 8px" }}>{fecha(p.date)}</td>
-                          <td style={{ padding: "3px 8px" }}>{getCompanyMeta(p.company as any)?.short || p.company}</td>
-                          <td style={{ padding: "3px 8px", textAlign: "right" }}>{money(p.amount)}</td>
-                        </tr>
-                      ))}
-                    </React.Fragment>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Panel>
-        );
-      })()}
-
-      {(() => {
         const filas = pagosCruzados.filter((p) => companyScope === "__ALL__" || p.empresaPaga === companyScope || p.empresaFactura === companyScope);
         if (filas.length === 0) return null;
         const fecha = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
@@ -1376,7 +1358,11 @@ export function MovimientosInternosTab({
         );
       })()}
 
-      <Panel title="Cuenta corriente entre las empresas del grupo" span="full">
+      {[
+        { cuenta: intercompanyAccount, titulo: "Cuenta corriente entre las empresas del grupo", cerrado: false },
+        ...(intercompanyAnterior ? [{ cuenta: intercompanyAnterior, titulo: `Cuenta corriente entre las empresas · ejercicio ${ejercicioCerrado || "anterior"} (cerrado)`, cerrado: true }] : []),
+      ].map(({ cuenta, titulo, cerrado }) => (
+      <Panel key={titulo} title={titulo} span="full">
         <div style={styles.sectionNote}>
           Lo que una empresa le gira a la otra <strong>no es un pago ni un cobro</strong>: para el grupo
           no entro ni salio nada, solo cambio de bolsillo. Por eso no suma al resultado. Pero cada giro
@@ -1384,7 +1370,29 @@ export function MovimientosInternosTab({
           y lo que no esta cruzado es lo que hay que definir. Los giros salen de los <strong>pases entre empresas</strong> que
           se cargan arriba y del CUIT de la otra empresa en la referencia del banco (si son el mismo, cuentan una vez).
         </div>
-        {[...(intercompanyAccount.posicion || []).map((p) => ({ ...p, moneda: "ARS" as const })), ...(intercompanyAccount.posicionUsd || []).map((p) => ({ ...p, moneda: "USD" as const }))].map((p) => (
+        {!cerrado && ejercicioCerrado && cierreAnterior && cierreAnterior.transfers.length + (cierreAnterior.transfersUsd || []).length > 0 && (() => {
+          const saldos = [
+            ...(cierreAnterior.posicion || []).map((p) => ({ ...p, moneda: "ARS" as const })),
+            ...(cierreAnterior.posicionUsd || []).map((p) => ({ ...p, moneda: "USD" as const })),
+          ];
+          return (
+            <div style={{ margin: "8px 0", padding: "6px 12px", borderRadius: 8, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 13, color: "#475569", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span>
+                Cómo cerró {ejercicioCerrado}:{" "}
+                <strong>
+                  {saldos.length === 0
+                    ? "sin saldo entre las empresas"
+                    : saldos.map((p) => `${getCompanyMeta(p.deudor as CompanyName)?.short || p.deudor} le debe ${money(p.saldo, p.moneda)} a ${getCompanyMeta(p.acreedor as CompanyName)?.short || p.acreedor}`).join(" · ")}
+                </strong>
+                {" "}· no suma con este ejercicio
+              </span>
+              {onVerEjercicioCerrado && (
+                <ButtonLike secondary onClick={onVerEjercicioCerrado}>{viendoEjercicioCerrado ? "Esconder el desglose" : "Ver el desglose"}</ButtonLike>
+              )}
+            </div>
+          );
+        })()}
+        {[...(cuenta.posicion || []).map((p) => ({ ...p, moneda: "ARS" as const })), ...(cuenta.posicionUsd || []).map((p) => ({ ...p, moneda: "USD" as const }))].map((p) => (
           <div key={`${p.moneda}-${p.deudor}`} style={{ margin: "8px 0", padding: "8px 12px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 14, color: "#92400e" }}>
             Cómo estamos: <strong>{getCompanyMeta(p.deudor as CompanyName)?.short || p.deudor} le debe {money(p.saldo, p.moneda)} a {getCompanyMeta(p.acreedor as CompanyName)?.short || p.acreedor}</strong>
           </div>
@@ -1392,23 +1400,23 @@ export function MovimientosInternosTab({
         <div style={styles.metricGrid}>
           <MiniMetric
             label="Girado entre empresas"
-            value={money(intercompanyAccount.summary.totalTransferred)}
+            value={money(cuenta.summary.totalTransferred)}
           />
           <MiniMetric
             label="Giros"
-            value={String(intercompanyAccount.transfers.length)}
+            value={String(cuenta.transfers.length)}
           />
           <MiniMetric
             label="Sin declarar factura"
             value={money(
-              intercompanyAccount.summary.pairs.reduce((acc, p) => acc + p.withoutBacking, 0)
+              cuenta.summary.pairs.reduce((acc, p) => acc + p.withoutBacking, 0)
             )}
             tone="out"
           />
         </div>
-        {intercompanyAccount.transfers.length === 0 ? (
+        {cuenta.transfers.length === 0 ? (
           <div style={{ ...styles.muted, marginTop: 8 }}>
-            No hay giros entre las empresas: ni pases entre empresas cargados, ni movimientos del banco con el
+            No hay giros entre las empresas en este ejercicio: ni pases entre empresas cargados, ni movimientos del banco con el
             CUIT de la otra.
           </div>
         ) : (
@@ -1443,7 +1451,7 @@ export function MovimientosInternosTab({
                   </tr>
                 </thead>
                 <tbody>
-                  {intercompanyAccount.summary.pairs.map((p) => (
+                  {cuenta.summary.pairs.map((p) => (
                     <tr key={`${p.from}>${p.to}`}>
                       <td style={{ ...tdNombre, fontWeight: 400 }}>
                         <strong style={{ color: "#0f172a" }}>
@@ -1484,7 +1492,7 @@ export function MovimientosInternosTab({
             </div>
             <details style={{ marginTop: 10 }}>
               <summary style={{ cursor: "pointer", fontWeight: 700, color: "#475569" }}>
-                Ver los {intercompanyAccount.transfers.length} giros
+                Ver los {cuenta.transfers.length} giros
               </summary>
               <div style={{ overflowX: "auto", marginTop: 8 }}>
                 <div style={{ ...planillaWrap, ...anchosCcGiros.vars }}>
@@ -1516,7 +1524,7 @@ export function MovimientosInternosTab({
                     </tr>
                   </thead>
                   <tbody>
-                    {[...intercompanyAccount.transfers]
+                    {[...cuenta.transfers]
                       .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
                       .map((t) => (
                         <tr key={t.id}>
@@ -1550,6 +1558,7 @@ export function MovimientosInternosTab({
           </>
         )}
       </Panel>
+      ))}
     </div>
     </>
   );

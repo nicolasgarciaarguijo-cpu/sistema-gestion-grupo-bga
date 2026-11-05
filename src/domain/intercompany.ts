@@ -195,6 +195,24 @@ export function unirGiros(dePases: IntercompanyTransfer[], delBanco: Intercompan
   return [...dePases, ...soloBanco];
 }
 
+// CADA EJERCICIO ARRANCA EN CERO (Nicolas, 05/11/2026: "si tomamos la decision de cerrar el año todo queda guardado en el ejercicio
+// anterior; si quiero consultar puedo hacerlo, pero este año arranca en cero"). Cada giro o factura va al ejercicio de la empresa
+// que lo origino: lo posterior a su ultimo cierre es el corriente; lo de ese cierre, el anterior. Sin cierre, todo es corriente.
+export function repartirPorEjercicio<T extends { from: string; date: string }>(
+  items: T[],
+  ultimoCierreDe: (company: string) => { startIso: string; endIso: string } | null
+): { corriente: T[]; anterior: T[] } {
+  const corriente: T[] = [];
+  const anterior: T[] = [];
+  items.forEach((x) => {
+    const c = ultimoCierreDe(x.from);
+    const d = String(x.date || "").slice(0, 10);
+    if (!c || d > c.endIso) corriente.push(x);
+    else if (d >= c.startIso) anterior.push(x);
+  });
+  return { corriente, anterior };
+}
+
 // COMO ESTAMOS entre cada par de empresas: lo que A giro y no se cruzo con una factura de B, contra lo de B hacia A.
 export function posicionEntreEmpresas(pairs: IntercompanyPair[]): Array<{ deudor: string; acreedor: string; saldo: number }> {
   const out: Array<{ deudor: string; acreedor: string; saldo: number }> = [];
