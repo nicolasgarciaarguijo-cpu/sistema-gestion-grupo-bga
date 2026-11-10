@@ -6,8 +6,11 @@ export function ElegirEmpresa({
   titulo,
   opciones,
   sugerida,
+  sinAmbas = false,
   onElegir,
 }: {
+  // Lo que mueve plata es de UNA empresa: no se ofrece "Ambas".
+  sinAmbas?: boolean;
   titulo: string;
   opciones: Array<{ value: string; label: string; color?: string }>;
   // La empresa elegida arriba ("General" = todas): se marca como sugerida.
@@ -56,10 +59,10 @@ export function ElegirEmpresa({
         <div style={{ fontSize: 16, fontWeight: 800 }}>¿De qué empresa es {titulo}?</div>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {opciones.map((o) => boton(o.value, o.label, o.color))}
-          {opciones.length > 1 && boton("General", "Ambas (compartido)")}
+          {opciones.length > 1 && !sinAmbas && boton("General", "Ambas (compartido)")}
         </div>
         <div style={{ fontSize: 12, color: "#64748b" }}>
-          "Ambas" lo deja compartido: lo ven las dos empresas. Esc o click afuera: cancelar.
+          {sinAmbas ? "Es plata: va a una sola empresa." : '"Ambas" lo deja compartido: lo ven las dos empresas.'} Esc o click afuera: cancelar.
         </div>
       </div>
     </div>

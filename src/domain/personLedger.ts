@@ -136,8 +136,9 @@ export function carryPettyCashDebt(funds: PersonLedgerFundLike[]): PettyCarryRes
   const grupos = new Map<string, PersonLedgerFundLike[]>();
   funds.forEach((fund) => {
     const nombre = String(fund.responsible || "").trim();
-    // Un fondo sin responsable no se mezcla con nadie: es su propio grupo.
-    const key = normalizePersonName(nombre) || `__sin_responsable_${fund.id}`;
+    // Un fondo sin responsable no se mezcla con nadie: es su propio grupo. Y las empresas NO se mezclan
+    // (Nicolas, 2026-11-10): lo que sobra de una caja de una empresa no tapa la deuda de la otra.
+    const key = nombre ? `${normalizePersonName(nombre)}|${String(fund.company || "")}` : `__sin_responsable_${fund.id}`;
     const list = grupos.get(key) || [];
     list.push(fund);
     grupos.set(key, list);
@@ -161,7 +162,12 @@ export function carryPettyCashDebt(funds: PersonLedgerFundLike[]): PettyCarryRes
         byFund.set(fund.id, { ajuste: 0, adjustedRemaining: propio });
       }
     });
-    if (nombre) byResponsible.set(key, { responsible: nombre, debt: round2(arrastre) });
+    if (nombre) {
+      // Por persona (sumando sus empresas): lo que se le debe en total.
+      const k = normalizePersonName(nombre);
+      const previo = byResponsible.get(k);
+      byResponsible.set(k, { responsible: previo?.responsible || nombre, debt: round2((previo?.debt || 0) + arrastre) });
+    }
     total += arrastre;
   });
 

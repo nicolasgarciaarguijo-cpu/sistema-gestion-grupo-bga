@@ -17,6 +17,9 @@ export type CampoFicha = {
   ancho?: "completo";
   ayuda?: string;
   soloLectura?: boolean;
+  // Select que hay que completar sí o sí (la cuenta de un movimiento de plata): vacío queda en rojo.
+  obligatorio?: boolean;
+  vacio?: string; // texto de la opción vacía de un select obligatorio
 };
 
 const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 8px", fontSize: 13, width: "100%", boxSizing: "border-box", background: "#fff" };
@@ -53,7 +56,13 @@ export function FichaRegistro({
       return <EmpresaSelect style={input} value={v} opciones={empresas} compartido={!!c.compartido} disabled={c.soloLectura} onChange={(x) => onCambiar(c.key, x)} />;
     if (c.tipo === "select")
       return (
-        <select style={input} value={v ?? ""} disabled={c.soloLectura} onChange={(e) => onCambiar(c.key, e.target.value)}>
+        <select
+          style={{ ...input, ...(c.obligatorio && (v == null || v === "") ? { borderColor: "#f87171", background: "#fef2f2" } : {}) }}
+          value={v ?? ""}
+          disabled={c.soloLectura}
+          onChange={(e) => onCambiar(c.key, c.obligatorio && e.target.value === "" ? undefined : e.target.value)}
+        >
+          {c.obligatorio && <option value="">{c.vacio || "— Elegí —"}</option>}
           {(c.opciones || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           {v != null && v !== "" && !(c.opciones || []).some((o) => o.value === v) && <option value={v}>{String(v)}</option>}
         </select>

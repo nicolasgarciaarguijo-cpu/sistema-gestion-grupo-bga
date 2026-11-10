@@ -52,6 +52,7 @@ export function FichaCajaChica({
   onAdjuntar,
   onViaticoRendido,
   deudaCaja = 0,
+  deudaPorEmpresa,
   cuentas = [],
   onPagarDeuda,
 }: {
@@ -80,6 +81,8 @@ export function FichaCajaChica({
   // DEUDA DE CAJA CHICA con la persona (lo que gasto de mas o pago de su bolsillo con su caja) y el pago
   // que la devuelve: de que cuenta sale la plata y cuando, como un pago comun (Nicolas, 2026-10-21).
   deudaCaja?: number;
+  // La deuda separada por empresa (la de la compra): cada una se paga aparte, de una cuenta suya.
+  deudaPorEmpresa?: Array<{ company: string; deuda: number }>;
   cuentas?: Array<{ id: string; company: string; nombre: string; tipo?: string; activa?: boolean }>;
   onPagarDeuda?: (p: { company: string; fecha: string; monto: number; cuentaId: string }) => void;
 }) {
@@ -119,7 +122,9 @@ export function FichaCajaChica({
     return f ? `${f.tipo || "General"} · ${fecha(f.deliveredDate)}` : "Sin caja";
   };
   const deudaTotal = deudas.reduce((a, d) => a + Number(d.total || 0), 0);
-  const empresaDeuda = (fondos.find((f) => !f.closed) || fondos[0])?.company || "";
+  // Sin el detalle por empresa (llamadas viejas), la deuda entera queda en la empresa de las cajas si hay una sola.
+  const empresasDeCajas = Array.from(new Set(fondos.map((f: any) => String(f.empresaImputada || f.company))));
+  const deudas_ = deudaPorEmpresa ?? (deudaCaja > 0.5 && empresasDeCajas.length === 1 ? [{ company: empresasDeCajas[0], deuda: deudaCaja }] : []);
   const [pagoDeuda, setPagoDeuda] = useState<null | { company: string; fecha: string; monto: number; cuentaId: string }>(null);
 
   return (
@@ -411,25 +416,39 @@ export function FichaCajaChica({
           <div style={{ ...bloque, ...(deudaCaja > 0.5 ? { borderColor: "#fdba74", background: "#fff7ed" } : {}) }}>
             <div style={tituloBloque}>
               <span>Deuda por caja chica</span>
-              {deudaCaja > 0.5 && onPagarDeuda && !pagoDeuda && (
-                <button
-                  type="button"
-                  style={{ ...boton, background: "#16a34a", color: "#fff", borderColor: "#15803d" }}
-                  onClick={() => setPagoDeuda({ company: empresaDeuda, fecha: new Date().toISOString().slice(0, 10), monto: Math.round(deudaCaja * 100) / 100, cuentaId: "" })}
-                >
-                  💸 Pagar la deuda
-                </button>
-              )}
             </div>
-            {deudaCaja > 0.5 ? (
+            {deudas_.length > 0 ? (
+              <div style={{ display: "grid", gap: 6 }}>
+                {deudas_.map((d) => (
+                  <div key={d.company} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 13, color: "#9a3412", fontWeight: 700 }}>
+                      {companyShort(d.company)} le debe {money(d.deuda)} a {responsable}.
+                    </span>
+                    {onPagarDeuda && !pagoDeuda && (
+                      <button
+                        type="button"
+                        style={{ ...boton, background: "#16a34a", color: "#fff", borderColor: "#15803d" }}
+                        onClick={() => setPagoDeuda({ company: d.company, fecha: new Date().toISOString().slice(0, 10), monto: Math.round(d.deuda * 100) / 100, cuentaId: "" })}
+                      >
+                        💸 Pagar lo de {companyShort(d.company)}
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div style={{ fontSize: 12, color: "#64748b" }}>
+                  Cada empresa devuelve lo que se compró para ella, de una cuenta suya. También se cancela asignándole una caja nueva de esa empresa.
+                </div>
+              </div>
+            ) : deudaCaja > 0.5 ? (
               <div style={{ fontSize: 13, color: "#9a3412", fontWeight: 700 }}>
-                La empresa le debe {money(deudaCaja)} a {responsable}. Se devuelve con un pago (acá) o asignándole una caja nueva que la cancele.
+                Se le deben {money(deudaCaja)} a {responsable}, pero no se puede separar por empresa: revisá las cajas.
               </div>
             ) : (
               <div style={{ fontSize: 13, color: "#94a3b8" }}>No se le debe nada por caja chica.</div>
             )}
             {pagoDeuda && (
               <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: "#334155" }}>Paga {companyShort(pagoDeuda.company)}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
                   <label style={{ display: "grid", gap: 3, fontSize: 12, fontWeight: 600, color: "#475569" }}>Fecha
                     <input type="date" style={inputPago} value={pagoDeuda.fecha} onChange={(e) => setPagoDeuda({ ...pagoDeuda, fecha: e.target.value })} />
@@ -461,6 +480,9 @@ export function FichaCajaChica({
                     onClick={() => {
                       if (!pagoDeuda.fecha || !(pagoDeuda.monto > 0)) return window.alert("Falta la fecha o el monto.");
                       if (!pagoDeuda.cuentaId) return window.alert("Elegí de qué cuenta sale la plata.");
+                      const tope = deudas_.find((d) => d.company === pagoDeuda.company)?.deuda || 0;
+                      if (pagoDeuda.monto > tope + 1)
+                        return window.alert(`${companyShort(pagoDeuda.company)} le debe ${money(tope)}: no se le puede devolver más (lo de la otra empresa se paga aparte).`);
                       onPagarDeuda?.(pagoDeuda);
                       setPagoDeuda(null);
                     }}

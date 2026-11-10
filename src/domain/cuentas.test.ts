@@ -6,6 +6,7 @@ import {
   idCuentaBanco,
   idCuentaEfectivo,
   movimientosPorCuenta,
+  movimientosConCuentaAjena,
   saldosDeCuentas,
   saldosDiarios,
   type PlataMovida,
@@ -130,5 +131,39 @@ describe("movimiento anterior a la apertura (2026-10-21)", () => {
     expect(saldosDeCuentas([cuenta], [{ ...viejo, forzarSaldo: true }], "2026-10-20")[0].saldo).toBe(700);
     const serie = saldosDiarios([cuenta], [{ ...viejo, forzarSaldo: true }], ["2026-10-11", "2026-10-20"]);
     expect(serie.get("2026-10-11")?.get(cuenta.id)).toBe(700);
+  });
+});
+
+describe("control: cuenta de la otra empresa (2026-11-10)", () => {
+  const dos = armarCuentas({
+    companies: ["BGA", "DR"],
+    guardadas: [],
+    fechaCorte: CORTE,
+    bancosExtracto: [
+      { company: "BGA", bank: "Santander", currency: "ARS", balance: 0 },
+      { company: "DR", bank: "Galicia", currency: "ARS", balance: 0 },
+    ],
+    efectivoApertura: [],
+    personas: [],
+  });
+  const galicia = idCuentaBanco("DR", "Galicia", "ARS");
+  const santander = idCuentaBanco("BGA", "Santander", "ARS");
+
+  it("un pago de BGA con la cuenta de De Raíz no se asienta y queda en el control", () => {
+    const p = mov({ refId: "gasto-1", company: "BGA", sentido: "sale", amount: 1000, cuentaId: galicia });
+    expect(movimientosPorCuenta([p], dos)).toEqual([]);
+    expect(movimientosConCuentaAjena([p], dos).map((x) => x.refId)).toEqual(["gasto-1"]);
+  });
+
+  it("con la cuenta propia se asienta normal", () => {
+    const p = mov({ refId: "gasto-2", company: "BGA", sentido: "sale", amount: 1000, cuentaId: santander });
+    expect(movimientosPorCuenta([p], dos)).toHaveLength(1);
+    expect(movimientosConCuentaAjena([p], dos)).toEqual([]);
+  });
+
+  it("un pase entre empresas puede tener el destino en la otra", () => {
+    const p = mov({ refId: "pase-1", company: "BGA", sentido: "pase", amount: 1000, cuentaId: santander, cuentaDestinoId: galicia });
+    expect(movimientosPorCuenta([p], dos)).toHaveLength(2);
+    expect(movimientosConCuentaAjena([p], dos)).toEqual([]);
   });
 });

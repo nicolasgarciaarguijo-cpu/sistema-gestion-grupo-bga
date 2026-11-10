@@ -16,6 +16,79 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-10",
+    fecha: "10/11/2026",
+    titulo: "Toda plata dice de qué empresa es y de qué cuenta sale o a cuál entra",
+    items: [
+      {
+        titulo: "La plata es de una sola empresa",
+        que: "Al cargar algo que mueve plata (pago, cobro, trabajo, caja chica, deuda, aporte, efectivo, VEP, seguro, inversión, tarjeta, factura de compra) la pregunta de la empresa ofrece solo BGA o De Raíz. \"Ambas (compartido)\" queda para lo que no es plata: clientes, stock, proveedores y marcadores.",
+        como: "Al tocar Agregar, elegí la empresa que paga o cobra.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "La cuenta es obligatoria en el Calendario",
+        que: "Ya no hay cuenta por defecto: si no elegís de qué cuenta sale o a cuál entra, no se puede guardar.",
+        como: "Calendario anual → cargar en un día → elegí la cuenta (queda en rojo hasta que la elegís).",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Cuenta en el VEP de IVA",
+        que: "Cada VEP dice de qué cuenta salió.",
+        como: "Balance → VEP de pago de IVA → De qué cuenta sale.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Cuenta en efectivo, aportes y reintegros",
+        que: "El efectivo, los aportes y préstamos y los reintegros (haber) de la cuenta con la gente piden la cuenta. Si falta, la fila muestra \"⚠ Falta la cuenta\".",
+        como: "Movimientos internos → tocá \"⚠ Falta la cuenta\" (o 📋) y elegila en la ficha.",
+        tab: "movimientosInternos",
+      },
+      {
+        titulo: "Cuenta en los cobros y pagos de Facturación",
+        que: "Un renglón de cobranza o pago dice a qué cuenta entra o de cuál sale. El \"+\" del día ahora pregunta la empresa.",
+        como: "Facturación → abrí el renglón → A qué cuenta entra / De qué cuenta sale.",
+        tab: "facturacion",
+      },
+      {
+        titulo: "Comisiones con su cuenta",
+        que: "Cada pago de comisión de un trabajo dice de qué cuenta salió.",
+        como: "Trabajos aprobados → el trabajo → Comisión → De qué cuenta salió.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Cambiar la empresa obliga a elegir la cuenta de nuevo",
+        que: "En facturas de compra, Calendario, inversiones, retiros, VEP y movimientos internos, si cambiás la empresa se borra la cuenta (era de la otra empresa) y hay que volver a elegirla.",
+        como: "Después de cambiar la empresa, elegí una cuenta de esa empresa.",
+        tab: "compras",
+      },
+      {
+        titulo: "Control: cuenta de la otra empresa",
+        que: "Si un movimiento de una empresa usa una cuenta de la otra, no suma en ninguna cuenta y aparece en rojo arriba del panel Cuentas hasta corregirlo. El destino de un pase sí puede ser de la otra empresa.",
+        como: "Bancos y tarjetas → Cuentas → lista roja → abrí el movimiento en su solapa y elegí una cuenta de su empresa.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Caja chica: la deuda se separa por empresa",
+        que: "Lo que se le debe a una persona por caja chica es de la empresa para la que se compró. Lo que sobra en una caja de una empresa ya no tapa la deuda de la otra, y cada empresa devuelve lo suyo de una cuenta suya. Una caja nueva queda imputada a la empresa elegida.",
+        como: "Caja chica → click derecho sobre el responsable → ficha → Deuda por caja chica → \"Pagar lo de BGA / De Raíz\".",
+        tab: "cajaChica",
+      },
+      {
+        titulo: "Factura de compra nueva pregunta la empresa",
+        que: "Al cargar una factura nueva se pregunta de qué empresa es. Si el proveedor es de una sola empresa, toma esa.",
+        como: "Compras → Agregar factura de compra.",
+        tab: "compras",
+      },
+      {
+        titulo: "Resúmenes y consumos de tarjeta en la empresa de la tarjeta",
+        que: "Un resumen o consumo nuevo toma la empresa de su tarjeta, también si después cambiás la tarjeta.",
+        como: "No hay que hacer nada.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-11-05c",
     fecha: "05/11/2026",
     titulo: "Recibo negro: se calcula por horas",

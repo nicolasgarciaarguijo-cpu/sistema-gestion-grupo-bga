@@ -105,6 +105,25 @@ export function cuentaPorDefecto(
   return banco ? banco.id : idCuentaEfectivo(m.company, m.color, m.moneda);
 }
 
+/**
+ * CONTROL (Nicolas, 2026-11-10): la cuenta elegida tiene que ser de la empresa del movimiento. Una cuenta de la
+ * otra empresa haria salir (o entrar) plata ajena. Solo se mira la punta propia: el destino de un pase puede ser
+ * de la otra empresa (los pases entre empresas existen y quedan como deuda entre ellas).
+ */
+export function cuentaDeOtraEmpresa(p: Pick<PlataMovida, "company" | "cuentaId">, cuentas: Cuenta[]): Cuenta | undefined {
+  if (!p.cuentaId) return undefined;
+  const c = cuentas.find((x) => x.id === p.cuentaId);
+  return c && String(c.company) !== String(p.company) ? c : undefined;
+}
+
+/** Los movimientos con una cuenta de la otra empresa: NO suman en ninguna cuenta hasta corregirlos. */
+export function movimientosConCuentaAjena(plata: PlataMovida[], cuentas: Cuenta[]): Array<PlataMovida & { cuenta: Cuenta }> {
+  return plata.flatMap((p) => {
+    const c = cuentaDeOtraEmpresa(p, cuentas);
+    return c && Math.abs(Number(p.amount || 0)) > 0 && p.date ? [{ ...p, cuenta: c }] : [];
+  });
+}
+
 /** Convierte la plata movida en movimientos por cuenta (un pase genera dos: sale de una, entra a otra). */
 export function movimientosPorCuenta(plata: PlataMovida[], cuentas: Cuenta[]): MovimientoCuenta[] {
   const existe = new Set(cuentas.map((c) => c.id));
@@ -113,6 +132,8 @@ export function movimientosPorCuenta(plata: PlataMovida[], cuentas: Cuenta[]): M
   plata.forEach((p) => {
     const monto = Math.abs(Number(p.amount || 0));
     if (!(monto > 0) || !p.date) return;
+    // Cuenta de la otra empresa: no se asienta en ningún lado (se avisa con movimientosConCuentaAjena).
+    if (cuentaDeOtraEmpresa(p, cuentas)) return;
     const base = { date: p.date, refId: p.refId, origen: p.origen, detalle: p.detalle, ...(p.forzarSaldo ? { forzarSaldo: true } : {}) };
     const punta =
       elegida(p.cuentaId) || cuentaPorDefecto(cuentas, { ...p, tipo: p.sentido === "entra" ? p.hacia : p.desde });

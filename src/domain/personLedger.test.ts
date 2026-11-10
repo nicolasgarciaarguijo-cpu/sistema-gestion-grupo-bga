@@ -158,3 +158,23 @@ describe("una caja nueva puede no cancelar la deuda (2026-10-21)", () => {
     expect(no.byFund.get(2)).toEqual({ ajuste: 0, adjustedRemaining: 1000 });
   });
 });
+
+describe("caja chica: las empresas no se mezclan (2026-11-10)", () => {
+  it("lo que sobra de una caja de una empresa no tapa la deuda de la otra", () => {
+    const r = carryPettyCashDebt([
+      { id: 1, company: "BGA", responsible: "Marta", assignedAmount: 100000, renderedAmount: 150000 },
+      { id: 2, company: "DR", responsible: "Marta", assignedAmount: 200000, renderedAmount: 120000 },
+    ]);
+    expect(r.byFund.get(2)).toEqual({ ajuste: 0, adjustedRemaining: 80000 });
+    expect(r.total).toBeCloseTo(50000, 2);
+    expect(r.byResponsible.get(normalizePersonName("Marta"))?.debt).toBeCloseTo(50000, 2);
+  });
+
+  it("dentro de la misma empresa sigue arrastrando", () => {
+    const r = carryPettyCashDebt([
+      { id: 1, company: "DR", responsible: "Marta", assignedAmount: 100000, renderedAmount: 150000 },
+      { id: 2, company: "DR", responsible: "Marta", assignedAmount: 200000, renderedAmount: 120000 },
+    ]);
+    expect(r.byFund.get(2)).toEqual({ ajuste: 50000, adjustedRemaining: 30000 });
+  });
+});

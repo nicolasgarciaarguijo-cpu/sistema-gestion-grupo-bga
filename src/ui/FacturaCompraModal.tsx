@@ -242,7 +242,27 @@ export function FacturaCompraModal({
           <div style={titulo}>1 · Proveedor</div>
           <div style={grid}>
             <label style={lbl}>Empresa
-              <select style={input} value={f.company} onChange={(e) => set({ company: e.target.value })}>
+              <select
+                style={input}
+                value={f.company}
+                // Los pagos que paga la empresa de la factura cambian de empresa con ella: su cuenta era de la otra y se
+                // vuelve a elegir (si no, la plata salía de una cuenta de la otra empresa).
+                onChange={(e) => {
+                  const nueva = e.target.value;
+                  setF((x) => ({
+                    ...x,
+                    company: nueva,
+                    ...(x.saldo ? { saldo: { ...x.saldo, cuentaId: undefined } } : {}),
+                    pagos: x.pagos.map((p) =>
+                      !p.empresa
+                        ? { ...p, cuentaId: undefined }
+                        : p.empresa === nueva
+                          ? { ...p, empresa: undefined }
+                          : p
+                    ),
+                  }));
+                }}
+              >
                 {companyOptions.filter((c) => c.value !== "General").map((c) => (
                   <option key={c.value} value={c.value}>{c.label || c.value}</option>
                 ))}

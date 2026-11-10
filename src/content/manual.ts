@@ -463,6 +463,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         ],
       },
       {
+        heading: "Deuda por caja chica: por empresa",
+        blocks: [
+          { type: "p", text: "Cuando una persona gasta más de lo que se le dio, la empresa le queda debiendo. Esa deuda es de la empresa PARA LA QUE se compró, y las empresas no se mezclan: lo que sobra en una caja de De Raíz no tapa lo que le debe BGA, y al revés." },
+          { type: "steps", items: ["Abrí la ficha de la persona (click derecho sobre el responsable).", "En 'Deuda por caja chica' aparece una línea por empresa con lo que debe cada una.", "Tocá 'Pagar lo de BGA' o 'Pagar lo de De Raíz', elegí la fecha, el monto y una cuenta de esa empresa, y guardá."] },
+          { type: "warn", text: "No se puede devolver más de lo que debe esa empresa: lo de la otra se paga aparte." }
+        ],
+      },
+      {
         heading: "La ficha del responsable",
         blocks: [
           { type: "p", text: "Click derecho sobre el nombre del responsable abre su ficha: el historial de sus cajas (click derecho para editar, cerrar, reabrir o quitar una), sus rendiciones, en qué se gastó por grupo de costo, sus viáticos anteriores y las facturas que pagó de su bolsillo." },
@@ -1109,6 +1117,13 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
     intro:
       "La planilla de cash flow del sistema: cada renglón está vinculado con su solapa, y lo que se carga en un lado aparece en el otro.",
     sections: [
+      {
+        heading: "Empresa y cuenta de cada movimiento",
+        blocks: [
+          { type: "p", text: "Regla del sistema: toda plata es de UNA empresa (BGA o De Raíz, nunca 'Ambas') y dice de qué cuenta sale o a cuál entra. No hay cuenta por defecto: hasta que la elegís queda en rojo y en el Calendario no se puede guardar." },
+          { type: "bullets", items: ["La cuenta tiene que ser de la empresa del movimiento. Si es de la otra, el movimiento no suma en ninguna cuenta y aparece en rojo en Bancos y tarjetas → Cuentas hasta corregirlo.", "Cambiar la empresa de un movimiento borra la cuenta: elegí una de la empresa nueva.", "Un pase entre empresas es la única excepción: sale de una cuenta de una empresa y entra a una de la otra (queda como deuda entre ellas)."] },
+        ],
+      },
       {
         heading: "Responsable / firmante de cada movimiento",
         blocks: [

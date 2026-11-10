@@ -1902,8 +1902,13 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
     setCellMenu(null);
   };
 
+  // TODA plata dice de qué cuenta sale o a cuál entra (Nicolas, 2026-11-10: "obligatoria, nada por defecto"). Los
+  // renglones del banco ya traen su cuenta.
+  const faltaCuenta = (f: typeof addForm) =>
+    !!f && cuentas.length > 0 && !(f.editId || "").startsWith("bank-") && !f.cuentaId;
   const confirmAdd = () => {
     if (!addForm || !(Number(addForm.amount) > 0) || !addForm.company) return;
+    if (faltaCuenta(addForm)) return;
     const section = sectionByKey.get(addForm.sectionKey);
     if (!section) return;
     const isCob = section.dynamic === "cobranzas";
@@ -4425,7 +4430,18 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                 </label>
                 <label style={lblStyle}>
                   Empresa
-                  <select style={styles.input} value={addForm.company} onChange={(e) => setAddForm({ ...addForm, company: e.target.value })}>
+                  <select
+                    style={styles.input}
+                    value={addForm.company}
+                    // La cuenta elegida era de la otra empresa: al cambiar de empresa se vuelve a elegir.
+                    onChange={(e) =>
+                      setAddForm(
+                        e.target.value === addForm.company
+                          ? addForm
+                          : { ...addForm, company: e.target.value, cuentaId: "", cuentaOtraId: "" }
+                      )
+                    }
+                  >
                     {companyOptions.map((c) => <option key={c.value} value={c.value}>{c.short || c.value}</option>)}
                   </select>
                 </label>
@@ -4511,7 +4527,14 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                             value={addForm.customLabel ? `${addForm.company}|${addForm.customLabel}` : ""}
                             onChange={(e) => {
                               const [company, ...resto] = e.target.value.split("|");
-                              setAddForm({ ...addForm, itemKey: "__custom__", customLabel: resto.join("|"), company: company || addForm.company });
+                              const nueva = company || addForm.company;
+                              setAddForm({
+                                ...addForm,
+                                itemKey: "__custom__",
+                                customLabel: resto.join("|"),
+                                company: nueva,
+                                ...(nueva !== addForm.company ? { cuentaId: "", cuentaOtraId: "" } : {}),
+                              });
                             }}
                           >
                             <option value="">— Elegí el empleado —</option>
@@ -4767,7 +4790,12 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
               </div>
               <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 14 }}>
                 <button style={btnSecondary} onClick={() => setAddForm(null)}>Cancelar</button>
-                <button style={btnPrimary} onClick={confirmAdd} disabled={!(Number(addForm.amount) > 0) || !addForm.company || (isCob ? false : !addForm.itemKey) || (addForm.itemKey === "__custom__" && !addForm.customLabel.trim())}>
+                {faltaCuenta(addForm) && (
+                  <div style={{ fontSize: 12.5, color: "#b91c1c" }}>
+                    Falta elegir {section?.dir === "in" ? "a qué cuenta entra" : "de qué cuenta sale"} la plata.
+                  </div>
+                )}
+                <button style={btnPrimary} onClick={confirmAdd} disabled={faltaCuenta(addForm) || !(Number(addForm.amount) > 0) || !addForm.company || (isCob ? false : !addForm.itemKey) || (addForm.itemKey === "__custom__" && !addForm.customLabel.trim())}>
                   Guardar en el sistema
                 </button>
               </div>

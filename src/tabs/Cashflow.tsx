@@ -20,6 +20,8 @@ import { ETIQUETA_MOV_FISCO, type ConteoBlanqueo, type TipoMovFisco } from "../d
 import type { IvaAnual } from "../domain/vatBalance";
 
 import NumInput from "../ui/NumInput";
+import { SelectorCuenta } from "./CuentasPanel";
+import type { Cuenta } from "../domain/cuentas";
 // Monto compacto para las columnas angostas del calendario (ej. "$1,5M", "$450k"). El monto completo
 // queda en el title (hover). Evita que un numero largo rompa una columna de ~80px.
 const compactAr = (n: number): string => {
@@ -202,6 +204,8 @@ type CashflowTabProps = {
   onAddRegularizacion?: (company: string, datos: { date: string; amount: number; motivo: string }) => void;
   onRemoveRegularizacion?: (id: number) => void;
   addIvaVepPayment: () => void;
+  // Cuentas del sistema: el VEP dice de qué cuenta sale (sin cuenta por defecto).
+  cuentas?: Cuenta[];
   updateIvaVepPayment: (entryId: number, field: string, value: string | number) => void;
   removeIvaVepPayment: (entryId: number) => void;
   annualCashFlowByMonth: any[];
@@ -242,6 +246,7 @@ export function CashflowTab({
   onAddRegularizacion,
   onRemoveRegularizacion,
   addIvaVepPayment,
+  cuentas = [],
   updateIvaVepPayment,
   removeIvaVepPayment,
   annualCashFlowByMonth,
@@ -988,6 +993,14 @@ export function CashflowTab({
                         onChange={(n) => updateIvaVepPayment(v.id, "amount", n)}
                       />
                     </Field>
+                    <SelectorCuenta
+                      cuentas={cuentas}
+                      company={v.company}
+                      moneda="ARS"
+                      label="De qué cuenta sale"
+                      value={v.cuentaId}
+                      onChange={(id) => updateIvaVepPayment(v.id, "cuentaId", id)}
+                    />
                     <Field label="Responsable / firmante">
                       <FirmanteCelda value={v.firmante} firmadoEn={v.firmadoEn} />
                     </Field>

@@ -2238,6 +2238,16 @@ export function AprobadosTab({
                             <option value="negro">Negro</option>
                           </select>
                         </Field>
+                        {(cuentas || []).length > 0 && (
+                          <SelectorCuenta
+                            cuentas={cuentas || []}
+                            company={selectedApprovedJob.company}
+                            moneda="ARS"
+                            label="De qué cuenta salió"
+                            value={payment.cuentaId}
+                            onChange={(id) => updateCommissionPayment(selectedApprovedJob.id, payment.id, "cuentaId", id)}
+                          />
+                        )}
                         <Field label="Nota">
                           <input
                             style={styles.input}

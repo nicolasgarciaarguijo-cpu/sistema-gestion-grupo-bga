@@ -18,7 +18,10 @@ export function CuentasPanel({
   companyOptions,
   onSave,
   onBorrar,
+  cuentaAjena = [],
 }: {
+  // CONTROL: plata cargada con una cuenta de la otra empresa. No suma en ninguna cuenta hasta corregirla.
+  cuentaAjena?: Array<{ refId: string; origen: string; detalle: string; company: string; date: string; amount: number; cuenta: string; cuentaCompany: string }>;
   saldos: SaldoCuenta[];
   control: Control[];
   companyOptions: Array<{ value: string; short?: string; primary?: string }>;
@@ -65,6 +68,34 @@ export function CuentasPanel({
         su saldo no coincide con el del sistema se marca la diferencia. Click derecho sobre una cuenta para corregir la
         apertura, marcarla principal o desactivarla.
       </div>
+      {cuentaAjena.length > 0 && (
+        <div style={{ border: "1px solid #fecaca", background: "#fef2f2", borderRadius: 8, padding: "8px 10px", marginBottom: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#b91c1c" }}>
+            ⚠ {cuentaAjena.length === 1 ? "1 movimiento usa" : `${cuentaAjena.length} movimientos usan`} una cuenta de la otra empresa
+          </div>
+          <div style={{ fontSize: 12, color: "#7f1d1d", margin: "2px 0 6px" }}>
+            No suman en ninguna cuenta hasta corregirlos: abrí cada uno en su solapa y elegí una cuenta de su empresa (o
+            cambiá la empresa si el que pagó o cobró fue la otra).
+          </div>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {cuentaAjena
+                .slice()
+                .sort((a, b) => b.date.localeCompare(a.date))
+                .map((m) => (
+                  <tr key={m.refId}>
+                    <td style={{ ...td, whiteSpace: "nowrap" }}>{fmt(m.date)}</td>
+                    <td style={td}>{m.origen}{m.detalle ? ` · ${m.detalle}` : ""}</td>
+                    <td style={td}>
+                      de <strong>{short(m.company)}</strong> con la cuenta <strong>{m.cuenta}</strong> de {short(m.cuentaCompany)}
+                    </td>
+                    <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>{money(m.amount)}</td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div style={{ overflowX: "auto" }}>
         <table className="planilla" style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>

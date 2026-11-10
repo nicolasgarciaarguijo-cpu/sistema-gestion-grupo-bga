@@ -102,6 +102,7 @@ import {
   armarCuentas,
   controlContraExtracto,
   movimientosPorCuenta,
+  movimientosConCuentaAjena,
   saldosDeCuentas,
   saldosDiarios,
   type Cuenta,
@@ -4344,17 +4345,20 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // AL CARGAR ALGO SE PREGUNTA DE QUE EMPRESA ES (Nicolas, 2026-10-26: "siempre me debe preguntar si es de BGA, de De Raiz
   // o ambas"). "Ambas" = compartido (company General: lo ven las dos). Quien trabaja con una sola empresa no ve la
   // pregunta: va a la suya.
-  const [pedidoEmpresa, setPedidoEmpresa] = useState<null | { titulo: string; resolver: (empresa: string | null) => void }>(null);
-  const elegirEmpresa = (titulo: string): Promise<string | null> => {
+  const [pedidoEmpresa, setPedidoEmpresa] = useState<null | { titulo: string; sinAmbas?: boolean; resolver: (empresa: string | null) => void }>(null);
+  const elegirEmpresa = (titulo: string, sinAmbas = false): Promise<string | null> => {
     const opciones = COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName));
     if (opciones.length === 1) return Promise.resolve(opciones[0].value as string);
-    return new Promise((resolver) => setPedidoEmpresa({ titulo, resolver }));
+    return new Promise((resolver) => setPedidoEmpresa({ titulo, sinAmbas, resolver }));
   };
-  const conEmpresa = (titulo: string, hacer: (empresa: CompanyName) => void) => {
-    void elegirEmpresa(titulo).then((empresa) => {
+  const conEmpresa = (titulo: string, hacer: (empresa: CompanyName) => void, sinAmbas = false) => {
+    void elegirEmpresa(titulo, sinAmbas).then((empresa) => {
       if (empresa) hacer(empresa as CompanyName);
     });
   };
+  // Lo que MUEVE PLATA es de UNA empresa: no se ofrece "Ambas" (Nicolas, 2026-11-10: "sí, sacalo"). "Ambas" queda
+  // para lo que no es plata (clientes, stock, proveedores, marcadores...).
+  const conEmpresaDePlata = (titulo: string, hacer: (empresa: CompanyName) => void) => conEmpresa(titulo, hacer, true);
   const empresasDeLaVista = COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName));
   useEffect(() => {
     if (!isSupabaseLoggedIn) return;
@@ -8681,7 +8685,8 @@ Escribi CERRAR para confirmar:`
     () =>
       pettyCashFundSummaries.map((entry) => ({
         id: entry.fund.id,
-        company: String(entry.fund.company),
+        // La deuda es de la empresa PARA LA QUE se compró (la imputada), no se mezcla con la otra.
+        company: String((entry.fund as any).empresaImputada || entry.fund.company),
         responsible: entry.fund.responsible || "",
         deliveredDate: entry.fund.deliveredDate || "",
         assignedAmount: Number(entry.fund.assignedAmount || 0),
@@ -11534,7 +11539,7 @@ Escribi CERRAR para confirmar:`
     });
   };
 
-  const createDirectApprovedJob = () => conEmpresa("el trabajo", (empresaElegida) => {
+  const createDirectApprovedJob = () => conEmpresaDePlata("el trabajo", (empresaElegida) => {
     if (!canWriteCompany(empresaElegida)) {
       window.alert(
         `No puedo guardar trabajos de ${getCompanyMeta(empresaElegida).short} en esta sesión.\n\n` +
@@ -13626,7 +13631,7 @@ Escribi CERRAR para confirmar:`
   };
 
   const addFinancialItem = (date?: string, company?: CompanyName) => {
-    if (!company) return conEmpresa("el movimiento", (empresaElegida) => cargarFinancialItem(date, empresaElegida));
+    if (!company) return conEmpresaDePlata("el movimiento", (empresaElegida) => cargarFinancialItem(date, empresaElegida));
     cargarFinancialItem(date, company);
   };
   const cargarFinancialItem = (date: string | undefined, company: CompanyName) => {
@@ -13705,7 +13710,7 @@ Escribi CERRAR para confirmar:`
     ]);
   });
 
-  const addPurchaseInvoice = () => conEmpresa("la factura de compra", (empresaElegida) => {
+  const addPurchaseInvoice = () => conEmpresaDePlata("la factura de compra", (empresaElegida) => {
     setPurchaseInvoices((prev) => [
       {
         id: newId(),
@@ -13779,7 +13784,7 @@ Escribi CERRAR para confirmar:`
     setIssuedInvoices((prev) => prev.map((inv) => (inv.id === id ? { ...inv, [field]: value } : inv)));
   };
 
-  const addPettyCashFund = () => conEmpresa("la caja chica", (empresaElegida) => {
+  const addPettyCashFund = () => conEmpresaDePlata("la caja chica", (empresaElegida) => {
     setPettyCashFunds((prev) => [
       {
         id: newId(),
@@ -13952,7 +13957,7 @@ Escribi CERRAR para confirmar:`
     setStorageMessage("Caja chica reabierta para continuar operando.");
   };
 
-  const addDebtPlan = () => conEmpresa("la deuda", (empresaElegida) => {
+  const addDebtPlan = () => conEmpresaDePlata("la deuda", (empresaElegida) => {
     const id = newId();
     setDebtPlans((prev) => [
       ...prev,
@@ -14078,7 +14083,7 @@ Escribi CERRAR para confirmar:`
     actualizarDeuda(deudaId, { cuotas: cuotasDeDeuda(d).map((c) => (c.id === cuotaId ? { ...c, pagoCostEntryId: null } : c)) });
   };
 
-  const addCapitalEntry = () => conEmpresa("el aporte o retiro", (empresaElegida) => {
+  const addCapitalEntry = () => conEmpresaDePlata("el aporte o retiro", (empresaElegida) => {
     setCapitalEntries((prev) => [
       {
         id: newId(),
@@ -14128,7 +14133,7 @@ Escribi CERRAR para confirmar:`
     irADeuda(id);
   };
 
-  const addCashHolding = () => conEmpresa("el efectivo", (empresaElegida) => {
+  const addCashHolding = () => conEmpresaDePlata("el efectivo", (empresaElegida) => {
     setCashHoldings((prev) => [
       {
         id: newId(),
@@ -14189,7 +14194,7 @@ Escribi CERRAR para confirmar:`
 
   // Cuenta corriente con la gente. El DEBE es "puso plata"; el HABER, "se le devolvio". Arranca en
   // DEBE porque es el caso normal: el movimiento nace cuando alguien pone la plata.
-  const addPersonLedgerEntry = (kind: "debe" | "haber" = "debe") => conEmpresa("el renglón de la cuenta con la gente", (empresaElegida) => {
+  const addPersonLedgerEntry = (kind: "debe" | "haber" = "debe") => conEmpresaDePlata("el renglón de la cuenta con la gente", (empresaElegida) => {
     setPersonLedgerEntries((prev) => [
       {
         id: newId(),
@@ -14212,7 +14217,7 @@ Escribi CERRAR para confirmar:`
     setPersonLedgerEntries((prev) => prev.filter((item) => item.id !== entryId));
   };
 
-  const addIvaVepPayment = () => conEmpresa("el VEP de IVA", (empresaElegida) => {
+  const addIvaVepPayment = () => conEmpresaDePlata("el VEP de IVA", (empresaElegida) => {
     setIvaVepPayments((prev) => [
       {
         id: newId(),
@@ -14233,7 +14238,11 @@ Escribi CERRAR para confirmar:`
     value: string | number
   ) => {
     setIvaVepPayments((prev) =>
-      prev.map((item) => (item.id === entryId ? { ...item, [field]: value, ...firma() } : item))
+      prev.map((item) =>
+        item.id === entryId
+          ? { ...item, [field]: value, ...(field === "company" && value !== item.company ? { cuentaId: undefined } : {}), ...firma() }
+          : item
+      )
     );
   };
 
@@ -14241,7 +14250,7 @@ Escribi CERRAR para confirmar:`
     setIvaVepPayments((prev) => prev.filter((item) => item.id !== entryId));
   };
 
-  const addBankStatementEntry = () => conEmpresa("el movimiento del banco", (empresaElegida) => {
+  const addBankStatementEntry = () => conEmpresaDePlata("el movimiento del banco", (empresaElegida) => {
     setBankStatementEntries((prev) => [
       {
         id: newId(),
@@ -14476,7 +14485,9 @@ Escribi CERRAR para confirmar:`
     if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
     setFinancialItems((prev) =>
       prev.map((item) =>
-        item.id === itemId ? { ...item, [field]: value, userEdited: true } : item
+        item.id === itemId
+          ? { ...item, [field]: value, ...(field === "company" && value !== item.company ? { cuentaId: undefined } : {}), userEdited: true }
+          : item
       )
     );
   };
@@ -17921,6 +17932,11 @@ Escribi CERRAR para confirmar:`
     () => movimientosPorCuenta(plataMovidaSistema, cuentasSistema),
     [plataMovidaSistema, cuentasSistema]
   );
+  // Control: plata cargada con una cuenta de la OTRA empresa (no suma en ninguna cuenta hasta corregirla).
+  const plataConCuentaAjena = useMemo(
+    () => movimientosConCuentaAjena(plataMovidaSistema, cuentasSistema),
+    [plataMovidaSistema, cuentasSistema]
+  );
   // Caja chica: lo que sobro de un fondo y volvio a OTRA cuenta que la de origen. Es un pase entre
   // cuentas: se muestra en Movimientos internos (Nicolas, 2026-10-07: "no deberia pasar, pero podria").
   const devolucionesCruzadas = useMemo(() => {
@@ -19134,6 +19150,17 @@ Escribi CERRAR para confirmar:`
     return r.accounts;
   }, [personLedgerFunds, visiblePersonLedgerEntries]);
   const deudaCajaDe = (persona: string) => Math.max(0, deudaCajaChica.find((a) => mismaPersona(a.person, persona))?.saldo || 0);
+  // La misma deuda, POR EMPRESA (Nicolas, 2026-11-10: "dependerá de dónde realizó la compra y para qué empresa; no
+  // mezclar"): cada empresa le devuelve lo suyo, de una cuenta suya.
+  const deudaCajaPorEmpresa = (persona: string): Array<{ company: string; deuda: number }> => {
+    const porEmpresa = new Map<string, number>();
+    (deudaCajaChica.find((a) => mismaPersona(a.person, persona))?.movements || []).forEach((m) =>
+      porEmpresa.set(m.company, (porEmpresa.get(m.company) || 0) + (m.kind === "haber" ? -1 : 1) * Number(m.amount || 0))
+    );
+    return Array.from(porEmpresa.entries())
+      .map(([company, deuda]) => ({ company, deuda: Math.round(deuda * 100) / 100 }))
+      .filter((x) => x.deuda > 0.5);
+  };
   // PAGO DE LA DEUDA de caja chica desde la ficha de la caja: es un reintegro a la persona, sale de la cuenta
   // elegida y entra a su caja; queda en Movimientos internos (cuenta corriente con la gente).
   const pagarDeudaCaja = (persona: string, p: { company: string; fecha: string; monto: number; cuentaId: string }) => {
@@ -19593,7 +19620,7 @@ Escribi CERRAR para confirmar:`
     );
   };
 
-  const addCostEntry = () => conEmpresa("el pago", (empresaElegida) => {
+  const addCostEntry = () => conEmpresaDePlata("el pago", (empresaElegida) => {
     const firstManualGroup =
       costGroups.find((group) => group.active && !group.auto)?.name || "";
     setCostEntries((prev) => [
@@ -19719,7 +19746,7 @@ Escribi CERRAR para confirmar:`
   };
 
   // --- Seguros: handlers ---
-  const addSeguro = () => conEmpresa("el seguro", (empresaElegida) => {
+  const addSeguro = () => conEmpresaDePlata("el seguro", (empresaElegida) => {
     setSeguros((prev) => [
       ...prev,
       {
@@ -19782,7 +19809,7 @@ Escribi CERRAR para confirmar:`
   };
 
   // --- Inversiones: handlers ---
-  const addInversion = () => conEmpresa("la inversión", (empresaElegida) => {
+  const addInversion = () => conEmpresaDePlata("la inversión", (empresaElegida) => {
     setInversiones((prev) => [
       ...prev,
       {
@@ -19807,7 +19834,14 @@ Escribi CERRAR para confirmar:`
   };
 
   const updateInversion = (id: number, field: keyof Inversion, value: any) => {
-    setInversiones((prev) => prev.map((i) => (i.id === id ? { ...i, [field]: value, ...firma() } : i)));
+    // Cambiar la empresa suelta la cuenta: era de la otra empresa y se vuelve a elegir.
+    setInversiones((prev) =>
+      prev.map((i) =>
+        i.id === id
+          ? { ...i, [field]: value, ...(field === "company" && value !== i.company ? { cuentaId: undefined } : {}), ...firma() }
+          : i
+      )
+    );
   };
 
   // Panel de reglas de clasificación: editar/activar/borrar. "Resolver ambigüedad" = fijar el grupo y
@@ -19833,7 +19867,7 @@ Escribi CERRAR para confirmar:`
       : tarjetasCompanyScope) as CompanyName;
 
   const addCreditCard = () =>
-    conEmpresa("la tarjeta", (empresaElegida) => (setCreditCards((prev) => [
+    conEmpresaDePlata("la tarjeta", (empresaElegida) => (setCreditCards((prev) => [
       ...prev,
       {
         id: newId(),
@@ -19850,13 +19884,20 @@ Escribi CERRAR para confirmar:`
   const updateCreditCard = (id: number, field: keyof CreditCard, value: any) =>
     setCreditCards((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
 
+  // El resumen y el consumo son DE LA TARJETA: su empresa es la de la tarjeta (antes, viendo "todas", quedaban en la
+  // primera empresa aunque la tarjeta fuera de la otra, y cambiar la tarjeta no corregía la empresa).
+  const tarjetaParaAlta = () =>
+    visibleCreditCards.find((c) => tarjetasCompanyScope === "__ALL__" || c.company === tarjetasCompanyScope) ||
+    visibleCreditCards[0];
+  const empresaDeTarjeta = (cardId: number): CompanyName | undefined =>
+    creditCards.find((c) => c.id === cardId)?.company as CompanyName | undefined;
   const addCreditCardStatement = () =>
     setCreditCardStatements((prev) => [
       ...prev,
       {
         id: newId(),
-        company: tarjetasNewCompany(),
-        cardId: visibleCreditCards[0]?.id ?? 0,
+        company: (tarjetaParaAlta()?.company as CompanyName) || tarjetasNewCompany(),
+        cardId: tarjetaParaAlta()?.id ?? 0,
         closingDate: todayIso(),
         dueDate: "",
         totalArs: 0,
@@ -19869,15 +19910,23 @@ Escribi CERRAR para confirmar:`
   const removeCreditCardStatement = (id: number) =>
     setCreditCardStatements((prev) => prev.filter((s) => s.id !== id));
   const updateCreditCardStatement = (id: number, field: keyof CreditCardStatement, value: any) =>
-    setCreditCardStatements((prev) => prev.map((s) => (s.id === id ? { ...s, [field]: value } : s)));
+    setCreditCardStatements((prev) =>
+      prev.map((s) =>
+        s.id !== id
+          ? s
+          : field === "cardId"
+            ? { ...s, cardId: value, company: empresaDeTarjeta(Number(value)) || s.company }
+            : { ...s, [field]: value }
+      )
+    );
 
   const addCreditCardConsumption = () =>
     setCreditCardConsumptions((prev) => [
       ...prev,
       {
         id: newId(),
-        company: tarjetasNewCompany(),
-        cardId: visibleCreditCards[0]?.id ?? 0,
+        company: (tarjetaParaAlta()?.company as CompanyName) || tarjetasNewCompany(),
+        cardId: tarjetaParaAlta()?.id ?? 0,
         date: todayIso(),
         description: "",
         amount: 0,
@@ -19904,6 +19953,7 @@ Escribi CERRAR para confirmar:`
       prev.map((c) => {
         if (c.id !== id) return c;
         const next = { ...c, [field]: value };
+        if (field === "cardId") next.company = empresaDeTarjeta(Number(value)) || c.company;
         // Al escribir la descripción, si no tiene grupo, se sugiere desde las reglas aprendidas.
         if (field === "description" && !c.group) {
           const s = suggestGroupFromRules(
@@ -22035,9 +22085,9 @@ Escribi CERRAR para confirmar:`
   };
   // CAJAS: nueva (desde el listado o la ficha) y editar.
   const abrirNuevaCaja = (responsable?: string) =>
-    conEmpresa("la caja", (empresaElegida) => (setCajaForm({
+    conEmpresaDePlata("la caja", (empresaElegida) => (setCajaForm({
       company: empresaElegida,
-      empresaImputada: budget.company,
+      empresaImputada: empresaElegida,
       responsible: responsable || "",
       tipo: "General",
       description: "",
@@ -22147,7 +22197,7 @@ Escribi CERRAR para confirmar:`
         descargarXlsx(`Facturas de compra ${corto} ${desde} a ${hasta}`, libroXlsx("Facturas de compra", filas, ANCHOS_ESTUDIO));
         return n;
       }}
-      onNueva={() => setFacturaModal(facturaVacia())}
+      onNueva={() => conEmpresaDePlata("la factura de compra", (empresa) => setFacturaModal(facturaVacia("", "", empresa)))}
       onAbrir={(id) => {
         // La factura de un gasto de CAJA CHICA se edita desde el gasto (un solo lugar de carga).
         const inv = purchaseInvoices.find((i) => i.id === id);
@@ -22476,6 +22526,7 @@ Escribi CERRAR para confirmar:`
               titulo={pedidoEmpresa.titulo}
               opciones={COMPANY_OPTIONS.filter((c) => effectiveIsAdmin || allowedCompaniesForSession.includes(c.value as CompanyName)).map((c) => ({ value: String(c.value), label: c.short, color: c.primary }))}
               sugerida={workspaceCompanyScope}
+              sinAmbas={!!pedidoEmpresa.sinAmbas}
               onElegir={(empresa) => {
                 pedidoEmpresa.resolver(empresa);
                 setPedidoEmpresa(null);
@@ -23272,6 +23323,7 @@ Escribi CERRAR para confirmar:`
             onAdjuntar={uploadPettyCashFile}
             onViaticoRendido={(id, rendido) => setViaticos((prev) => prev.map((v) => (v.id === id ? { ...v, rendido } : v)))}
             deudaCaja={deudaCajaDe(fichaCaja)}
+            deudaPorEmpresa={deudaCajaPorEmpresa(fichaCaja)}
             cuentas={cuentasSistema as any}
             onPagarDeuda={(p) => pagarDeudaCaja(fondos[0]?.responsible || fichaCaja, p)}
           />
@@ -23453,7 +23505,10 @@ Escribi CERRAR para confirmar:`
               (f) => buscarProveedor(prov ? [prov] : [], f.supplier, f.taxId) || supplierKey(f.supplier, f.taxId) === supplierKey(fichaProveedor.nombre, fichaProveedor.taxId)
             )}
             onCargarFactura={() =>
-              setFacturaModal(facturaVacia(prov?.name || fichaProveedor.nombre, prov?.taxId || fichaProveedor.taxId, prov && prov.company !== "General" ? String(prov.company) : ""))
+              // Proveedor de una sola empresa: la suya. Compartido: se pregunta.
+              prov && prov.company !== "General"
+                ? setFacturaModal(facturaVacia(prov.name, prov.taxId, String(prov.company)))
+                : conEmpresaDePlata("la factura de compra", (empresa) => setFacturaModal(facturaVacia(prov?.name || fichaProveedor.nombre, prov?.taxId || fichaProveedor.taxId, empresa)))
             }
             onAbrirFactura={(id) => {
               const f = facturaDeId(id);
@@ -23716,6 +23771,7 @@ Escribi CERRAR para confirmar:`
       )}
       {activeTab === "cashflow" && (
         <CashflowTab
+          cuentas={cuentasSistema as any}
           retirosSlot={(() => {
             // Mismo periodo que el estado de resultados (ejercicio, mes o todo).
             const b =
@@ -23761,7 +23817,13 @@ Escribi CERRAR para confirmar:`
                   ])
                 }
                 onUpdate={(id, field, value) =>
-                  setRetirosSocietarios((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value, ...firma() } : r)))
+                  setRetirosSocietarios((prev) =>
+                    prev.map((r) =>
+                      r.id === id
+                        ? { ...r, [field]: value, ...(field === "company" && value !== r.company ? { cuentaId: undefined } : {}), ...firma() }
+                        : r
+                    )
+                  )
                 }
                 onRemove={(id) => setRetirosSocietarios((prev) => prev.filter((r) => r.id !== id))}
               />
@@ -24183,6 +24245,7 @@ Escribi CERRAR para confirmar:`
       {activeTab === "bancos" && (
         <>
         <CuentasPanel
+          cuentaAjena={plataConCuentaAjena.map((p) => ({ refId: p.refId, origen: p.origen, detalle: p.detalle, company: p.company, date: p.date, amount: p.amount, cuenta: p.cuenta.nombre, cuentaCompany: p.cuenta.company }))}
           saldos={saldosCuentasHoy}
           control={controlExtractoCuentas}
           companyOptions={COMPANY_OPTIONS.filter((c) => c.value !== "General" && canAccessCompany(c.value as CompanyName))}
@@ -24597,6 +24660,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "facturacion" && (
         <FacturacionTab
+          cuentas={cuentasSistema as any}
           calendarioCobranzasSlot={renderCalendarioAnual("cobranzas")}
           issuedInvoices={visibleIssuedInvoices.filter((x) => !ocultoPorCierre(x.company, x.date))}
           updateIssuedInvoice={updateIssuedInvoice}

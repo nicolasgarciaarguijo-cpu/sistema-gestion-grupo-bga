@@ -8,6 +8,8 @@ import {
 import { money, pct, formatDateDisplay } from "../lib/format";
 import type { SemaphoreLevel } from "../ui/theme";
 import type { CompanyName, PrintMode } from "../domain/types";
+import { SelectorCuenta } from "./CuentasPanel";
+import type { Cuenta } from "../domain/cuentas";
 
 type FacturacionTabProps = {
   // El calendario anual filtrado a COBRANZAS, armado en App y pasado como slot para no repetir aca
@@ -42,6 +44,8 @@ type FacturacionTabProps = {
   getFinancialTypeLabel: (type: any) => string;
   shiftFinancialMonth: (delta: number) => void;
   addFinancialItem: (date?: string, company?: any) => void;
+  // Cobro o pago: dice a qué cuenta entra o de cuál sale (sin cuenta por defecto).
+  cuentas?: Cuenta[];
   setSelectedFinancialItemId: React.Dispatch<React.SetStateAction<number | null>>;
   updateFinancialItem: (itemId: number, field: string, value: string | number) => void;
   removeFinancialItem: (itemId: number) => void;
@@ -77,6 +81,7 @@ export function FacturacionTab({
   addFinancialItem,
   setSelectedFinancialItemId,
   updateFinancialItem,
+  cuentas = [],
   removeFinancialItem,
   exportPrint,
 }: FacturacionTabProps) {
@@ -162,7 +167,7 @@ export function FacturacionTab({
                   >
                     <div style={styles.calendarCellHeader}>
                       <strong>{cell.day}</strong>
-                      <button style={styles.smallBtn} onClick={() => addFinancialItem(cell.date, budget.company)}>
+                      <button style={styles.smallBtn} onClick={() => addFinancialItem(cell.date)}>
                         +
                       </button>
                     </div>
@@ -604,6 +609,16 @@ export function FacturacionTab({
                     />
                   </div>
                 </Field>
+                {(selectedFinancialItem.type === "cobranza" || selectedFinancialItem.type === "pago") && (
+                  <SelectorCuenta
+                    cuentas={cuentas}
+                    company={selectedFinancialItem.company}
+                    moneda="ARS"
+                    label={selectedFinancialItem.type === "cobranza" ? "A qué cuenta entra" : "De qué cuenta sale"}
+                    value={selectedFinancialItem.cuentaId}
+                    onChange={(id) => updateFinancialItem(selectedFinancialItem.id, "cuentaId", id)}
+                  />
+                )}
                 <Field label="Titulo">
                   <input
                     style={styles.input}

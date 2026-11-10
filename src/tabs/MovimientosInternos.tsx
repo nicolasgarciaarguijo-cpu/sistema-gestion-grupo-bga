@@ -242,6 +242,23 @@ export function MovimientosInternosTab({
   const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   const empresasReales = COMPANY_OPTIONS.filter((c: any) => c.value && c.value !== "General" && cuentas.some((x) => x.company === c.value));
   const [pase, setPase] = React.useState<null | { form: PaseForm; firmante?: string }>(null);
+  // Cambiar la empresa (o la moneda) suelta la cuenta: era de la otra empresa y se vuelve a elegir.
+  const cambiarSoltandoCuenta = (setter: any, id: number, k: string, v: any) => {
+    updateArrayItem(setter, id, k as any, v);
+    if (k === "company" || k === "currency") updateArrayItem(setter, id, "cuentaId" as any, undefined as any);
+  };
+  // Sin cuenta elegida: aviso en la fila que abre la ficha para elegirla.
+  const faltaCuenta = (item: any, abrir: () => void) =>
+    item.cuentaId ? null : (
+      <button
+        type="button"
+        onClick={abrir}
+        title="Toda plata dice de qué cuenta sale o a cuál entra: abrí la ficha y elegila"
+        style={{ border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", borderRadius: 6, padding: "1px 6px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", flex: "none" }}
+      >
+        ⚠ Falta la cuenta
+      </button>
+    );
   const nombreCuenta = (id?: string) => (id ? cuentas.find((c) => c.id === id)?.nombre || cuentaImplicita(id).nombre : "");
   const abrirPase = (item: InternalTransfer) =>
     setPase({
@@ -293,6 +310,19 @@ export function MovimientosInternosTab({
       )}
       {ficha && (() => {
         const comunes = (empresa: string): CampoFicha[] => [{ key: "company", label: empresa, tipo: "empresa" }];
+        // TODA plata dice de qué cuenta sale o a cuál entra (Nicolas, 2026-11-10): sin cuenta por defecto.
+        const campoCuenta = (v: any, label: string): CampoFicha => ({
+          key: "cuentaId",
+          label,
+          tipo: "select",
+          obligatorio: true,
+          vacio: "— Elegí la cuenta —",
+          opciones: cuentas
+            .filter((c) => c.company === v?.company && c.activa !== false && (!v?.currency || c.moneda === v.currency))
+            .map((c) => ({ value: c.id, label: `${c.tipo === "banco" ? "🏦 " : c.tipo === "persona" ? "👤 " : "💵 "}${c.nombre}` })),
+        });
+        // Cambiar la empresa suelta la cuenta (era de la otra empresa).
+        const conCuenta = (setter: any, id: number) => (k: string, v: any) => cambiarSoltandoCuenta(setter, id, k, v);
         const bn = [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }];
         const mon = [{ value: "ARS", label: "Pesos" }, { value: "USD", label: "Dólares" }];
         let titulo = "";
@@ -309,10 +339,11 @@ export function MovimientosInternosTab({
             { key: "amount", label: "Monto", tipo: "numero" },
             { key: "currency", label: "Moneda", tipo: "select", opciones: mon },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
+            campoCuenta(valores, valores?.kind === "egreso" ? "De qué cuenta sale" : "A qué cuenta entra"),
             { key: "description", label: "Descripción", tipo: "texto", ancho: "completo" },
             { key: "notes", label: "Notas", tipo: "area" },
           ];
-          set = (k, v) => updateArrayItem(setCashHoldings, ficha.id, k as any, v);
+          set = conCuenta(setCashHoldings, ficha.id);
         } else if (ficha.tipo === "capital") {
           valores = capitalEntriesAll.find((x) => x.id === ficha.id);
           titulo = valores ? `${valores.kind === "prestamo" ? "Préstamo" : "Aporte"} · ${valores.origin || ""}` : "Aporte / préstamo";
@@ -329,9 +360,10 @@ export function MovimientosInternosTab({
                 ]) as CampoFicha[]),
             { key: "amount", label: "Monto", tipo: "numero" },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
+            campoCuenta(valores, valores?.direction === "devuelto" ? "De qué cuenta sale" : "A qué cuenta entra"),
             { key: "notes", label: "Notas", tipo: "area" },
           ];
-          set = (k, v) => updateArrayItem(setCapitalEntries, ficha.id, k as any, v);
+          set = conCuenta(setCapitalEntries, ficha.id);
         } else if (ficha.tipo === "gente") {
           valores = personLedgerEntries.find((x) => x.id === ficha.id);
           titulo = valores ? `${valores.person || "Persona"} · ${valores.kind === "haber" ? "haber" : "debe"}` : "Cuenta con la gente";
@@ -342,10 +374,11 @@ export function MovimientosInternosTab({
             { key: "kind", label: "Debe / haber", tipo: "select", opciones: [{ value: "debe", label: "Debe" }, { value: "haber", label: "Haber" }] },
             { key: "amount", label: "Monto", tipo: "numero" },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
+            ...(valores?.kind === "haber" ? [campoCuenta(valores, "De qué cuenta sale")] : []),
             { key: "description", label: "Descripción", tipo: "texto", ancho: "completo" },
             { key: "notes", label: "Notas", tipo: "area" },
           ];
-          set = (k, v) => updateArrayItem(setPersonLedgerEntries, ficha.id, k as any, v);
+          set = conCuenta(setPersonLedgerEntries, ficha.id);
         }
         if (!valores) return null;
         return <FichaRegistro titulo={titulo} subtitulo={valores.firmante ? `Firmó ${valores.firmante}` : undefined} valores={valores} campos={campos} empresas={COMPANY_OPTIONS} onCambiar={set} onCerrar={() => setFicha(null)} />;
@@ -650,7 +683,7 @@ export function MovimientosInternosTab({
                       <select
                         style={{ ...inputCelda, width: "auto" }}
                         value={item.currency}
-                        onChange={(e) => updateArrayItem(setCashHoldings, item.id, "currency", e.target.value)}
+                        onChange={(e) => cambiarSoltandoCuenta(setCashHoldings, item.id, "currency", e.target.value)}
                       >
                         <option value="ARS">$ Pesos</option>
                         <option value="USD">U$S Dólares</option>
@@ -671,7 +704,7 @@ export function MovimientosInternosTab({
                       <select
                         style={{ ...inputCelda, width: "auto" }}
                         value={item.company}
-                        onChange={(e) => updateArrayItem(setCashHoldings, item.id, "company", e.target.value)}
+                        onChange={(e) => cambiarSoltandoCuenta(setCashHoldings, item.id, "company", e.target.value)}
                       >
                         {COMPANY_OPTIONS.map((company) => (
                           <option key={company.value} value={company.value}>
@@ -680,6 +713,7 @@ export function MovimientosInternosTab({
                         ))}
                       </select>
 <BotonFicha onClick={() => setFicha({ tipo: "efectivo", id: item.id })} />
+{faltaCuenta(item, () => setFicha({ tipo: "efectivo", id: item.id }))}
                       <input
                         style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
                         {...focoCelda}
@@ -922,7 +956,7 @@ export function MovimientosInternosTab({
                       <select
                         style={{ ...inputCelda, width: "auto" }}
                         value={item.company}
-                        onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "company", e.target.value)}
+                        onChange={(e) => cambiarSoltandoCuenta(setCapitalEntries, item.id, "company", e.target.value)}
                       >
                         {COMPANY_OPTIONS.map((company) => (
                           <option key={company.value} value={company.value}>
@@ -931,6 +965,7 @@ export function MovimientosInternosTab({
                         ))}
                       </select>
 <BotonFicha onClick={() => setFicha({ tipo: "capital", id: item.id })} />
+{item.deudaId == null && faltaCuenta(item, () => setFicha({ tipo: "capital", id: item.id }))}
                       {item.deudaId != null ? (
                         <button type="button" style={botonDeuda} title="Abrir la deuda en Desendeudamiento" onClick={() => onAbrirDeuda(item.deudaId as number)}>
                           En Desendeudamiento →
@@ -1234,7 +1269,7 @@ export function MovimientosInternosTab({
                                     style={{ ...inputCelda, width: "auto" }}
                                     value={entry.company}
                                     onChange={(e) =>
-                                      updateArrayItem(setPersonLedgerEntries, entry.id, "company", e.target.value as any)
+                                      cambiarSoltandoCuenta(setPersonLedgerEntries, entry.id, "company", e.target.value)
                                     }
                                   >
                                     {COMPANY_OPTIONS.map((company: any) => (
@@ -1244,6 +1279,7 @@ export function MovimientosInternosTab({
                                     ))}
                                   </select>
 <BotonFicha onClick={() => setFicha({ tipo: "gente", id: entry.id })} />
+{entry.kind === "haber" && faltaCuenta(entry, () => setFicha({ tipo: "gente", id: entry.id }))}
                                 </>
                               ) : (
                                 <span style={{ fontSize: 11, color: "#94a3b8" }}>
