@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-10b",
+    fecha: "10/11/2026",
+    titulo: "Gastos, cobros y comisiones avisan si falta la cuenta",
+    items: [
+      {
+        titulo: "Gasto sin cuenta",
+        que: "En Pago a proveedores, un gasto cargado a mano sin cuenta muestra \"⚠ falta la cuenta\". Cambiar la empresa del gasto borra la cuenta.",
+        como: "Botón derecho sobre el gasto → De qué cuenta salió…",
+        tab: "costos",
+      },
+      {
+        titulo: "Cobros y comisiones sin cuenta",
+        que: "En cada trabajo se avisa cuántos cobros no dicen a qué cuenta entró la plata y cuántos pagos de comisión no dicen de cuál salió. Al finalizar el trabajo también figura en lo que falta. Lo anterior a la apertura de las cuentas no se marca.",
+        como: "Trabajos aprobados → el trabajo → elegí la cuenta en cada cobro o pago de comisión (queda en rojo hasta que la elegís).",
+        tab: "aprobados",
+      },
+    ],
+  },
+  {
     id: "2026-11-10",
     fecha: "10/11/2026",
     titulo: "Toda plata dice de qué empresa es y de qué cuenta sale o a cuál entra",

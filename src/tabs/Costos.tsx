@@ -992,6 +992,20 @@ export function CostosTab({
                             (entry.paymentMethod || (entry.source === "extracto" ? "transferencia" : "efectivo"))
                         )?.label) || ""}
                       </span>
+                      {/* La caja chica sale de la caja de la persona y el extracto ya es del banco: no piden cuenta. */}
+                      {entry.source !== "extracto" && (entry.source as string) !== "caja_chica" &&
+                        ((entry as any).cuentaId ? (
+                          <span title="De qué cuenta salió">
+                            {(cuentas || []).find((c: any) => c.id === (entry as any).cuentaId)?.nombre || "cuenta"}
+                          </span>
+                        ) : (
+                          <span
+                            title="Toda plata dice de qué cuenta sale (sin cuenta por defecto): botón derecho → De qué cuenta salió…"
+                            style={{ background: "#fef2f2", color: "#b91c1c", fontWeight: 800, borderRadius: 999, padding: "0 6px", border: "1px solid #fecaca" }}
+                          >
+                            ⚠ falta la cuenta
+                          </span>
+                        ))}
                       {entry.invoiceRef && <span title="Factura que respalda el pago">{entry.invoiceRef}</span>}
                       {entry.firmante ? (
                         <span title={textoFirmante(entry.firmante, entry.firmadoEn)}>✍ {entry.firmante}</span>

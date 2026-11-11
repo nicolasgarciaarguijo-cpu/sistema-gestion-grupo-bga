@@ -142,6 +142,15 @@ type AprobadosTabProps = {
 const MOSTRAR_PLANOS_PENDIENTES: boolean = false;
 const MOSTRAR_EVOLUCION_TRABAJOS: boolean = false;
 
+// Plata sin cuenta que IMPORTA: la posterior a la apertura de las cuentas de su empresa (lo anterior ya está dentro
+// del saldo de apertura y no mueve ninguna cuenta).
+const sinCuentaQueCuenta = (cuentas: any[] | undefined, company: string, fecha?: string) => {
+  const aperturas = (cuentas || []).filter((c) => c.company === company && c.fechaApertura).map((c) => String(c.fechaApertura)).sort();
+  return !aperturas.length || !fecha || fecha > aperturas[0];
+};
+// Aviso de plata sin cuenta (no hay cuenta por defecto).
+const avisoSinCuenta: React.CSSProperties = { border: "1px solid #fecaca", background: "#fef2f2", color: "#b91c1c", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, fontWeight: 700, marginBottom: 8 };
+
 export function AprobadosTab({
   cuentas,
   jobSemaphoreSummary,
@@ -1695,6 +1704,14 @@ export function AprobadosTab({
                       </div>
                     );
                   })()}
+                  {(() => {
+                    const n = selectedApprovedJob.payments.filter((p: any) => !p.cuentaId && sinCuentaQueCuenta(cuentas, selectedApprovedJob.company, p.paymentDate)).length;
+                    return n > 0 ? (
+                      <div style={avisoSinCuenta}>
+                        ⚠ {n === 1 ? "1 cobro no dice" : `${n} cobros no dicen`} a qué cuenta entró la plata. Elegila en cada cobro (queda en rojo).
+                      </div>
+                    ) : null;
+                  })()}
                   {/* Arriba los cobros PREVISTOS (violeta = estimado, rojo = inamovible): no suman en el
                       cobrado ni en la planilla hasta pasarlos a "Realizado". */}
                   {selectedApprovedJob.payments.length === 0 && (selectedApprovedJob.cobrosPrevistos || []).length === 0 ? (
@@ -1794,7 +1811,7 @@ export function AprobadosTab({
                               <option value="otros">Otros</option>
                             </select>
                           </Field>
-                          {(cuentas || []).length > 0 && (
+                          {(
                             <SelectorCuenta
                               cuentas={cuentas || []}
                               company={selectedApprovedJob.company}
@@ -2188,6 +2205,14 @@ export function AprobadosTab({
                   actions={<ButtonLike onClick={() => addCommissionPayment(selectedApprovedJob.id)}>Agregar pago de comision</ButtonLike>}
                 >
                   {(() => {
+                    const n = selectedApprovedJob.commissionPayments.filter((p: any) => !p.cuentaId && sinCuentaQueCuenta(cuentas, selectedApprovedJob.company, p.paymentDate)).length;
+                    return n > 0 ? (
+                      <div style={avisoSinCuenta}>
+                        ⚠ {n === 1 ? "1 pago de comisión no dice" : `${n} pagos de comisión no dicen`} de qué cuenta salió la plata. Elegila en cada pago (queda en rojo).
+                      </div>
+                    ) : null;
+                  })()}
+                  {(() => {
                     const t = totalesComisiones(selectedApprovedJob.commissionPayments);
                     return t.cantidad > 0 ? (
                       <TotalesBloque
@@ -2238,7 +2263,7 @@ export function AprobadosTab({
                             <option value="negro">Negro</option>
                           </select>
                         </Field>
-                        {(cuentas || []).length > 0 && (
+                        {(
                           <SelectorCuenta
                             cuentas={cuentas || []}
                             company={selectedApprovedJob.company}
@@ -2383,6 +2408,11 @@ export function AprobadosTab({
             if (fc > 1) faltas.push(`Falta cobrar ${money(fc)}`);
             if (exc > 1) faltas.push(`Se cobró de más ${money(exc)}`);
             if (fco > 1) faltas.push(`Falta pagar comisión ${money(fco)}`);
+            // Toda plata dice su cuenta (Nicolas, 2026-11-10: "obligatoria, nada por defecto").
+            const cobrosSinCuenta = (j.payments || []).filter((p: any) => !p.cuentaId && sinCuentaQueCuenta(cuentas, j.company, p.paymentDate)).length;
+            const comisionesSinCuenta = (j.commissionPayments || []).filter((p: any) => !p.cuentaId && sinCuentaQueCuenta(cuentas, j.company, p.paymentDate)).length;
+            if (cobrosSinCuenta) faltas.push(`${cobrosSinCuenta} cobro${cobrosSinCuenta === 1 ? "" : "s"} sin la cuenta a la que entró`);
+            if (comisionesSinCuenta) faltas.push(`${comisionesSinCuenta} pago${comisionesSinCuenta === 1 ? "" : "s"} de comisión sin la cuenta de la que salió`);
             const diferencia = fc > 1 ? fc : exc > 1 ? -exc : 0;
             const grande = Math.abs(diferencia) > Math.max(1, Number(j.valueToCollect || 0)) * 0.02;
             const finalizar = () => {

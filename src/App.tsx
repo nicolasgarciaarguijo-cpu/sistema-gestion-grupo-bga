@@ -19720,6 +19720,8 @@ Escribi CERRAR para confirmar:`
         if (entry.id !== id) return entry;
         // Nunca se deja mandar un gasto manual a un grupo automatico: se contaria dos veces.
         if (field === "group" && isAutoCostGroup(String(value))) return entry;
+        // Cambiar la empresa suelta la cuenta: era de la otra empresa y se vuelve a elegir.
+        if (field === "company" && value !== entry.company) return { ...entry, company: value, cuentaId: undefined, ...firma() };
         return { ...entry, [field]: value, ...firma() };
       })
     );
