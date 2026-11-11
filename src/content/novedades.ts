@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-11",
+    fecha: "11/11/2026",
+    titulo: "La ocupación del taller sale de los trabajos aprobados",
+    items: [
+      {
+        titulo: "Ocupación del tablero de Fabricación",
+        que: "La ocupación usada y disponible ya no sale del presupuesto abierto en el editor: suma las horas de mano de obra de los trabajos aprobados abiertos que caen en el mes, contra las horas por mes de la gente de De Raíz. Un trabajo atrasado carga todas sus horas en el mes, y se avisa cuántos trabajos abiertos no tienen horas.",
+        como: "Fabricación → Tablero general. Marcá como finalizado lo que ya se entregó para que no siga sumando.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-11-10b",
     fecha: "10/11/2026",
     titulo: "Gastos, cobros y comisiones avisan si falta la cuenta",

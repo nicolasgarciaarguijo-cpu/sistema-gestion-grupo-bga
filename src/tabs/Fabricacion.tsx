@@ -23,6 +23,7 @@ type FabricacionTabProps = {
   shiftPurchaseMonth: (delta: number) => void;
   approvedJobsSummary: any[];
   occupancyPct: number;
+  trabajosSinHoras?: number;
   fabricationOpenJobsCount: number;
   fabricationInProgressCount: number;
   fabricationPendingPurchases: any[];
@@ -59,6 +60,7 @@ export function FabricacionTab({
   shiftPurchaseMonth,
   approvedJobsSummary,
   occupancyPct,
+  trabajosSinHoras = 0,
   fabricationOpenJobsCount,
   fabricationInProgressCount,
   fabricationPendingPurchases,
@@ -152,8 +154,18 @@ export function FabricacionTab({
               <MiniMetric label="Entregas a coordinar" value={String(fabricationUpcomingDeliveries)} />
               <MiniMetric label="Ocupacion usada" value={`${occupancyPct.toFixed(1)}%`} />
               <MiniMetric label="Ocupacion disponible" value={`${fabricationOccupancyAvailablePct.toFixed(1)}%`} />
-              <MiniMetric label="Horas disponibles" value={totalAvailableHours.toFixed(1)} />
-              <MiniMetric label="Horas comprometidas" value={totalJobHours.toFixed(1)} />
+              <MiniMetric label="Horas disponibles del mes" value={totalAvailableHours.toFixed(1)} />
+              <MiniMetric label="Horas comprometidas del mes" value={totalJobHours.toFixed(1)} />
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+              La ocupacion sale de los trabajos aprobados abiertos (las horas de mano de obra de su presupuesto, repartidas
+              entre el inicio y la entrega) contra las horas por mes de la gente de De Raiz. Un trabajo atrasado carga todas
+              sus horas en este mes.
+              {trabajosSinHoras > 0 && (
+                <span style={{ color: "#b91c1c", fontWeight: 600 }}>
+                  {" "}⚠ {trabajosSinHoras} {trabajosSinHoras === 1 ? "trabajo abierto no tiene" : "trabajos abiertos no tienen"} horas de mano de obra y no suman.
+                </span>
+              )}
             </div>
             <div style={styles.noticeBox}>
               Esta solapa concentra seguimiento de fabricacion sin precios: compras necesarias,

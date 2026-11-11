@@ -1,4 +1,5 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ocupacionDelMes } from "./domain/ocupacionFabrica";
 import { supabase } from "./lib/supabase";
 import {
   money,
@@ -9376,7 +9377,23 @@ Escribi CERRAR para confirmar:`
     (job) => job.executionStatus !== "finalizado" && !!job.deliveryDate
   ).length;
 
-  const fabricationOccupancyAvailablePct = Math.max(0, 100 - Number(occupancyPct || 0));
+  // Ocupacion del taller: trabajos aprobados abiertos contra la gente de De Raiz (domain/ocupacionFabrica). Ya no sale
+  // del presupuesto abierto en el editor.
+  const ocupacionTaller = useMemo(
+    () =>
+      ocupacionDelMes({
+        trabajos: fabricationCalendarRows.map((job) => ({
+          horas: Number(job.estimatedJobHours || 0),
+          inicio: job.start || undefined,
+          entrega: job.end || undefined,
+          finalizado: job.executionStatus === "finalizado",
+        })),
+        horasPorPersona: empleadosFabrica.map((e) => Number(e.nominalHours || 0) || nominalLaborHoursPerEmployee),
+        hoy: todayIso(),
+      }),
+    [fabricationCalendarRows, empleadosFabrica, nominalLaborHoursPerEmployee]
+  );
+  const fabricationOccupancyAvailablePct = Math.max(0, 100 - ocupacionTaller.pct);
 
   const selectedBudget = selectedHistoryId
     ? visibleSavedBudgets.find((item) => item.id === selectedHistoryId) || null
@@ -24719,15 +24736,16 @@ Escribi CERRAR para confirmar:`
           purchaseItemsByDate={purchaseItemsByDate}
           shiftPurchaseMonth={shiftPurchaseMonth}
           approvedJobsSummary={approvedJobsSummary}
-          occupancyPct={occupancyPct}
+          occupancyPct={ocupacionTaller.pct}
+          trabajosSinHoras={ocupacionTaller.trabajosSinHoras}
           fabricationOpenJobsCount={fabricationOpenJobsCount}
           fabricationInProgressCount={fabricationInProgressCount}
           fabricationPendingPurchases={fabricationPendingPurchases}
           fabricationCompletedPurchases={fabricationCompletedPurchases}
           fabricationUpcomingDeliveries={fabricationUpcomingDeliveries}
           fabricationOccupancyAvailablePct={fabricationOccupancyAvailablePct}
-          totalAvailableHours={totalAvailableHours}
-          totalJobHours={totalJobHours}
+          totalAvailableHours={ocupacionTaller.disponibles}
+          totalJobHours={ocupacionTaller.comprometidas}
           visibleStockItems={visibleStockItems}
           fabricationCalendarRows={fabricationCalendarRows}
           fabricationGanttTimeline={fabricationGanttTimeline}
@@ -25740,7 +25758,7 @@ Escribi CERRAR para confirmar:`
           <MiniMetric label="En curso" value={String(fabricationInProgressCount)} />
           <MiniMetric label="Compras pendientes" value={String(fabricationPendingPurchases.length)} />
           <MiniMetric label="Compras realizadas" value={String(fabricationCompletedPurchases.length)} />
-          <MiniMetric label="Ocupacion usada" value={`${occupancyPct.toFixed(1)}%`} />
+          <MiniMetric label="Ocupacion usada" value={`${ocupacionTaller.pct.toFixed(1)}%`} />
           <MiniMetric label="Ocupacion disponible" value={`${fabricationOccupancyAvailablePct.toFixed(1)}%`} />
         </div>
         <div style={{ marginTop: 20 }}>

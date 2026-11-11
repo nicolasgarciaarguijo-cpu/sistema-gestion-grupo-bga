@@ -740,7 +740,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
           {
             type: "bullets",
             items: [
-              "Ocupacion: cuanto de la capacidad de la fabrica esta comprometida.",
+              "Ocupacion: las horas de mano de obra de los trabajos aprobados abiertos que caen en el mes (repartidas entre su inicio y su entrega) contra las horas por mes de la gente de De Raiz. Un trabajo atrasado (la entrega ya paso y no esta finalizado) carga todas sus horas en el mes, asi que marcá como finalizado lo que ya se entrego. Ya no depende del presupuesto que tengas abierto.",
               "Compras pendientes: que falta comprar para poder producir cada trabajo.",
             ],
           },
