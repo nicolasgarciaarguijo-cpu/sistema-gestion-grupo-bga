@@ -179,6 +179,25 @@ export function girosDePases(
     }));
 }
 
+// PAGOS POR LA OTRA EMPRESA (Nicolas, 12/11/2026: "poder usar plata desde la caja chica de De Raiz para pagar algo de BGA, y
+// que eso se acumule en los prestamos entre empresas para saber como sigue la cuenta entre ambas"). Un gasto o una factura de una
+// empresa que pago la otra (con su banco, su efectivo o su caja chica) es un prestamo: la que pago le presto a la otra.
+export function girosDePagosCruzados(
+  pagos: ReadonlyArray<{ id: number; empresaPaga: unknown; empresaGasto: unknown; date: string; amount: number; detalle?: string }>
+): IntercompanyTransfer[] {
+  return pagos
+    .filter((p) => !!p.empresaPaga && !!p.empresaGasto && String(p.empresaPaga) !== String(p.empresaGasto) && Number(p.amount) > 0)
+    .map((p) => ({
+      id: p.id,
+      from: String(p.empresaPaga),
+      to: String(p.empresaGasto),
+      date: p.date,
+      amount: Number(p.amount),
+      text: `Pagó un gasto de la otra empresa${p.detalle ? ` · ${p.detalle}` : ""}`,
+      declaresInvoice: false,
+    }));
+}
+
 const DIAS_MISMO_GIRO = 5;
 const diasEntre = (a: string, b: string) => Math.abs(Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86400000;
 

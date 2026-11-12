@@ -109,6 +109,7 @@ import {
   saldosDiarios,
   type Cuenta,
   cuentaImplicita,
+  idCajaPersona,
 } from "./domain/cuentas";
 import { plataDelSistema } from "./domain/plataDelSistema";
 import { CuentasPanel } from "./tabs/CuentasPanel";
@@ -189,7 +190,7 @@ import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
 import { aggregateCardCosts } from "./domain/cardCosts";
 import { TarjetasTab } from "./tabs/Tarjetas";
 import { BancosTab } from "./tabs/Bancos";
-import { detectIntercompanyTransfers, summarizeIntercompany, girosDePases, posicionEntreEmpresas, repartirPorEjercicio, unirGiros, type CrossInvoice, type IntercompanyTransfer } from "./domain/intercompany";
+import { detectIntercompanyTransfers, summarizeIntercompany, girosDePases, girosDePagosCruzados, posicionEntreEmpresas, repartirPorEjercicio, unirGiros, type CrossInvoice, type IntercompanyTransfer } from "./domain/intercompany";
 import {
   companyFolderName,
   companyPath,
@@ -3638,6 +3639,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const dbBaselineRef = useRef<PersistedAppStateData | null>(null);
   const lastSupabaseAutosaveAtRef = useRef(0);
   const pendingRemoteSnapshotRef = useRef<PersistedAppState | null>(null);
+  const [reintentoGuardado, setReintentoGuardado] = useState(0);
   // Sello (saved_at + updated_by) de cada fila modulo+empresa en la ultima revision: lo que cambio y lo guardo
   // otro usuario es un cambio ajeno a traer (no depende del reloj ni de cual fue el ultimo guardado de la base).
   const remoteRowStampsRef = useRef<Map<string, string> | null>(null);
@@ -9001,38 +9003,41 @@ Escribi CERRAR para confirmar:`
     }
 
     if (!opciones.porFila || remoteSavedAt >= localSavedAt) lastSupabaseSnapshotSavedAtRef.current = normalized.savedAt;
-    const currentSignature = buildPersistedDataSignature(buildPersistedAppData());
-    const hasLocalUnsyncedChanges =
-      currentSignature !== lastPersistedDataSignatureRef.current;
     const collaborator = describeCollaboratorContext(record.updated_by);
     const moduleText = formatPersistenceModuleList(record.module_keys);
-    const changeText = `${collaborator.actorName} guardo cambios en ${moduleText}.`;
 
-    if (hasLocalUnsyncedChanges) {
-      pendingRemoteSnapshotRef.current = normalized;
-      setPendingRealtimeRefresh({
-        text: changeText,
-        savedAt: normalized.savedAt,
+    // LO PROPIO SIN SUBIR NO SE PISA (12/11/2026: los gastos de la caja chica de Nicolas desaparecieron). Antes,
+    // al llegar el guardado de otra sesion se aplicaba la base ENTERA y se perdia todo lo que esta sesion todavia
+    // no habia subido. Ahora los modulos con cambios propios sin subir se quedan como estan aca; el proximo
+    // autoguardado los sube fusionados por item contra la base vieja (lo de los demas en la base no se toca).
+    const datosLocales = buildPersistedAppData();
+    const firmasSubidas = lastSupabaseModuleSignaturesRef.current;
+    const modulosSinSubir =
+      Object.keys(firmasSubidas).length === 0
+        ? []
+        : getChangedPersistedModuleKeys(datosLocales, firmasSubidas).changedModuleKeys;
+    const datosAAplicar: PersistedAppStateData = { ...normalized.data };
+    const nuevaBase: PersistedAppStateData = { ...normalized.data };
+    const baseVieja = dbBaselineRef.current;
+    modulosSinSubir.forEach((moduleKey) => {
+      const definicion = APP_STATE_MODULE_DEFINITIONS.find((d) => d.key === moduleKey);
+      (definicion?.fields || []).forEach((field) => {
+        (datosAAplicar as any)[field] = (datosLocales as any)[field];
+        (nuevaBase as any)[field] = baseVieja ? (baseVieja as any)[field] : (normalized.data as any)[field];
       });
-      setStorageMessage(
-        "Hay una version mas nueva guardada en Supabase. Pulsa Refresh antes de seguir para no perder tus cambios locales."
-      );
-      announceSystemChange(
-        `${collaborator.actorName} guardo cambios en ${moduleText} ${collaborator.location}. Pulsa refresh para cargar la ultima version compartida sin pisar tus cambios locales.`
-      );
-      return;
-    }
+    });
 
     pendingRemoteSnapshotRef.current = null;
     lastAppliedRemoteSnapshotAtRef.current = Date.now();
-    applyPersistedAppData(normalized.data);
-    lastPersistedDataSignatureRef.current = incomingSignature;
+    applyPersistedAppData(datosAAplicar);
+    // Con modulos propios sin subir, la firma queda vacia para que el autoguardado los suba.
+    lastPersistedDataSignatureRef.current = modulosSinSubir.length ? "" : incomingSignature;
     lastSupabaseModuleSignaturesRef.current = buildPersistedModuleSignatures(
       normalized.data
     );
     lastRealtimeModuleMergeSavedAtRef.current = normalized.savedAt;
     lastRealtimeModuleMergedDataRef.current = normalized.data;
-    dbBaselineRef.current = normalized.data;
+    dbBaselineRef.current = nuevaBase;
     setLastSavedAt(normalized.savedAt);
     setPendingRealtimeRefresh(null);
     setStorageMessage(
@@ -13014,7 +13019,15 @@ Escribi CERRAR para confirmar:`
           !pendingRemoteSnapshotRef.current &&
           Date.now() - lastAppliedRemoteSnapshotAtRef.current > 1500;
 
-        if (!canAutosaveSupabase) return;
+        if (!canAutosaveSupabase) {
+          // Frenado solo por un momento (recien llego un guardado de otra sesion): se reintenta. Antes quedaba
+          // sin subir hasta el proximo cambio, y el siguiente guardado ajeno lo pisaba (12/11/2026).
+          if (isSupabaseLoggedIn && isSupabaseSnapshotReady && supabaseHydratedOkRef.current) {
+            lastPersistedDataSignatureRef.current = "";
+            supabaseTimeoutId = window.setTimeout(() => setReintentoGuardado((n) => n + 1), 2000);
+          }
+          return;
+        }
 
         const { changedModuleKeys, nextSignatures } = getChangedPersistedModuleKeys(
           payload.data,
@@ -13077,6 +13090,7 @@ Escribi CERRAR para confirmar:`
       }
     };
   }, [
+    reintentoGuardado,
     operationalMonth,
     monthlyHistorySnapshots,
     budget,
@@ -18547,6 +18561,15 @@ Escribi CERRAR para confirmar:`
       window.alert("Ese pago es de un ejercicio cerrado: no se puede editar.");
       return;
     }
+    // MISMA FICHA EN TODO VINCULO (12/11/2026): el pago de una factura se edita en la ficha de la factura, y uno de haberes en
+    // su ficha de haberes, vengan de donde vengan (ficha del proveedor, cash flow, banco).
+    if (c.employeeId != null) return abrirPagoHaber(c.id);
+    const factura = purchaseInvoices.find((i) => pagosDeFactura(i).includes(c.id));
+    const fichaFactura = factura ? facturaDeId(factura.id) : null;
+    if (fichaFactura) {
+      setFacturaModal(fichaFactura);
+      return;
+    }
     const prov = buscarProveedor(suppliers as any, c.supplier || "", "") as any;
     setPagoACuentaModal({
       id: c.id,
@@ -19434,7 +19457,17 @@ Escribi CERRAR para confirmar:`
       text: `${entry.concept || ""} ${entry.notes || ""}`.trim(),
     }));
     // Los giros que salen del extracto y los que se cargaron como pase entre empresas (el mismo, una sola vez).
-    const transfers = unirGiros(girosDePases(visibleInternalTransfers, "ARS"), detectIntercompanyTransfers(movements, companies));
+    // Mas lo que una empresa pago por la otra (factura de una pagada por la otra, o gasto de caja chica de la otra): prestamo.
+    const fondoPorId = new Map(pettyCashFunds.map((f) => [f.id, f]));
+    const cruzados = girosDePagosCruzados([
+      ...costEntries
+        .filter((c) => (c as any).empresaFactura && String((c as any).empresaFactura) !== String(c.company) && (c as any).currency !== "USD")
+        .map((c) => ({ id: c.id, empresaPaga: c.company, empresaGasto: (c as any).empresaFactura, date: c.date, amount: Number(c.amount || 0), detalle: c.supplier || c.description })),
+      ...pettyCashExpenses
+        .filter((g) => g.fundId != null && fondoPorId.has(g.fundId))
+        .map((g) => ({ id: g.id, empresaPaga: fondoPorId.get(g.fundId!)!.company, empresaGasto: g.company, date: g.date, amount: Number(g.amount || 0), detalle: `caja de ${fondoPorId.get(g.fundId!)!.responsible || ""} · ${g.supplier || g.description || ""}` })),
+    ]);
+    const transfers = [...unirGiros(girosDePases(visibleInternalTransfers, "ARS"), detectIntercompanyTransfers(movements, companies)), ...cruzados];
     // Las facturas ENTRE las dos empresas: las que le emitimos a una empresa del propio grupo.
     // Con esto el pendiente deja de ser "lo que no declara factura" y pasa a ser el saldo real.
     const porCuit = new Map(companies.map((c) => [c.taxId.replace(/\D/g, ""), c.company]));
@@ -19451,7 +19484,7 @@ Escribi CERRAR para confirmar:`
       })
       .filter(Boolean) as { from: string; to: string; date: string; amount: number }[];
     return armarCuentaGrupo(transfers, invoices, girosDePases(visibleInternalTransfers, "USD"));
-  }, [visibleBankStatementEntries, visibleInternalTransfers, issuedInvoices, companyCatalog, COMPANY_OPTIONS]);
+  }, [visibleBankStatementEntries, visibleInternalTransfers, issuedInvoices, companyCatalog, COMPANY_OPTIONS, costEntries, pettyCashExpenses, pettyCashFunds]);
 
   // La cuenta de la solapa: el ejercicio corriente arranca en cero y el cerrado queda aparte, para consultarlo.
   const cuentaGrupoPorEjercicio = useMemo(() => {
@@ -21885,7 +21918,10 @@ Escribi CERRAR para confirmar:`
         // Grupo del pago = el de la factura (o el del proveedor): va a su renglon en el cash flow.
         group: grupo?.nombre || "",
         groupKind: grupo?.tipo,
-        description: `${f.receiptKind || "Factura"} ${f.receiptLetter} ${f.invoiceNumber}`.trim(),
+        description:
+          [f.descripcion?.trim(), f.administration === "negro" && !f.invoiceNumber.trim() ? "" : `${f.receiptKind || "Factura"} ${f.receiptLetter} ${f.invoiceNumber}`.trim()]
+            .filter(Boolean)
+            .join(" · ") || f.supplier,
         // Quien pago: solo para efectivo negro (informativo, se cuenta en Movimientos internos).
         pagadoPor: pg.metodo === "efectivo" && pg.administration === "negro" ? pg.pagadoPor || undefined : undefined,
         // Ya tiene su factura: deja de ser un pago a cuenta.
@@ -21943,6 +21979,8 @@ Escribi CERRAR para confirmar:`
       iibb: Number(f.iibb) || 0,
       total: Number(f.total) || 0,
       notes: f.notes,
+      descripcion: f.descripcion?.trim() || undefined,
+      ...(f.attachmentName ? { attachmentName: f.attachmentName } : {}),
       extractedAutomatically: existente?.extractedAutomatically ?? false,
       grupoCosto: f.grupoCosto,
       fechaPagoPrevista: paidByCostEntryId == null ? f.saldo.fechaPrevista : existente?.fechaPagoPrevista,
@@ -21951,6 +21989,14 @@ Escribi CERRAR para confirmar:`
       cuentaPrevista: paidByCostEntryId == null ? f.saldo.cuentaId : existente?.cuentaPrevista,
     };
     delete (factura as any).paidByBankEntryId; // derivado: no se guarda
+    if (f.convierteGastoCajaId != null) {
+      // GASTO DE LA FICHA VIEJA DE CAJA CHICA -> ficha unica: ahora es una factura normal pagada con la caja (el pago es el gasto
+      // rendido). El gasto viejo se reemplaza: no es un borrado, pasa a la factura y su pago.
+      factura.source = "compras";
+      delete (factura as any).pettyCashExpenseId;
+      const viejo = f.convierteGastoCajaId;
+      setPettyCashExpensesCrudo((prev) => prev.filter((x) => x.id !== viejo));
+    }
     setPurchaseInvoices((prev) => (existente ? prev.map((i) => (i.id === id ? factura : i)) : [factura, ...prev]));
     if (paidByCostEntryId == null && !f.porBanco) {
       const clave = `factura:${id}`;
@@ -21989,49 +22035,84 @@ Escribi CERRAR para confirmar:`
       });
     }
   };
-  // GASTO DE CAJA CHICA: se abre la ventana (como una factura de Pago a proveedores) con la caja de origen.
+  // GASTO DE CAJA CHICA = LA MISMA FICHA DE COMPRAS (Nicolas, 12/11/2026: "las fichas sean las mismas, asi puedo colocar la
+  // misma informacion en ambas situaciones"). Se abre la factura con el pago ya puesto: sale de la caja de la persona, la empresa
+  // que paga es la de la caja y el gasto es de la empresa a la que corresponde (si son distintas, es un prestamo entre empresas).
+  const cuentaCajaDeFondo = (fondo: PettyCashFund | undefined, color: "blanco" | "negro") => {
+    if (!fondo?.responsible) return undefined;
+    const propias = cuentasSistema.filter(
+      (c) => c.id.startsWith("persona|") && String(c.company) === String(fondo.company) && mismaPersona(String((c as any).persona || ""), fondo.responsible)
+    );
+    return (propias.find((c) => c.id.endsWith(`|${color}`)) || propias[0])?.id || idCajaPersona(String(fondo.company), fondo.responsible, color);
+  };
+  const fichaDeRendicion = (
+    fondo: PettyCashFund | undefined,
+    datos: { fecha: string; monto: number; administration: "blanco" | "negro"; firmante?: string }
+  ): FacturaForm => {
+    const company = String(fondo?.empresaImputada || fondo?.company || budget.company);
+    const base = facturaVacia("", "", company);
+    const negro = datos.administration === "negro";
+    return {
+      ...base,
+      administration: datos.administration,
+      receiptLetter: negro ? "X" : base.receiptLetter,
+      vatRate: negro ? 0 : base.vatRate,
+      invoiceDate: datos.fecha,
+      total: datos.monto,
+      exemptAmount: negro ? datos.monto : 0,
+      altaProveedor: true,
+      cajaDe: fondo?.responsible || "",
+      pagoSigueTotal: true,
+      pagos: [
+        {
+          key: `n${Date.now()}`,
+          fecha: datos.fecha,
+          monto: datos.monto,
+          metodo: "efectivo",
+          administration: datos.administration,
+          empresa: fondo && String(fondo.company) !== company ? String(fondo.company) : undefined,
+          cuentaId: cuentaCajaDeFondo(fondo, datos.administration),
+          firmante: datos.firmante,
+        },
+      ],
+    };
+  };
   const abrirGastoCaja = (fundId?: number | null, expenseId?: number) => {
     const exp = expenseId != null ? pettyCashExpenses.find((x) => x.id === expenseId) : undefined;
     if (exp) {
+      // Un gasto cargado con la ficha vieja: se abre en la ficha unica; al guardar pasa a factura + pago con la caja.
+      const fondo = exp.fundId != null ? pettyCashFunds.find((x) => x.id === exp.fundId) : undefined;
       const prov = buscarProveedor(suppliers as any, exp.supplier || "", "") as any;
-      setGastoCajaModal({
-        id: exp.id,
-        fundId: exp.fundId,
-        company: exp.company,
-        supplier: exp.supplier || "",
-        taxId: prov?.taxId || "",
+      const adm: "blanco" | "negro" = exp.administration === "blanco" ? "blanco" : "negro";
+      const ficha = fichaDeRendicion(fondo, { fecha: exp.date, monto: Number(exp.amount || 0), administration: adm, firmante: exp.firmante });
+      const inv = purchaseInvoices.find((i) => i.pettyCashExpenseId === exp.id);
+      const deFactura = inv ? facturaDeId(inv.id) : null;
+      const grupo = exp.costGroup
+        ? claveGrupo(exp.costGroupKind || (costGroups.find((g) => g.name === exp.costGroup)?.kind === "fijo" ? "fijo" : "variable"), exp.costGroup)
+        : undefined;
+      setFacturaModal({
+        ...ficha,
+        ...(deFactura ? { ...deFactura, pagos: ficha.pagos, saldo: ficha.saldo, porBanco: undefined } : {}),
+        company: String(exp.company),
+        supplier: exp.supplier || deFactura?.supplier || "",
+        taxId: deFactura?.taxId || prov?.taxId || "",
         altaProveedor: false,
-        date: exp.date,
-        amount: Number(exp.amount || 0),
-        administration: exp.administration === "blanco" ? "blanco" : "negro",
-        grupoCosto: exp.costGroup ? claveGrupo(exp.costGroupKind || (costGroups.find((g) => g.name === exp.costGroup)?.kind === "fijo" ? "fijo" : "variable"), exp.costGroup) : undefined,
-        description: exp.description || "",
-        invoiceNumber: exp.invoiceNumber || "",
+        invoiceNumber: deFactura?.invoiceNumber || exp.invoiceNumber || "",
+        grupoCosto: grupo || deFactura?.grupoCosto,
+        descripcion: exp.description || "",
         notes: exp.notes || "",
-        firmante: exp.firmante,
-        ...(() => {
-          const inv = purchaseInvoices.find((i) => i.pettyCashExpenseId === exp.id);
-          return inv ? { receiptLetter: inv.receiptLetter, net21: inv.net21, vat: inv.vat, taxId: inv.taxId || prov?.taxId || "" } : {};
-        })(),
+        attachmentName: exp.attachmentName || undefined,
+        cajaDe: fondo?.responsible || "",
+        pagoSigueTotal: !deFactura,
+        convierteGastoCajaId: exp.id,
+        ...(deFactura ? {} : { total: Number(exp.amount || 0), exemptAmount: Number(exp.amount || 0), net21: 0, vat: 0 }),
       });
       return;
     }
     const delResponsable = fichaCaja ? visiblePettyCashFunds.filter((x) => mismaPersona(x.responsible, fichaCaja)) : visiblePettyCashFunds;
     const fondo =
       typeof fundId === "number" ? pettyCashFunds.find((x) => x.id === fundId) : delResponsable.find((x) => !x.closed) || delResponsable[0];
-    setGastoCajaModal({
-      fundId: fondo?.id ?? null,
-      company: fondo?.empresaImputada || fondo?.company || budget.company,
-      supplier: "",
-      taxId: "",
-      altaProveedor: true,
-      date: defaultDateForActiveMonth(),
-      amount: 0,
-      administration: "negro",
-      description: "",
-      invoiceNumber: "",
-      notes: "",
-    });
+    setFacturaModal(fichaDeRendicion(fondo, { fecha: defaultDateForActiveMonth(), monto: 0, administration: "negro" }));
   };
   const guardarGastoCaja = (g: GastoCajaForm) => {
     const grupo = parseClaveGrupo(g.grupoCosto);
@@ -22228,19 +22309,13 @@ Escribi CERRAR para confirmar:`
       const t = await readTicket(file);
       const fondo = fundId != null ? pettyCashFunds.find((x) => x.id === fundId) : undefined;
       const prov = t.supplier ? (buscarProveedor(suppliers as any, t.supplier, "") as any) : undefined;
-      setGastoCajaModal({
-        fundId: fondo?.id ?? null,
-        company: fondo?.empresaImputada || fondo?.company || budget.company,
+      const ficha = fichaDeRendicion(fondo, { fecha: t.date || defaultDateForActiveMonth(), monto: Number(t.amount || 0), administration: "negro" });
+      setFacturaModal({
+        ...ficha,
         supplier: prov?.name || t.supplier || "",
         taxId: prov?.taxId || "",
         altaProveedor: !prov,
-        date: t.date || defaultDateForActiveMonth(),
-        amount: Number(t.amount || 0),
-        administration: "negro",
         grupoCosto: prov?.grupoCosto,
-        description: "",
-        invoiceNumber: "",
-        notes: "",
         attachmentName: file.name,
       });
       setPettyOcrMsg(
@@ -23505,7 +23580,7 @@ Escribi CERRAR para confirmar:`
                 if (costEntries.find((x) => x.id === gid)?.employeeId != null) return abrirPagoHaber(gid);
                 const inv = purchaseInvoices.find((i) => pagosDeFactura(i).includes(gid));
                 const f = inv ? facturaDeId(inv.id) : null;
-                if (f) setFacturaModal(f);
+                if (f) setFacturaModal({ ...f, cajaDe: fichaCaja || undefined });
                 else abrirEditarPago(gid);
                 return;
               }
@@ -23587,7 +23662,8 @@ Escribi CERRAR para confirmar:`
             const yaVinculados = pagosVinculados(purchaseInvoices.filter((i) => i.id !== facturaModal.id));
             const n = supplier.trim().toLowerCase();
             return costEntries
-              .filter((c) => c.company === company && !yaVinculados.has(c.id) && (!n || !c.supplier || c.supplier.trim().toLowerCase() === n))
+              // Un pago de haberes no se vincula a una factura: tiene su ficha (periodo y comprobante).
+              .filter((c) => c.company === company && c.employeeId == null && !yaVinculados.has(c.id) && (!n || !c.supplier || c.supplier.trim().toLowerCase() === n))
               // Primero los PAGOS A CUENTA que esperan esta factura.
               .sort((a, b) => Number(!!b.aCuenta) - Number(!!a.aCuenta) || b.date.localeCompare(a.date))
               .slice(0, 60)

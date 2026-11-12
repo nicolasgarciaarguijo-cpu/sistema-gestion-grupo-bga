@@ -129,3 +129,14 @@ describe("summarizeIntercompany", () => {
     expect(r.totalTransferred).toBe(0);
   });
 });
+
+describe("pagos por la otra empresa (prestamo entre empresas)", () => {
+  const { girosDePagosCruzados } = require("./intercompany");
+  it("la que paga le presta a la otra; lo de la misma empresa no cuenta", () => {
+    const g = girosDePagosCruzados([
+      { id: 1, empresaPaga: "DR", empresaGasto: "BGA", date: "2026-11-12", amount: 5000, detalle: "Mitre 1630" },
+      { id: 2, empresaPaga: "DR", empresaGasto: "DR", date: "2026-11-12", amount: 9000 },
+    ]);
+    expect(g).toEqual([expect.objectContaining({ id: 1, from: "DR", to: "BGA", amount: 5000 })]);
+  });
+});

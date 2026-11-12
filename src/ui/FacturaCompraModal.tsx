@@ -69,7 +69,21 @@ export type FacturaForm = {
   // ellos) o, si no vino remito, cargar sus renglones como recepcion al guardar.
   remitoIds?: number[];
   cargarRenglones?: boolean;
+  // FICHA UNICA (12/11/2026): la misma ventana rinde un gasto de CAJA CHICA. Con `cajaDe` se abre desde la caja de esa
+  // persona: el pago ya viene con su caja y su empresa (la que pone la plata), y el monto del pago sigue al total.
+  descripcion?: string;
+  cajaDe?: string;
+  pagoSigueTotal?: boolean;
+  // Un gasto de caja chica cargado con la ficha vieja: al guardar pasa a esta (factura + pago con la caja).
+  convierteGastoCajaId?: number;
+  attachmentName?: string;
 };
+
+// El unico pago de una rendicion de caja chica acompaña al total mientras nadie lo toque a mano.
+export const conPagoAlTotal = (n: FacturaForm): FacturaForm =>
+  n.pagoSigueTotal && n.pagos.length === 1 && n.pagos[0].costEntryId == null
+    ? { ...n, pagos: [{ ...n.pagos[0], monto: Number(n.total || 0) }] }
+    : n;
 
 // IVA y total a partir de los importes. Puro, para la ventana y para quien cargue una factura.
 export const ivaDe = (neto: number, alicuota: number) => Math.round(Number(neto || 0) * Number(alicuota || 0)) / 100;
@@ -135,9 +149,14 @@ export function FacturaCompraModal({
   personas?: string[];
 }) {
   const [f, setF] = useState<FacturaForm>(inicial);
-  const set = (patch: Partial<FacturaForm>) => setF((p) => ({ ...p, ...patch }));
+  const set = (patch: Partial<FacturaForm>) => setF((p) => conPagoAlTotal({ ...p, ...patch }));
   const setPagoN = (key: string, patch: Partial<PagoFactura>) =>
-    setF((x) => ({ ...x, pagos: x.pagos.map((p) => (p.key === key ? { ...p, ...patch } : p)) }));
+    setF((x) => ({
+      ...x,
+      // Si se toca el monto del pago a mano, deja de seguir al total.
+      ...("monto" in patch ? { pagoSigueTotal: false } : {}),
+      pagos: x.pagos.map((p) => (p.key === key ? { ...p, ...patch } : p)),
+    }));
   const pagado = Math.round(f.pagos.reduce((a, p) => a + Number(p.monto || 0), 0) * 100) / 100;
   const saldo = f.porBanco ? 0 : Math.max(0, Math.round((Number(f.total || 0) - pagado) * 100) / 100);
   const claveNueva = () => `n${Date.now()}${Math.random().toString(36).slice(2, 6)}`;
@@ -180,7 +199,7 @@ export function FacturaCompraModal({
       const n = { ...x, ...patch };
       if (!n.vatManual) n.vat = ivaDe(n.net21, n.vatRate);
       n.total = totalDe(n);
-      return n;
+      return conPagoAlTotal(n);
     });
   // Letra C (monotributo) o X: el IVA no se discrimina.
   const elegirLetra = (letra: string) =>
@@ -212,6 +231,7 @@ export function FacturaCompraModal({
       const next = { ...prev, ...patch };
       if (!next.vatManual) next.vat = ivaDe(next.net21, next.vatRate);
       next.total = totalDe(next);
+      Object.assign(next, conPagoAlTotal(next));
       const prevista = fechaSegunCondicion(p.name, p.taxId, prev.invoiceDate);
       if (prevista && !prev.saldo.fechaPrevista) next.saldo = { ...next.saldo, fechaPrevista: prevista };
       return next;
@@ -234,10 +254,19 @@ export function FacturaCompraModal({
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4600, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "30px 12px" }}>
       <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(860px, 100%)", padding: 18, boxShadow: "0 20px 50px rgba(0,0,0,0.25)", display: "grid", gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div style={{ fontSize: 19, fontWeight: 800 }}>{f.id ? "Factura de compra" : "Agregar factura de compra"}</div>
+          <div style={{ fontSize: 19, fontWeight: 800 }}>
+            {f.cajaDe ? `Rendir gasto · Caja de ${f.cajaDe}` : f.id ? "Factura de compra" : "Agregar factura de compra"}
+          </div>
           <button type="button" onClick={onCerrar} style={{ ...input, width: "auto", cursor: "pointer" }}>Cerrar</button>
         </div>
 
+        {f.cajaDe && (
+          <div style={{ fontSize: 12.5, color: "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 10px" }}>
+            Es la misma ficha de Compras. La plata sale de la <strong>caja de {f.cajaDe}</strong> (en Pagos, abajo). Si el gasto es de la
+            otra empresa, elegila en <strong>Empresa</strong>: el pago queda como <strong>préstamo entre empresas</strong> y se suma en la cuenta entre las dos.
+            {f.convierteGastoCajaId != null && <> Este gasto se cargó con la ficha vieja de caja chica: al guardar queda en esta.</>}
+          </div>
+        )}
         <div style={caja}>
           <div style={titulo}>1 · Proveedor</div>
           <div style={grid}>
@@ -254,7 +283,14 @@ export function FacturaCompraModal({
                     company: nueva,
                     ...(x.saldo ? { saldo: { ...x.saldo, cuentaId: undefined } } : {}),
                     pagos: x.pagos.map((p) =>
-                      !p.empresa
+                      // Pagado con la caja chica de alguien: la plata sigue saliendo de esa caja (de su empresa). Si el
+                      // gasto pasa a la otra empresa, el pago queda cruzado = prestamo entre empresas.
+                      String(p.cuentaId || "").startsWith("persona|")
+                        ? (() => {
+                            const deLaCaja = String(p.cuentaId).split("|")[1];
+                            return { ...p, empresa: deLaCaja === nueva ? undefined : deLaCaja };
+                          })()
+                        : !p.empresa
                         ? { ...p, cuentaId: undefined }
                         : p.empresa === nueva
                           ? { ...p, empresa: undefined }
@@ -361,7 +397,12 @@ export function FacturaCompraModal({
               <select
                 style={{ ...input, background: f.administration === "negro" ? "#1f2937" : "#fff", color: f.administration === "negro" ? "#fff" : "#0f172a" }}
                 value={f.administration}
-                onChange={(e) => set({ administration: e.target.value as any })}
+                onChange={(e) => {
+                  const adm = e.target.value as "blanco" | "negro";
+                  // Negro = sin factura: letra X y sin IVA discriminado.
+                  if (adm === "negro") importes({ administration: adm, receiptLetter: "X", vatRate: 0, vatManual: false });
+                  else set({ administration: adm });
+                }}
               >
                 <option value="blanco">Blanco</option>
                 <option value="negro">Negro (sin factura)</option>
@@ -376,9 +417,13 @@ export function FacturaCompraModal({
               </select>
             </label>
           </div>
+          <label style={{ ...lbl, marginTop: 8 }}>Descripción (qué se compró)
+            <input style={input} value={f.descripcion || ""} onChange={(e) => set({ descripcion: e.target.value })} />
+          </label>
           <label style={{ ...lbl, marginTop: 8 }}>Notas
             <input style={input} value={f.notes} onChange={(e) => set({ notes: e.target.value })} />
           </label>
+          {f.attachmentName && <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>📎 {f.attachmentName}</div>}
         </div>
 
         <div style={caja}>
@@ -486,7 +531,7 @@ export function FacturaCompraModal({
                 </div>
                 {cruzado && (
                   <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700, marginTop: 6 }}>
-                    ⚠ Pago cruzado: la factura es de una empresa y la paga otra. Lo correcto es pedir que la factura salga a nombre de la empresa que paga; si no, queda como deuda con la empresa que pagó (Movimientos internos → Pagos cruzados).
+                    ⚠ Pago cruzado: el gasto es de {companyOptions.find((c) => c.value === f.company)?.short || f.company} y lo paga {companyOptions.find((c) => c.value === empresaPaga)?.short || empresaPaga}. Queda como PRÉSTAMO de la que paga a la otra y se suma en la cuenta entre empresas (Movimientos internos).
                   </div>
                 )}
                 {cruceAdm && (

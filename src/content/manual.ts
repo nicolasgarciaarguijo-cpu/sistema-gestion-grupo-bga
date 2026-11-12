@@ -464,6 +464,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "La solapa muestra solo el listado de las cajas chicas asignadas y los tipos de caja. Todo lo de cada persona está en su ficha: click derecho sobre el responsable. La caja no va al cash flow; sus gastos sí, como pago a cada proveedor.",
     sections: [
       {
+        heading: "Rendir un gasto: la misma ficha de Compras",
+        blocks: [
+          { type: "p", text: "'+ Rendir gasto' (o leer un ticket) abre la misma ficha que se usa en Compras para cargar una factura: proveedor, comprobante, neto, alícuota de IVA, exento, otros impuestos, IIBB y total. El pago ya viene puesto: sale de la caja de la persona, en la empresa de la caja, y su monto sigue al total. Un gasto sin factura se carga en Negro (letra X, todo exento)." },
+          { type: "p", text: "Para pagar con la caja de una empresa algo de la otra (por ejemplo, la caja de De Raíz paga un gasto de BGA), elegí arriba la Empresa del gasto. El pago sigue saliendo de la caja y queda como préstamo de la empresa que pagó a la otra: se suma en la cuenta entre empresas (Movimientos internos), junto con las transferencias y las facturas entre las dos." },
+          { type: "p", text: "Los gastos cargados con la ficha vieja de caja chica se abren en esta misma ficha; al guardarlos pasan a ser una factura pagada con la caja (no se pierde nada)." },
+        ],
+      },
+      {
         heading: "Sueldos pagados con la caja",
         blocks: [
           { type: "p", text: "Si en la ficha de pago de haberes se elige como cuenta la caja de otra persona (por ejemplo, las horas de un empleado pagadas con la caja de Lucas), ese pago figura como gasto rendido en la caja de esa persona: la abierta a la fecha del pago, en la empresa del empleado. Si la persona no tiene caja, se le crea una en $0 y lo pagado queda como deuda con ella. Para corregirlo, click sobre el gasto: abre el pago de haberes." },

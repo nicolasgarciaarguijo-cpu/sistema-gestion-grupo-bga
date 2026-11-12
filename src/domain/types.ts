@@ -659,6 +659,8 @@ export type PurchaseInvoice = {
   iibb?: number;
   // De que cuenta se va a pagar lo que falta (banco o efectivo): para la suma estimada del cash flow.
   cuentaPrevista?: string;
+  // Que se compro (la ficha unica de gasto, 12/11/2026: lo traia la rendicion de caja chica).
+  descripcion?: string;
 };
 
 // VIATICO EVENTUAL: anticipo a una persona por un viaje o un trabajo (solapa Caja chica y viaticos).

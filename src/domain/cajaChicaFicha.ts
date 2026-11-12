@@ -255,7 +255,7 @@ export function pagosComoGastosDeCaja(pagos: PagoConCajaLike[], fondos: FondoLik
       amount: Number(ce.amount || 0),
       administration: ce.administration === "negro" ? "negro" : "blanco",
       supplier: ce.supplier,
-      description: ce.employeeId != null ? `${ce.description || "Haberes"} · ${ce.supplier || ""} (ficha de haberes)` : `${ce.description || "Pago"} · cargada en Compras`,
+      description: ce.employeeId != null ? `${ce.description || "Haberes"} · ${ce.supplier || ""} (ficha de haberes)` : `${ce.description || ce.supplier || "Pago"}`,
       costGroup: ce.group || undefined,
     });
   });

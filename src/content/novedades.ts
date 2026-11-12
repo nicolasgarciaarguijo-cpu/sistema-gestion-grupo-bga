@@ -16,6 +16,30 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-12c",
+    fecha: "12/11/2026",
+    titulo: "Una sola ficha para gastos de caja chica y facturas de Compras",
+    items: [
+      {
+        titulo: "Rendir un gasto de caja chica usa la ficha de Compras",
+        que: "Ahora es la misma ficha en las dos solapas: en la caja chica se cargan los impuestos completos de la factura (alícuota, exento, otros impuestos, IIBB) y en Compras se puede pagar con la caja de una persona. El pago ya viene con la caja y su monto sigue al total.",
+        como: "Caja chica → ficha de la persona → '+ Rendir gasto'. Si es un gasto sin factura, elegí Negro.",
+        tab: "cajaChica",
+      },
+      {
+        titulo: "Pagar algo de la otra empresa queda como préstamo",
+        que: "Cuando una empresa paga un gasto o una factura de la otra (con la caja chica o con el banco), se suma como préstamo en la cuenta entre BGA y De Raíz, junto con las transferencias y las facturas entre las dos.",
+        como: "En la ficha, elegí la Empresa del gasto; en el pago, la empresa que pone la plata. Se ve en Movimientos internos.",
+        tab: "movimientosInternos",
+      },
+      {
+        titulo: "Guardar con otra persona trabajando a la vez ya no pisa lo tuyo",
+        que: "Si otra persona guardaba mientras vos cargabas, lo tuyo todavía sin subir se podía perder. Ahora se queda y se sube junto con lo del otro.",
+        como: "Nada que hacer: se guarda solo.",
+      },
+    ],
+  },
+  {
     id: "2026-11-12b",
     fecha: "12/11/2026",
     titulo: "Borrar tiene bloqueo: dentro de la hora, o con autorización",
