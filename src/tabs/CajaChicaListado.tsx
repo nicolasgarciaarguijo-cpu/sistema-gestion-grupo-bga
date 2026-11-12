@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from "react";
 import { styles } from "../ui/styles";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
-import { porTipoDeCaja, posicionCajaChica, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
+import { normalizarPersona, porTipoDeCaja, posicionCajaChica, resumenCaja, type FondoLike, type GastoLike } from "../domain/cajaChicaFicha";
 import { getFundSemaphore } from "../domain/pettyCash";
 import { DesbalanceCaja } from "../ui/DesbalanceCaja";
 import NumInput from "../ui/NumInput";
@@ -82,8 +82,10 @@ export function CajaChicaListado({
   const filas = useMemo(
     () =>
       fondos
-        .filter((f) => verCerradas || !f.closed)
         .map((f) => ({ f, r: resumenCaja(f, gastos) }))
+        // Una caja cerrada que quedo en NEGATIVO sigue a la vista (es deuda con la persona) mientras no haya otra caja
+        // mas nueva de esa persona en esa empresa que la absorba.
+        .filter(({ f, r }) => verCerradas || !f.closed || (r.resta < -0.5 && !fondos.some((o) => o.id !== f.id && o.company === f.company && normalizarPersona(o.responsible) === normalizarPersona(f.responsible) && (o.deliveredDate || "") > (f.deliveredDate || ""))))
         .sort((a, b) => (b.f.deliveredDate || "").localeCompare(a.f.deliveredDate || "") || b.f.id - a.f.id),
     [fondos, gastos, verCerradas]
   );
@@ -242,7 +244,7 @@ export function CajaChicaListado({
                 return (
                   <tr
                     key={f.id}
-                    style={{ opacity: f.closed ? 0.55 : 1 }}
+                    style={{ opacity: f.closed && !(r.resta < -0.5) ? 0.55 : 1 }}
                     onContextMenu={(ev) => {
                       ev.preventDefault();
                       setMenuCaja({ x: ev.clientX, y: ev.clientY, id: f.id });
@@ -268,7 +270,10 @@ export function CajaChicaListado({
                       <AdminTag a={r.administracion} />
                     </td>
                     <td style={num}>{money(r.utilizado)}</td>
-                    <td style={{ ...num, fontWeight: 800, color: r.resta < 0 ? "#dc2626" : undefined }}>{money(r.resta)}</td>
+                    <td style={{ ...num, fontWeight: 800, color: r.resta < 0 ? "#dc2626" : undefined }}>
+                      {money(r.resta)}
+                      {r.resta < -0.5 && <div style={{ fontSize: 11, fontWeight: 700 }}>deuda con {f.responsible || "la persona"}</div>}
+                    </td>
                     <td style={num}>
                       <DesbalanceCaja r={r} money={money} />
                     </td>

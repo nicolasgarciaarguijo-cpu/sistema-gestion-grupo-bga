@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-12",
+    fecha: "12/11/2026",
+    titulo: "La caja chica en negativo ya no se cierra sola",
+    items: [
+      {
+        titulo: "Caja chica en negativo = deuda a la vista",
+        que: "Antes, una caja que se pasaba de lo asignado se cerraba sola y desaparecía del listado. Ahora solo se cierra sola si queda justo en cero. En negativo sigue abierta, en rojo y con la leyenda \"deuda con…\". Si ya estaba cerrada, también se ve hasta que una caja nueva de esa persona absorba la deuda.",
+        como: "Caja chica → el listado. Click derecho sobre el responsable abre su ficha para editar, reabrir o pagar la deuda.",
+        tab: "cajaChica",
+      },
+    ],
+  },
+  {
     id: "2026-11-11b",
     fecha: "11/11/2026",
     titulo: "Pagos programados en pantalla, sueldos pagados con caja chica y anticipos en Personal",

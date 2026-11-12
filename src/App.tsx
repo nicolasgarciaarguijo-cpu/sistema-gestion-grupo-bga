@@ -8739,7 +8739,9 @@ Escribi CERRAR para confirmar:`
           .reduce((acc, item) => acc + Number(item.amount || 0), 0);
         const remainingBalance = Number(fund.assignedAmount || 0) - renderedTotal;
 
-        if (remainingBalance <= 0 && !fund.closed) {
+        // Se cierra sola SOLO si quedo justo en cero. En NEGATIVO queda abierta: es deuda con la persona y tiene que
+        // verse y poder editarse (Nicolas, 12/11/2026: la caja de Lucas se cerro sola al pasarse y desaparecio).
+        if (Math.abs(remainingBalance) < 0.5 && renderedTotal > 0 && !fund.closed) {
           changed = true;
           return {
             ...fund,
