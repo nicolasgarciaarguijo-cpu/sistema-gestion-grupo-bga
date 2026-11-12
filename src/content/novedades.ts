@@ -16,6 +16,18 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-12b",
+    fecha: "12/11/2026",
+    titulo: "Borrar tiene bloqueo: dentro de la hora, o con autorización",
+    items: [
+      {
+        titulo: "Borrar lo cargado hace más de una hora pide autorización",
+        que: "Lo que se cargó hace menos de una hora se borra como siempre. Pasada la hora no se borra: queda un pedido de borrado que solo puede autorizar Nicolás, y mientras tanto sigue cargado. Lo cargado antes de hoy cuenta como viejo.",
+        como: "Borrá como siempre. Si sale el aviso \"No se borró\", el pedido ya quedó hecho: no hace falta repetirlo.",
+      },
+    ],
+  },
+  {
     id: "2026-11-12",
     fecha: "12/11/2026",
     titulo: "La caja chica en negativo ya no se cierra sola",

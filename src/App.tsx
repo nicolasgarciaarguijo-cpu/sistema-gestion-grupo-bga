@@ -1,5 +1,6 @@
 ﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ocupacionDelMes } from "./domain/ocupacionFabrica";
+import { AUTORIZADOR_BORRADOS_ID, aplicarBorrado, sellarAltas, separarBorrado, sinYaPedidos, type ItemBloqueado, type PedidoBorrado } from "./domain/borradoProtegido";
 import { supabase } from "./lib/supabase";
 import {
   money,
@@ -449,6 +450,7 @@ import { RetirosSocietariosPanel } from "./tabs/RetirosSocietarios";
 import { ArqueoCierre } from "./ui/ArqueoCierre";
 import { VentanaNovedades } from "./ui/Novedades";
 import { NOVEDADES, novedadesPendientes, ultimaNovedad, type TandaNovedades } from "./content/novedades";
+import { VentanaPedidosBorrado } from "./ui/PedidosBorrado";
 import { filasDeArqueo, billeterasDesdeArqueo, movimientosDelArqueo, diferencia, TOLERANCIA_ARQUEO, type FilaArqueo } from "./domain/arqueoCierre";
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, facturasPagadasProgramadas, tipoGastoEfectivo, fechaDePago } from "./domain/proveedores";
@@ -1903,6 +1905,8 @@ type PersistedAppStateData = {
   tiposMueble: TipoMueble[];
   // Cuentas (bancos, efectivo, cajas por persona) corregidas a mano: apertura, nombre, principal.
   cuentas: Cuenta[];
+  // Pedidos de borrado de lo cargado hace mas de una hora (los autoriza el superadmin). Ver domain/borradoProtegido.ts.
+  pedidosBorrado?: PedidoBorrado[];
   costRules: CostRule[];
   creditCards: CreditCard[];
   creditCardStatements: CreditCardStatement[];
@@ -2076,6 +2080,11 @@ const APP_STATE_MODULE_DEFINITIONS = [
     key: "documentos",
     label: "Documentos vinculados",
     fields: ["linkedDocuments"] as const,
+  },
+  {
+    key: "borrados",
+    label: "Pedidos de borrado",
+    fields: ["pedidosBorrado"] as const,
   },
 ] as const satisfies readonly {
   key: string;
@@ -3197,23 +3206,74 @@ export default function App() {
   const [supplyMarkers, setSupplyMarkers] = useState<SupplyMarker[]>(defaultSupplyMarkers);
   const [laborMarkers, setLaborMarkers] = useState<LaborMarker[]>(defaultLaborMarkers);
   const [personalProvisionMarkers, setPersonalProvisionMarkers] = useState<PersonalProvisionMarker[]>(defaultPersonalProvisionMarkers);
-  const [savedBudgets, setSavedBudgets] = useState<SavedBudget[]>([]);
+  const [pedidosBorrado, setPedidosBorrado] = useState<PedidoBorrado[]>([]);
+  const pedidosBorradoRef = useRef<PedidoBorrado[]>([]);
+  pedidosBorradoRef.current = pedidosBorrado;
+  const esSuperadminRef = useRef(false);
+  const usuarioBorradoRef = useRef("Usuario");
+  const colaBloqueadosRef = useRef<ItemBloqueado[]>([]);
+  const colaTimerRef = useRef<number | null>(null);
+  // Junta lo bloqueado de una misma accion (borrar una caja con sus gastos toca varias colecciones) en UN pedido.
+  const encolarBloqueados = (items: ItemBloqueado[]) => {
+    colaBloqueadosRef.current.push(...items);
+    if (colaTimerRef.current != null) return;
+    colaTimerRef.current = window.setTimeout(() => {
+      colaTimerRef.current = null;
+      const nuevos = sinYaPedidos(colaBloqueadosRef.current, pedidosBorradoRef.current);
+      colaBloqueadosRef.current = [];
+      if (!nuevos.length) {
+        window.alert("Ese borrado ya está pedido: lo tiene que autorizar el superadmin.");
+        return;
+      }
+      const pedido: PedidoBorrado = {
+        id: newId(),
+        company: String(nuevos.find((i) => i.company)?.company || "General"),
+        pedidoPor: usuarioBorradoRef.current,
+        pedidoEn: new Date().toISOString(),
+        estado: "pendiente",
+        items: nuevos,
+      };
+      setPedidosBorrado((prev) => [pedido, ...prev]);
+      window.alert(
+        `No se borró: ${nuevos.length === 1 ? "se cargó" : "se cargaron"} hace más de una hora.\n\n` +
+          nuevos.map((i) => `• ${i.resumen}`).slice(0, 8).join("\n") +
+          `\n\nQuedó el pedido de borrado: lo tiene que autorizar el superadmin. Mientras tanto sigue cargado.`
+      );
+    }, 0);
+  };
+  // Envuelve el setter de una coleccion. Solo mira los cambios con funcion (los del usuario); la carga desde la base
+  // (arrays) pasa directo.
+  function vigilar<T extends { id: number | string }>(coleccion: string, crudo: React.Dispatch<React.SetStateAction<T[]>>, hijos?: string[]) {
+    return ((valor: React.SetStateAction<T[]>) => {
+      if (typeof valor !== "function") return crudo(valor);
+      crudo((prev) => {
+        const next = (valor as (p: T[]) => T[])(prev);
+        if (next === prev || !Array.isArray(next)) return next;
+        const ahora = Date.now();
+        const sellado = sellarAltas(prev as any, next as any, ahora, hijos) as any as T[];
+        const { lista, bloqueados } = separarBorrado(coleccion, prev as any, sellado as any, { puedeTodo: esSuperadminRef.current, ahora, hijos });
+        if (bloqueados.length) encolarBloqueados(bloqueados);
+        return lista as any as T[];
+      });
+    }) as React.Dispatch<React.SetStateAction<T[]>>;
+  }
+  const [savedBudgets, setSavedBudgetsCrudo] = useState<SavedBudget[]>([]);
   // CRM: clientes como entidad (fuente de verdad). Arranca vacio; se puebla con alta manual
   // o con "generar desde historial". El CRM matchea por clientId y, si falta, por nombre.
-  const [crmClients, setCrmClients] = useState<CrmClient[]>([]);
-  const [approvedJobs, setApprovedJobs] = useState<ApprovedJob[]>([]);
-  const [financialItems, setFinancialItems] = useState<FinancialCalendarItem[]>(defaultFinancialItems);
-  const [purchaseInvoices, setPurchaseInvoices] = useState<PurchaseInvoice[]>(defaultPurchaseInvoices);
-  const [pettyCashFunds, setPettyCashFunds] = useState<PettyCashFund[]>(defaultPettyCashFunds);
-  const [pettyCashExpenses, setPettyCashExpenses] = useState<PettyCashExpense[]>(defaultPettyCashExpenses);
-  const [viaticos, setViaticos] = useState<Viatico[]>([]);
+  const [crmClients, setCrmClientsCrudo] = useState<CrmClient[]>([]);
+  const [approvedJobs, setApprovedJobsCrudo] = useState<ApprovedJob[]>([]);
+  const [financialItems, setFinancialItemsCrudo] = useState<FinancialCalendarItem[]>(defaultFinancialItems);
+  const [purchaseInvoices, setPurchaseInvoicesCrudo] = useState<PurchaseInvoice[]>(defaultPurchaseInvoices);
+  const [pettyCashFunds, setPettyCashFundsCrudo] = useState<PettyCashFund[]>(defaultPettyCashFunds);
+  const [pettyCashExpenses, setPettyCashExpensesCrudo] = useState<PettyCashExpense[]>(defaultPettyCashExpenses);
+  const [viaticos, setViaticosCrudo] = useState<Viatico[]>([]);
   const [pettyCashTypes, setPettyCashTypes] = useState<PettyCashType[]>([]);
-  const [debtPlans, setDebtPlans] = useState<DebtPlan[]>(defaultDebtPlans);
-  const [bankStatementEntries, setBankStatementEntries] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
-  const [capitalEntries, setCapitalEntries] = useState<CapitalEntry[]>(defaultCapitalEntries);
+  const [debtPlans, setDebtPlansCrudo] = useState<DebtPlan[]>(defaultDebtPlans);
+  const [bankStatementEntries, setBankStatementEntriesCrudo] = useState<BankStatementEntry[]>(defaultBankStatementEntries);
+  const [capitalEntries, setCapitalEntriesCrudo] = useState<CapitalEntry[]>(defaultCapitalEntries);
   // Cierres de ejercicio (uno por empresa y ano cerrado). Ver domain/cierreEjercicio.ts.
   const [fiscalClosings, setFiscalClosings] = useState<CierreEjercicio[]>([]);
-  const [retirosSocietarios, setRetirosSocietarios] = useState<RetiroSocietario[]>([]);
+  const [retirosSocietarios, setRetirosSocietariosCrudo] = useState<RetiroSocietario[]>([]);
   // Arqueo del cierre en curso: la ventana devuelve las filas confirmadas (o null si se cancela).
   const [arqueoPendiente, setArqueoPendiente] = useState<null | {
     empresa: string;
@@ -3239,62 +3299,62 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     return true;
   };
 
-  const [cashHoldings, setCashHoldings] = useState<CashHolding[]>(defaultCashHoldings);
-  const [internalTransfers, setInternalTransfers] = useState<InternalTransfer[]>(defaultInternalTransfers);
+  const [cashHoldings, setCashHoldingsCrudo] = useState<CashHolding[]>(defaultCashHoldings);
+  const [internalTransfers, setInternalTransfersCrudo] = useState<InternalTransfer[]>(defaultInternalTransfers);
   // La solapa Movimientos internos filtra por su propia empresa: es su vista, no la del Balance.
-  const [personLedgerEntries, setPersonLedgerEntries] = useState<PersonLedgerEntry[]>(defaultPersonLedgerEntries);
+  const [personLedgerEntries, setPersonLedgerEntriesCrudo] = useState<PersonLedgerEntry[]>(defaultPersonLedgerEntries);
   const [calendarFlags, setCalendarFlags] = useState<CalendarFlag[]>(defaultCalendarFlags);
   const [calendarMarks, setCalendarMarks] = useState<CalendarMark[]>(defaultCalendarMarks);
   const [calendarNotes, setCalendarNotes] = useState<CalendarNote[]>(defaultCalendarNotes);
   const [internalCompanyScope, setInternalCompanyScope] = useState<CompanyScope | "__ALL__">("__ALL__");
-  const [ivaVepPayments, setIvaVepPayments] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
-  const [regularizacionesBlanqueo, setRegularizacionesBlanqueo] = useState<RegularizacionBlanqueo[]>([]);
-  const [stockItems, setStockItems] = useState<StockItem[]>(defaultStockItems);
+  const [ivaVepPayments, setIvaVepPaymentsCrudo] = useState<IvaVepPayment[]>(defaultIvaVepPayments);
+  const [regularizacionesBlanqueo, setRegularizacionesBlanqueoCrudo] = useState<RegularizacionBlanqueo[]>([]);
+  const [stockItems, setStockItemsCrudo] = useState<StockItem[]>(defaultStockItems);
   const [costAnalysisGroups, setCostAnalysisGroups] = useState<CostAnalysisGroup[]>(
     defaultCostAnalysisGroups
   );
   // --- Costos fijos y variables ---
   const [costGroups, setCostGroups] = useState<CostGroup[]>(defaultCostGroups);
-  const [costEntries, setCostEntries] = useState<CostEntry[]>(defaultCostEntries);
+  const [costEntries, setCostEntriesCrudo] = useState<CostEntry[]>(defaultCostEntries);
   const [costRules, setCostRules] = useState<CostRule[]>([]);
   // --- Seguros ---
-  const [seguros, setSeguros] = useState<Seguro[]>([]);
+  const [seguros, setSegurosCrudo] = useState<Seguro[]>([]);
   const [segurosCompanyScope, setSegurosCompanyScope] = useState<string>("__ALL__");
   const [polizaBusyId, setPolizaBusyId] = useState<number | null>(null);
   // --- Inversiones ---
-  const [inversiones, setInversiones] = useState<Inversion[]>([]);
-  const [vencimientos, setVencimientos] = useState<Vencimiento[]>([]);
+  const [inversiones, setInversionesCrudo] = useState<Inversion[]>([]);
+  const [vencimientos, setVencimientosCrudo] = useState<Vencimiento[]>([]);
   const [vencimientoMarcas, setVencimientoMarcas] = useState<VencimientoMarca[]>([]);
-  const [asignacionesDiarias, setAsignacionesDiarias] = useState<AsignacionDiaria[]>([]);
-  const [tiposTarea, setTiposTarea] = useState<TipoTarea[]>([]);
-  const [gruposTrabajo, setGruposTrabajo] = useState<GrupoTrabajo[]>([]);
+  const [asignacionesDiarias, setAsignacionesDiariasCrudo] = useState<AsignacionDiaria[]>([]);
+  const [tiposTarea, setTiposTareaCrudo] = useState<TipoTarea[]>([]);
+  const [gruposTrabajo, setGruposTrabajoCrudo] = useState<GrupoTrabajo[]>([]);
   const [planesFabricacion, setPlanesFabricacion] = useState<PlanFabricacion[]>([]);
   const [rubrosFabricacion, setRubrosFabricacion] = useState<RubroFabricacion[]>([]);
   const [categoriasEmpleado, setCategoriasEmpleado] = useState<CategoriaEmpleado[]>([]);
-  const [tiposMueble, setTiposMueble] = useState<TipoMueble[]>([]);
+  const [tiposMueble, setTiposMuebleCrudo] = useState<TipoMueble[]>([]);
   const [escalonesInternos, setEscalonesInternos] = useState<string[]>([]);
   const [fichasMaquinas, setFichasMaquinas] = useState<FichaMaquina[]>([]);
   // Convertidor de materiales (30/10/2026): equivalencias, como se compra y lo que acompaña. Lo que nunca se calibro vale lo de
   // Nicolas (placa 4,5 m2, laca 0,3 L, fondo 0,2 L, laca de color minimo 3 L, catalizador = mitad de la laca).
   const [convertidorMateriales, setConvertidorMateriales] = useState<Partial<ConvertidorMateriales> | undefined>(undefined);
   const convertidorVigenteMateriales = useMemo(() => convertidorVigente(convertidorMateriales), [convertidorMateriales]);
-  const [retrabajos, setRetrabajos] = useState<Retrabajo[]>([]);
-  const [rutinasTaller, setRutinasTaller] = useState<RutinaTaller[]>([]);
+  const [retrabajos, setRetrabajosCrudo] = useState<Retrabajo[]>([]);
+  const [rutinasTaller, setRutinasTallerCrudo] = useState<RutinaTaller[]>([]);
   const escalonesVigentes = escalonesInternos.length ? escalonesInternos : ESCALONES_POR_DEFECTO;
   // La lista de siempre se guarda recien al primer cambio (hasta ahi se muestra la de fabrica).
   // Mientras nadie las edite, la propuesta del 31/10 (las de siempre con sus Tareas y su gremio); al primer cambio se guardan.
   const categoriasPorDefecto = useMemo(() => categoriasPropuestas(tiposTarea, gruposTrabajo), [tiposTarea, gruposTrabajo]);
   const categoriasVigentes = categoriasEmpleado.length ? categoriasEmpleado : categoriasPorDefecto;
-  const [cuentasGuardadas, setCuentasGuardadas] = useState<Cuenta[]>([]);
+  const [cuentasGuardadas, setCuentasGuardadasCrudo] = useState<Cuenta[]>([]);
   const [inversionesCompanyScope, setInversionesCompanyScope] = useState<string>("__ALL__");
   // Renglones del Calendario anual renombrados u ocultos por el usuario (sobre la estructura fija).
   const [calendarRowConfig, setCalendarRowConfig] = useState<CalendarRowConfig>(DEFAULT_CALENDAR_ROW_CONFIG);
-  const [creditCards, setCreditCards] = useState<CreditCard[]>([]);
-  const [creditCardStatements, setCreditCardStatements] = useState<CreditCardStatement[]>([]);
-  const [creditCardConsumptions, setCreditCardConsumptions] = useState<CreditCardConsumption[]>([]);
+  const [creditCards, setCreditCardsCrudo] = useState<CreditCard[]>([]);
+  const [creditCardStatements, setCreditCardStatementsCrudo] = useState<CreditCardStatement[]>([]);
+  const [creditCardConsumptions, setCreditCardConsumptionsCrudo] = useState<CreditCardConsumption[]>([]);
   const [tarjetasCompanyScope, setTarjetasCompanyScope] = useState<string>("__ALL__");
-  const [suppliers, setSuppliers] = useState<Supplier[]>(defaultSuppliers);
-  const [issuedInvoices, setIssuedInvoices] = useState<IssuedInvoice[]>(defaultIssuedInvoices);
+  const [suppliers, setSuppliersCrudo] = useState<Supplier[]>(defaultSuppliers);
+  const [issuedInvoices, setIssuedInvoicesCrudo] = useState<IssuedInvoice[]>(defaultIssuedInvoices);
   const [costsFiscalStartYear, setCostsFiscalStartYear] = useState<number>(() =>
     currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date())
   );
@@ -3314,12 +3374,12 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   );
   const [remitoDrafts, setRemitoDrafts] = useState<RemitoDraft[]>(defaultRemitoDrafts);
   // Remitos con historial (Fase 5): recepciones de proveedor, salidas por trabajo y entregas al cliente.
-  const [remitos, setRemitos] = useState<Remito[]>([]);
+  const [remitos, setRemitosCrudo] = useState<Remito[]>([]);
   // NOTAS DE CREDITO de proveedores (domain/notasCredito): registro, no mueven plata.
-  const [creditNotes, setCreditNotes] = useState<NotaCreditoCompra[]>([]);
-  const [companyAssets, setCompanyAssets] = useState<CompanyAsset[]>(defaultCompanyAssets);
+  const [creditNotes, setCreditNotesCrudo] = useState<NotaCreditoCompra[]>([]);
+  const [companyAssets, setCompanyAssetsCrudo] = useState<CompanyAsset[]>(defaultCompanyAssets);
   // Documentos vinculados (F1): metadatos de archivos subidos desde la carpeta de la PC a Storage.
-  const [linkedDocuments, setLinkedDocuments] = useState<LinkedDocument[]>([]);
+  const [linkedDocuments, setLinkedDocumentsCrudo] = useState<LinkedDocument[]>([]);
   const [documentsFolderLinked, setDocumentsFolderLinked] = useState(false);
   const [documentsFolderName, setDocumentsFolderName] = useState("");
   const [documentsBusy, setDocumentsBusy] = useState(false);
@@ -3336,7 +3396,48 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
     fileName: string;
     administration: "blanco" | "negro";
   } | null>(null);
-  const [employees, setEmployees] = useState<Employee[]>(defaultEmployees);
+  const [employees, setEmployeesCrudo] = useState<Employee[]>(defaultEmployees);
+  // BORRADO PROTEGIDO (12/11/2026): cada coleccion de registros pasa por `vigilar` (domain/borradoProtegido.ts).
+  // Lo nuevo se sella con creadoEn; lo que se borra pasada la hora (o sin sello) se repone y queda pedido para el superadmin.
+  const setSavedBudgets = useMemo(() => vigilar("savedBudgets", setSavedBudgetsCrudo), []);
+  const setCrmClients = useMemo(() => vigilar("crmClients", setCrmClientsCrudo), []);
+  const setApprovedJobs = useMemo(() => vigilar("approvedJobs", setApprovedJobsCrudo, ["payments", "commissionPayments", "invoices", "retentions", "additionals", "cobrosPrevistos", "workFiles"]), []);
+  const setFinancialItems = useMemo(() => vigilar("financialItems", setFinancialItemsCrudo), []);
+  const setPurchaseInvoices = useMemo(() => vigilar("purchaseInvoices", setPurchaseInvoicesCrudo), []);
+  const setPettyCashFunds = useMemo(() => vigilar("pettyCashFunds", setPettyCashFundsCrudo), []);
+  const setPettyCashExpenses = useMemo(() => vigilar("pettyCashExpenses", setPettyCashExpensesCrudo), []);
+  const setViaticos = useMemo(() => vigilar("viaticos", setViaticosCrudo), []);
+  const setDebtPlans = useMemo(() => vigilar("debtPlans", setDebtPlansCrudo), []);
+  const setBankStatementEntries = useMemo(() => vigilar("bankStatementEntries", setBankStatementEntriesCrudo), []);
+  const setCapitalEntries = useMemo(() => vigilar("capitalEntries", setCapitalEntriesCrudo), []);
+  const setRetirosSocietarios = useMemo(() => vigilar("retirosSocietarios", setRetirosSocietariosCrudo), []);
+  const setCashHoldings = useMemo(() => vigilar("cashHoldings", setCashHoldingsCrudo), []);
+  const setInternalTransfers = useMemo(() => vigilar("internalTransfers", setInternalTransfersCrudo), []);
+  const setPersonLedgerEntries = useMemo(() => vigilar("personLedgerEntries", setPersonLedgerEntriesCrudo), []);
+  const setIvaVepPayments = useMemo(() => vigilar("ivaVepPayments", setIvaVepPaymentsCrudo), []);
+  const setRegularizacionesBlanqueo = useMemo(() => vigilar("regularizacionesBlanqueo", setRegularizacionesBlanqueoCrudo), []);
+  const setStockItems = useMemo(() => vigilar("stockItems", setStockItemsCrudo), []);
+  const setCostEntries = useMemo(() => vigilar("costEntries", setCostEntriesCrudo), []);
+  const setSeguros = useMemo(() => vigilar("seguros", setSegurosCrudo), []);
+  const setInversiones = useMemo(() => vigilar("inversiones", setInversionesCrudo), []);
+  const setVencimientos = useMemo(() => vigilar("vencimientos", setVencimientosCrudo), []);
+  const setAsignacionesDiarias = useMemo(() => vigilar("asignacionesDiarias", setAsignacionesDiariasCrudo), []);
+  const setTiposTarea = useMemo(() => vigilar("tiposTarea", setTiposTareaCrudo), []);
+  const setGruposTrabajo = useMemo(() => vigilar("gruposTrabajo", setGruposTrabajoCrudo), []);
+  const setTiposMueble = useMemo(() => vigilar("tiposMueble", setTiposMuebleCrudo), []);
+  const setRetrabajos = useMemo(() => vigilar("retrabajos", setRetrabajosCrudo), []);
+  const setRutinasTaller = useMemo(() => vigilar("rutinasTaller", setRutinasTallerCrudo), []);
+  const setCuentasGuardadas = useMemo(() => vigilar("cuentasGuardadas", setCuentasGuardadasCrudo), []);
+  const setCreditCards = useMemo(() => vigilar("creditCards", setCreditCardsCrudo), []);
+  const setCreditCardStatements = useMemo(() => vigilar("creditCardStatements", setCreditCardStatementsCrudo), []);
+  const setCreditCardConsumptions = useMemo(() => vigilar("creditCardConsumptions", setCreditCardConsumptionsCrudo), []);
+  const setSuppliers = useMemo(() => vigilar("suppliers", setSuppliersCrudo), []);
+  const setIssuedInvoices = useMemo(() => vigilar("issuedInvoices", setIssuedInvoicesCrudo), []);
+  const setRemitos = useMemo(() => vigilar("remitos", setRemitosCrudo), []);
+  const setCreditNotes = useMemo(() => vigilar("creditNotes", setCreditNotesCrudo), []);
+  const setCompanyAssets = useMemo(() => vigilar("companyAssets", setCompanyAssetsCrudo), []);
+  const setLinkedDocuments = useMemo(() => vigilar("linkedDocuments", setLinkedDocumentsCrudo), []);
+  const setEmployees = useMemo(() => vigilar("employees", setEmployeesCrudo, ["documents", "provisionItems"]), []);
   const [employeeBaseConfig, setEmployeeBaseConfig] = useState<EmployeeBaseConfig>(defaultBaseConfig);
   const [scaleRows, setScaleRows] = useState<ScaleRow[]>(seededScaleRows);
   const [selectedHistoryId, setSelectedHistoryId] = useState<number | null>(null);
@@ -4964,6 +5065,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   // solo (firmante + firmadoEn) al crear y al editar cada movimiento de plata: queda el ultimo responsable.
   // Ver ui/FirmanteSelect.
   const usuarioFirmante = String(supabaseProfile?.full_name || supabaseSession?.user?.email || "Usuario").trim();
+  // SOLO NICOLAS autoriza y borra directo (12/11/2026): no alcanza con ser superadmin.
+  const esAutorizadorBorrados = isSupabaseAdmin && supabaseSession?.user?.id === AUTORIZADOR_BORRADOS_ID;
+  esSuperadminRef.current = esAutorizadorBorrados;
+  usuarioBorradoRef.current = usuarioFirmante;
   const firma = () => ({ firmante: usuarioFirmante, firmadoEn: new Date().toISOString() });
   const guardarAsignacionDiaria = (a: AsignacionDiaria) => {
     const conFirma = { ...a, ...firma() };
@@ -10365,6 +10470,7 @@ Escribi CERRAR para confirmar:`
     convertidorMateriales: convertidorMateriales ? JSON.parse(JSON.stringify(convertidorMateriales)) : undefined,
     rutinasTaller: rutinasTaller.map((item) => ({ ...item })),
     cuentas: cuentasGuardadas.map((item) => ({ ...item })),
+    pedidosBorrado: pedidosBorrado.map((item) => ({ ...item, items: item.items.map((i) => ({ ...i })) })),
     costRules: costRules.map((item) => ({ ...item })),
     creditCards: creditCards.map((item) => ({ ...item })),
     creditCardStatements: creditCardStatements.map((item) => ({ ...item })),
@@ -10718,6 +10824,7 @@ Escribi CERRAR para confirmar:`
     setRetrabajos(keepAccessibleByCompany(data.retrabajos || []).map((item) => ({ ...item })));
     setRutinasTaller((data.rutinasTaller || []).map((item) => ({ ...item })));
     setCuentasGuardadas(keepAccessibleByCompany(data.cuentas || []).map((item) => ({ ...item })));
+    setPedidosBorrado(keepAccessibleByCompany((data.pedidosBorrado || []) as any).map((item: any) => ({ ...item, items: (item.items || []).map((i: any) => ({ ...i })) })));
     setCalendarRowConfig({
       labels: { ...(data.calendarRowConfig?.labels || {}) },
       hidden: [...(data.calendarRowConfig?.hidden || [])],
@@ -13055,6 +13162,7 @@ Escribi CERRAR para confirmar:`
     convertidorMateriales,
     rutinasTaller,
     cuentasGuardadas,
+    pedidosBorrado,
     fiscalClosings,
     inversiones,
     crmClients,
@@ -18876,6 +18984,47 @@ Escribi CERRAR para confirmar:`
     if (sueltos.length) setFinancialItems((prev) => prev.filter((f) => !sueltos.some((x) => x.id === f.id)));
     if (banco.length) setBankStatementEntries((prev) => prev.filter((b) => !banco.some((x) => x.id === b.id)));
   }, [isSupabaseLoggedIn, supabaseHydratedTick, costEntries, pettyCashExpenses, purchaseInvoices, financialItems, bankStatementEntries]);
+  // BORRADOS POR AUTORIZAR: el superadmin los ve al abrir el sistema (una vez por sesion) y con el boton flotante.
+  const settersVigilados: Record<string, React.Dispatch<React.SetStateAction<any[]>>> = {
+    savedBudgets: setSavedBudgets, crmClients: setCrmClients, approvedJobs: setApprovedJobs, financialItems: setFinancialItems,
+    purchaseInvoices: setPurchaseInvoices, pettyCashFunds: setPettyCashFunds, pettyCashExpenses: setPettyCashExpenses, viaticos: setViaticos,
+    debtPlans: setDebtPlans, bankStatementEntries: setBankStatementEntries, capitalEntries: setCapitalEntries, retirosSocietarios: setRetirosSocietarios,
+    cashHoldings: setCashHoldings, internalTransfers: setInternalTransfers, personLedgerEntries: setPersonLedgerEntries, ivaVepPayments: setIvaVepPayments,
+    regularizacionesBlanqueo: setRegularizacionesBlanqueo, stockItems: setStockItems, costEntries: setCostEntries, seguros: setSeguros,
+    inversiones: setInversiones, vencimientos: setVencimientos, asignacionesDiarias: setAsignacionesDiarias, tiposTarea: setTiposTarea,
+    gruposTrabajo: setGruposTrabajo, tiposMueble: setTiposMueble, retrabajos: setRetrabajos, rutinasTaller: setRutinasTaller,
+    cuentasGuardadas: setCuentasGuardadas, creditCards: setCreditCards, creditCardStatements: setCreditCardStatements,
+    creditCardConsumptions: setCreditCardConsumptions, suppliers: setSuppliers, issuedInvoices: setIssuedInvoices, remitos: setRemitos,
+    creditNotes: setCreditNotes, companyAssets: setCompanyAssets, linkedDocuments: setLinkedDocuments, employees: setEmployees,
+  } as any;
+  const pedidosBorradoPendientes = useMemo(
+    () => pedidosBorrado.filter((p) => p.estado === "pendiente").sort((a, b) => b.pedidoEn.localeCompare(a.pedidoEn)),
+    [pedidosBorrado]
+  );
+  const [verPedidosBorrado, setVerPedidosBorrado] = useState(false);
+  const pedidosBorradoMostradosRef = useRef(false);
+  useEffect(() => {
+    if (!esAutorizadorBorrados || !supabaseHydratedTick || pedidosBorradoMostradosRef.current) return;
+    if (pedidosBorradoPendientes.length === 0) return;
+    pedidosBorradoMostradosRef.current = true;
+    setVerPedidosBorrado(true);
+  }, [esAutorizadorBorrados, supabaseHydratedTick, pedidosBorradoPendientes.length]);
+  const resolverPedidoBorrado = (id: number, autorizar: boolean) => {
+    if (!esAutorizadorBorrados) return;
+    const pedido = pedidosBorrado.find((p) => p.id === id);
+    if (!pedido || pedido.estado !== "pendiente") return;
+    if (autorizar) {
+      const porColeccion = new Map<string, typeof pedido.items>();
+      pedido.items.forEach((i) => porColeccion.set(i.coleccion, [...(porColeccion.get(i.coleccion) || []), i]));
+      porColeccion.forEach((items, coleccion) => settersVigilados[coleccion]?.((prev: any[]) => aplicarBorrado(prev as any, items) as any));
+    }
+    setPedidosBorrado((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, estado: autorizar ? "autorizado" : "rechazado", resueltoPor: usuarioFirmante, resueltoEn: new Date().toISOString() } : p
+      )
+    );
+  };
+
   const cerrarNovedades = () => {
     try {
       window.localStorage.setItem(claveNovedades, ultimaNovedad());
@@ -23250,6 +23399,25 @@ Escribi CERRAR para confirmar:`
         />
       )}
       {activeTab === "calendarioAnual" && renderCalendarioAnual()}
+      {esAutorizadorBorrados && pedidosBorradoPendientes.length > 0 && !verPedidosBorrado && (
+        <button
+          type="button"
+          onClick={() => setVerPedidosBorrado(true)}
+          title="Borrados que esperan tu autorización"
+          style={{ position: "fixed", left: 14, bottom: 14, zIndex: 4700, border: "1px solid #b91c1c", background: "#dc2626", color: "#fff", borderRadius: 999, padding: "8px 14px", fontWeight: 800, cursor: "pointer", boxShadow: "0 6px 18px rgba(0,0,0,0.2)" }}
+        >
+          🗑 {pedidosBorradoPendientes.length} {pedidosBorradoPendientes.length === 1 ? "borrado" : "borrados"} por autorizar
+        </button>
+      )}
+      {esAutorizadorBorrados && verPedidosBorrado && !novedadesAbiertas && (
+        <VentanaPedidosBorrado
+          pedidos={pedidosBorradoPendientes}
+          empresaCorta={(c) => (c === "General" ? "General" : getCompanyMeta(c as CompanyName).short || c)}
+          onAutorizar={(id) => resolverPedidoBorrado(id, true)}
+          onRechazar={(id) => resolverPedidoBorrado(id, false)}
+          onCerrar={() => setVerPedidosBorrado(false)}
+        />
+      )}
       {novedadesAbiertas && (
         <VentanaNovedades
           tandas={novedadesAbiertas}

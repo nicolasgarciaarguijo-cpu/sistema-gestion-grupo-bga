@@ -34,6 +34,14 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Es la puerta de entrada al sistema. Aca inicias sesion con tu usuario y ves con que empresa y solapas trabajas segun tus permisos.",
     sections: [
       {
+        heading: "Borrar: dentro de la hora, o con autorización",
+        blocks: [
+          { type: "p", text: "Todo lo que se carga queda marcado con la hora en que se cargó. Durante la primera hora lo puede borrar cualquiera que tenga permiso en esa solapa. Pasada la hora no se borra: queda un pedido de borrado, sigue cargado y aparece un aviso que lo explica. Lo cargado antes del 12/11/2026 cuenta como viejo." },
+          { type: "p", text: "Los pedidos los autoriza solo Nicolás (ningún otro usuario, aunque sea superadmin). Al abrir el sistema le aparece la ventana 'Borrados por autorizar' con quién pidió qué y cuándo: 'Autorizar y borrar' lo borra, 'Rechazar' lo deja como está. Si la cierra, queda un botón rojo abajo a la izquierda con la cantidad pendiente. Solo Nicolás borra directo, sin pedido." },
+          { type: "tip", text: "Corre para los registros (pagos, gastos, facturas, cajas, cobros y comisiones de los trabajos, banco, tarjetas, movimientos, personal, proveedores, stock, presupuestos guardados y catálogos de Fabricación). Lo que el sistema arma solo, como los reflejos de los trabajos en el calendario, no pide autorización. Los renglones del presupuesto que se está editando tampoco." },
+        ],
+      },
+      {
         heading: "Como ingresar",
         blocks: [
           {
