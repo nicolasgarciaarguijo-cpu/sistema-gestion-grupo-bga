@@ -456,6 +456,12 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "La solapa muestra solo el listado de las cajas chicas asignadas y los tipos de caja. Todo lo de cada persona está en su ficha: click derecho sobre el responsable. La caja no va al cash flow; sus gastos sí, como pago a cada proveedor.",
     sections: [
       {
+        heading: "Sueldos pagados con la caja",
+        blocks: [
+          { type: "p", text: "Si en la ficha de pago de haberes se elige como cuenta la caja de otra persona (por ejemplo, las horas de un empleado pagadas con la caja de Lucas), ese pago figura como gasto rendido en la caja de esa persona: la abierta a la fecha del pago, en la empresa del empleado. Si la persona no tiene caja, se le crea una en $0 y lo pagado queda como deuda con ella. Para corregirlo, click sobre el gasto: abre el pago de haberes." },
+        ],
+      },
+      {
         heading: "Asignar una caja chica",
         blocks: [
           { type: "steps", items: ["Tocá '+ Nueva caja chica'.", "Mirá el resumen de fondos de arriba (asignado, utilizado y lo que resta, blanco y negro).", "Elegí responsable, tipo de caja (General, Viáticos u otro), empresa, fecha, monto en blanco y en negro, y de qué cuenta sale.", "Guardá: aparece en el listado con lo utilizado y lo que resta."] },
@@ -849,6 +855,12 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
     intro:
       "Los empleados, su liquidacion mensual, las escalas salariales y las provisiones (EPP, insumos, examenes, capacitaciones) con su vigencia. Aca tambien sale el costo hora hombre que se usa para cotizar.",
     sections: [
+      {
+        heading: "Anticipos y pagos a cuenta del mes",
+        blocks: [
+          { type: "p", text: "En la liquidación del mes de cada persona, un recuadro naranja muestra lo que ya se le pagó de ese período desde la ficha de pago de haberes (fecha, monto, blanco o negro y de qué cuenta o caja salió), lo que corresponde con premios y acuerdo, y cuánto le resta cobrar. Esos pagos ya se descuentan en la ficha de haberes: no se cargan de nuevo en el campo Anticipos." },
+        ],
+      },
       {
         heading: "Categorías internas (capacidades)",
         blocks: [

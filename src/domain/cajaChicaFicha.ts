@@ -229,7 +229,10 @@ export const personaDeCuenta = (cuentaId?: string): { company: string; persona: 
 
 export function fondoDelPago(pago: PagoConCajaLike, fondos: FondoLike[]): FondoLike | undefined {
   const p = personaDeCuenta(pago.cuentaId);
-  if (!p || pago.employeeId != null) return undefined;
+  if (!p) return undefined;
+  // Un pago de HABERES hecho con la caja de otra persona (Nicolas, 11/11/2026: las horas de Gerardo pagadas con la
+  // caja de Lucas) es un gasto rendido de esa caja. Solo no cuenta si la caja es del mismo empleado que cobra.
+  if (pago.employeeId != null && normalizarPersona(pago.supplier || "") === normalizarPersona(p.persona)) return undefined;
   const deLaPersona = fondos
     .filter((f) => String(f.company) === String(pago.company) && normalizarPersona(f.responsible) === normalizarPersona(p.persona))
     .sort((a, b) => (b.deliveredDate || "").localeCompare(a.deliveredDate || ""));
@@ -252,7 +255,7 @@ export function pagosComoGastosDeCaja(pagos: PagoConCajaLike[], fondos: FondoLik
       amount: Number(ce.amount || 0),
       administration: ce.administration === "negro" ? "negro" : "blanco",
       supplier: ce.supplier,
-      description: `${ce.description || "Pago"} · cargada en Compras`,
+      description: ce.employeeId != null ? `${ce.description || "Haberes"} · ${ce.supplier || ""} (ficha de haberes)` : `${ce.description || "Pago"} · cargada en Compras`,
       costGroup: ce.group || undefined,
     });
   });

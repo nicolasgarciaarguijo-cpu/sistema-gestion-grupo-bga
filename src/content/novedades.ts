@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-11b",
+    fecha: "11/11/2026",
+    titulo: "Pagos programados en pantalla, sueldos pagados con caja chica y anticipos en Personal",
+    items: [
+      {
+        titulo: "Pagos programados entra en la pantalla",
+        que: "El almanaque de Pagos programados ya no se escapa de la pantalla: las 7 columnas quedan fijas y cada pago se lee entero (si es largo, en dos renglones).",
+        como: "Balance → Calendario anual → Pagos programados.",
+        tab: "calendarioAnual",
+      },
+      {
+        titulo: "Sueldo pagado con la caja chica de otro",
+        que: "Si un pago de haberes sale de la caja de otra persona (por ejemplo, las horas de un empleado pagadas con la caja de Lucas), ahora figura como gasto rendido en esa caja chica y baja lo que le queda. Click sobre el gasto abre el pago de haberes para corregirlo.",
+        como: "Caja chica → la ficha de la persona.",
+        tab: "cajaChica",
+      },
+      {
+        titulo: "Anticipos en la ficha de Personal",
+        que: "En la liquidación del mes de cada persona se ven los pagos a cuenta ya hechos desde la ficha de haberes (con la cuenta o caja de donde salieron) y cuánto le resta cobrar, premios incluidos. Ya se descuentan en la ficha de haberes: no hace falta cargarlos en Anticipos.",
+        como: "Personal → la persona → el mes.",
+        tab: "personal",
+      },
+    ],
+  },
+  {
     id: "2026-11-11",
     fecha: "11/11/2026",
     titulo: "La ocupación del taller sale de los trabajos aprobados",

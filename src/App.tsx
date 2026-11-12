@@ -18372,6 +18372,7 @@ Escribi CERRAR para confirmar:`
   const guardarPagoHaber = async (f: PagoHaberForm & { empId: number }) => {
     const emp = employees.find((x) => x.id === f.empId);
     if (!emp) return;
+    asegurarCajaDePersona(String(emp.company), f.cuentaId, f.fecha, new Set());
     const previo = f.id != null ? costEntries.find((x) => x.id === f.id) : undefined;
     let comprobante = previo?.comprobante || null;
     if (f.comprobante) {
@@ -23330,6 +23331,8 @@ Escribi CERRAR para confirmar:`
             onAbrirGasto={(gid) => {
               // Un pago de una factura de Compras: se abre la factura (ahi se corrige el pago).
               if (idsPagosConCaja.has(gid)) {
+                // Un pago de haberes hecho con la caja: se corrige en su ventana de pago de haberes.
+                if (costEntries.find((x) => x.id === gid)?.employeeId != null) return abrirPagoHaber(gid);
                 const inv = purchaseInvoices.find((i) => pagosDeFactura(i).includes(gid));
                 const f = inv ? facturaDeId(inv.id) : null;
                 if (f) setFacturaModal(f);
@@ -25092,6 +25095,16 @@ Escribi CERRAR para confirmar:`
           onPrecargaAuto={setPrecargaHorasAuto}
           setPayrollHaberes={setPayrollHaberes}
           onFichaPagoHaberes={(emp: any) => setFichaHaberesEmpId(emp.id)}
+          pagosACuentaDelMes={(empId: number, mes: string) => {
+            const p = fichasHaberes.get(empId)?.periodos.find((x) => x.periodo === mes);
+            if (!p) return null;
+            const cuentaNombre = (id?: string) => (id ? (cuentasSistema as any[]).find((c) => c.id === id)?.nombre || "" : "");
+            const pagos = costEntries
+              .filter((c) => c.employeeId === empId && (c.periodoHaber || periodoDePago(c.date)) === mes)
+              .sort((a, b) => a.date.localeCompare(b.date))
+              .map((c) => ({ id: c.id, date: c.date, amount: Number(c.amount || 0), administration: String(c.administration || "blanco"), cuenta: cuentaNombre(c.cuentaId) }));
+            return { pagos, corresponde: p.corresponde, pagado: p.pagado, saldo: p.saldo };
+          }}
           visibleEmployees={visibleEmployees}
           formerEmployees={formerEmployees}
           selectedEmployee={selectedEmployee}

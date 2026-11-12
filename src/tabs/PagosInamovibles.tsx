@@ -155,7 +155,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
       <div style={{ display: "grid", gap: 14, alignItems: "start" }}>
         {/* Almanaque del mes: a todo el ancho */}
         <div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 3 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 3 }}>
             {DIAS.map((d) => (
               <div key={d} style={{ fontSize: 11, fontWeight: 700, color: "#64748b", textAlign: "center" }}>
                 {d}
@@ -171,6 +171,7 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                   key={isoDia}
                   style={{
                     minHeight: 96,
+                    minWidth: 0,
                     border: esHoy ? "2px solid #0f172a" : "1px solid #e2e8f0",
                     borderRadius: 6,
                     padding: 3,
@@ -195,15 +196,15 @@ export function PagosInamovibles(props: PagosInamoviblesProps) {
                           borderRadius: 3,
                           padding: "1px 3px",
                           marginTop: 2,
-                          overflow: "hidden",
-                          whiteSpace: "nowrap",
-                          textOverflow: "ellipsis",
+                          // Se lee entero: el renglon se parte en vez de estirar la columna (antes se escapaba de la pantalla).
+                          whiteSpace: "normal",
+                          overflowWrap: "anywhere",
                           textDecoration: i.pagado ? "line-through" : undefined,
                           cursor: "context-menu",
                         }}
                       >
                         {i.titulo}
-                        {i.monto > 0 && <span style={{ fontWeight: 700 }}> · {money(i.monto, i.currency)}</span>}
+                        {i.monto > 0 && <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}> · {money(i.monto, i.currency)}</span>}
                       </div>
                     );
                   })}

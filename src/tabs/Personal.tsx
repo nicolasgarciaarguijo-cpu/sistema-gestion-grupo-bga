@@ -48,6 +48,14 @@ type PersonalTabProps = {
   setPayrollHaberes: (employeeId: number, month: string, patch: any) => void;
   // Ficha de pago de haberes de la persona (recibo oficial, pagos, comprobantes, saldo).
   onFichaPagoHaberes?: (employee: any) => void;
+  // PAGOS A CUENTA del mes (Nicolas, 11/11/2026): lo ya pagado del periodo desde la ficha de haberes (tambien lo pagado
+  // con la caja chica de otro) y lo que le resta cobrar. Solo se muestra: el descuento ya esta en la ficha de haberes.
+  pagosACuentaDelMes?: (employeeId: number, mes: string) => null | {
+    pagos: Array<{ id: number; date: string; amount: number; administration: string; cuenta: string }>;
+    corresponde: number;
+    pagado: number;
+    saldo: number;
+  };
   precargaAuto?: boolean;
   onPrecargaAuto?: (activa: boolean) => void;
   onContarHorasMes?: (employeeId: number) => void;
@@ -222,7 +230,7 @@ export function PersonalTab(props: PersonalTabProps) {
   const categoriasGremio = Array.from(new Set(((props.CATEGORY_OPTIONS || []) as string[]).map((c) => String(c).trim()).filter(Boolean)))
     .sort((a, b) => valorGremio(a) - valorGremio(b) || a.localeCompare(b));
   const {
-    employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, onFichaPagoHaberes, precargaAuto = true, onPrecargaAuto, onContarHorasMes, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
+    employees, onPayrollMonthReport, onCargarReciboOficial, setPayrollHaberes, onFichaPagoHaberes, pagosACuentaDelMes, precargaAuto = true, onPrecargaAuto, onContarHorasMes, visibleEmployees, formerEmployees, selectedEmployee, selectedEmployeeId,
     employeeBaseConfig, payrollMonth, newEmployeeDraft,
     employeeProvisionModal, employeeDocumentModal, stockPersonalItems, personalReminders, scaleRows,
     isEmployeeSetupModalOpen, uploadMessage, COMPANY_OPTIONS, CATEGORY_OPTIONS,
@@ -3093,6 +3101,39 @@ export function PersonalTab(props: PersonalTabProps) {
                               </span>
                             )}
                           </div>
+
+                          {pagosACuentaDelMes && (() => {
+                            const r = pagosACuentaDelMes(selectedEmployee.id, payrollMonth);
+                            if (!r || r.pagos.length === 0) return null;
+                            const fmt = (n: number) => `$ ${Math.round(n).toLocaleString("es-AR")}`;
+                            const f = (iso: string) => `${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
+                            return (
+                              <div style={{ marginTop: 14, border: "1px solid #fdba74", background: "#fff7ed", borderRadius: 8, padding: "10px 12px", fontSize: 13 }}>
+                                <div style={{ fontWeight: 800, color: "#9a3412", marginBottom: 6 }}>Anticipos y pagos a cuenta del mes</div>
+                                {r.pagos.map((p) => (
+                                  <div key={p.id} style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                                    <span>{f(p.date)}</span>
+                                    <strong>{fmt(p.amount)}</strong>
+                                    <span style={{ fontWeight: 700 }}>{p.administration === "negro" ? "N" : "B"}</span>
+                                    <span style={{ color: "#64748b" }}>{p.cuenta || "sin cuenta"}</span>
+                                  </div>
+                                ))}
+                                <div style={{ marginTop: 6, borderTop: "1px solid #fed7aa", paddingTop: 6 }}>
+                                  Corresponde {fmt(r.corresponde)} · pagado {fmt(r.pagado)} ·{" "}
+                                  {r.saldo > 0.5 ? (
+                                    <strong style={{ color: "#b91c1c" }}>le resta cobrar {fmt(r.saldo)}</strong>
+                                  ) : r.saldo < -0.5 ? (
+                                    <strong style={{ color: "#1e40af" }}>a favor de la empresa {fmt(-r.saldo)}</strong>
+                                  ) : (
+                                    <strong style={{ color: "#166534" }}>saldado</strong>
+                                  )}
+                                </div>
+                                <div style={{ color: "#64748b", fontSize: 12, marginTop: 4 }}>
+                                  Salen de la ficha de pago de haberes y ya se descuentan ahí: no hace falta cargarlos en "Anticipos".
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {/* El recibo oficial y los pagos ya no viven aca: van en la FICHA DE PAGO DE HABERES
                               (click derecho sobre la persona en la nomina). Personal no alimenta el cash flow. */}

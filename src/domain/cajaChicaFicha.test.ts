@@ -120,3 +120,15 @@ describe("facturas pagadas con la caja chica (2026-10-21)", () => {
     expect(pagosComoGastosDeCaja([{ id: 9, company: "BGA", date: "2026-10-15", amount: 50, cuentaId: "banco|BGA|galicia|ARS" }], fondos)).toEqual([]);
   });
 });
+
+describe("pago de haberes con la caja de otra persona", () => {
+  const { pagosComoGastosDeCaja } = require("./cajaChicaFicha");
+  const fondos = [{ id: 7, company: "DR", responsible: "LUCAS RUIZ MANSILLA", deliveredDate: "2026-11-03", closed: false }];
+  const pago = { id: 1, company: "DR", date: "2026-11-06", amount: 300000, administration: "negro", cuentaId: "persona|DR|lucas ruiz mansilla|negro", employeeId: 5, supplier: "GERARDO CARMONA BUSTAMANTE", description: "Haberes 10/2026" };
+  it("es un gasto rendido de la caja de quien pagó", () => {
+    expect(pagosComoGastosDeCaja([pago], fondos)).toEqual([expect.objectContaining({ id: 1, fundId: 7, amount: 300000, administration: "negro" })]);
+  });
+  it("no cuenta si la caja es del mismo empleado que cobra", () => {
+    expect(pagosComoGastosDeCaja([{ ...pago, supplier: "Lucas Ruiz Mansilla" }], fondos)).toEqual([]);
+  });
+});
