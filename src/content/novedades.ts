@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-13b",
+    fecha: "13/11/2026",
+    titulo: "El pago de una cuota se corrige en su ficha",
+    items: [
+      {
+        titulo: "Editar el pago de una cuota de Desendeudamiento",
+        que: "Antes el pago de una cuota se cargaba con una ficha y se corregía con otra que no sabía que era una cuota. Ahora es la misma: se corrige en la cuota, y si lo abrís desde otra solapa te lleva ahí.",
+        como: "Desendeudamiento → la cuota pagada → ✎ (o click derecho → 'Editar el pago…').",
+        tab: "desendeudamiento",
+      },
+      {
+        titulo: "Pagar con la caja chica de la otra empresa",
+        que: "En la ficha de una factura o gasto, 'De qué cuenta salió' ahora ofrece también las cajas chicas y cuentas de la otra empresa, aunque estés mirando una sola. Al elegir una, el pago queda cruzado y se suma como préstamo entre las empresas.",
+        como: "En el pago, abrí 'De qué cuenta salió' y elegí abajo, en 'De … (pago cruzado = préstamo)', la caja de la persona.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-11-13",
     fecha: "13/11/2026",
     titulo: "Los movimientos del banco se linkean en un solo lugar",

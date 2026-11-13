@@ -26,7 +26,8 @@ import NumInput from "../ui/NumInput";
 import { SelectorTarjeta, type TarjetaOpt } from "../ui/SelectorTarjeta";
 import { OPCIONES_MEDIO_PAGO } from "../domain/types";
 export type PagoCuotaForm = {
-  modo: "nuevo" | "vincular";
+  // "editar" = corregir el pago que ya tiene la cuota (misma ficha que al cargarlo, 13/11/2026).
+  modo: "nuevo" | "vincular" | "editar";
   fecha: string;
   monto: number;
   metodo: "transferencia" | "efectivo" | "cheque" | "debito" | "tarjeta_debito" | "tarjeta_credito";
@@ -60,6 +61,9 @@ export function DesendeudamientoTab({
   money,
   etiquetaGrupo,
   pagoDeCuota,
+  pagoParaEditar,
+  abrirPagoCuota,
+  onPagoCuotaAbierto,
   pagosVinculables,
   otrasDeudas,
   onAgregar,
@@ -88,6 +92,10 @@ export function DesendeudamientoTab({
   money: (n: number) => string;
   etiquetaGrupo: (clave: string) => string;
   pagoDeCuota: (costEntryId: number) => { date: string; amount: number; metodo: string } | null;
+  // MISMA FICHA EN TODO VINCULO: el pago de una cuota se corrige en la ficha del pago de la cuota, venga de donde venga.
+  pagoParaEditar?: (costEntryId: number) => PagoCuotaForm | null;
+  abrirPagoCuota?: { deudaId: number; cuotaId: string } | null;
+  onPagoCuotaAbierto?: () => void;
   pagosVinculables: (company: string, acreedor: string) => Array<{ id: number; date: string; amount: number; description: string }>;
   otrasDeudas: OtraDeuda[];
   onAgregar: () => number | void; // devuelve el id de la deuda nueva (se abre su ficha)
@@ -146,6 +154,21 @@ export function DesendeudamientoTab({
       cuota: c,
       form: { modo: "nuevo", fecha: c.fecha <= hoy ? c.fecha : hoy, monto: Number(c.monto || 0), metodo: "transferencia", administration: d.administration || "blanco" },
     });
+
+  const editarPago = (d: DebtPlan, c: CuotaDeuda) => {
+    const form = c.pagoCostEntryId != null && pagoParaEditar ? pagoParaEditar(c.pagoCostEntryId) : null;
+    if (form) setPago({ deuda: d, cuota: c, form });
+  };
+  useEffect(() => {
+    if (!abrirPagoCuota) return;
+    const d = deudas.find((x) => x.id === abrirPagoCuota.deudaId);
+    const c = d ? cuotasDeDeuda(d).find((x) => x.id === abrirPagoCuota.cuotaId) : undefined;
+    if (d && c) {
+      setFichaId(d.id);
+      editarPago(d, c);
+    }
+    onPagoCuotaAbierto?.();
+  }, [abrirPagoCuota]);
 
   const deudaMenu = menu ? deudas.find((d) => d.id === menu.deudaId) : undefined;
   const cuotaMenu = deudaMenu ? cuotasDeDeuda(deudaMenu).find((c) => c.id === menu!.cuotaId) : undefined;
@@ -600,6 +623,19 @@ export function DesendeudamientoTab({
                             {pagada ? (
                               <span style={{ color: "#166534", fontWeight: 700, display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                                 ✓ Pagada{p ? ` el ${p.date.slice(8, 10)}/${p.date.slice(5, 7)}/${p.date.slice(0, 4)} · ${money(p.amount)} · ${p.metodo}` : ""}
+                                {pagoParaEditar && (
+                                  <button
+                                    type="button"
+                                    style={{ ...btnFila, fontWeight: 600 }}
+                                    title="Corregir el pago de la cuota"
+                                    onClick={(ev) => {
+                                      ev.stopPropagation();
+                                      editarPago(d, c);
+                                    }}
+                                  >
+                                    ✎
+                                  </button>
+                                )}
                                 <button
                                   type="button"
                                   style={{ ...btnFila, color: "#b91c1c", borderColor: "#fecaca", fontWeight: 600 }}
@@ -756,15 +792,28 @@ export function DesendeudamientoTab({
               💸 Asignar el pago…
             </button>
           ) : (
-            <button
-              style={quickMenuItem}
-              onClick={() => {
-                if (window.confirm("¿Quitar el pago de esta cuota? La cuota vuelve a pendiente. Si el pago se cargó desde acá, se borra; si era un pago que ya estaba cargado, queda y solo se desvincula.")) onQuitarPago(deudaMenu.id, cuotaMenu.id);
-                setMenu(null);
-              }}
-            >
-              ↩ Desvincular el pago
-            </button>
+            <>
+              {pagoParaEditar && (
+                <button
+                  style={quickMenuItem}
+                  onClick={() => {
+                    editarPago(deudaMenu, cuotaMenu);
+                    setMenu(null);
+                  }}
+                >
+                  ✎ Editar el pago…
+                </button>
+              )}
+              <button
+                style={quickMenuItem}
+                onClick={() => {
+                  if (window.confirm("¿Quitar el pago de esta cuota? La cuota vuelve a pendiente. Si el pago se cargó desde acá, se borra; si era un pago que ya estaba cargado, queda y solo se desvincula.")) onQuitarPago(deudaMenu.id, cuotaMenu.id);
+                  setMenu(null);
+                }}
+              >
+                ↩ Desvincular el pago
+              </button>
+            </>
           )}
           <QuickMenuSep />
           {(Object.keys(ESTADOS) as EstadoCuota[]).map((e) => (
@@ -798,10 +847,10 @@ export function DesendeudamientoTab({
         <div onClick={() => setPago(null)} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4600, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "60px 12px" }}>
           <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(560px, 100%)", padding: 18, display: "grid", gap: 12, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
             <div style={{ fontSize: 17, fontWeight: 800 }}>
-              Pago de la cuota {pago.cuota.numero} · {pago.deuda.concept}
+              {pago.form.modo === "editar" ? "Editar el pago" : "Pago"} de la cuota {pago.cuota.numero} · {pago.deuda.concept}
               {pago.deuda.acreedor ? ` · ${pago.deuda.acreedor}` : ""}
             </div>
-            <div style={{ display: "flex", gap: 14, fontSize: 13 }}>
+            <div style={{ display: pago.form.modo === "editar" ? "none" : "flex", gap: 14, fontSize: 13 }}>
               <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                 <input type="radio" checked={pago.form.modo === "nuevo"} onChange={() => setPago({ ...pago, form: { ...pago.form, modo: "nuevo" } })} /> Cargar el pago
               </label>
@@ -809,7 +858,7 @@ export function DesendeudamientoTab({
                 <input type="radio" checked={pago.form.modo === "vincular"} onChange={() => setPago({ ...pago, form: { ...pago.form, modo: "vincular" } })} /> Vincular un pago ya cargado
               </label>
             </div>
-            {pago.form.modo === "nuevo" ? (
+            {pago.form.modo !== "vincular" ? (
               <div style={grid}>
                 <label style={lbl}>Fecha
                   <input style={input} type="date" value={pago.form.fecha} onChange={(e) => setPago({ ...pago, form: { ...pago.form, fecha: e.target.value } })} />
@@ -877,8 +926,8 @@ export function DesendeudamientoTab({
               <ButtonLike
                 onClick={() => {
                   const f = pago.form;
-                  if (f.modo === "nuevo" && (!f.fecha || !(f.monto > 0))) return window.alert("Falta la fecha o el monto del pago.");
-                  if (f.modo === "nuevo" && !f.cuentaId) return window.alert("Elegí de qué cuenta sale el pago.");
+                  if (f.modo !== "vincular" && (!f.fecha || !(f.monto > 0))) return window.alert("Falta la fecha o el monto del pago.");
+                  if (f.modo !== "vincular" && !f.cuentaId) return window.alert("Elegí de qué cuenta sale el pago.");
                   if (f.modo === "vincular" && f.costEntryId == null) return window.alert("Elegí el pago a vincular.");
                   onRegistrarPago(pago.deuda.id, pago.cuota.id, f);
                   setPago(null);

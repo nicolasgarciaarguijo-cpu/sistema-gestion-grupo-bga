@@ -447,6 +447,12 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Todas las deudas de la empresa que se pagan en cuotas: planes de pago, préstamos externos y financiaciones de equipos. Los préstamos entre socios o entre las empresas NO van acá: son movimientos internos.",
     sections: [
       {
+        heading: "Corregir el pago de una cuota",
+        blocks: [
+          { type: "p", text: "El pago de una cuota se carga y se corrige con la misma ficha: en la cuota pagada, el lápiz ✎ (o click derecho → 'Editar el pago…') abre el pago con su fecha, monto, medio, cuenta y circuito. Si el pago se abre desde otra solapa (la ficha del proveedor, el cash flow o el banco), te trae acá, a la ficha de la cuota." },
+        ],
+      },
+      {
         heading: "Cargar una deuda",
         blocks: [
           { type: "p", text: "Cada deuda se trata como un proveedor: tiene un acreedor (a quién se le debe), un tipo, la empresa, el grupo de costo donde van sus pagos en el cash flow y si es blanco o negro." },
@@ -473,7 +479,7 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         heading: "Rendir un gasto: la misma ficha de Compras",
         blocks: [
           { type: "p", text: "'+ Rendir gasto' (o leer un ticket) abre la misma ficha que se usa en Compras para cargar una factura: proveedor, comprobante, neto, alícuota de IVA, exento, otros impuestos, IIBB y total. El pago ya viene puesto: sale de la caja de la persona, en la empresa de la caja, y su monto sigue al total. Un gasto sin factura se carga en Negro (letra X, todo exento)." },
-          { type: "p", text: "Para pagar con la caja de una empresa algo de la otra (por ejemplo, la caja de De Raíz paga un gasto de BGA), elegí arriba la Empresa del gasto. El pago sigue saliendo de la caja y queda como préstamo de la empresa que pagó a la otra: se suma en la cuenta entre empresas (Movimientos internos), junto con las transferencias y las facturas entre las dos." },
+          { type: "p", text: "Para pagar con la caja de una empresa algo de la otra (por ejemplo, la caja de De Raíz paga un gasto de BGA), elegí arriba la Empresa del gasto; o, desde Compras, en el pago elegí en 'De qué cuenta salió' la caja (o cuenta) de la otra empresa: aparecen agrupadas abajo como 'pago cruzado = préstamo', aunque estés mirando una sola empresa. El pago sigue saliendo de la caja y queda como préstamo de la empresa que pagó a la otra: se suma en la cuenta entre empresas (Movimientos internos), junto con las transferencias y las facturas entre las dos." },
           { type: "p", text: "Los gastos cargados con la ficha vieja de caja chica se abren en esta misma ficha; al guardarlos pasan a ser una factura pagada con la caja (no se pierde nada)." },
         ],
       },

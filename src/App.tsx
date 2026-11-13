@@ -14146,6 +14146,31 @@ Escribi CERRAR para confirmar:`
     const cuota = cuotasDeDeuda(d).find((c) => c.id === cuotaId);
     if (!cuota) return;
     let costEntryId = f.costEntryId;
+    if (f.modo === "editar") {
+      // Corregir el pago que ya tiene la cuota: la misma ficha con la que se cargo.
+      if (costEntryId == null) return;
+      const previo = costEntries.find((c) => c.id === costEntryId);
+      if (!previo) return;
+      if (bloqueadoPorCierre(previo.company, previo.date)) return void window.alert("Ese pago es de un ejercicio cerrado: no se puede editar.");
+      setCostEntries((prev) =>
+        prev.map((c) =>
+          c.id === costEntryId
+            ? {
+                ...c,
+                date: f.fecha,
+                amount: Number(f.monto || 0),
+                cuentaId: f.cuentaId,
+                administration: f.administration,
+                paymentMethod: f.metodo,
+                ...datosTarjeta(f),
+                antesDeApertura: decidirAntesDeApertura(c as any, f.cuentaId, f.fecha, Number(f.monto) || 0, `El pago de la cuota ${cuota.numero}`),
+                ...firma(),
+              }
+            : c
+        )
+      );
+      return;
+    }
     if (f.modo === "nuevo") {
       const grupo = parseClaveGrupo(d.grupoCosto);
       costEntryId = newId();
@@ -14248,6 +14273,7 @@ Escribi CERRAR para confirmar:`
 
   // DEUDAS Y APORTES -> DESENDEUDAMIENTO (05/11/2026): la deuda nace vinculada al asiento y se abre su ficha para definir la devolucion.
   const [abrirDeudaId, setAbrirDeudaId] = useState<number | null>(null);
+  const [abrirPagoCuota, setAbrirPagoCuota] = useState<{ deudaId: number; cuotaId: string } | null>(null);
   const irADeuda = (deudaId: number) => {
     if (!effectiveIsAdmin && !supabaseAllowedTabs.includes("desendeudamiento" as any)) {
       window.alert("La deuda está en la solapa Desendeudamiento, pero no tenés permiso para abrirla.");
@@ -17553,6 +17579,35 @@ Escribi CERRAR para confirmar:`
       personas: responsables,
     }));
   }, [alcanceEmpresa, plataDisponibleByCompany, visiblePettyCashFunds, cuentasGuardadas, bankLoadsUntil, visibleBankStatementEntries, fiscalClosings]);
+  // CUENTAS PARA PAGAR (13/11/2026): para elegir de donde sale un pago se ofrecen las cuentas y cajas de TODAS las empresas que
+  // el usuario tiene permitidas, aunque este mirando una sola: asi se puede pagar un gasto de BGA con la caja chica de De Raiz
+  // (pago cruzado = prestamo entre empresas). Solo nombres para elegir; los saldos siguen saliendo de cuentasSistema.
+  const cuentasParaPagar = useMemo(() => {
+    const ya = new Set(cuentasSistema.map((c) => c.id));
+    const companies = COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General" && tienePermisoEmpresa(c.value as CompanyName)).map((c) => String(c.value));
+    const personas = pettyCashFunds
+      .filter((f) => tienePermisoEmpresa(f.company))
+      .flatMap((f) => {
+        const colores: Array<"blanco" | "negro"> = [];
+        if (Number(f.assignedWhite || 0) > 0 || !(Number(f.assignedBlack || 0) > 0)) colores.push("blanco");
+        if (Number(f.assignedBlack || 0) > 0) colores.push("negro");
+        return colores.map((color) => ({ company: String(f.company), persona: f.responsible || "", color }));
+      });
+    const extra = armarCuentas({
+      companies,
+      guardadas: cuentasGuardadas.filter((c) => tienePermisoEmpresa(c.company as CompanyName)),
+      fechaCorte: bankLoadsUntil,
+      bancosExtracto: latestBankBalancesByAccount(bankStatementEntries.filter((e) => tienePermisoEmpresa(e.company)), bankLoadsUntil).map((b) => ({
+        company: String(b.company),
+        bank: b.bank,
+        currency: b.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+        balance: b.balance,
+      })),
+      efectivoApertura: [],
+      personas,
+    });
+    return [...cuentasSistema, ...extra.filter((c) => !ya.has(c.id))];
+  }, [cuentasSistema, pettyCashFunds, cuentasGuardadas, bankLoadsUntil, bankStatementEntries, isSupabaseLoggedIn, effectiveIsAdmin, allowedCompaniesForSession]);
 
   // FACTURA PAGADA CON LA CAJA CHICA (Nicolas, 2026-10-21): un pago cargado en Compras cuya cuenta es la caja
   // de una persona es un gasto de su caja chica: se ve en la rendicion de su caja y cuenta en lo utilizado.
@@ -18571,6 +18626,14 @@ Escribi CERRAR para confirmar:`
     // MISMA FICHA EN TODO VINCULO (12/11/2026): el pago de una factura se edita en la ficha de la factura, y uno de haberes en
     // su ficha de haberes, vengan de donde vengan (ficha del proveedor, cash flow, banco).
     if (c.employeeId != null) return abrirPagoHaber(c.id);
+    const deCuota = debtPlans
+      .map((d) => ({ d, cuota: cuotasDeDeuda(d).find((q) => q.pagoCostEntryId === c.id) }))
+      .find((x) => x.cuota);
+    if (deCuota && (effectiveIsAdmin || supabaseAllowedTabs.includes("desendeudamiento" as any))) {
+      setActiveTab("desendeudamiento" as TabKey);
+      setAbrirPagoCuota({ deudaId: deCuota.d.id, cuotaId: deCuota.cuota!.id });
+      return;
+    }
     const factura = purchaseInvoices.find((i) => pagosDeFactura(i).includes(c.id));
     const fichaFactura = factura ? facturaDeId(factura.id) : null;
     if (fichaFactura) {
@@ -22047,7 +22110,7 @@ Escribi CERRAR para confirmar:`
   // que paga es la de la caja y el gasto es de la empresa a la que corresponde (si son distintas, es un prestamo entre empresas).
   const cuentaCajaDeFondo = (fondo: PettyCashFund | undefined, color: "blanco" | "negro") => {
     if (!fondo?.responsible) return undefined;
-    const propias = cuentasSistema.filter(
+    const propias = cuentasParaPagar.filter(
       (c) => c.id.startsWith("persona|") && String(c.company) === String(fondo.company) && mismaPersona(String((c as any).persona || ""), fondo.responsible)
     );
     return (propias.find((c) => c.id.endsWith(`|${color}`)) || propias[0])?.id || idCajaPersona(String(fondo.company), fondo.responsible, color);
@@ -23662,8 +23725,9 @@ Escribi CERRAR para confirmar:`
           }
           inicial={facturaModal}
           proveedores={visibleSuppliers as any}
-          cuentas={cuentasSistema as any}
-          companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
+          cuentas={cuentasParaPagar as any}
+          // Todas las empresas permitidas (no solo la que se mira): el gasto de una se puede pagar con plata de la otra.
+          companyOptions={COMPANY_OPTIONS.filter((c) => tienePermisoEmpresa(c.value as CompanyName)) as any}
           renglonesEgreso={renglonesEgreso}
           pagosVinculables={(company, supplier) => {
             const yaVinculados = pagosVinculados(purchaseInvoices.filter((i) => i.id !== facturaModal.id));
@@ -24172,6 +24236,23 @@ Escribi CERRAR para confirmar:`
         <DesendeudamientoTab
           abrirFichaId={abrirDeudaId}
           onFichaAbierta={() => setAbrirDeudaId(null)}
+          abrirPagoCuota={abrirPagoCuota}
+          onPagoCuotaAbierto={() => setAbrirPagoCuota(null)}
+          pagoParaEditar={(id) => {
+            const c = costEntries.find((x) => x.id === id);
+            if (!c) return null;
+            return {
+              modo: "editar",
+              costEntryId: c.id,
+              fecha: c.date,
+              monto: Number(c.amount || 0),
+              metodo: ((c.paymentMethod as any) || "transferencia"),
+              cuentaId: c.cuentaId,
+              administration: c.administration === "negro" ? "negro" : "blanco",
+              tarjetaId: c.tarjetaId,
+              cuotas: c.cuotasTarjeta,
+            };
+          }}
           ejercicioCerrado={(() => {
             const c = cierresActivos(fiscalClosings).filter((x) => canAccessCompany(x.company as CompanyName)).sort((a, b) => b.endIso.localeCompare(a.endIso))[0];
             return c ? { desde: c.startIso, hasta: c.endIso, etiqueta: `${c.startIso.slice(0, 7)} a ${c.endIso.slice(0, 7)}` } : undefined;

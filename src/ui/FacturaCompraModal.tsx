@@ -509,11 +509,42 @@ export function FacturaCompraModal({
                     />
                   )}
                   <label style={lbl}>De qué cuenta salió
-                    <select style={{ ...input, ...(p.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={p.cuentaId || ""} onChange={(e) => setPagoN(p.key, { cuentaId: e.target.value || undefined })}>
+                    <select
+                      style={{ ...input, ...(p.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }}
+                      value={p.cuentaId || ""}
+                      onChange={(e) => {
+                        const id = e.target.value || undefined;
+                        // CRUZAR EMPRESAS (Nicolas, 13/11/2026: "la caja chica esta asignada a una sola empresa, el cruce no lo
+                        // puedo hacer ahi"). Elegir una caja o cuenta de la otra empresa pone a esa empresa como la que paga:
+                        // el pago queda cruzado = prestamo entre empresas.
+                        const deEmpresa = cuentas.find((c) => c.id === id)?.company;
+                        setPagoN(
+                          p.key,
+                          deEmpresa && deEmpresa !== empresaPaga
+                            ? { cuentaId: id, empresa: deEmpresa === f.company ? undefined : deEmpresa }
+                            : { cuentaId: id }
+                        );
+                      }}
+                    >
                       <option value="">— Elegí la cuenta —</option>
                       {cuentas.filter((c) => c.company === empresaPaga && c.activa !== false && (!c.moneda || c.moneda === "ARS")).map((c) => (
                         <option key={c.id} value={c.id}>{c.nombre}</option>
                       ))}
+                      {companyOptions
+                        .filter((o) => o.value !== "General" && o.value !== empresaPaga)
+                        .map((o) => {
+                          const otras = cuentas.filter((c) => c.company === o.value && c.activa !== false && (!c.moneda || c.moneda === "ARS"));
+                          if (!otras.length) return null;
+                          return (
+                            <optgroup key={o.value} label={`De ${o.short || o.label || o.value} (pago cruzado = préstamo)`}>
+                              {otras
+                                .sort((a, b) => Number(b.id.startsWith("persona|")) - Number(a.id.startsWith("persona|")))
+                                .map((c) => (
+                                  <option key={c.id} value={c.id}>{c.nombre}</option>
+                                ))}
+                            </optgroup>
+                          );
+                        })}
                     </select>
                   </label>
                   {p.metodo === "efectivo" && p.administration === "negro" && (
