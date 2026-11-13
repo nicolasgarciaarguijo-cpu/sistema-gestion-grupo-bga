@@ -17758,6 +17758,7 @@ Escribi CERRAR para confirmar:`
 
   const [fichaTarjetaAbierta, setFichaTarjetaAbierta] = useState<null | { cuentaId: number; statementId?: number | null }>(null);
   const [fichaCuentaAbierta, setFichaCuentaAbierta] = useState<string | null>(null);
+  const [fichaCuentaMes, setFichaCuentaMes] = useState<string | undefined>(undefined);
   const [resumenesALeer, setResumenesALeer] = useState<Array<{ leido: ResumenLeido; archivo: string; empresa: string }>>([]);
   const [leyendoPdf, setLeyendoPdf] = useState("");
   const [revisionArca, setRevisionArca] = useState<null | {
@@ -23962,16 +23963,20 @@ Escribi CERRAR para confirmar:`
           if (!meses.length) return null;
           return (
             <FichaExtracto
-              key={fichaCuentaAbierta}
+              key={`${fichaCuentaAbierta}|${fichaCuentaMes || ""}`}
               titulo={`${meses[0].bank} · ${getCompanyMeta(meses[0].company as CompanyName).short} · ${meses[0].currency === "USD" ? "U$S" : "$"}`}
               meses={meses}
+              mesInicial={fichaCuentaMes && meses.some((m) => m.mes === fichaCuentaMes) ? fichaCuentaMes : undefined}
               money={money}
               opciones={opcionesMovimiento}
               onLink={linkearMovimiento}
               onTipo={tipoMovimiento}
               onDesconocer={desconocerMovimiento}
               onSoltar={soltarMovimiento}
-              onCerrar={() => setFichaCuentaAbierta(null)}
+              onCerrar={() => {
+                setFichaCuentaAbierta(null);
+                setFichaCuentaMes(undefined);
+              }}
             />
           );
         })()}
@@ -24529,6 +24534,11 @@ Escribi CERRAR para confirmar:`
           onBorrar={(id) => setCuentasGuardadas((prev) => prev.filter((c) => c.id !== id))}
         />
         <BancosTab
+          linkeoDesde={LINKEO_OBLIGATORIO_DESDE}
+          onLinkearEnFicha={(e) => {
+            setFichaCuentaMes(String(e.date || "").slice(0, 7));
+            setFichaCuentaAbierta(claveCuenta({ company: String(e.company || ""), bank: String(e.bank || "Banco"), currency: e.currency === "USD" ? "USD" : "ARS" }));
+          }}
           bankLoadsUntil={bankLoadsUntil}
           onBankLoadsUntilChange={setBankLoadsUntil}
           COMPANY_OPTIONS={COMPANY_OPTIONS}

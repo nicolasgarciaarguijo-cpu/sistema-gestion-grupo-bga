@@ -1230,6 +1230,12 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "El extracto del banco, las tarjetas y el costo real de cada cuenta y tarjeta.",
     sections: [
       {
+        heading: "Un movimiento del banco se linkea en la ficha de la cuenta",
+        blocks: [
+          { type: "p", text: "Desde el 1/11/2026, los movimientos del banco se linkean en un solo lugar: la ficha de la cuenta (la misma de 'Fichas de linkeo'). En el listado del banco, el botón 'Linkear en la ficha ↗' (o el click derecho) abre esa ficha en el mes del movimiento: ahí se linkea con el pago cargado y su factura, con el resumen de una tarjeta o con el cobro de un trabajo, se marca interno o aporte, o se desconoce. Lo anterior al 1/11 se sigue asignando como antes." },
+        ],
+      },
+      {
         heading: "Costo real de bancos y tarjetas",
         blocks: [
           { type: "p", text: "Arriba de la solapa: por empresa, cada cuenta y cada tarjeta con sus comisiones, impuestos, intereses y consumos, en el mes o en el ejercicio." },

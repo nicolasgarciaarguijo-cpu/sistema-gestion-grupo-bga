@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-13",
+    fecha: "13/11/2026",
+    titulo: "Los movimientos del banco se linkean en un solo lugar",
+    items: [
+      {
+        titulo: "Bancos abre la ficha de la cuenta para linkear",
+        que: "Había dos formas de asignar un movimiento del banco, con datos distintos. Desde el 1/11 queda una sola: la ficha de la cuenta, donde se linkea con el pago, la tarjeta o el cobro que ya está cargado.",
+        como: "Bancos y tarjetas → en el movimiento, 'Linkear en la ficha ↗' o click derecho.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-11-12d",
     fecha: "12/11/2026",
     titulo: "Los cobros de un trabajo se corrigen en el trabajo",

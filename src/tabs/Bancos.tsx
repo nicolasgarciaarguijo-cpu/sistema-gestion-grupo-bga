@@ -90,6 +90,10 @@ type BancosTabProps = {
   // del banco con la factura de compra se hace aca). null = soltar: la factura vuelve a ser deuda.
   purchaseInvoices?: LinkableInvoice[];
   onLinkInvoice?: (bankId: number, invoiceId: number | null) => void;
+  // MISMA FICHA EN TODO VINCULO (12/11/2026): desde el 1/11/2026 un movimiento se linkea en la FICHA DE LA CUENTA (la misma que
+  // abre Fichas de linkeo), no con la asignacion de aca. Abre esa ficha en el mes del movimiento.
+  onLinkearEnFicha?: (entry: { id: number; company: string; bank: string; currency?: string; date: string }) => void;
+  linkeoDesde?: string;
   // RENGLONES DE LA PLANILLA para clasificar (los fijos con su nombre, sin los ocultos, mas las secciones y
   // renglones propios). Antes solo se podia elegir un renglon propio desde la planilla, que ahora es solo para ver.
   renglones?: Array<{ key: string; label: string; items: Array<{ key: string; label: string }> }>;
@@ -143,6 +147,8 @@ export function BancosTab({
   costoSlot,
   purchaseInvoices = [],
   onLinkInvoice,
+  onLinkearEnFicha,
+  linkeoDesde = "2026-11-01",
   renglones,
   onAssignConcept,
 }: BancosTabProps) {
@@ -623,7 +629,9 @@ export function BancosTab({
                   .map((entry) => {
                   const missing = bankEntryMissingInfo(entry);
                   const kind = entry.assignedKind as string | undefined;
-                  const open = assignOpenId === entry.id;
+                  // Desde el linkeo obligatorio, el movimiento se linkea en la ficha de la cuenta (no se asigna aca).
+                  const enFicha = !!onLinkearEnFicha && String(entry.date || "") >= linkeoDesde;
+                  const open = assignOpenId === entry.id && !enFicha;
                   const isCobroPago = kind === "cobro" || kind === "pago";
                   return (
                   <React.Fragment key={entry.id}>
@@ -673,9 +681,15 @@ export function BancosTab({
                             ? `${kind}${entry.assignedJobBudget ? " · " + entry.assignedJobBudget : entry.assignedParty ? " · " + entry.assignedParty : ""}`
                             : "sin asignar"}
                         </span>
-                        <button style={styles.smallBtn} onClick={() => setAssignOpenId(open ? null : entry.id)}>
-                          {open ? "Cerrar ▲" : kind ? "Editar ▾" : "Asignar ▾"}
-                        </button>
+                        {enFicha ? (
+                          <button style={styles.smallBtn} title="Se linkea en la ficha de la cuenta" onClick={() => onLinkearEnFicha!(entry as any)}>
+                            Linkear en la ficha ↗
+                          </button>
+                        ) : (
+                          <button style={styles.smallBtn} onClick={() => setAssignOpenId(open ? null : entry.id)}>
+                            {open ? "Cerrar ▲" : kind ? "Editar ▾" : "Asignar ▾"}
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td style={{ ...tdDato, color: "#64748b", whiteSpace: "nowrap" }}>
@@ -869,15 +883,27 @@ export function BancosTab({
                   {entry.movementType === "credito" ? "Entró" : "Salió"}{" "}
                   {money(Math.abs(Number(entry.amount) || 0))}
                 </QuickMenuTitle>
-                <button
-                  style={quickMenuItem}
-                  onClick={() => {
-                    setAssignOpenId(entry.id);
-                    close();
-                  }}
-                >
-                  {assigned ? "Editar asignación…" : "Asignar…"}
-                </button>
+                {onLinkearEnFicha && String(entry.date || "") >= linkeoDesde ? (
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      onLinkearEnFicha(entry);
+                      close();
+                    }}
+                  >
+                    🔗 Linkear en la ficha de la cuenta…
+                  </button>
+                ) : (
+                  <button
+                    style={quickMenuItem}
+                    onClick={() => {
+                      setAssignOpenId(entry.id);
+                      close();
+                    }}
+                  >
+                    {assigned ? "Editar asignación…" : "Asignar…"}
+                  </button>
+                )}
                 <button
                   style={quickMenuItem}
                   onClick={() => {
