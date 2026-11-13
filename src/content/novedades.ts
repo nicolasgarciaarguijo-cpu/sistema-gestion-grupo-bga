@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-12d",
+    fecha: "12/11/2026",
+    titulo: "Los cobros de un trabajo se corrigen en el trabajo",
+    items: [
+      {
+        titulo: "En Facturación, los cobros de un trabajo se abren en el trabajo",
+        que: "Antes, en Facturación se podía editar una copia de un cobro de un trabajo, y desde ese momento esa copia dejaba de seguir al trabajo. Ahora se muestra y se corrige en el trabajo: el dato es uno solo.",
+        como: "Facturación → tocá el cobro → 'Abrir en el trabajo'.",
+        tab: "facturacion",
+      },
+    ],
+  },
+  {
     id: "2026-11-12c",
     fecha: "12/11/2026",
     titulo: "Una sola ficha para gastos de caja chica y facturas de Compras",

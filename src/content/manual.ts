@@ -208,6 +208,12 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
       "Aca segui la plata de todos los trabajos: cuanto se facturo, cuanto se cobro y que falta. No se cargan trabajos aca (eso es en Trabajos aprobados); aca ves el estado y el calendario.",
     sections: [
       {
+        heading: "Cobros y facturas de un trabajo: se corrigen en el trabajo",
+        blocks: [
+          { type: "p", text: "Un cobro, una factura o un cobro estimado que sale de un trabajo aprobado se ve acá, pero se carga y se corrige en el trabajo (Trabajos aprobados). Al tocarlo se abre su detalle con el botón 'Abrir en el trabajo'. Así el dato es uno solo y queda igual en todo el sistema." },
+        ],
+      },
+      {
         heading: "Lo que ves al entrar",
         blocks: [
           {
