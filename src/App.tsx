@@ -125,7 +125,6 @@ import {
 } from "./content/cierreHtml";
 import { ivaAnual } from "./domain/vatBalance";
 import { conteoBlanqueo, type ConteoBlanqueo, type MovFisco } from "./domain/faltaFactura";
-import { pagosCruzadosEntreEmpresas } from "./domain/pagosPorPersona";
 import { armarPreCierre, type PreCierre } from "./domain/preCierre";
 import { cargasDePlanilla, type FilaCarga } from "./domain/cargasPlanilla";
 import { pagosSinFactura, resumenPagosSinFactura } from "./domain/pagosACuenta";
@@ -18152,8 +18151,9 @@ Escribi CERRAR para confirmar:`
     () => movimientosConCuentaAjena(plataMovidaSistema, cuentasSistema),
     [plataMovidaSistema, cuentasSistema]
   );
-  // Caja chica: lo que sobro de un fondo y volvio a OTRA cuenta que la de origen. Es un pase entre
-  // cuentas: se muestra en Movimientos internos (Nicolas, 2026-10-07: "no deberia pasar, pero podria").
+  // Caja chica: lo que sobro de un fondo y volvio a OTRA cuenta que la de origen (Nicolas, 2026-10-07:
+  // "no deberia pasar, pero podria"). Desde el 14/11/2026 lo avisa la propia caja en su fila, en vez de
+  // un panel aparte en Movimientos internos.
   const devolucionesCruzadas = useMemo(() => {
     const nombre = (id: string) => cuentasSistema.find((c) => c.id === id)?.nombre || id;
     return visiblePettyCashFunds.flatMap((f) =>
@@ -18164,6 +18164,7 @@ Escribi CERRAR para confirmar:`
         return [
           {
             id: `${f.id}-${color}`,
+            fondoId: f.id,
             company: String(f.company),
             fecha: vuelta.date,
             fondo: f.description || "Caja chica",
@@ -24422,6 +24423,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "cajaChica" && (
         <CajaChicaListado
+          devolucionesCruzadas={devolucionesCruzadas}
           fondos={visiblePettyCashFunds.filter((x) => !(x.closed && ocultoPorCierre(x.company, x.closedDate))) as any}
           gastos={[...visiblePettyCashExpenses, ...pagosConCajaChica].filter(
             (g: any) => !visiblePettyCashFunds.some((x) => x.id === g.fundId && x.closed && ocultoPorCierre(x.company, x.closedDate))
@@ -24812,11 +24814,6 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "movimientosInternos" && (
         <MovimientosInternosTab
-          devolucionesCruzadas={devolucionesCruzadas.filter((d) => !ocultoPorCierre(String(d.company), d.fecha))}
-          pagosCruzados={pagosCruzadosEntreEmpresas(
-            purchaseInvoices.filter((i) => canAccessCompany(i.company)) as any,
-            costEntries as any
-          ).filter((p) => !ocultoPorCierre(p.empresaPaga, p.date))}
           companyScope={internalCompanyScope}
           setCompanyScope={setInternalCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}

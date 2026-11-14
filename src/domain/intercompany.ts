@@ -49,6 +49,16 @@ export type IntercompanyTransfer = {
   // para balancear todas esas facturas o es mejor en negro por otra situacion". Solo lo BLANCO se puede
   // respaldar con una factura entre las dos; lo negro se devuelve o se compensa con otro movimiento negro.
   administration?: "blanco" | "negro"; // ausente = blanco (el banco siempre es blanco)
+  // DE DONDE SALE el giro (2026-11-14). Con esto la cuenta corriente dice como se formo el saldo y se
+  // puede sacar el panel aparte de "pagos cruzados": es una linea mas del estado de cuenta.
+  origen?: "pase" | "banco" | "pagoCruzado" | "cuentaAjena";
+};
+
+export const ORIGEN_GIRO: Record<NonNullable<IntercompanyTransfer["origen"]>, string> = {
+  pase: "pases entre empresas",
+  banco: "giros vistos en el banco",
+  pagoCruzado: "pagos de una empresa por la otra",
+  cuentaAjena: "plata en la cuenta de la otra",
 };
 
 // Detecta los giros entre empresas del grupo mirando el CUIT de la contraparte en el texto.
@@ -69,6 +79,7 @@ export function detectIntercompanyTransfers(
       if (other.company === mov.company) continue; // su propio CUIT: mover plata entre cuentas propias
       if (!dig.includes(otherDigits)) continue;
       out.push({
+        origen: "banco",
         id: mov.id,
         from: mov.company,
         to: other.company,
@@ -187,6 +198,7 @@ export function girosDePases(
       text: `Pase cargado${t.description ? ` · ${t.description}` : ""}`,
       declaresInvoice: /factura/i.test(t.description || ""),
       administration: t.color === "negro" ? "negro" : "blanco",
+      origen: "pase" as const,
     }));
 }
 
@@ -207,6 +219,7 @@ export function girosDePagosCruzados(
       text: `Pagó un gasto de la otra empresa${p.detalle ? ` · ${p.detalle}` : ""}`,
       declaresInvoice: false,
       administration: p.administration === "negro" ? "negro" : "blanco",
+      origen: "pagoCruzado" as const,
     }));
 }
 
@@ -251,6 +264,7 @@ export function girosDePlataEnCuentaAjena(
         text: `${entra ? "Cobro" : "Pago"} en la cuenta de la otra empresa${m.origen ? ` · ${m.origen}` : ""}${m.detalle ? ` · ${m.detalle}` : ""}`,
         declaresInvoice: false,
         administration: (m.color === "negro" ? "negro" : "blanco") as "blanco" | "negro",
+        origen: "cuentaAjena" as const,
       };
     });
 }

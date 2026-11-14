@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-14f",
+    fecha: "14/11/2026",
+    titulo: "Dos paneles menos: la información va donde se usa",
+    items: [
+      {
+        titulo: "«Pagos cruzados entre empresas» ya no es un panel",
+        que: "Esa lista estaba en tres lados a la vez. Ahora el estado de cuenta entre las empresas dice de dónde sale el saldo: «$X de 4 pagos de una empresa por la otra · $Y de 2 pases entre empresas…», y con un click se ven todos los movimientos, cada uno con su origen. El cruce se corrige, como siempre, en la ficha de su factura.",
+        como: "Movimientos internos → Cuenta corriente entre las empresas → click en el saldo.",
+        tab: "movimientosInternos",
+      },
+      {
+        titulo: "Las devoluciones de caja chica las avisa la caja",
+        que: "El panel «Caja chica: devoluciones a otra cuenta» era una pantalla entera para un caso raro. Ahora lo avisa la propia caja en su fila: «⚠ $X volvió a Santander», con el detalle de dónde había salido.",
+        como: "Caja chica → la caja lo dice en la columna del desbalance.",
+        tab: "cajaChica",
+      },
+    ],
+  },
+  {
     id: "2026-11-14e",
     fecha: "14/11/2026",
     titulo: "Movimientos internos: las filas ya no se tipean",

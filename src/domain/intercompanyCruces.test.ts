@@ -1,4 +1,4 @@
-import { girosDePlataEnCuentaAjena, posicionEntreEmpresas, summarizeIntercompany } from "./intercompany";
+import { girosDePagosCruzados, girosDePases, girosDePlataEnCuentaAjena, ORIGEN_GIRO, posicionEntreEmpresas, summarizeIntercompany } from "./intercompany";
 
 // Nicolas, 14/11/2026:
 // 1) "el cobro cruzado que si figure en cuenta corriente": la plata que entra (o sale) de una cuenta de la
@@ -88,3 +88,25 @@ describe("blanco y negro en la cuenta entre empresas", () => {
     expect(posicion([sinColor])).toEqual([{ deudor: "DR", acreedor: "BGA", saldo: 300, blanco: 300, negro: 0, facturado: 0 }]);
   });
 });
+
+// 14/11/2026: cada giro dice DE DONDE SALE, y con eso la cuenta corriente explica como se formo el
+// saldo. Reemplaza al panel aparte de "pagos cruzados entre empresas".
+describe("de dónde sale cada movimiento entre empresas", () => {
+  it("cada fuente marca su origen", () => {
+    expect(girosDePlataEnCuentaAjena([mov()])[0].origen).toBe("cuentaAjena");
+    expect(
+      girosDePagosCruzados([{ id: 1, empresaPaga: "BGA", empresaGasto: "DR", date: "2026-11-14", amount: 100 }])[0].origen
+    ).toBe("pagoCruzado");
+    expect(
+      girosDePases([{ id: 1, company: "BGA", companyDestino: "DR", date: "2026-11-14", amount: 100, currency: "ARS" }], "ARS")[0].origen
+    ).toBe("pase");
+  });
+
+  it("cada origen tiene su nombre para mostrar", () => {
+    expect(ORIGEN_GIRO.pagoCruzado).toBe("pagos de una empresa por la otra");
+    expect(ORIGEN_GIRO.cuentaAjena).toBe("plata en la cuenta de la otra");
+    expect(ORIGEN_GIRO.pase).toBe("pases entre empresas");
+    expect(ORIGEN_GIRO.banco).toBe("giros vistos en el banco");
+  });
+});
+

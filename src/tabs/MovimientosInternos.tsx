@@ -1,7 +1,6 @@
 import React from "react";
 import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import { styles } from "../ui/styles";
-import type { PagoCruzado } from "../domain/pagosPorPersona";
 import { Panel, MiniMetric, ButtonLike, moneyToneColor } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
@@ -24,6 +23,7 @@ import { FirmanteCelda } from "../ui/FirmanteSelect";
 import { PaseModal } from "../ui/PaseModal";
 import type { PaseForm } from "../domain/pases";
 import { cuentaImplicita, type Cuenta } from "../domain/cuentas";
+import { ORIGEN_GIRO } from "../domain/intercompany";
 
 // MOVIMIENTOS INTERNOS
 //
@@ -104,8 +104,6 @@ function StatRow({
 }
 
 type MovimientosInternosTabProps = {
-  // Devoluciones de caja chica que volvieron a OTRA cuenta que la de origen: son pases entre cuentas.
-  devolucionesCruzadas?: Array<{ id: string; company: string; fecha: string; fondo: string; responsable: string; monto: number; color: string; origen: string; destino: string }>;
   companyScope: CompanyScope | "__ALL__";
   setCompanyScope: (scope: CompanyScope | "__ALL__") => void;
   COMPANY_OPTIONS: any[];
@@ -139,8 +137,6 @@ type MovimientosInternosTabProps = {
   setPersonLedgerEntries: React.Dispatch<React.SetStateAction<PersonLedgerEntry[]>>;
   addPersonLedgerEntry: (kind?: "debe" | "haber") => void;
   removePersonLedgerEntry: (entryId: number) => void;
-  // 7) facturas de una empresa pagadas por la otra (informativo)
-  pagosCruzados?: PagoCruzado[];
   // 5) cuenta corriente entre empresas
   intercompanyAccount: {
     transfers: any[];
@@ -164,8 +160,6 @@ type MovimientosInternosTabProps = {
 const botonDeuda: React.CSSProperties = { border: "1px solid #c4b5fd", background: "#f5f3ff", color: "#5b21b6", borderRadius: 6, padding: "1px 8px", fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" };
 
 export function MovimientosInternosTab({
-  devolucionesCruzadas = [],
-  pagosCruzados = [],
   companyScope,
   setCompanyScope,
   COMPANY_OPTIONS,
@@ -250,7 +244,7 @@ export function MovimientosInternosTab({
     blanco: number;
     negro: number;
     facturado: number;
-    movimientos: Array<{ id: number; date: string; text: string; from: string; to: string; amount: number; administration: "blanco" | "negro" }>;
+    movimientos: Array<{ id: number; date: string; text: string; from: string; to: string; amount: number; administration: "blanco" | "negro"; origen?: string }>;
   }>(null);
   // LAS FILAS SOLO MUESTRAN (Nicolas, 14/11/2026: misma ficha en todo vinculo, y la pantalla mas limpia).
   // Nada se tipea en la fila: se abre la ficha (click en la fila o el boton de la ficha) y ahi se corrige
@@ -1147,80 +1141,10 @@ export function MovimientosInternosTab({
         </datalist>
       </Panel>
 
-      {devolucionesCruzadas.filter((d) => companyScope === "__ALL__" || d.company === companyScope).length > 0 && (
-        <Panel title="Caja chica: devoluciones a otra cuenta" span="full">
-          <div style={{ ...styles.muted, marginBottom: 8 }}>
-            Lo que sobró de un fondo de caja chica volvió a una cuenta distinta de la que salió. No debería pasar,
-            pero si pasa es un pase entre cuentas y queda acá a la vista. Se corrige en Caja chica (click derecho sobre
-            el fondo, "A qué cuenta vuelve lo que sobra").
-          </div>
-          <table className="planilla" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-            <thead>
-              <tr style={{ background: "#f8fafc", color: "#475569", fontSize: 12 }}>
-                <th style={{ textAlign: "left", padding: "4px 8px" }}>Fecha</th>
-                <th style={{ textAlign: "left", padding: "4px 8px" }}>Fondo</th>
-                <th style={{ textAlign: "left", padding: "4px 8px" }}>Salió de</th>
-                <th style={{ textAlign: "left", padding: "4px 8px" }}>Volvió a</th>
-                <th style={{ textAlign: "right", padding: "4px 8px" }}>Monto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {devolucionesCruzadas
-                .filter((d) => companyScope === "__ALL__" || d.company === companyScope)
-                .map((d) => (
-                  <tr key={d.id}>
-                    <td style={{ padding: "4px 8px" }}>{d.fecha.slice(8, 10)}/{d.fecha.slice(5, 7)}/{d.fecha.slice(0, 4)}</td>
-                    <td style={{ padding: "4px 8px" }}>
-                      {d.fondo} · {d.responsable} · {getCompanyMeta(d.company as any)?.short || d.company}
-                      {d.color === "negro" ? " (negro)" : ""}
-                    </td>
-                    <td style={{ padding: "4px 8px" }}>{d.origen}</td>
-                    <td style={{ padding: "4px 8px", color: "#b45309", fontWeight: 700 }}>{d.destino}</td>
-                    <td style={{ padding: "4px 8px", textAlign: "right" }}>{money(d.monto)}</td>
-                  </tr>
-                ))}
-            </tbody>
-          </table>
-        </Panel>
-      )}
-
-      {(() => {
-        const filas = pagosCruzados.filter((p) => companyScope === "__ALL__" || p.empresaPaga === companyScope || p.empresaFactura === companyScope);
-        if (filas.length === 0) return null;
-        const fecha = (iso: string) => (iso ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "—");
-        const corta = (c: string) => getCompanyMeta(c as any)?.short || c;
-        return (
-          <Panel title={`⚠ Pagos cruzados entre empresas (${filas.length})`} span="full">
-            <div style={{ ...styles.muted, marginBottom: 8 }}>
-              Facturas de una empresa que pagó la otra. No debería pasar: la plata salió de una empresa y el gasto es de la
-              otra, así que la empresa de la factura le debe a la que pagó. Hay que pedir el cambio de factura o devolver la plata. Se corrige en la factura (Compras → click → "Empresa que paga").
-            </div>
-            <table className="planilla" style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: "#f8fafc", color: "#475569", fontSize: 12 }}>
-                  <th style={{ textAlign: "left", padding: "4px 8px" }}>Fecha del pago</th>
-                  <th style={{ textAlign: "left", padding: "4px 8px" }}>Factura</th>
-                  <th style={{ textAlign: "left", padding: "4px 8px" }}>Es de</th>
-                  <th style={{ textAlign: "left", padding: "4px 8px" }}>La pagó</th>
-                  <th style={{ textAlign: "right", padding: "4px 8px" }}>Monto</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filas.map((p) => (
-                  <tr key={p.facturaId}>
-                    <td style={{ padding: "4px 8px" }}>{fecha(p.date)}</td>
-                    <td style={{ padding: "4px 8px" }}>{p.detalle || "Factura"}</td>
-                    <td style={{ padding: "4px 8px" }}>{corta(p.empresaFactura)}</td>
-                    <td style={{ padding: "4px 8px", color: "#b45309", fontWeight: 700 }}>{corta(p.empresaPaga)}</td>
-                    <td style={{ padding: "4px 8px", textAlign: "right" }}>{money(p.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Panel>
-        );
-      })()}
-
+      {/* Las devoluciones de caja chica que volvieron a otra cuenta ahora avisan en la propia caja
+          chica (Caja chica → la caja lo dice en su fila) y no ocupan un panel aca. 2026-11-14. */}
+      {/* Los pagos de una empresa por la otra no tienen panel propio: son una linea del estado de
+          cuenta de abajo (de donde sale el saldo) y se corrigen en la ficha de su factura. 2026-11-14. */}
       {[
         { cuenta: intercompanyAccount, titulo: "Cuenta corriente entre las empresas del grupo", cerrado: false },
         ...(intercompanyAnterior ? [{ cuenta: intercompanyAnterior, titulo: `Cuenta corriente entre las empresas · ejercicio ${ejercicioCerrado || "anterior"} (cerrado)`, cerrado: true }] : []),
@@ -1271,7 +1195,7 @@ export function MovimientosInternosTab({
                   facturado: Number((p as any).facturado || 0),
                   movimientos: (p.moneda === "USD" ? cuenta.transfersUsd || [] : cuenta.transfers || [])
                     .filter((t: any) => (t.from === p.deudor && t.to === p.acreedor) || (t.from === p.acreedor && t.to === p.deudor))
-                    .map((t: any) => ({ id: t.id, date: String(t.date || ""), text: String(t.text || ""), from: String(t.from), to: String(t.to), amount: Number(t.amount || 0), administration: (t.administration === "negro" ? "negro" : "blanco") as "blanco" | "negro" }))
+                    .map((t: any) => ({ id: t.id, date: String(t.date || ""), text: String(t.text || ""), from: String(t.from), to: String(t.to), amount: Number(t.amount || 0), administration: (t.administration === "negro" ? "negro" : "blanco") as "blanco" | "negro", origen: t.origen }))
                     .sort((a: any, b: any) => a.date.localeCompare(b.date)),
                 })
               }
@@ -1280,6 +1204,27 @@ export function MovimientosInternosTab({
               {getCompanyMeta(p.deudor as CompanyName)?.short || p.deudor} le debe {money(p.saldo, p.moneda)} a {getCompanyMeta(p.acreedor as CompanyName)?.short || p.acreedor}
             </strong>{" "}
             <span style={{ fontSize: 12 }}>· click para ver los movimientos</span>
+            {/* De donde sale el saldo (2026-11-14): reemplaza al panel aparte de "pagos cruzados". */}
+            {(() => {
+              const movs = (p.moneda === "USD" ? cuenta.transfersUsd || [] : cuenta.transfers || []).filter(
+                (t: any) => (t.from === p.deudor && t.to === p.acreedor) || (t.from === p.acreedor && t.to === p.deudor)
+              );
+              if (movs.length === 0) return null;
+              const porOrigen = new Map<string, { n: number; monto: number }>();
+              movs.forEach((t: any) => {
+                const k = String(t.origen || "pase");
+                const a = porOrigen.get(k) || { n: 0, monto: 0 };
+                porOrigen.set(k, { n: a.n + 1, monto: a.monto + Number(t.amount || 0) });
+              });
+              return (
+                <div style={{ fontSize: 12.5, marginTop: 4, color: "#92400e" }}>
+                  De dónde sale:{" "}
+                  {Array.from(porOrigen.entries())
+                    .map(([k, v]) => `${money(v.monto, p.moneda)} de ${v.n} ${(ORIGEN_GIRO as any)[k] || k}`)
+                    .join(" · ")}
+                </div>
+              );
+            })()}
             {/* Blanco y negro por separado (Nicolas, 14/11/2026): con esto se decide si el proximo prestamo
                 conviene en blanco (para respaldar facturas) o en negro. La factura solo cancela plata blanca. */}
             <div style={{ fontSize: 12.5, marginTop: 4, color: "#92400e" }}>
@@ -1510,7 +1455,12 @@ export function MovimientosInternosTab({
                       {filas.map((t) => (
                         <tr key={`${t.id}-${t.date}-${t.amount}`} style={{ borderBottom: "1px solid #f1f5f9" }}>
                           <td style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{(t.date || "").split("-").reverse().join("/")}</td>
-                          <td style={{ padding: "4px 6px", color: "#475569" }} title={t.text}>{(t.text || "").slice(0, 70) || "—"}</td>
+                          <td style={{ padding: "4px 6px", color: "#475569" }} title={t.text}>
+                            {(t.text || "").slice(0, 60) || "—"}
+                            {t.origen && (
+                              <span style={{ color: "#94a3b8", fontSize: 11 }}> · {(ORIGEN_GIRO as any)[t.origen] || t.origen}</span>
+                            )}
+                          </td>
                           <td style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{corto(t.from)} → {corto(t.to)}</td>
                           <td style={{ padding: "4px 6px", textAlign: "center" }}>
                             <span style={{ fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "1px 6px", color: t.administration === "negro" ? "#fff" : "#0f172a", background: t.administration === "negro" ? "#1f2937" : "#e2e8f0" }}>

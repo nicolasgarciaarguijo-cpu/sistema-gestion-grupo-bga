@@ -39,6 +39,7 @@ function AdminTag({ a }: { a: string }) {
 }
 
 export function CajaChicaListado({
+  devolucionesCruzadas = [],
   fondos,
   gastos,
   tipos,
@@ -55,6 +56,9 @@ export function CajaChicaListado({
   onRenombrarTipo,
   onQuitarTipo,
 }: {
+  // Lo que sobro de una caja y volvio a OTRA cuenta que la de origen (2026-11-14): lo avisa la propia
+  // caja en su fila. Antes era un panel aparte en Movimientos internos.
+  devolucionesCruzadas?: Array<{ id: string; fondoId: number; monto: number; origen: string; destino: string }>;
   fondos: FondoLike[];
   gastos: GastoLike[];
   tipos: string[];
@@ -276,6 +280,19 @@ export function CajaChicaListado({
                     </td>
                     <td style={num}>
                       <DesbalanceCaja r={r} money={money} />
+                      {/* Lo que sobro volvio a otra cuenta que la de origen (2026-11-14): antes esto vivia en
+                          un panel de Movimientos internos; ahora lo dice la propia caja. */}
+                      {devolucionesCruzadas
+                        .filter((d) => d.fondoId === f.id)
+                        .map((d) => (
+                          <div
+                            key={d.id}
+                            title={`Lo que sobró volvió a ${d.destino} y había salido de ${d.origen}. Se corrige acá: "A qué cuenta vuelve lo que sobra".`}
+                            style={{ fontSize: 11, fontWeight: 700, color: "#b45309" }}
+                          >
+                            ⚠ {money(d.monto)} volvió a {d.destino}
+                          </div>
+                        ))}
                     </td>
                     <td style={{ ...td, whiteSpace: "nowrap", fontSize: 12 }}>
                       {f.closed ? (
