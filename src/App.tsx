@@ -209,6 +209,8 @@ import { rowsToArcaInvoices, arcaInvoiceKey } from "./lib/arcaInvoices";
 import {
   claveDeFacturaEmitida,
   codigoAfipDeFactura,
+  puedeEmitirloElSistema,
+  tipoDeFactura,
   conIvaYTotal,
   CAMPO_EN_EMITIDAS,
   valoresDeEmitida,
@@ -14762,6 +14764,14 @@ Escribi CERRAR para confirmar:`
     const cbteTipo = codigoAfipDeFactura(inv);
     // A y las notas A piden el CUIT del receptor; B y C van sin documento.
     const esA = cbteTipo === 1 || cbteTipo === 2 || cbteTipo === 3;
+    // Por ahora el facturador sabe emitir Factura A, B y C: el resto (notas, M, E, FCE MiPyME) se emite
+    // en ARCA y se carga aca con su numero. Antes cualquier tipo salia como A o B (14/11/2026).
+    if (!puedeEmitirloElSistema(inv)) {
+      setInvoiceAfip(jobId, invoiceId, {
+        afipError: `El facturador del sistema emite por ahora Factura A, B y C. "${tipoDeFactura(inv)}" hay que emitirla en ARCA y cargar acá su número.`,
+      });
+      return;
+    }
     const neto = Number(inv.subtotal || 0);
     const iva = Number(inv.vat || 0);
     const total = Number(inv.total || neto + iva);
@@ -19709,7 +19719,14 @@ Escribi CERRAR para confirmar:`
   const refsFacturasEmitidas = useMemo<FacturaEmitidaRef[]>(
     () => [
       ...visibleApprovedJobs.flatMap((job) =>
-        (job.invoices || []).map((inv) => ({ ...(inv as any), id: inv.id, origen: "trabajo" as const, donde: `el trabajo ${job.budgetNumber}` }))
+        (job.invoices || []).map((inv) => ({
+          ...(inv as any),
+          id: inv.id,
+          origen: "trabajo" as const,
+          donde: `el trabajo ${job.budgetNumber}`,
+          total: Number(inv.total || 0),
+          repartida: !!(inv as any).repartida,
+        }))
       ),
       ...facturasEntreEmpresas.map((inv) => ({ ...valoresDeEmitida(inv), id: inv.id, origen: "entreEmpresas" as const, donde: "las facturas entre empresas" })),
     ],

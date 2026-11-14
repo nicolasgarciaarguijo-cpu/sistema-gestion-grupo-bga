@@ -27,6 +27,7 @@ import { ORIGEN_GIRO } from "../domain/intercompany";
 import { camposFacturaEmitida } from "../ui/camposFacturaEmitida";
 import {
   duplicadasDe,
+  esRepartida,
   faltaDeFacturaEmitida,
   numeroDeFactura,
   puntoDeVentaDeFactura,
@@ -1259,7 +1260,12 @@ export function MovimientosInternosTab({
                       <td style={celdaMonto("#0f172a")}>{money(Number(v.total || 0), v.currency === "USD" ? "USD" : "ARS")}</td>
                       <td style={{ ...tdFlexible, color: "#64748b" }}>
                         {cortoDeEmpresa(String(inv.company))} → {v.businessName || <strong style={{ color: "#b91c1c" }}>⚠ falta la empresa</strong>}
-                        {repetidas.length > 0 && <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 11.5 }}>{textoDuplicada(repetidas)}</div>}
+                        {repetidas.length > 0 &&
+                          (esRepartida(v, repetidas) ? (
+                            <div style={{ color: "#166534", fontWeight: 700, fontSize: 11.5 }}>✔ repartido en {repetidas.length + 1} lugares</div>
+                          ) : (
+                            <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 11.5 }}>{textoDuplicada(repetidas)}</div>
+                          ))}
                         {falta.length > 0 && <div style={{ color: "#b45309", fontWeight: 700, fontSize: 11.5 }}>{textoFaltaFactura(falta)}</div>}
                       </td>
                     </tr>

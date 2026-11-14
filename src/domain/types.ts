@@ -367,6 +367,9 @@ export type Invoice = {
   // venta y la moneda no se puede cruzar el comprobante contra ARCA. Ver domain/facturaEmitida.ts.
   pointOfSale?: string;
   currency?: string;
+  // Una misma factura que cubre VARIOS trabajos (Nicolas, 14/11/2026: "son 2 trabajos que se facturaron
+  // juntos"): en cada trabajo va su parte y esto dice que no es un duplicado. Ver domain/facturaEmitida.ts.
+  repartida?: boolean;
   invoiceNumber: string;
   invoiceDate: string;
   subtotal: number;
@@ -1336,6 +1339,7 @@ export type IssuedInvoice = {
   counterpartyName: string;
   currency: string;
   net: number;
+  repartida?: boolean; // el mismo comprobante repartido entre varios trabajos (14/11/2026)
   vatRate?: number; // alicuota %: si esta, el IVA y el total se calculan desde el neto (14/11/2026)
   vat: number;
   total: number;

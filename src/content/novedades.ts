@@ -16,6 +16,37 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-14j",
+    fecha: "14/11/2026",
+    titulo: "Tipos de comprobante de AFIP y una factura para dos trabajos",
+    items: [
+      {
+        titulo: "Están todos los comprobantes que propone AFIP",
+        que: "El tipo de comprobante ahora se elige de la tabla de AFIP: Factura, Nota de Débito, Nota de Crédito y Recibo de A, B, C y M, Factura E de exportación y las Facturas de Crédito Electrónico MiPyME. Cada uno con su código, que es lo que usa el listado de ARCA.",
+        como: "En la ficha de la factura → Tipo de comprobante. Quedaron afuera los tiques de controlador fiscal y las liquidaciones de regímenes que no usamos; si alguna vez aparece uno en ARCA, se agrega.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Una misma factura puede cubrir dos trabajos",
+        que: "Cuando dos trabajos se facturaron juntos, en cada trabajo va SU parte y se marca «Es un comprobante repartido entre varios trabajos». El sistema deja de verlo como un duplicado y muestra el reparto con la suma de las partes, que es el total que tiene que decir ARCA.",
+        como: "Trabajos aprobados → la factura → el check al final de la ficha. Sin marcar, el mismo número en dos trabajos sigue saliendo en rojo (puede ser un número mal tipeado).",
+        tab: "aprobados",
+      },
+      {
+        titulo: "El facturador avisa lo que todavía no sabe emitir",
+        que: "Emitir en AFIP funciona para Factura A, B y C. Para los demás comprobantes (notas de crédito o débito, M, E, MiPyME) el botón no aparece y dice que hay que emitirla en ARCA y cargar acá el número. Antes cualquier tipo salía emitido como A o como B.",
+        como: "Trabajos aprobados → la factura → el bloque de AFIP al pie de la ficha.",
+        tab: "emitirFacturas",
+      },
+      {
+        titulo: "Se escondió «Importar históricos BGA»",
+        que: "Ese botón ya no se va a usar más: la carga histórica terminó. El importador queda en el código por si alguna vez hiciera falta, pero no se ve.",
+        como: "Trabajos aprobados → arriba, donde estaba el botón.",
+        tab: "aprobados",
+      },
+    ],
+  },
+  {
     id: "2026-11-14i",
     fecha: "14/11/2026",
     titulo: "Facturas emitidas: una sola ficha, con los datos de ARCA",
@@ -30,7 +61,7 @@ export const NOVEDADES: TandaNovedades[] = [
         titulo: "Facturas entre las empresas, sin trabajo de por medio",
         que: "Bloque nuevo en Movimientos internos para las facturas que una empresa del grupo le emite a la otra solo para acomodar los movimientos internos. Usa LA MISMA ficha que la factura del trabajo y cancela plata blanca en la cuenta corriente entre las dos.",
         como: "Movimientos internos → Facturas entre las empresas del grupo → Agregar factura. Al elegir la empresa que recibe se completa su CUIT y ya cruza la cuenta.",
-        tab: "movimientos-internos",
+        tab: "movimientosInternos",
       },
       {
         titulo: "Ninguna repetida y ninguna perdida",
@@ -42,7 +73,7 @@ export const NOVEDADES: TandaNovedades[] = [
         titulo: "El IVA débito ya cuenta las facturas de los trabajos",
         que: "La Posición de IVA tomaba el débito SOLO del listado de ARCA, que está vacío: el tablero mostraba débito cero mientras las facturas de los trabajos tenían el IVA cargado. Ahora el débito sale de las facturas de los trabajos (más las de entre empresas y las del padrón que no estén en un trabajo), contando una sola vez lo que esté en los dos lados.",
         como: "Balance → Posición de IVA. El número cambia: ahora incluye el IVA de las facturas emitidas de los trabajos.",
-        tab: "balance",
+        tab: "cashflow",
       },
     ],
   },
@@ -55,13 +86,13 @@ export const NOVEDADES: TandaNovedades[] = [
         titulo: "Un resumen, una sola ficha",
         que: "El cierre, el vencimiento, los totales en pesos y dólares, el pago mínimo y el saldo anterior se tipeaban en la fila de la solapa Tarjetas, y el mismo resumen tenía su ficha (la del linkeo) en otro lado. Ahora todo eso vive en la ficha: la fila solo muestra y dice si el resumen lo leyó el PDF o se cargó a mano.",
         como: "Bancos y tarjetas → Resúmenes → click en la fila: abre la ficha del resumen. El punto verde (pagado) y el tachito siguen en la fila.",
-        tab: "tarjetas",
+        tab: "bancos",
       },
       {
         titulo: "La ficha avisa si el total no es el del resumen",
         que: "Debajo de los datos compara el total a pagar con lo que suman los renglones del resumen. Si no coinciden lo dice en rojo: o el total está mal tipeado o falta algún renglón.",
         como: "Si el resumen se leyó del PDF, los renglones son los del PDF: ese es el número a creer. Si lo cargaste a mano, el total manda y la línea te avisa qué renglón falta.",
-        tab: "tarjetas",
+        tab: "bancos",
       },
     ],
   },

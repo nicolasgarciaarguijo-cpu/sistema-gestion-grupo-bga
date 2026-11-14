@@ -10,33 +10,57 @@
 
 import { arcaInvoiceKey } from "../lib/arcaInvoices";
 
-// Los tipos como los nombra ARCA. El numero de adelante es el codigo que usa la clave del cruce.
-export const TIPOS_FACTURA_EMITIDA = [
-  "1 - Factura A",
-  "2 - Nota de Débito A",
-  "3 - Nota de Crédito A",
-  "6 - Factura B",
-  "7 - Nota de Débito B",
-  "8 - Nota de Crédito B",
-  "11 - Factura C",
-  "12 - Nota de Débito C",
-  "13 - Nota de Crédito C",
-  "19 - Factura E (exportación)",
+// LOS TIPOS DE COMPROBANTE DE AFIP (Nicolas, 14/11/2026: "estan todos los tipos ahora para seleccionar?
+// los que propone la AFIP?"). Esta es la tabla de AFIP de los comprobantes que una S.R.L. responsable
+// inscripto puede EMITIR, con el codigo que usa ARCA adelante. Quedan afuera a proposito los tiques de
+// controlador fiscal y las liquidaciones de regimenes que el grupo no usa; si alguna vez aparece uno en el
+// listado de ARCA, la ficha conserva lo que vino cargado y se agrega aca.
+export const COMPROBANTES_AFIP: Array<{ codigo: number; label: string }> = [
+  { codigo: 1, label: "Factura A" },
+  { codigo: 2, label: "Nota de Débito A" },
+  { codigo: 3, label: "Nota de Crédito A" },
+  { codigo: 4, label: "Recibo A" },
+  { codigo: 6, label: "Factura B" },
+  { codigo: 7, label: "Nota de Débito B" },
+  { codigo: 8, label: "Nota de Crédito B" },
+  { codigo: 9, label: "Recibo B" },
+  { codigo: 11, label: "Factura C" },
+  { codigo: 12, label: "Nota de Débito C" },
+  { codigo: 13, label: "Nota de Crédito C" },
+  { codigo: 15, label: "Recibo C" },
+  { codigo: 19, label: "Factura E (exportación)" },
+  { codigo: 20, label: "Nota de Débito E" },
+  { codigo: 21, label: "Nota de Crédito E" },
+  { codigo: 51, label: "Factura M" },
+  { codigo: 52, label: "Nota de Débito M" },
+  { codigo: 53, label: "Nota de Crédito M" },
+  { codigo: 54, label: "Recibo M" },
+  { codigo: 39, label: "Otros comprobantes A que cumplen con la R.G." },
+  { codigo: 40, label: "Otros comprobantes B que cumplen con la R.G." },
+  { codigo: 201, label: "Factura de Crédito Electrónico MiPyME A" },
+  { codigo: 202, label: "Nota de Débito Electrónica MiPyME A" },
+  { codigo: 203, label: "Nota de Crédito Electrónica MiPyME A" },
+  { codigo: 206, label: "Factura de Crédito Electrónico MiPyME B" },
+  { codigo: 207, label: "Nota de Débito Electrónica MiPyME B" },
+  { codigo: 208, label: "Nota de Crédito Electrónica MiPyME B" },
+  { codigo: 211, label: "Factura de Crédito Electrónico MiPyME C" },
+  { codigo: 212, label: "Nota de Débito Electrónica MiPyME C" },
+  { codigo: 213, label: "Nota de Crédito Electrónica MiPyME C" },
 ];
 
+// Como se nombra cada uno en la ficha y en el listado de ARCA: "1 - Factura A".
+export const nombreDeComprobante = (codigo: number, label: string) => `${codigo} - ${label}`;
+export const TIPOS_FACTURA_EMITIDA = COMPROBANTES_AFIP.map((c) => nombreDeComprobante(c.codigo, c.label));
+
 // Lo que emite el sistema por AFIP ya viene con el codigo del comprobante.
-export const TIPO_POR_CODIGO_AFIP: Record<number, string> = {
-  1: "1 - Factura A",
-  2: "2 - Nota de Débito A",
-  3: "3 - Nota de Crédito A",
-  6: "6 - Factura B",
-  7: "7 - Nota de Débito B",
-  8: "8 - Nota de Crédito B",
-  11: "11 - Factura C",
-  12: "12 - Nota de Débito C",
-  13: "13 - Nota de Crédito C",
-  19: "19 - Factura E (exportación)",
-};
+export const TIPO_POR_CODIGO_AFIP: Record<number, string> = Object.fromEntries(
+  COMPROBANTES_AFIP.map((c) => [c.codigo, nombreDeComprobante(c.codigo, c.label)])
+);
+
+// Lo que el facturador del sistema sabe emitir hoy (el resto se emite en ARCA y se carga aca).
+export const CODIGOS_QUE_EMITE_EL_SISTEMA = [1, 6, 11];
+export const puedeEmitirloElSistema = (i: FacturaEmitidaF): boolean =>
+  CODIGOS_QUE_EMITE_EL_SISTEMA.includes(codigoAfipDeFactura(i));
 
 // Lo cargado a mano antes del 14/11/2026 dice solo la letra ("A", "B", "A 75"): se interpreta para cruzar.
 const TIPO_POR_LETRA: Record<string, string> = {
@@ -59,6 +83,7 @@ export type FacturaEmitidaF = {
   taxId?: string;
   businessName?: string;
   currency?: string;
+  repartida?: boolean;
   afipCbteTipo?: number;
   afipPtoVta?: number;
   afipCbteNro?: number;
@@ -145,6 +170,8 @@ export type FacturaEmitidaRef = FacturaEmitidaF & {
   id: number;
   origen: "trabajo" | "entreEmpresas";
   donde: string; // "trabajo P-3162" / "entre empresas"
+  total?: number; // la parte que le toca a este trabajo (para el reparto)
+  repartida?: boolean; // marcada a mano: es un comprobante repartido entre varios trabajos
 };
 
 // La misma clave que usa el listado de ARCA (lib/arcaInvoices.arcaInvoiceKey): tipo + punto de venta +
@@ -179,6 +206,36 @@ export function duplicadosDeFacturasEmitidas(todas: FacturaEmitidaRef[]): Array<
 
 export const textoDuplicada = (otras: FacturaEmitidaRef[]): string =>
   otras.length === 0 ? "" : `⚠ este comprobante ya está cargado en ${otras.map((o) => o.donde).join(" y ")}`;
+
+// ===================== UNA FACTURA, VARIOS TRABAJOS =====================
+// Nicolas, 14/11/2026: "son 2 trabajos que se facturaron juntos. el monto de los 2 sumados debe ser el
+// monto de la factura". Entonces el mismo comprobante en dos trabajos NO siempre es un error: puede estar
+// REPARTIDO. Se marca a mano en la ficha (`repartida`), porque el sistema no puede saber si es eso o un
+// numero mal tipeado. Marcada, en vez del aviso rojo muestra el reparto y lo que suman las partes: ese
+// total es el que tiene que coincidir con el del listado de ARCA.
+export type RepartoDeFactura = {
+  partes: Array<{ donde: string; monto: number }>;
+  total: number; // lo que suman todas las partes = el total del comprobante
+};
+
+export function repartoDeFactura(i: FacturaEmitidaRef, todas: FacturaEmitidaRef[]): RepartoDeFactura | null {
+  const clave = claveDeFacturaEmitida(i);
+  if (!clave) return null;
+  const partes = todas.filter((x) => claveDeFacturaEmitida(x) === clave);
+  if (partes.length < 2) return null;
+  return {
+    partes: partes.map((x) => ({ donde: x.donde, monto: Number(x.total || 0) })),
+    total: partes.reduce((a, x) => a + Number(x.total || 0), 0),
+  };
+}
+
+export const esRepartida = (i: { repartida?: boolean }, otras: Array<{ repartida?: boolean }>): boolean =>
+  !!i.repartida || otras.some((o) => !!o.repartida);
+
+export const textoReparto = (r: RepartoDeFactura, money: (n: number) => string): string =>
+  `Comprobante repartido en ${r.partes.length} trabajos: ${r.partes
+    .map((p) => `${p.donde} ${money(p.monto)}`)
+    .join(" + ")} = ${money(r.total)} (ese total es el que tiene que decir ARCA)`;
 
 // ===================== EMISION POR AFIP =====================
 // El codigo del comprobante para emitir por AFIP (WSFE) sale del tipo elegido. Antes se deducia de que el
@@ -223,6 +280,7 @@ export const CAMPO_EN_EMITIDAS: Record<string, string> = {
   vatRate: "vatRate",
   vat: "vat",
   total: "total",
+  repartida: "repartida",
 };
 
 export type ValoresFacturaEmitida = {
@@ -237,12 +295,14 @@ export type ValoresFacturaEmitida = {
   vatRate?: number;
   vat?: number;
   total?: number;
+  repartida?: boolean;
 };
 
 // Un comprobante del padron de emitidas, visto con los nombres de la ficha.
 export function valoresDeEmitida(inv: {
   kind?: string; pointOfSale?: string; number?: string; date?: string; counterpartyName?: string;
   counterpartyTaxId?: string; currency?: string; net?: number; vatRate?: number; vat?: number; total?: number;
+  repartida?: boolean;
 }): ValoresFacturaEmitida {
   return {
     invoiceType: inv.kind || "",
@@ -256,5 +316,6 @@ export function valoresDeEmitida(inv: {
     vatRate: inv.vatRate,
     vat: Number(inv.vat || 0),
     total: Number(inv.total || 0),
+    repartida: !!inv.repartida,
   };
 }

@@ -33,11 +33,15 @@ import { FichaRegistro } from "../ui/FichaRegistro";
 import { camposFacturaEmitida } from "../ui/camposFacturaEmitida";
 import {
   duplicadasDe,
+  esRepartida,
   faltaDeFacturaEmitida,
   numeroDeFactura,
+  puedeEmitirloElSistema,
   puntoDeVentaDeFactura,
+  repartoDeFactura,
   textoDuplicada,
   textoFaltaFactura,
+  textoReparto,
   tipoDeFactura,
   type FacturaEmitidaRef,
 } from "../domain/facturaEmitida";
@@ -453,9 +457,9 @@ export function AprobadosTab({
       actions={
         <div style={styles.inlineActions}>
                 <ButtonLike onClick={createDirectApprovedJob}>Nuevo trabajo directo</ButtonLike>
-                <ButtonLike onClick={importLegacyApprovedJobs} secondary>
-                  Importar historicos BGA
-                </ButtonLike>
+                {/* "Importar historicos BGA" ESCONDIDO (Nicolas, 14/11/2026): "ya no se va a usar nunca mas".
+                    El importador sigue en App.tsx (importLegacyApprovedJobs) por si hubiera que volver a
+                    correrlo alguna vez; de esa carga vienen los arrastres viejos tipo "A 352/365". */}
                 <ButtonLike onClick={() => exportPrint("report-aprobados")} secondary>
                   Reporte
                 </ButtonLike>
@@ -1566,9 +1570,14 @@ export function AprobadosTab({
                               <td style={{ ...tdFlexible, color: "#64748b" }}>
                                 {invoice.businessName || "sin cliente"}
                                 {invoice.afipCae ? <span style={{ color: "#166534", fontWeight: 700 }}> · ✅ emitida en AFIP</span> : null}
-                                {repetidas.length > 0 && (
-                                  <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 11.5 }}>{textoDuplicada(repetidas)}</div>
-                                )}
+                                {repetidas.length > 0 &&
+                                  (esRepartida(invoice as any, repetidas) ? (
+                                    <div style={{ color: "#166534", fontWeight: 700, fontSize: 11.5 }}>
+                                      ✔ repartido en {repetidas.length + 1} trabajos
+                                    </div>
+                                  ) : (
+                                    <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 11.5 }}>{textoDuplicada(repetidas)}</div>
+                                  ))}
                                 {falta.length > 0 && (
                                   <div style={{ color: "#b45309", fontWeight: 700, fontSize: 11.5 }}>{textoFaltaFactura(falta)}</div>
                                 )}
@@ -1599,9 +1608,26 @@ export function AprobadosTab({
                           onCerrar={() => setFichaFactura(null)}
                           pie={
                             <div style={{ display: "grid", gap: 8 }}>
-                              {repetidas.length > 0 && (
-                                <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 12.5 }}>{textoDuplicada(repetidas)}</div>
-                              )}
+                              {repetidas.length > 0 &&
+                                (() => {
+                                  const yo = { ...(invoice as any), id: invoice.id, origen: "trabajo" as const, donde: `el trabajo ${selectedApprovedJob.budgetNumber}` };
+                                  const reparto = repartoDeFactura(yo, refsFacturasEmitidas);
+                                  if (esRepartida(invoice as any, repetidas) && reparto)
+                                    return (
+                                      <div style={{ color: "#166534", fontWeight: 700, fontSize: 12.5 }}>
+                                        ✔ {textoReparto(reparto, money)}
+                                      </div>
+                                    );
+                                  return (
+                                    <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 12.5 }}>
+                                      {textoDuplicada(repetidas)}
+                                      <div style={{ fontWeight: 600, color: "#7f1d1d" }}>
+                                        Si son dos trabajos facturados juntos, dejá en cada uno su parte y marcá «Es un comprobante
+                                        repartido entre varios trabajos» acá arriba.
+                                      </div>
+                                    </div>
+                                  );
+                                })()}
                               {falta.length > 0 && (
                                 <div style={{ color: "#b45309", fontWeight: 700, fontSize: 12.5 }}>{textoFaltaFactura(falta)}</div>
                               )}
@@ -1619,7 +1645,7 @@ export function AprobadosTab({
                                     {String(invoice.afipPtoVta ?? 0).padStart(4, "0")}-
                                     {String(invoice.afipCbteNro ?? 0).padStart(8, "0")}
                                   </div>
-                                ) : canEmitFacturas ? (
+                                ) : canEmitFacturas && puedeEmitirloElSistema(invoice as any) ? (
                                   <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                                     <ButtonLike onClick={() => emitInvoiceAfip(selectedApprovedJob.id, invoice.id)}>
                                       Emitir en AFIP (homologacion)
@@ -1628,6 +1654,11 @@ export function AprobadosTab({
                                       {tipoDeFactura(invoice as any) || "elegí el tipo"} · el sistema pide confirmacion antes de emitir.
                                     </span>
                                   </div>
+                                ) : canEmitFacturas ? (
+                                  <span style={styles.muted}>
+                                    El facturador del sistema emite por ahora <strong>Factura A, B y C</strong>. Para
+                                    {" "}{tipoDeFactura(invoice as any) || "este tipo"} emitila en ARCA y cargá acá el número.
+                                  </span>
                                 ) : (
                                   <span style={styles.muted}>
                                     La emision en AFIP se hace desde la solapa "Emitir facturas" (requiere permiso).

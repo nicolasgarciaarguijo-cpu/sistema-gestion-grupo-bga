@@ -1,5 +1,6 @@
 import React from "react";
 import { styles } from "../ui/styles";
+import { tipoDeFactura } from "../domain/facturaEmitida";
 import { Panel, SemaforoResumen, ButtonLike } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
@@ -41,8 +42,9 @@ export function EmitirFacturasTab({
 
   const jobLabel = (job: any) =>
     `${job.budgetNumber || "-"}${job.project ? " · " + job.project : ""}`;
-  const tipoLabel = (inv: any) =>
-    (inv.invoiceType || "").trim().toUpperCase().startsWith("A") ? "A" : "B";
+  // El tipo sale del comprobante elegido ("1 - Factura A"): antes se deducia de que el texto empezara
+  // con "A", que con los tipos de ARCA ya no sirve (14/11/2026).
+  const tipoLabel = (inv: any) => tipoDeFactura(inv) || "sin tipo";
 
   const anchosPendientes = usePlanillaWidths("emitir.pendientes", { label: 300, col: 116, colCompact: 88 });
   const anchosSinFactura = usePlanillaWidths("emitir.sinfactura", { label: 300, col: 130, colCompact: 100 });

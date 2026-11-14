@@ -52,5 +52,14 @@ export function camposFacturaEmitida(opts?: {
     { key: "vatRate", label: "Alícuota %", tipo: "numero" },
     { key: "vat", label: "IVA (se calcula desde el neto y la alícuota)", tipo: "numero" },
     { key: "total", label: "Total (neto + IVA)", tipo: "numero", soloLectura: true },
+    // Nicolas, 14/11/2026: dos trabajos facturados juntos. En cada trabajo va SU parte, y marcando esto
+    // el sistema deja de verlo como un duplicado y muestra el reparto con la suma.
+    {
+      key: "repartida",
+      label: "Es un comprobante repartido entre varios trabajos",
+      tipo: "check",
+      ayuda: "Marcalo cuando una misma factura cubre más de un trabajo: en cada trabajo cargás su parte y el sistema muestra la suma, que es lo que tiene que decir ARCA.",
+      ancho: "completo",
+    },
   ];
 }

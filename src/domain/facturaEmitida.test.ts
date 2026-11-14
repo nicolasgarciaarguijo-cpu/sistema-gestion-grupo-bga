@@ -1,5 +1,12 @@
 import {
   claveDeFacturaEmitida,
+  codigoAfipDeFactura,
+  COMPROBANTES_AFIP,
+  esRepartida,
+  puedeEmitirloElSistema,
+  repartoDeFactura,
+  textoReparto,
+  TIPOS_FACTURA_EMITIDA,
   comoComprobanteArca,
   duplicadasDe,
   duplicadosDeFacturasEmitidas,
@@ -16,6 +23,8 @@ import { arcaInvoiceKey } from "../lib/arcaInvoices";
 // Nicolas, 14/11/2026: "la ficha de facturas emitidas debería tener la información necesaria como las trae
 // las facturas de ARCA. por lo que si nos falta información en las fichas de trabajo aprobado entonces
 // deberíamos corregirlo" + "hay que asegurarse de que no haya facturas emitidas duplicadas".
+const nombre = (c: { codigo: number; label: string }) => c.codigo + " - " + c.label;
+
 const completa = {
   invoiceType: "1 - Factura A",
   pointOfSale: "1",
@@ -30,6 +39,7 @@ describe("la factura del trabajo entendida como la ve ARCA", () => {
   it("lo cargado viejo dice solo la letra: se interpreta con el código de ARCA", () => {
     expect(tipoDeFactura({ invoiceType: "A" })).toBe("1 - Factura A");
     expect(tipoDeFactura({ invoiceType: "B" })).toBe("6 - Factura B");
+    expect(tipoDeFactura({ invoiceType: "C" })).toBe("11 - Factura C");
     expect(tipoDeFactura({ invoiceType: "A 75" })).toBe("1 - Factura A");
     expect(tipoDeFactura({ invoiceType: "1 - Factura A" })).toBe("1 - Factura A");
   });
@@ -110,5 +120,71 @@ describe("facturas emitidas duplicadas", () => {
     ];
     expect(duplicadasDe(todas[0], todas)).toEqual([]);
     expect(duplicadosDeFacturasEmitidas(todas)).toEqual([]);
+  });
+});
+
+// Nicolas, 14/11/2026: "estan todos los tipos ahora para seleccionar? los que propone la AFIP?".
+describe("los tipos de comprobante que propone AFIP", () => {
+  it("estan los que una SRL emite: A, B, C, M, E, recibos, notas y FCE MiPyME", () => {
+    const codigos = COMPROBANTES_AFIP.map((c) => c.codigo);
+    [1, 2, 3, 4, 6, 7, 8, 9, 11, 12, 13, 15, 19, 20, 21, 51, 52, 53, 54, 201, 206, 211].forEach((c) =>
+      expect(codigos).toContain(c)
+    );
+    expect(new Set(codigos).size).toBe(codigos.length);
+    expect(TIPOS_FACTURA_EMITIDA[0]).toBe("1 - Factura A");
+    expect(TIPOS_FACTURA_EMITIDA).toContain("201 - Factura de Crédito Electrónico MiPyME A");
+  });
+
+  it("cada tipo de la lista sabe su codigo de AFIP", () => {
+    COMPROBANTES_AFIP.forEach((c) =>
+      expect(codigoAfipDeFactura({ invoiceType: nombre(c) })).toBe(c.codigo)
+    );
+  });
+
+  it("el facturador del sistema emite solo factura A, B y C", () => {
+    expect(puedeEmitirloElSistema({ invoiceType: "1 - Factura A" })).toBe(true);
+    expect(puedeEmitirloElSistema({ invoiceType: "6 - Factura B" })).toBe(true);
+    expect(puedeEmitirloElSistema({ invoiceType: "11 - Factura C" })).toBe(true);
+    expect(puedeEmitirloElSistema({ invoiceType: "3 - Nota de Credito A" })).toBe(false);
+    expect(puedeEmitirloElSistema({ invoiceType: "201 - Factura de Credito Electronico MiPyME A" })).toBe(false);
+  });
+});
+
+// Nicolas, 14/11/2026: "son 2 trabajos que se facturaron juntos. el monto de los 2 sumados debe ser el
+// monto de la factura".
+describe("una factura repartida entre varios trabajos", () => {
+  const parte = (id: number, donde: string, total: number, repartida = true): FacturaEmitidaRef => ({
+    ...completa,
+    id,
+    origen: "trabajo",
+    donde,
+    total,
+    repartida,
+  });
+
+  it("marcada como repartida ya no es un duplicado, y las partes suman el total del comprobante", () => {
+    const todas = [parte(1, "el trabajo 3395", 2974474), parte(2, "el trabajo 3396", 2953593)];
+    expect(esRepartida(todas[0], [todas[1]])).toBe(true);
+    const r = repartoDeFactura(todas[0], todas)!;
+    expect(r.partes).toHaveLength(2);
+    expect(r.total).toBe(5928067);
+    expect(textoReparto(r, (n) => String(n))).toBe(
+      "Comprobante repartido en 2 trabajos: el trabajo 3395 2974474 + el trabajo 3396 2953593 = 5928067 (ese total es el que tiene que decir ARCA)"
+    );
+  });
+
+  it("basta con que una de las partes este marcada", () => {
+    const todas = [parte(1, "el trabajo 3395", 100, false), parte(2, "el trabajo 3396", 200, true)];
+    expect(esRepartida(todas[0], [todas[1]])).toBe(true);
+  });
+
+  it("sin marcar, sigue siendo un duplicado", () => {
+    const todas = [parte(1, "el trabajo 3395", 100, false), parte(2, "el trabajo 3396", 200, false)];
+    expect(esRepartida(todas[0], [todas[1]])).toBe(false);
+    expect(duplicadasDe(todas[0], todas)).toHaveLength(1);
+  });
+
+  it("una sola factura no es un reparto", () => {
+    expect(repartoDeFactura(parte(1, "el trabajo 3395", 100), [parte(1, "el trabajo 3395", 100)])).toBeNull();
   });
 });
