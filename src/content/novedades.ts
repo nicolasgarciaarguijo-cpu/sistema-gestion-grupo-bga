@@ -16,6 +16,37 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-14i",
+    fecha: "14/11/2026",
+    titulo: "Facturas emitidas: una sola ficha, con los datos de ARCA",
+    items: [
+      {
+        titulo: "La factura del trabajo ahora pide lo que trae ARCA",
+        que: "A la ficha de la factura le faltaban el punto de venta, la moneda y el tipo de comprobante como lo nombra ARCA (antes era un texto libre y decía solo «A»). Sin eso no se podía cruzar contra el listado de ARCA. La fila del trabajo ahora solo muestra y un click abre la ficha.",
+        como: "Trabajos aprobados → el trabajo → Facturación → click en la factura. Si le falta un dato para cruzarla, la fila y la ficha lo dicen.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Facturas entre las empresas, sin trabajo de por medio",
+        que: "Bloque nuevo en Movimientos internos para las facturas que una empresa del grupo le emite a la otra solo para acomodar los movimientos internos. Usa LA MISMA ficha que la factura del trabajo y cancela plata blanca en la cuenta corriente entre las dos.",
+        como: "Movimientos internos → Facturas entre las empresas del grupo → Agregar factura. Al elegir la empresa que recibe se completa su CUIT y ya cruza la cuenta.",
+        tab: "movimientos-internos",
+      },
+      {
+        titulo: "Ninguna repetida y ninguna perdida",
+        que: "Si el mismo comprobante (tipo, punto de venta, número, CUIT y fecha) quedó cargado dos veces —en un trabajo y entre empresas, o repetido— la fila lo marca en rojo. Y el listado de ARCA ya no propone cargar una factura que está en la ficha de su trabajo: avisa «cargada en el trabajo 3162».",
+        como: "Facturación → importar el listado de ARCA: lo que ya está cargado viene tildado como tal y no se duplica.",
+        tab: "facturacion",
+      },
+      {
+        titulo: "El IVA débito ya cuenta las facturas de los trabajos",
+        que: "La Posición de IVA tomaba el débito SOLO del listado de ARCA, que está vacío: el tablero mostraba débito cero mientras las facturas de los trabajos tenían el IVA cargado. Ahora el débito sale de las facturas de los trabajos (más las de entre empresas y las del padrón que no estén en un trabajo), contando una sola vez lo que esté en los dos lados.",
+        como: "Balance → Posición de IVA. El número cambia: ahora incluye el IVA de las facturas emitidas de los trabajos.",
+        tab: "balance",
+      },
+    ],
+  },
+  {
     id: "2026-11-14h",
     fecha: "14/11/2026",
     titulo: "Los datos del resumen de tarjeta se corrigen en su ficha",

@@ -24,6 +24,18 @@ import { PaseModal } from "../ui/PaseModal";
 import type { PaseForm } from "../domain/pases";
 import { cuentaImplicita, type Cuenta } from "../domain/cuentas";
 import { ORIGEN_GIRO } from "../domain/intercompany";
+import { camposFacturaEmitida } from "../ui/camposFacturaEmitida";
+import {
+  duplicadasDe,
+  faltaDeFacturaEmitida,
+  numeroDeFactura,
+  puntoDeVentaDeFactura,
+  textoDuplicada,
+  textoFaltaFactura,
+  tipoDeFactura,
+  valoresDeEmitida,
+  type FacturaEmitidaRef,
+} from "../domain/facturaEmitida";
 
 // MOVIMIENTOS INTERNOS
 //
@@ -152,6 +164,29 @@ type MovimientosInternosTabProps = {
   cierreAnterior?: MovimientosInternosTabProps["intercompanyAccount"];
   viendoEjercicioCerrado?: boolean;
   onVerEjercicioCerrado?: () => void;
+  // 6) FACTURAS ENTRE LAS EMPRESAS (Nicolas, 14/11/2026): "podria tambien haber facturas entre empresas
+  // sin trabajos de por medio solo para acomodar los movimientos internos". Se cargan con LA MISMA ficha
+  // de factura emitida que el trabajo aprobado, y cruzan la cuenta corriente de abajo.
+  facturasEntreEmpresas?: Array<{
+    id: number;
+    company: string;
+    kind?: string;
+    pointOfSale?: string;
+    number?: string;
+    date?: string;
+    counterpartyName?: string;
+    counterpartyTaxId?: string;
+    currency?: string;
+    net?: number;
+    vatRate?: number;
+    vat?: number;
+    total?: number;
+  }>;
+  // Todas las facturas emitidas cargadas (trabajos + entre empresas) para avisar duplicados.
+  refsFacturasEmitidas?: FacturaEmitidaRef[];
+  addFacturaEntreEmpresas?: () => void;
+  removeFacturaEntreEmpresas?: (id: number) => void;
+  updateFacturaEntreEmpresas?: (id: number, campoDeLaFicha: string, valor: any) => void;
   // Deudas y aportes <-> Desendeudamiento
   onMigrarADesendeudamiento: (capitalId: number) => void;
   onAbrirDeuda: (deudaId: number) => void;
@@ -190,6 +225,11 @@ export function MovimientosInternosTab({
   cierreAnterior,
   viendoEjercicioCerrado,
   onVerEjercicioCerrado,
+  facturasEntreEmpresas = [],
+  refsFacturasEmitidas = [],
+  addFacturaEntreEmpresas,
+  removeFacturaEntreEmpresas,
+  updateFacturaEntreEmpresas,
   onMigrarADesendeudamiento,
   onAbrirDeuda,
 }: MovimientosInternosTabProps) {
@@ -258,6 +298,7 @@ export function MovimientosInternosTab({
   const celdaTexto: React.CSSProperties = { display: "block", padding: "1px 8px", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
   const celdaMonto = (color: string): React.CSSProperties => ({ display: "block", padding: "1px 8px", textAlign: "right", fontWeight: 700, color });
   const fechaCorta = (iso?: string) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "sin fecha");
+  const cortoDeEmpresa = (c: string) => getCompanyMeta(c as CompanyName)?.short || c;
   const etiqueta = (texto: string, fg = "#475569", bg = "#f1f5f9") => (
     <span style={{ fontSize: 11, fontWeight: 700, color: fg, background: bg, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>{texto}</span>
   );
@@ -420,6 +461,21 @@ export function MovimientosInternosTab({
             { key: "notes", label: "Notas", tipo: "area" },
           ];
           set = conCuenta(setPersonLedgerEntries, ficha.id);
+        } else if (ficha.tipo === "facturaEntreEmpresas") {
+          // LA MISMA FICHA que la factura del trabajo aprobado (ui/camposFacturaEmitida): los campos son
+          // los que trae el listado de ARCA. 2026-11-14.
+          const inv = facturasEntreEmpresas.find((x) => x.id === ficha.id);
+          valores = inv ? { ...valoresDeEmitida(inv), company: inv.company } : null;
+          titulo = inv ? `Factura entre empresas · ${tipoDeFactura(valoresDeEmitida(inv)) || "sin tipo"} ${numeroDeFactura(valoresDeEmitida(inv))}` : "Factura entre empresas";
+          campos = [
+            { key: "company", label: "Empresa que emite la factura", tipo: "empresa" },
+            ...camposFacturaEmitida({
+              empresasReceptoras: empresasReales
+                .filter((c: any) => !inv || String(c.value) !== String(inv.company))
+                .map((c: any) => ({ value: String(c.value), label: String(c.label || c.short || c.value) })),
+            }),
+          ];
+          set = (k, v) => updateFacturaEntreEmpresas?.(ficha.id, k, v);
         }
         if (!valores) return null;
         return <FichaRegistro titulo={titulo} subtitulo={valores.firmante ? `Firmó ${valores.firmante}` : undefined} valores={valores} campos={campos} empresas={COMPANY_OPTIONS} onCambiar={set} onCerrar={() => setFicha(null)} />;
@@ -1145,6 +1201,75 @@ export function MovimientosInternosTab({
           chica (Caja chica → la caja lo dice en su fila) y no ocupan un panel aca. 2026-11-14. */}
       {/* Los pagos de una empresa por la otra no tienen panel propio: son una linea del estado de
           cuenta de abajo (de donde sale el saldo) y se corrigen en la ficha de su factura. 2026-11-14. */}
+      {/* 6) FACTURAS ENTRE LAS EMPRESAS (Nicolas, 14/11/2026). La factura se emite normalmente para un
+          trabajo aprobado; cuando no hay trabajo de por medio y es solo para acomodar los movimientos
+          internos, se carga aca. Es la MISMA ficha de factura emitida, y cruza la cuenta de abajo. */}
+      <Panel
+        title="Facturas entre las empresas del grupo"
+        span="full"
+        actions={addFacturaEntreEmpresas ? <ButtonLike onClick={addFacturaEntreEmpresas}>Agregar factura</ButtonLike> : undefined}
+      >
+        <div style={styles.sectionNote}>
+          Las facturas que una empresa del grupo le emite a la otra <strong>sin un trabajo de por medio</strong>,
+          solo para acomodar los movimientos internos. Cada una <strong>cancela plata blanca</strong> de la cuenta
+          corriente de abajo. Los datos son los que trae el listado de ARCA, así que el listado avisa si falta
+          alguna; y si el mismo comprobante ya está cargado en un trabajo, la fila lo marca en rojo.
+        </div>
+        {facturasEntreEmpresas.length === 0 ? (
+          <div style={styles.empty}>Sin facturas entre las empresas. Lo normal es que la factura vaya en su trabajo aprobado.</div>
+        ) : (
+          <table className="planilla" style={planillaTable}>
+            <colgroup>
+              <col style={colLabel} />
+              <col style={colDato} />
+              <col style={colDato} />
+              <col style={colFlexible} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th style={thEsquina}>Comprobante</th>
+                <th style={thColumna}>Fecha</th>
+                <th style={{ ...thColumna, textAlign: "right" }}>Total</th>
+                <th style={thFlexible}>De quién a quién · estado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {facturasEntreEmpresas
+                .filter((inv) => companyScope === "__ALL__" || String(inv.company) === String(companyScope))
+                .map((inv) => {
+                  const v = valoresDeEmitida(inv);
+                  const falta = faltaDeFacturaEmitida(v);
+                  const repetidas = duplicadasDe({ ...v, id: inv.id, origen: "entreEmpresas", donde: "las facturas entre empresas" }, refsFacturasEmitidas);
+                  return (
+                    <tr
+                      key={inv.id}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => setFicha({ tipo: "facturaEntreEmpresas", id: inv.id })}
+                      title="Click: abrir la ficha de la factura"
+                    >
+                      <td style={{ ...tdNombre, fontWeight: 400 }}>
+                        {etiqueta(cortoDeEmpresa(String(inv.company)))}{" "}
+                        <strong>{tipoDeFactura(v) || "sin tipo"}</strong>
+                        {puntoDeVentaDeFactura(v) || numeroDeFactura(v)
+                          ? ` · ${puntoDeVentaDeFactura(v) || "?"}-${numeroDeFactura(v) || "?"}`
+                          : ""}
+                        <BotonFicha onClick={() => setFicha({ tipo: "facturaEntreEmpresas", id: inv.id })} />
+                      </td>
+                      <td style={celdaTexto}>{fechaCorta(v.invoiceDate)}</td>
+                      <td style={celdaMonto("#0f172a")}>{money(Number(v.total || 0), v.currency === "USD" ? "USD" : "ARS")}</td>
+                      <td style={{ ...tdFlexible, color: "#64748b" }}>
+                        {cortoDeEmpresa(String(inv.company))} → {v.businessName || <strong style={{ color: "#b91c1c" }}>⚠ falta la empresa</strong>}
+                        {repetidas.length > 0 && <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 11.5 }}>{textoDuplicada(repetidas)}</div>}
+                        {falta.length > 0 && <div style={{ color: "#b45309", fontWeight: 700, fontSize: 11.5 }}>{textoFaltaFactura(falta)}</div>}
+                      </td>
+                    </tr>
+                  );
+                })}
+            </tbody>
+          </table>
+        )}
+      </Panel>
+
       {[
         { cuenta: intercompanyAccount, titulo: "Cuenta corriente entre las empresas del grupo", cerrado: false },
         ...(intercompanyAnterior ? [{ cuenta: intercompanyAnterior, titulo: `Cuenta corriente entre las empresas · ejercicio ${ejercicioCerrado || "anterior"} (cerrado)`, cerrado: true }] : []),

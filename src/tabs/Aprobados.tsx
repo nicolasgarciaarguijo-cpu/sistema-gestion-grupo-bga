@@ -29,6 +29,18 @@ import { getPlanoSemaphore, isPlanoPending, comparePlanoUrgency, type PlanoTone 
 import { getInvoicingSemaphore } from "../domain/semaphores";
 import type { SemaphoreLevel } from "../ui/theme";
 import { totalesAdicionales, totalesCobranzas, totalesComisiones, totalesFacturas, totalesRetenciones } from "../domain/totalesTrabajo";
+import { FichaRegistro } from "../ui/FichaRegistro";
+import { camposFacturaEmitida } from "../ui/camposFacturaEmitida";
+import {
+  duplicadasDe,
+  faltaDeFacturaEmitida,
+  numeroDeFactura,
+  puntoDeVentaDeFactura,
+  textoDuplicada,
+  textoFaltaFactura,
+  tipoDeFactura,
+  type FacturaEmitidaRef,
+} from "../domain/facturaEmitida";
 
 // % de facturacion real de un trabajo (neto facturado por facturas reales) contra el neto comprometido
 // (soldNetPrice x billedPct). Devuelve el nivel del semaforo para el circulo verde/amarillo/rojo.
@@ -77,6 +89,10 @@ type AprobadosTabProps = {
   getCompanyMeta: (company: CompanyName) => any;
   // Empresas a las que se puede mover un trabajo (para corregir una importación mal asignada).
   companyOptions?: Array<{ value: string; short?: string }>;
+  // 14/11/2026: todas las facturas emitidas cargadas (de los trabajos y las de entre empresas), para
+  // avisar si el mismo comprobante quedo cargado dos veces.
+  refsFacturasEmitidas?: FacturaEmitidaRef[];
+  clientesConocidos?: string[];
   getApprovedJobSourceLabel: (job: any) => string;
   getJobSemaphore: (job: any) => { level: SemaphoreLevel; label: string };
   setSelectedApprovedJobId: React.Dispatch<React.SetStateAction<number | null>>;
@@ -162,6 +178,8 @@ export function AprobadosTab({
   ocultarTerminado,
   getCompanyMeta,
   companyOptions = [],
+  refsFacturasEmitidas = [],
+  clientesConocidos = [],
   getApprovedJobSourceLabel,
   getJobSemaphore,
   setSelectedApprovedJobId,
@@ -208,6 +226,9 @@ export function AprobadosTab({
 }: AprobadosTabProps) {
   // Menú contextual (click derecho) del cliente: resumen económico (falta facturar/cobrar/comisión).
   const [ctxMenu, setCtxMenu] = React.useState<null | { x: number; y: number; job: any }>(null);
+  // La ficha de la factura emitida del trabajo (la misma que Movimientos internos usa para las de entre
+  // empresas): la fila solo muestra y todo se corrige adentro. 2026-11-14.
+  const [fichaFactura, setFichaFactura] = React.useState<number | null>(null);
   const anchosAprobados = usePlanillaWidths("aprobados.principal", { label: 300, col: 118, colCompact: 90 });
   const anchosPlanos = usePlanillaWidths("aprobados.planos", { label: 280, col: 120, colCompact: 92 });
   const anchosLinea = usePlanillaWidths("aprobados.linea", { label: 300, col: 150, colCompact: 110 });
@@ -1497,150 +1518,154 @@ export function AprobadosTab({
                       />
                     ) : null;
                   })()}
+                  {/* 2026-11-14 (Nicolas): "la ficha de facturas emitidas deberia tener la informacion
+                      necesaria como las trae las facturas de ARCA". La fila SOLO MUESTRA y todo se corrige
+                      en la ficha, que es la misma que usan las facturas entre empresas. */}
                   {selectedApprovedJob.invoices.length === 0 ? (
                     <div style={styles.empty}>No hay facturas cargadas.</div>
                   ) : (
-                    selectedApprovedJob.invoices.map((invoice) => (
-                      <div key={invoice.id} style={styles.subCard}>
-                        <div style={styles.inlineActions}>
-                          <button style={styles.smallBtn} onClick={() => removeInvoice(selectedApprovedJob.id, invoice.id)}>
-                            Quitar factura
-                          </button>
-                        </div>
-                        <TwoCol>
-                          <Field label="Nombre / razon social">
-                            <input
-                              style={styles.input}
-                              value={invoice.businessName}
-                              onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "businessName", e.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="CUIT / CUIL">
-                            <input
-                              style={styles.input}
-                              value={invoice.taxId}
-                              onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "taxId", e.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Tipo de factura">
-                            <input
-                              style={styles.input}
-                              value={invoice.invoiceType}
-                              onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "invoiceType", e.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Numero">
-                            <input
-                              style={styles.input}
-                              value={invoice.invoiceNumber}
-                              onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "invoiceNumber", e.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Fecha">
-                            <input
-                              style={styles.input}
-                              type="date"
-                              value={invoice.invoiceDate}
-                              onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "invoiceDate", e.target.value)
-                              }
-                            />
-                          </Field>
-                          <Field label="Subtotal">
-                            <AmountInput
-                              style={styles.input}
-                              value={invoice.subtotal}
-                              onChange={(n) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "subtotal", n)
-                              }
-                            />
-                          </Field>
-                          <Field label="Alicuota %">
-                            <NumInput
-                              style={styles.input}
-                              value={invoice.vatRate ?? 21}
-                              onChange={(e) =>
-                                updateInvoice(selectedApprovedJob.id, invoice.id, "vatRate", Number(e.target.value))
-                              }
-                            />
-                          </Field>
-                          <Field label="IVA (calculado)">
-                            <input style={styles.input} value={money(invoice.vat)} readOnly />
-                          </Field>
-                          <Field label="Total (calculado)">
-                            <input style={styles.input} value={money(invoice.total)} readOnly />
-                          </Field>
-                        </TwoCol>
-                        <div
-                          style={{
-                            marginTop: 8,
-                            padding: "8px 10px",
-                            borderRadius: 8,
-                            background: invoice.afipCae ? "#f0fdf4" : "#eff6ff",
-                            border: `1px solid ${invoice.afipCae ? "#bbf7d0" : "#bfdbfe"}`,
-                          }}
-                        >
-                          {invoice.afipCae ? (
-                            <div style={{ fontSize: 13, color: "#166534" }}>
-                              ✅ Emitida en AFIP{invoice.afipEnv === "homo" ? " (homologacion)" : ""} · CAE{" "}
-                              <strong>{invoice.afipCae}</strong> · vto {invoice.afipCaeVto} · N°{" "}
-                              {String(invoice.afipPtoVta ?? 0).padStart(4, "0")}-
-                              {String(invoice.afipCbteNro ?? 0).padStart(8, "0")}
-                            </div>
-                          ) : (
-                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                              {canEmitFacturas ? (
-                                <>
-                                  <ButtonLike onClick={() => emitInvoiceAfip(selectedApprovedJob.id, invoice.id)}>
-                                    Emitir en AFIP (homologacion)
-                                  </ButtonLike>
-                                  <span style={styles.muted}>
-                                    Factura {(invoice.invoiceType || "").trim().toUpperCase().startsWith("A") ? "A" : "B"} ·
-                                    el sistema pide confirmacion antes de emitir.
-                                  </span>
-                                </>
-                              ) : (
-                                <span style={styles.muted}>
-                                  La emision en AFIP se hace desde la solapa "Emitir facturas" (requiere permiso).
-                                </span>
-                              )}
-                            </div>
-                          )}
-                          {invoice.afipError ? (
-                            <div style={{ color: "#dc2626", marginTop: 4, fontSize: 12 }}>⚠️ {invoice.afipError}</div>
-                          ) : null}
-                        </div>
-                        <div style={styles.uploadActions}>
-                          <label style={styles.buttonLikeLabel}>
-                            Cargar factura digital
-                            <input
-                              type="file"
-                              style={{ display: "none" }}
-                              onChange={(e) =>
-                                uploadApprovedJobFile(
-                                  selectedApprovedJob.id,
-                                  "invoices",
-                                  invoice.id,
-                                  e.target.files?.[0] || null
-                                )
-                              }
-                            />
-                          </label>
-                          {invoice.attachmentName && (
-                            <div style={styles.fileName}>{invoice.attachmentName}</div>
-                          )}
-                        </div>
-                      </div>
-                    ))
+                    <table className="planilla" style={planillaTable}>
+                      <colgroup>
+                        <col style={colLabel} />
+                        <col style={colDato} />
+                        <col style={colDato} />
+                        <col style={colFlexible} />
+                      </colgroup>
+                      <thead>
+                        <tr>
+                          <th style={thEsquina}>Comprobante</th>
+                          <th style={thColumna}>Fecha</th>
+                          <th style={{ ...thColumna, textAlign: "right" }}>Total</th>
+                          <th style={thFlexible}>Cliente · estado</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedApprovedJob.invoices.map((invoice) => {
+                          const falta = faltaDeFacturaEmitida(invoice as any);
+                          const repetidas = duplicadasDe(
+                            { ...(invoice as any), id: invoice.id, origen: "trabajo", donde: `el trabajo ${selectedApprovedJob.budgetNumber}` },
+                            refsFacturasEmitidas
+                          );
+                          const pv = puntoDeVentaDeFactura(invoice as any);
+                          const nro = numeroDeFactura(invoice as any);
+                          return (
+                            <tr
+                              key={invoice.id}
+                              style={{ cursor: "pointer" }}
+                              onClick={() => setFichaFactura(invoice.id)}
+                              title="Click: abrir la ficha de la factura"
+                            >
+                              <td style={{ ...tdNombre, fontWeight: 400 }}>
+                                <strong>{tipoDeFactura(invoice as any) || "sin tipo"}</strong>
+                                {pv || nro ? ` · ${pv || "?"}-${nro || "?"}` : ""}
+                              </td>
+                              <td style={{ ...tdDato, color: "#475569" }}>
+                                {invoice.invoiceDate ? formatDateDisplay(invoice.invoiceDate) : <strong style={{ color: "#b91c1c" }}>⚠ falta</strong>}
+                              </td>
+                              <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>{money(Number(invoice.total || 0))}</td>
+                              <td style={{ ...tdFlexible, color: "#64748b" }}>
+                                {invoice.businessName || "sin cliente"}
+                                {invoice.afipCae ? <span style={{ color: "#166534", fontWeight: 700 }}> · ✅ emitida en AFIP</span> : null}
+                                {repetidas.length > 0 && (
+                                  <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 11.5 }}>{textoDuplicada(repetidas)}</div>
+                                )}
+                                {falta.length > 0 && (
+                                  <div style={{ color: "#b45309", fontWeight: 700, fontSize: 11.5 }}>{textoFaltaFactura(falta)}</div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
                   )}
+                  {fichaFactura != null &&
+                    (() => {
+                      const invoice = selectedApprovedJob.invoices.find((x: any) => x.id === fichaFactura);
+                      if (!invoice) return null;
+                      const falta = faltaDeFacturaEmitida(invoice as any);
+                      const repetidas = duplicadasDe(
+                        { ...(invoice as any), id: invoice.id, origen: "trabajo", donde: `el trabajo ${selectedApprovedJob.budgetNumber}` },
+                        refsFacturasEmitidas
+                      );
+                      return (
+                        <FichaRegistro
+                          titulo={`Factura emitida · trabajo ${selectedApprovedJob.budgetNumber}`}
+                          subtitulo="Los datos son los que trae el listado de ARCA: con eso la factura se cruza contra ARCA y no queda ninguna perdida ni repetida."
+                          valores={{ ...(invoice as any), currency: (invoice as any).currency || "ARS" }}
+                          campos={camposFacturaEmitida({ clientes: clientesConocidos })}
+                          empresas={companyOptions as any}
+                          onCambiar={(key, valor) => updateInvoice(selectedApprovedJob.id, invoice.id, key as any, valor)}
+                          onCerrar={() => setFichaFactura(null)}
+                          pie={
+                            <div style={{ display: "grid", gap: 8 }}>
+                              {repetidas.length > 0 && (
+                                <div style={{ color: "#b91c1c", fontWeight: 700, fontSize: 12.5 }}>{textoDuplicada(repetidas)}</div>
+                              )}
+                              {falta.length > 0 && (
+                                <div style={{ color: "#b45309", fontWeight: 700, fontSize: 12.5 }}>{textoFaltaFactura(falta)}</div>
+                              )}
+                              <div
+                                style={{
+                                  padding: "8px 10px", borderRadius: 8,
+                                  background: invoice.afipCae ? "#f0fdf4" : "#eff6ff",
+                                  border: `1px solid ${invoice.afipCae ? "#bbf7d0" : "#bfdbfe"}`,
+                                }}
+                              >
+                                {invoice.afipCae ? (
+                                  <div style={{ fontSize: 13, color: "#166534" }}>
+                                    ✅ Emitida en AFIP{invoice.afipEnv === "homo" ? " (homologacion)" : ""} · CAE{" "}
+                                    <strong>{invoice.afipCae}</strong> · vto {invoice.afipCaeVto} · N°{" "}
+                                    {String(invoice.afipPtoVta ?? 0).padStart(4, "0")}-
+                                    {String(invoice.afipCbteNro ?? 0).padStart(8, "0")}
+                                  </div>
+                                ) : canEmitFacturas ? (
+                                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                                    <ButtonLike onClick={() => emitInvoiceAfip(selectedApprovedJob.id, invoice.id)}>
+                                      Emitir en AFIP (homologacion)
+                                    </ButtonLike>
+                                    <span style={styles.muted}>
+                                      {tipoDeFactura(invoice as any) || "elegí el tipo"} · el sistema pide confirmacion antes de emitir.
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span style={styles.muted}>
+                                    La emision en AFIP se hace desde la solapa "Emitir facturas" (requiere permiso).
+                                  </span>
+                                )}
+                                {invoice.afipError ? (
+                                  <div style={{ color: "#dc2626", marginTop: 4, fontSize: 12 }}>⚠️ {invoice.afipError}</div>
+                                ) : null}
+                              </div>
+                              <div style={styles.uploadActions}>
+                                <label style={styles.buttonLikeLabel}>
+                                  Cargar factura digital
+                                  <input
+                                    type="file"
+                                    style={{ display: "none" }}
+                                    onChange={(e) =>
+                                      uploadApprovedJobFile(selectedApprovedJob.id, "invoices", invoice.id, e.target.files?.[0] || null)
+                                    }
+                                  />
+                                </label>
+                                {invoice.attachmentName && <div style={styles.fileName}>{invoice.attachmentName}</div>}
+                              </div>
+                              <div>
+                                <button
+                                  style={styles.smallBtn}
+                                  onClick={() => {
+                                    removeInvoice(selectedApprovedJob.id, invoice.id);
+                                    setFichaFactura(null);
+                                  }}
+                                >
+                                  Quitar factura
+                                </button>
+                              </div>
+                            </div>
+                          }
+                        />
+                      );
+                    })()}
                 </Panel>
 
                 <Panel

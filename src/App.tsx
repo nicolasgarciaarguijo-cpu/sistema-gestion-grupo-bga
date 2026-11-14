@@ -207,6 +207,14 @@ import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, readSpreadsheetRows, suggestGroupForConcept, SHEETJS_CDN, type BankStatementRow } from "./lib/bankStatement";
 import { rowsToArcaInvoices, arcaInvoiceKey } from "./lib/arcaInvoices";
 import {
+  claveDeFacturaEmitida,
+  codigoAfipDeFactura,
+  conIvaYTotal,
+  CAMPO_EN_EMITIDAS,
+  valoresDeEmitida,
+  type FacturaEmitidaRef,
+} from "./domain/facturaEmitida";
+import {
   buildBudgetNumberFromParts,
   getNextBudgetNumber,
   parseLeadDays,
@@ -11929,10 +11937,14 @@ Escribi CERRAR para confirmar:`
                   id: newId(),
                   businessName: job.client,
                   taxId: "",
-                  invoiceType: "A",
+                  // Los tipos como los nombra ARCA, para poder cruzar el comprobante (14/11/2026).
+                  invoiceType: "1 - Factura A",
+                  pointOfSale: "",
+                  currency: "ARS",
                   invoiceNumber: "",
-                  invoiceDate: "",
+                  invoiceDate: todayIso(),
                   subtotal: 0,
+                  vatRate: 21,
                   vat: 0,
                   total: 0,
                 },
@@ -11957,21 +11969,8 @@ Escribi CERRAR para confirmar:`
               ...job,
               invoices: job.invoices.map((invoice) => {
                 if (invoice.id !== invoiceId) return invoice;
-                const nextInvoice = { ...invoice, [field]: value } as Invoice;
-                if (field === "subtotal" || field === "vatRate" || field === "vat") {
-                  // Si hay alicuota cargada, el IVA se calcula desde subtotal x alicuota.
-                  if (
-                    nextInvoice.vatRate != null &&
-                    (field === "subtotal" || field === "vatRate")
-                  ) {
-                    nextInvoice.vat = Number(
-                      (Number(nextInvoice.subtotal || 0) * (Number(nextInvoice.vatRate) / 100)).toFixed(2)
-                    );
-                  }
-                  nextInvoice.total =
-                    Number(nextInvoice.subtotal || 0) + Number(nextInvoice.vat || 0);
-                }
-                return nextInvoice;
+                // Una sola regla de IVA y total para las dos fichas (domain/facturaEmitida.conIvaYTotal).
+                return conIvaYTotal({ ...invoice, [field]: value } as Invoice, String(field));
               }),
             }
           : job
@@ -14759,8 +14758,10 @@ Escribi CERRAR para confirmar:`
     const job = approvedJobs.find((j) => j.id === jobId);
     const inv = job?.invoices.find((i) => i.id === invoiceId);
     if (!inv) return;
-    const esA = (inv.invoiceType || "").trim().toUpperCase().startsWith("A");
-    const cbteTipo = esA ? 1 : 6;
+    // El codigo sale del tipo elegido ("1 - Factura A"): antes se deducia de que el texto empezara con "A".
+    const cbteTipo = codigoAfipDeFactura(inv);
+    // A y las notas A piden el CUIT del receptor; B y C van sin documento.
+    const esA = cbteTipo === 1 || cbteTipo === 2 || cbteTipo === 3;
     const neto = Number(inv.subtotal || 0);
     const iva = Number(inv.vat || 0);
     const total = Number(inv.total || neto + iva);
@@ -15204,6 +15205,27 @@ Escribi CERRAR para confirmar:`
     return String(iso || "") > c.endIso;
   };
 
+  // Las facturas que generan debito fiscal: las de los trabajos aprobados mas las del padron de emitidas
+  // que no esten ya cargadas en un trabajo (se comparan con la clave de ARCA: tipo, punto de venta, numero,
+  // CUIT y fecha). Ver domain/facturaEmitida.ts.
+  const debitoFiscalDeEmitidas = useMemo(() => {
+    const deTrabajos = approvedJobs.flatMap((job) =>
+      (job.invoices || []).map((inv) => ({
+        company: String(job.company),
+        date: String(inv.invoiceDate || ""),
+        vat: Number(inv.vat || 0),
+        clave: claveDeFacturaEmitida(inv as any),
+      }))
+    );
+    const clavesDeTrabajos = new Set(deTrabajos.map((x) => x.clave).filter(Boolean) as string[]);
+    const delPadron = issuedInvoices
+      .map((inv) => ({ company: String(inv.company), date: String(inv.date || ""), vat: Number(inv.vat || 0), clave: claveDeFacturaEmitida(valoresDeEmitida(inv)) }))
+      .filter((x) => !(x.clave && clavesDeTrabajos.has(x.clave)));
+    return [...deTrabajos, ...delPadron]
+      .filter((x) => !!x.date)
+      .map(({ company, date, vat }) => ({ company, date, vat }));
+  }, [approvedJobs, issuedInvoices]);
+
   // IVA de una empresa MES A MES en el ejercicio en curso (03/11/2026): debito - credito de cada mes calendario, el saldo a favor
   // que pasa al siguiente y cada VEP controlando el mes que paga. Ver domain/vatBalance.ts `ivaAnual`.
   const ivaDeEmpresa = (company: string, anioInicio?: number) => {
@@ -15213,7 +15235,11 @@ Escribi CERRAR para confirmar:`
     const hoy = todayIso();
     return ivaAnual({
       company,
-      issued: issuedInvoices.map((inv) => ({ company: inv.company, date: inv.date, vat: Number(inv.vat || 0) })),
+      // DEBITO FISCAL (Nicolas, 14/11/2026): la factura emitida se carga en la ficha de su TRABAJO APROBADO
+      // (o entre empresas, sin trabajo). El padron de emitidas es el control de ARCA, no el dato: antes el
+      // debito salia solo de ahi y, con el padron vacio, el tablero mostraba cero. Lo mismo cargado en los
+      // dos lados se cuenta UNA vez (misma clave que usa el listado de ARCA).
+      issued: debitoFiscalDeEmitidas,
       purchases: [
         ...visiblePurchaseInvoices.map((p) => ({ company: p.company, date: p.invoiceDate, vat: Number(p.vat || 0), administration: p.administration })),
         // Nota de credito: baja el credito fiscal.
@@ -15800,6 +15826,7 @@ Escribi CERRAR para confirmar:`
     visibleApprovedJobs,
     visibleDebtPlans,
     issuedInvoices,
+    debitoFiscalDeEmitidas,
     visiblePurchaseInvoices,
     purchaseLedgerInvoices,
     deudaProveedoresPorEmpresa,
@@ -19612,6 +19639,87 @@ Escribi CERRAR para confirmar:`
     return armarCuentaGrupo(transfers, invoices, [...girosDePases(visibleInternalTransfers, "USD"), ...pagosCruzadosDe("USD"), ...ajenaDe("USD")]);
   }, [visibleBankStatementEntries, visibleInternalTransfers, issuedInvoices, companyCatalog, COMPANY_OPTIONS, costEntries, pettyCashExpenses, pettyCashFunds, plataConCuentaAjena]);
 
+  // FACTURAS ENTRE LAS EMPRESAS (Nicolas, 14/11/2026): las emitidas cuyo receptor es la otra empresa del
+  // grupo. Viven en el padron de emitidas (por eso ya cruzan la cuenta corriente y el listado de ARCA), y se
+  // cargan con LA MISMA ficha de factura emitida que el trabajo aprobado.
+  const cuitDeEmpresa = (company: string) => String(getCompanyMeta(company as CompanyName)?.taxId || "").replace(/\D/g, "");
+  const empresasDelGrupo = useMemo(
+    () => COMPANY_OPTIONS.filter((c) => c.value && c.value !== "General").map((c) => ({ company: String(c.value), cuit: cuitDeEmpresa(String(c.value)) })),
+    [COMPANY_OPTIONS, companyCatalog]
+  );
+  const facturasEntreEmpresas = useMemo(
+    () =>
+      visibleIssuedInvoices.filter((inv) =>
+        empresasDelGrupo.some((e) => e.company !== String(inv.company) && e.cuit.length >= 11 && e.cuit === String(inv.counterpartyTaxId || "").replace(/\D/g, ""))
+      ),
+    [visibleIssuedInvoices, empresasDelGrupo]
+  );
+  const addFacturaEntreEmpresas = () =>
+    conEmpresa("la factura", (empresaElegida) => {
+      const otra = empresasDelGrupo.find((e) => e.company !== String(empresaElegida));
+      setIssuedInvoices((prev) => [
+        {
+          id: newId(),
+          company: empresaElegida as CompanyName,
+          date: todayIso(),
+          kind: "1 - Factura A",
+          pointOfSale: "",
+          number: "",
+          counterpartyTaxId: otra?.cuit || "",
+          counterpartyName: otra?.company || "",
+          currency: "ARS",
+          net: 0,
+          vatRate: 21,
+          vat: 0,
+          total: 0,
+          source: "manual",
+        },
+        ...prev,
+      ]);
+    });
+  const removeFacturaEntreEmpresas = (id: number) => setIssuedInvoices((prev) => prev.filter((inv) => inv.id !== id));
+  // La ficha habla con los nombres de la factura del trabajo: se traducen a los del padron de emitidas.
+  const updateFacturaEntreEmpresas = (id: number, campoDeLaFicha: string, valor: any) => {
+    const actual = issuedInvoices.find((inv) => inv.id === id);
+    if (actual && bloqueadoPorCierre(actual.company, actual.date)) return;
+    setIssuedInvoices((prev) =>
+      prev.map((inv) => {
+        if (inv.id !== id) return inv;
+        // Elegir la empresa que recibe completa su CUIT (con eso cruza la cuenta corriente).
+        if (campoDeLaFicha === "businessName") {
+          return { ...inv, counterpartyName: String(valor || ""), counterpartyTaxId: cuitDeEmpresa(String(valor || "")) };
+        }
+        if (campoDeLaFicha === "company") {
+          const limpia = String(valor) === String(inv.counterpartyName);
+          return { ...inv, company: valor as CompanyName, ...(limpia ? { counterpartyName: "", counterpartyTaxId: "" } : {}) };
+        }
+        const destino = CAMPO_EN_EMITIDAS[campoDeLaFicha] || campoDeLaFicha;
+        const conValor: any = { ...inv, [destino]: valor };
+        // La misma regla de IVA y total que en el trabajo, hablando en los nombres de la ficha.
+        const recalculado: any = conIvaYTotal(
+          { subtotal: Number(conValor.net || 0), vatRate: conValor.vatRate, vat: Number(conValor.vat || 0), total: Number(conValor.total || 0) },
+          campoDeLaFicha
+        );
+        return { ...conValor, net: Number(recalculado.subtotal || 0), vat: Number(recalculado.vat || 0), total: Number(recalculado.total || 0) };
+      })
+    );
+  };
+  // TODAS las facturas emitidas cargadas, para avisar si el mismo comprobante quedo dos veces (en un
+  // trabajo y entre empresas, o repetido). El listado de ARCA se encarga de que no falte ninguna.
+  const refsFacturasEmitidas = useMemo<FacturaEmitidaRef[]>(
+    () => [
+      ...visibleApprovedJobs.flatMap((job) =>
+        (job.invoices || []).map((inv) => ({ ...(inv as any), id: inv.id, origen: "trabajo" as const, donde: `el trabajo ${job.budgetNumber}` }))
+      ),
+      ...facturasEntreEmpresas.map((inv) => ({ ...valoresDeEmitida(inv), id: inv.id, origen: "entreEmpresas" as const, donde: "las facturas entre empresas" })),
+    ],
+    [visibleApprovedJobs, facturasEntreEmpresas]
+  );
+  const clientesDeFacturas = useMemo(
+    () => Array.from(new Set(visibleApprovedJobs.flatMap((j) => [j.client, ...(j.invoices || []).map((i) => i.businessName)]).filter(Boolean).map(String))).sort(),
+    [visibleApprovedJobs]
+  );
+
   // La cuenta de la solapa: el ejercicio corriente arranca en cero y el cerrado queda aparte, para consultarlo.
   const cuentaGrupoPorEjercicio = useMemo(() => {
     const cierreDe = (company: string) => ultimoCierre(fiscalClosings, company);
@@ -19675,6 +19783,15 @@ Escribi CERRAR para confirmar:`
       });
     };
     const clavesEmitidas = new Set(issuedInvoices.map((inv) => arcaInvoiceKey(inv)));
+    // El listado de ARCA es CONTROL: propone solo lo que NO esta cargado. Las facturas de los trabajos
+    // aprobados tambien cuentan como cargadas (Nicolas, 14/11/2026).
+    const emitidasEnTrabajos = new Map<string, string>();
+    approvedJobs.forEach((job) =>
+      (job.invoices || []).forEach((inv) => {
+        const clave = claveDeFacturaEmitida(inv as any);
+        if (clave) emitidasEnTrabajos.set(clave, String(job.budgetNumber || ""));
+      })
+    );
     const clavesCompras = new Set(
       purchaseInvoices.map((inv) =>
         arcaInvoiceKey({
@@ -19709,6 +19826,11 @@ Escribi CERRAR para confirmar:`
             if (clavesEmitidas.has(clave)) {
               const ya = issuedInvoices.find((x) => arcaInvoiceKey(x) === clave);
               filaArca(inv, "emitidas", false, String(empresa.value), { id: ya?.id || 0, texto: ya ? `emitida ${ya.pointOfSale}-${ya.number} del ${fmtCorta(ya.date)}` : "repetida en el listado" });
+              continue;
+            }
+            // Ya cargada en la ficha de su trabajo aprobado: no se duplica en el padron.
+            if (emitidasEnTrabajos.has(clave)) {
+              filaArca(inv, "emitidas", false, String(empresa.value), { id: 0, texto: `cargada en el trabajo ${emitidasEnTrabajos.get(clave)}` });
               continue;
             }
             clavesEmitidas.add(clave);
@@ -24848,6 +24970,11 @@ Escribi CERRAR para confirmar:`
           cierreAnterior={hayEjercicioCerrado ? cuentaGrupoPorEjercicio.anterior : undefined}
           viendoEjercicioCerrado={verCerrado}
           onVerEjercicioCerrado={() => setVerCerrado((v) => !v)}
+          facturasEntreEmpresas={facturasEntreEmpresas as any}
+          refsFacturasEmitidas={refsFacturasEmitidas}
+          addFacturaEntreEmpresas={addFacturaEntreEmpresas}
+          removeFacturaEntreEmpresas={removeFacturaEntreEmpresas}
+          updateFacturaEntreEmpresas={updateFacturaEntreEmpresas}
           onMigrarADesendeudamiento={migrarADesendeudamiento}
           onAbrirDeuda={irADeuda}
         />
@@ -25010,6 +25137,8 @@ Escribi CERRAR para confirmar:`
           canEmitFacturas={canEmitFacturas}
           issuedInvoices={visibleIssuedInvoices}
           updateIssuedInvoice={updateIssuedInvoice}
+          refsFacturasEmitidas={refsFacturasEmitidas}
+          clientesConocidos={clientesDeFacturas}
           approvedJobsSummary={approvedJobsSummary}
           companyApprovedSections={companyApprovedSections}
           approvedJobsTimelineRows={approvedJobsTimelineRows}

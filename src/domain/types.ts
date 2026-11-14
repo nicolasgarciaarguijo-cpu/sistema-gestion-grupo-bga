@@ -363,6 +363,10 @@ export type Invoice = {
   businessName: string;
   taxId: string;
   invoiceType: string;
+  // Lo que trae el listado de ARCA y faltaba en la ficha del trabajo (Nicolas, 14/11/2026): sin el punto de
+  // venta y la moneda no se puede cruzar el comprobante contra ARCA. Ver domain/facturaEmitida.ts.
+  pointOfSale?: string;
+  currency?: string;
   invoiceNumber: string;
   invoiceDate: string;
   subtotal: number;
@@ -1332,6 +1336,7 @@ export type IssuedInvoice = {
   counterpartyName: string;
   currency: string;
   net: number;
+  vatRate?: number; // alicuota %: si esta, el IVA y el total se calculan desde el neto (14/11/2026)
   vat: number;
   total: number;
   source: "arca" | "manual";
