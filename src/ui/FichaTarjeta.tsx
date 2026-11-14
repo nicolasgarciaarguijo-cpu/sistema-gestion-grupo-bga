@@ -10,6 +10,8 @@ import { BuscadorVinculo, IconoEstado, ItemMenu, MenuFicha, SepMenu, TituloMenu,
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 700, padding: "4px 6px", borderBottom: "1px solid #e2e8f0" };
 const td: React.CSSProperties = { padding: "4px 6px", borderBottom: "1px solid #f1f5f9", fontSize: 12.5, verticalAlign: "top" };
 const inputMini: React.CSSProperties = { padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12.5, width: "100%" };
+const campo: React.CSSProperties = { display: "grid", gap: 2 };
+const rotulo: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: "#64748b" };
 
 export type FichaTarjetaProps = {
   cuenta: TarjetaF;
@@ -26,6 +28,8 @@ export type FichaTarjetaProps = {
   onComisiones: (renglonId: number, si: boolean) => void;
   onAceptarSugerencias: (statementId: number) => void;
   onPlastico: (cardId: number, patch: Partial<Pick<TarjetaF, "responsable" | "numerosAnteriores" | "lastDigits" | "cuentaTarjetaId">>) => void;
+  // 2026-11-14: los datos del resumen (cierre, vencimiento, totales, pago minimo, pagado) se corrigen aca.
+  onResumen: (statementId: number, campo: string, valor: any) => void;
   onCerrar: () => void;
 };
 
@@ -114,6 +118,15 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
       <tbody>{filas.map(fila)}</tbody>
     </table>
   );
+
+  // Lo que suman los renglones del resumen (los del PDF, sin los "SU PAGO" del resumen anterior) contra el
+  // total tipeado: es el control de que el numero de arriba sea el del resumen de verdad. 2026-11-14.
+  const sumaRenglones = ficha
+    ? ficha.renglones
+        .filter((f) => f.estado !== "pago_resumen" && f.renglon.currency !== "USD")
+        .reduce((a, f) => a + Number(f.renglon.amount || 0), 0)
+    : 0;
+  const difiereElTotal = !!ficha && Math.abs(sumaRenglones - Number(ficha.resumen.totalArs || 0)) > 1;
 
   const comisiones = ficha ? p.pagoComisiones(ficha.resumen.id) : null;
   const sugeridos = ficha ? ficha.renglones.filter((f) => f.estado === "sugerido").length : 0;
@@ -217,6 +230,73 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
             <div style={{ fontSize: 12.5, color: "#475569" }}>
               Todos los pagos linkeados se pagan el <b>{ddmm(ficha.resumen.dueDate)}</b> (vencimiento): recién ese día descuentan de la cuenta del banco.
             </div>
+
+            {/* 2026-11-14 (Nicolas): los datos del resumen se corrigen ACA y la fila de la solapa Tarjetas
+                solo los muestra. El lector del PDF los carga; a mano se arreglan si quedaron mal. */}
+            <div style={{ background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: 10, display: "grid", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "baseline" }}>
+                <div style={{ fontWeight: 800 }}>Datos del resumen</div>
+                <div style={{ fontSize: 12, color: "#64748b" }}>
+                  {ficha.resumen.archivo
+                    ? `Lo leyó el lector del PDF (${ficha.resumen.archivo}): los renglones de abajo son los del resumen.`
+                    : "Cargado a mano: no hay PDF detrás. Si lo subís, el lector completa estos datos."}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8 }}>
+                <label style={campo}>
+                  <span style={rotulo}>Tarjeta que lo emite</span>
+                  <select style={inputMini} value={ficha.resumen.cardId} onChange={(e) => p.onResumen(ficha.resumen.id, "cardId", Number(e.target.value))}>
+                    {[p.cuenta, ...p.plasticos].map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                        {t.lastDigits ? ` · ${t.lastDigits}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={campo}>
+                  <span style={rotulo}>Cierre</span>
+                  <input style={inputMini} type="date" value={ficha.resumen.closingDate || ""} onChange={(e) => p.onResumen(ficha.resumen.id, "closingDate", e.target.value)} />
+                </label>
+                <label style={campo}>
+                  <span style={rotulo}>Vencimiento (el día que se paga)</span>
+                  <input style={inputMini} type="date" value={ficha.resumen.dueDate || ""} onChange={(e) => p.onResumen(ficha.resumen.id, "dueDate", e.target.value)} />
+                </label>
+                <label style={campo}>
+                  <span style={rotulo}>Total a pagar $</span>
+                  <input style={inputMini} type="number" value={Number(ficha.resumen.totalArs || 0)} onChange={(e) => p.onResumen(ficha.resumen.id, "totalArs", Number(e.target.value) || 0)} />
+                </label>
+                <label style={campo}>
+                  <span style={rotulo}>Total U$S</span>
+                  <input style={inputMini} type="number" value={Number(ficha.resumen.totalUsd || 0)} onChange={(e) => p.onResumen(ficha.resumen.id, "totalUsd", Number(e.target.value) || 0)} />
+                </label>
+                <label style={campo}>
+                  <span style={rotulo}>Pago mínimo $</span>
+                  <input style={inputMini} type="number" value={Number(ficha.resumen.minPaymentArs || 0)} onChange={(e) => p.onResumen(ficha.resumen.id, "minPaymentArs", Number(e.target.value) || 0)} />
+                </label>
+                <label style={campo}>
+                  <span style={rotulo}>Saldo anterior $</span>
+                  <input style={inputMini} type="number" value={Number(ficha.resumen.saldoAnteriorArs || 0)} onChange={(e) => p.onResumen(ficha.resumen.id, "saldoAnteriorArs", Number(e.target.value) || 0)} />
+                </label>
+                <label style={{ ...campo, justifyContent: "flex-end" }}>
+                  <span style={rotulo}>Pagado</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                    <input type="checkbox" checked={!!ficha.resumen.paid} onChange={(e) => p.onResumen(ficha.resumen.id, "paid", e.target.checked)} />
+                    {ficha.resumen.paid ? "Sí, ya se pagó" : "Todavía no"}
+                  </span>
+                </label>
+              </div>
+              <label style={campo}>
+                <span style={rotulo}>Notas</span>
+                <input style={inputMini} defaultValue={ficha.resumen.notes || ""} onBlur={(e) => e.target.value !== (ficha.resumen.notes || "") && p.onResumen(ficha.resumen.id, "notes", e.target.value)} />
+              </label>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: difiereElTotal ? "#b91c1c" : "#166534" }}>
+                {difiereElTotal
+                  ? `⚠ los renglones suman ${p.money(sumaRenglones)} y acá dice ${p.money(Number(ficha.resumen.totalArs || 0))}: revisá el total o si falta algún renglón.`
+                  : `✓ el total coincide con lo que suman los renglones (${p.money(sumaRenglones)}).`}
+              </div>
+            </div>
+
 
             {ficha.porPlastico.map((g) => (
               <div key={g.clave}>

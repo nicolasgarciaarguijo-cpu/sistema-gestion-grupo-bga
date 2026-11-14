@@ -47,7 +47,9 @@ export type TarjetaF = {
   responsable?: string;
   numerosAnteriores?: string;
 };
-export type ResumenF = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; totalUsd?: number; saldoAnteriorArs?: number };
+// 2026-11-14 (Nicolas): los datos del resumen se corrigen en ESTA ficha (antes se tipeaban en la fila de la
+// solapa Tarjetas), asi que la ficha necesita todos los campos, no solo los del linkeo.
+export type ResumenF = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; totalUsd?: number; saldoAnteriorArs?: number; minPaymentArs?: number; paid?: boolean; archivo?: string; notes?: string };
 export type RenglonF = {
   id: number;
   company: string;

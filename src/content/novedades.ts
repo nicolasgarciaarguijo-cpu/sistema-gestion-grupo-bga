@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-14h",
+    fecha: "14/11/2026",
+    titulo: "Los datos del resumen de tarjeta se corrigen en su ficha",
+    items: [
+      {
+        titulo: "Un resumen, una sola ficha",
+        que: "El cierre, el vencimiento, los totales en pesos y dólares, el pago mínimo y el saldo anterior se tipeaban en la fila de la solapa Tarjetas, y el mismo resumen tenía su ficha (la del linkeo) en otro lado. Ahora todo eso vive en la ficha: la fila solo muestra y dice si el resumen lo leyó el PDF o se cargó a mano.",
+        como: "Bancos y tarjetas → Resúmenes → click en la fila: abre la ficha del resumen. El punto verde (pagado) y el tachito siguen en la fila.",
+        tab: "tarjetas",
+      },
+      {
+        titulo: "La ficha avisa si el total no es el del resumen",
+        que: "Debajo de los datos compara el total a pagar con lo que suman los renglones del resumen. Si no coinciden lo dice en rojo: o el total está mal tipeado o falta algún renglón.",
+        como: "Si el resumen se leyó del PDF, los renglones son los del PDF: ese es el número a creer. Si lo cargaste a mano, el total manda y la línea te avisa qué renglón falta.",
+        tab: "tarjetas",
+      },
+    ],
+  },
+  {
     id: "2026-11-14g",
     fecha: "14/11/2026",
     titulo: "Seguros, Inversiones y Tarjetas: las filas no se tipean",

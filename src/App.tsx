@@ -24075,6 +24075,7 @@ Escribi CERRAR para confirmar:`
               onComisiones={renglonAComisiones}
               onAceptarSugerencias={aceptarSugerencias}
               onPlastico={(id, patch) => Object.entries(patch).forEach(([k, v]) => updateCreditCard(id, k as keyof CreditCard, v))}
+              onResumen={(sid, campo, valor) => updateCreditCardStatement(sid, campo as keyof CreditCardStatement, valor)}
               onCerrar={() => setFichaTarjetaAbierta(null)}
             />
           );
@@ -24784,6 +24785,9 @@ Escribi CERRAR para confirmar:`
               addCreditCardConsumption={addCreditCardConsumption}
               removeCreditCardConsumption={removeCreditCardConsumption}
               updateCreditCardConsumption={updateCreditCardConsumption}
+              onAbrirResumen={(cardId, statementId) =>
+                // La fila solo muestra: se corrige en la ficha del resumen (2026-11-14).
+                setFichaTarjetaAbierta({ cuentaId: cuentaDeTarjeta(cardId, tarjetasF, resumenesF), statementId })}
             />
           }
         />

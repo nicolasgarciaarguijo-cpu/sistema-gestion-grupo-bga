@@ -45,6 +45,8 @@ type TarjetasTabProps = {
   addCreditCardConsumption: () => void;
   removeCreditCardConsumption: (id: number) => void;
   updateCreditCardConsumption: (id: number, field: keyof CreditCardConsumption, value: any) => void;
+  // 2026-11-14: la fila del resumen solo muestra; se corrige en la ficha del resumen (la del linkeo).
+  onAbrirResumen?: (cardId: number, statementId: number) => void;
 };
 
 const NEW_GROUP_OPTION = "__NEW_GROUP__";
@@ -75,6 +77,7 @@ export function TarjetasTab({
   addCreditCardConsumption,
   removeCreditCardConsumption,
   updateCreditCardConsumption,
+  onAbrirResumen,
 }: TarjetasTabProps) {
   const inScope = (company: string) => companyScope === "__ALL__" || company === companyScope;
   const scopedCards = cards.filter((c) => inScope(c.company));
@@ -457,76 +460,42 @@ export function TarjetasTab({
               {scopedStatements.map((s) => (
                 <tr
                   key={s.id}
-                  style={s.paid ? { opacity: 0.55 } : undefined}
+                  style={{ ...(s.paid ? { opacity: 0.55 } : {}), cursor: onAbrirResumen ? "pointer" : undefined }}
+                  onClick={() => onAbrirResumen?.(s.cardId, s.id)}
                   onContextMenu={(ev) => {
                     ev.preventDefault();
                     ev.stopPropagation();
                     if (window.confirm("¿Quitar este resumen?")) removeCreditCardStatement(s.id);
                   }}
-                  title="Click derecho: quitar. El punto verde marca el resumen como pagado."
+                  title="Click: abrir la ficha del resumen (ahí se corrige todo y se linkea cada renglón). Click derecho: quitar."
                 >
+                  {/* 2026-11-14 (Nicolas): la fila SOLO MUESTRA. El lector del PDF carga estos datos y se
+                      corrigen en la ficha del resumen, que es la misma que usa el linkeo. */}
                   <td style={{ ...tdNombre, fontWeight: 400, padding: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
                       <span
-                        title={s.paid ? "Pagado" : "Sin pagar"}
-                        onClick={() => updateCreditCardStatement(s.id, "paid", !s.paid)}
+                        title={s.paid ? "Pagado (click: marcar sin pagar)" : "Sin pagar (click: marcar pagado)"}
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          updateCreditCardStatement(s.id, "paid", !s.paid);
+                        }}
                         style={{
                           display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
                           cursor: "pointer", background: s.paid ? "#16a34a" : "#ca8a04",
                         }}
                       />
-                      <select
-                        style={{ ...inputCelda, width: "auto" }}
-                        value={s.cardId}
-                        onChange={(e) => updateCreditCardStatement(s.id, "cardId", Number(e.target.value))}
-                      >
-                        {cardOptions}
-                      </select>
-                      <input
-                        style={{ ...inputCelda, width: 120 }}
-                        {...focoCelda}
-                        type="date"
-                        value={s.closingDate}
-                        onChange={(e) => updateCreditCardStatement(s.id, "closingDate", e.target.value)}
-                      />
+                      <strong>{cardName(s.cardId)}</strong>
+                      <span style={{ color: "#64748b" }}>cierre {formatDateDisplay(s.closingDate)}</span>
+                      {s.archivo ? etiquetaTarjeta("del PDF", "#1d4ed8", "#dbeafe") : etiquetaTarjeta("a mano")}
                     </span>
                   </td>
-                  <td style={{ ...tdDato, padding: 0 }}>
-                    <AmountInput
-                      style={inputCeldaDerecha}
-                      {...focoCelda}
-                      value={s.totalArs}
-                      onChange={(n) => updateCreditCardStatement(s.id, "totalArs", n)}
-                    />
+                  <td style={{ ...tdDato, ...celdaTarjeta, textAlign: "right", fontWeight: 700 }}>{money(Number(s.totalArs || 0))}</td>
+                  <td style={{ ...tdDato, ...celdaTarjeta }}>{s.dueDate ? formatDateDisplay(s.dueDate) : <strong style={{ color: "#b91c1c" }}>⚠ falta</strong>}</td>
+                  <td style={{ ...tdFlexible, ...celdaTarjeta, color: "#64748b" }}>
+                    {Number(s.totalUsd || 0) ? `U$S ${money(Number(s.totalUsd))}` : "sin dólares"}
+                    {Number(s.minPaymentArs || 0) ? ` · pago mín. ${money(Number(s.minPaymentArs))}` : ""}
                   </td>
-                  <td style={{ ...tdDato, padding: 0 }}>
-                    <input
-                      style={{ ...inputCelda, padding: "1px 6px" }}
-                      {...focoCelda}
-                      type="date"
-                      value={s.dueDate}
-                      onChange={(e) => updateCreditCardStatement(s.id, "dueDate", e.target.value)}
-                    />
-                  </td>
-                  <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                      <span style={{ color: "#94a3b8" }}>U$S</span>
-                      <AmountInput
-                        style={{ ...inputCelda, width: 110, textAlign: "right" }}
-                        {...focoCelda}
-                        value={s.totalUsd}
-                        onChange={(n) => updateCreditCardStatement(s.id, "totalUsd", n)}
-                      />
-                      <span style={{ color: "#94a3b8" }}>pago mín.</span>
-                      <AmountInput
-                        style={{ ...inputCelda, width: 110, textAlign: "right" }}
-                        {...focoCelda}
-                        value={s.minPaymentArs}
-                        onChange={(n) => updateCreditCardStatement(s.id, "minPaymentArs", n)}
-                      />
-                    </span>
-                  </td>
-                  <td style={{ ...tdDato, ...tdAcciones }}>
+                  <td style={{ ...tdDato, ...tdAcciones }} onClick={(ev) => ev.stopPropagation()}>
                     <button
                       type="button"
                       title="Borrar"
