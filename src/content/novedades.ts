@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-14e",
+    fecha: "14/11/2026",
+    titulo: "Movimientos internos: las filas ya no se tipean",
+    items: [
+      {
+        titulo: "Todo se corrige en la ficha",
+        que: "Los cuatro bloques (pases, efectivo, aportes y préstamos, y la cuenta con la gente) tenían cada celda como un campo para escribir: se pisaba un dato sin querer con un click de más. Ahora la fila solo muestra, con el color y las etiquetas (B/N, empresa, entra/sale), y todo se corrige en la ficha.",
+        como: "Movimientos internos → click en la fila (o el botón 🗂) abre su ficha. El click derecho sigue quitando el movimiento.",
+        tab: "movimientosInternos",
+      },
+      {
+        titulo: "Dos datos que estaban sueltos ahora viven en la ficha",
+        que: "El valor en U$S de referencia de un aporte o préstamo, y el medio por el que se le devolvió la plata a una persona (efectivo, transferencia, cheque o débito), estaban solo en la fila. Ahora están en la ficha, con su explicación.",
+        como: "Movimientos internos → la fila → ficha.",
+        tab: "movimientosInternos",
+      },
+    ],
+  },
+  {
     id: "2026-11-14d",
     fecha: "14/11/2026",
     titulo: "Dólares: deudas en U$S y traspasos a pesos",

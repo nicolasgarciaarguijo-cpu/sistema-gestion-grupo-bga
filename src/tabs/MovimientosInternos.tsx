@@ -2,11 +2,11 @@ import React from "react";
 import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
 import { styles } from "../ui/styles";
 import type { PagoCruzado } from "../domain/pagosPorPersona";
-import { Panel, MiniMetric, ButtonLike, AmountInput, ColorTagToggle, moneyToneColor } from "../ui/primitives";
+import { Panel, MiniMetric, ButtonLike, moneyToneColor } from "../ui/primitives";
 import {
   usePlanillaWidths, planillaWrap, planillaTable, colLabel, colDato, colFlexible,
   thEsquina, thColumna, thFlexible, tdNombre, tdDato, tdFlexible, PlanillaManija,
-  inputCelda, inputCeldaDerecha, focoCelda,
+  inputCelda,
 } from "../ui/planilla";
 import { money, formatDateDisplay } from "../lib/format";
 import type {
@@ -25,7 +25,6 @@ import { PaseModal } from "../ui/PaseModal";
 import type { PaseForm } from "../domain/pases";
 import { cuentaImplicita, type Cuenta } from "../domain/cuentas";
 
-import NumInput from "../ui/NumInput";
 // MOVIMIENTOS INTERNOS
 //
 // La solapa donde la plata cambia de bolsillo sin entrar ni salir de la empresa. Nace de un problema
@@ -253,6 +252,22 @@ export function MovimientosInternosTab({
     facturado: number;
     movimientos: Array<{ id: number; date: string; text: string; from: string; to: string; amount: number; administration: "blanco" | "negro" }>;
   }>(null);
+  // LAS FILAS SOLO MUESTRAN (Nicolas, 14/11/2026: misma ficha en todo vinculo, y la pantalla mas limpia).
+  // Nada se tipea en la fila: se abre la ficha (click en la fila o el boton de la ficha) y ahi se corrige
+  // todo. Antes cada celda era un input y se pisaba cualquier dato sin querer.
+  const MEDIO_CORTO: Record<string, string> = {
+    efectivo: "efectivo",
+    transferencia: "transferencia",
+    cheque: "cheque",
+    debito: "debito automatico",
+  };
+  const celdaTexto: React.CSSProperties = { display: "block", padding: "1px 8px", fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+  const celdaMonto = (color: string): React.CSSProperties => ({ display: "block", padding: "1px 8px", textAlign: "right", fontWeight: 700, color });
+  const fechaCorta = (iso?: string) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "sin fecha");
+  const etiqueta = (texto: string, fg = "#475569", bg = "#f1f5f9") => (
+    <span style={{ fontSize: 11, fontWeight: 700, color: fg, background: bg, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>{texto}</span>
+  );
+  const notaCelda = (notas?: string) => <span style={{ ...celdaTexto, color: "#94a3b8", flex: 1, minWidth: 90 }}>{notas || ""}</span>;
   // Cambiar la empresa (o la moneda) suelta la cuenta: era de la otra empresa y se vuelve a elegir.
   const cambiarSoltandoCuenta = (setter: any, id: number, k: string, v: any) => {
     updateArrayItem(setter, id, k as any, v);
@@ -374,6 +389,8 @@ export function MovimientosInternosTab({
             { key: "amount", label: "Monto", tipo: "numero" },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
             campoCuenta(valores, valores?.direction === "devuelto" ? "De qué cuenta sale" : "A qué cuenta entra"),
+            // Valor en U$S de referencia (2026-11-14): estaba solo en la fila, ahora vive en la ficha.
+            { key: "usdValue", label: "Valor en U$S (referencia, no se suma con los pesos)", tipo: "numero" },
             { key: "notes", label: "Notas", tipo: "area" },
           ];
           set = conCuenta(setCapitalEntries, ficha.id);
@@ -387,6 +404,23 @@ export function MovimientosInternosTab({
             { key: "kind", label: "Debe / haber", tipo: "select", opciones: [{ value: "debe", label: "Debe" }, { value: "haber", label: "Haber" }] },
             { key: "amount", label: "Monto", tipo: "numero" },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
+            // Medio del reintegro (2026-11-14): estaba solo en la fila. En efectivo baja la caja; por
+            // banco no, porque ya salio por el extracto.
+            ...((valores?.kind === "haber"
+              ? [
+                  {
+                    key: "paymentMethod",
+                    label: "Cómo se le devolvió",
+                    tipo: "select",
+                    opciones: [
+                      { value: "efectivo", label: "Efectivo (baja la caja)" },
+                      { value: "transferencia", label: "Transferencia" },
+                      { value: "cheque", label: "Cheque" },
+                      { value: "debito", label: "Débito automático" },
+                    ],
+                  },
+                ]
+              : []) as CampoFicha[]),
             ...(valores?.kind === "haber" ? [campoCuenta(valores, "De qué cuenta sale")] : []),
             { key: "description", label: "Descripción", tipo: "texto", ancho: "completo" },
             { key: "notes", label: "Notas", tipo: "area" },
@@ -483,7 +517,9 @@ export function MovimientosInternosTab({
                         removeInternalTransfer(item.id);
                       }
                     }}
-                    title="Click derecho: quitar el pase"
+                    onClick={() => abrirPase(item)}
+                    style={{ cursor: "pointer" }}
+                    title="Click: abrir la ficha del pase · Click derecho: quitarlo"
                   >
                     <td
                       style={{
@@ -494,34 +530,17 @@ export function MovimientosInternosTab({
                           "inset 4px 0 0 " + (item.direction === "banco_a_efectivo" ? "#16a34a" : "#dc2626"),
                       }}
                     >
-                      <input
-                        style={{ ...inputCelda, padding: "1px 8px" }}
-                        {...focoCelda}
-                        value={item.description}
-                        placeholder={item.direction === "banco_a_efectivo" ? "extraccion" : "deposito"}
-                        onChange={(e) => updateArrayItem(setInternalTransfers, item.id, "description", e.target.value)}
-                      />
+                      <span style={celdaTexto}>
+                        {item.description || (item.direction === "banco_a_efectivo" ? "extraccion" : "deposito")}
+                      </span>
                     </td>
                     <td style={{ ...tdDato, padding: 0 }}>
-                      <AmountInput
-                        style={{
-                          ...inputCeldaDerecha,
-                          color: item.direction === "banco_a_efectivo" ? "#166534" : "#b91c1c",
-                          fontWeight: 700,
-                        }}
-                        {...focoCelda}
-                        value={item.amount}
-                        onChange={(n) => updateArrayItem(setInternalTransfers, item.id, "amount", n)}
-                      />
+                      <span style={celdaMonto(item.direction === "banco_a_efectivo" ? "#166534" : "#b91c1c")}>
+                        {money(item.amount, item.currency === "USD" ? "USD" : "ARS")}
+                      </span>
                     </td>
                     <td style={{ ...tdDato, padding: 0 }}>
-                      <input
-                        style={{ ...inputCelda, padding: "1px 6px" }}
-                        {...focoCelda}
-                        type="date"
-                        value={item.date}
-                        onChange={(e) => updateArrayItem(setInternalTransfers, item.id, "date", e.target.value)}
-                      />
+                      <span style={celdaTexto}>{fechaCorta(item.date)}</span>
                     </td>
                     <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
@@ -546,13 +565,7 @@ export function MovimientosInternosTab({
                         )}
                         <span>{item.currency === "USD" ? "U$S" : "$"} · {item.color === "negro" ? "negro" : "blanco"}</span>
 <BotonFicha onClick={() => abrirPase(item)} />
-                        <input
-                          style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                          {...focoCelda}
-                          value={item.notes}
-                          placeholder="notas"
-                          onChange={(e) => updateArrayItem(setInternalTransfers, item.id, "notes", e.target.value)}
-                        />
+                        {notaCelda(item.notes)}
                         <button
                           type="button"
                           style={botonBorrarFila}
@@ -654,7 +667,9 @@ export function MovimientosInternosTab({
                       removeCashHolding(item.id);
                     }
                   }}
-                  title="Click derecho: quitar el movimiento"
+                  onClick={() => setFicha({ tipo: "efectivo", id: item.id })}
+                  style={{ cursor: "pointer" }}
+                  title="Click: abrir la ficha · Click derecho: quitar el movimiento"
                 >
                   <td
                     style={{
@@ -662,78 +677,26 @@ export function MovimientosInternosTab({
                       boxShadow: `inset 4px 0 0 ${item.kind === "ingreso" ? "#16a34a" : "#dc2626"}`,
                     }}
                   >
-                    <input
-                      style={{ ...inputCelda, padding: "1px 8px" }}
-                      {...focoCelda}
-                      value={item.description}
-                      onChange={(e) => updateArrayItem(setCashHoldings, item.id, "description", e.target.value)}
-                    />
+                    <span style={celdaTexto}>{item.description || "sin descripcion"}</span>
                   </td>
                   <td style={{ ...tdDato, padding: 0 }}>
-                    <AmountInput
-                      style={{
-                        ...inputCeldaDerecha,
-                        color: item.kind === "ingreso" ? "#166534" : "#b91c1c",
-                        fontWeight: 700,
-                      }}
-                      {...focoCelda}
-                      value={item.amount}
-                      onChange={(n) => updateArrayItem(setCashHoldings, item.id, "amount", n)}
-                    />
+                    <span style={celdaMonto(item.kind === "ingreso" ? "#166534" : "#b91c1c")}>
+                      {money(item.amount, item.currency === "USD" ? "USD" : "ARS")}
+                    </span>
                   </td>
                   <td style={{ ...tdDato, padding: 0 }}>
-                    <input
-                      style={{ ...inputCelda, padding: "1px 6px" }}
-                      {...focoCelda}
-                      type="date"
-                      value={item.date}
-                      onChange={(e) => updateArrayItem(setCashHoldings, item.id, "date", e.target.value)}
-                    />
+                    <span style={celdaTexto}>{fechaCorta(item.date)}</span>
                   </td>
                   <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
                       <FirmanteCelda value={item.firmante} firmadoEn={item.firmadoEn} />
-                      <select
-                        style={{ ...inputCelda, width: "auto" }}
-                        value={item.currency}
-                        onChange={(e) => cambiarSoltandoCuenta(setCashHoldings, item.id, "currency", e.target.value)}
-                      >
-                        <option value="ARS">$ Pesos</option>
-                        <option value="USD">U$S Dólares</option>
-                      </select>
-                      <select
-                        style={{ ...inputCelda, width: "auto" }}
-                        value={item.kind}
-                        onChange={(e) => updateArrayItem(setCashHoldings, item.id, "kind", e.target.value)}
-                      >
-                        <option value="ingreso">Ingreso</option>
-                        <option value="egreso">Egreso</option>
-                      </select>
-                      <ColorTagToggle
-                        value={item.color}
-                        onSet={(v) => updateArrayItem(setCashHoldings, item.id, "color", v)}
-                        size={16}
-                      />
-                      <select
-                        style={{ ...inputCelda, width: "auto" }}
-                        value={item.company}
-                        onChange={(e) => cambiarSoltandoCuenta(setCashHoldings, item.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
+                      {item.currency === "USD" && etiqueta("U$S", "#1e3a8a", "#dbeafe")}
+                      {etiqueta(item.kind === "ingreso" ? "Entra" : "Sale", item.kind === "ingreso" ? "#15803d" : "#b91c1c", item.kind === "ingreso" ? "#dcfce7" : "#fee2e2")}
+                      {etiqueta(item.color === "negro" ? "N" : "B", item.color === "negro" ? "#fff" : "#0f172a", item.color === "negro" ? "#1f2937" : "#e2e8f0")}
+                      {etiqueta(getCompanyMeta(item.company)?.short || String(item.company))}
 <BotonFicha onClick={() => setFicha({ tipo: "efectivo", id: item.id })} />
 {faltaCuenta(item, () => setFicha({ tipo: "efectivo", id: item.id }))}
-                      <input
-                        style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                        {...focoCelda}
-                        value={item.notes}
-                        placeholder="notas"
-                        onChange={(e) => updateArrayItem(setCashHoldings, item.id, "notes", e.target.value)}
-                      />
+                      {notaCelda(item.notes)}
                       <button
                         type="button"
                         style={botonBorrarFila}
@@ -904,7 +867,9 @@ export function MovimientosInternosTab({
                     ev.stopPropagation();
                     if (window.confirm(`¿Quitar "${item.origin}" de aportes y préstamos?`)) removeCapitalEntry(item.id);
                   }}
-                  title="Click derecho: quitar el movimiento"
+                  onClick={() => setFicha({ tipo: "capital", id: item.id })}
+                  style={{ cursor: "pointer" }}
+                  title="Click: abrir la ficha · Click derecho: quitar el movimiento"
                 >
                   <td
                     style={{
@@ -912,104 +877,38 @@ export function MovimientosInternosTab({
                       boxShadow: `inset 4px 0 0 ${item.direction === "recibido" ? "#16a34a" : "#dc2626"}`,
                     }}
                   >
-                    <input
-                      style={{ ...inputCelda, padding: "1px 8px" }}
-                      {...focoCelda}
-                      value={item.origin}
-                      onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "origin", e.target.value)}
-                    />
+                    <span style={celdaTexto}>{item.origin || "sin nombre"}</span>
                   </td>
                   <td style={{ ...tdDato, padding: 0 }}>
-                    <AmountInput
-                      style={{
-                        ...inputCeldaDerecha,
-                        color: item.direction === "recibido" ? "#166534" : "#b91c1c",
-                        fontWeight: 700,
-                      }}
-                      {...focoCelda}
-                      value={item.amount}
-                      onChange={(n) => updateArrayItem(setCapitalEntries, item.id, "amount", n)}
-                    />
+                    <span style={celdaMonto(item.direction === "recibido" ? "#166534" : "#b91c1c")}>
+                      {money(item.amount)}
+                    </span>
                   </td>
                   <td style={{ ...tdDato, padding: 0 }}>
-                    <input
-                      style={{ ...inputCelda, padding: "1px 6px" }}
-                      {...focoCelda}
-                      type="date"
-                      value={item.date}
-                      onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "date", e.target.value)}
-                    />
+                    <span style={celdaTexto}>{fechaCorta(item.date)}</span>
                   </td>
                   <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
                       <FirmanteCelda value={item.firmante} firmadoEn={item.firmadoEn} />
-                      <select
-                        style={{ ...inputCelda, width: "auto" }}
-                        disabled={item.deudaId != null}
-                        value={item.kind}
-                        onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "kind", e.target.value)}
-                      >
-                        <option value="aporte">Aporte</option>
-                        <option value="prestamo">Préstamo</option>
-                      </select>
-                      <select
-                        style={{ ...inputCelda, width: "auto" }}
-                        disabled={item.deudaId != null}
-                        value={item.direction}
-                        onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "direction", e.target.value)}
-                      >
-                        <option value="recibido">Recibido</option>
-                        <option value="devuelto">Devuelto</option>
-                      </select>
-                      <ColorTagToggle
-                        value={item.color}
-                        onSet={(v) => updateArrayItem(setCapitalEntries, item.id, "color", v)}
-                        size={16}
-                      />
-                      <select
-                        style={{ ...inputCelda, width: "auto" }}
-                        value={item.company}
-                        onChange={(e) => cambiarSoltandoCuenta(setCapitalEntries, item.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((company) => (
-                          <option key={company.value} value={company.value}>
-                            {company.short}
-                          </option>
-                        ))}
-                      </select>
+                      {etiqueta(item.kind === "prestamo" ? "Prestamo" : "Aporte", "#1e3a8a", "#dbeafe")}
+                      {etiqueta(item.direction === "recibido" ? "Entro" : "Se devolvio", item.direction === "recibido" ? "#15803d" : "#b91c1c", item.direction === "recibido" ? "#dcfce7" : "#fee2e2")}
+                      {etiqueta(item.color === "negro" ? "N" : "B", item.color === "negro" ? "#fff" : "#0f172a", item.color === "negro" ? "#1f2937" : "#e2e8f0")}
+                      {etiqueta(getCompanyMeta(item.company)?.short || String(item.company))}
 <BotonFicha onClick={() => setFicha({ tipo: "capital", id: item.id })} />
 {item.deudaId == null && faltaCuenta(item, () => setFicha({ tipo: "capital", id: item.id }))}
                       {item.deudaId != null ? (
-                        <button type="button" style={botonDeuda} title="Abrir la deuda en Desendeudamiento" onClick={() => onAbrirDeuda(item.deudaId as number)}>
+                        <button type="button" style={botonDeuda} title="Abrir la deuda en Desendeudamiento" onClick={(ev) => { ev.stopPropagation(); onAbrirDeuda(item.deudaId as number); }}>
                           En Desendeudamiento →
                         </button>
                       ) : item.direction === "recibido" ? (
-                        <button type="button" style={botonDeuda} title="Pasar a Desendeudamiento para definir la devolución" onClick={() => onMigrarADesendeudamiento(item.id)}>
+                        <button type="button" style={botonDeuda} title="Pasar a Desendeudamiento para definir la devolución" onClick={(ev) => { ev.stopPropagation(); onMigrarADesendeudamiento(item.id); }}>
                           Migrar a Desendeudamiento
                         </button>
                       ) : null}
-                      <span style={{ color: "#94a3b8" }}>U$S</span>
-                      <NumInput
-                        style={{ ...inputCelda, width: 72, textAlign: "right" }}
-                        {...focoCelda}
-                        placeholder="opcional"
-                        value={item.usdValue ?? ""}
-                        onChange={(e) =>
-                          updateArrayItem(
-                            setCapitalEntries,
-                            item.id,
-                            "usdValue",
-                            e.target.value === "" ? (undefined as any) : Number(e.target.value)
-                          )
-                        }
-                      />
-                      <input
-                        style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                        {...focoCelda}
-                        value={item.notes}
-                        placeholder="notas"
-                        onChange={(e) => updateArrayItem(setCapitalEntries, item.id, "notes", e.target.value)}
-                      />
+                      {item.usdValue != null && item.usdValue > 0 && (
+                        <span style={{ fontSize: 11.5, color: "#1e3a8a", fontWeight: 700 }}>U$S {item.usdValue}</span>
+                      )}
+                      {notaCelda(item.notes)}
                       <button
                         type="button"
                         style={botonBorrarFila}
@@ -1145,9 +1044,11 @@ export function MovimientosInternosTab({
                               removePersonLedgerEntry(mov.entryId);
                             }
                           }}
+                          onClick={() => entry && setFicha({ tipo: "gente", id: entry.id })}
+                          style={entry ? { cursor: "pointer" } : undefined}
                           title={
                             manual
-                              ? "Click derecho: quitar el movimiento"
+                              ? "Click: abrir la ficha · Click derecho: quitar el movimiento"
                               : mov.source === "factura"
                               ? "Sale de una factura de Compras: se corrige allá"
                               : "Sale de un fondo de Caja chica: se corrige allá"
@@ -1161,62 +1062,19 @@ export function MovimientosInternosTab({
                               boxShadow: "inset 4px 0 0 " + (esHaber ? "#16a34a" : "#dc2626"),
                             }}
                           >
-                            {entry ? (
-                              <input
-                                style={{ ...inputCelda, padding: "1px 8px" }}
-                                {...focoCelda}
-                                value={entry.description}
-                                placeholder={esHaber ? "reintegro" : "qué pagó"}
-                                onChange={(e) =>
-                                  updateArrayItem(setPersonLedgerEntries, entry.id, "description", e.target.value)
-                                }
-                              />
-                            ) : (
-                              <span style={{ padding: "0 8px", color: "#475569" }}>{mov.description}</span>
-                            )}
+                            <span style={{ ...celdaTexto, color: "#475569" }}>
+                              {entry ? entry.description || (esHaber ? "reintegro" : "que pago") : mov.description}
+                            </span>
                           </td>
                           <td style={{ ...tdDato, padding: 0 }}>
-                            {entry ? (
-                              <AmountInput
-                                style={{
-                                  ...inputCeldaDerecha,
-                                  color: esHaber ? "#166534" : "#b91c1c",
-                                  fontWeight: 700,
-                                }}
-                                {...focoCelda}
-                                value={entry.amount}
-                                onChange={(n) => updateArrayItem(setPersonLedgerEntries, entry.id, "amount", n)}
-                              />
-                            ) : (
-                              <span
-                                style={{
-                                  display: "block",
-                                  textAlign: "right",
-                                  padding: "0 8px",
-                                  fontWeight: 700,
-                                  color: esHaber ? "#166534" : "#b91c1c",
-                                }}
-                              >
-                                {money(mov.amount)}
-                              </span>
-                            )}
+                            <span style={celdaMonto(esHaber ? "#166534" : "#b91c1c")}>
+                              {money(entry ? entry.amount : mov.amount)}
+                            </span>
                           </td>
                           <td style={{ ...tdDato, padding: 0 }}>
-                            {entry ? (
-                              <input
-                                style={{ ...inputCelda, padding: "1px 6px" }}
-                                {...focoCelda}
-                                type="date"
-                                value={entry.date}
-                                onChange={(e) =>
-                                  updateArrayItem(setPersonLedgerEntries, entry.id, "date", e.target.value)
-                                }
-                              />
-                            ) : (
-                              <span style={{ padding: "0 6px", color: "#475569" }}>
-                                {mov.date ? formatDateDisplay(mov.date) : "sin fecha"}
-                              </span>
-                            )}
+                            <span style={{ ...celdaTexto, color: "#475569" }}>
+                              {entry ? fechaCorta(entry.date) : mov.date ? formatDateDisplay(mov.date) : "sin fecha"}
+                            </span>
                           </td>
                           <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                             <span
@@ -1243,54 +1101,10 @@ export function MovimientosInternosTab({
                               </span>
                               {entry ? (
                                 <>
-                                  <ColorTagToggle
-                                    value={entry.color}
-                                    onSet={(v) => updateArrayItem(setPersonLedgerEntries, entry.id, "color", v)}
-                                    size={16}
-                                  />
-                                  {esHaber && (
-                                    <select
-                                      style={{ ...inputCelda, width: "auto" }}
-                                      value={entry.paymentMethod || "efectivo"}
-                                      onChange={(e) =>
-                                        updateArrayItem(
-                                          setPersonLedgerEntries,
-                                          entry.id,
-                                          "paymentMethod",
-                                          e.target.value as any
-                                        )
-                                      }
-                                      title="En efectivo baja la caja; por banco no (ya salió por el extracto)"
-                                    >
-                                      <option value="efectivo">Efectivo (baja la caja)</option>
-                                      <option value="transferencia">Transferencia</option>
-                                      <option value="cheque">Cheque</option>
-                                      <option value="debito">Débito automático</option>
-                                    </select>
-                                  )}
-                                  <input
-                                    style={{ ...inputCelda, width: 130 }}
-                                    {...focoCelda}
-                                    value={entry.person}
-                                    placeholder="persona"
-                                    list="personas-cuenta-corriente"
-                                    onChange={(e) =>
-                                      updateArrayItem(setPersonLedgerEntries, entry.id, "person", e.target.value)
-                                    }
-                                  />
-                                  <select
-                                    style={{ ...inputCelda, width: "auto" }}
-                                    value={entry.company}
-                                    onChange={(e) =>
-                                      cambiarSoltandoCuenta(setPersonLedgerEntries, entry.id, "company", e.target.value)
-                                    }
-                                  >
-                                    {COMPANY_OPTIONS.map((company: any) => (
-                                      <option key={company.value} value={company.value}>
-                                        {company.short}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  {etiqueta(entry.color === "negro" ? "N" : "B", entry.color === "negro" ? "#fff" : "#0f172a", entry.color === "negro" ? "#1f2937" : "#e2e8f0")}
+                                  {esHaber && etiqueta(MEDIO_CORTO[entry.paymentMethod || "efectivo"] || "efectivo", "#1e3a8a", "#dbeafe")}
+                                  <strong style={{ fontSize: 12 }}>{entry.person || "sin persona"}</strong>
+                                  {etiqueta(getCompanyMeta(entry.company as CompanyName)?.short || String(entry.company))}
 <BotonFicha onClick={() => setFicha({ tipo: "gente", id: entry.id })} />
 {entry.kind === "haber" && faltaCuenta(entry, () => setFicha({ tipo: "gente", id: entry.id }))}
                                 </>
