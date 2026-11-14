@@ -242,6 +242,17 @@ export function MovimientosInternosTab({
   const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   const empresasReales = COMPANY_OPTIONS.filter((c: any) => c.value && c.value !== "General" && cuentas.some((x) => x.company === c.value));
   const [pase, setPase] = React.useState<null | { form: PaseForm; firmante?: string }>(null);
+  // Click en el saldo entre empresas: todos los movimientos que lo forman (Nicolas, 2026-11-14).
+  const [movsEntreEmpresas, setMovsEntreEmpresas] = React.useState<null | {
+    deudor: string;
+    acreedor: string;
+    moneda: "ARS" | "USD";
+    saldo: number;
+    blanco: number;
+    negro: number;
+    facturado: number;
+    movimientos: Array<{ id: number; date: string; text: string; from: string; to: string; amount: number; administration: "blanco" | "negro" }>;
+  }>(null);
   // Cambiar la empresa (o la moneda) suelta la cuenta: era de la otra empresa y se vuelve a elegir.
   const cambiarSoltandoCuenta = (setter: any, id: number, k: string, v: any) => {
     updateArrayItem(setter, id, k as any, v);
@@ -268,6 +279,8 @@ export function MovimientosInternosTab({
         date: item.date,
         amount: Number(item.amount || 0),
         currency: item.currency === "USD" ? "USD" : "ARS",
+        currencyDestino: (item as any).currencyDestino,
+        cotizacion: (item as any).cotizacion,
         company: String(item.company),
         cuentaId: item.cuentaId || "",
         companyDestino: String(item.companyDestino || item.company),
@@ -1430,7 +1443,52 @@ export function MovimientosInternosTab({
         })()}
         {[...(cuenta.posicion || []).map((p) => ({ ...p, moneda: "ARS" as const })), ...(cuenta.posicionUsd || []).map((p) => ({ ...p, moneda: "USD" as const }))].map((p) => (
           <div key={`${p.moneda}-${p.deudor}`} style={{ margin: "8px 0", padding: "8px 12px", borderRadius: 8, background: "#fffbeb", border: "1px solid #fde68a", fontSize: 14, color: "#92400e" }}>
-            Cómo estamos: <strong>{getCompanyMeta(p.deudor as CompanyName)?.short || p.deudor} le debe {money(p.saldo, p.moneda)} a {getCompanyMeta(p.acreedor as CompanyName)?.short || p.acreedor}</strong>
+            Cómo estamos:{" "}
+            <strong
+              title="Click: todos los movimientos que forman este saldo"
+              onClick={() =>
+                setMovsEntreEmpresas({
+                  deudor: p.deudor,
+                  acreedor: p.acreedor,
+                  moneda: p.moneda,
+                  saldo: p.saldo,
+                  blanco: Number((p as any).blanco || 0),
+                  negro: Number((p as any).negro || 0),
+                  facturado: Number((p as any).facturado || 0),
+                  movimientos: (p.moneda === "USD" ? cuenta.transfersUsd || [] : cuenta.transfers || [])
+                    .filter((t: any) => (t.from === p.deudor && t.to === p.acreedor) || (t.from === p.acreedor && t.to === p.deudor))
+                    .map((t: any) => ({ id: t.id, date: String(t.date || ""), text: String(t.text || ""), from: String(t.from), to: String(t.to), amount: Number(t.amount || 0), administration: (t.administration === "negro" ? "negro" : "blanco") as "blanco" | "negro" }))
+                    .sort((a: any, b: any) => a.date.localeCompare(b.date)),
+                })
+              }
+              style={{ cursor: "pointer", textDecoration: "underline dotted" }}
+            >
+              {getCompanyMeta(p.deudor as CompanyName)?.short || p.deudor} le debe {money(p.saldo, p.moneda)} a {getCompanyMeta(p.acreedor as CompanyName)?.short || p.acreedor}
+            </strong>{" "}
+            <span style={{ fontSize: 12 }}>· click para ver los movimientos</span>
+            {/* Blanco y negro por separado (Nicolas, 14/11/2026): con esto se decide si el proximo prestamo
+                conviene en blanco (para respaldar facturas) o en negro. La factura solo cancela plata blanca. */}
+            <div style={{ fontSize: 12.5, marginTop: 4, color: "#92400e" }}>
+              {(() => {
+                const b = Number((p as any).blanco || 0);
+                const n = Number((p as any).negro || 0);
+                const fact = Number((p as any).facturado || 0);
+                const parte = (etiqueta: string, v: number) =>
+                  Math.abs(v) < 0.01
+                    ? null
+                    : v > 0
+                    ? `debe ${money(v, p.moneda)} en ${etiqueta}`
+                    : `le sobran ${money(-v, p.moneda)} en ${etiqueta}`;
+                const partes = [parte("blanco", b), parte("negro", n)].filter(Boolean);
+                return (
+                  <>
+                    {partes.length > 0 ? <>De eso: <strong>{partes.join(" · ")}</strong>. </> : null}
+                    {fact > 0.01 ? `Ya hay ${money(fact, p.moneda)} cruzados con facturas entre las dos. ` : "Todavía no hay facturas entre las dos cruzando estos giros. "}
+                    {b > 0.01 ? "Lo blanco se cancela devolviendo la plata o facturando; lo negro, solo con plata." : ""}
+                  </>
+                );
+              })()}
+            </div>
           </div>
         ))}
         <div style={styles.metricGrid}>
@@ -1595,6 +1653,76 @@ export function MovimientosInternosTab({
         )}
       </Panel>
       ))}
+
+      {/* Todos los movimientos que forman el saldo entre las dos empresas (2026-11-14). El que PUSO la plata
+          queda acreedor: lo que giro suma deuda de la otra, y lo que recibio se la baja. */}
+      {movsEntreEmpresas && (() => {
+        const m = movsEntreEmpresas;
+        const corto = (c: string) => getCompanyMeta(c as CompanyName)?.short || c;
+        const signo = (t: { from: string; to: string }) => (t.from === m.acreedor ? 1 : -1);
+        let acumulado = 0;
+        const filas = m.movimientos.map((t) => {
+          acumulado += signo(t) * t.amount;
+          return { ...t, suma: signo(t) * t.amount, acumulado };
+        });
+        return (
+          <div
+            onClick={() => setMovsEntreEmpresas(null)}
+            style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4650, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "40px 12px", overflowY: "auto" }}
+          >
+            <div onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(760px, 100%)", padding: 18, boxShadow: "0 20px 50px rgba(0,0,0,0.25)", display: "grid", gap: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+                <div style={{ fontSize: 17, fontWeight: 800 }}>
+                  Movimientos entre las empresas · {corto(m.deudor)} le debe {money(m.saldo, m.moneda)} a {corto(m.acreedor)}
+                </div>
+                <ButtonLike secondary onClick={() => setMovsEntreEmpresas(null)}>Cerrar</ButtonLike>
+              </div>
+              {filas.length === 0 ? (
+                <div style={styles.muted}>No hay movimientos cargados entre las dos empresas en este ejercicio.</div>
+              ) : (
+                <>
+                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
+                    <thead>
+                      <tr>
+                        <th style={{ textAlign: "left", padding: "4px 6px", borderBottom: "1px solid #e2e8f0", color: "#64748b" }}>Fecha</th>
+                        <th style={{ textAlign: "left", padding: "4px 6px", borderBottom: "1px solid #e2e8f0", color: "#64748b" }}>Qué fue</th>
+                        <th style={{ textAlign: "left", padding: "4px 6px", borderBottom: "1px solid #e2e8f0", color: "#64748b" }}>Quién puso</th>
+                        <th style={{ textAlign: "center", padding: "4px 6px", borderBottom: "1px solid #e2e8f0", color: "#64748b" }}>B/N</th>
+                        <th style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #e2e8f0", color: "#64748b" }}>Suma a la deuda</th>
+                        <th style={{ textAlign: "right", padding: "4px 6px", borderBottom: "1px solid #e2e8f0", color: "#64748b" }}>Saldo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filas.map((t) => (
+                        <tr key={`${t.id}-${t.date}-${t.amount}`} style={{ borderBottom: "1px solid #f1f5f9" }}>
+                          <td style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{(t.date || "").split("-").reverse().join("/")}</td>
+                          <td style={{ padding: "4px 6px", color: "#475569" }} title={t.text}>{(t.text || "").slice(0, 70) || "—"}</td>
+                          <td style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>{corto(t.from)} → {corto(t.to)}</td>
+                          <td style={{ padding: "4px 6px", textAlign: "center" }}>
+                            <span style={{ fontSize: 10.5, fontWeight: 800, borderRadius: 999, padding: "1px 6px", color: t.administration === "negro" ? "#fff" : "#0f172a", background: t.administration === "negro" ? "#1f2937" : "#e2e8f0" }}>
+                              {t.administration === "negro" ? "N" : "B"}
+                            </span>
+                          </td>
+                          <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700, color: t.suma >= 0 ? "#b45309" : "#16a34a" }}>
+                            {t.suma >= 0 ? "+" : "−"}{money(Math.abs(t.suma), m.moneda)}
+                          </td>
+                          <td style={{ padding: "4px 6px", textAlign: "right", color: "#475569" }}>{money(t.acumulado, m.moneda)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <div style={{ fontSize: 12, color: "#64748b" }}>
+                    Son {filas.length} movimiento(s): pases entre empresas, giros que se vieron en el banco, pagos cruzados
+                    (una empresa pagó algo de la otra) y cobros que entraron en la cuenta de la otra. Cada uno se corrige en su
+                    propia ficha. Del saldo, <strong>{money(m.blanco, m.moneda)}</strong> es plata blanca y{" "}
+                    <strong>{money(m.negro, m.moneda)}</strong> negra{m.facturado > 0.01 ? `, y ya hay ${money(m.facturado, m.moneda)} cruzados con facturas entre las dos` : ""}.
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
     </>
   );

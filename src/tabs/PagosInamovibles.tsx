@@ -39,8 +39,7 @@ export type PagosInamoviblesProps = {
   onSaveVencimiento: (v: Vencimiento) => void;
   onDeleteVencimiento: (id: number) => void;
   onIrAlOrigen: (item: ItemInamovible) => void;
-  // Estado del pago (el mismo que en Compras y analisis de gastos).
-  onEstadoPago?: (item: ItemInamovible, estado: "programado" | "estimado" | "inamovible") => void;
+  // El estado del pago aca solo SE MUESTRA: se elige en la ficha del documento (factura, cuota, resumen).
 };
 
 // Estado por defecto segun el origen (tarjeta y cuota no se pueden correr) y sus colores.

@@ -19,7 +19,6 @@ export function FichaProveedor({
   money,
   onUpdateProveedor,
   onAltaProveedor,
-  onFechaFactura,
   onCerrar,
   facturas: facturasTodas = [],
   onCargarFactura,
@@ -41,9 +40,13 @@ export function FichaProveedor({
   onAbrirConvenio,
   tarjetas = [],
   ledgersPorEmpresa = [],
+  empresasProveedor = [],
 }: {
   // Tarjetas de credito para el debito automatico (las de las empresas que ve el usuario).
   tarjetas?: Array<{ id: number; nombre: string; company: string }>;
+  // De quien es el proveedor: una empresa o las dos ("General"). Se elige y se corrige EN LA FICHA
+  // (Nicolas, 2026-11-14), no solo en la ventana de datos.
+  empresasProveedor?: Array<{ value: string; label?: string; short?: string }>;
   // La cuenta del proveedor POR EMPRESA (solo las que ve el usuario y tienen movimientos). Con dos, la
   // ficha las muestra por separado: se elige cual mirar.
   ledgersPorEmpresa?: Array<{ company: string; short: string; ledger: NonNullable<Parameters<typeof FichaProveedor>[0]["ledger"]> }>;
@@ -57,6 +60,7 @@ export function FichaProveedor({
     name: string;
     taxId: string;
     aliases: string;
+    company?: string;
     currentAccount?: boolean;
     grupoCosto?: string;
     tipoGastoLocked?: boolean;
@@ -74,7 +78,6 @@ export function FichaProveedor({
   money: (n: number) => string;
   onUpdateProveedor: (id: number, field: string, value: unknown) => void;
   onAltaProveedor: (nombre: string, taxId: string) => void;
-  onFechaFactura: (invoiceId: number, fecha: string) => void;
   onCerrar: () => void;
   // Todas las facturas del proveedor con su situacion de pago, y la ventana para cargar una nueva.
   facturas?: Array<{ id: number; invoiceDate: string; receiptLetter: string; invoiceNumber: string; total: number; pagada: boolean; pagoTexto: string; fechaPrevista?: string; company: string; resumenTarjeta?: { texto: string; cuentaId: number; statementId: number | null } }>;
@@ -212,6 +215,27 @@ export function FichaProveedor({
 
         {proveedor && (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10, marginTop: 12 }}>
+            {empresasProveedor.length > 0 && (
+              <div style={caja}>
+                <div style={titulo}>Proveedor de</div>
+                <select
+                  style={{ ...input, width: "100%" }}
+                  value={proveedor.company || ""}
+                  onChange={(e) => onUpdateProveedor(proveedor.id, "company", e.target.value)}
+                >
+                  {empresasProveedor.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.value === "General" ? "Las dos empresas (compartido)" : c.label || c.value}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ fontSize: 12, color: "#64748b", marginTop: 6 }}>
+                  {proveedor.company === "General"
+                    ? "Le compran las dos: su cuenta se mira separada, una empresa por vez."
+                    : "Solo esta empresa le compra. Si también le compra la otra, poné «Las dos empresas»."}
+                </div>
+              </div>
+            )}
             <div style={caja}>
               <div style={titulo}>Grupo de costo (tipo · grupo)</div>
               <select
@@ -471,8 +495,19 @@ export function FichaProveedor({
                   <tr key={f.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
                     <td style={{ padding: "4px 6px" }}>{f.invoiceNumber || "sin número"}</td>
                     <td style={{ padding: "4px 6px", textAlign: "right", fontWeight: 700 }}>{money(f.total)}</td>
-                    <td style={{ padding: "4px 6px" }}>
-                      <input style={input} type="date" value={f.fechaPago} onChange={(e) => e.target.value && onFechaFactura(f.id, e.target.value)} />
+                    <td style={{ padding: "4px 6px", whiteSpace: "nowrap" }}>
+                      {/* 2026-11-13: el saldo previsto se corrige SOLO en la ficha de la factura (misma ficha en todo vinculo). */}
+                      <b>{f.fechaPago ? f.fechaPago.split("-").reverse().join("/") : "sin fecha"}</b>
+                      {onAbrirFactura && (
+                        <button
+                          type="button"
+                          title="Abrir la ficha de la factura para corregir la fecha, el estado y de que cuenta sale"
+                          onClick={() => onAbrirFactura(f.id)}
+                          style={{ marginLeft: 6, border: "1px solid #cbd5e1", background: "#fff", borderRadius: 6, padding: "1px 6px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}
+                        >
+                          Abrir la ficha
+                        </button>
+                      )}
                     </td>
                     <td style={{ padding: "4px 6px", fontSize: 11.5, color: "#64748b" }}>
                       {f.fechaElegida ? "fecha elegida" : "según la condición"}

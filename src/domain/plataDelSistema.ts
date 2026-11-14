@@ -5,6 +5,7 @@
 // Lo que NO es plata y por eso no esta aca: facturas (registro), ordenes de compra (sugerencia),
 // previsiones (pagos programados, seguros) y los movimientos del extracto (el banco solo controla).
 import type { PlataMovida, Moneda, Color } from "./cuentas";
+import { cambiaDeMoneda, montoDestinoDelPase } from "./pases";
 
 const color = (v?: string): Color => (v === "negro" ? "negro" : "blanco");
 const moneda = (v?: string): Moneda => (v === "USD" ? "USD" : "ARS");
@@ -30,7 +31,7 @@ export type FuentesDePlata = {
   // Pagos de facturas de Compras hechos con la caja chica de una persona: ya son plata movida (como pago),
   // solo cuentan en lo GASTADO del fondo al cerrarlo (si no, lo que sobra se devolveria de mas).
   gastosCajaDeCompras?: Array<{ fundId: number; amount: number; administration: string }>;
-  internalTransfers: Array<{ id: number; company: string; date: string; direction: string; currency: string; color: string; amount: number; bank: string; description: string; cuentaId?: string; cuentaDestinoId?: string }>;
+  internalTransfers: Array<{ id: number; company: string; date: string; direction: string; currency: string; color: string; amount: number; bank: string; description: string; cuentaId?: string; cuentaDestinoId?: string; currencyDestino?: string; cotizacion?: number }>;
   cashHoldings: Array<{ id: number; company: string; date: string; currency: string; color: string; kind: string; amount: number; description: string; cuentaId?: string }>;
   personLedgerEntries: Array<{ id: number; company: string; person: string; date: string; kind: string; amount: number; color: string; paymentMethod?: string; description: string; cuentaId?: string; cajaChica?: boolean }>;
   capitalEntries: Array<{ id: number; company: string; date: string; origin: string; direction: string; color: string; amount: number; cuentaId?: string }>;
@@ -213,6 +214,8 @@ export function plataDelSistema(f: FuentesDePlata): PlataMovida[] {
       company: t.company,
       date: t.date,
       amount: Number(t.amount || 0),
+      // Traspaso entre monedas: del otro lado entra el monto convertido con la cotizacion asentada.
+      ...(cambiaDeMoneda(t) ? { amountDestino: montoDestinoDelPase(t) } : {}),
       sentido: "pase",
       moneda: moneda(t.currency),
       color: color(t.color),

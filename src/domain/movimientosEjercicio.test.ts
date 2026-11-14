@@ -17,8 +17,8 @@ describe("cuenta entre empresas: cada ejercicio arranca en cero", () => {
   it("el desbalance viejo no pasa al ejercicio nuevo, pero se puede consultar", () => {
     const r = repartirPorEjercicio(giros, () => cierre);
     const saldo = (t: any[]) => posicionEntreEmpresas(summarizeIntercompany({ transfers: t }).pairs);
-    expect(saldo(r.corriente)).toEqual([{ deudor: "DR", acreedor: "BGA", saldo: 50 }]);
-    expect(saldo(r.anterior)).toEqual([{ deudor: "DR", acreedor: "BGA", saldo: 1000 }]);
+    expect(saldo(r.corriente)).toEqual([{ deudor: "DR", acreedor: "BGA", saldo: 50, blanco: 50, negro: 0, facturado: 0 }]);
+    expect(saldo(r.anterior)).toEqual([{ deudor: "DR", acreedor: "BGA", saldo: 1000, blanco: 1000, negro: 0, facturado: 0 }]);
   });
 
   it("sin cierre, todo es del ejercicio corriente", () => {
@@ -55,7 +55,7 @@ describe("la linea de como cerro el ejercicio anterior", () => {
     const antes = repartirPorEjercicio([giro("BGA", "DR", "2026-10-31", 1000)], () => cierreLinea);
     const despues = repartirPorEjercicio([giro("BGA", "DR", "2026-10-31", 1000), giro("DR", "BGA", "2026-11-02", 400)], () => cierreLinea);
     expect(saldo(despues.anterior)).toEqual(saldo(antes.anterior));
-    expect(saldo(despues.anterior)).toEqual([{ deudor: "DR", acreedor: "BGA", saldo: 1000 }]);
-    expect(saldo(despues.corriente)).toEqual([{ deudor: "BGA", acreedor: "DR", saldo: 400 }]);
+    expect(saldo(despues.anterior)).toEqual([{ deudor: "DR", acreedor: "BGA", saldo: 1000, blanco: 1000, negro: 0, facturado: 0 }]);
+    expect(saldo(despues.corriente)).toEqual([{ deudor: "BGA", acreedor: "DR", saldo: 400, blanco: 400, negro: 0, facturado: 0 }]);
   });
 });

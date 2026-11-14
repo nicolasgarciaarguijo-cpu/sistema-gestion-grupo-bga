@@ -58,6 +58,9 @@ export type PlataMovida = {
   metodo?: string; // efectivo | transferencia | cheque | debito | otros
   cuentaId?: string; // elegida a mano (para "entra" es el destino; para "sale" y "pase", el origen)
   cuentaDestinoId?: string; // solo pase
+  // Solo pase que CAMBIA DE MONEDA: lo que entra en la cuenta de destino (el monto ya convertido).
+  // Ausente = entra lo mismo que salio. Ver domain/pases.ts (montoDestinoDelPase).
+  amountDestino?: number;
   persona?: string; // la plata entra/sale de la caja de esta persona
   personaDestino?: string; // pase hacia la caja de una persona
   // Tipo de cuenta de cada punta cuando no se eligio una (ej. pase efectivo -> banco). Manda sobre la
@@ -132,8 +135,10 @@ export function movimientosPorCuenta(plata: PlataMovida[], cuentas: Cuenta[]): M
   plata.forEach((p) => {
     const monto = Math.abs(Number(p.amount || 0));
     if (!(monto > 0) || !p.date) return;
-    // Cuenta de la otra empresa: no se asienta en ningún lado (se avisa con movimientosConCuentaAjena).
-    if (cuentaDeOtraEmpresa(p, cuentas)) return;
+    // CUENTA DE LA OTRA EMPRESA (Nicolas, 14/11/2026): la plata se asienta donde REALMENTE está (la cuenta
+    // elegida, aunque sea de la otra empresa) y el cruce queda como deuda entre las dos (intercompany.ts,
+    // girosDePlataEnCuentaAjena). Antes no sumaba en ningun lado y la plata se perdia de vista.
+    // Se sigue listando en movimientosConCuentaAjena para poder revisarlo.
     const base = { date: p.date, refId: p.refId, origen: p.origen, detalle: p.detalle, ...(p.forzarSaldo ? { forzarSaldo: true } : {}) };
     const punta =
       elegida(p.cuentaId) || cuentaPorDefecto(cuentas, { ...p, tipo: p.sentido === "entra" ? p.hacia : p.desde });
@@ -144,8 +149,9 @@ export function movimientosPorCuenta(plata: PlataMovida[], cuentas: Cuenta[]): M
         elegida(p.cuentaDestinoId) ||
         cuentaPorDefecto(cuentas, { ...p, persona: p.personaDestino, tipo: p.hacia });
       if (destino === punta) return;
+      const entra = p.amountDestino != null ? Math.abs(Number(p.amountDestino)) : monto;
       out.push({ ...base, cuentaId: punta, amount: -monto });
-      out.push({ ...base, cuentaId: destino, amount: monto });
+      out.push({ ...base, cuentaId: destino, amount: entra });
     }
   });
   return out;

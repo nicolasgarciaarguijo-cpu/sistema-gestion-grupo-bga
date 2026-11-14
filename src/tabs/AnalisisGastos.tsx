@@ -48,6 +48,13 @@ type Menu =
   | { x: number; y: number; tipo: "renglon"; conceptKey: string; renglon: string }
   | { x: number; y: number; tipo: "item"; egreso: Egreso };
 
+// El previsto de una factura de proveedor viene con clave "factura:<id>" (agendaInamovibles).
+// Su saldo previsto (fecha, estado y cuenta) se edita SOLO en la ficha de la factura.
+export function facturaDelEgreso(e: { id: string }): number | null {
+  const m = /^prev-factura:(\d+)$/.exec(e.id);
+  return m ? Number(m[1]) : null;
+}
+
 export function AnalisisGastos({
   egresos,
   companyOptions,
@@ -56,6 +63,7 @@ export function AnalisisGastos({
   onFVRenglon,
   onFVPago,
   onEstadoPrevisto,
+  onAbrirFactura,
   onIrA,
 }: {
   egresos: Egreso[];
@@ -65,6 +73,8 @@ export function AnalisisGastos({
   onFVRenglon?: (conceptKey: string, kind: "fijo" | "variable" | null, locked: boolean) => void;
   onFVPago?: (entryId: string, kind: "fijo" | "variable" | undefined) => boolean;
   onEstadoPrevisto?: (clave: string, estado: "programado" | "estimado" | "inamovible") => void;
+  // 2026-11-13: el saldo previsto de una factura se corrige en SU ficha, no con las pills de aca.
+  onAbrirFactura?: (id: number) => void;
   onIrA?: (tab: string) => void;
 }) {
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -336,6 +346,22 @@ export function AnalisisGastos({
                     )}
                   </>
                 )
+              )
+            ) : facturaDelEgreso(e) != null ? (
+              onAbrirFactura ? (
+                <button
+                  style={{ ...quickMenuItem, fontWeight: 700 }}
+                  onClick={() => {
+                    onAbrirFactura(facturaDelEgreso(e)!);
+                    close();
+                  }}
+                >
+                  ✎ Abrir la ficha de la factura
+                </button>
+              ) : (
+                <div style={{ fontSize: 11, color: "#64748b", padding: "4px 8px" }}>
+                  La fecha y el estado del saldo se corrigen en la ficha de la factura.
+                </div>
               )
             ) : (
               onEstadoPrevisto &&

@@ -190,7 +190,7 @@ import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
 import { aggregateCardCosts } from "./domain/cardCosts";
 import { TarjetasTab } from "./tabs/Tarjetas";
 import { BancosTab } from "./tabs/Bancos";
-import { detectIntercompanyTransfers, summarizeIntercompany, girosDePases, girosDePagosCruzados, posicionEntreEmpresas, repartirPorEjercicio, unirGiros, type CrossInvoice, type IntercompanyTransfer } from "./domain/intercompany";
+import { detectIntercompanyTransfers, summarizeIntercompany, girosDePases, girosDePagosCruzados, girosDePlataEnCuentaAjena, posicionEntreEmpresas, repartirPorEjercicio, unirGiros, type CrossInvoice, type IntercompanyTransfer } from "./domain/intercompany";
 import {
   companyFolderName,
   companyPath,
@@ -439,7 +439,8 @@ import { estadoDePagos, pagosDeFactura, pagosVinculados, vinculoDePagos } from "
 import { filasParaEstudio, ANCHOS_ESTUDIO } from "./domain/facturasParaEstudio";
 import { libroXlsx, descargarXlsx } from "./lib/xlsx";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
-import { ProveedoresPanel, ProveedorModal, formDeProveedor, type ProveedorForm } from "./tabs/Proveedores";
+import { nuevoProveedor } from "./domain/altaProveedor";
+import { ProveedoresPanel, ProveedorModal, formDeProveedor, formProveedorVacio, type ProveedorForm } from "./tabs/Proveedores";
 import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
 import { programadosEnRenglones } from "./domain/programadosEnRenglones";
 import { anticipoPorCircuito, precargaCobros } from "./domain/precargaCobros";
@@ -456,7 +457,7 @@ import { filasDeArqueo, billeterasDesdeArqueo, movimientosDelArqueo, diferencia,
 import { CostoBancosTarjetas } from "./tabs/CostoBancosTarjetas";
 import { buscarProveedor, facturasPorPagar, facturasPagadasProgramadas, tipoGastoEfectivo, fechaDePago } from "./domain/proveedores";
 import { entradasMovimientosInternos, destinoEnSolapa, FILAS_PRESTAMO_INGRESO } from "./domain/movimientosInternosCalendario";
-import { datosDelPase, pasesParaReserva, type PaseForm } from "./domain/pases";
+import { cambiaDeMoneda, datosDelPase, monedaDestinoDelPase, pasesParaReserva, type PaseForm } from "./domain/pases";
 import { askAssistant, type AssistantMessage } from "./lib/assistant";
 import { computePettyCashBalance } from "./domain/pettyCashBalance";
 import {
@@ -14163,6 +14164,7 @@ Escribi CERRAR para confirmar:`
                 administration: f.administration,
                 paymentMethod: f.metodo,
                 ...datosTarjeta(f),
+                ...(Number(f.usd) > 0 ? { usdPagado: Number(f.usd), cotizacion: Number(f.cotizacion) || undefined } : {}),
                 antesDeApertura: decidirAntesDeApertura(c as any, f.cuentaId, f.fecha, Number(f.monto) || 0, `El pago de la cuota ${cuota.numero}`),
                 ...firma(),
               }
@@ -14174,7 +14176,7 @@ Escribi CERRAR para confirmar:`
     if (f.modo === "nuevo") {
       const grupo = parseClaveGrupo(d.grupoCosto);
       costEntryId = newId();
-      const pago: CostEntry = {
+      const pago = {
         id: costEntryId,
         company: d.company,
         date: f.fecha,
@@ -14189,9 +14191,12 @@ Escribi CERRAR para confirmar:`
         notes: "Pago de cuota (Desendeudamiento)",
         paymentMethod: f.metodo,
         ...datosTarjeta(f),
+        // Deuda en U$S (14/11/2026): el pago queda en PESOS (lo que salio de la cuenta) y se asientan los
+        // dolares de la cuota y la cotizacion usada. Asi el cash flow sigue siendo todo en pesos.
+        ...(Number(f.usd) > 0 ? { usdPagado: Number(f.usd), cotizacion: Number(f.cotizacion) || undefined } : {}),
         antesDeApertura: decidirAntesDeApertura(undefined, f.cuentaId, f.fecha, Number(f.monto) || 0, `El pago de la cuota ${cuota.numero}`),
         ...firma(),
-      };
+      } as CostEntry;
       setCostEntries((prev) => [pago, ...prev]);
     }
     if (costEntryId == null) return;
@@ -14341,6 +14346,9 @@ Escribi CERRAR para confirmar:`
       date: f.date,
       amount: Number(f.amount),
       currency: f.currency,
+      // Traspaso entre monedas: queda asentada la moneda de destino y la cotizacion usada (14/11/2026).
+      currencyDestino: cambiaDeMoneda(f) ? monedaDestinoDelPase(f) : undefined,
+      cotizacion: cambiaDeMoneda(f) ? Number(f.cotizacion) || undefined : undefined,
       cuentaId: f.cuentaId,
       cuentaDestinoId: f.cuentaDestinoId,
       ...datosDelPase(buscar(f.cuentaId), buscar(f.cuentaDestinoId)),
@@ -17693,7 +17701,11 @@ Escribi CERRAR para confirmar:`
     const hit = suppliers.find((x) => x.active !== false && /\bbanco\b/.test(sinAcentosMin(x.name)) && !!propio && sinAcentosMin(x.name).includes(propio));
     if (hit) return { supplier: hit, nuevo: false };
     return {
-      supplier: { id: newId(), company: "General", name: `Banco ${String(banco || "").replace(/^banco\s+/i, "").trim()}`.trim(), taxId: "", aliases: "", active: true, notes: "Alta automática: comisiones, tasas e intereses de tarjetas y cuentas" },
+      supplier: nuevoProveedor(newId(), {
+        company: "General",
+        name: `Banco ${String(banco || "").replace(/^banco\s+/i, "").trim()}`.trim(),
+        origen: "banco",
+      }),
       nuevo: true,
     };
   };
@@ -18058,7 +18070,7 @@ Escribi CERRAR para confirmar:`
           if (cuit.length >= 11 && dig(prov.taxId).length < 11) parches.set(prov.id, { taxId: fmtCuit(cuit) });
         }
       } else if (acc.tipo === "alta" && cuit.length >= 11 && !cuitsGrupo.includes(cuit) && !suppliers.some((x) => dig(x.taxId) === cuit) && !altas.some((x) => dig(x.taxId) === cuit)) {
-        altas.push({ id: newId(), company: "General", name: inv.supplier || `CUIT ${cuit}`, taxId: fmtCuit(cuit), aliases: "", active: true, notes: "Alta desde el listado de ARCA (confirmada en la revisión)" });
+        altas.push(nuevoProveedor(newId(), { company: "General", name: inv.supplier || `CUIT ${cuit}`, taxId: fmtCuit(cuit), origen: "arca" }));
       }
       compras.push({ ...inv, supplier: nombre });
     });
@@ -19529,15 +19541,58 @@ Escribi CERRAR para confirmar:`
     // Los giros que salen del extracto y los que se cargaron como pase entre empresas (el mismo, una sola vez).
     // Mas lo que una empresa pago por la otra (factura de una pagada por la otra, o gasto de caja chica de la otra): prestamo.
     const fondoPorId = new Map(pettyCashFunds.map((f) => [f.id, f]));
-    const cruzados = girosDePagosCruzados([
-      ...costEntries
-        .filter((c) => (c as any).empresaFactura && String((c as any).empresaFactura) !== String(c.company) && (c as any).currency !== "USD")
-        .map((c) => ({ id: c.id, empresaPaga: c.company, empresaGasto: (c as any).empresaFactura, date: c.date, amount: Number(c.amount || 0), detalle: c.supplier || c.description })),
-      ...pettyCashExpenses
-        .filter((g) => g.fundId != null && fondoPorId.has(g.fundId))
-        .map((g) => ({ id: g.id, empresaPaga: fondoPorId.get(g.fundId!)!.company, empresaGasto: g.company, date: g.date, amount: Number(g.amount || 0), detalle: `caja de ${fondoPorId.get(g.fundId!)!.responsible || ""} · ${g.supplier || g.description || ""}` })),
-    ]);
-    const transfers = [...unirGiros(girosDePases(visibleInternalTransfers, "ARS"), detectIntercompanyTransfers(movements, companies)), ...cruzados];
+    // Los pagos de una empresa por la otra, con su color (blanco/negro) y separando pesos de dólares.
+    const pagosCruzadosDe = (moneda: "ARS" | "USD") =>
+      girosDePagosCruzados([
+        ...costEntries
+          .filter(
+            (c) =>
+              (c as any).empresaFactura &&
+              String((c as any).empresaFactura) !== String(c.company) &&
+              ((c as any).currency === "USD" ? "USD" : "ARS") === moneda
+          )
+          .map((c) => ({
+            id: c.id,
+            empresaPaga: c.company,
+            empresaGasto: (c as any).empresaFactura,
+            date: c.date,
+            amount: Number(c.amount || 0),
+            detalle: c.supplier || c.description,
+            administration: c.administration,
+          })),
+        ...(moneda === "ARS"
+          ? pettyCashExpenses
+              .filter((g) => g.fundId != null && fondoPorId.has(g.fundId))
+              .map((g) => ({
+                id: g.id,
+                empresaPaga: fondoPorId.get(g.fundId!)!.company,
+                empresaGasto: g.company,
+                date: g.date,
+                amount: Number(g.amount || 0),
+                detalle: `caja de ${fondoPorId.get(g.fundId!)!.responsible || ""} · ${g.supplier || g.description || ""}`,
+                administration: g.administration,
+              }))
+          : []),
+      ]);
+    const cruzados = pagosCruzadosDe("ARS");
+    // La plata que quedó (o salió) de una cuenta de la OTRA empresa: cobro cruzado = préstamo (14/11/2026).
+    const ajenaDe = (moneda: "ARS" | "USD") =>
+      girosDePlataEnCuentaAjena(
+        plataConCuentaAjena
+          .filter((m) => (m.moneda === "USD" ? "USD" : "ARS") === moneda)
+          .map((m) => ({
+            refId: m.refId,
+            company: m.company,
+            cuentaCompany: m.cuenta.company,
+            sentido: m.sentido,
+            date: m.date,
+            amount: Number(m.amount || 0),
+            detalle: m.detalle,
+            origen: m.origen,
+            color: m.color,
+          }))
+      );
+    const transfers = [...unirGiros(girosDePases(visibleInternalTransfers, "ARS"), detectIntercompanyTransfers(movements, companies)), ...cruzados, ...ajenaDe("ARS")];
     // Las facturas ENTRE las dos empresas: las que le emitimos a una empresa del propio grupo.
     // Con esto el pendiente deja de ser "lo que no declara factura" y pasa a ser el saldo real.
     const porCuit = new Map(companies.map((c) => [c.taxId.replace(/\D/g, ""), c.company]));
@@ -19553,8 +19608,8 @@ Escribi CERRAR para confirmar:`
         };
       })
       .filter(Boolean) as { from: string; to: string; date: string; amount: number }[];
-    return armarCuentaGrupo(transfers, invoices, girosDePases(visibleInternalTransfers, "USD"));
-  }, [visibleBankStatementEntries, visibleInternalTransfers, issuedInvoices, companyCatalog, COMPANY_OPTIONS, costEntries, pettyCashExpenses, pettyCashFunds]);
+    return armarCuentaGrupo(transfers, invoices, [...girosDePases(visibleInternalTransfers, "USD"), ...pagosCruzadosDe("USD"), ...ajenaDe("USD")]);
+  }, [visibleBankStatementEntries, visibleInternalTransfers, issuedInvoices, companyCatalog, COMPANY_OPTIONS, costEntries, pettyCashExpenses, pettyCashFunds, plataConCuentaAjena]);
 
   // La cuenta de la solapa: el ejercicio corriente arranca en cero y el cerrado queda aparte, para consultarlo.
   const cuentaGrupoPorEjercicio = useMemo(() => {
@@ -19787,19 +19842,10 @@ Escribi CERRAR para confirmar:`
   const suggestSupplierForConcept = (concept: string) =>
     findSupplierInText(concept, visibleSuppliers);
 
+  // Agregar un proveedor abre LA FICHA de Proveedores (antes agregaba una fila vacia para tipear encima,
+  // y asi quedaban proveedores sin CUIT ni condicion de pago). 2026-11-13.
   const addSupplier = () => {
-    setSuppliers((prev) => [
-      ...prev,
-      {
-        id: newId(),
-        company: costsCompanyScope === "__ALL__" ? "General" : (costsCompanyScope as any),
-        name: "",
-        taxId: "",
-        aliases: "",
-        active: true,
-        notes: "",
-      },
-    ]);
+    setEditProveedor(formProveedorVacio(costsCompanyScope === "__ALL__" ? "General" : String(costsCompanyScope)));
   };
 
   const removeSupplier = (id: number) => {
@@ -22079,7 +22125,14 @@ Escribi CERRAR para confirmar:`
     if (f.altaProveedor && !prov && f.supplier.trim()) {
       setSuppliers((prev) => [
         ...prev,
-        { id: newId(), company: f.company as CompanyName, name: f.supplier.trim(), taxId: f.taxId.trim(), aliases: "", active: true, notes: "Alta desde una factura de compra" } as Supplier,
+        nuevoProveedor(newId(), {
+          company: f.company,
+          name: f.supplier,
+          taxId: f.taxId,
+          origen: "factura",
+          detalleOrigen: [f.receiptLetter, f.invoiceNumber].filter(Boolean).join(" ") || undefined,
+          grupoCosto: f.grupoCosto || undefined,
+        }),
       ]);
     }
     // MATERIAL (Fase 5): los remitos de recepcion que respaldan la factura.
@@ -22252,7 +22305,7 @@ Escribi CERRAR para confirmar:`
     if (g.altaProveedor && !prov && g.supplier.trim()) {
       setSuppliers((prev) => [
         ...prev,
-        { id: newId(), company: g.company as CompanyName, name: g.supplier.trim(), taxId: g.taxId.trim(), aliases: "", active: true, notes: "Alta desde un gasto de caja chica", grupoCosto: g.grupoCosto } as Supplier,
+        nuevoProveedor(newId(), { company: g.company, name: g.supplier, taxId: g.taxId, origen: "cajaChica", grupoCosto: g.grupoCosto }),
       ]);
     }
     setGastoCajaModal(null);
@@ -22559,7 +22612,13 @@ Escribi CERRAR para confirmar:`
       condicionIva: p.condicionIva,
     };
     if (!p.id) {
-      setSuppliers((prev) => [...prev, { id: newId(), active: true, ...datos } as Supplier]);
+      setSuppliers((prev) => [
+        ...prev,
+        {
+          ...nuevoProveedor(newId(), { ...datos, name: datos.name, company: String(datos.company), origen: "ficha", notes: p.notes }),
+          currentAccount: datos.currentAccount,
+        },
+      ]);
       return;
     }
     const viejo = suppliers.find((x) => x.id === p.id);
@@ -22678,6 +22737,10 @@ Escribi CERRAR para confirmar:`
               onFVRenglon={setFVRenglon}
               onFVPago={setFVPago}
               onEstadoPrevisto={setEstadoPrevisto}
+              onAbrirFactura={(id) => {
+                const f = facturaDeId(id);
+                if (f) setFacturaModal(f);
+              }}
               onIrA={(tab) => setActiveTab(tab as TabKey)}
             />
           }
@@ -23540,7 +23603,6 @@ Escribi CERRAR para confirmar:`
           onSaveVencimiento={saveVencimiento}
           onDeleteVencimiento={deleteVencimiento}
           onIrAlOrigen={irAlOrigenInamovible}
-          onEstadoPago={(item, estado) => upsertMarcaInamovible(item, { estadoPago: estado })}
         />
       )}
       {activeTab === "calendarioAnual" && renderCalendarioAnual()}
@@ -23795,6 +23857,7 @@ Escribi CERRAR para confirmar:`
             nombre={fichaProveedor.nombre}
             taxId={fichaProveedor.taxId}
             proveedor={prov}
+            empresasProveedor={opcionesEmpresaProveedor as any}
             ledger={ledger}
             tarjetas={visibleCreditCards.map((c) => ({ id: c.id, nombre: `${c.name} · ${getCompanyMeta(c.company as CompanyName).short}`, company: String(c.company) }))}
             ledgersPorEmpresa={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)).flatMap((c) => {
@@ -23827,14 +23890,8 @@ Escribi CERRAR para confirmar:`
             money={money}
             onUpdateProveedor={(id, field, value) => updateArrayItem(setSuppliers, id, field as any, value as any)}
             onAltaProveedor={(nombre, taxId) =>
-              conEmpresa("el proveedor", (empresaElegida) => (setSuppliers((prev) => [
-                ...prev,
-                { id: newId(), company: empresaElegida, name: nombre, taxId: taxId || "", aliases: "", active: true, notes: "Alta desde la ficha del proveedor" } as Supplier,
-              ])
-            ))}
-            onFechaFactura={(invoiceId, fecha) =>
-              setPurchaseInvoices((prev) => prev.map((f) => (f.id === invoiceId ? { ...f, fechaPagoPrevista: fecha } : f)))
-            }
+              // La misma ficha de Proveedores, con lo que ya sabemos cargado (2026-11-13).
+              conEmpresa("el proveedor", (empresaElegida) => setEditProveedor(formProveedorVacio(String(empresaElegida), nombre, taxId || "")))}
             onCerrar={() => setFichaProveedor(null)}
             onEditarDatos={prov ? () => setEditProveedor(formDeProveedor(prov as any)) : undefined}
             onBorrarFactura={(id) => borrarFacturaPreguntando(id, true)}
@@ -24251,6 +24308,9 @@ Escribi CERRAR para confirmar:`
               administration: c.administration === "negro" ? "negro" : "blanco",
               tarjetaId: c.tarjetaId,
               cuotas: c.cuotasTarjeta,
+              // Deuda en U$S: vuelven los dolares y la cotizacion con los que se cargo (14/11/2026).
+              usd: (c as any).usdPagado,
+              cotizacion: (c as any).cotizacion,
             };
           }}
           ejercicioCerrado={(() => {

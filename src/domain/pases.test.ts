@@ -61,7 +61,9 @@ describe("pase entre dos empresas", () => {
   it("queda el debe y haber: el que recibio le debe al que giro", () => {
     const giros = girosDePases([pase, { ...pase, id: 2, company: "DE RAIZ", companyDestino: "BGA", amount: 300 }], "ARS");
     expect(posicionEntreEmpresas(summarizeIntercompany({ transfers: giros }).pairs)).toEqual([
-      { deudor: "DE RAIZ", acreedor: "BGA", saldo: 700 },
+      // El pase lleva su color: los dos son en negro, asi que la deuda es NEGRA (14/11/2026). Con esto
+      // Nicolas decide si el proximo prestamo conviene en blanco (para respaldar facturas) o en negro.
+      { deudor: "DE RAIZ", acreedor: "BGA", saldo: 700, blanco: 0, negro: 700, facturado: 0 },
     ]);
   });
 
@@ -69,7 +71,9 @@ describe("pase entre dos empresas", () => {
     const giros = girosDePases([pase], "ARS");
     const invoices = [{ from: "DE RAIZ", to: "BGA", date: "2026-11-05", amount: 1500 }];
     expect(posicionEntreEmpresas(summarizeIntercompany({ transfers: giros, invoices }).pairs)).toEqual([
-      { deudor: "BGA", acreedor: "DE RAIZ", saldo: 500 },
+      // Giro de 1000 en NEGRO y factura de 1500: BGA queda debiendo 500, pero partido es "debe 1500 en
+      // blanco (la factura) y le sobran 1000 en negro". La factura solo cancela plata blanca.
+      { deudor: "BGA", acreedor: "DE RAIZ", saldo: 500, blanco: 1500, negro: -1000, facturado: 1500 },
     ]);
   });
 

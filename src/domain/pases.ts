@@ -9,14 +9,40 @@ export type PaseForm = {
   id?: number;
   date: string;
   amount: number;
-  currency: "ARS" | "USD";
+  currency: "ARS" | "USD"; // la moneda de lo que SALE
   company: string; // la empresa de donde sale
   cuentaId: string;
   companyDestino: string; // la empresa a donde entra
   cuentaDestinoId: string;
   description: string;
   notes: string;
+  // TRASPASO ENTRE MONEDAS (Nicolas, 14/11/2026: "tambien para hacer traspasos de USD a pesos en la
+  // situacion que sea necesario; todo eso debe quedar asentado"). Si la cuenta de destino es de otra
+  // moneda, se guarda la COTIZACION usada y entra el monto convertido. Ausente = misma moneda.
+  currencyDestino?: "ARS" | "USD";
+  cotizacion?: number; // pesos por dolar, siempre
 };
+
+/** La moneda de lo que ENTRA (ausente = la misma que sale). */
+export const monedaDestinoDelPase = (f: { currency: string; currencyDestino?: string }): "ARS" | "USD" =>
+  (f.currencyDestino === "USD" ? "USD" : f.currencyDestino === "ARS" ? "ARS" : f.currency === "USD" ? "USD" : "ARS");
+
+/** True si el pase cambia de moneda (U$S -> pesos o pesos -> U$S). */
+export const cambiaDeMoneda = (f: { currency: string; currencyDestino?: string }): boolean =>
+  monedaDestinoDelPase(f) !== (f.currency === "USD" ? "USD" : "ARS");
+
+/**
+ * Cuanto ENTRA en la cuenta de destino. La cotizacion es siempre PESOS POR DOLAR: de dolares a pesos
+ * multiplica, de pesos a dolares divide. Sin cotizacion (o en cero) no se puede convertir: 0.
+ */
+export function montoDestinoDelPase(f: { amount: number; currency: string; currencyDestino?: string; cotizacion?: number }): number {
+  const monto = Number(f.amount || 0);
+  if (!cambiaDeMoneda(f)) return monto;
+  const cot = Number(f.cotizacion || 0);
+  if (!(cot > 0)) return 0;
+  const destino = monedaDestinoDelPase(f);
+  return Math.round((destino === "ARS" ? monto * cot : monto / cot) * 100) / 100;
+}
 
 export function faltantesDelPase(f: PaseForm): string[] {
   const out: string[] = [];
@@ -24,6 +50,8 @@ export function faltantesDelPase(f: PaseForm): string[] {
   if (!(Number(f.amount) > 0)) out.push("el monto");
   if (!f.cuentaId) out.push("de dónde sale");
   if (!f.cuentaDestinoId) out.push("a dónde va");
+  // Cambia de moneda: sin cotizacion no se sabe cuanto entra del otro lado.
+  if (cambiaDeMoneda(f) && !(Number(f.cotizacion) > 0)) out.push("la cotización");
   return out;
 }
 

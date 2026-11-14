@@ -783,6 +783,11 @@ export type DebtPlan = {
   notes: string;
   active: boolean;
   // --- Solapa DESENDEUDAMIENTO (2026-10-14): la deuda se trata como un proveedor. ---
+  // MONEDA de la deuda (2026-11-14, pedido de Nicolas: "en desendeudamientos debemos tener una
+  // administracion en USD preparada"). Ausente = pesos. Capital, cuotas y pendiente estan en esta
+  // moneda y NUNCA se suman con los de la otra. Distinto de `usdValuePerInstallment`, que es solo
+  // un valor de referencia de una deuda en pesos.
+  currency?: "ARS" | "USD";
   tipo?: "plan_pago" | "prestamo" | "financiacion" | "otra";
   acreedor?: string; // a quien se le debe (AFIP, el banco, el tercero)
   grupoCosto?: string; // "tipo|nombre": donde van sus pagos en el cash flow
@@ -861,6 +866,10 @@ export type InternalTransfer = {
   // Cuentas de cada punta (ver domain/cuentas.ts). Ausentes = efectivo de su color / banco principal.
   cuentaId?: string; // de donde sale
   cuentaDestinoId?: string; // a donde entra
+  // Traspaso entre monedas (2026-11-14): la moneda de la cuenta de destino y la cotizacion usada
+  // (pesos por dolar). Ausentes = entra en la misma moneda que sale. Ver domain/pases.ts.
+  currencyDestino?: "ARS" | "USD";
+  cotizacion?: number;
   // Empresa a donde entra, si es otra que `company` (la de donde sale): genera un debe y haber entre las dos.
   companyDestino?: CompanyName;
   bank: string; // que cuenta (texto libre): de donde salio o a donde entro
@@ -1142,6 +1151,11 @@ export type CostEntry = {
   amount: number;
   // Cuenta de donde sale / a donde entra la plata (ver domain/cuentas.ts). Ausente = la por defecto.
   cuentaId?: string;
+  // DEUDA EN U$S (2026-11-14): si el pago salda una cuota en dolares, se asientan los dolares pagados y
+  // la cotizacion usada (pesos por dolar). `amount` sigue SIEMPRE en pesos: es lo que salio de la cuenta
+  // y lo que ve el cash flow, que es todo en pesos.
+  usdPagado?: number;
+  cotizacion?: number;
   administration: "blanco" | "negro";
   source: "manual" | "extracto";
   supplier: string;

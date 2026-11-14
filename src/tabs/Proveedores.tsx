@@ -2,6 +2,7 @@
 // proveedores (o vaciarlo para empezar de cero sin perder lo cargado en el cash flow), la ventana con
 // sus datos, y el resumen de los que tienen cuenta corriente. Cada proveedor abre su FICHA, que vive aca.
 import React, { useState } from "react";
+import { faltaDelProveedor, textoFalta } from "../domain/altaProveedor";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
 import { CONDICION_IVA_LABEL, type CondicionIva } from "../domain/types";
 
@@ -29,7 +30,24 @@ type Proveedor = {
   contacto?: string;
   currentAccount?: boolean;
   condicionIva?: CondicionIva;
+  // Para avisar que le falta completar (2026-11-13): sin condicion de pago sus facturas no toman fecha.
+  condicionPago?: unknown;
+  grupoCosto?: string;
+  debitoAutomatico?: boolean;
 };
+
+// Ficha en blanco para dar de alta un proveedor. La exporta para que TODA alta a mano (Compras, la ficha
+// del proveedor, el listado) abra esta misma ficha y no un formulario propio (2026-11-13).
+export const formProveedorVacio = (empresa: string, name = "", taxId = ""): ProveedorForm => ({
+  company: empresa,
+  name,
+  taxId,
+  direccion: "",
+  contacto: "",
+  currentAccount: false,
+  aliases: "",
+  notes: "",
+});
 
 // Proveedor del listado -> formulario de edicion (lo usa tambien la ficha del proveedor).
 export const formDeProveedor = (p: Proveedor): ProveedorForm => ({
@@ -73,10 +91,11 @@ export function ProveedorModal({
           <label style={lbl}>CUIT
             <input style={input} value={p.taxId} placeholder="30-00000000-0" onChange={(e) => set({ taxId: e.target.value })} />
           </label>
-          <label style={lbl}>Empresa
+          {/* 2026-11-14 (Nicolas): se llama "Proveedor de", no "Empresa", y las dos empresas se dicen asi. */}
+          <label style={lbl}>Proveedor de
             <select style={input} value={p.company} onChange={(e) => set({ company: e.target.value })}>
               {companyOptions.map((c) => (
-                <option key={c.value} value={c.value}>{c.value === "General" ? "Ambas (compartido)" : c.label || c.value}</option>
+                <option key={c.value} value={c.value}>{c.value === "General" ? "Las dos empresas (compartido)" : c.label || c.value}</option>
               ))}
             </select>
           </label>
@@ -152,7 +171,7 @@ export function ProveedoresPanel({
   const [modal, setModal] = useState<ProveedorForm | null>(null);
   const [menu, setMenu] = useState<null | { x: number; y: number; p: Proveedor }>(null);
   const [buscar, setBuscar] = useState("");
-  const nuevo = (): ProveedorForm => ({ company: empresaPorDefecto, name: "", taxId: "", direccion: "", contacto: "", currentAccount: false, aliases: "", notes: "" });
+  const nuevo = (): ProveedorForm => formProveedorVacio(empresaPorDefecto);
   const editar = formDeProveedor;
   const digits = (v: string) => String(v || "").replace(/\D/g, "");
   const norm = (v: string) => String(v || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -258,7 +277,7 @@ export function ProveedoresPanel({
                     <th style={th}>CUIT</th>
                     <th style={th}>Tipo</th>
                     <th style={th}>Contacto</th>
-                    <th style={th}>Empresa</th>
+                    <th style={th}>Proveedor de</th>
                     <th style={{ ...th, textAlign: "right" }}>Facturas</th>
                     <th style={{ ...th, textAlign: "right" }}>Debemos</th>
                     <th style={th}></th>
@@ -279,7 +298,16 @@ export function ProveedoresPanel({
                           setMenu({ x: ev.clientX, y: ev.clientY, p });
                         }}
                       >
-                        <td style={{ ...td, fontWeight: 700 }}>{p.name}</td>
+                        <td style={{ ...td, fontWeight: 700 }}>
+                          {p.name}
+                          {/* 2026-11-13: el alta automatica (factura, caja chica, ARCA, banco) deja el
+                              proveedor a medio llenar. Se avisa aca para completarlo en su ficha. */}
+                          {faltaDelProveedor(p).length > 0 && (
+                            <div style={{ fontSize: 10.5, fontWeight: 600, color: "#b45309" }}>
+                              ⚠ {textoFalta(faltaDelProveedor(p))}
+                            </div>
+                          )}
+                        </td>
                         <td style={td}>{p.taxId || "—"}</td>
                         <td style={td}>
                           <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 999, padding: "1px 7px", color: p.currentAccount ? "#166534" : "#475569", background: p.currentAccount ? "#dcfce7" : "#f1f5f9" }}>

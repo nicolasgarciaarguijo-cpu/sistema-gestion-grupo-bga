@@ -149,10 +149,23 @@ describe("control: cuenta de la otra empresa (2026-11-10)", () => {
   const galicia = idCuentaBanco("DR", "Galicia", "ARS");
   const santander = idCuentaBanco("BGA", "Santander", "ARS");
 
-  it("un pago de BGA con la cuenta de De Raíz no se asienta y queda en el control", () => {
+  // 14/11/2026 (Nicolas): "la cancelacion de la plata debe existir". La plata se asienta donde REALMENTE
+  // esta -la cuenta elegida, aunque sea de la otra empresa- y el cruce queda como deuda entre las dos
+  // (intercompany.ts, girosDePlataEnCuentaAjena). Antes no sumaba en ningun lado.
+  it("un pago de BGA con la cuenta de De Raíz sale de esa cuenta y queda en el control", () => {
     const p = mov({ refId: "gasto-1", company: "BGA", sentido: "sale", amount: 1000, cuentaId: galicia });
-    expect(movimientosPorCuenta([p], dos)).toEqual([]);
+    expect(movimientosPorCuenta([p], dos)).toEqual([
+      expect.objectContaining({ cuentaId: galicia, amount: -1000, refId: "gasto-1" }),
+    ]);
     expect(movimientosConCuentaAjena([p], dos).map((x) => x.refId)).toEqual(["gasto-1"]);
+  });
+
+  it("un cobro de BGA que entra en la cuenta de De Raíz entra en esa cuenta y queda en el control", () => {
+    const p = mov({ refId: "cobro-9", company: "BGA", sentido: "entra", amount: 2500, cuentaId: galicia });
+    expect(movimientosPorCuenta([p], dos)).toEqual([
+      expect.objectContaining({ cuentaId: galicia, amount: 2500, refId: "cobro-9" }),
+    ]);
+    expect(movimientosConCuentaAjena([p], dos).map((x) => x.refId)).toEqual(["cobro-9"]);
   });
 
   it("con la cuenta propia se asienta normal", () => {

@@ -36,6 +36,11 @@ export type PagoCuotaForm = {
   costEntryId?: number;
   tarjetaId?: number;
   cuotas?: number;
+  // DEUDA EN U$S (2026-11-14): la cuota se mide en dolares y el pago sale en pesos. `usd` es lo que se
+  // paga de la cuota y `cotizacion` (pesos por dolar) la que se uso; `monto` queda SIEMPRE en pesos
+  // (es lo que salio de la cuenta y lo que ve el cash flow).
+  usd?: number;
+  cotizacion?: number;
 };
 
 export type OtraDeuda = { titulo: string; company: string; monto: number; detalle: string; tab: string };
@@ -89,7 +94,7 @@ export function DesendeudamientoTab({
   grupos: Array<{ key: string; label: string }>;
   acreedores: string[];
   cuentas: Array<{ id: string; company: string; nombre: string; activa?: boolean }>;
-  money: (n: number) => string;
+  money: (n: number, moneda?: "ARS" | "USD") => string;
   etiquetaGrupo: (clave: string) => string;
   pagoDeCuota: (costEntryId: number) => { date: string; amount: number; metodo: string } | null;
   // MISMA FICHA EN TODO VINCULO: el pago de una cuota se corrige en la ficha del pago de la cuota, venga de donde venga.
@@ -137,14 +142,23 @@ export function DesendeudamientoTab({
   }, [abrirFichaId]);
 
   const activas = deudas.filter((d) => d.active);
+  // MONEDA de cada deuda (2026-11-14). Pesos y dolares NUNCA se suman: los totales van por moneda.
+  const mon = (d: DebtPlan): "ARS" | "USD" => ((d as any).currency === "USD" ? "USD" : "ARS");
+  const deMoneda = (m: "ARS" | "USD") => activas.filter((d) => mon(d) === m);
   const resumenes = activas.map((d) => resumenDeuda(d, hoy));
-  const totalPendiente = resumenes.reduce((a, r) => a + r.pendiente, 0);
+  const pendienteDe = (m: "ARS" | "USD") =>
+    deMoneda(m).reduce((a, d) => a + resumenDeuda(d, hoy).pendiente, 0);
+  const totalPendiente = pendienteDe("ARS");
+  const totalPendienteUsd = pendienteDe("USD");
   const vencidas = resumenes.reduce((a, r) => a + r.vencidas, 0);
   const mes = hoy.slice(0, 7);
-  const delMes = activas.reduce(
-    (a, d) => a + cuotasDeDeuda(d).filter((c) => !cuotaPagada(c) && c.fecha.startsWith(mes)).reduce((x, c) => x + Number(c.monto || 0), 0),
-    0
-  );
+  const mesDe = (m: "ARS" | "USD") =>
+    deMoneda(m).reduce(
+      (a, d) => a + cuotasDeDeuda(d).filter((c) => !cuotaPagada(c) && c.fecha.startsWith(mes)).reduce((x, c) => x + Number(c.monto || 0), 0),
+      0
+    );
+  const delMes = mesDe("ARS");
+  const delMesUsd = mesDe("USD");
 
   const setCuotas = (d: DebtPlan, f: (cs: CuotaDeuda[]) => CuotaDeuda[]) => onActualizar(d.id, { cuotas: f(cuotasDeDeuda(d).map((c) => ({ ...c }))) });
 
@@ -235,6 +249,8 @@ export function DesendeudamientoTab({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 8, marginBottom: 6 }}>
           <MiniMetric label="Deuda pendiente (cuotas impagas)" value={money(totalPendiente)} />
           <MiniMetric label="A pagar este mes" value={money(delMes)} />
+          {totalPendienteUsd > 0 && <MiniMetric label="Deuda pendiente en U$S" value={money(totalPendienteUsd, "USD")} />}
+          {delMesUsd > 0 && <MiniMetric label="A pagar este mes en U$S" value={money(delMesUsd, "USD")} />}
           <MiniMetric label="Cuotas vencidas sin pago" value={String(vencidas)} />
           <MiniMetric label="Deudas activas" value={String(activas.length)} />
         </div>
@@ -285,11 +301,11 @@ export function DesendeudamientoTab({
                         {!d.active && <span style={{ fontSize: 11, color: "#94a3b8" }}> · inactiva</span>}
                       </td>
                       <td style={td}>{companyOptions.find((c) => c.value === d.company)?.short || d.company}</td>
-                      <td style={{ ...td, textAlign: "right" }}>{money(r.total)}</td>
-                      <td style={{ ...td, textAlign: "right", color: "#166534" }}>{money(r.pagado)} <span style={{ fontSize: 11, color: "#94a3b8" }}>({r.cuotasPagadas})</span></td>
-                      <td style={{ ...td, textAlign: "right", color: "#b45309", fontWeight: 700 }}>{money(r.pendiente)} <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>({r.cuotasPendientes})</span></td>
+                      <td style={{ ...td, textAlign: "right" }}>{money(r.total, mon(d))}</td>
+                      <td style={{ ...td, textAlign: "right", color: "#166534" }}>{money(r.pagado, mon(d))} <span style={{ fontSize: 11, color: "#94a3b8" }}>({r.cuotasPagadas})</span></td>
+                      <td style={{ ...td, textAlign: "right", color: "#b45309", fontWeight: 700 }}>{money(r.pendiente, mon(d))} <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>({r.cuotasPendientes})</span></td>
                       <td style={{ ...td, fontSize: 12.5 }}>
-                        {r.proxima ? `${r.proxima.fecha.slice(8, 10)}/${r.proxima.fecha.slice(5, 7)}/${r.proxima.fecha.slice(0, 4)} · ${money(r.proxima.monto)}` : r.cuotas === 0 ? <span style={{ color: "#b45309" }}>sin cuotas: abrí la ficha y estipulalas</span> : "—"}
+                        {r.proxima ? `${r.proxima.fecha.slice(8, 10)}/${r.proxima.fecha.slice(5, 7)}/${r.proxima.fecha.slice(0, 4)} · ${money(r.proxima.monto, mon(d))}` : r.cuotas === 0 ? <span style={{ color: "#b45309" }}>sin cuotas: abrí la ficha y estipulalas</span> : "—"}
                         {r.vencidas > 0 && <span style={{ color: "#b91c1c", fontWeight: 700 }}> · ⚠ {r.vencidas} vencida(s)</span>}
                       </td>
                       <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
@@ -372,7 +388,7 @@ export function DesendeudamientoTab({
                 <span style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 12, flexWrap: "wrap" }}>
                   {r.proxima && (
                     <button type="button" style={{ ...btnFila, background: "#16a34a", color: "#fff", borderColor: "#15803d", padding: "5px 10px" }} onClick={() => abrirPago(d, r.proxima!)}>
-                      💸 Pagar la próxima cuota ({money(r.proxima.monto)})
+                      💸 Pagar la próxima cuota ({money(r.proxima.monto, mon(d))})
                     </button>
                   )}
                   <label style={{ display: "inline-flex", gap: 4, alignItems: "center" }}>
@@ -439,7 +455,17 @@ export function DesendeudamientoTab({
                       <option value="negro">Negro</option>
                     </select>
                   </label>
-                  <label style={lbl}>Capital original
+                  <label style={lbl}>Moneda de la deuda
+                    <select
+                      style={input}
+                      value={mon(d)}
+                      onChange={(e) => onActualizar(d.id, { currency: e.target.value === "USD" ? "USD" : undefined } as Partial<DebtPlan>)}
+                    >
+                      <option value="ARS">$ Pesos</option>
+                      <option value="USD">U$S Dólares</option>
+                    </select>
+                  </label>
+                  <label style={lbl}>Capital original{mon(d) === "USD" ? " (U$S)" : ""}
                     <NumInput style={input} value={d.capital || ""} onChange={(e) => onActualizar(d.id, { capital: Number(e.target.value) || 0 })} />
                   </label>
                   <label style={lbl}>U$S por cuota (referencia)
@@ -551,9 +577,10 @@ export function DesendeudamientoTab({
                 })()}
 
                 <div style={{ display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12.5 }}>
-                  <span>Total: <b>{money(r.total)}</b></span>
-                  <span style={{ color: "#166534" }}>Pagado: <b>{money(r.pagado)}</b> ({r.cuotasPagadas})</span>
-                  <span style={{ color: "#b45309" }}>Pendiente: <b>{money(r.pendiente)}</b> ({r.cuotasPendientes})</span>
+                  <span>Total: <b>{money(r.total, mon(d))}</b></span>
+                  <span style={{ color: "#166534" }}>Pagado: <b>{money(r.pagado, mon(d))}</b> ({r.cuotasPagadas})</span>
+                  <span style={{ color: "#b45309" }}>Pendiente: <b>{money(r.pendiente, mon(d))}</b> ({r.cuotasPendientes})</span>
+                  {mon(d) === "USD" && <span style={{ color: "#1e3a8a", fontWeight: 700 }}>Deuda en U$S: no se suma con las de pesos</span>}
                   {r.vencidas > 0 && <span style={{ color: "#b91c1c", fontWeight: 700 }}>⚠ {r.vencidas} vencida(s) sin pago</span>}
                   {d.grupoCosto && <span style={{ color: "#475569" }}>Va a: <b>{etiquetaGrupo(d.grupoCosto)}</b></span>}
                 </div>
@@ -622,7 +649,7 @@ export function DesendeudamientoTab({
                           <td style={{ ...td, fontSize: 12.5 }}>
                             {pagada ? (
                               <span style={{ color: "#166534", fontWeight: 700, display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                                ✓ Pagada{p ? ` el ${p.date.slice(8, 10)}/${p.date.slice(5, 7)}/${p.date.slice(0, 4)} · ${money(p.amount)} · ${p.metodo}` : ""}
+                                ✓ Pagada{p ? ` el ${p.date.slice(8, 10)}/${p.date.slice(5, 7)}/${p.date.slice(0, 4)} · ${money(p.amount)}${(p as any).usdPagado ? ` (U$S ${(p as any).usdPagado}${(p as any).cotizacion ? ` a ${money((p as any).cotizacion)}` : ""})` : ""} · ${p.metodo}` : ""}
                                 {pagoParaEditar && (
                                   <button
                                     type="button"
@@ -748,7 +775,7 @@ export function DesendeudamientoTab({
                         <tr key={c.id}>
                           <td style={{ ...td, whiteSpace: "nowrap", color: "#475569" }}>{p ? `${p.date.slice(8, 10)}/${p.date.slice(5, 7)}/${p.date.slice(0, 4)}` : "—"}</td>
                           <td style={td}>Cuota {c.numero}{p ? ` · ${p.metodo}` : ""}</td>
-                          <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "#166534" }}>{money(p ? p.amount : c.monto)}</td>
+                          <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "#166534" }}>{p ? money(p.amount) : money(c.monto, mon(d))}</td>
                           <td style={{ ...td, textAlign: "right" }}>
                             <button
                               type="button"
@@ -780,7 +807,7 @@ export function DesendeudamientoTab({
 
       {menu && deudaMenu && cuotaMenu && (
         <QuickMenu x={menu.x} y={menu.y} onClose={() => setMenu(null)}>
-          <QuickMenuTitle>{`Cuota ${cuotaMenu.numero} · ${money(cuotaMenu.monto)}`}</QuickMenuTitle>
+          <QuickMenuTitle>{`Cuota ${cuotaMenu.numero} · ${money(cuotaMenu.monto, mon(deudaMenu))}`}</QuickMenuTitle>
           {!cuotaPagada(cuotaMenu) ? (
             <button
               style={quickMenuItem}
@@ -850,6 +877,13 @@ export function DesendeudamientoTab({
               {pago.form.modo === "editar" ? "Editar el pago" : "Pago"} de la cuota {pago.cuota.numero} · {pago.deuda.concept}
               {pago.deuda.acreedor ? ` · ${pago.deuda.acreedor}` : ""}
             </div>
+            {mon(pago.deuda) === "USD" && (
+              <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 10px", fontSize: 12.5, color: "#1e3a8a" }}>
+                Deuda en <strong>U$S</strong>: la cuota es de {money(Number(pago.cuota.monto || 0), "USD")}. Cargá los dólares que pagás y la
+                cotización; los pesos que salen de la cuenta se calculan solos y quedan asentados con esa cotización. Si la plata sale de una
+                cuenta en dólares, primero hacé el traspaso U$S → pesos en Movimientos internos.
+              </div>
+            )}
             <div style={{ display: pago.form.modo === "editar" ? "none" : "flex", gap: 14, fontSize: 13 }}>
               <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                 <input type="radio" checked={pago.form.modo === "nuevo"} onChange={() => setPago({ ...pago, form: { ...pago.form, modo: "nuevo" } })} /> Cargar el pago
@@ -863,9 +897,40 @@ export function DesendeudamientoTab({
                 <label style={lbl}>Fecha
                   <input style={input} type="date" value={pago.form.fecha} onChange={(e) => setPago({ ...pago, form: { ...pago.form, fecha: e.target.value } })} />
                 </label>
-                <label style={lbl}>Monto
-                  <NumInput style={input} value={pago.form.monto || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, monto: Number(e.target.value) || 0 } })} />
-                </label>
+                {mon(pago.deuda) === "USD" ? (
+                  <>
+                    {/* Deuda en U$S: se paga en pesos a una cotizacion, y queda asentada (14/11/2026). */}
+                    <label style={lbl}>U$S de la cuota
+                      <NumInput
+                        style={input}
+                        value={pago.form.usd || ""}
+                        onChange={(e) => {
+                          const usd = Number(e.target.value) || 0;
+                          const cot = Number(pago.form.cotizacion) || 0;
+                          setPago({ ...pago, form: { ...pago.form, usd, monto: cot > 0 ? Math.round(usd * cot * 100) / 100 : pago.form.monto } });
+                        }}
+                      />
+                    </label>
+                    <label style={lbl}>Cotización (pesos por dólar)
+                      <NumInput
+                        style={input}
+                        value={pago.form.cotizacion || ""}
+                        onChange={(e) => {
+                          const cot = Number(e.target.value) || 0;
+                          const usd = Number(pago.form.usd) || 0;
+                          setPago({ ...pago, form: { ...pago.form, cotizacion: cot, monto: cot > 0 && usd > 0 ? Math.round(usd * cot * 100) / 100 : pago.form.monto } });
+                        }}
+                      />
+                    </label>
+                    <label style={lbl}>Pesos que salen
+                      <NumInput style={{ ...input, background: "#f8fafc" }} value={pago.form.monto || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, monto: Number(e.target.value) || 0 } })} />
+                    </label>
+                  </>
+                ) : (
+                  <label style={lbl}>Monto
+                    <NumInput style={input} value={pago.form.monto || ""} onChange={(e) => setPago({ ...pago, form: { ...pago.form, monto: Number(e.target.value) || 0 } })} />
+                  </label>
+                )}
                 <label style={lbl}>Medio de pago
                   <select style={input} value={pago.form.metodo} onChange={(e) => setPago({ ...pago, form: { ...pago.form, metodo: e.target.value as any } })}>
                     {OPCIONES_MEDIO_PAGO.map((o) => (

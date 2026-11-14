@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import { FirmanteFijo } from "./FirmanteSelect";
 import { AmountInput } from "./primitives";
 import { SelectorCuenta } from "../tabs/CuentasPanel";
-import { faltantesDelPase, type PaseForm } from "../domain/pases";
+import { cambiaDeMoneda, faltantesDelPase, monedaDestinoDelPase, montoDestinoDelPase, type PaseForm } from "../domain/pases";
 import type { Cuenta } from "../domain/cuentas";
 
 const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color: "#475569", fontWeight: 600 };
@@ -34,6 +34,10 @@ export function PaseModal({
   const misma = !!f.cuentaId && f.cuentaId === f.cuentaDestinoId;
   const corta = (c: string) => empresas.find((e) => e.value === c)?.short || c;
   const entreEmpresas = !!f.company && !!f.companyDestino && f.company !== f.companyDestino;
+  // Traspaso entre monedas (14/11/2026): la cuenta de destino puede ser de la otra moneda.
+  const monedaDestino = monedaDestinoDelPase(f);
+  const convierte = cambiaDeMoneda(f);
+  const entra = montoDestinoDelPase(f);
 
   const punta = (titulo: string, company: string, cuentaId: string, cambio: (c: string, id: string) => void) => (
     <div style={caja}>
@@ -46,7 +50,7 @@ export function PaseModal({
           ))}
         </select>
       </label>
-      <SelectorCuenta cuentas={cuentas} company={company} moneda={f.currency} value={cuentaId} onChange={(id) => cambio(company, id)} />
+      <SelectorCuenta cuentas={cuentas} company={company} moneda={titulo === "Va a" ? monedaDestino : f.currency} value={cuentaId} onChange={(id) => cambio(company, id)} />
     </div>
   );
 
@@ -74,13 +78,49 @@ export function PaseModal({
             <AmountInput style={input} value={f.amount} onChange={(n) => set({ amount: n })} />
           </label>
           <label style={lbl}>
-            Moneda
-            <select style={input} value={f.currency} onChange={(e) => set({ currency: e.target.value as PaseForm["currency"], cuentaId: "", cuentaDestinoId: "" })}>
+            Moneda de lo que sale
+            <select
+              style={input}
+              value={f.currency}
+              onChange={(e) =>
+                set({ currency: e.target.value as PaseForm["currency"], cuentaId: "", cuentaDestinoId: "", currencyDestino: undefined, cotizacion: undefined })
+              }
+            >
               <option value="ARS">$ Pesos</option>
               <option value="USD">U$S Dólares</option>
             </select>
           </label>
+          <label style={lbl}>
+            Moneda de lo que entra
+            <select
+              style={input}
+              value={monedaDestino}
+              onChange={(e) =>
+                set({
+                  currencyDestino: e.target.value as PaseForm["currencyDestino"],
+                  cuentaDestinoId: "",
+                  ...(e.target.value === f.currency ? { cotizacion: undefined } : {}),
+                })
+              }
+            >
+              <option value="ARS">$ Pesos</option>
+              <option value="USD">U$S Dólares</option>
+            </select>
+          </label>
+          {convierte && (
+            <label style={lbl}>
+              Cotización (pesos por dólar)
+              <AmountInput style={input} value={f.cotizacion || 0} onChange={(n) => set({ cotizacion: n })} />
+            </label>
+          )}
         </div>
+        {convierte && (
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "8px 10px", fontSize: 13, color: "#1e3a8a" }}>
+            <strong>Traspaso entre monedas:</strong> salen {money(Number(f.amount || 0), f.currency)} y entran{" "}
+            <strong>{entra > 0 ? money(entra, monedaDestino) : "— (falta la cotización)"}</strong>
+            {Number(f.cotizacion) > 0 && <> a {money(Number(f.cotizacion), "ARS")} por dólar</>}. Queda asentada la cotización usada.
+          </div>
+        )}
         <label style={lbl}>
           Descripción
           <input style={input} value={f.description} onChange={(e) => set({ description: e.target.value })} />

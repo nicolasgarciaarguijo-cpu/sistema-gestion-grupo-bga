@@ -16,6 +16,132 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-14d",
+    fecha: "14/11/2026",
+    titulo: "Dólares: deudas en U$S y traspasos a pesos",
+    items: [
+      {
+        titulo: "Una deuda puede ser en U$S",
+        que: "En la ficha de la deuda se elige la moneda. Si es en dólares, el capital, las cuotas y el pendiente están en U$S, el vencimiento aparece en U$S en Pagos inamovibles, y los totales de la solapa muestran los pesos y los dólares por separado (nunca se suman).",
+        como: "Desendeudamiento → ficha de la deuda → «Moneda de la deuda».",
+        tab: "desendeudamiento",
+      },
+      {
+        titulo: "Pagar una cuota en U$S",
+        que: "Al pagar la cuota de una deuda en dólares se cargan los U$S y la cotización; los pesos que salen de la cuenta se calculan solos y queda asentada la cotización usada. El cash flow sigue siendo todo en pesos.",
+        como: "Desendeudamiento → la cuota → 💸 Pagar: cargá los U$S y la cotización.",
+        tab: "desendeudamiento",
+      },
+      {
+        titulo: "Traspaso U$S ↔ pesos entre cuentas",
+        que: "El pase entre cuentas ahora puede cambiar de moneda: se elige la moneda de lo que sale y la de lo que entra, se carga la cotización y la ficha muestra cuánto entra del otro lado. Sale en dólares de la cuenta en dólares y entran los pesos convertidos en la de pesos, con la cotización asentada.",
+        como: "Movimientos internos → + Pase entre cuentas → «Moneda de lo que sale» / «Moneda de lo que entra» + Cotización.",
+        tab: "movimientosInternos",
+      },
+    ],
+  },
+  {
+    id: "2026-11-14c",
+    fecha: "14/11/2026",
+    titulo: "La cuenta entre empresas dice con qué plata se debe",
+    items: [
+      {
+        titulo: "El cobro que entra en la cuenta de la otra empresa ya es un préstamo",
+        que: "Antes, la plata cargada con una cuenta de la otra empresa no sumaba en ninguna cuenta y quedaba solo como un error a corregir. Ahora se asienta donde la plata realmente está y genera el debe y haber entre las dos: si un cobro de BGA entra en una cuenta de De Raíz, De Raíz le debe esa plata. Vale para los dos lados (también si se paga desde la cuenta de la otra).",
+        como: "Movimientos internos → Cuenta corriente entre las empresas. El listado de control sigue estando para revisarlos.",
+        tab: "movimientosInternos",
+      },
+      {
+        titulo: "El saldo se lee partido en blanco y negro",
+        que: "Cada movimiento entre las empresas lleva su color, y el saldo dice cuánto se debe en blanco y cuánto en negro («debe $X en blanco · le sobran $Y en negro»), más cuánto ya está cruzado con facturas entre las dos. La factura cancela solo la plata blanca; la negra se cancela con plata. Así se decide si el próximo préstamo conviene en blanco o en negro.",
+        como: "Movimientos internos → click en el saldo: cada movimiento tiene su badge B/N y el pie resume el desglose.",
+        tab: "movimientosInternos",
+      },
+      {
+        titulo: "Dólares: los pagos cruzados también cuentan",
+        que: "La posición en dólares ya no toma solo los pases: ahora también los pagos de una empresa por la otra y la plata que quedó en la cuenta de la otra, en U$S. Pesos y dólares siguen separados, sin conversión.",
+        como: "Movimientos internos → Cuenta corriente entre las empresas: el saldo en U$S se muestra en su propio renglón.",
+        tab: "movimientosInternos",
+      },
+    ],
+  },
+  {
+    id: "2026-11-14b",
+    fecha: "14/11/2026",
+    titulo: "De qué empresa es cada cosa, y el cruce entre las dos",
+    items: [
+      {
+        titulo: "Arriba de la ficha: de qué empresa es todo esto",
+        que: "La ficha de factura y de gasto arranca con un selector: «Todo esto es de BGA / De Raíz». Si la factura, el pago y el proveedor son de la misma empresa, queda esa. Si algo es de la otra, el selector pasa solo a «⚠ Cruce / desvío» y te dice el préstamo que se genera entre las empresas. También podés ponerlo en cruce a mano para cruzarlo a propósito.",
+        como: "Compras → una factura o un gasto → arriba de todo, «Empresa».",
+        tab: "compras",
+      },
+      {
+        titulo: "Las tres dicen de quién son",
+        que: "Debajo del selector se leen las tres: «Proveedor de» (de quién es el proveedor, o las dos empresas), «La factura es de» (de quién es el gasto) y «El pago sale de» (de dónde sale la plata, pago por pago). Lo que no coincide queda en ámbar.",
+        como: "La empresa del pago se elige en cada pago, abajo; la del proveedor, en la ficha del proveedor.",
+        tab: "compras",
+      },
+      {
+        titulo: "Click en el saldo entre empresas: todos los movimientos",
+        que: "En Movimientos internos, el renglón «Cómo estamos: X le debe $Y a Z» ahora se puede tocar y se abren TODOS los movimientos que forman ese saldo: los pases entre empresas, los giros que se vieron en el banco y los pagos cruzados, con el saldo corriendo renglón por renglón.",
+        como: "Movimientos internos → Cuenta corriente entre las empresas → click en el monto.",
+        tab: "movimientosInternos",
+      },
+    ],
+  },
+  {
+    id: "2026-11-14",
+    fecha: "14/11/2026",
+    titulo: "«Proveedor de» dentro de la ficha",
+    items: [
+      {
+        titulo: "De quién es el proveedor se elige en su ficha",
+        que: "La selección de empresa del proveedor ahora se llama «Proveedor de» y está DENTRO de la ficha, con las tres opciones: BGA, De Raíz o «Las dos empresas (compartido)». Antes solo estaba en la ventana de datos y la opción de las dos no se veía al abrir la ficha.",
+        como: "Compras → Proveedores → tocá el proveedor → bloque «Proveedor de». Si le compran las dos, elegí «Las dos empresas»: la cuenta se mira separada, una empresa por vez.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
+    id: "2026-11-13d",
+    fecha: "13/11/2026",
+    titulo: "El proveedor se da de alta en un solo lugar",
+    items: [
+      {
+        titulo: "Agregar un proveedor abre su ficha",
+        que: "Había siete formas de dar de alta un proveedor y cada una pedía distintos datos; por eso quedaban repetidos, sin CUIT y sin condición de pago. Ahora toda alta a mano abre la misma ficha, y las que nacen solas (de una factura, de un gasto de caja, de ARCA o del banco) quedan todas iguales y dicen de dónde salieron.",
+        como: "Compras → Proveedores → '+ Agregar proveedor' (o click derecho → 'Editar datos').",
+        tab: "compras",
+      },
+      {
+        titulo: "El listado avisa a qué proveedor le falta completar",
+        que: "Debajo del nombre aparece en ámbar qué le falta: el CUIT, la condición de pago o el grupo de costo. Sin condición de pago sus facturas no toman fecha y no entran a Pagos programados ni al cash flow.",
+        como: "Compras → Proveedores: tocá el que tenga el aviso ⚠ y completá su ficha.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
+    id: "2026-11-13c",
+    fecha: "13/11/2026",
+    titulo: "La fecha de pago de una factura se elige en un solo lugar",
+    items: [
+      {
+        titulo: "En la ficha del proveedor la fecha ya no se tipea",
+        que: "En 'Próximos pagos' la fecha de pago se cambiaba ahí mismo, sin el estado (programado / estimado / inamovible) ni de qué cuenta sale, y sin quedar firmada. Ahora se muestra la fecha y se corrige en la ficha de la factura, que pide las tres cosas.",
+        como: "Ficha del proveedor → Próximos pagos → 'Abrir la ficha' al lado de la fecha.",
+        tab: "compras",
+      },
+      {
+        titulo: "En Análisis de gastos, el pago que viene de una factura manda a su ficha",
+        que: "El click derecho sobre un pago previsto dejaba cambiarle el estado aunque fuera una factura, y quedaba distinto de lo cargado en la factura. Si el pago sale de una factura, ahora ofrece abrir su ficha; los demás (tarjetas, cuotas, seguros) siguen marcándose igual.",
+        como: "Compras → Análisis de gastos → click derecho en el pago → '✎ Abrir la ficha de la factura'.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-11-13b",
     fecha: "13/11/2026",
     titulo: "El pago de una cuota se corrige en su ficha",

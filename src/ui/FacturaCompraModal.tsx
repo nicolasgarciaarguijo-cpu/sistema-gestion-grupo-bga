@@ -212,6 +212,45 @@ export function FacturaCompraModal({
     [proveedores, f.company]
   );
   const elegido = delaEmpresa.find((p) => p.name.trim().toLowerCase() === f.supplier.trim().toLowerCase());
+
+  // ---- DE QUE EMPRESA ES TODO ESTO (Nicolas, 2026-11-14) -------------------------------------------------
+  // Tres cosas dicen su empresa: el PROVEEDOR (de quien es, o de las dos), la FACTURA (de quien es el gasto)
+  // y cada PAGO (de donde sale la plata). Si no coinciden hay CRUCE / DESVIO y el monto cruzado va a la
+  // cuenta corriente entre las empresas. El selector de arriba lo marca solo, y tambien se puede forzar.
+  const CRUCE = "__CRUCE__";
+  const [cruceForzado, setCruceForzado] = useState(false);
+  const cortoDe = (company?: string) => {
+    const c = companyOptions.find((x) => x.value === company);
+    return c ? c.short || c.label || c.value : String(company || "—");
+  };
+  // El proveedor compartido ("General") le vende a las dos: no es desvio. Si es de UNA y la factura es de la
+  // otra, si lo es: le estamos comprando a un proveedor de la otra empresa.
+  // Se busca en TODOS los proveedores (no solo en los de esta empresa): si el proveedor es de la otra,
+  // justamente eso es el desvio y hay que verlo.
+  const provDelNombre = proveedores.find((p) => p.name.trim().toLowerCase() === f.supplier.trim().toLowerCase());
+  const proveedorDesviado = !!provDelNombre && provDelNombre.company !== "General" && provDelNombre.company !== f.company;
+  const montoCruzado = f.pagos.reduce((acc, p) => acc + ((p.empresa || f.company) !== f.company ? Number(p.monto || 0) : 0), 0);
+  const enCruce = montoCruzado > 0 || proveedorDesviado || cruceForzado;
+  // Elegir una empresa arriba acomoda TODO lo de abajo a esa empresa (y deja de ser un cruce).
+  const ponerTodoEn = (nueva: string) => {
+    setCruceForzado(false);
+    setF((x) => ({
+      ...x,
+      company: nueva,
+      ...(x.saldo ? { saldo: { ...x.saldo, cuentaId: undefined } } : {}),
+      pagos: x.pagos.map((p) =>
+        // Pagado con la caja chica de alguien: la plata sigue saliendo de esa caja (de su empresa). Si el
+        // gasto pasa a la otra empresa, el pago queda cruzado = prestamo entre empresas.
+        String(p.cuentaId || "").startsWith("persona|")
+          ? (() => {
+              const deLaCaja = String(p.cuentaId).split("|")[1];
+              return { ...p, empresa: deLaCaja === nueva ? undefined : deLaCaja };
+            })()
+          // La cuenta elegida sigue sirviendo solo si es de la empresa nueva; si era de la otra, se vuelve a elegir.
+          : { ...p, empresa: undefined, cuentaId: cuentas.find((c) => c.id === p.cuentaId)?.company === nueva ? p.cuentaId : undefined }
+      ),
+    }));
+  };
   const esNuevo = !!f.supplier.trim() && !elegido;
   const yaEnLaFactura = new Set(f.pagos.map((p) => p.costEntryId).filter((x) => x != null));
   const vinculables = pagosVinculables(f.company, f.supplier).filter((p) => !yaEnLaFactura.has(p.id));
@@ -267,43 +306,57 @@ export function FacturaCompraModal({
             {f.convierteGastoCajaId != null && <> Este gasto se cargó con la ficha vieja de caja chica: al guardar queda en esta.</>}
           </div>
         )}
+        {/* 2026-11-14 (Nicolas): arriba de todo, de que empresa es TODO esto. Si algo de abajo (el pago, o el
+            proveedor) es de la otra, la ficha lo marca como CRUCE / DESVIO y ese monto va a la cuenta corriente
+            entre las empresas (Movimientos internos). Tambien se puede forzar a mano para cruzarlo a proposito. */}
+        <div style={{ border: `1px solid ${enCruce ? "#f59e0b" : "#cbd5e1"}`, background: enCruce ? "#fffbeb" : "#f8fafc", borderRadius: 10, padding: "10px 12px", display: "grid", gap: 8 }}>
+          <label style={{ ...lbl, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: "#0f172a" }}>Empresa</span>
+            <select
+              style={{ ...input, width: "auto", minWidth: 220, ...(enCruce ? { borderColor: "#f59e0b", background: "#fff7ed", color: "#b45309", fontWeight: 800 } : { fontWeight: 700 }) }}
+              value={enCruce ? CRUCE : f.company}
+              onChange={(e) => (e.target.value === CRUCE ? setCruceForzado(true) : ponerTodoEn(e.target.value))}
+            >
+              {companyOptions.filter((c) => c.value !== "General").map((c) => (
+                <option key={c.value} value={c.value}>Todo esto es de {c.label || c.value}</option>
+              ))}
+              <option value={CRUCE}>⚠ Cruce / desvío entre las empresas</option>
+            </select>
+            {!enCruce && <span style={{ fontSize: 12, color: "#64748b", fontWeight: 500 }}>La factura, el pago y el proveedor son de la misma empresa.</span>}
+          </label>
+          <div style={{ fontSize: 12.5, color: "#475569", display: "grid", gap: 2 }}>
+            <span>Proveedor de: <strong style={{ color: proveedorDesviado ? "#b45309" : "#0f172a" }}>{provDelNombre ? (provDelNombre.company === "General" ? "las dos empresas" : cortoDe(provDelNombre.company)) : "—"}</strong>{proveedorDesviado && " ⚠ desvío: le compra la otra empresa"}</span>
+            <span>La factura es de: <strong>{cortoDe(f.company)}</strong></span>
+            <span>
+              El pago sale de:{" "}
+              <strong style={{ color: montoCruzado > 0 ? "#b45309" : "#0f172a" }}>
+                {f.pagos.length === 0 ? "— sin pagos —" : Array.from(new Set(f.pagos.map((p) => cortoDe(p.empresa || f.company)))).join(" · ")}
+              </strong>
+              {montoCruzado > 0 && ` ⚠ cruce`}
+            </span>
+          </div>
+          {enCruce && (
+            <div style={{ fontSize: 12.5, color: "#92400e", fontWeight: 600 }}>
+              {montoCruzado > 0 ? (
+                <>
+                  Préstamo entre empresas por <strong>{money(montoCruzado)}</strong>: lo paga{" "}
+                  {Array.from(new Set(f.pagos.filter((p) => (p.empresa || f.company) !== f.company).map((p) => cortoDe(p.empresa || f.company)))).join(" y ")} y el gasto
+                  es de {cortoDe(f.company)}. Queda en la cuenta corriente entre las empresas (Movimientos internos).
+                </>
+              ) : (
+                <>Marcado como cruce a mano: todavía no hay un pago de la otra empresa, así que no mueve la cuenta entre las dos.</>
+              )}
+            </div>
+          )}
+        </div>
         <div style={caja}>
           <div style={titulo}>1 · Proveedor</div>
           <div style={grid}>
-            <label style={lbl}>Empresa
-              <select
-                style={input}
-                value={f.company}
-                // Los pagos que paga la empresa de la factura cambian de empresa con ella: su cuenta era de la otra y se
-                // vuelve a elegir (si no, la plata salía de una cuenta de la otra empresa).
-                onChange={(e) => {
-                  const nueva = e.target.value;
-                  setF((x) => ({
-                    ...x,
-                    company: nueva,
-                    ...(x.saldo ? { saldo: { ...x.saldo, cuentaId: undefined } } : {}),
-                    pagos: x.pagos.map((p) =>
-                      // Pagado con la caja chica de alguien: la plata sigue saliendo de esa caja (de su empresa). Si el
-                      // gasto pasa a la otra empresa, el pago queda cruzado = prestamo entre empresas.
-                      String(p.cuentaId || "").startsWith("persona|")
-                        ? (() => {
-                            const deLaCaja = String(p.cuentaId).split("|")[1];
-                            return { ...p, empresa: deLaCaja === nueva ? undefined : deLaCaja };
-                          })()
-                        : !p.empresa
-                        ? { ...p, cuentaId: undefined }
-                        : p.empresa === nueva
-                          ? { ...p, empresa: undefined }
-                          : p
-                    ),
-                  }));
-                }}
-              >
-                {companyOptions.filter((c) => c.value !== "General").map((c) => (
-                  <option key={c.value} value={c.value}>{c.label || c.value}</option>
-                ))}
-              </select>
-            </label>
+            <div style={lbl}>Proveedor de
+              <div style={{ ...input, background: "#f8fafc", fontWeight: 700, color: proveedorDesviado ? "#b45309" : "#0f172a" }}>
+                {provDelNombre ? (provDelNombre.company === "General" ? "Las dos empresas" : cortoDe(provDelNombre.company)) : "— sin elegir —"}
+              </div>
+            </div>
             <label style={lbl}>Proveedor habitual
               <select style={input} value={elegido?.name || ""} onChange={(e) => elegirProveedor(e.target.value)}>
                 <option value="">— Elegí de la lista (o escribí uno nuevo abajo) —</option>
@@ -463,7 +516,7 @@ export function FacturaCompraModal({
                   <label style={lbl}>Monto
                     <NumInput style={input} value={p.monto || ""} onChange={(e) => setPagoN(p.key, { monto: Number(e.target.value) || 0 })} />
                   </label>
-                  <label style={lbl}>Empresa que paga
+                  <label style={lbl}>El pago sale de
                     <select
                       style={{ ...input, ...(cruzado ? { borderColor: "#f59e0b", background: "#fffbeb", color: "#b45309", fontWeight: 700 } : {}) }}
                       value={empresaPaga}

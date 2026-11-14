@@ -138,6 +138,8 @@ export type FuentesInamovibles = {
     active: boolean;
     acreedor?: string;
     cuotas?: CuotaDeuda[];
+    // Moneda de la deuda (2026-11-14): su cuota vence en esa moneda. Ausente = pesos.
+    currency?: "ARS" | "USD";
   }>;
   tarjetas: Array<{ id: number; company: string; dueDate: string; totalArs: number; totalUsd: number; paid: boolean; nombre: string }>;
   pagosCashflow: Array<{
@@ -239,7 +241,8 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
               ventanaDesde: fecha,
               fechaLimite: fecha,
               monto: Number(cuota.monto || 0),
-              currency: "ARS",
+              // La cuota va en la moneda de la deuda (2026-11-14): una deuda en U$S vence en U$S.
+              currency: p.currency === "USD" ? "USD" : "ARS",
               avisoDias: AVISO_DEFAULT,
               pagado: pagada || marcado.has(clave),
               pagadoComo: pagada ? "pagada en Desendeudamiento" : marcado.has(clave) ? "a mano" : "",
