@@ -49,6 +49,12 @@ type TarjetasTabProps = {
 
 const NEW_GROUP_OPTION = "__NEW_GROUP__";
 
+// 2026-11-14 (Nicolas): la fila de la tarjeta solo MUESTRA; se corrige en su ficha.
+const celdaTarjeta: React.CSSProperties = { fontSize: 12.5, color: "#0f172a", padding: "1px 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const etiquetaTarjeta = (texto: string, fg = "#475569", bg = "#f1f5f9") => (
+  <span style={{ fontSize: 11, fontWeight: 700, color: fg, background: bg, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>{texto}</span>
+);
+
 export function TarjetasTab({
   companyScope,
   onScopeChange,
@@ -352,65 +358,35 @@ export function TarjetasTab({
                     ev.stopPropagation();
                     if (window.confirm(`¿Quitar la tarjeta "${c.name}"?`)) removeCreditCard(c.id);
                   }}
-                  title="Click derecho: quitar. El punto verde activa o desactiva."
+                  onClick={() => setFicha({ tipo: "tarjeta", id: c.id })}
+                  style={{ cursor: "pointer" }}
+                  title="Click: abrir la ficha de la tarjeta · Click derecho: quitarla. El punto verde activa o desactiva."
                 >
                   <td style={{ ...tdNombre, fontWeight: 400, padding: 0, opacity: c.active ? 1 : 0.45 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
                       <span
                         title={c.active ? "Activa" : "Inactiva"}
-                        onClick={() => updateCreditCard(c.id, "active", !c.active)}
+                        onClick={(ev) => { ev.stopPropagation(); updateCreditCard(c.id, "active", !c.active); }}
                         style={{
                           display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
                           cursor: "pointer", background: c.active ? "#16a34a" : "#cbd5f5",
                         }}
                       />
-                      <input
-                        style={inputCelda}
-                        {...focoCelda}
-                        value={c.name}
-                        onChange={(e) => updateCreditCard(c.id, "name", e.target.value)}
-                      />
+                      <span style={{ ...celdaTarjeta, fontWeight: 700 }}>{c.name || "sin nombre"}</span>
                     </span>
                   </td>
                   <td style={{ ...tdDato, padding: 0 }}>
-                    <input
-                      style={{ ...inputCelda, padding: "1px 6px" }}
-                      {...focoCelda}
-                      value={c.lastDigits}
-                      onChange={(e) => updateCreditCard(c.id, "lastDigits", e.target.value)}
-                    />
+                    <span style={celdaTarjeta}>{c.lastDigits ? `•••• ${c.lastDigits}` : "—"}</span>
                   </td>
                   <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                      <input
-                        style={{ ...inputCelda, width: 150 }}
-                        {...focoCelda}
-                        value={c.bank}
-                        placeholder="Santander / Patagonia"
-                        onChange={(e) => updateCreditCard(c.id, "bank", e.target.value)}
-                      />
-                      <select
-                        style={{ ...inputCelda, width: "auto" }}
-                        value={c.company}
-                        onChange={(e) => updateCreditCard(c.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((o: any) => (
-                          <option key={o.value} value={o.value}>
-                            {o.short}
-                          </option>
-                        ))}
-                      </select>
+                      <span style={{ ...celdaTarjeta, width: 150 }}>{c.bank || "sin banco"}</span>
+                      {etiquetaTarjeta(COMPANY_OPTIONS.find((o: any) => o.value === c.company)?.short || String(c.company))}
 <BotonFicha onClick={() => setFicha({ tipo: "tarjeta", id: c.id })} />
-                      <input
-                        style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                        {...focoCelda}
-                        value={c.notes}
-                        placeholder="notas"
-                        onChange={(e) => updateCreditCard(c.id, "notes", e.target.value)}
-                      />
+                      <span style={{ ...celdaTarjeta, flex: 1, minWidth: 90, color: "#94a3b8" }}>{c.notes || ""}</span>
                     </span>
                   </td>
-                  {/* Se edita en la misma fila; el tachito hace lo mismo que el click derecho. */}
+                  {/* 2026-11-14: la fila solo muestra. El punto verde activa/desactiva y el tachito borra. */}
                   <td style={{ ...tdDato, ...tdAcciones }}>
                     <button
                       type="button"

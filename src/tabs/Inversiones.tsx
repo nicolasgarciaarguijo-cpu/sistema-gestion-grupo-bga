@@ -48,6 +48,15 @@ const LOSS_COLOR = "#dc2626";
 const montoMoneda = (n: number, moneda: "ARS" | "USD") =>
   moneda === "USD" ? `US$ ${money(n).replace(/^\$\s?/, "")}` : money(n);
 
+// 2026-11-14 (Nicolas): las filas solo MUESTRAN; se corrige todo en la ficha y la pantalla queda limpia.
+const celda: React.CSSProperties = { fontSize: 12.5, color: "#0f172a", maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const celdaNoWrap: React.CSSProperties = { ...celda, whiteSpace: "nowrap" };
+const celdaDerecha: React.CSSProperties = { ...celdaNoWrap, textAlign: "right", fontWeight: 700 };
+const fechaCorta = (iso?: string) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "—");
+const etiqueta = (texto: string, fg = "#475569", bg = "#f1f5f9") => (
+  <span style={{ fontSize: 11, fontWeight: 700, color: fg, background: bg, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>{texto}</span>
+);
+
 export function InversionesTab({
   inversiones,
   companyScope,
@@ -96,6 +105,24 @@ export function InversionesTab({
           { key: "fechaFin", label: "Fin", tipo: "fecha" },
           { key: "estado", label: "Estado", tipo: "select", opciones: [{ value: "activa", label: "Activa" }, { value: "cerrada", label: "Cerrada" }] },
           { key: "administration", label: "Blanco / negro", tipo: "select", opciones: [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }] },
+          // 2026-11-14: estaban solo en la fila.
+          {
+            key: "cuentaId",
+            label: "De qué cuenta sale (y a cuál vuelve)",
+            tipo: "select",
+            obligatorio: true,
+            vacio: "— Elegí la cuenta —",
+            opciones: cuentas
+              .filter((c) => c.company === i.company && c.activa !== false && (!c.moneda || c.moneda === i.moneda))
+              .map((c) => ({ value: c.id, label: c.nombre })),
+          },
+          { key: "montoRescatado", label: "Monto rescatado (si queda vacío, se toma el valor actual)", tipo: "numero" },
+          {
+            key: "renglonRescate",
+            label: "Renglón del Calendario donde entra el rescate",
+            tipo: "select",
+            opciones: RENGLONES_RESCATE_LABEL.map(([k, l]) => ({ value: k, label: l })),
+          },
           { key: "notas", label: "Notas", tipo: "area" },
         ];
         return (
@@ -185,132 +212,59 @@ export function InversionesTab({
                 const col = cre.ganancia >= 0 ? GAIN_COLOR : LOSS_COLOR;
                 const cerrada = i.estado === "cerrada";
                 return (
-                  <tr key={i.id} style={cerrada ? { opacity: 0.55 } : undefined}>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={i.company}
-                        onChange={(e) => updateInversion(i.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((c) => (
-                          <option key={c.value} value={c.value}>
-                            {c.short}
-                          </option>
-                        ))}
-                      </select>
-<BotonFicha onClick={() => setFicha({ tipo: "inversion", id: i.id })} />
+                  <tr
+                    key={i.id}
+                    style={{ ...(cerrada ? { opacity: 0.55 } : {}), cursor: "pointer" }}
+                    onClick={() => setFicha({ tipo: "inversion", id: i.id })}
+                    title="Click: abrir la ficha de la inversión"
+                  >
+                    {/* 2026-11-14: la fila SOLO MUESTRA; todo se corrige en la ficha de la inversion. */}
+                    <td style={celdaNoWrap}>
+                      {etiqueta(COMPANY_OPTIONS.find((c) => c.value === i.company)?.short || String(i.company))}
+                      <BotonFicha onClick={() => setFicha({ tipo: "inversion", id: i.id })} />
                     </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        list="tipos-inversion"
-                        value={i.tipo}
-                        placeholder="Plazo fijo, FCI…"
-                        onChange={(e) => updateInversion(i.id, "tipo", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={i.descripcion}
-                        onChange={(e) => updateInversion(i.id, "descripcion", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={i.moneda}
-                        onChange={(e) => updateInversion(i.id, "moneda", e.target.value)}
-                      >
-                        <option value="ARS">$ (pesos)</option>
-                        <option value="USD">US$ (dólares)</option>
-                      </select>
-                    </td>
-                    <td>
-                      <NumInput
-                        style={{ ...styles.input, textAlign: "right" }}
-                        value={i.montoInvertido}
-                        onChange={(e) => updateInversion(i.id, "montoInvertido", Number(e.target.value || 0))}
-                      />
-                    </td>
-                    <td>
-                      <NumInput
-                        style={{ ...styles.input, textAlign: "right" }}
-                        value={i.valorActual}
-                        onChange={(e) => updateInversion(i.id, "valorActual", Number(e.target.value || 0))}
-                      />
-                    </td>
+                    <td style={celda}><strong>{i.tipo || "sin tipo"}</strong></td>
+                    <td style={celda}>{i.descripcion || "—"}</td>
+                    <td style={celdaNoWrap}>{i.moneda === "USD" ? "US$" : "$"}</td>
+                    <td style={celdaDerecha}>{montoMoneda(i.montoInvertido || 0, i.moneda)}</td>
+                    <td style={celdaDerecha}>{montoMoneda(i.valorActual || 0, i.moneda)}</td>
                     <td style={{ textAlign: "right", fontWeight: 800, color: col }}>
                       {cre.ganancia >= 0 ? "▲" : "▼"} {montoMoneda(Math.abs(cre.ganancia), i.moneda)}
                       <div style={{ fontSize: 11 }}>{cre.pct.toFixed(1)}%</div>
                     </td>
-                    <td>
-                      <input
-                        type="date"
-                        style={styles.input}
-                        value={i.fechaInicio}
-                        onChange={(e) => updateInversion(i.id, "fechaInicio", e.target.value)}
-                      />
+                    <td style={celdaNoWrap}>{fechaCorta(i.fechaInicio)}</td>
+                    <td style={celdaNoWrap}>{fechaCorta(i.fechaFin)}</td>
+                    <td style={celdaNoWrap}>
+                      {etiqueta(cerrada ? "Cerrada" : "Activa", cerrada ? "#b91c1c" : "#15803d", cerrada ? "#fee2e2" : "#dcfce7")}
                     </td>
-                    <td>
-                      <input
-                        type="date"
-                        style={styles.input}
-                        value={i.fechaFin}
-                        onChange={(e) => updateInversion(i.id, "fechaFin", e.target.value)}
-                      />
+                    <td style={celdaNoWrap}>
+                      {etiqueta(
+                        (i.administration || "blanco") === "negro" ? "Negro" : "Blanco",
+                        (i.administration || "blanco") === "negro" ? "#fff" : "#0f172a",
+                        (i.administration || "blanco") === "negro" ? "#1f2937" : "#e2e8f0"
+                      )}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={i.estado}
-                        onChange={(e) => updateInversion(i.id, "estado", e.target.value)}
-                      >
-                        <option value="activa">Activa</option>
-                        <option value="cerrada">Cerrada</option>
-                      </select>
+                    <td style={celda}>
+                      {i.cuentaId ? (
+                        cuentas.find((c) => c.id === i.cuentaId)?.nombre || i.cuentaId
+                      ) : (
+                        <strong style={{ color: "#b91c1c" }}>⚠ falta la cuenta</strong>
+                      )}
                     </td>
-                    <td>
-                      <select
-                        style={{ ...styles.input, background: i.administration === "negro" ? "#1f2937" : undefined, color: i.administration === "negro" ? "#ffffff" : undefined }}
-                        value={i.administration || "blanco"}
-                        onChange={(e) => updateInversion(i.id, "administration", e.target.value)}
-                      >
-                        <option value="blanco">Blanco</option>
-                        <option value="negro">Negro</option>
-                      </select>
+                    <td style={celdaDerecha}>
+                      {i.montoRescatado != null
+                        ? montoMoneda(i.montoRescatado, i.moneda)
+                        : cerrada
+                        ? montoMoneda(i.valorActual || 0, i.moneda)
+                        : "al cerrarla"}
                     </td>
-                    <td>
-                      <select style={{ ...styles.input, ...(i.cuentaId ? {} : { borderColor: "#f87171", background: "#fef2f2" }) }} value={i.cuentaId || ""} onChange={(e) => updateInversion(i.id, "cuentaId", e.target.value || undefined)}>
-                        <option value="">— Elegí la cuenta —</option>
-                        {cuentas
-                          .filter((c) => c.company === i.company && c.activa !== false && (!c.moneda || c.moneda === i.moneda))
-                          .map((c) => (
-                            <option key={c.id} value={c.id}>{c.nombre}</option>
-                          ))}
-                      </select>
+                    <td style={celda}>
+                      {(RENGLONES_RESCATE_LABEL.find(([k]) => k === (i.renglonRescate || "")) || [])[1] || "—"}
                     </td>
-                    <td>
-                      <NumInput
-                        style={{ ...styles.input, textAlign: "right" }}
-                        disabled={!cerrada}
-                        title={cerrada ? "Lo que volvió al rescatarla (si queda vacío, se toma el valor actual)" : "Se carga al cerrarla"}
-                        placeholder={cerrada ? String(i.valorActual || 0) : "al cerrarla"}
-                        value={i.montoRescatado ?? ""}
-                        onChange={(e) => updateInversion(i.id, "montoRescatado", e.target.value === "" ? undefined : Number(e.target.value))}
-                      />
-                    </td>
-                    <td>
-                      <select style={styles.input} value={i.renglonRescate || ""} onChange={(e) => updateInversion(i.id, "renglonRescate", e.target.value || undefined)}>
-                        {RENGLONES_RESCATE_LABEL.map(([k, l]) => (
-                          <option key={k} value={k}>{l}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
+                    <td style={celdaNoWrap}>
                       <FirmanteCelda value={i.firmante} firmadoEn={i.firmadoEn} />
                     </td>
-                    <td>
+                    <td onClick={(ev) => ev.stopPropagation()}>
                       <ButtonLike onClick={() => removeInversion(i.id)} secondary>
                         Quitar
                       </ButtonLike>

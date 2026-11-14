@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-14g",
+    fecha: "14/11/2026",
+    titulo: "Seguros, Inversiones y Tarjetas: las filas no se tipean",
+    items: [
+      {
+        titulo: "Las tres solapas se corrigen en la ficha",
+        que: "Las filas eran un muro de campos editables (13 en Seguros, 14 en Inversiones). Ahora muestran el dato con etiquetas (empresa, blanco/negro, estado, vigencia) y todo se corrige en la ficha: un click en la fila la abre.",
+        como: "Seguros / Inversiones / Bancos y tarjetas → click en la fila (o el botón 🗂).",
+        tab: "seguros",
+      },
+      {
+        titulo: "Cinco datos que estaban sueltos ahora viven en la ficha",
+        que: "En Seguros: si genera la previsión mensual en el Calendario (el de ART va destildado porque ya está en la nómina) y en qué renglón se imputa. En Inversiones: de qué cuenta sale, el monto rescatado y el renglón del rescate. Antes solo se podían tocar desde la fila.",
+        como: "La ficha los explica al lado de cada campo. En Inversiones, si falta la cuenta, la fila lo avisa en rojo.",
+        tab: "inversiones",
+      },
+    ],
+  },
+  {
     id: "2026-11-14f",
     fecha: "14/11/2026",
     titulo: "Dos paneles menos: la información va donde se usa",

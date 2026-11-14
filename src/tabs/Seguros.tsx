@@ -54,6 +54,15 @@ const VIG_COLOR: Record<string, string> = {
   sin_fecha: "#64748b",
 };
 
+// 2026-11-14 (Nicolas): las filas solo MUESTRAN y la pantalla queda limpia; se corrige en la ficha.
+const celda: React.CSSProperties = { fontSize: 12.5, color: "#0f172a", maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const celdaNoWrap: React.CSSProperties = { ...celda, whiteSpace: "nowrap" };
+const celdaDerecha: React.CSSProperties = { ...celdaNoWrap, textAlign: "right", fontWeight: 700 };
+const fechaCorta = (iso?: string) => (iso ? String(iso).slice(0, 10).split("-").reverse().join("/") : "—");
+const etiqueta = (texto: string, fg = "#475569", bg = "#f1f5f9") => (
+  <span style={{ fontSize: 11, fontWeight: 700, color: fg, background: bg, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>{texto}</span>
+);
+
 export function SegurosTab({
   seguros,
   hoyIso,
@@ -79,6 +88,9 @@ export function SegurosTab({
       {ficha && (() => {
         const s = seguros.find((x) => x.id === ficha.id);
         if (!s) return null;
+        // alimentaPlanilla ausente = lo que hace hoy el sistema (ART no, el resto si): la ficha tiene que
+        // mostrar ESO tildado, igual que la fila (2026-11-14).
+        const valoresDeLaFicha = { ...s, alimentaPlanilla: s.alimentaPlanilla ?? !esArtSeguro(s.tipo) };
         const campos: CampoFicha[] = [
           { key: "company", label: "Empresa (la que paga)", tipo: "empresa" },
           { key: "tipo", label: "Tipo", tipo: "texto", sugerencias: [...TIPOS_SEGURO_SUGERIDOS] },
@@ -91,13 +103,29 @@ export function SegurosTab({
           { key: "vigenciaHasta", label: "Vigencia hasta", tipo: "fecha" },
           { key: "administration", label: "Blanco / negro", tipo: "select", opciones: [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }] },
           { key: "estado", label: "Estado", tipo: "select", opciones: [{ value: "activo", label: "Activo" }, { value: "baja", label: "Dado de baja" }] },
+          // 2026-11-14: estaban solo en la fila. El de ART va destildado: su costo ya esta en la nomina.
+          {
+            key: "alimentaPlanilla",
+            label: "Genera la previsión mensual en el Calendario anual",
+            tipo: "check",
+            ayuda: esArtSeguro(s.tipo || "")
+              ? "ART: su costo ya está en la nómina. Dejalo destildado para no contarlo dos veces."
+              : "Tildado: su costo mensual entra como previsión en el Calendario.",
+          },
+          {
+            key: "conceptKey",
+            label: "Renglón del Calendario donde se imputa",
+            tipo: "select",
+            vacio: "Automático (por tipo)",
+            opciones: RENGLONES_SEGUROS.map((r) => ({ value: r.key, label: r.label })),
+          },
           { key: "notas", label: "Notas", tipo: "area" },
         ];
         return (
           <FichaRegistro
             titulo={`${s.tipo || "Seguro"}${s.descripcion ? ` · ${s.descripcion}` : ""}`}
             subtitulo={[s.aseguradora, s.numeroPoliza && `póliza ${s.numeroPoliza}`].filter(Boolean).join(" · ")}
-            valores={s}
+            valores={valoresDeLaFicha}
             campos={campos}
             empresas={COMPANY_OPTIONS}
             onCambiar={(k, v) => updateSeguro(s.id, k as keyof Seguro, v)}
@@ -259,135 +287,60 @@ export function SegurosTab({
                 const vig = seguroVigencia(s.vigenciaHasta, hoyIso);
                 const dadoBaja = s.estado === "baja";
                 return (
-                  <tr key={s.id} style={dadoBaja ? { opacity: 0.55 } : undefined}>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={s.company}
-                        onChange={(e) => updateSeguro(s.id, "company", e.target.value)}
-                      >
-                        {COMPANY_OPTIONS.map((c) => (
-                          <option key={c.value} value={c.value}>
-                            {c.short}
-                          </option>
-                        ))}
-                      </select>
-<BotonFicha onClick={() => setFicha({ tipo: "seguro", id: s.id })} />
+                  <tr
+                    key={s.id}
+                    style={{ ...(dadoBaja ? { opacity: 0.55 } : {}), cursor: "pointer" }}
+                    onClick={() => setFicha({ tipo: "seguro", id: s.id })}
+                    title="Click: abrir la ficha del seguro"
+                  >
+                    {/* 2026-11-14: la fila SOLO MUESTRA; todo se corrige en la ficha del seguro. */}
+                    <td style={celdaNoWrap}>
+                      {etiqueta(COMPANY_OPTIONS.find((c) => c.value === s.company)?.short || String(s.company))}
+                      <BotonFicha onClick={() => setFicha({ tipo: "seguro", id: s.id })} />
                     </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        list="tipos-seguro"
-                        value={s.tipo}
-                        placeholder="ART, Caución…"
-                        onChange={(e) => updateSeguro(s.id, "tipo", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={s.descripcion}
-                        placeholder="Bien asegurado / detalle"
-                        onChange={(e) => updateSeguro(s.id, "descripcion", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={s.aseguradora}
-                        onChange={(e) => updateSeguro(s.id, "aseguradora", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        style={styles.input}
-                        value={s.numeroPoliza}
-                        onChange={(e) => updateSeguro(s.id, "numeroPoliza", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <NumInput
-                        style={{ ...styles.input, textAlign: "right" }}
-                        value={s.costoMensual}
-                        onChange={(e) => updateSeguro(s.id, "costoMensual", Number(e.target.value || 0))}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        style={styles.input}
-                        value={s.vigenciaDesde}
-                        onChange={(e) => updateSeguro(s.id, "vigenciaDesde", e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input
-                        type="date"
-                        style={styles.input}
-                        value={s.vigenciaHasta}
-                        onChange={(e) => updateSeguro(s.id, "vigenciaHasta", e.target.value)}
-                      />
+                    <td style={celda}><strong>{s.tipo || "sin tipo"}</strong></td>
+                    <td style={celda}>{s.descripcion || "—"}</td>
+                    <td style={celda}>{s.aseguradora || "—"}</td>
+                    <td style={celda}>{s.numeroPoliza || "—"}</td>
+                    <td style={celdaDerecha}>{money(s.costoMensual || 0)}</td>
+                    <td style={celdaNoWrap}>{fechaCorta(s.vigenciaDesde)}</td>
+                    <td style={celdaNoWrap}>
+                      {fechaCorta(s.vigenciaHasta)}
                       <div style={{ fontSize: 10, fontWeight: 800, color: VIG_COLOR[vig], marginTop: 1 }}>
                         {ETIQUETA_VIGENCIA[vig]}
                       </div>
                     </td>
-                    <td>
-                      <NumInput
-                        min={1}
-                        max={31}
-                        style={{ ...styles.input, width: 56, textAlign: "right" }}
-                        value={s.diaDebito ?? 10}
-                        onChange={(e) => updateSeguro(s.id, "diaDebito", Number(e.target.value || 1))}
-                      />
+                    <td style={celdaDerecha}>{s.diaDebito ?? 10}</td>
+                    <td style={celdaNoWrap}>
+                      {etiqueta(
+                        (s.administration || "blanco") === "negro" ? "Negro" : "Blanco",
+                        (s.administration || "blanco") === "negro" ? "#fff" : "#0f172a",
+                        (s.administration || "blanco") === "negro" ? "#1f2937" : "#e2e8f0"
+                      )}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={s.administration || "blanco"}
-                        onChange={(e) => updateSeguro(s.id, "administration", e.target.value)}
-                      >
-                        <option value="blanco">Blanco</option>
-                        <option value="negro">Negro</option>
-                      </select>
+                    <td
+                      style={{ ...celdaNoWrap, textAlign: "center" }}
+                      title={
+                        esArtSeguro(s.tipo)
+                          ? "ART: su costo ya está en la nómina, por eso no se cuenta dos veces."
+                          : "Si dice sí, genera la previsión mensual en el Calendario anual."
+                      }
+                    >
+                      {(s.alimentaPlanilla ?? !esArtSeguro(s.tipo)) ? "✓" : "—"}
                     </td>
-                    <td style={{ textAlign: "center" }}>
-                      <input
-                        type="checkbox"
-                        checked={s.alimentaPlanilla ?? !esArtSeguro(s.tipo)}
-                        title={
-                          esArtSeguro(s.tipo)
-                            ? "ART: su costo ya está en la nómina. Dejalo destildado para no contarlo dos veces."
-                            : "Si está tildado, genera la previsión mensual en el Calendario anual."
-                        }
-                        onChange={(e) => updateSeguro(s.id, "alimentaPlanilla", e.target.checked)}
-                      />
+                    <td style={celda}>
+                      {s.conceptKey
+                        ? RENGLONES_SEGUROS.find((r) => r.key === s.conceptKey)?.label || s.conceptKey
+                        : "automático (por tipo)"}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={s.conceptKey || ""}
-                        title="En qué renglón de la planilla se imputa. Automático = se deduce del tipo."
-                        onChange={(e) => updateSeguro(s.id, "conceptKey", e.target.value)}
-                      >
-                        <option value="">Automático (por tipo)</option>
-                        {RENGLONES_SEGUROS.map((r) => (
-                          <option key={r.key} value={r.key}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
+                    <td style={celdaNoWrap}>
+                      {etiqueta(
+                        s.estado === "baja" ? "Dado de baja" : "Activo",
+                        s.estado === "baja" ? "#b91c1c" : "#15803d",
+                        s.estado === "baja" ? "#fee2e2" : "#dcfce7"
+                      )}
                     </td>
-                    <td>
-                      <select
-                        style={styles.input}
-                        value={s.estado}
-                        onChange={(e) => updateSeguro(s.id, "estado", e.target.value)}
-                      >
-                        <option value="activo">Activo</option>
-                        <option value="baja">Dado de baja</option>
-                      </select>
-                    </td>
-                    <td>
+                    <td onClick={(ev) => ev.stopPropagation()}>
                       {s.polizaUrl ? (
                         <ButtonLike onClick={() => onOpenPoliza(s)} secondary>
                           Ver póliza
@@ -406,7 +359,7 @@ export function SegurosTab({
                         </ButtonLike>
                       )}
                     </td>
-                    <td>
+                    <td onClick={(ev) => ev.stopPropagation()}>
                       <ButtonLike onClick={() => removeSeguro(s.id)} secondary>
                         Quitar
                       </ButtonLike>
