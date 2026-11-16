@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-16d",
+    fecha: "16/11/2026",
+    titulo: "Tipos de mueble: la fila se abre con un click",
+    items: [
+      {
+        titulo: "El listado solo muestra y la ficha corrige",
+        que: "Era el último campo que quedaba editable en una fila: el nombre del tipo. Ahora la fila muestra el nombre, la descripción, los pasos, las medidas y las horas, y un CLICK abre la ficha, que es donde se corrige todo (nombre, medidas habituales, cuadrilla, tareas, materiales y receta).",
+        como: "Fabricación → Tipos de mueble → click en la fila. El click derecho sigue para duplicar, pausar o borrar, y el punto verde pausa o activa sin abrir la ficha.",
+        tab: "fabricacion",
+      },
+    ],
+  },
+  {
     id: "2026-11-16c",
     fecha: "16/11/2026",
     titulo: "Stock: el código repetido ya no pasa desapercibido",

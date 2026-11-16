@@ -101,7 +101,7 @@ export function TiposMueble({
       }
     >
       <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
-        Cada tipo de mueble o trabajo lleva las tareas que se le tildan en su ficha (cada una con su paso a paso), ordenadas por pasos: las del mismo paso (3.1, 3.2) las pueden hacer distintas personas a la vez y el paso siguiente arranca cuando terminó todo el anterior. Cada tarea saca su cantidad de las medidas del mueble (por mueble, ml, m² o m³); con el tiempo estándar de la tarea da las horas. Click derecho: abrir la ficha (tareas, receta y prueba de tiempos), duplicar, pausar o borrar. El nombre se corrige en la misma fila y la lista se ordena sola por nombre.
+        Cada tipo de mueble o trabajo lleva las tareas que se le tildan en su ficha (cada una con su paso a paso), ordenadas por pasos: las del mismo paso (3.1, 3.2) las pueden hacer distintas personas a la vez y el paso siguiente arranca cuando terminó todo el anterior. Cada tarea saca su cantidad de las medidas del mueble (por mueble, ml, m² o m³); con el tiempo estándar de la tarea da las horas. Click en la fila: abrir la ficha, que es donde se corrige TODO (el nombre, las medidas habituales, la cuadrilla, las tareas, los materiales y la receta). Click derecho: duplicar, pausar o borrar. La lista se ordena sola por nombre.
       </div>
       {ordenados.length === 0 ? (
         <div style={{ fontSize: 12.5, color: "#94a3b8" }}>Todavía no hay tipos de mueble o trabajo. Creá uno o partí de una tarea.</div>
@@ -141,22 +141,32 @@ export function TiposMueble({
                 return (
                   <tr
                     key={tipo.id}
-                    style={{ opacity: pausado ? 0.5 : 1 }}
+                    style={{ opacity: pausado ? 0.5 : 1, cursor: "pointer" }}
+                    onClick={() => setAbierto(tipo.id)}
                     onContextMenu={(ev) => {
                       ev.preventDefault();
                       ev.stopPropagation();
                       setMenu({ x: ev.clientX, y: ev.clientY, tipo });
                     }}
+                    title="Click: abrir la ficha del tipo de mueble. Click derecho: duplicar, pausar o borrar. El punto verde pausa o activa."
                   >
+                    {/* 2026-11-16: la fila SOLO MUESTRA; el nombre y todo lo demas se corrigen en la ficha. */}
                     <td style={tdNombre}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span
                           title={pausado ? "Pausado (click para activar)" : "Activo (click para pausar)"}
-                          onClick={() => onGuardar({ ...tipo, activa: pausado })}
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            onGuardar({ ...tipo, activa: pausado });
+                          }}
                           style={{ width: 8, height: 8, borderRadius: 999, background: pausado ? "#cbd5e1" : "#16a34a", cursor: "pointer", flex: "none" }}
                         />
-                        <input style={{ ...inputCelda, fontWeight: 700 }} value={tipo.nombre} onChange={(e) => onGuardar({ ...tipo, nombre: e.target.value })} {...focoCelda} />
+                        <strong>{tipo.nombre || "sin nombre"}</strong>
+                        {pausado && <span style={{ fontSize: 11, fontWeight: 700, color: "#64748b" }}>· pausado</span>}
                       </span>
+                      {tipo.descripcion ? (
+                        <div style={{ fontSize: 11.5, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{tipo.descripcion}</div>
+                      ) : null}
                     </td>
                     <td style={{ ...tdDato, textAlign: "right" }}>{res.pasos.length}</td>
                     <td style={{ ...tdDato, fontSize: 12 }}>{[tipo.largo, tipo.alto, tipo.profundidad].map((x) => fmt(x || 0)).join(" × ")}</td>
@@ -288,6 +298,7 @@ function EditorReceta({
           <input
             style={{ fontSize: 16, fontWeight: 800, border: "none", borderBottom: "1px dashed #cbd5e1", flex: 1, padding: "2px 0" }}
             value={tipo.nombre}
+            placeholder="Nombre del tipo de mueble o trabajo"
             onChange={(e) => onGuardar({ ...tipo, nombre: e.target.value })}
           />
           <ButtonLike onClick={onCerrar}>Listo</ButtonLike>
