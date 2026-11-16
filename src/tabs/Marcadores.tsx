@@ -10,7 +10,7 @@ import {
 import { money } from "../lib/format";
 import { newId } from "../domain/id";
 import { elegirImpacto, fijarValor, MESES_DEL_PROMEDIO, volverAlSugerido, type CostoEmpresarial, type ImpactoCosto } from "../domain/costosEmpresariales";
-import { WORK_TYPE_OPTIONS, PERSONAL_PROVISION_KINDS } from "../domain/types";
+import { WORK_TYPE_OPTIONS, PERSONAL_PROVISION_KINDS, SUPPLY_MARKER_SUBTYPES } from "../domain/types";
 import type {
   CompanyName,
   WorkTypeName,
@@ -87,6 +87,25 @@ type MarcadoresTabProps = {
   addPersonalProvisionMarker: () => void;
   removePersonalProvisionMarker: (id: number) => void;
 };
+
+// 2026-11-16 (Nicolas): las filas de los cuatro bloques SOLO MUESTRAN. Todo se corrige en la ficha del
+// marcador (la misma que ya se abria con el boton de la ficha), asi la pantalla deja de ser un muro de
+// cajitas y no hay dos lugares para el mismo dato.
+const celdaM: React.CSSProperties = { padding: "1px 8px", fontSize: 12.5, color: "#0f172a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" };
+const celdaMonto: React.CSSProperties = { ...celdaM, textAlign: "right", fontWeight: 700 };
+const etiquetaM = (texto: string, fg = "#475569", bg = "#f1f5f9") => (
+  <span style={{ fontSize: 11, fontWeight: 700, color: fg, background: bg, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>{texto}</span>
+);
+const PuntoActivo = ({ activo, onClick }: { activo: boolean; onClick: () => void }) => (
+  <span
+    title={activo ? "Activo (click: desactivar)" : "Inactivo (click: activar)"}
+    onClick={(ev) => {
+      ev.stopPropagation();
+      onClick();
+    }}
+    style={{ display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto", cursor: "pointer", background: activo ? "#16a34a" : "#cbd5f5" }}
+  />
+);
 
 export function MarcadoresTab({
   tiposTrabajo = [...WORK_TYPE_OPTIONS],
@@ -181,9 +200,20 @@ export function MarcadoresTab({
         const fin: CampoFicha[] = [{ key: "active", label: "Activo", tipo: "check" }, { key: "notes", label: "Notas", tipo: "area" }];
         const def: Record<string, { lista: any[]; setter: any; titulo: (x: any) => string; campos: CampoFicha[] }> = {
           fijo: { lista: fixedMarkers, setter: setFixedMarkers, titulo: (x) => x.description || x.group || "Costo fijo", campos: [...base, tipoTrabajo,
-            { key: "group", label: "Grupo", tipo: "texto", sugerencias: fixedMarkerGroupOptions.map(String) },
+            // Grupo: la lista de grupos y la opcion de crear uno nuevo (estaba solo en la fila, 16/11/2026).
+            {
+              key: "group",
+              label: "Grupo",
+              tipo: "select",
+              opciones: [
+                ...fixedMarkerGroupOptions.map((g) => ({ value: String(g), label: String(g) })),
+                { value: "__add_group__", label: "+ Agregar grupo..." },
+              ],
+            },
             { key: "description", label: "Concepto", tipo: "texto" }, { key: "amount", label: "Monto mensual", tipo: "numero" }, ...fin] },
           insumo: { lista: supplyMarkers, setter: setSupplyMarkers, titulo: (x) => x.description || "Insumo", campos: [...base, tipoTrabajo,
+            // 16/11/2026: estaba solo en la fila.
+            { key: "subtype", label: "Tipo de insumo", tipo: "select", opciones: SUPPLY_MARKER_SUBTYPES.map((t) => ({ value: t, label: t })) },
             { key: "description", label: "Insumo", tipo: "texto" }, { key: "qty", label: "Cantidad", tipo: "numero" }, { key: "unit", label: "Unidad", tipo: "texto" },
             { key: "unitPrice", label: "Precio unitario", tipo: "numero" }, ...fin] },
           mano: { lista: laborMarkers, setter: setLaborMarkers, titulo: (x) => x.category || "Mano de obra", campos: [...base, tipoTrabajo,
@@ -191,6 +221,8 @@ export function MarcadoresTab({
             { key: "monthlyHoursPerEmployee", label: "Horas por mes c/u", tipo: "numero" }, { key: "hourlyRate", label: "Valor hora", tipo: "numero" },
             { key: "hoursBase", label: "Horas base", tipo: "numero" }, ...fin] },
           provision: { lista: personalProvisionMarkers, setter: setPersonalProvisionMarkers, titulo: (x) => x.description || x.kind || "Provisión", campos: [...base,
+            // 16/11/2026: estaba solo en la fila.
+            { key: "kind", label: "Tipo de provisión", tipo: "select", opciones: PERSONAL_PROVISION_KINDS.map((k) => ({ value: k, label: k })) },
             { key: "description", label: "Detalle", tipo: "texto" }, { key: "amountPerDelivery", label: "Monto por entrega", tipo: "numero" },
             { key: "periodicityMonths", label: "Cada cuántos meses", tipo: "numero" }, { key: "shared", label: "Compartido", tipo: "check" }, ...fin] },
         };
@@ -203,7 +235,15 @@ export function MarcadoresTab({
             valores={valores}
             campos={d.campos}
             empresas={COMPANY_OPTIONS}
-            onCambiar={(k, v) => updateArrayItem(d.setter, ficha.id, k as any, v)}
+            onCambiar={(k, v) => {
+              // "+ Agregar grupo...": lo pregunta y lo crea en la lista del sistema, como hacia la fila.
+              if (k === "group" && v === "__add_group__") {
+                const creado = promptAndCreateCostAnalysisGroup("General");
+                if (creado) updateArrayItem(d.setter, ficha.id, "group" as any, creado.name as any);
+                return;
+              }
+              updateArrayItem(d.setter, ficha.id, k as any, v);
+            }}
             onCerrar={() => setFicha(null)}
           />
         );
@@ -555,13 +595,16 @@ export function MarcadoresTab({
                   return (
                   <tr
                     key={item.id}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setFicha({ tipo: "fijo", id: item.id })}
                     onContextMenu={(ev) => {
                       ev.preventDefault();
                       ev.stopPropagation();
                       if (window.confirm(`¿Quitar el marcador "${item.description}"?`)) removeFixedMarker(item.id);
                     }}
-                    title="Click derecho: quitar. El punto verde activa o desactiva."
+                    title="Click: abrir la ficha del marcador. Click derecho: quitar. El punto verde activa o desactiva."
                   >
+                    {/* 2026-11-16: la fila SOLO MUESTRA; todo se corrige en la ficha. */}
                     <td
                       style={{
                         ...tdNombre, fontWeight: 400, padding: 0,
@@ -571,86 +614,22 @@ export function MarcadoresTab({
                       }}
                     >
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                        <span
-                          title={item.active ? "Activo" : "Inactivo"}
-                          onClick={() => updateArrayItem(setFixedMarkers, item.id, "active", !item.active)}
-                          style={{
-                            display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
-                            cursor: "pointer", background: item.active ? "#16a34a" : "#cbd5f5",
-                          }}
-                        />
-                        <input
-                          style={inputCelda}
-                          {...focoCelda}
-                          value={item.description}
-                          onChange={(e) => updateArrayItem(setFixedMarkers, item.id, "description", e.target.value)}
-                        />
+                        <PuntoActivo activo={item.active} onClick={() => updateArrayItem(setFixedMarkers, item.id, "active", !item.active)} />
+                        <strong>{item.description || "sin concepto"}</strong>
+                        <BotonFicha onClick={() => setFicha({ tipo: "fijo", id: item.id })} />
                       </span>
                     </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <AmountInput
-                        style={inputCeldaDerecha}
-                        {...focoCelda}
-                        value={item.amount}
-                        onChange={(n) => updateArrayItem(setFixedMarkers, item.id, "amount", n)}
-                      />
-                    </td>
+                    <td style={celdaMonto}>{money(item.amount || 0)}</td>
                     <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.group}
-                          onChange={(e) => {
-                            if (e.target.value === "__add_group__") {
-                              const createdGroup = promptAndCreateCostAnalysisGroup("General");
-                              if (createdGroup) {
-                                updateArrayItem(setFixedMarkers, item.id, "group", createdGroup.name as MarkerFixedGroup);
-                              }
-                              return;
-                            }
-                            updateArrayItem(setFixedMarkers, item.id, "group", e.target.value as MarkerFixedGroup);
-                          }}
-                        >
-                          {fixedMarkerGroupOptions.map((group) => (
-                            <option key={group} value={group}>
-                              {group}
-                            </option>
-                          ))}
-                          <option value="__add_group__">+ Agregar grupo...</option>
-                        </select>
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.workType}
-                          onChange={(e) => updateArrayItem(setFixedMarkers, item.id, "workType", e.target.value as WorkTypeName)}
-                        >
-                          {tiposTrabajo.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          style={{ ...inputCelda, width: "auto", color: markerCompany.primary, fontWeight: 700 }}
-                          value={item.company}
-                          onChange={(e) => updateArrayItem(setFixedMarkers, item.id, "company", e.target.value as CompanyName)}
-                        >
-                          {COMPANY_OPTIONS.map((company) => (
-                            <option key={company.value} value={company.value}>
-                              {company.short}
-                            </option>
-                          ))}
-                        </select>
-<BotonFicha onClick={() => setFicha({ tipo: "fijo", id: item.id })} />
-                        <input
-                          style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                          {...focoCelda}
-                          value={item.notes}
-                          placeholder="observación"
-                          onChange={(e) => updateArrayItem(setFixedMarkers, item.id, "notes", e.target.value)}
-                        />
+                        {etiquetaM(String(item.group || "sin grupo"))}
+                        {etiquetaM(String(item.workType || "sin tipo"))}
+                        {etiquetaM(markerCompany.short || String(item.company), markerCompany.primary, markerCompany.soft || "#f1f5f9")}
+                        {item.sigueSugerido && etiquetaM("lo pone el promedio de 3 meses", "#7c3aed", "#ede9fe")}
+                        {item.notes ? <span style={{ color: "#94a3b8" }}>{item.notes}</span> : null}
                       </span>
                     </td>
-                    <td style={{ ...tdDato, ...tdAcciones }}>
+                    <td style={{ ...tdDato, ...tdAcciones }} onClick={(ev) => ev.stopPropagation()}>
                       <button
                         type="button"
                         title="Borrar"
@@ -716,13 +695,16 @@ export function MarcadoresTab({
                   return (
                   <tr
                     key={item.id}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setFicha({ tipo: "insumo", id: item.id })}
                     onContextMenu={(ev) => {
                       ev.preventDefault();
                       ev.stopPropagation();
                       if (window.confirm(`¿Quitar el marcador "${item.description}"?`)) removeSupplyMarker(item.id);
                     }}
-                    title="Click derecho: quitar. El punto verde activa o desactiva."
+                    title="Click: abrir la ficha del marcador. Click derecho: quitar. El punto verde activa o desactiva."
                   >
+                    {/* 2026-11-16: la fila SOLO MUESTRA; todo se corrige en la ficha. */}
                     <td
                       style={{
                         ...tdNombre, fontWeight: 400, padding: 0,
@@ -731,88 +713,27 @@ export function MarcadoresTab({
                       }}
                     >
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                        <span
-                          title={item.active ? "Activo" : "Inactivo"}
-                          onClick={() => updateArrayItem(setSupplyMarkers, item.id, "active", !item.active)}
-                          style={{
-                            display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
-                            cursor: "pointer", background: item.active ? "#16a34a" : "#cbd5f5",
-                          }}
-                        />
-                        <input
-                          style={inputCelda}
-                          {...focoCelda}
-                          value={item.description}
-                          onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "description", e.target.value)}
-                        />
+                        <PuntoActivo activo={item.active} onClick={() => updateArrayItem(setSupplyMarkers, item.id, "active", !item.active)} />
+                        <strong>{item.description || "sin descripción"}</strong>
+                        <BotonFicha onClick={() => setFicha({ tipo: "insumo", id: item.id })} />
                       </span>
                     </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <span style={{ display: "flex", alignItems: "center", padding: "0 4px" }}>
-                        <NumInput
-                          style={inputCeldaDerecha}
-                          {...focoCelda}
-                          value={item.qty}
-                          onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "qty", Number(e.target.value))}
-                        />
-                        <input
-                          style={{ ...inputCelda, width: 44, color: "#94a3b8" }}
-                          {...focoCelda}
-                          value={item.unit}
-                          onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "unit", e.target.value)}
-                        />
-                      </span>
+                    <td style={celdaMonto}>
+                      {item.qty || 0}
+                      <span style={{ color: "#94a3b8", fontWeight: 600 }}> {item.unit || ""}</span>
                     </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <AmountInput
-                        style={inputCeldaDerecha}
-                        {...focoCelda}
-                        value={item.unitPrice}
-                        onChange={(n) => updateArrayItem(setSupplyMarkers, item.id, "unitPrice", n)}
-                      />
-                    </td>
+                    <td style={celdaMonto}>{money(item.unitPrice || 0)}</td>
                     <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
-                      {money(item.qty * item.unitPrice)}
+                      {money((item.qty || 0) * (item.unitPrice || 0))}
                     </td>
                     <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.subtype}
-                          onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "subtype", e.target.value as SupplyMarkerSubtype)}
-                        >
-                          {["Insumos basicos", "Flete", "Entrega", "Embalaje", "Viaticos"].map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.workType}
-                          onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "workType", e.target.value as WorkTypeName)}
-                        >
-                          {tiposTrabajo.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          style={{ ...inputCelda, width: "auto", color: markerCompany.primary, fontWeight: 700 }}
-                          value={item.company}
-                          onChange={(e) => updateArrayItem(setSupplyMarkers, item.id, "company", e.target.value as CompanyName)}
-                        >
-                          {COMPANY_OPTIONS.map((company) => (
-                            <option key={company.value} value={company.value}>
-                              {company.short}
-                            </option>
-                          ))}
-                        </select>
-<BotonFicha onClick={() => setFicha({ tipo: "insumo", id: item.id })} />
+                        {etiquetaM(String(item.subtype || "sin tipo de insumo"))}
+                        {etiquetaM(String(item.workType || "sin tipo"))}
+                        {etiquetaM(markerCompany.short || String(item.company), markerCompany.primary, markerCompany.soft || "#f1f5f9")}
                       </span>
                     </td>
-                    <td style={{ ...tdDato, ...tdAcciones }}>
+                    <td style={{ ...tdDato, ...tdAcciones }} onClick={(ev) => ev.stopPropagation()}>
                       <button
                         type="button"
                         title="Borrar"
@@ -892,13 +813,16 @@ export function MarcadoresTab({
                   return (
                   <tr
                     key={item.id}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setFicha({ tipo: "mano", id: item.id })}
                     onContextMenu={(ev) => {
                       ev.preventDefault();
                       ev.stopPropagation();
                       if (window.confirm(`¿Quitar el marcador "${item.category}"?`)) removeLaborMarker(item.id);
                     }}
-                    title="Click derecho: quitar. El punto verde activa o desactiva."
+                    title="Click: abrir la ficha del marcador. Click derecho: quitar. El punto verde activa o desactiva."
                   >
+                    {/* 2026-11-16: la fila SOLO MUESTRA; todo se corrige en la ficha. */}
                     <td
                       style={{
                         ...tdNombre, fontWeight: 400, padding: 0,
@@ -907,84 +831,23 @@ export function MarcadoresTab({
                       }}
                     >
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                        <span
-                          title={item.active ? "Activo" : "Inactivo"}
-                          onClick={() => updateArrayItem(setLaborMarkers, item.id, "active", !item.active)}
-                          style={{
-                            display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
-                            cursor: "pointer", background: item.active ? "#16a34a" : "#cbd5f5",
-                          }}
-                        />
-                        <input
-                          style={inputCelda}
-                          {...focoCelda}
-                          value={item.category}
-                          onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "category", e.target.value)}
-                        />
+                        <PuntoActivo activo={item.active} onClick={() => updateArrayItem(setLaborMarkers, item.id, "active", !item.active)} />
+                        <strong>{item.category || "sin categoría"}</strong>
+                        <BotonFicha onClick={() => setFicha({ tipo: "mano", id: item.id })} />
                       </span>
                     </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <NumInput
-                        style={inputCeldaDerecha}
-                        {...focoCelda}
-                        value={item.employees}
-                        onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "employees", Number(e.target.value))}
-                      />
-                    </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <NumInput
-                        style={inputCeldaDerecha}
-                        {...focoCelda}
-                        value={item.monthlyHoursPerEmployee}
-                        onChange={(e) =>
-                          updateArrayItem(setLaborMarkers, item.id, "monthlyHoursPerEmployee", Number(e.target.value))
-                        }
-                      />
-                    </td>
-                    <td style={{ ...tdDato, padding: 0 }}>
-                      <AmountInput
-                        style={inputCeldaDerecha}
-                        {...focoCelda}
-                        value={item.hourlyRate}
-                        onChange={(n) => updateArrayItem(setLaborMarkers, item.id, "hourlyRate", n)}
-                      />
-                    </td>
+                    <td style={celdaMonto}>{item.employees || 0}</td>
+                    <td style={celdaMonto}>{item.monthlyHoursPerEmployee || 0}</td>
+                    <td style={celdaMonto}>{money(item.hourlyRate || 0)}</td>
                     <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
-                        <span style={{ color: "#94a3b8" }}>hs base</span>
-                        <NumInput
-                          style={{ ...inputCelda, width: 70, textAlign: "right" }}
-                          {...focoCelda}
-                          value={item.hoursBase}
-                          onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "hoursBase", Number(e.target.value))}
-                        />
-                        <strong style={{ color: "#0f172a" }}>{money(item.hoursBase * item.hourlyRate)}</strong>
-                        <select
-                          style={{ ...inputCelda, width: "auto" }}
-                          value={item.workType}
-                          onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "workType", e.target.value as WorkTypeName)}
-                        >
-                          {tiposTrabajo.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                        <select
-                          style={{ ...inputCelda, width: "auto", color: markerCompany.primary, fontWeight: 700 }}
-                          value={item.company}
-                          onChange={(e) => updateArrayItem(setLaborMarkers, item.id, "company", e.target.value as CompanyName)}
-                        >
-                          {COMPANY_OPTIONS.map((company) => (
-                            <option key={company.value} value={company.value}>
-                              {company.short}
-                            </option>
-                          ))}
-                        </select>
-<BotonFicha onClick={() => setFicha({ tipo: "mano", id: item.id })} />
+                        <span style={{ color: "#94a3b8" }}>{item.hoursBase || 0} hs base</span>
+                        <strong style={{ color: "#0f172a" }}>{money((item.hoursBase || 0) * (item.hourlyRate || 0))}</strong>
+                        {etiquetaM(String(item.workType || "sin tipo"))}
+                        {etiquetaM(markerCompany.short || String(item.company), markerCompany.primary, markerCompany.soft || "#f1f5f9")}
                       </span>
                     </td>
-                    <td style={{ ...tdDato, ...tdAcciones }}>
+                    <td style={{ ...tdDato, ...tdAcciones }} onClick={(ev) => ev.stopPropagation()}>
                       <button
                         type="button"
                         title="Borrar"
@@ -1064,13 +927,16 @@ export function MarcadoresTab({
                   return (
                     <tr
                       key={item.id}
+                      style={{ cursor: "pointer" }}
+                      onClick={() => setFicha({ tipo: "provision", id: item.id })}
                       onContextMenu={(ev) => {
                         ev.preventDefault();
                         ev.stopPropagation();
                         if (window.confirm(`¿Quitar el marcador "${item.description}"?`)) removePersonalProvisionMarker(item.id);
                       }}
-                      title="Click derecho: quitar. El punto verde activa o desactiva."
+                      title="Click: abrir la ficha del marcador. Click derecho: quitar. El punto verde activa o desactiva."
                     >
+                      {/* 2026-11-16: la fila SOLO MUESTRA; todo se corrige en la ficha. */}
                       <td
                         style={{
                           ...tdNombre, fontWeight: 400, padding: 0,
@@ -1079,92 +945,25 @@ export function MarcadoresTab({
                         }}
                       >
                         <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px" }}>
-                          <span
-                            title={item.active ? "Activo" : "Inactivo"}
-                            onClick={() => updateArrayItem(setPersonalProvisionMarkers, item.id, "active", !item.active)}
-                            style={{
-                              display: "inline-block", width: 8, height: 8, borderRadius: 999, flex: "0 0 auto",
-                              cursor: "pointer", background: item.active ? "#16a34a" : "#cbd5f5",
-                            }}
-                          />
-                          <input
-                            style={inputCelda}
-                            {...focoCelda}
-                            value={item.description}
-                            onChange={(e) => updateArrayItem(setPersonalProvisionMarkers, item.id, "description", e.target.value)}
-                          />
+                          <PuntoActivo activo={item.active} onClick={() => updateArrayItem(setPersonalProvisionMarkers, item.id, "active", !item.active)} />
+                          <strong>{item.description || "sin detalle"}</strong>
+                          <BotonFicha onClick={() => setFicha({ tipo: "provision", id: item.id })} />
                         </span>
                       </td>
-                      <td style={{ ...tdDato, padding: 0 }}>
-                        <AmountInput
-                          style={inputCeldaDerecha}
-                          {...focoCelda}
-                          value={item.amountPerDelivery}
-                          onChange={(n) => updateArrayItem(setPersonalProvisionMarkers, item.id, "amountPerDelivery", n)}
-                        />
-                      </td>
-                      <td style={{ ...tdDato, padding: 0 }}>
-                        <NumInput
-                          style={inputCeldaDerecha}
-                          {...focoCelda}
-                          value={item.periodicityMonths}
-                          onChange={(e) =>
-                            updateArrayItem(setPersonalProvisionMarkers, item.id, "periodicityMonths", Number(e.target.value))
-                          }
-                        />
-                      </td>
+                      <td style={celdaMonto}>{money(item.amountPerDelivery || 0)}</td>
+                      <td style={celdaMonto}>{item.periodicityMonths || 0}</td>
                       <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
                         {money(Number(item.amountPerDelivery || 0) / Math.max(Number(item.periodicityMonths || 1), 1))}
                       </td>
                       <td style={{ ...tdFlexible, color: "#64748b", padding: 0 }}>
                         <span style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 8px", flexWrap: "wrap" }}>
-                          <select
-                            style={{ ...inputCelda, width: "auto" }}
-                            value={item.kind}
-                            onChange={(e) =>
-                              updateArrayItem(setPersonalProvisionMarkers, item.id, "kind", e.target.value as PersonalProvisionKind)
-                            }
-                          >
-                            {PERSONAL_PROVISION_KINDS.map((k) => (
-                              <option key={k} value={k}>
-                                {k}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            style={{ ...inputCelda, width: "auto", color: markerCompany.primary, fontWeight: 700 }}
-                            value={item.company}
-                            onChange={(e) =>
-                              updateArrayItem(setPersonalProvisionMarkers, item.id, "company", e.target.value as CompanyName)
-                            }
-                          >
-                            {COMPANY_OPTIONS.map((company) => (
-                              <option key={company.value} value={company.value}>
-                                {company.short}
-                              </option>
-                            ))}
-                          </select>
-<BotonFicha onClick={() => setFicha({ tipo: "provision", id: item.id })} />
-                          <label style={{ display: "inline-flex", alignItems: "center", gap: 4, color: "#94a3b8" }}>
-                            <input
-                              type="checkbox"
-                              checked={item.shared}
-                              onChange={(e) =>
-                                updateArrayItem(setPersonalProvisionMarkers, item.id, "shared", e.target.checked)
-                              }
-                            />
-                            compartido
-                          </label>
-                          <input
-                            style={{ ...inputCelda, flex: 1, minWidth: 90, color: "#94a3b8" }}
-                            {...focoCelda}
-                            value={item.notes}
-                            placeholder="observación"
-                            onChange={(e) => updateArrayItem(setPersonalProvisionMarkers, item.id, "notes", e.target.value)}
-                          />
+                          {etiquetaM(String(item.kind || "sin tipo"))}
+                          {etiquetaM(markerCompany.short || String(item.company), markerCompany.primary, markerCompany.soft || "#f1f5f9")}
+                          {item.shared && etiquetaM("compartido", "#0f172a", "#e2e8f0")}
+                          {item.notes ? <span style={{ color: "#94a3b8" }}>{item.notes}</span> : null}
                         </span>
                       </td>
-                      <td style={{ ...tdDato, ...tdAcciones }}>
+                      <td style={{ ...tdDato, ...tdAcciones }} onClick={(ev) => ev.stopPropagation()}>
                         <button
                           type="button"
                           title="Borrar"

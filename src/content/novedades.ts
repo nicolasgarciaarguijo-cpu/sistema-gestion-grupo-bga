@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-16b",
+    fecha: "16/11/2026",
+    titulo: "Marcadores: las filas no se tipean más",
+    items: [
+      {
+        titulo: "Los cuatro bloques se corrigen en la ficha",
+        que: "Costos fijos, insumos y fletes, mano de obra y provisiones de personal tenían hasta 14 campos editables por fila. Ahora la fila muestra el dato con etiquetas (grupo, tipo de trabajo, empresa) y un click abre la ficha del marcador, que es donde se corrige todo.",
+        como: "Marcadores → click en la fila (o el botón 📋). El punto verde sigue activando y desactivando desde la fila, y el tachito también.",
+        tab: "marcadores",
+      },
+      {
+        titulo: "Dos datos que estaban sueltos ahora viven en la ficha",
+        que: "El tipo de insumo (insumos básicos, flete, entrega, embalaje, viáticos) y el tipo de provisión de personal solo se podían tocar desde la fila: no estaban en la ficha. Ya están, y el grupo del costo fijo se elige de la lista, con la opción de crear uno nuevo ahí mismo.",
+        como: "En la ficha del marcador. El costo fijo que quedó reemplazado por el promedio de 3 meses lo avisa en la fila.",
+        tab: "marcadores",
+      },
+    ],
+  },
+  {
     id: "2026-11-16a",
     fecha: "16/11/2026",
     titulo: "Los retiros societarios tienen su ficha",

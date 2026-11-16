@@ -129,6 +129,15 @@ export type SupplyMarkerSubtype =
   | "Embalaje"
   | "Viaticos";
 
+// La lista para elegir en la ficha del marcador (16/11/2026: estaba escrita a mano en la fila).
+export const SUPPLY_MARKER_SUBTYPES: SupplyMarkerSubtype[] = [
+  "Insumos basicos",
+  "Flete",
+  "Entrega",
+  "Embalaje",
+  "Viaticos",
+];
+
 export type SupplyMarker = {
   id: number;
   company: CompanyName;
