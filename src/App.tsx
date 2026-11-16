@@ -24361,7 +24361,16 @@ Escribi CERRAR para confirmar:`
                   setRetirosSocietarios((prev) =>
                     prev.map((r) =>
                       r.id === id
-                        ? { ...r, [field]: value, ...(field === "company" && value !== r.company ? { cuentaId: undefined } : {}), ...firma() }
+                        ? {
+                            ...r,
+                            [field]: value,
+                            // La cuenta tiene que ser de la empresa y de la moneda del retiro: si cambia
+                            // alguna de las dos, se suelta (2026-11-16, igual que en Movimientos internos).
+                            ...((field === "company" && value !== r.company) || (field === "moneda" && value !== (r.moneda || "ARS"))
+                              ? { cuentaId: undefined }
+                              : {}),
+                            ...firma(),
+                          }
                         : r
                     )
                   )

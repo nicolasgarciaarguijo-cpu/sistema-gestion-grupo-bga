@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-16a",
+    fecha: "16/11/2026",
+    titulo: "Los retiros societarios tienen su ficha",
+    items: [
+      {
+        titulo: "La fila del retiro solo muestra",
+        que: "Era la última solapa que movía plata tipeando en la fila: el socio, el monto, la moneda, blanco/negro y de qué cuenta sale, todo en cajitas. Ahora la fila muestra el dato con etiquetas y un click abre la ficha del retiro, que es donde se corrige.",
+        como: "Balance y estado de resultados → Retiros societarios → click en la fila (o el botón 📋). El tachito sigue en la fila.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Avisa lo que falta y cuida la cuenta",
+        que: "Si al retiro le falta la cuenta de la que sale, o el socio, la fila lo dice en rojo. Y si cambiás la empresa o la moneda del retiro, la cuenta se suelta: tiene que ser una cuenta de esa empresa y de esa moneda.",
+        como: "En la ficha, «De qué cuenta sale» queda en rojo hasta que la elijas. Los retiros que asentó el arqueo del cierre lo aclaran en la fila y en la ficha.",
+        tab: "cashflow",
+      },
+    ],
+  },
+  {
     id: "2026-11-14j",
     fecha: "14/11/2026",
     titulo: "Tipos de comprobante de AFIP y una factura para dos trabajos",
