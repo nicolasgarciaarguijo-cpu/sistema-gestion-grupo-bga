@@ -1,5 +1,6 @@
 import React from "react";
 import { FichaRegistro, BotonFicha, type CampoFicha } from "../ui/FichaRegistro";
+import { codigosRepetidos, faltaDelArticulo, textoFaltaArticulo } from "../domain/altaStock";
 import { styles } from "../ui/styles";
 import { Panel, SemaforoResumen, ButtonLike, MiniMetric, Field, AmountInput, QuickMenu, QuickMenuTitle, QuickMenuSep, quickMenuItem } from "../ui/primitives";
 import {
@@ -188,6 +189,12 @@ export function StockTab({
     )
     .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
     .slice(0, 25);
+  // CODIGOS REPETIDOS (Nicolas, 16/11/2026): el material del presupuesto cruza con el stock POR CODIGO,
+  // asi que dos articulos con el mismo codigo hacen que el presupuesto mire el equivocado. La fila y la
+  // ficha lo avisan hasta que se corrija. Ver domain/altaStock.ts.
+  const repetidos = React.useMemo(() => codigosRepetidos(visibleStockItems as any), [visibleStockItems]);
+  const otrosConElCodigo = (item: any) =>
+    (repetidos.get(String(item.code || "").trim().toUpperCase()) || []).filter((x: any) => x.id !== item.id);
   const [ficha, setFicha] = React.useState<null | { tipo: string; id: number }>(null);
   return (
     <>
@@ -196,7 +203,17 @@ export function StockTab({
         if (!it) return null;
         const campos: CampoFicha[] = [
           { key: "company", label: "Empresa", tipo: "empresa", compartido: true, ayuda: "Ambas = compartido: lo ven las dos empresas" },
-          { key: "code", label: "Código", tipo: "texto" },
+          {
+            key: "code",
+            label: "Código",
+            tipo: "texto",
+            ayuda:
+              otrosConElCodigo(it).length > 0
+                ? `⚠ este código ya está en ${otrosConElCodigo(it)
+                    .map((x: any) => x.description || `#${x.id}`)
+                    .join(" · ")}. El material del presupuesto cruza por código: corregí uno de los dos.`
+                : "Con este código el material del presupuesto encuentra el artículo.",
+          },
           { key: "description", label: "Descripción", tipo: "texto", ancho: "completo" },
           { key: "group", label: "Grupo", tipo: "select", opciones: STOCK_GENERAL_GROUP_OPTIONS.map((g) => ({ value: g, label: g })) },
           { key: "location", label: "Ubicación", tipo: "texto" },
@@ -453,8 +470,23 @@ export function StockTab({
                         }}
                       />
                       {item.description || "(sin descripcion)"}
+                      {faltaDelArticulo(item).length > 0 && (
+                        <div style={{ color: "#b45309", fontWeight: 700, fontSize: 11 }}>{textoFaltaArticulo(faltaDelArticulo(item))}</div>
+                      )}
                     </td>
-                    <td style={{ ...tdDato, color: "#64748b" }} title={item.code}>{item.code || "—"}</td>
+                    <td style={{ ...tdDato, color: "#64748b" }} title={item.code}>
+                      {item.code || "—"}
+                      {otrosConElCodigo(item).length > 0 && (
+                        <div
+                          style={{ color: "#b91c1c", fontWeight: 700, fontSize: 11 }}
+                          title={`El mismo código está en: ${otrosConElCodigo(item)
+                            .map((x: any) => x.description || `#${x.id}`)
+                            .join(" · ")}. El material del presupuesto cruza por código: corregí uno de los dos.`}
+                        >
+                          ⚠ código repetido
+                        </div>
+                      )}
+                    </td>
                     <td style={{ ...tdDato, textAlign: "right", fontWeight: 600, color: Number(item.quantity || 0) > 0 ? "#0f172a" : "#dc2626" }}>
                       {Number(item.quantity || 0)} <span style={{ color: "#94a3b8", fontWeight: 400 }}>{item.unit}</span>
                     </td>

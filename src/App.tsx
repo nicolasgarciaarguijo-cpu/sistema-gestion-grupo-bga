@@ -206,6 +206,7 @@ import { ChecklistProduccionPanel } from "./tabs/ChecklistProduccion";
 import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, readSpreadsheetRows, suggestGroupForConcept, SHEETJS_CDN, type BankStatementRow } from "./lib/bankStatement";
 import { rowsToArcaInvoices, arcaInvoiceKey } from "./lib/arcaInvoices";
+import { nuevoArticuloStock, proximoCodigoStock, type DatosAltaStock } from "./domain/altaStock";
 import {
   claveDeFacturaEmitida,
   codigoAfipDeFactura,
@@ -3130,27 +3131,16 @@ const formatDateTimeDisplay = (dateText: string) => {
   });
 };
 
-const getNextStockCode = (
-  items: StockItem[],
-  group: string,
-  excludeId?: number
-) => {
-  const prefix = prefijoDeGrupo(runtimeListasSistema, group);
-  const maxSeq = items
-    .filter(
-      (item) =>
-        item.kind === "general" &&
-        item.group === group &&
-        item.id !== excludeId
-    )
-    .map((item) => {
-      const match = item.code.match(/-(\d+)$/);
-      return match ? Number(match[1]) : 0;
-    })
-    .reduce((acc, value) => Math.max(acc, value), 0);
+// El codigo del articulo sale de domain/altaStock: se cuenta POR PREFIJO y sobre TODOS los articulos.
+// Antes se contaba por GRUPO, asi que dos grupos con el mismo prefijo arrancaban los dos en 001 y el
+// codigo quedaba repetido; el material del presupuesto cruza por codigo, asi que miraba el articulo
+// equivocado. Paso de verdad con ALU-001 (Nicolas, 16/11/2026).
+const getNextStockCode = (items: StockItem[], group: string, excludeId?: number) =>
+  proximoCodigoStock(items, group, (g) => prefijoDeGrupo(runtimeListasSistema, g), excludeId);
 
-  return `${prefix}-${String(maxSeq + 1).padStart(3, "0")}`;
-};
+// El alta, por una sola puerta (domain/altaStock.nuevoArticuloStock).
+const nuevoItemDeStock = (datos: DatosAltaStock, items: StockItem[]): StockItem =>
+  nuevoArticuloStock(newId(), datos, items as any, (g) => prefijoDeGrupo(runtimeListasSistema, g)) as StockItem;
 
 // Dias efectivamente trabajados en un mes (status "presente" o con fichada de entrada). Misma regla
 // que ya usa el recibo negro para prorratear.
@@ -12406,30 +12396,18 @@ Escribi CERRAR para confirmar:`
     if (!source || !source.description.trim()) return;
 
     const nextGroup = (source.stockGroup as StockGeneralGroupName) || "Melaminas";
-    const nextSortOrder =
-      Math.max(
-        0,
-        ...stockItems
-          .filter((item) => item.kind === "general")
-          .map((item) => Number(item.sortOrder || 0))
-      ) + 1;
-
-    const newStockItem: StockItem = {
-      id: newId(),
-      company: "General",
-      kind: "general",
-      shared: true,
-      group: nextGroup,
-      location: source.stockLocation || "",
-      sortOrder: nextSortOrder,
-      code: getNextStockCode(stockItems, nextGroup),
-      description: source.description,
-      unit: source.unit || "u",
-      quantity: 0,
-      unitPrice: Number(source.unitPrice || 0),
-      periodicityMonths: 0,
-      active: true,
-    };
+    const newStockItem = nuevoItemDeStock(
+      {
+        origen: "material",
+        company: "General",
+        group: nextGroup,
+        description: source.description,
+        location: source.stockLocation || "",
+        unit: source.unit || "u",
+        unitPrice: Number(source.unitPrice || 0),
+      },
+      stockItems
+    );
 
     setStockItems((prev) => [...prev, newStockItem]);
     setMaterials((prev) =>
@@ -13827,29 +13805,7 @@ Escribi CERRAR para confirmar:`
   };
 
   const addStockItem = () => conEmpresa("el artículo de stock", (empresaElegida) => {
-    setStockItems((prev) => [
-      ...prev,
-      {
-        id: newId(),
-        company: empresaElegida,
-        kind: "general",
-        shared: empresaElegida === "General",
-        group: "Melaminas",
-        location: "",
-        sortOrder:
-          Math.max(
-            0,
-            ...prev.filter((item) => item.kind === "general").map((item) => Number(item.sortOrder || 0))
-          ) + 1,
-        code: getNextStockCode(prev, "Melaminas"),
-        description: "",
-        unit: "u",
-        quantity: 0,
-        unitPrice: 0,
-        periodicityMonths: 0,
-        active: true,
-      },
-    ]);
+    setStockItems((prev) => [...prev, nuevoItemDeStock({ origen: "stock", company: empresaElegida, group: "Melaminas" }, prev)]);
   });
 
   const addPurchaseInvoice = () => conEmpresaDePlata("la factura de compra", (empresaElegida) => {
@@ -14547,26 +14503,9 @@ Escribi CERRAR para confirmar:`
   };
 
   const addPersonalStockItem = (kind: PersonalProvisionKind) => {
-    setStockItems((prev) => [
-      ...prev,
-      {
-        id: newId(),
-        company: "General",
-        kind,
-        shared: true,
-        group: kind,
-        location: "",
-        sortOrder:
-          Math.max(0, ...prev.map((item) => Number(item.sortOrder || 0))) + 1,
-        code: `${kind === "EPP" ? "EPP" : "INS"}-${prev.length + 1}`,
-        description: "",
-        unit: "u",
-        quantity: 0,
-        unitPrice: 0,
-        periodicityMonths: 6,
-        active: true,
-      },
-    ]);
+    // El codigo lo arma la misma puerta que el resto: antes era `${prefijo}-${prev.length + 1}`, que se
+    // repetia al borrar y volver a cargar (16/11/2026).
+    setStockItems((prev) => [...prev, nuevoItemDeStock({ origen: "personal", company: "General", group: kind, kind }, prev)]);
   };
 
   const removeStockItem = (itemId: number) => {
@@ -21058,28 +20997,25 @@ Escribi CERRAR para confirmar:`
     const title = employeeProvisionModal.title.trim();
     if (!employee || !title) return;
     const stockId = newId();
-    const codePrefix = employeeProvisionModal.kind === "EPP" ? "EPP" : "INS";
-    const stockCode = `${codePrefix}-${stockId}`;
-
-    setStockItems((prev) => [
-      ...prev,
-      {
-        id: stockId,
-        company: employee.company,
-        kind: employeeProvisionModal.kind,
-        shared: false,
-        group: employeeProvisionModal.kind,
-        location: "",
-        sortOrder: Math.max(0, ...prev.map((item) => Number(item.sortOrder || 0))) + 1,
-        code: stockCode,
-        description: title,
-        unit: "u",
-        quantity: 0,
-        unitPrice: Number(employeeProvisionModal.unitPrice || 0),
-        periodicityMonths: 6,
-        active: true,
-      },
-    ]);
+    // El articulo se arma ACA (no adentro del setter) porque su codigo tambien queda en la ficha del
+    // empleado: tiene que ser el mismo en los dos lados.
+    const articuloEntregado: StockItem = {
+      ...nuevoItemDeStock(
+        {
+          origen: "empleado",
+          company: employee.company,
+          group: employeeProvisionModal.kind,
+          kind: employeeProvisionModal.kind,
+          description: title,
+          shared: false,
+          unitPrice: Number(employeeProvisionModal.unitPrice || 0),
+        },
+        stockItems
+      ),
+      id: stockId,
+    };
+    const stockCode = articuloEntregado.code;
+    setStockItems((prev) => [...prev, articuloEntregado]);
     setEmployees((prev) =>
       prev.map((row) =>
         row.id === employee.id
@@ -22487,22 +22423,18 @@ Escribi CERRAR para confirmar:`
     const renglones = r.renglones.map((g) => {
       if (r.tipo !== "recepcion" || g.stockItemId != null) return g;
       const grupo = (g.grupo || "Melaminas") as StockGeneralGroupName;
-      const item: StockItem = {
-        id: newId(),
-        company: r.company as CompanyName,
-        kind: "general",
-        shared: false,
-        group: grupo,
-        location: "",
-        sortOrder: 0,
-        code: "",
-        description: g.descripcion.trim(),
-        unit: g.unidad || "u",
-        quantity: 0,
-        unitPrice: Number(g.precioUnitario || 0),
-        periodicityMonths: 0,
-        active: true,
-      };
+      // El codigo y el orden se recalculan al insertarlo (abajo), con la lista ya actualizada.
+      const item: StockItem = nuevoItemDeStock(
+        {
+          origen: "remito",
+          company: r.company,
+          group: grupo,
+          description: g.descripcion.trim(),
+          unit: g.unidad || "u",
+          unitPrice: Number(g.precioUnitario || 0),
+        },
+        []
+      );
       altas.push(item);
       return { ...g, stockItemId: item.id };
     });
@@ -22512,7 +22444,7 @@ Escribi CERRAR para confirmar:`
       if (altas.length) {
         base = [...prev];
         altas.forEach((it) => {
-          const maxOrden = Math.max(0, ...base.filter((x) => x.kind === "general").map((x) => Number(x.sortOrder || 0)));
+          const maxOrden = Math.max(0, ...base.map((x) => Number(x.sortOrder || 0)));
           base.push({ ...it, sortOrder: maxOrden + 1, code: getNextStockCode(base, it.group as StockGeneralGroupName) });
         });
       }
@@ -25389,21 +25321,18 @@ Escribi CERRAR para confirmar:`
             setStockItems((prev) => [
               ...prev,
               {
-                id,
                 // La maquina es de una empresa (su valor impacta en esa) pero la usan las dos (Nicolas, 2026-10-26).
-                company: (empresa || empresaQueFabrica || "General") as CompanyName,
-                kind: "general",
-                shared: true,
-                group: grupo,
-                location: "",
-                sortOrder: Math.max(0, ...prev.filter((item) => item.kind === "general").map((item) => Number(item.sortOrder || 0))) + 1,
-                code: getNextStockCode(prev, grupo),
-                description: descripcion,
-                unit: "u",
-                quantity: 1,
-                unitPrice: 0,
-                periodicityMonths: 0,
-                active: true,
+                ...nuevoItemDeStock(
+                  {
+                    origen: "maquina",
+                    company: (empresa || empresaQueFabrica || "General") as CompanyName,
+                    group: grupo,
+                    description: descripcion,
+                    quantity: 1,
+                  },
+                  prev
+                ),
+                id,
               },
             ]);
             return id;

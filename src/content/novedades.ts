@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-16c",
+    fecha: "16/11/2026",
+    titulo: "Stock: el código repetido ya no pasa desapercibido",
+    items: [
+      {
+        titulo: "La fila avisa el código repetido",
+        que: "El material del presupuesto encuentra el artículo POR CÓDIGO, así que dos artículos con el mismo código hacen que el presupuesto mire el equivocado. Ya había uno: ALU-001 estaba en «Zócalo fleje Aluminio 100mm» y en «perfilería aluminio portaled». Ahora la fila lo marca en rojo y dice con cuál se repite.",
+        como: "Stock → la columna del código. Pasando el mouse te dice el otro artículo. Corregí uno de los dos y el aviso se va.",
+        tab: "stock",
+      },
+      {
+        titulo: "El código nuevo ya no se repite",
+        que: "El próximo número se contaba por GRUPO, y dos grupos que comparten prefijo arrancaban los dos en 001. Ahora se cuenta por prefijo y sobre todos los artículos. Además las provisiones de personal armaban el código con la cantidad de artículos, así que al borrar y volver a cargar repetían el número.",
+        como: "No hay que hacer nada: el alta ya lo calcula bien, desde cualquier lugar (la solapa, un material del presupuesto, un remito, una máquina o una entrega a un empleado).",
+        tab: "stock",
+      },
+      {
+        titulo: "La fila dice si al artículo le falta un dato",
+        que: "Si no tiene descripción, código, grupo o unidad, la fila lo avisa: sin eso el artículo no se puede cruzar con el material de un presupuesto ni con un remito.",
+        como: "Stock → el aviso aparece debajo de la descripción. Se corrige en la ficha del artículo (click en 📋).",
+        tab: "stock",
+      },
+    ],
+  },
+  {
     id: "2026-11-16b",
     fecha: "16/11/2026",
     titulo: "Marcadores: las filas no se tipean más",
