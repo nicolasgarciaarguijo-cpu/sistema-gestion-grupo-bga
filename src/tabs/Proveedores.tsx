@@ -3,6 +3,8 @@
 // sus datos, y el resumen de los que tienen cuenta corriente. Cada proveedor abre su FICHA, que vive aca.
 import React, { useState } from "react";
 import { faltaDelProveedor, textoFalta } from "../domain/altaProveedor";
+import { condicionSugerida, textoDeCondicion } from "../domain/condicionSugerida";
+import type { CondicionPago } from "../domain/proveedores";
 import {
   cuitParaRevisar,
   duplicadosDelPadron,
@@ -172,6 +174,7 @@ export function ProveedoresPanel({
   onVaciar,
   onAbrirFicha,
   facturas = [],
+  onCondicion,
 }: {
   proveedores: Proveedor[];
   ledgers: Array<{ key: string; supplier: string; taxId: string; esCuentaCorriente: boolean; comprado: number; pagado: number; saldo: number; facturasSinPago: number; movimientos: Array<{ type: string }> }>;
@@ -186,6 +189,8 @@ export function ProveedoresPanel({
   onAbrirFicha: (nombre: string, taxId: string) => void;
   // Las facturas de compra, para avisar las "mellizas" (el mismo monto el mismo dia, de dos proveedores).
   facturas?: FacturaDelPadron[];
+  // Cargar la condicion de pago que el historial sugiere (16/11/2026).
+  onCondicion?: (id: number, condicion: CondicionPago) => void;
 }) {
   const [modal, setModal] = useState<ProveedorForm | null>(null);
   const [menu, setMenu] = useState<null | { x: number; y: number; p: Proveedor }>(null);
@@ -267,6 +272,15 @@ export function ProveedoresPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [proveedores, ledgers, facturas]
   );
+  // La condicion que sale de como se le vino pagando (domain/condicionSugerida). Solo se SUGIERE.
+  const sugerenciaDe = (p: Proveedor) => {
+    const suyas = facturas.filter(
+      (f) =>
+        !!f.pagadaEl &&
+        ((digits(p.taxId).length >= 11 && digits(f.taxId || "") === digits(p.taxId)) || norm(f.supplier) === norm(p.name))
+    );
+    return condicionSugerida(suyas.map((f) => ({ invoiceDate: f.date, paymentDate: String(f.pagadaEl) })));
+  };
   const hayQueRevisar =
     padron.duplicados.length + padron.vacios.length + padron.sinCondicion.length + padron.cuits.length + padron.mellizas.length > 0;
   const chip = (texto: string, fuerte = false) => (
@@ -335,7 +349,43 @@ export function ProveedoresPanel({
                 Sus facturas impagas no toman fecha de pago, así que no aparecen en el Calendario. Se arregla
                 cargándole la condición de pago en su ficha (o marcándolo como débito automático).
               </div>
-              {padron.sinCondicion.map((x) => linea(x.proveedor as any, chip(`debemos ${money(x.deuda)}`, true)))}
+              {padron.sinCondicion.map((x) => {
+                const p = x.proveedor as any as Proveedor;
+                const sug = sugerenciaDe(p);
+                return linea(
+                  p,
+                  <>
+                    {chip(`debemos ${money(x.deuda)}`, true)}
+                    {sug ? (
+                      <>
+                        <span
+                          style={{ fontSize: 12, color: "#166534" }}
+                          title={`Días entre la factura y el pago: ${sug.dias.join(", ")}${
+                            sug.descartados ? ` · se dejaron afuera ${sug.descartados} pago(s) a más de 180 días: cheques a fecha o un plan de pago` : ""
+                          }`}
+                        >
+                          le venís pagando <strong>{sug.texto}</strong> ({sug.muestras} pagos)
+                        </span>
+                        {onCondicion && (
+                          <button
+                            type="button"
+                            style={{ ...botonChico, color: "#166534", borderColor: "#86efac", background: "#f0fdf4" }}
+                            onClick={() =>
+                              window.confirm(
+                                `Cargar "${textoDeCondicion(sug.condicion)}" como condición de pago de ${p.name}?\n\nSale de los ${sug.muestras} pagos que ya le hiciste. Después se puede cambiar en su ficha.`
+                              ) && onCondicion(p.id, sug.condicion)
+                            }
+                          >
+                            Usar {sug.texto}
+                          </button>
+                        )}
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "#94a3b8" }}>sin pagos anteriores para saber el plazo</span>
+                    )}
+                  </>
+                );
+              })}
             </details>
           )}
 

@@ -94,6 +94,33 @@ describe("Revisar el padrón de proveedores", () => {
     act(() => root.unmount());
   });
 
+  it("sugiere la condición de pago que sale del historial y la carga con un click", () => {
+    const cargadas: any[] = [];
+    const { div, root } = render({
+      facturas: [
+        // Dos facturas de septiembre pagadas a mediados de octubre: ~45 días.
+        { id: 1, company: "General", supplier: "Magliola", taxId: "30-11111111-1", date: "2026-09-03", total: 500000, pagadaEl: "2026-10-16" },
+        { id: 2, company: "General", supplier: "Magliola", taxId: "30-11111111-1", date: "2026-09-08", total: 500000, pagadaEl: "2026-10-22" },
+      ],
+      onCondicion: (id: number, c: any) => cargadas.push([id, c]),
+    });
+    expect(div.textContent).toContain("le venís pagando");
+    const boton = Array.from(div.querySelectorAll("button")).find((b) => (b.textContent || "").startsWith("Usar"))!;
+    expect(boton.textContent).toContain("45 días");
+    (window as any).confirm = () => true;
+    act(() => {
+      boton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(cargadas).toEqual([[3, { tipo: "dias", dias: 45 }]]);
+    act(() => root.unmount());
+  });
+
+  it("sin pagos anteriores lo dice en vez de inventar un plazo", () => {
+    const { div, root } = render();
+    expect(div.textContent).toContain("sin pagos anteriores");
+    act(() => root.unmount());
+  });
+
   it("si el padrón está limpio, el panel no aparece", () => {
     const { div, root } = render({
       proveedores: [prov(1, "Dac", "30-11111111-1", { condicionPago: { tipo: "dias", dias: 30 } })],

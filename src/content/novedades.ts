@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-17a",
+    fecha: "17/11/2026",
+    titulo: "La condición de pago la sugiere el historial",
+    items: [
+      {
+        titulo: "«Le venís pagando a 45 días» · Usar",
+        que: "A los proveedores que no tienen condición de pago (y por eso dejan sus facturas sin fecha, afuera del Calendario) el sistema ahora les calcula el plazo mirando los pagos que YA le hiciste: los días entre cada factura y su pago. Lo muestra con cuántos pagos lo sacó y un botón para cargarlo.",
+        como: "Pago a proveedores → Revisar el padrón → el primer bloque. El botón pide confirmación y después se puede cambiar en la ficha. Si no hay pagos anteriores, lo dice en vez de inventar un plazo.",
+        tab: "costos",
+      },
+      {
+        titulo: "Los cheques a fecha no ensucian la cuenta",
+        que: "Los pagos a más de 180 días de la factura no entran en el promedio: no son el plazo del proveedor, son cheques a fecha o un plan de pago (Dac tiene cheques al 22/01, 22/02, 22/03 y 22/04 de 2027). Pasando el mouse por la sugerencia se ven los días de cada pago y cuántos quedaron afuera: si alguno es una fecha mal cargada, ahí se ve.",
+        como: "Pasá el mouse por «le venís pagando a X días».",
+        tab: "costos",
+      },
+      {
+        titulo: "Duplicados con un nombre adentro del otro",
+        que: "El detector de duplicados ahora también agrupa cuando un nombre está contenido en el otro: así aparecieron los dos Magliola («HERRAJES MAGLIOLA S A» y «Cima de herrajes magliola»), los dos Expocolor y los dos Estacionamiento.",
+        como: "Pago a proveedores → Revisar el padrón → Posibles duplicados.",
+        tab: "costos",
+      },
+    ],
+  },
+  {
     id: "2026-11-16e",
     fecha: "16/11/2026",
     titulo: "Revisar el padrón de proveedores",

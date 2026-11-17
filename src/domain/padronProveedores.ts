@@ -30,13 +30,25 @@ export const normNombre = (v?: string): string =>
     .replace(/\b(s\.?r\.?l|s\.?a\.?|sas|srl|sa)\b/g, "")
     .replace(/[^a-z0-9]+/g, "");
 
-export type MotivoDuplicado = "nombre" | "cuit" | "cuit-digito";
+export type MotivoDuplicado = "nombre" | "cuit" | "cuit-digito" | "contiene";
 
 export const MOTIVO_DUPLICADO: Record<MotivoDuplicado, string> = {
   nombre: "el mismo nombre",
   cuit: "el mismo CUIT",
   "cuit-digito": "el mismo CUIT con otro dígito verificador",
+  contiene: "un nombre está adentro del otro",
 };
+
+// Un nombre adentro del otro: "HERRAJES MAGLIOLA S A" y "Cima de herrajes magliola", "Expocolor" y
+// "Lacapol EXPOCOLOR", "Estacionamiento" y "Estacionamiento Angelo". Se pide 6 letras para no marcar
+// cualquier cosa, y se saca la forma societaria del final (quedaba "herrajesmagliolasa" y no entraba).
+const LARGO_MINIMO_CONTENCION = 6;
+
+// Para comparar por contencion: igual que normNombre pero sin el S.A./S.R.L. del final, que normNombre
+// solo saca cuando viene como palabra suelta ("S A" con espacio no entra). Es solo para SUGERIR el par:
+// si se pasa de listo, Nicolas lo ve y no hace nada.
+export const normNombreSinForma = (v?: string): string =>
+  normNombre(v).replace(/(sa|srl|sas|sh|sca)$/, "");
 
 export type GrupoDuplicado = {
   motivo: MotivoDuplicado;
@@ -72,6 +84,20 @@ export function duplicadosDelPadron(ps: ProveedorPadron[]): GrupoDuplicado[] {
   agrupar("nombre", (p) => normNombre(p.name));
   // Mismo CUIT salvo el ultimo digito (el verificador): casi siempre es el mismo tipeado mal.
   agrupar("cuit-digito", (p) => (digitos(p.taxId).length === 11 ? digitos(p.taxId).slice(0, 10) : ""));
+
+  // Un nombre adentro del otro. No se puede agrupar por clave: se comparan de a pares.
+  const sueltos = ps.filter((p) => !yaAgrupado.has(p.id) && normNombreSinForma(p.name).length >= LARGO_MINIMO_CONTENCION);
+  sueltos.forEach((a, i) => {
+    sueltos.slice(i + 1).forEach((b) => {
+      if (yaAgrupado.has(a.id) && yaAgrupado.has(b.id)) return;
+      const na = normNombreSinForma(a.name);
+      const nb = normNombreSinForma(b.name);
+      if (na === nb || !(na.includes(nb) || nb.includes(na))) return;
+      yaAgrupado.add(a.id);
+      yaAgrupado.add(b.id);
+      out.push({ motivo: "contiene", clave: na.length < nb.length ? na : nb, proveedores: [a, b] });
+    });
+  });
   return out;
 }
 
@@ -131,6 +157,8 @@ export type FacturaDelPadron = {
   taxId?: string;
   date: string;
   total: number;
+  // Cuando se pago (si se pago): con esto se sugiere la condicion de pago desde el historial.
+  pagadaEl?: string;
 };
 
 export type Mellizas = {

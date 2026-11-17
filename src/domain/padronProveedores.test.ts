@@ -54,6 +54,22 @@ describe("duplicados del padrón", () => {
     expect(g[0].motivo).toBe("cuit-digito");
   });
 
+  it("un nombre adentro del otro también los agrupa", () => {
+    // Casos reales del padrón: dos Magliola, dos Expocolor, dos Estacionamiento.
+    const g = duplicadosDelPadron([
+      p(1, "HERRAJES MAGLIOLA  S A"),
+      p(2, "Cima de herrajes magliola"),
+      p(3, "Expocolor"),
+      p(4, "Lacapol EXPOCOLOR"),
+    ]);
+    expect(g).toHaveLength(2);
+    expect(g.every((x) => x.motivo === "contiene")).toBe(true);
+  });
+
+  it("un nombre corto no arrastra a otro que lo contenga por casualidad", () => {
+    expect(duplicadosDelPadron([p(1, "Dac"), p(2, "Dacar materiales")])).toEqual([]);
+  });
+
   it("un padrón sano no tiene duplicados, y un par no sale dos veces por dos motivos", () => {
     expect(duplicadosDelPadron([p(1, "Dac", "30-11111111-1"), p(2, "Magliola", "30-22222222-2")])).toEqual([]);
     // Mismo nombre Y mismo CUIT: un solo grupo.

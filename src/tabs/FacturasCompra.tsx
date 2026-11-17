@@ -18,6 +18,8 @@ export type FilaFactura = {
   pagada: boolean;
   pagoTexto: string; // "dd/mm · transferencia" / "por el banco dd/mm"
   fechaPrevista?: string;
+  // Cuando se pago (crudo): lo usa la sugerencia de condicion de pago del padron (16/11/2026).
+  pagadaEl?: string;
   estadoPrevisto?: "programado" | "estimado" | "inamovible";
   tipoProveedor: "ctacte" | "habitual" | "nuevo";
   // Factura pagada con una CAJA CHICA: quien la rindio (se ve como pill y la fila abre el gasto).

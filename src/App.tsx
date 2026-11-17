@@ -21937,6 +21937,8 @@ Escribi CERRAR para confirmar:`
               ? `la puso ${porPersona}`
               : "",
         fechaPrevista: prevista?.fechaPago,
+        // Cuando se pago de verdad (16/11/2026): con esto se sugiere la condicion de pago del proveedor.
+        pagadaEl: pago?.date || (inv.source === "caja_chica" ? gastoCaja?.date : undefined) || undefined,
         estadoPrevisto: marca?.estadoPago,
         tipoProveedor: prov ? (prov.currentAccount ? "ctacte" : "habitual") : "nuevo",
         cajaResponsable: cajaResponsable || undefined,
@@ -22713,7 +22715,8 @@ Escribi CERRAR para confirmar:`
       ledgers={(purchaseLedger?.ledgers || []) as any}
       pagosSinFactura={pendientesSinFactura}
       // Para avisar las facturas "mellizas" del padron (mismo monto, mismo dia, dos proveedores).
-      facturas={filasFacturas.map((f) => ({ id: f.id, company: String(f.company), supplier: f.supplier, taxId: f.taxId, date: f.invoiceDate, total: Number(f.total || 0) }))}
+      facturas={filasFacturas.map((f) => ({ id: f.id, company: String(f.company), supplier: f.supplier, taxId: f.taxId, date: f.invoiceDate, total: Number(f.total || 0), pagadaEl: (f as any).pagadaEl }))}
+      onCondicion={(id, condicion) => updateArrayItem(setSuppliers, id, "condicionPago" as any, condicion as any)}
       empresaPorDefecto={String(budget.company)}
       companyOptions={opcionesEmpresaProveedor as any}
       money={money}
