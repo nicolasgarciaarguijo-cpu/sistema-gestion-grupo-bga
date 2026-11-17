@@ -94,6 +94,13 @@ export type MesIva = {
   diferencia: number; // vep - aPagar
   control: ControlVep;
 };
+// UN MES CON DEBITO Y SIN CREDITO NO ES CONFIABLE (Nicolas, 17/11/2026). Las facturas de compra se
+// empezaron a cargar en serio en septiembre: en los meses anteriores el credito fiscal es 0 porque no hay
+// compras cargadas, no porque no haya habido. El "a pagar" de esos meses sale de mas. Asi se vio: el
+// tablero daria $9,25M de IVA de agosto de De Raiz y el aviso del contador dice $6,94M.
+export const creditoIncompleto = (m: { debito: number; credito: number }): boolean =>
+  Number(m.debito || 0) > 1 && Number(m.credito || 0) <= 1;
+
 export type IvaAnual = {
   desde: string;
   hasta: string;

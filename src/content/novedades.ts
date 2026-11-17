@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-17b",
+    fecha: "17/11/2026",
+    titulo: "Las facturas sin fecha de pago ya no se esconden",
+    items: [
+      {
+        titulo: "El mes de IVA sin compras cargadas lo avisa",
+        que: "En la Posición de IVA, el mes que tiene IVA de ventas y NADA de crédito queda marcado: «sin compras cargadas». No es que no hubo compras, es que faltan cargarlas, así que lo que dice «a pagar» está de más. Las facturas de compra se empezaron a cargar en serio en septiembre.",
+        como: "Balance → Posición de IVA → el renglón del mes queda en ámbar. En agosto de De Raíz el sistema diría $9.255.138 y el aviso del contador dice $6.940.676: la diferencia es crédito de compras que falta.",
+        tab: "cashflow",
+      },
+      {
+        titulo: "Aviso arriba de Compras con el total",
+        que: "Una factura impaga sin fecha de pago NO entra al Calendario: es plata que hay que pagar y no se ve venir. Antes cada fila decía «sin fecha» pero nada las sumaba. Ahora arriba de Facturas de compra hay un aviso con el total, las cinco más grandes y un click para abrir cada una.",
+        como: "Compras → Facturas de compra. Cuenta las de CUALQUIER mes, no solo el que estás mirando. Se arregla cargándole la condición de pago al proveedor (Pago a proveedores → Revisar el padrón) o eligiéndole la fecha a la factura.",
+        tab: "compras",
+      },
+      {
+        titulo: "Así apareció el IVA de agosto de De Raíz",
+        que: "$6.940.676 cargados como una nota de débito de «ARCA» con vencimiento al 25/11 y sin condición de pago: no estaban en el Calendario ni en ningún total. Es el segundo monto más grande del padrón.",
+        como: "Si el pago del IVA se registra como una factura de ARCA, conviene elegirle la fecha a mano; el camino propio del IVA es la Posición de IVA con su VEP.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-11-17a",
     fecha: "17/11/2026",
     titulo: "La condición de pago la sugiere el historial",

@@ -17,7 +17,7 @@ import { totalDeMoneda, ultimoCierre } from "../domain/cierreEjercicio";
 import type { CierreEjercicio } from "../domain/cierreEjercicio";
 import { DEFAULT_FISCAL_START_MONTH, currentFiscalStartYear, fiscalYearLabel } from "../domain/fiscalYear";
 import { ETIQUETA_MOV_FISCO, type ConteoBlanqueo, type TipoMovFisco } from "../domain/faltaFactura";
-import type { IvaAnual } from "../domain/vatBalance";
+import { creditoIncompleto, type IvaAnual } from "../domain/vatBalance";
 
 import NumInput from "../ui/NumInput";
 import { SelectorCuenta } from "./CuentasPanel";
@@ -850,8 +850,12 @@ export function CashflowTab({
                         </thead>
                         <tbody>
                           {v.anual.meses.map((m) => {
+                            // Mes con débito y sin crédito: faltan cargar las compras, el "a pagar" sale de más.
+                            const faltanCompras = creditoIncompleto(m);
                             const ctl =
-                              m.control === "ok"
+                              faltanCompras
+                                ? { t: "⚠ sin compras cargadas", c: "#b45309" }
+                                : m.control === "ok"
                                 ? { t: "✓ coincide", c: "#166534" }
                                 : m.control === "falta"
                                 ? { t: `⚠ faltan ${money(-m.diferencia)}`, c: "#b45309" }
@@ -861,10 +865,14 @@ export function CashflowTab({
                                 ? { t: "⚠ sin VEP", c: "#b91c1c" }
                                 : { t: "·", c: "#94a3b8" };
                             return (
-                              <tr key={m.mes} style={{ textAlign: "right", borderTop: "1px solid #f1f5f9", fontVariantNumeric: "tabular-nums" }}>
+                              <tr
+                                key={m.mes}
+                                style={{ textAlign: "right", borderTop: "1px solid #f1f5f9", fontVariantNumeric: "tabular-nums", background: faltanCompras ? "#fffbeb" : undefined }}
+                                title={faltanCompras ? "Este mes tiene IVA de ventas y NADA de crédito: faltan cargar las facturas de compra, así que lo que dice «a pagar» está de más." : undefined}
+                              >
                                 <td style={{ textAlign: "left", padding: "3px 6px" }}>{m.mes.slice(5, 7)}/{m.mes.slice(0, 4)}</td>
                                 <td style={{ padding: "3px 6px" }}>{money(m.debito)}</td>
-                                <td style={{ padding: "3px 6px" }}>{money(m.credito)}</td>
+                                <td style={{ padding: "3px 6px", color: faltanCompras ? "#b45309" : undefined, fontWeight: faltanCompras ? 700 : undefined }}>{money(m.credito)}</td>
                                 <td style={{ padding: "3px 6px", color: "#64748b" }}>{m.arrastre ? money(m.arrastre) : "·"}</td>
                                 <td style={{ padding: "3px 6px", fontWeight: 700 }}>{money(m.aPagar)}</td>
                                 <td style={{ padding: "3px 6px", color: "#64748b" }}>{m.aFavorQuePasa ? money(m.aFavorQuePasa) : "·"}</td>

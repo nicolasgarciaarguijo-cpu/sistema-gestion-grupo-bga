@@ -98,6 +98,18 @@ export function FacturasCompraPanel({
       .sort((a, b) => b.invoiceDate.localeCompare(a.invoiceDate));
   }, [filas, mes, soloSinPagar, buscar]);
   const totalSinPagar = visibles.filter((f) => !f.pagada).reduce((a, f) => a + Number(f.total || 0), 0);
+  // IMPAGAS SIN FECHA DE PAGO (Nicolas, 17/11/2026): si la factura no tiene fecha prevista (porque el
+  // proveedor no tiene condicion de pago y no se le eligio una), NO ENTRA AL CALENDARIO: es plata que hay
+  // que pagar y no se ve venir. Se cuentan TODAS, no solo las del mes que se esta mirando: asi se encontro
+  // el IVA de agosto de De Raiz, $6,9M con vencimiento al 25/11 que no estaba en ningun lado.
+  const sinFecha = useMemo(
+    () =>
+      filas
+        .filter((f) => !f.pagada && !f.fechaPrevista)
+        .sort((a, b) => Number(b.total || 0) - Number(a.total || 0)),
+    [filas]
+  );
+  const totalSinFecha = sinFecha.reduce((a, f) => a + Number(f.total || 0), 0);
   const shortDe = (c: string) => companyOptions.find((o) => o.value === c)?.short || c;
 
   return (
@@ -210,6 +222,32 @@ export function FacturasCompraPanel({
           {visibles.length} factura(s) · sin pagar: <strong style={{ color: totalSinPagar > 0 ? "#b45309" : "#16a34a" }}>{money(totalSinPagar)}</strong>
         </span>
       </div>
+      {sinFecha.length > 0 && (
+        <div
+          style={{
+            border: "1px solid #fcd34d", background: "#fffbeb", borderRadius: 8, padding: "8px 10px",
+            marginBottom: 8, fontSize: 12.5, color: "#92400e",
+          }}
+        >
+          <strong>⚠ {money(totalSinFecha)} en {sinFecha.length} factura(s) sin pagar y SIN FECHA DE PAGO:</strong>{" "}
+          no entran al Calendario, así que esa plata no se ve venir. Se arregla cargándole la condición de
+          pago al proveedor (Pago a proveedores → Revisar el padrón) o eligiéndole la fecha a la factura.
+          <div style={{ marginTop: 4, display: "grid", gap: 2 }}>
+            {sinFecha.slice(0, 5).map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => onAbrir(f.id)}
+                style={{ border: "none", background: "none", padding: 0, textAlign: "left", cursor: "pointer", color: "#92400e", fontSize: 12.5 }}
+                title="Abrir la factura para elegirle la fecha de pago"
+              >
+                · <strong>{money(Number(f.total || 0))}</strong> {f.supplier} · {shortDe(f.company)} · factura del {fmt(f.invoiceDate)}
+              </button>
+            ))}
+            {sinFecha.length > 5 && <span>· y {sinFecha.length - 5} más (se ven con «Todas las sin pagar»)</span>}
+          </div>
+        </div>
+      )}
       {visibles.length === 0 ? (
         <div style={{ fontSize: 13, color: "#64748b" }}>{soloSinPagar ? "No hay facturas sin pagar." : "No hay facturas en este mes."}</div>
       ) : (
