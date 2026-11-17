@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-16e",
+    fecha: "16/11/2026",
+    titulo: "Revisar el padrón de proveedores",
+    items: [
+      {
+        titulo: "El sistema encuentra lo que hay que limpiar",
+        que: "Arriba de Pago a proveedores hay un bloque nuevo: lo que conviene revisar del padrón. Lo primero, la plata: los proveedores SIN CONDICIÓN DE PAGO que tienen deuda, porque sus facturas impagas no toman fecha y no entran al Calendario (hoy son unos $5,9M). Después los duplicados, los que tienen el CUIT mal y los que no tienen nada cargado.",
+        como: "Pago a proveedores → Revisar el padrón. Cada renglón tiene «Ficha» (para cargarle la condición de pago), «✎ Editar» y, solo si no tiene NADA cargado, «Quitar». El bloque desaparece cuando no queda nada para revisar.",
+        tab: "costos",
+      },
+      {
+        titulo: "Duplicados, incluso con el CUIT tipeado mal",
+        que: "Agrupa por el mismo nombre (sin acentos ni S.R.L.), por el mismo CUIT, y por el mismo CUIT con otro dígito verificador: así apareció la estación de servicio cargada dos veces. De cada grupo te dice cuál tiene facturas y cuál está vacío, para que borres el vacío.",
+        como: "Nada se borra solo: el Quitar aparece únicamente en el que no tiene ni una factura ni un pago.",
+        tab: "costos",
+      },
+      {
+        titulo: "El mismo monto el mismo día, de dos proveedores",
+        que: "Avisa cuando dos proveedores distintos facturan el mismo importe el mismo día a la misma empresa. Suele ser un honorario cargado dos veces con otro nombre; así encontramos $2,2M de los dos estudios contables.",
+        como: "Pago a proveedores → Revisar el padrón → «El mismo monto el mismo día». Si son dos cosas distintas, no hay que hacer nada.",
+        tab: "costos",
+      },
+    ],
+  },
+  {
     id: "2026-11-16d",
     fecha: "16/11/2026",
     titulo: "Tipos de mueble: la fila se abre con un click",

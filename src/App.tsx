@@ -22712,6 +22712,8 @@ Escribi CERRAR para confirmar:`
       proveedores={visibleSuppliers as any}
       ledgers={(purchaseLedger?.ledgers || []) as any}
       pagosSinFactura={pendientesSinFactura}
+      // Para avisar las facturas "mellizas" del padron (mismo monto, mismo dia, dos proveedores).
+      facturas={filasFacturas.map((f) => ({ id: f.id, company: String(f.company), supplier: f.supplier, taxId: f.taxId, date: f.invoiceDate, total: Number(f.total || 0) }))}
       empresaPorDefecto={String(budget.company)}
       companyOptions={opcionesEmpresaProveedor as any}
       money={money}

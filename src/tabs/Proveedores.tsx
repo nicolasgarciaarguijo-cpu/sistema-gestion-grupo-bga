@@ -3,6 +3,18 @@
 // sus datos, y el resumen de los que tienen cuenta corriente. Cada proveedor abre su FICHA, que vive aca.
 import React, { useState } from "react";
 import { faltaDelProveedor, textoFalta } from "../domain/altaProveedor";
+import {
+  cuitParaRevisar,
+  duplicadosDelPadron,
+  facturasMellizas,
+  MOTIVO_CUIT,
+  MOTIVO_DUPLICADO,
+  resumenPadron,
+  sinCondicionConDeuda,
+  sinNadaCargado,
+  type FacturaDelPadron,
+  type UsoProveedor,
+} from "../domain/padronProveedores";
 import { Panel, ButtonLike, QuickMenu, QuickMenuTitle, quickMenuItem } from "../ui/primitives";
 import { CONDICION_IVA_LABEL, type CondicionIva } from "../domain/types";
 
@@ -59,6 +71,10 @@ const lbl: React.CSSProperties = { display: "grid", gap: 3, fontSize: 12, color:
 const input: React.CSSProperties = { border: "1px solid #cbd5e1", borderRadius: 6, padding: "6px 8px", fontSize: 13, width: "100%", boxSizing: "border-box", fontWeight: 400, color: "#0f172a" };
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 600, padding: "6px 6px", borderBottom: "1px solid #e2e8f0", whiteSpace: "nowrap" };
 const td: React.CSSProperties = { padding: "5px 6px", borderBottom: "1px solid #f1f5f9", verticalAlign: "middle" };
+// Revisar el padron (2026-11-16).
+const botonChico: React.CSSProperties = { border: "1px solid #cbd5e1", background: "#fff", borderRadius: 6, padding: "1px 7px", fontSize: 11.5, fontWeight: 700, color: "#475569", cursor: "pointer", whiteSpace: "nowrap" };
+const detalle: React.CSSProperties = { borderTop: "1px solid #e2e8f0", padding: "6px 0" };
+const resumenLinea: React.CSSProperties = { cursor: "pointer", fontWeight: 800, fontSize: 13, color: "#0f172a" };
 
 // Agregar o EDITAR un proveedor (Nicolas, 2026-10-20: "necesito poder modificar los parametros de cada uno
 // por si hubo algun error en la carga"). Se abre desde el listado (boton Editar) y desde su ficha.
@@ -155,6 +171,7 @@ export function ProveedoresPanel({
   onQuitar,
   onVaciar,
   onAbrirFicha,
+  facturas = [],
 }: {
   proveedores: Proveedor[];
   ledgers: Array<{ key: string; supplier: string; taxId: string; esCuentaCorriente: boolean; comprado: number; pagado: number; saldo: number; facturasSinPago: number; movimientos: Array<{ type: string }> }>;
@@ -167,6 +184,8 @@ export function ProveedoresPanel({
   onQuitar: (id: number) => void;
   onVaciar: () => void;
   onAbrirFicha: (nombre: string, taxId: string) => void;
+  // Las facturas de compra, para avisar las "mellizas" (el mismo monto el mismo dia, de dos proveedores).
+  facturas?: FacturaDelPadron[];
 }) {
   const [modal, setModal] = useState<ProveedorForm | null>(null);
   const [menu, setMenu] = useState<null | { x: number; y: number; p: Proveedor }>(null);
@@ -223,8 +242,157 @@ export function ProveedoresPanel({
     </table>
   );
 
+  // ===================== REVISAR EL PADRON (Nicolas, 16/11/2026) =====================
+  // El padron se llena de los extractos, de ARCA y de la caja chica: junta duplicados, gente que no es
+  // proveedor y proveedores a medio cargar. Esto los encuentra y deja corregirlos de a uno, desde la app.
+  // Ver domain/padronProveedores.ts. Nada se borra ni se cambia solo.
+  const usoDe = (p: Proveedor): UsoProveedor => {
+    const l = ledgerDe(p);
+    return {
+      facturas: l ? l.movimientos.filter((m) => m.type === "compra").length : 0,
+      comprado: Number(l?.comprado || 0),
+      pagado: Number(l?.pagado || 0),
+      deuda: Math.max(0, Number(l?.saldo || 0)),
+    };
+  };
+  const padron = React.useMemo(
+    () => ({
+      resumen: resumenPadron(proveedores as any, usoDe as any, facturas),
+      duplicados: duplicadosDelPadron(proveedores as any),
+      vacios: sinNadaCargado(proveedores as any, usoDe as any),
+      sinCondicion: sinCondicionConDeuda(proveedores as any, usoDe as any),
+      cuits: cuitParaRevisar(proveedores as any),
+      mellizas: facturasMellizas(facturas),
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [proveedores, ledgers, facturas]
+  );
+  const hayQueRevisar =
+    padron.duplicados.length + padron.vacios.length + padron.sinCondicion.length + padron.cuits.length + padron.mellizas.length > 0;
+  const chip = (texto: string, fuerte = false) => (
+    <span
+      style={{
+        fontSize: 12, fontWeight: 700, borderRadius: 999, padding: "2px 10px", whiteSpace: "nowrap",
+        color: fuerte ? "#b91c1c" : "#475569", background: fuerte ? "#fee2e2" : "#f1f5f9",
+      }}
+    >
+      {texto}
+    </span>
+  );
+  const linea = (p: Proveedor, extra?: React.ReactNode) => {
+    const u = usoDe(p);
+    const vacio = u.facturas === 0 && Math.abs(u.comprado) < 1 && Math.abs(u.pagado) < 1;
+    return (
+      <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", flexWrap: "wrap", fontSize: 12.5 }}>
+        <strong>{p.name || "(sin nombre)"}</strong>
+        <span style={{ color: "#94a3b8" }}>{p.taxId || "sin CUIT"}</span>
+        <span style={{ color: "#94a3b8" }}>{shortDe(p.company)}</span>
+        {vacio ? chip("sin nada cargado") : chip(`${u.facturas} factura(s) · ${money(u.comprado)}`)}
+        {extra}
+        <button type="button" style={botonChico} onClick={() => onAbrirFicha(p.name, p.taxId || "")}>
+          Ficha
+        </button>
+        <button type="button" style={botonChico} onClick={() => setModal(editar(p))}>
+          ✎ Editar
+        </button>
+        {vacio && (
+          <button
+            type="button"
+            style={{ ...botonChico, color: "#b91c1c", borderColor: "#fecaca" }}
+            onClick={() => window.confirm(`¿Quitar "${p.name}" del listado? No tiene nada cargado.`) && onQuitar(p.id)}
+          >
+            Quitar
+          </button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <>
+      {hayQueRevisar && (
+        <Panel span="full" title={`Revisar el padrón (${proveedores.length} proveedores)`}>
+          <div style={{ fontSize: 12.5, color: "#64748b", marginBottom: 8 }}>
+            El padrón se va llenando solo (del banco, de ARCA y de la caja chica), así que junta duplicados y
+            proveedores a medio cargar. Acá está lo que conviene revisar. <strong>Nada se borra ni se cambia
+            solo</strong>: cada cosa se corrige de a una, desde su ficha.
+          </div>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+            {padron.sinCondicion.length > 0 && chip(`${money(padron.resumen.plataFueraDelCashFlow)} fuera del cash flow`, true)}
+            {padron.mellizas.length > 0 && chip(`${money(padron.resumen.plataMellizas)} facturado dos veces`, true)}
+            {padron.duplicados.length > 0 && chip(`${padron.resumen.duplicados} duplicados`)}
+            {padron.vacios.length > 0 && chip(`${padron.vacios.length} sin nada cargado`)}
+            {padron.cuits.length > 0 && chip(`${padron.cuits.length} con el CUIT para revisar`)}
+          </div>
+
+          {padron.sinCondicion.length > 0 && (
+            <details open style={detalle}>
+              <summary style={resumenLinea}>
+                Sin condición de pago y con deuda: {money(padron.resumen.plataFueraDelCashFlow)} que no entra al cash flow
+                ({padron.sinCondicion.length})
+              </summary>
+              <div style={{ fontSize: 12, color: "#64748b", margin: "4px 0" }}>
+                Sus facturas impagas no toman fecha de pago, así que no aparecen en el Calendario. Se arregla
+                cargándole la condición de pago en su ficha (o marcándolo como débito automático).
+              </div>
+              {padron.sinCondicion.map((x) => linea(x.proveedor as any, chip(`debemos ${money(x.deuda)}`, true)))}
+            </details>
+          )}
+
+          {padron.mellizas.length > 0 && (
+            <details style={detalle}>
+              <summary style={resumenLinea}>
+                El mismo monto el mismo día, de dos proveedores distintos ({padron.mellizas.length})
+              </summary>
+              <div style={{ fontSize: 12, color: "#64748b", margin: "4px 0" }}>
+                Suele ser un honorario o un servicio cargado dos veces con otro nombre. Si es el mismo gasto,
+                sobra una de las facturas; si son dos cosas distintas, está bien y no hay que hacer nada.
+              </div>
+              {padron.mellizas.map((m) => (
+                <div key={`${m.company}|${m.date}|${m.total}`} style={{ padding: "3px 0", fontSize: 12.5 }}>
+                  <strong>{money(m.total)}</strong> · {m.date.split("-").reverse().join("/")} ·{" "}
+                  {shortDe(m.company)} ·{" "}
+                  {m.facturas.map((f) => f.supplier).join("  ·vs·  ")}
+                </div>
+              ))}
+            </details>
+          )}
+
+          {padron.duplicados.length > 0 && (
+            <details style={detalle}>
+              <summary style={resumenLinea}>Posibles duplicados ({padron.duplicados.length} grupos)</summary>
+              {padron.duplicados.map((g) => (
+                <div key={`${g.motivo}|${g.clave}`} style={{ borderTop: "1px solid #f1f5f9", padding: "4px 0" }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: "#b45309" }}>{MOTIVO_DUPLICADO[g.motivo]}</div>
+                  {g.proveedores.map((x) => linea(x as any))}
+                </div>
+              ))}
+            </details>
+          )}
+
+          {padron.cuits.length > 0 && (
+            <details style={detalle}>
+              <summary style={resumenLinea}>CUIT para revisar ({padron.cuits.length})</summary>
+              <div style={{ fontSize: 12, color: "#64748b", margin: "4px 0" }}>
+                El CUIT es con lo que la factura de ARCA y el movimiento del banco encuentran al proveedor.
+              </div>
+              {padron.cuits.map((x) => linea(x.proveedor as any, chip(MOTIVO_CUIT[x.motivo])))}
+            </details>
+          )}
+
+          {padron.vacios.length > 0 && (
+            <details style={detalle}>
+              <summary style={resumenLinea}>Sin nada cargado ({padron.vacios.length})</summary>
+              <div style={{ fontSize: 12, color: "#64748b", margin: "4px 0" }}>
+                Ni una factura ni un pago. Algunos no son proveedores (conceptos, lugares, el nombre de un
+                empleado) y se pueden quitar; otros todavía no compraron nada y conviene dejarlos.
+              </div>
+              {padron.vacios.map((x) => linea(x as any))}
+            </details>
+          )}
+        </Panel>
+      )}
+
       <Panel
         span="full"
         title={`Proveedores (${proveedores.length})`}
