@@ -55,6 +55,7 @@ export function FacturasCompraPanel({
   onImportarArca,
   onExportarEstudio,
   onAbrirResumen,
+  ivaSinPeriodo = [],
 }: {
   filas: FilaFactura[];
   companyOptions: Array<{ value: string; short?: string }>;
@@ -71,6 +72,8 @@ export function FacturasCompraPanel({
   onExportarEstudio?: (args: { empresa: string; desde: string; hasta: string }) => number;
   // Abre la ficha de la tarjeta en el resumen donde se pago la factura.
   onAbrirResumen?: (cuentaId: number, statementId: number | null) => void;
+  // Facturas de ARCA que no dicen que periodo de IVA pagan: el tablero no las puede contar (17/11/2026).
+  ivaSinPeriodo?: Array<{ id: number; company: string; supplier: string; invoiceDate: string; total: number }>;
 }) {
   const archivoArca = useRef<HTMLInputElement>(null);
   const [avisoArca, setAvisoArca] = useState("");
@@ -222,6 +225,33 @@ export function FacturasCompraPanel({
           {visibles.length} factura(s) · sin pagar: <strong style={{ color: totalSinPagar > 0 ? "#b45309" : "#16a34a" }}>{money(totalSinPagar)}</strong>
         </span>
       </div>
+      {ivaSinPeriodo.length > 0 && (
+        <div
+          style={{
+            border: "1px solid #bfdbfe", background: "#eff6ff", borderRadius: 8, padding: "8px 10px",
+            marginBottom: 8, fontSize: 12.5, color: "#1e3a8a",
+          }}
+        >
+          <strong>
+            {ivaSinPeriodo.length} factura(s) de ARCA sin el período de IVA que pagan
+          </strong>
+          : si alguna es el pago de la posición de un mes, abrila y cargale el período. Con eso la Posición
+          de IVA la cuenta como el pago de ese mes; si no, el tablero va a decir «sin VEP» para siempre.
+          <div style={{ marginTop: 4, display: "grid", gap: 2 }}>
+            {ivaSinPeriodo.slice(0, 5).map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => onAbrir(f.id)}
+                style={{ border: "none", background: "none", padding: 0, textAlign: "left", cursor: "pointer", color: "#1e3a8a", fontSize: 12.5 }}
+                title="Abrir la factura para cargarle el período de IVA"
+              >
+                · <strong>{money(Number(f.total || 0))}</strong> {f.supplier} · {shortDe(f.company)} · del {fmt(f.invoiceDate)}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {sinFecha.length > 0 && (
         <div
           style={{

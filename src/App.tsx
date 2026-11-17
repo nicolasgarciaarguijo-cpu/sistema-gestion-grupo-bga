@@ -207,6 +207,7 @@ import type { JobMaterialNeed } from "./domain/materialNeeds";
 import { readBankStatement, readSpreadsheetRows, suggestGroupForConcept, SHEETJS_CDN, type BankStatementRow } from "./lib/bankStatement";
 import { rowsToArcaInvoices, arcaInvoiceKey } from "./lib/arcaInvoices";
 import { nuevoArticuloStock, proximoCodigoStock, type DatosAltaStock } from "./domain/altaStock";
+import { facturasDelFiscoSinPeriodo, vepsDesdeFacturas } from "./domain/pagoDeIva";
 import {
   claveDeFacturaEmitida,
   codigoAfipDeFactura,
@@ -15175,6 +15176,28 @@ Escribi CERRAR para confirmar:`
       .map(({ company, date, vat }) => ({ company, date, vat }));
   }, [approvedJobs, issuedInvoices]);
 
+  // EL PAGO DEL IVA SE REGISTRA POR COMPRAS (Nicolas, 17/11/2026): la factura de ARCA que dice de que
+  // periodo es el IVA que paga cuenta en el tablero como el VEP de ese mes. Ver domain/pagoDeIva.ts.
+  const facturasDeIva = useMemo(
+    () =>
+      visiblePurchaseInvoices.map((inv) => {
+        const pago = inv.paidByCostEntryId != null ? costEntries.find((c) => c.id === inv.paidByCostEntryId) : undefined;
+        return {
+          id: inv.id,
+          company: String(inv.company),
+          supplier: inv.supplier,
+          invoiceDate: inv.invoiceDate,
+          total: Number(inv.total || 0),
+          ivaPeriodoMes: inv.ivaPeriodoMes,
+          pagadaEl: pago?.date || (inv.paidByBankEntryId != null ? inv.invoiceDate : undefined),
+        };
+      }),
+    [visiblePurchaseInvoices, costEntries]
+  );
+  const vepsDeCompras = useMemo(() => vepsDesdeFacturas(facturasDeIva), [facturasDeIva]);
+  // Facturas de ARCA que no dicen que periodo pagan: el tablero no las puede contar.
+  const ivaSinPeriodo = useMemo(() => facturasDelFiscoSinPeriodo(facturasDeIva), [facturasDeIva]);
+
   // IVA de una empresa MES A MES en el ejercicio en curso (03/11/2026): debito - credito de cada mes calendario, el saldo a favor
   // que pasa al siguiente y cada VEP controlando el mes que paga. Ver domain/vatBalance.ts `ivaAnual`.
   const ivaDeEmpresa = (company: string, anioInicio?: number) => {
@@ -15194,7 +15217,11 @@ Escribi CERRAR para confirmar:`
         // Nota de credito: baja el credito fiscal.
         ...visibleCreditNotes.map((n) => ({ company: n.company as CompanyName, date: n.date, vat: -Number(n.vat || 0), administration: n.administration })),
       ],
-      veps: visibleIvaVepPayments.map((v) => ({ company: v.company, date: v.date, amount: Number(v.amount || 0), periodoMes: v.periodoMes })),
+      // Los VEP cargados a mano MAS las facturas de ARCA que pagan la posicion de un periodo (17/11/2026).
+      veps: [
+        ...visibleIvaVepPayments.map((v) => ({ company: String(v.company), date: v.date, amount: Number(v.amount || 0), periodoMes: v.periodoMes })),
+        ...vepsDeCompras,
+      ],
       desde: ej.startIso,
       hasta: hoy < ej.endIso ? hoy : ej.endIso,
       hoy,
@@ -22623,6 +22650,7 @@ Escribi CERRAR para confirmar:`
     <FacturasCompraPanel
       filas={filasFacturas.filter((x) => !(x.pagada && ocultoPorCierre(x.company, x.invoiceDate)))}
       onAbrirResumen={(cuentaId, statementId) => setFichaTarjetaAbierta({ cuentaId, statementId })}
+      ivaSinPeriodo={ivaSinPeriodo.map((f) => ({ id: f.id, company: f.company, supplier: f.supplier, invoiceDate: f.invoiceDate, total: f.total }))}
       companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
       money={money}
       onExportarEstudio={({ empresa, desde, hasta }) => {

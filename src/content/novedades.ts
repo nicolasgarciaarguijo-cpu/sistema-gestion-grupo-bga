@@ -16,6 +16,25 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-17c",
+    fecha: "17/11/2026",
+    titulo: "El pago del IVA se sigue por Compras",
+    items: [
+      {
+        titulo: "La factura de ARCA dice qué período de IVA paga",
+        que: "Decidido: el IVA se paga como una factura de ARCA en Compras, no cargando un VEP aparte. Para que el tablero lo reconozca, la factura de ARCA ahora tiene un campo «¿Es el pago del IVA? Período que paga» (ej. 2026-08). Con eso la Posición de IVA la cuenta como el pago de ese mes y el control cierra.",
+        como: "Compras → abrir la factura de ARCA → el campo aparece solo cuando el proveedor es ARCA o AFIP. Si la factura todavía no está pagada, no se cuenta: es deuda con ARCA hasta que se pague.",
+        tab: "compras",
+      },
+      {
+        titulo: "Avisa las facturas de ARCA sin período",
+        que: "Arriba de Facturas de compra, un aviso con las facturas de ARCA que no dicen qué período pagan: son las que el tablero no puede contar. Un click abre cada una.",
+        como: "Si una factura de ARCA no es IVA (una multa, un plan de pago), dejá el período vacío y listo.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-11-17b",
     fecha: "17/11/2026",
     titulo: "Las facturas sin fecha de pago ya no se esconden",

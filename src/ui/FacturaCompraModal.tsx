@@ -10,6 +10,7 @@ import { FirmanteFijo } from "./FirmanteSelect";
 
 import { SelectorTarjeta, esPagoConTarjeta, type TarjetaOpt } from "./SelectorTarjeta";
 import NumInput from "./NumInput";
+import { esProveedorDelFisco } from "../domain/pagoDeIva";
 
 export type MedioPago = "efectivo" | "transferencia" | "cheque" | "tarjeta_debito" | "tarjeta_credito" | "debito";
 export const MEDIOS_PAGO: Array<{ value: MedioPago; label: string }> = [
@@ -72,6 +73,8 @@ export type FacturaForm = {
   // FICHA UNICA (12/11/2026): la misma ventana rinde un gasto de CAJA CHICA. Con `cajaDe` se abre desde la caja de esa
   // persona: el pago ya viene con su caja y su empresa (la que pone la plata), y el monto del pago sigue al total.
   descripcion?: string;
+  // Pago del IVA por Compras (17/11/2026): el periodo que paga esta factura de ARCA.
+  ivaPeriodoMes?: string;
   cajaDe?: string;
   pagoSigueTotal?: boolean;
   // Un gasto de caja chica cargado con la ficha vieja: al guardar pasa a esta (factura + pago con la caja).
@@ -473,6 +476,23 @@ export function FacturaCompraModal({
           <label style={{ ...lbl, marginTop: 8 }}>Descripción (qué se compró)
             <input style={input} value={f.descripcion || ""} onChange={(e) => set({ descripcion: e.target.value })} />
           </label>
+          {/* PAGO DEL IVA (17/11/2026): si la factura es de ARCA, de que periodo es el IVA que paga. Con
+              eso el tablero de la Posicion de IVA la cuenta como el VEP de ese mes. */}
+          {(esProveedorDelFisco(f.supplier) || !!f.ivaPeriodoMes) && (
+            <label style={{ ...lbl, marginTop: 8 }}>
+              ¿Es el pago del IVA? Período que paga
+              <input
+                style={input}
+                type="month"
+                value={f.ivaPeriodoMes || ""}
+                onChange={(e) => set({ ivaPeriodoMes: e.target.value || undefined })}
+              />
+              <span style={{ fontWeight: 400, fontSize: 11.5, color: "#64748b" }}>
+                Ej. 2026-08 para el IVA de agosto. Con esto la Posición de IVA toma esta factura como el pago
+                de ese mes (si no, el tablero va a decir «sin VEP» para siempre). Dejalo vacío si no es IVA.
+              </span>
+            </label>
+          )}
           <label style={{ ...lbl, marginTop: 8 }}>Notas
             <input style={input} value={f.notes} onChange={(e) => set({ notes: e.target.value })} />
           </label>

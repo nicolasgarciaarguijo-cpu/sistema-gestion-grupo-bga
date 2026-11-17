@@ -50,6 +50,41 @@ const render = (filas: FilaFactura[], onAbrir: any = () => {}) => {
   return { div, root };
 };
 
+describe("Facturas de ARCA sin el período de IVA", () => {
+  it("avisa y el renglón abre la factura para cargarle el período", () => {
+    const abiertas: number[] = [];
+    const div = document.createElement("div");
+    document.body.appendChild(div);
+    const root = createRoot(div);
+    act(() =>
+      root.render(
+        <FacturasCompraPanel
+          {...({
+            filas: [],
+            companyOptions: [{ value: "De Raiz", short: "De Raíz" }],
+            money: (n: number) => "$" + Math.round(n),
+            onNueva: () => {},
+            onAbrir: (id: number) => abiertas.push(id),
+            onAsignarPago: () => {},
+            onFichaProveedor: () => {},
+            onEliminar: () => {},
+            onImportarArca: async () => "",
+            ivaSinPeriodo: [{ id: 7, company: "De Raiz", supplier: "ARCA", invoiceDate: "2026-11-25", total: 6940676 }],
+          } as any)}
+        />
+      )
+    );
+    expect(div.textContent).toContain("sin el período de IVA");
+    expect(div.textContent).toContain("$6940676");
+    const boton = Array.from(div.querySelectorAll("button")).find((b) => (b.textContent || "").includes("ARCA · De Raíz"))!;
+    act(() => {
+      boton.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    expect(abiertas).toEqual([7]);
+    act(() => root.unmount());
+  });
+});
+
 describe("Facturas impagas sin fecha de pago", () => {
   it("avisa el total y que no entran al Calendario", () => {
     const { div, root } = render([fila()]);
