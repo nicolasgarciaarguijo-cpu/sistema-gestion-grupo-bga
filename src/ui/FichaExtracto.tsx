@@ -16,6 +16,10 @@ const nombreMes = (m: string) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(
 // constata, asi que un debito linkeado a una factura sin pago dejaria la plata sin salir del sistema.
 export type TipoLink = "pago" | "resumen" | "trabajo";
 
+// Seccion de renglones del Calendario anual, igual que la que usa el bloque del banco.
+export type SeccionRenglon = { key: string; label: string; items: { key: string; label: string }[] };
+const RENGLON_INTERNO = "__interno__";
+
 export type FichaExtractoProps = {
   titulo: string; // "Patagonia · BGA · $"
   meses: FichaMes[]; // de esta cuenta
@@ -27,6 +31,21 @@ export type FichaExtractoProps = {
   onDesconocer: (movId: number, nota: string | null) => void;
   onSoltar: (movId: number) => void;
   onCerrar: () => void;
+  // 18/11/2026: el renglon del Calendario y el blanco/negro vivian solo en el bloque "Movimientos
+  // bancarios", que la ficha reemplaza. Sin esto, esconder el bloque dejaba la plata sin clasificar.
+  renglones: SeccionRenglon[];
+  etiquetaRenglon: (key: string) => string;
+  onRenglon: (movId: number, key: string) => void;
+  onCircuito: (movId: number, circuito: "blanco" | "negro" | null) => void;
+  // Cargar a mano un movimiento que el extracto no trajo (venia del mismo bloque).
+  onAgregarMovimiento?: () => void;
+  // Lo que tambien vivia solo en "Movimientos bancarios": borrar el movimiento, limpiar la asignacion,
+  // la nota, el comprobante adjunto y la clasificacion sugerida por el concepto del banco.
+  onBorrar: (movId: number) => void;
+  onLimpiar: (movId: number) => void;
+  onNota: (movId: number, nota: string) => void;
+  onAdjunto: (movId: number, file: File | null) => void;
+  sugerenciaRenglon: (mov: MovimientoFicha["mov"]) => string | null;
 };
 
 export function FichaExtracto(p: FichaExtractoProps) {
@@ -34,7 +53,26 @@ export function FichaExtracto(p: FichaExtractoProps) {
   const [sel, setSel] = useState<string>(p.mesInicial || meses[0]?.mes || "");
   const [menu, setMenu] = useState<null | { x: number; y: number; m: MovimientoFicha }>(null);
   const [buscar, setBuscar] = useState<null | { tipo: TipoLink; m: MovimientoFicha }>(null);
+  // Elegir el renglon del Calendario para este movimiento (buscador, no un select suelto en la fila).
+  const [renglonDe, setRenglonDe] = useState<null | MovimientoFicha>(null);
+  const opcionesRenglon = useMemo<OpcionVinculo[]>(
+    () => [
+      { id: RENGLON_INTERNO, texto: "↔ Cuenta corriente · movimiento interno (no cuenta)" },
+      ...p.renglones.flatMap((s) => s.items.map((it) => ({ id: it.key, texto: it.label, detalle: s.label }))),
+    ],
+    [p.renglones]
+  );
   const ficha = meses.find((f) => f.mes === sel) || null;
+  // Movimientos del mes que el sistema sabe clasificar solo por el concepto del banco.
+  const sugeridosDelMes = useMemo<[number, string][]>(
+    () =>
+      (ficha?.movimientos || [])
+        .filter((x) => !x.mov.conceptKey)
+        .map((x) => [x.mov.id, p.sugerenciaRenglon(x.mov)] as [number, string | null])
+        .filter((t): t is [number, string] => !!t[1]),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ficha]
+  );
   const TITULOS: Record<TipoLink, string> = { pago: "Linkear con un pago cargado (y su factura)", resumen: "Pago del resumen de una tarjeta", trabajo: "Cobro de un trabajo" };
 
   return (
@@ -47,9 +85,16 @@ export function FichaExtracto(p: FichaExtractoProps) {
               El extracto constata, no carga: cada movimiento se linkea con lo que ya está en el sistema. Los impuestos, comisiones e intereses van a «{TITULO_COMISIONES_CUENTA}». Lo que no reconocés, marcalo como desconocido para reclamarlo. Click derecho en un movimiento.
             </div>
           </div>
-          <button type="button" onClick={p.onCerrar} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
-            Cerrar
-          </button>
+          <div style={{ display: "flex", gap: 8 }}>
+            {p.onAgregarMovimiento && (
+              <button type="button" onClick={p.onAgregarMovimiento} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
+                Agregar movimiento
+              </button>
+            )}
+            <button type="button" onClick={p.onCerrar} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
+              Cerrar
+            </button>
+          </div>
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {meses.map((f) => (
@@ -78,6 +123,18 @@ export function FichaExtracto(p: FichaExtractoProps) {
             <div style={{ fontSize: 12.5, color: "#7c3aed" }}>
               {TITULO_COMISIONES_CUENTA}: {p.money(ficha.comisionesArs)} (se tildan pagados en «Impuestos y comisiones»).
             </div>
+            {sugeridosDelMes.length > 0 && (
+              <div>
+                <button
+                  type="button"
+                  title="Clasifica la mecánica bancaria conocida del mes (impuestos, IVA, comisiones, sellos, intereses, tarjeta)"
+                  onClick={() => sugeridosDelMes.forEach(([id, key]) => p.onRenglon(id, key))}
+                  style={{ border: "1px solid #a78bfa", background: "#f5f3ff", color: "#5b21b6", borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontSize: 12.5, fontWeight: 700 }}
+                >
+                  🧠 Clasificar {sugeridosDelMes.length} sugerido(s)
+                </button>
+              </div>
+            )}
             <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff" }}>
               <thead>
                 <tr>
@@ -87,6 +144,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
                   <th style={{ ...th, textAlign: "right" }}>Débito</th>
                   <th style={{ ...th, textAlign: "right" }}>Crédito</th>
                   <th style={{ ...th, textAlign: "right" }}>Saldo</th>
+                  <th style={th}>Dónde va</th>
                   <th style={th}>Link</th>
                 </tr>
               </thead>
@@ -110,6 +168,18 @@ export function FichaExtracto(p: FichaExtractoProps) {
                     <td style={{ ...td, textAlign: "right" }}>{x.mov.movementType === "credito" ? p.money(Math.abs(Number(x.mov.amount)), ficha.currency) : ""}</td>
                     <td style={{ ...td, textAlign: "right", color: x.rompe ? "#b91c1c" : undefined, fontWeight: x.rompe ? 800 : undefined }} title={x.rompe ? "Acá no cierra la cadena de saldos" : ""}>
                       {p.money(Number(x.mov.balance), ficha.currency)}
+                    </td>
+                    <td style={td}>
+                      <DondeVa mov={x.mov} etiqueta={p.etiquetaRenglon} />
+                      <label title={x.mov.attachmentName || "Adjuntar el comprobante"} style={{ cursor: "pointer", marginLeft: 6 }}>
+                        {x.mov.attachmentName ? "📎✓" : "📎"}
+                        <input type="file" accept="image/*,.pdf,application/pdf" style={{ display: "none" }} onChange={(e) => p.onAdjunto(x.mov.id, e.target.files?.[0] || null)} />
+                      </label>
+                      {x.mov.assignmentNote && (
+                        <div style={{ fontSize: 11, color: "#64748b" }} title={x.mov.assignmentNote}>
+                          {x.mov.assignmentNote}
+                        </div>
+                      )}
                     </td>
                     <td style={{ ...td, color: x.estado === "linkeado" ? "#166534" : x.estado === "comision" ? "#7c3aed" : x.estado === "sugerido" ? "#b45309" : "#b91c1c" }}>{x.detalle}</td>
                   </tr>
@@ -152,6 +222,42 @@ export function FichaExtracto(p: FichaExtractoProps) {
           >
             ⇄ Movimiento interno (entre cuentas o empresas)
           </ItemMenu>
+          <SepMenu />
+          <ItemMenu
+            onClick={() => {
+              setRenglonDe(menu.m);
+              setMenu(null);
+            }}
+          >
+            📍 Renglón del Calendario anual…
+          </ItemMenu>
+          {!menu.m.mov.conceptKey &&
+            p.sugerenciaRenglon(menu.m.mov) &&
+            (() => {
+              const k = p.sugerenciaRenglon(menu.m.mov)!;
+              return (
+                <ItemMenu
+                  onClick={() => {
+                    p.onRenglon(menu.m.mov.id, k);
+                    setMenu(null);
+                  }}
+                >
+                  🧠 → {p.etiquetaRenglon(k)}
+                </ItemMenu>
+              );
+            })()}
+          {(["blanco", "negro"] as const).map((c) => (
+            <ItemMenu
+              key={c}
+              onClick={() => {
+                p.onCircuito(menu.m.mov.id, menu.m.mov.administration === c ? null : c);
+                setMenu(null);
+              }}
+            >
+              {menu.m.mov.administration === c ? "✓ " : ""}
+              {c === "blanco" ? "Circuito blanco" : "Circuito negro"}
+            </ItemMenu>
+          ))}
           {menu.m.mov.movementType === "credito" && (
             <ItemMenu
               onClick={() => {
@@ -193,7 +299,44 @@ export function FichaExtracto(p: FichaExtractoProps) {
               ✕ Soltar el link
             </ItemMenu>
           )}
+          <ItemMenu
+            onClick={() => {
+              const nota = window.prompt("Nota del movimiento (queda a la vista en la fila)", menu.m.mov.assignmentNote || "");
+              if (nota !== null) p.onNota(menu.m.mov.id, nota);
+              setMenu(null);
+            }}
+          >
+            📝 Nota…
+          </ItemMenu>
+          <ItemMenu
+            onClick={() => {
+              p.onLimpiar(menu.m.mov.id);
+              setMenu(null);
+            }}
+          >
+            Limpiar la asignación <span style={{ color: "#94a3b8", fontSize: 11 }}>(el importe y el saldo no se tocan)</span>
+          </ItemMenu>
+          <SepMenu />
+          <ItemMenu
+            onClick={() => {
+              if (window.confirm("¿Borrar este movimiento del banco?")) p.onBorrar(menu.m.mov.id);
+              setMenu(null);
+            }}
+          >
+            🗑 Borrar el movimiento
+          </ItemMenu>
         </MenuFicha>
+      )}
+      {renglonDe && (
+        <BuscadorVinculo
+          titulo={`Renglón del Calendario anual · ${renglonDe.mov.concept}`}
+          opciones={opcionesRenglon}
+          onElegir={(id) => {
+            p.onRenglon(renglonDe.mov.id, id);
+            setRenglonDe(null);
+          }}
+          onCerrar={() => setRenglonDe(null)}
+        />
       )}
       {buscar && (
         <BuscadorVinculo
@@ -207,5 +350,39 @@ export function FichaExtracto(p: FichaExtractoProps) {
         />
       )}
     </div>
+  );
+}
+
+// "Donde va": el renglon del Calendario anual y el circuito blanco/negro. Es lo que el bloque
+// "Movimientos bancarios" mostraba en su columna; la fila SOLO MUESTRA (se edita con click derecho).
+function DondeVa({ mov, etiqueta }: { mov: MovimientoFicha["mov"]; etiqueta: (key: string) => string }) {
+  const bn = mov.administration;
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+      {bn && (
+        <span
+          title={bn === "negro" ? "Circuito negro" : "Circuito blanco"}
+          style={{
+            width: 16,
+            height: 16,
+            borderRadius: 999,
+            border: "1px solid #334155",
+            background: bn === "negro" ? "#0f172a" : "#fff",
+            color: bn === "negro" ? "#fff" : "#0f172a",
+            fontSize: 10,
+            fontWeight: 800,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flex: "0 0 auto",
+          }}
+        >
+          {bn === "negro" ? "N" : "B"}
+        </span>
+      )}
+      <span style={{ color: mov.conceptKey ? "#334155" : "#b45309" }}>
+        {mov.conceptKey ? etiqueta(mov.conceptKey) : "sin renglón"}
+      </span>
+    </span>
   );
 }

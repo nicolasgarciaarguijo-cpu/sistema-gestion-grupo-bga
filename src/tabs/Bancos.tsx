@@ -359,6 +359,12 @@ export function BancosTab({
       {/* "Importar extracto bancario" se mudo al bloque BANCOS Y TARJETAS, al lado del lector de
           resumenes de tarjeta (Nicolas, 18/11/2026). El componente es ui/ImportarExtracto.tsx. */}
 
+      {/* ESCONDIDO 18/11/2026 (Nicolas): "las fichas que aglomeran toda la información de los bloques
+          anteriores deberían reemplazarlos, no quiero visualizarlos si la información la tiene la ficha".
+          Esta en la ficha de cada cuenta (ui/FichaExtracto.tsx): renglon del Calendario,
+          blanco/negro, nota, adjunto, agregar y borrar movimiento, todo con click derecho.
+          El codigo queda: para volver a verlo, sacar el `false &&`. */}
+      {false && (
       <Panel
         title="Movimientos bancarios · el banco real"
         span="full"
@@ -733,9 +739,11 @@ export function BancosTab({
           </>
         )}
       </Panel>
+      )}
 
-      {/* TARJETAS: debajo del banco, en la misma solapa. */}
-      <VerificacionDeResumenes entries={allBankStatementEntries} />
+      {/* ESCONDIDO 18/11/2026: la cadena de saldos la verifica la ficha de la cuenta mes por mes
+          (ficha.cadenaCierra, y el saldo que rompe sale en rojo). Sacar el `false &&` para volver a verlo. */}
+      {false && <VerificacionDeResumenes entries={allBankStatementEntries} />}
 
       {tarjetasSlot}
 

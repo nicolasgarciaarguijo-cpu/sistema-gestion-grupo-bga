@@ -35,6 +35,11 @@ export type MovimientoF = {
   amount: number;
   balance: number;
   conceptKey?: string;
+  // Blanco / negro. Vivia solo en el bloque "Movimientos bancarios"; desde el 18/11/2026 se
+  // elige en la ficha de la cuenta, porque ese bloque se escondio.
+  administration?: "blanco" | "negro";
+  assignmentNote?: string;
+  attachmentName?: string;
   assignedKind?: string;
   assignedJobBudget?: string;
   assignedParty?: string;

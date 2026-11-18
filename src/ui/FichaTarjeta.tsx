@@ -33,6 +33,10 @@ export type FichaTarjetaProps = {
   onPlastico: (cardId: number, patch: Partial<Pick<TarjetaF, "responsable" | "numerosAnteriores" | "lastDigits" | "cuentaTarjetaId">>) => void;
   // 2026-11-14: los datos del resumen (cierre, vencimiento, totales, pago minimo, pagado) se corrigen aca.
   onResumen: (statementId: number, campo: string, valor: any) => void;
+  // 18/11/2026: cargar y quitar resumenes se hace aca, porque el bloque "Resúmenes · cierres y
+  // vencimientos" lo reemplaza esta ficha.
+  onAgregarResumen?: () => void;
+  onQuitarResumen?: (statementId: number) => void;
   onCerrar: () => void;
 };
 
@@ -149,9 +153,27 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
               {p.cuenta.numeroCuenta ? `Cuenta ${p.cuenta.numeroCuenta} · ` : ""}Cada renglón del resumen es control: se linkea con el pago cargado con esta tarjeta. Todos esos pagos se pagan el día del vencimiento del resumen. Lo que no es una compra va a «{TITULO_COMISIONES_TARJETA}». Click derecho en un renglón para linkear.
             </div>
           </div>
+          <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
+          {p.onAgregarResumen && (
+            <button type="button" onClick={p.onAgregarResumen} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
+              Agregar resumen
+            </button>
+          )}
+          {p.onQuitarResumen && ficha && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm("¿Quitar este resumen? Se van sus renglones y los links que tenga.")) p.onQuitarResumen!(ficha.resumen.id);
+              }}
+              style={{ border: "1px solid #fecaca", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#b91c1c" }}
+            >
+              Quitar este resumen
+            </button>
+          )}
           <button type="button" onClick={p.onCerrar} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
             Cerrar
           </button>
+          </div>
         </div>
 
         <div>

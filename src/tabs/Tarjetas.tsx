@@ -353,6 +353,12 @@ export function TarjetasTab({
       </Panel>
 
       {/* --- Resúmenes / cierres --- */}
+      {/* ESCONDIDO 18/11/2026 (Nicolas): "las fichas que aglomeran toda la informacion de los bloques
+          anteriores deberian reemplazarlos, no quiero visualizarlos si la informacion la tiene la ficha".
+          Esta en la ficha de cada tarjeta (ui/FichaTarjeta.tsx): cierre, vencimiento, totales,
+          pago minimo, pagado, agregar y quitar resumen.
+          El codigo queda: para volver a verlo, sacar el `false &&`. */}
+      {false && (
       <Panel
         title="Resúmenes · cierres y vencimientos"
         span="full"
@@ -456,8 +462,15 @@ export function TarjetasTab({
           </div>
         )}
       </Panel>
+      )}
 
       {/* --- Consumos: PLANILLA por cierre (misma estetica que el Calendario anual) --- */}
+      {/* ESCONDIDO 18/11/2026 (Nicolas): "las fichas que aglomeran toda la informacion de los bloques
+          anteriores deberian reemplazarlos, no quiero visualizarlos si la informacion la tiene la ficha".
+          Los renglones de cada cierre se ven y se linkean en la ficha de la tarjeta
+          (ui/FichaTarjeta.tsx), separados por tarjeta fisica y responsable.
+          El codigo queda: para volver a verlo, sacar el `false &&`. */}
+      {false && (
       <Panel
         title="Consumos · planilla por cierre"
         span="full"
@@ -614,6 +627,7 @@ export function TarjetasTab({
           </>
         )}
       </Panel>
+      )}
 
       {menu && (() => {
         const c = scopedConsumptions.find((x) => x.id === menu.id);
@@ -706,7 +720,9 @@ export function TarjetasTab({
         );
       })()}
 
-      <VerificacionDeTarjetas cards={cards} statements={statements} consumptions={consumptions} />
+      {/* ESCONDIDO 18/11/2026: "falta itemizar" lo dice la ficha de la tarjeta en cada resumen
+          (difiereElTotal: los renglones suman X y el resumen dice Y). Sacar el `false &&` para verlo. */}
+      {false && <VerificacionDeTarjetas cards={cards} statements={statements} consumptions={consumptions} />}
     </>
     </>
   );

@@ -16,6 +16,43 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-18c",
+    fecha: "18/11/2026",
+    titulo: "Bancos y tarjetas: las fichas reemplazan a los bloques viejos",
+    items: [
+      {
+        titulo: "Una ficha nueva junta las cuentas y los costos",
+        que: "Arriba de la solapa está «Cuentas y costos de bancos y tarjetas», con los tres bloques adentro, cada uno plegable: las cuentas (de dónde sale y a dónde entra la plata), el costo real de bancos y tarjetas por empresa, y los costos de tarjeta para cotización (fijo/variable). Ya no andan sueltos por la solapa.",
+        como: "Bancos y tarjetas. El movimiento de cada cuenta y el detalle de cada resumen están en la ficha de cada una, más abajo.",
+        tab: "bancos",
+      },
+      {
+        titulo: "El renglón del Calendario y el blanco/negro se eligen en la ficha",
+        que: "Eran los dos únicos datos que solo vivían en «Movimientos bancarios». Ahora la ficha de la cuenta tiene una columna «Dónde va» que muestra el renglón del Calendario anual y la B/N, y se eligen con el click derecho del movimiento, como todo lo demás.",
+        como: "Click derecho en el movimiento → «Renglón del Calendario anual…» (buscador) o «Circuito blanco / negro». Elegir dos veces el mismo circuito lo saca.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Y también la nota, el adjunto, agregar y borrar el movimiento",
+        que: "Del mismo bloque se mudaron la nota, el comprobante adjunto (📎), «Agregar movimiento» a mano, «Limpiar la asignación» y «Borrar el movimiento». El botón «Clasificar N sugeridos» también está, por mes.",
+        como: "El 📎 y la nota se ven en la columna «Dónde va»; el resto sale del click derecho. «Agregar movimiento» está arriba, al lado de Cerrar.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Los resúmenes se cargan y se quitan en la ficha de la tarjeta",
+        que: "La ficha ya corregía el cierre, el vencimiento, los totales, el pago mínimo y el pagado; le faltaban «Agregar resumen» y «Quitar este resumen», que estaban en el bloque de la solapa.",
+        como: "Bancos y tarjetas → la ficha de la tarjeta. Los dos botones están arriba, al lado de Cerrar.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Cuatro bloques dejaron de verse",
+        que: "«Movimientos bancarios · el banco real», «Resúmenes cargados · verificación», «Resúmenes · cierres y vencimientos», «Consumos · planilla por cierre» y «Resúmenes de tarjeta · verificación»: todo eso lo tienen las fichas. La cadena de saldos la verifica la ficha de la cuenta mes por mes, y «falta itemizar» lo dice la ficha de la tarjeta en cada resumen.",
+        como: "No se borró ningún dato: los movimientos, los resúmenes y los consumos son los mismos, solo se ven desde la ficha.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-11-18a",
     fecha: "18/11/2026",
     titulo: "El resumen de tarjeta ahora encuentra los pagos cargados con otro medio",

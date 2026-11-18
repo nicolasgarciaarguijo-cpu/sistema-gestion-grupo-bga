@@ -187,6 +187,7 @@ import {
 } from "./domain/costs";
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
+import { suggestCalendarConcept } from "./domain/calendarBankRules";
 import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, type CalendarRowConfig } from "./domain/calendarStructure";
 import { buildLoanLines, lenderFromLabel, type CalendarLoan } from "./domain/loanLines";
 import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
@@ -18081,6 +18082,35 @@ Escribi CERRAR para confirmar:`
       .filter((j) => String(j.company) === m.mov.company)
       .map((j) => ({ id: String(j.budgetNumber), texto: `${j.budgetNumber} · ${j.client}`, detalle: "" }));
   };
+  // Los renglones del Calendario anual que se le pueden poner a un movimiento del banco. Salia solo del
+  // bloque "Movimientos bancarios"; ahora tambien lo usa la ficha de la cuenta, asi que se calcula una vez.
+  const renglonesDelBanco = useMemo(
+    () =>
+      allSectionsWith(calendarRowConfig).map((s) => ({
+        key: s.key,
+        label: s.label,
+        items: [
+          ...s.items
+            .filter((it) => !(calendarRowConfig.hidden || []).includes(it.key))
+            .map((it) => ({ key: it.key, label: (calendarRowConfig.labels || {})[it.key] || it.label })),
+          ...extraRowsOf(calendarRowConfig, s.key).map((nombre) => ({ key: `custom:${s.key}:${nombre}`, label: `${nombre} (propio)` })),
+        ],
+      })),
+    [calendarRowConfig]
+  );
+  const etiquetaRenglonDelBanco = (key: string) =>
+    key === "__interno__"
+      ? "Cuenta corriente · movimiento interno"
+      : renglonesDelBanco.flatMap((s) => s.items).find((it) => it.key === key)?.label || CALENDAR_ITEM_INDEX[key]?.label || key;
+  // Renglon y circuito blanco/negro del movimiento, desde la ficha de la cuenta (18/11/2026).
+  const renglonMovimiento = (movId: number, key: string) => {
+    if (!movimientoEditable(movId)) return;
+    setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, conceptKey: key } : x)));
+  };
+  const circuitoMovimiento = (movId: number, circuito: "blanco" | "negro" | null) => {
+    if (!movimientoEditable(movId)) return;
+    setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, administration: circuito || undefined } : x)));
+  };
   const linkearMovimiento = (movId: number, tipo: TipoLink, id: string) => {
     const b = movimientoEditable(movId);
     if (!b) return;
@@ -24252,6 +24282,8 @@ Escribi CERRAR para confirmar:`
               onAceptarSugerencias={aceptarSugerencias}
               onPlastico={(id, patch) => Object.entries(patch).forEach(([k, v]) => updateCreditCard(id, k as keyof CreditCard, v))}
               onResumen={(sid, campo, valor) => updateCreditCardStatement(sid, campo as keyof CreditCardStatement, valor)}
+              onAgregarResumen={addCreditCardStatement}
+              onQuitarResumen={removeCreditCardStatement}
               onCerrar={() => setFichaTarjetaAbierta(null)}
             />
           );
@@ -24272,6 +24304,16 @@ Escribi CERRAR para confirmar:`
               onTipo={tipoMovimiento}
               onDesconocer={desconocerMovimiento}
               onSoltar={soltarMovimiento}
+              renglones={renglonesDelBanco}
+              etiquetaRenglon={etiquetaRenglonDelBanco}
+              onRenglon={renglonMovimiento}
+              onCircuito={circuitoMovimiento}
+              onAgregarMovimiento={addBankStatementEntry}
+              onBorrar={removeBankStatementEntry}
+              onLimpiar={clearBankAssignment}
+              onNota={(movId, nota) => updateBankStatementEntry(movId, "assignmentNote", nota)}
+              onAdjunto={uploadBankStatementFile}
+              sugerenciaRenglon={(m) => (!m.conceptKey && !m.assignedJobBudget ? suggestCalendarConcept(m.concept || "") : null)}
               onCerrar={() => {
                 setFichaCuentaAbierta(null);
                 setFichaCuentaMes(undefined);
@@ -24940,16 +24982,7 @@ Escribi CERRAR para confirmar:`
             paid: i.paidByCostEntryId != null || i.paidByBankEntryId != null,
             paidByBankEntryId: i.paidByBankEntryId,
           }))}
-          renglones={allSectionsWith(calendarRowConfig).map((s) => ({
-            key: s.key,
-            label: s.label,
-            items: [
-              ...s.items
-                .filter((it) => !(calendarRowConfig.hidden || []).includes(it.key))
-                .map((it) => ({ key: it.key, label: (calendarRowConfig.labels || {})[it.key] || it.label })),
-              ...extraRowsOf(calendarRowConfig, s.key).map((nombre) => ({ key: `custom:${s.key}:${nombre}`, label: `${nombre} (propio)` })),
-            ],
-          }))}
+          renglones={renglonesDelBanco}
           onAssignConcept={assignBankConcept}
           onLinkInvoice={(bankId, invoiceId) => {
             const b = bankStatementEntries.find((x) => x.id === bankId);
