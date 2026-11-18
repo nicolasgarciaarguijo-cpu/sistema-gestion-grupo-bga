@@ -19,6 +19,7 @@ export function CuentasPanel({
   onSave,
   onBorrar,
   cuentaAjena = [],
+  nested = false,
 }: {
   // CONTROL: plata cargada con una cuenta de la otra empresa. No suma en ninguna cuenta hasta corregirla.
   cuentaAjena?: Array<{ refId: string; origen: string; detalle: string; company: string; date: string; amount: number; cuenta: string; cuentaCompany: string }>;
@@ -28,6 +29,8 @@ export function CuentasPanel({
   onSave: (cuenta: Cuenta) => void;
   // Borrar una cuenta SIN movimientos (con movimientos se desactiva: si no, sus saldos se moverian solos).
   onBorrar?: (id: string) => void;
+  // Adentro de la ficha "Cuentas y costos de bancos y tarjetas" (18/11/2026).
+  nested?: boolean;
 }) {
   const [menu, setMenu] = useState<null | { x: number; y: number; c: SaldoCuenta }>(null);
   const [nueva, setNueva] = useState<null | { company: string; tipo: "banco" | "persona"; nombre: string; moneda: "ARS" | "USD"; color: "blanco" | "negro" }>(null);
@@ -56,6 +59,7 @@ export function CuentasPanel({
     <Panel
       title="Cuentas · de dónde sale y a dónde entra la plata"
       span="full"
+      nested={nested}
       actions={
         <ButtonLike onClick={() => setNueva({ company: companyOptions[0]?.value || "", tipo: "banco", nombre: "", moneda: "ARS", color: "blanco" })}>
           + Cuenta

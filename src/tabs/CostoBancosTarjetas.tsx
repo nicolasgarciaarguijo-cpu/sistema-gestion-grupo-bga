@@ -28,6 +28,7 @@ export function CostoBancosTarjetas({
   consumos,
   companyOptions,
   money,
+  nested = false,
 }: {
   bancos: Parameters<typeof costoBancosYTarjetas>[0]["bancos"];
   tarjetas: Parameters<typeof costoBancosYTarjetas>[0]["tarjetas"];
@@ -35,6 +36,8 @@ export function CostoBancosTarjetas({
   consumos: Parameters<typeof costoBancosYTarjetas>[0]["consumos"];
   companyOptions: Array<{ value: string; label?: string; short?: string; primary?: string }>;
   money: (n: number, currency?: string) => string;
+  // Adentro de la ficha "Cuentas y costos de bancos y tarjetas" (18/11/2026).
+  nested?: boolean;
 }) {
   const [mes, setMes] = useState(new Date().toISOString().slice(0, 7));
   const [modo, setModo] = useState<"mes" | "ejercicio">("mes");
@@ -81,6 +84,7 @@ export function CostoBancosTarjetas({
   return (
     <Panel
       span="full"
+      nested={nested}
       title="Costo real de bancos y tarjetas · por empresa"
       actions={
         <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>

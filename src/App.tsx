@@ -95,6 +95,8 @@ import { FichaTarjeta } from "./ui/FichaTarjeta";
 import { FichaExtracto, type TipoLink } from "./ui/FichaExtracto";
 import { FichasLinkeoPanel } from "./ui/FichasLinkeoPanel";
 import { ImportarExtracto } from "./ui/ImportarExtracto";
+import { CuentasYCostos } from "./ui/CuentasYCostos";
+import { CostosTarjetaCotizacion } from "./ui/CostosTarjetaCotizacion";
 import { ImportarResumenTarjetaModal, type DecisionImportacion } from "./ui/ImportarResumenTarjetaModal";
 import type { PagoSinTarjetaF } from "./domain/fichaTarjeta";
 import { RevisionArcaModal } from "./ui/RevisionArcaModal";
@@ -24850,7 +24852,23 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "bancos" && (
         <>
+        {/* FICHA NUEVA (Nicolas, 18/11/2026): cuentas + costo real + costos de tarjeta, los tres juntos. */}
+        <CuentasYCostos
+          costoReal={
+            <CostoBancosTarjetas
+              nested
+              bancos={visibleBankStatementEntries as any}
+              tarjetas={visibleCreditCards as any}
+              resumenes={visibleCreditCardStatements as any}
+              consumos={visibleCreditCardConsumptions as any}
+              companyOptions={COMPANY_OPTIONS as any}
+              money={money}
+            />
+          }
+          costosTarjeta={<CostosTarjetaCotizacion cardCostSummary={cardCostSummary} />}
+          cuentas={
         <CuentasPanel
+          nested
           cuentaAjena={plataConCuentaAjena.map((p) => ({ refId: p.refId, origen: p.origen, detalle: p.detalle, company: p.company, date: p.date, amount: p.amount, cuenta: p.cuenta.nombre, cuentaCompany: p.cuenta.company }))}
           saldos={saldosCuentasHoy}
           control={controlExtractoCuentas}
@@ -24859,6 +24877,8 @@ Escribi CERRAR para confirmar:`
             setCuentasGuardadas((prev) => [...prev.filter((c) => c.id !== cuenta.id), cuenta])
           }
           onBorrar={(id) => setCuentasGuardadas((prev) => prev.filter((c) => c.id !== id))}
+        />
+          }
         />
         <BancosTab
           linkeoDesde={LINKEO_OBLIGATORIO_DESDE}
@@ -24937,16 +24957,6 @@ Escribi CERRAR para confirmar:`
             if (invoiceId == null) unlinkBankInvoice([bankId]);
             else assignBankToSupplier([bankId], { supplier: b?.assignedParty || "", conceptKey: "", invoiceId });
           }}
-          costoSlot={
-            <CostoBancosTarjetas
-              bancos={visibleBankStatementEntries as any}
-              tarjetas={visibleCreditCards as any}
-              resumenes={visibleCreditCardStatements as any}
-              consumos={visibleCreditCardConsumptions as any}
-              companyOptions={COMPANY_OPTIONS as any}
-              money={money}
-            />
-          }
           tarjetasSlot={
             <TarjetasTab
               companyScope={tarjetasCompanyScope}
