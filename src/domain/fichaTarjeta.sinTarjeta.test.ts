@@ -36,10 +36,12 @@ describe("sugerir un pago que no dice tarjeta", () => {
     expect(s.motivo).toContain("transferencia");
   });
 
-  it("acepta una diferencia de un peso y hasta 10 días", () => {
+  // Nicolas, 18/11/2026: "empiezo a comprar con tarjeta ni bien cierra el mes anterior": 35 días.
+  it("acepta una diferencia de un peso y hasta 35 días", () => {
     expect(sugerirPagoSinTarjeta(renglon(), [pago({ amount: 120000.5 })], new Set())).not.toBeNull();
-    expect(sugerirPagoSinTarjeta(renglon(), [pago({ date: "2026-10-30" })], new Set())).not.toBeNull();
-    expect(sugerirPagoSinTarjeta(renglon(), [pago({ date: "2026-10-20" })], new Set())).toBeNull();
+    expect(sugerirPagoSinTarjeta(renglon(), [pago({ date: "2026-10-20" })], new Set())).not.toBeNull();
+    expect(sugerirPagoSinTarjeta(renglon(), [pago({ date: "2026-10-05" })], new Set())).not.toBeNull();
+    expect(sugerirPagoSinTarjeta(renglon(), [pago({ date: "2026-09-20" })], new Set())).toBeNull();
     expect(sugerirPagoSinTarjeta(renglon(), [pago({ amount: 125000 })], new Set())).toBeNull();
   });
 

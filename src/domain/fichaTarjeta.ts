@@ -182,8 +182,10 @@ export function sugerirPago(r: RenglonF, cuentaId: number, pagos: PagoF[], tarje
   return { pagoId: x.p.id, cuota: x.cuota, motivo: `mismo monto${x.n > 1 ? ` (cuota ${x.cuota}/${x.n})` : ""} y compra a ${x.dias} día(s)` };
 }
 
-// Dias de diferencia que se aceptan entre la compra del resumen y la fecha del pago cargado.
-const DIAS_CERCA = 10;
+// Dias de diferencia que se aceptan entre la compra del resumen y la fecha del pago cargado. Nicolas,
+// 18/11/2026: "empiezo a comprar con tarjeta ni bien cierra el mes anterior, asi que necesito mas holgura".
+// Un resumen cubre un mes entero de compras, asi que la ventana es de 35 dias.
+export const DIAS_CERCA_SIN_TARJETA = 35;
 
 // Un pago cargado SIN tarjeta que podria ser este renglon: misma empresa, mismo monto y fecha cerca.
 // Solo para renglones de UNA cuota: si el resumen dice "02/06", el renglon es una cuota y el pago esta por
@@ -199,7 +201,7 @@ export function sugerirPagoSinTarjeta(
   const cand = pagos
     .filter((p) => p.company === r.company && p.bankEntryId == null && !ocupados.has(`${p.id}:1`))
     .map((p) => ({ p, dias: diasEntre(p.date, r.date) }))
-    .filter((x) => Math.abs(Number(x.p.amount || 0) - Number(r.amount)) <= TOL && x.dias <= DIAS_CERCA)
+    .filter((x) => Math.abs(Number(x.p.amount || 0) - Number(r.amount)) <= TOL && x.dias <= DIAS_CERCA_SIN_TARJETA)
     .sort((a, b) => a.dias - b.dias);
   if (!cand.length) return null;
   const x = cand[0];
