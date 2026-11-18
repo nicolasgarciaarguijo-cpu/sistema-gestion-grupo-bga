@@ -269,8 +269,8 @@ export function ProveedoresPanel({
       cuits: cuitParaRevisar(proveedores as any),
       mellizas: facturasMellizas(facturas),
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [proveedores, ledgers, facturas]
+    // usoDe se deriva de ledgers y facturas, que ya estan aca.
+    [proveedores, ledgers, facturas, usoDe]
   );
   // La condicion que sale de como se le vino pagando (domain/condicionSugerida). Solo se SUGIERE.
   const sugerenciaDe = (p: Proveedor) => {

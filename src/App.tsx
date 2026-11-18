@@ -94,6 +94,8 @@ import { proveedorDeArca, accionPorDefecto, sugerenciaDe, type RenglonRevision }
 import { FichaTarjeta } from "./ui/FichaTarjeta";
 import { FichaExtracto, type TipoLink } from "./ui/FichaExtracto";
 import { FichasLinkeoPanel } from "./ui/FichasLinkeoPanel";
+import { BarraEjercicio, AvisoEscondidoPorEjercicio } from "./ui/BarraEjercicio";
+import { rangoDelEjercicio, soloDelEjercicio, escondidasDelEjercicio, esDelEjercicio, esElEjercicioEnCurso } from "./domain/ejercicioVisible";
 import { ImportarExtracto } from "./ui/ImportarExtracto";
 import { CuentasYCostos } from "./ui/CuentasYCostos";
 import { CostosTarjetaCotizacion } from "./ui/CostosTarjetaCotizacion";
@@ -8204,8 +8206,18 @@ Escribi CERRAR para confirmar:`
   }, [porCerrar.length]);
 
   // true = es de un ejercicio cerrado y hoy se esta escondiendo.
+  // EL EJERCICIO ELEGIDO EN LA BARRA (Nicolas, 18/11/2026): "quiero que todo lo del ejercicio anterior no se
+  // visualice y quede guardado en el ejercicio anterior; si quiero verlo tengo que volver ese ejercicio. El
+  // ejercicio anterior tuvo mucha prueba y no es real". Decide que LISTADOS se ven; los numeros se siguen
+  // calculando con TODO lo cargado, porque pidio que esconder no cambie nada. Ver domain/ejercicioVisible.ts.
+  const rangoEjercicio = useMemo(() => rangoDelEjercicio(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear), [balanceFiscalStartYear]);
+  const viendoElEjercicioEnCurso = esElEjercicioEnCurso(rangoEjercicio, todayIso());
+  // True si la fila NO es del ejercicio elegido: es el filtro que usan todos los listados.
+  const deOtroEjercicio = (iso: string | undefined | null) => !esDelEjercicio(iso, rangoEjercicio);
+  // El candado del cierre solo esconde mientras se mira el ejercicio en curso: si se eligio otro en la
+  // barra, se esta mirando el pasado a proposito y ahi se ve todo (la barra es la unica puerta).
   const ocultoPorCierre = (company: string, iso: string | undefined) =>
-    !verCerrado && !!iso && !!cierreQueBloquea(fiscalClosings, company, iso);
+    viendoElEjercicioEnCurso && !verCerrado && !!iso && !!cierreQueBloquea(fiscalClosings, company, iso);
   const hayEjercicioCerrado = cierresActivos(fiscalClosings).some((c) => canAccessCompany(c.company as CompanyName));
   const fechasUltimoCerrado = (() => {
     const c = cierresActivos(fiscalClosings)
@@ -18029,12 +18041,29 @@ Escribi CERRAR para confirmar:`
     [alcanceEmpresa, visibleBankStatementEntries, costEntries, resumenesF, tarjetasF]
   );
   const claveCuenta = (f: { company: string; bank: string; currency: string }) => `${f.company}||${f.bank}||${f.currency}`;
+  // Lo que se ve es el ejercicio elegido. Se corta por MES entero, asi que la cadena de saldos de cada mes
+  // que si se ve queda igual que antes.
+  const fichasCuentasDelEjercicio = useMemo(
+    () => soloDelEjercicio(fichasCuentas, (f) => `${f.mes}-01`, rangoEjercicio),
+    [fichasCuentas, rangoEjercicio]
+  );
+  const fichasResumenDelEjercicio = useMemo(
+    () => soloDelEjercicio(fichasResumen, (f) => f.resumen.closingDate, rangoEjercicio),
+    [fichasResumen, rangoEjercicio]
+  );
+  const escondidoEnBancos = useMemo(
+    () => ({
+      cuentas: escondidasDelEjercicio(fichasCuentas, (f) => `${f.mes}-01`, rangoEjercicio),
+      resumenes: escondidasDelEjercicio(fichasResumen, (f) => f.resumen.closingDate, rangoEjercicio),
+    }),
+    [fichasCuentas, fichasResumen, rangoEjercicio]
+  );
   const filasPanelTarjetas = useMemo(
     () =>
       cuentasDeTarjeta(tarjetasF, resumenesF)
-        .filter((t) => resumenesF.some((x) => cuentaDeTarjeta(x.cardId, tarjetasF, resumenesF) === t.id))
+        .filter((t) => fichasResumenDelEjercicio.some((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === t.id))
         .map((t) => {
-          const fs = fichasResumen
+          const fs = fichasResumenDelEjercicio
             .filter((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === t.id)
             .sort((a, b) => b.resumen.closingDate.localeCompare(a.resumen.closingDate));
           return {
@@ -18046,11 +18075,11 @@ Escribi CERRAR para confirmar:`
             ultimo: fs[0] ? { closingDate: fs[0].resumen.closingDate, completo: fs[0].completo, obligatorio: fs[0].obligatorio } : undefined,
           };
         }),
-    [tarjetasF, resumenesF, fichasResumen]
+    [tarjetasF, resumenesF, fichasResumenDelEjercicio]
   );
   const filasPanelCuentas = useMemo(() => {
     const porCuenta = new Map<string, typeof fichasCuentas>();
-    fichasCuentas.forEach((f) => porCuenta.set(claveCuenta(f), [...(porCuenta.get(claveCuenta(f)) || []), f]));
+    fichasCuentasDelEjercicio.forEach((f) => porCuenta.set(claveCuenta(f), [...(porCuenta.get(claveCuenta(f)) || []), f]));
     return Array.from(porCuenta.entries()).map(([clave, fs]) => {
       const orden = [...fs].sort((a, b) => b.mes.localeCompare(a.mes));
       return {
@@ -18062,7 +18091,7 @@ Escribi CERRAR para confirmar:`
         ultimo: { mes: orden[0].mes, completo: orden[0].completo, obligatorio: orden[0].obligatorio },
       };
     });
-  }, [fichasCuentas]);
+  }, [fichasCuentasDelEjercicio]);
 
   const movimientoEditable = (movId: number) => {
     const b = bankStatementEntries.find((x) => x.id === movId);
@@ -22749,7 +22778,7 @@ Escribi CERRAR para confirmar:`
   };
   const renderFacturasCompra = () => (
     <FacturasCompraPanel
-      filas={filasFacturas.filter((x) => !(x.pagada && ocultoPorCierre(x.company, x.invoiceDate)))}
+      filas={filasFacturas.filter((x) => !deOtroEjercicio(x.invoiceDate) && !(x.pagada && ocultoPorCierre(x.company, x.invoiceDate)))}
       onAbrirResumen={(cuentaId, statementId) => setFichaTarjetaAbierta({ cuentaId, statementId })}
       ivaSinPeriodo={ivaSinPeriodo.map((f) => ({ id: f.id, company: f.company, supplier: f.supplier, invoiceDate: f.invoiceDate, total: f.total }))}
       companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
@@ -22962,8 +22991,8 @@ Escribi CERRAR para confirmar:`
           months={costsMonths}
           aggregation={costsAggregation}
           costGroups={porEmpresa(costGroups)}
-          costEntries={porEmpresa(costEntries).filter((x) => !ocultoPorCierre(x.company, x.date))}
-          pettyCashExpenses={visiblePettyCashExpenses.filter((x) => !ocultoPorCierre(x.company, x.date))}
+          costEntries={porEmpresa(costEntries).filter((x) => !deOtroEjercicio(x.date) && !ocultoPorCierre(x.company, x.date))}
+          pettyCashExpenses={visiblePettyCashExpenses.filter((x) => !deOtroEjercicio(x.date) && !ocultoPorCierre(x.company, x.date))}
           updatePettyCashExpense={updatePettyCashExpense}
           getPettyCashAdministration={getPettyCashAdministration}
           autoClassifyUnassigned={autoClassifyUnassigned}
@@ -23659,50 +23688,27 @@ Escribi CERRAR para confirmar:`
           <ButtonLike secondary onClick={() => setVerCerrado((v) => !v)}>{verCerrado ? `Esconder ${fechasUltimoCerrado}` : `Ver ejercicio ${fechasUltimoCerrado}`}</ButtonLike>
         </div>
       )}
-      {(activeTab === "calendarioAnual" || activeTab === "cashflow") && (() => {
-        // UN BOTON POR EJERCICIO, CON SUS FECHAS (04/11/2026: "que queden guardados detras de un boton que diga las fechas de
-        // su ejercicio... no quiero ver nada viejo"). Se arranca en el corriente; lo anterior se ve solo si se lo llama.
-        const corriente = currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date());
-        const anio = balanceFiscalStartYear;
-        const cerrados = cierresActivos(fiscalClosings).filter((c) => canAccessCompany(c.company as CompanyName)).map((c) => c.fiscalStartYear);
-        const ejercicios = Array.from(new Set([corriente, corriente - 1, anio, ...cerrados])).sort((a, b) => b - a);
-        const fechas = (y: number) => {
-          const b = fiscalYearBounds(DEFAULT_FISCAL_START_MONTH, y);
-          return `${formatDateDisplay(b.startIso)} – ${formatDateDisplay(b.endIso)}`;
-        };
-        return (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", margin: "0 0 10px", fontSize: 13 }}>
-            {ejercicios.map((y) => {
-              const elegido = y === anio && (balancePeriodMode !== "all");
-              return (
-                <button
-                  key={y}
-                  type="button"
-                  onClick={() => {
-                    setBalanceFiscalStartYear(y);
-                    setBalancePeriodMode("fiscalYear");
-                  }}
-                  style={{
-                    padding: "5px 12px", borderRadius: 999, cursor: "pointer", fontWeight: 700, fontSize: 12.5,
-                    border: `1px solid ${elegido ? (y === corriente ? "#15803d" : "#b91c1c") : "#cbd5e1"}`,
-                    background: elegido ? (y === corriente ? "#16a34a" : "#b91c1c") : "#fff",
-                    color: elegido ? "#fff" : "#334155",
-                  }}
-                >
-                  {y === corriente ? "En curso · " : ""}
-                  {fechas(y)}
-                  {cerrados.includes(y) ? " · cerrado" : ""}
-                </button>
-              );
-            })}
-            {anio !== corriente && (
-              <span style={{ color: "#991b1b", fontWeight: 700 }}>
-                Estás viendo otro ejercicio{cerrados.includes(anio) ? " (cerrado: solo lectura)" : ""}.
-              </span>
-            )}
-          </div>
-        );
-      })()}
+      {/* LA BARRA DEL EJERCICIO. Desde el 18/11/2026 esta en TODAS las solapas de administracion, porque el
+          ejercicio elegido decide que listados se ven (Nicolas: "todo lo del ejercicio anterior no se
+          visualice... si quiero verlo tengo que volver ese ejercicio"). Ver ui/BarraEjercicio.tsx. */}
+      {BRUTA_TAB_KEYS.includes(activeTab) && (
+        <BarraEjercicio
+          anio={balanceFiscalStartYear}
+          corriente={currentFiscalStartYear(DEFAULT_FISCAL_START_MONTH, new Date())}
+          cerrados={cierresActivos(fiscalClosings)
+            .filter((c) => canAccessCompany(c.company as CompanyName))
+            .map((c) => c.fiscalStartYear)}
+          fechas={(y) => {
+            const b = fiscalYearBounds(DEFAULT_FISCAL_START_MONTH, y);
+            return `${formatDateDisplay(b.startIso)} – ${formatDateDisplay(b.endIso)}`;
+          }}
+          marcado={!(activeTab === "cashflow" && balancePeriodMode === "all")}
+          onElegir={(y) => {
+            setBalanceFiscalStartYear(y);
+            setBalancePeriodMode("fiscalYear");
+          }}
+        />
+      )}
       {asistenteCierre && porCerrar.length > 0 && (
         <AsistenteCierre
           porCerrar={porCerrar}
@@ -24265,7 +24271,7 @@ Escribi CERRAR para confirmar:`
               key={cuenta.id}
               cuenta={cuenta}
               plasticos={tarjetasF.filter((t) => t.id !== cuenta.id && cuentaDeTarjeta(t.id, tarjetasF, resumenesF) === cuenta.id)}
-              fichas={fichasResumen.filter((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === cuenta.id)}
+              fichas={fichasResumenDelEjercicio.filter((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === cuenta.id)}
               pagos={pagosDeLaCuenta(cuenta.id, cuenta.company)}
               etiquetaPago={etiquetaPago}
               pagoComisiones={(sid) => {
@@ -24290,7 +24296,7 @@ Escribi CERRAR para confirmar:`
         })()}
       {fichaCuentaAbierta &&
         (() => {
-          const meses = fichasCuentas.filter((f) => claveCuenta(f) === fichaCuentaAbierta);
+          const meses = fichasCuentasDelEjercicio.filter((f) => claveCuenta(f) === fichaCuentaAbierta);
           if (!meses.length) return null;
           return (
             <FichaExtracto
@@ -24652,12 +24658,12 @@ Escribi CERRAR para confirmar:`
       {activeTab === "cajaChica" && (
         <CajaChicaListado
           devolucionesCruzadas={devolucionesCruzadas}
-          fondos={visiblePettyCashFunds.filter((x) => !(x.closed && ocultoPorCierre(x.company, x.closedDate))) as any}
+          fondos={visiblePettyCashFunds.filter((x) => !(x.closed && (deOtroEjercicio(x.closedDate) || ocultoPorCierre(x.company, x.closedDate)))) as any}
           gastos={[...visiblePettyCashExpenses, ...pagosConCajaChica].filter(
-            (g: any) => !visiblePettyCashFunds.some((x) => x.id === g.fundId && x.closed && ocultoPorCierre(x.company, x.closedDate))
+            (g: any) => !deOtroEjercicio(g.date) && !visiblePettyCashFunds.some((x) => x.id === g.fundId && x.closed && ocultoPorCierre(x.company, x.closedDate))
           ) as any}
           tipos={tiposCaja}
-          viaticos={visibleViaticos as any}
+          viaticos={visibleViaticos.filter((v: any) => !deOtroEjercicio(v.fecha || v.date)) as any}
           companyShort={(c) => getCompanyMeta(c as CompanyName).short}
           money={money}
           onNuevaCaja={() => abrirNuevaCaja()}
@@ -24862,7 +24868,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "seguros" && (
         <SegurosTab
-          seguros={porEmpresa(seguros).filter((x) => !(x.vigenciaHasta && (x.estado === "baja" || x.vigenciaHasta < todayIso()) && ocultoPorCierre(x.company, x.vigenciaHasta)))}
+          seguros={porEmpresa(seguros).filter((x) => !(x.vigenciaHasta && (x.estado === "baja" || x.vigenciaHasta < todayIso()) && (deOtroEjercicio(x.vigenciaHasta) || ocultoPorCierre(x.company, x.vigenciaHasta))))}
           hoyIso={todayIso()}
           months={fiscalMonthKeys(DEFAULT_FISCAL_START_MONTH, balanceFiscalStartYear)}
           companyScope={segurosCompanyScope}
@@ -24880,7 +24886,7 @@ Escribi CERRAR para confirmar:`
 
       {activeTab === "inversiones" && (
         <InversionesTab
-          inversiones={porEmpresa(inversiones).filter((x) => !(x.estado === "cerrada" && ocultoPorCierre(x.company, x.fechaFin)))}
+          inversiones={porEmpresa(inversiones).filter((x) => !(x.estado === "cerrada" && (deOtroEjercicio(x.fechaFin) || ocultoPorCierre(x.company, x.fechaFin))))}
           companyScope={inversionesCompanyScope}
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
@@ -24949,7 +24955,7 @@ Escribi CERRAR para confirmar:`
           discardStatementDraft={discardCostStatementDraft}
           bankStatementSummary={bankStatementSummary}
           monthBankStatementEntries={monthBankStatementEntries}
-          allBankStatementEntries={visibleBankStatementEntries.filter((x) => !ocultoPorCierre(x.company, x.date))}
+          allBankStatementEntries={visibleBankStatementEntries.filter((x) => !deOtroEjercicio(x.date) && !ocultoPorCierre(x.company, x.date))}
           operationalMonth={operationalMonth}
           monthLabel={monthLabel}
           shiftOperationalMonth={shiftOperationalMonth}
@@ -25038,6 +25044,13 @@ Escribi CERRAR para confirmar:`
           onLeerPdf={leerPdfTarjeta}
           onAbrirTarjeta={(id) => setFichaTarjetaAbierta({ cuentaId: id })}
           onAgregarTarjeta={addCreditCard}
+          escondido={
+            <AvisoEscondidoPorEjercicio
+              anteriores={escondidoEnBancos.cuentas.anteriores + escondidoEnBancos.resumenes.anteriores}
+              posteriores={escondidoEnBancos.cuentas.posteriores + escondidoEnBancos.resumenes.posteriores}
+              desdeIso={rangoEjercicio.startIso}
+            />
+          }
           impuestosPendientes={{
             cantidad: gruposImpuestos.filter((g) => !pagoDeImpuestos(g.clave)).length,
             total: money(gruposImpuestos.filter((g) => !pagoDeImpuestos(g.clave) && g.moneda === "ARS").reduce((a, g) => a + g.total, 0)),
@@ -25075,20 +25088,20 @@ Escribi CERRAR para confirmar:`
           COMPANY_OPTIONS={COMPANY_OPTIONS}
           getCompanyMeta={getCompanyMeta}
           updateArrayItem={updateArrayItemFirmado}
-          internalTransfers={visibleInternalTransfers.filter((x) => !ocultoPorCierre(x.company, x.date))}
+          internalTransfers={visibleInternalTransfers.filter((x) => !deOtroEjercicio(x.date) && !ocultoPorCierre(x.company, x.date))}
           setInternalTransfers={setInternalTransfers}
           onGuardarPase={guardarPase}
           cuentas={cuentasSistema as any}
           removeInternalTransfer={removeInternalTransfer}
-          cashHoldings={visibleCashHoldings.filter((x) => !ocultoPorCierre(x.company, x.date))}
+          cashHoldings={visibleCashHoldings.filter((x) => !deOtroEjercicio(x.date) && !ocultoPorCierre(x.company, x.date))}
           setCashHoldings={setCashHoldings}
           addCashHolding={addCashHolding}
           removeCashHolding={removeCashHolding}
-          capitalEntries={visibleCapitalEntries.filter((x) => !ocultoPorCierre(x.company, x.date))}
+          capitalEntries={visibleCapitalEntries.filter((x) => !deOtroEjercicio(x.date) && !ocultoPorCierre(x.company, x.date))}
           setCapitalEntries={setCapitalEntries}
           addCapitalEntry={addCapitalEntry}
           removeCapitalEntry={removeCapitalEntry}
-          calendarLoans={calendarLoans.filter((l) => !ocultoPorCierre(l.company, l.date))}
+          calendarLoans={calendarLoans.filter((l) => !deOtroEjercicio(l.date) && !ocultoPorCierre(l.company, l.date))}
           personLedger={personLedgerSummary}
           personLedgerEntries={visiblePersonLedgerEntries}
           setPersonLedgerEntries={setPersonLedgerEntries}
@@ -25242,7 +25255,7 @@ Escribi CERRAR para confirmar:`
       {activeTab === "aprobados" && (
         <AprobadosTab
           cuentas={cuentasSistema}
-          ocultarTerminado={(j: any) => ocultoPorCierre(j.company, j.estimatedDeliveryDate || j.startDate || j.approvalDate)}
+          ocultarTerminado={(j: any) => deOtroEjercicio(j.estimatedDeliveryDate || j.startDate || j.approvalDate) || ocultoPorCierre(j.company, j.estimatedDeliveryDate || j.startDate || j.approvalDate)}
           onBorrarTrabajo={(jobId) => {
             // BORRAR UN TRABAJO (Nicolas, 2026-10-20: "asi como poder editar, debo poder borrar"). Se van con el
             // sus pagos, facturas y comisiones (salen del cash flow). El presupuesto guardado queda en Historial.
@@ -25347,7 +25360,7 @@ Escribi CERRAR para confirmar:`
         <FacturacionTab
           cuentas={cuentasSistema as any}
           calendarioCobranzasSlot={renderCalendarioAnual("cobranzas")}
-          issuedInvoices={visibleIssuedInvoices.filter((x) => !ocultoPorCierre(x.company, x.date))}
+          issuedInvoices={visibleIssuedInvoices.filter((x) => !deOtroEjercicio(x.date) && !ocultoPorCierre(x.company, x.date))}
           updateIssuedInvoice={updateIssuedInvoice}
           onBorrarEmitida={(id) => setIssuedInvoices((prev) => prev.filter((inv) => inv.id !== id))}
           onRegularizaBlanqueo={(id, on) =>

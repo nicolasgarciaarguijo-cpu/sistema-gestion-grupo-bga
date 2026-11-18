@@ -70,8 +70,8 @@ export function FichaExtracto(p: FichaExtractoProps) {
         .filter((x) => !x.mov.conceptKey)
         .map((x) => [x.mov.id, p.sugerenciaRenglon(x.mov)] as [number, string | null])
         .filter((t): t is [number, string] => !!t[1]),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ficha]
+    // Solo depende del mes que se esta mirando; la sugerencia es pura.
+    [ficha, p.sugerenciaRenglon]
   );
   const TITULOS: Record<TipoLink, string> = { pago: "Linkear con un pago cargado (y su factura)", resumen: "Pago del resumen de una tarjeta", trabajo: "Cobro de un trabajo" };
 

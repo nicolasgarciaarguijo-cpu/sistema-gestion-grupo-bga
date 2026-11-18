@@ -291,6 +291,15 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         ],
       },
       {
+        heading: "La barra del ejercicio: qué se ve y qué no",
+        blocks: [
+          { type: "p", text: "Arriba de TODAS las solapas de administración hay un botón por ejercicio, con sus fechas. El que está en curso viene en verde. Desde el 18/11/2026, el ejercicio elegido decide QUÉ LISTADOS SE VEN: pedido de Nicolás, porque el ejercicio 2025/26 tuvo mucha prueba y no es real, y a partir de este se trabaja con todo lo real." },
+          { type: "bullets", items: ["Cortan por el ejercicio elegido: Pago a proveedores, Compras, Bancos y tarjetas (fichas de cuenta y de tarjeta), Facturación, Emitir facturas, Seguros, Inversiones, Movimientos internos, Caja chica y los trabajos terminados.", "Para ver algo del ejercicio anterior hay que ELEGIR ESE EJERCICIO en la barra. Es la única puerta: desde el ejercicio en curso no se ve, y un cartel rojo avisa cuando estás mirando otro.", "Al pie del listado dice cuántas filas quedaron afuera y de qué lado ('No se muestran 12 de antes del 01/11/2026. Nada se borró')."] },
+          { type: "warn", text: "Es un filtro de VISTA, no de cálculo. Los saldos, la cuenta corriente, la deuda y la cadena de saldos se siguen calculando con TODO lo cargado: esconder no cambia ningún número. Por eso una factura impaga del ejercicio pasado sigue contando como deuda aunque no se vea en el listado." },
+          { type: "bullets", items: ["Una fila SIN FECHA (o con la fecha mal escrita) no se esconde: no se puede probar que sea vieja, y esconderla sería perderla sin aviso.", "Las deudas con convenio se ven siempre: un plan de pago no es un registro con fecha, es un saldo abierto, y mientras se deba hay que verlo.", "La ficha de la cuenta corta por MES entero, así que la cadena de saldos de cada mes que sí se ve queda igual que antes."] },
+        ],
+      },
+      {
         heading: "Cierre de ejercicio con arqueo",
         blocks: [
           { type: "p", text: "El ejercicio va de noviembre a octubre. Al cerrarlo, el sistema pide la plata REAL de cada cuenta (cada banco, efectivo blanco, efectivo negro, en pesos y en dólares, y las cajas por persona). El ejercicio nuevo arranca con esa plata contada." },

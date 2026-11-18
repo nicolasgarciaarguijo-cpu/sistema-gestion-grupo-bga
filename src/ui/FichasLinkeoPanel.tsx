@@ -25,6 +25,7 @@ export function FichasLinkeoPanel({
   importarExtracto,
   onAgregarTarjeta,
   impuestosPendientes,
+  escondido,
 }: {
   tarjetas: FilaTarjeta[];
   cuentas: FilaCuenta[];
@@ -38,6 +39,8 @@ export function FichasLinkeoPanel({
   onAgregarTarjeta?: () => void;
   // Impuestos y comisiones pendientes (el detalle se tilda abajo, en su panel).
   impuestosPendientes?: { cantidad: number; total: string };
+  // Lo que el ejercicio elegido deja afuera de la vista (ui/BarraEjercicio.tsx).
+  escondido?: React.ReactNode;
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const pendTarjetas = tarjetas.reduce((a, t) => a + t.pendientes, 0);
@@ -154,6 +157,7 @@ export function FichasLinkeoPanel({
           </table>
         </div>
       </div>
+      {escondido}
     </Panel>
   );
 }

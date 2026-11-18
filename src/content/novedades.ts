@@ -16,6 +16,43 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-18d",
+    fecha: "18/11/2026",
+    titulo: "El ejercicio anterior ya no se ve: queda guardado en su ejercicio",
+    items: [
+      {
+        titulo: "La barra del ejercicio está en todas las solapas",
+        que: "Los botones con las fechas de cada ejercicio (que estaban solo en el Calendario anual y en el Balance) ahora están arriba de TODAS las solapas de administración. El que está en curso viene en verde; el anterior, al lado.",
+        como: "Arrancás siempre en el ejercicio en curso (1/11/2026 – 31/10/2027). Si elegís otro, un cartel rojo te lo avisa: «Estás viendo otro ejercicio».",
+        tab: "bancos",
+      },
+      {
+        titulo: "Los listados muestran solo el ejercicio elegido",
+        que: "Pago a proveedores, Compras, Bancos y tarjetas, Facturación, Seguros, Inversiones, Movimientos internos, Caja chica y los trabajos terminados: todos cortan por el ejercicio que elegiste. El ejercicio 2025/26 tuvo mucha prueba y no es real, así que deja de estorbar.",
+        como: "Para ver algo viejo, elegí ese ejercicio en la barra. Es la única puerta: desde el ejercicio en curso no se ve.",
+        tab: "costos",
+      },
+      {
+        titulo: "Nada se borró, y los números no cambiaron",
+        que: "Es un filtro de VISTA. Los saldos, la cuenta corriente, la deuda y la cadena de saldos se siguen calculando con todo lo cargado, igual que antes: si no, esconder algo habría movido los números.",
+        como: "Al pie del listado dice cuántas filas quedaron afuera y de qué lado: «No se muestran 12 de antes del 01/11/2026. Nada se borró».",
+        tab: "bancos",
+      },
+      {
+        titulo: "Una fila sin fecha NO se esconde",
+        que: "Si una fila no tiene fecha (o la tiene mal escrita), no se puede probar que sea vieja, así que se sigue viendo. Esconderla sería perderla sin aviso.",
+        como: "Si te aparece algo que no esperabas, miralo: probablemente le falte la fecha.",
+        tab: "compras",
+      },
+      {
+        titulo: "Las deudas con convenio se siguen viendo siempre",
+        que: "Un plan de pago no es un registro con fecha: es un saldo abierto. Si sus cuotas arrancaron el ejercicio pasado y siguen, la deuda se ve igual, porque todavía se debe.",
+        como: "Desendeudamiento. Lo mismo vale para cualquier cosa que siga abierta y cargada sin fecha.",
+        tab: "desendeudamiento",
+      },
+    ],
+  },
+  {
     id: "2026-11-18c",
     fecha: "18/11/2026",
     titulo: "Bancos y tarjetas: las fichas reemplazan a los bloques viejos",
