@@ -2,7 +2,7 @@
 // con lo que falta linkear desde el ejercicio nuevo y el tilde verde. Desde aca se lee el PDF del resumen de la
 // tarjeta y se abren las fichas. Reemplaza al "Control de resumenes de tarjeta".
 import React, { useRef } from "react";
-import { Panel } from "./primitives";
+import { Panel, ButtonLike } from "./primitives";
 import { ddmm } from "./VinculoUi";
 
 export type FilaTarjeta = { id: number; nombre: string; empresa: string; resumenes: number; pendientes: number; ultimo?: { closingDate: string; completo: boolean; obligatorio: boolean } };
@@ -22,6 +22,9 @@ export function FichasLinkeoPanel({
   onLeerPdf,
   onAbrirTarjeta,
   onAbrirCuenta,
+  importarExtracto,
+  onAgregarTarjeta,
+  impuestosPendientes,
 }: {
   tarjetas: FilaTarjeta[];
   cuentas: FilaCuenta[];
@@ -29,12 +32,23 @@ export function FichasLinkeoPanel({
   onLeerPdf: (files: File[]) => void;
   onAbrirTarjeta: (id: number) => void;
   onAbrirCuenta: (clave: string) => void;
+  // 18/11/2026 (Nicolas): "ese bloque quiero que se llame BANCOS Y TARJETAS y que aglomere ahí toda la
+  // información en las fichas. Y ahí mismo la carga de los resúmenes y extractos."
+  importarExtracto?: React.ReactNode;
+  onAgregarTarjeta?: () => void;
+  // Impuestos y comisiones pendientes (el detalle se tilda abajo, en su panel).
+  impuestosPendientes?: { cantidad: number; total: string };
 }) {
   const ref = useRef<HTMLInputElement>(null);
   const pendTarjetas = tarjetas.reduce((a, t) => a + t.pendientes, 0);
   const pendCuentas = cuentas.reduce((a, c) => a + c.pendientes, 0);
   return (
-    <Panel span="full" abierto title={`Fichas de tarjetas y extractos · ${pendTarjetas + pendCuentas} sin linkear desde el 1/11/2026`}>
+    <Panel
+      span="full"
+      abierto
+      title={`Bancos y tarjetas · ${pendTarjetas + pendCuentas} sin linkear desde el 1/11/2026`}
+      actions={onAgregarTarjeta ? <ButtonLike onClick={onAgregarTarjeta}>Agregar tarjeta</ButtonLike> : undefined}
+    >
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", marginBottom: 8 }}>
         <button type="button" style={{ ...btn, background: "#0f172a", color: "#fff", border: "none" }} onClick={() => ref.current?.click()}>
           📄 Leer resumen de tarjeta (PDF)
@@ -54,6 +68,18 @@ export function FichasLinkeoPanel({
         {leyendo && <span style={{ fontSize: 12.5, color: "#475569" }}>{leyendo}</span>}
         <span style={{ fontSize: 12, color: "#64748b" }}>Patagonia (Visa Business / Corporate) y Santander. El lector separa por tarjeta física y responsable.</span>
       </div>
+      {importarExtracto && (
+        <details style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 13 }}>📥 Importar el extracto del banco</summary>
+          <div style={{ marginTop: 8 }}>{importarExtracto}</div>
+        </details>
+      )}
+      {impuestosPendientes && impuestosPendientes.cantidad > 0 && (
+        <div style={{ fontSize: 12.5, color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+          <strong>Impuestos y comisiones sin pagar: {impuestosPendientes.total}</strong> en {impuestosPendientes.cantidad} grupo(s)
+          · se tildan en «Impuestos y comisiones del extracto y la tarjeta», y los de cada resumen salen en su ficha.
+        </div>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))", gap: 14 }}>
         <div>
           <div style={{ fontWeight: 800, marginBottom: 4 }}>💳 Tarjetas</div>

@@ -94,6 +94,7 @@ import { proveedorDeArca, accionPorDefecto, sugerenciaDe, type RenglonRevision }
 import { FichaTarjeta } from "./ui/FichaTarjeta";
 import { FichaExtracto, type TipoLink } from "./ui/FichaExtracto";
 import { FichasLinkeoPanel } from "./ui/FichasLinkeoPanel";
+import { ImportarExtracto } from "./ui/ImportarExtracto";
 import { ImportarResumenTarjetaModal, type DecisionImportacion } from "./ui/ImportarResumenTarjetaModal";
 import type { PagoSinTarjetaF } from "./domain/fichaTarjeta";
 import { RevisionArcaModal } from "./ui/RevisionArcaModal";
@@ -24993,6 +24994,32 @@ Escribi CERRAR para confirmar:`
           leyendo={leyendoPdf}
           onLeerPdf={leerPdfTarjeta}
           onAbrirTarjeta={(id) => setFichaTarjetaAbierta({ cuentaId: id })}
+          onAgregarTarjeta={addCreditCard}
+          impuestosPendientes={{
+            cantidad: gruposImpuestos.filter((g) => !pagoDeImpuestos(g.clave)).length,
+            total: money(gruposImpuestos.filter((g) => !pagoDeImpuestos(g.clave) && g.moneda === "ARS").reduce((a, g) => a + g.total, 0)),
+          }}
+          importarExtracto={
+            <ImportarExtracto
+              statementDraft={costStatementDraft}
+              statementMessage={costStatementMessage}
+              statementBusy={costStatementBusy}
+              onStatementFile={handleCostStatementFile}
+              updateStatementDraftRow={updateCostStatementDraftRow}
+              commitStatementDraft={commitCostStatementDraft}
+              discardStatementDraft={discardCostStatementDraft}
+              manualGroupOptions={costGroups.filter((g) => g.active && !g.auto).map((g) => g.name)}
+              NEW_GROUP_OPTION="__NEW_GROUP__"
+              pickGroupOrCreate={(raw, apply) => {
+                if (raw !== "__NEW_GROUP__") return apply(raw);
+                const name = (window.prompt("Nombre del grupo nuevo (ej: Impuestos, Herrajes, Salud):") || "").trim();
+                if (!name) return;
+                const esFijo = window.confirm(`"${name}": ¿es un costo FIJO?\n\nAceptar = FIJO (se repite todos los meses)\nCancelar = VARIABLE`);
+                const creado = createCostGroup(name, esFijo ? "fijo" : "variable");
+                if (creado) apply(creado);
+              }}
+            />
+          }
           onAbrirCuenta={setFichaCuentaAbierta}
         />
         </>
