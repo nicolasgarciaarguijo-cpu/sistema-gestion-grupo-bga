@@ -79,6 +79,23 @@ export type PagoF = {
   impuestosClave?: string;
 };
 
+// PAGOS QUE NO DICEN TARJETA (Nicolas, 18/11/2026). El gasto se pago con la tarjeta pero se cargo como
+// transferencia o efectivo, asi que no tiene tarjetaId y la sugerencia de arriba no lo ve nunca: habia 386
+// renglones de resumen y UN solo pago linkeado. Estos se sugieren aparte, por monto y fecha, y aceptarlos
+// PASA EL PAGO A LA TARJETA (ahi recien deja de bajar la cuenta el dia de la compra y baja al vencimiento).
+export type PagoSinTarjetaF = {
+  id: number;
+  company: string;
+  date: string;
+  amount: number;
+  supplier: string;
+  description: string;
+  medio?: string; // como esta cargado hoy ("transferencia", "efectivo"...)
+  // Ya conciliado contra un movimiento del banco: esa plata SI salio del banco, no es una compra con
+  // tarjeta. No se sugiere.
+  bankEntryId?: number | null;
+};
+
 // ---------------------------------------------------------------------------------------------------------
 // Tarjeta -> cuenta. Un plastico apunta a su cuenta; sin cuentaTarjetaId, la cuenta es la que tiene los
 // resumenes. Si un plastico no tiene resumenes y hay UNA cuenta de la misma empresa y el mismo banco que si
@@ -136,7 +153,13 @@ export function cuotaDelTexto(texto?: string): { cuota: number; de: number } | n
 export const montoCuota = (p: PagoF) => r2(Number(p.amount || 0) / Math.max(1, Math.floor(Number(p.cuotas) || 1)));
 export const esPagoDeComisiones = (p: PagoF) => String(p.impuestosClave || "").startsWith("comisiones-tarjeta:");
 
-export type Sugerencia = { pagoId: number; cuota: number; motivo: string };
+export type Sugerencia = {
+  pagoId: number;
+  cuota: number;
+  motivo: string;
+  // El pago no esta cargado con la tarjeta: aceptar la sugerencia tambien lo pasa a la tarjeta.
+  pasarATarjeta?: boolean;
+};
 
 // Sugerencia para un renglon: un pago con una tarjeta de esta cuenta, cuya cuota sea el monto del renglon y
 // cuya fecha de compra este cerca de la del renglon (en las cuotas el resumen repite la fecha de la compra).
@@ -157,6 +180,35 @@ export function sugerirPago(r: RenglonF, cuentaId: number, pagos: PagoF[], tarje
   if (!cand.length) return null;
   const x = cand[0];
   return { pagoId: x.p.id, cuota: x.cuota, motivo: `mismo monto${x.n > 1 ? ` (cuota ${x.cuota}/${x.n})` : ""} y compra a ${x.dias} día(s)` };
+}
+
+// Dias de diferencia que se aceptan entre la compra del resumen y la fecha del pago cargado.
+const DIAS_CERCA = 10;
+
+// Un pago cargado SIN tarjeta que podria ser este renglon: misma empresa, mismo monto y fecha cerca.
+// Solo para renglones de UNA cuota: si el resumen dice "02/06", el renglon es una cuota y el pago esta por
+// el total, asi que no se puede comparar sin inventar.
+export function sugerirPagoSinTarjeta(
+  r: RenglonF,
+  pagos: PagoSinTarjetaF[],
+  ocupados: Set<string>
+): Sugerencia | null {
+  if (r.currency !== "ARS" || !(Number(r.amount) > 0)) return null;
+  const q = cuotaDelTexto(r.installments);
+  if (q && q.de > 1) return null;
+  const cand = pagos
+    .filter((p) => p.company === r.company && p.bankEntryId == null && !ocupados.has(`${p.id}:1`))
+    .map((p) => ({ p, dias: diasEntre(p.date, r.date) }))
+    .filter((x) => Math.abs(Number(x.p.amount || 0) - Number(r.amount)) <= TOL && x.dias <= DIAS_CERCA)
+    .sort((a, b) => a.dias - b.dias);
+  if (!cand.length) return null;
+  const x = cand[0];
+  return {
+    pagoId: x.p.id,
+    cuota: 1,
+    motivo: `mismo monto y fecha a ${x.dias} día(s), pero está cargado como ${x.p.medio || "otro medio"}`,
+    pasarATarjeta: true,
+  };
 }
 
 export type EstadoRenglon = "linkeado" | "comision" | "sugerido" | "pendiente" | "pago_resumen";
@@ -190,7 +242,9 @@ export function fichaDelResumen(
   pagos: PagoF[],
   tarjetas: TarjetaF[],
   resumenes: ResumenF[],
-  todosLosRenglones: RenglonF[] = renglones
+  todosLosRenglones: RenglonF[] = renglones,
+  // Pagos cargados sin tarjeta (18/11/2026): se sugieren cuando no hay ninguno con la tarjeta puesta.
+  pagosSinTarjeta: PagoSinTarjetaF[] = []
 ): FichaResumen {
   const cuentaId = cuentaDeTarjeta(resumen.cardId, tarjetas, resumenes);
   const deEste = renglones.filter((r) => r.statementId === resumen.id);
@@ -205,7 +259,9 @@ export function fichaDelResumen(
     }
     // Sin tarjeta fisica = cargo del resumen; o mandado a mano a comisiones.
     if (r.aComisiones || (esCargo(r, leido) && r.aComisiones !== false)) return { renglon: r, estado: "comision" as const };
-    const sug = sugerirPago(r, cuentaId, pagos, tarjetas, resumenes, new Set([...Array.from(ocupados), ...Array.from(sugeridos)]));
+    const tomados = new Set([...Array.from(ocupados), ...Array.from(sugeridos)]);
+    // Primero el pago que YA dice esta tarjeta; si no hay, el que esta cargado con otro medio.
+    const sug = sugerirPago(r, cuentaId, pagos, tarjetas, resumenes, tomados) || sugerirPagoSinTarjeta(r, pagosSinTarjeta, tomados);
     if (sug) {
       sugeridos.add(`${sug.pagoId}:${sug.cuota}`);
       return { renglon: r, estado: "sugerido" as const, sugerencia: sug };

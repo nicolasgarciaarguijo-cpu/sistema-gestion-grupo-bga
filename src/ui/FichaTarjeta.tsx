@@ -23,7 +23,10 @@ export type FichaTarjetaProps = {
   companyShort: (c: string) => string;
   money: (n: number, moneda?: string) => string;
   statementInicial?: number | null;
-  onLinkear: (renglonId: number, pagoId: number, cuota: number) => void;
+  // Al linkear un pago que NO esta cargado con la tarjeta, se le pasa la cuenta de la tarjeta: con eso deja
+  // de bajar la cuenta el dia de la compra y baja el dia del vencimiento del resumen (18/11/2026).
+  onLinkear: (renglonId: number, pagoId: number, cuota: number, cuentaTarjetaId?: number) => void;
+  cuentaTarjetaId?: number;
   onSoltar: (renglonId: number) => void;
   onComisiones: (renglonId: number, si: boolean) => void;
   onAceptarSugerencias: (statementId: number) => void;
@@ -75,6 +78,9 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
       detalle = (
         <span style={{ color: "#b45309" }}>
           ¿{p.etiquetaPago(f.sugerencia.pagoId)}? <small>({f.sugerencia.motivo})</small>
+          {f.sugerencia.pasarATarjeta && (
+            <small style={{ color: "#7c3aed", fontWeight: 700 }}> · al aceptar se pasa a la tarjeta</small>
+          )}
         </span>
       );
     } else if (f.estado === "comision") detalle = <span style={{ color: "#7c3aed" }}>{TITULO_COMISIONES_TARJETA}</span>;
@@ -224,6 +230,7 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
               {sugeridos > 0 && (
                 <button type="button" onClick={() => p.onAceptarSugerencias(ficha.resumen.id)} style={{ border: "1px solid #f59e0b", background: "#fffbeb", borderRadius: 8, padding: "5px 10px", cursor: "pointer", fontWeight: 700, fontSize: 12.5 }}>
                   Aceptar las {sugeridos} sugerencia(s)
+                  {ficha.renglones.some((f) => f.sugerencia?.pasarATarjeta) ? " (las cargadas con otro medio pasan a la tarjeta)" : ""}
                 </button>
               )}
             </div>
@@ -350,11 +357,25 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
           {menu.f.sugerencia && (
             <ItemMenu
               onClick={() => {
-                p.onLinkear(menu.f.renglon.id, menu.f.sugerencia!.pagoId, menu.f.sugerencia!.cuota);
+                const sug = menu.f.sugerencia!;
+                // El pago esta cargado con otro medio: aceptar tambien lo pasa a la tarjeta, asi que se avisa.
+                if (
+                  sug.pasarATarjeta &&
+                  !window.confirm(
+                    `${p.etiquetaPago(sug.pagoId)}\n\nEste pago está cargado con otro medio. Al linkearlo se pasa a ` +
+                      `la tarjeta: deja de bajar la cuenta el día de la compra y va a bajar el día del vencimiento ` +
+                      `de este resumen.\n\n¿Es esta compra?`
+                  )
+                ) {
+                  setMenu(null);
+                  return;
+                }
+                p.onLinkear(menu.f.renglon.id, sug.pagoId, sug.cuota, sug.pasarATarjeta ? p.cuentaTarjetaId : undefined);
                 setMenu(null);
               }}
             >
               ✓ Aceptar: {p.etiquetaPago(menu.f.sugerencia.pagoId)}
+              {menu.f.sugerencia.pasarATarjeta ? " (lo pasa a la tarjeta)" : ""}
             </ItemMenu>
           )}
           <ItemMenu

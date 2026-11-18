@@ -95,6 +95,7 @@ import { FichaTarjeta } from "./ui/FichaTarjeta";
 import { FichaExtracto, type TipoLink } from "./ui/FichaExtracto";
 import { FichasLinkeoPanel } from "./ui/FichasLinkeoPanel";
 import { ImportarResumenTarjetaModal, type DecisionImportacion } from "./ui/ImportarResumenTarjetaModal";
+import type { PagoSinTarjetaF } from "./domain/fichaTarjeta";
 import { RevisionArcaModal } from "./ui/RevisionArcaModal";
 import { nombreParecido } from "./domain/arcaCruce";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
@@ -4980,6 +4981,34 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const tarjetasF = useMemo<TarjetaF[]>(() => visibleCreditCards.map((c) => ({ ...c, company: String(c.company) })), [visibleCreditCards]);
   const resumenesF = useMemo(() => visibleCreditCardStatements.map((s) => ({ ...s, company: String(s.company) })), [visibleCreditCardStatements]);
   const renglonesF = useMemo(() => visibleCreditCardConsumptions.map((c) => ({ ...c, company: String(c.company) })), [visibleCreditCardConsumptions]);
+  // PAGOS CARGADOS SIN TARJETA (Nicolas, 18/11/2026): los gastos que se pagaron con la tarjeta pero se
+  // cargaron como transferencia o efectivo. La ficha del resumen los sugiere cuando no encuentra ninguno
+  // con la tarjeta puesta; aceptar la sugerencia los pasa a la tarjeta. Se dejan afuera los que ya estan
+  // conciliados contra un movimiento del banco (esa plata SI salio del banco) y los de caja chica.
+  const pagosSinTarjeta = useMemo<PagoSinTarjetaF[]>(
+    () =>
+      costEntries
+        .filter(
+          (c) =>
+            canAccessCompany(c.company) &&
+            c.tarjetaId == null &&
+            c.paymentMethod !== "tarjeta_credito" &&
+            c.paymentMethod !== "tarjeta_debito" &&
+            c.bankEntryId == null &&
+            Number(c.amount || 0) > 0
+        )
+        .map((c) => ({
+          id: c.id,
+          company: String(c.company),
+          date: c.date,
+          amount: Number(c.amount || 0),
+          supplier: c.supplier || "",
+          description: c.description || "",
+          medio: PAYMENT_METHOD_OPTIONS.find((o) => o.value === c.paymentMethod)?.label || c.paymentMethod || "sin medio",
+          bankEntryId: c.bankEntryId,
+        })),
+    [costEntries, alcanceEmpresa, allowedCompaniesForSession, effectiveIsAdmin]
+  );
   const comprasConTarjeta = useMemo<PagoF[]>(
     () =>
       costEntries
@@ -17713,8 +17742,8 @@ Escribi CERRAR para confirmar:`
   };
 
   const fichasResumen = useMemo<FichaResumen[]>(
-    () => resumenesF.map((st) => fichaDelResumen(st, renglonesF, comprasConTarjeta, tarjetasF, resumenesF)),
-    [resumenesF, renglonesF, comprasConTarjeta, tarjetasF]
+    () => resumenesF.map((st) => fichaDelResumen(st, renglonesF, comprasConTarjeta, tarjetasF, resumenesF, renglonesF, pagosSinTarjeta)),
+    [resumenesF, renglonesF, comprasConTarjeta, tarjetasF, pagosSinTarjeta]
   );
   const facturaDelPago = (pagoId: number) => purchaseInvoices.find((f) => f.paidByCostEntryId === pagoId || (f.pagosIds || []).includes(pagoId));
   const etiquetaPago = (pagoId: number) => {
@@ -17810,8 +17839,27 @@ Escribi CERRAR para confirmar:`
     const sids = new Set(tocados.map((c) => Number(c.statementId)).filter(Boolean));
     sincronizarComisionesTarjeta(creditCardStatements.filter((x) => sids.has(x.id)), next, creditCards, creditCardStatements);
   };
-  const linkearRenglon = (id: number, pagoId: number, cuota: number) =>
+  // Pasar un pago cargado con otro medio a la tarjeta de la cuenta del resumen (18/11/2026). Con esto deja
+  // de bajar la cuenta el dia de la compra y baja el dia del vencimiento del resumen donde cae su cuota.
+  const pasarPagoATarjeta = (pagoId: number, cuentaTarjetaId: number) =>
+    setCostEntries((prev) =>
+      prev.map((c) =>
+        c.id === pagoId
+          ? {
+              ...c,
+              paymentMethod: "tarjeta_credito" as PaymentMethod,
+              tarjetaId: cuentaTarjetaId,
+              cuotasTarjeta: Math.max(1, Number(c.cuotasTarjeta) || 1),
+              notes: [c.notes, "Pasado a la tarjeta al linkearlo con el resumen"].filter(Boolean).join(" · "),
+              ...firma(),
+            }
+          : c
+      )
+    );
+  const linkearRenglon = (id: number, pagoId: number, cuota: number, cuentaTarjetaId?: number) => {
+    if (cuentaTarjetaId != null) pasarPagoATarjeta(pagoId, cuentaTarjetaId);
     actualizarRenglones((c) => (c.id === id ? { ...c, pagoId, cuotaNro: cuota, aComisiones: false } : null));
+  };
   const soltarRenglon = (id: number) => actualizarRenglones((c) => (c.id === id ? { ...c, pagoId: null, cuotaNro: undefined } : null));
   const renglonAComisiones = (id: number, si: boolean) =>
     actualizarRenglones((c) => (c.id === id ? { ...c, aComisiones: si, ...(si ? { pagoId: null, cuotaNro: undefined } : {}) } : null));
@@ -17819,6 +17867,26 @@ Escribi CERRAR para confirmar:`
     const f = fichasResumen.find((x) => x.resumen.id === statementId);
     if (!f) return;
     const sug = new Map(f.renglones.filter((r) => r.sugerencia).map((r) => [r.renglon.id, r.sugerencia!]));
+    // Los pagos cargados con otro medio pasan a la tarjeta de esta cuenta (18/11/2026).
+    const cuentaTarjeta = cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF);
+    const aPasar = Array.from(sug.values()).filter((x) => x.pasarATarjeta).map((x) => x.pagoId);
+    if (aPasar.length) {
+      const set = new Set(aPasar);
+      setCostEntries((prev) =>
+        prev.map((c) =>
+          set.has(c.id)
+            ? {
+                ...c,
+                paymentMethod: "tarjeta_credito" as PaymentMethod,
+                tarjetaId: cuentaTarjeta,
+                cuotasTarjeta: Math.max(1, Number(c.cuotasTarjeta) || 1),
+                notes: [c.notes, "Pasado a la tarjeta al linkearlo con el resumen"].filter(Boolean).join(" · "),
+                ...firma(),
+              }
+            : c
+        )
+      );
+    }
     actualizarRenglones((c) => {
       const x = sug.get(c.id);
       return x ? { ...c, pagoId: x.pagoId, cuotaNro: x.cuota, aComisiones: false } : null;
@@ -24175,6 +24243,7 @@ Escribi CERRAR para confirmar:`
               money={money}
               statementInicial={fichaTarjetaAbierta.statementId}
               onLinkear={linkearRenglon}
+              cuentaTarjetaId={cuenta.id}
               onSoltar={soltarRenglon}
               onComisiones={renglonAComisiones}
               onAceptarSugerencias={aceptarSugerencias}

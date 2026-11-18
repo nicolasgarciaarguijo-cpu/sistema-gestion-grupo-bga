@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-18a",
+    fecha: "18/11/2026",
+    titulo: "El resumen de tarjeta ahora encuentra los pagos cargados con otro medio",
+    items: [
+      {
+        titulo: "Por qué casi nada se linkeaba",
+        que: "La sugerencia solo miraba los pagos cargados CON la tarjeta (medio «tarjeta de crédito» y la tarjeta elegida). Como los gastos se venían cargando como transferencia o efectivo, el resumen no encontraba con qué cruzarse: había 386 renglones cargados y uno solo linkeado.",
+        como: "Bancos y tarjetas → la ficha del resumen. Los renglones sugeridos siguen en amarillo.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Ahora sugiere también esos, y te avisa qué cambia",
+        que: "Si no hay ningún pago con la tarjeta puesta, busca uno cargado con otro medio: misma empresa, mismo monto (tolerancia de un peso) y fecha a 10 días o menos. El renglón lo dice: «está cargado como transferencia · al aceptar se pasa a la tarjeta».",
+        como: "Al aceptarlo, el pago PASA a la tarjeta: deja de bajar la cuenta el día de la compra y baja el día del vencimiento del resumen. El sistema te lo pregunta antes.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Lo que no se sugiere, a propósito",
+        que: "El pago ya conciliado contra un movimiento del banco (esa plata sí salió del banco), los renglones en dólares, y las cuotas: si el resumen dice «02/06», el renglón es una cuota y el pago está por el total, así que no se puede comparar sin inventar.",
+        como: "Esos se siguen linkeando a mano con «Linkear con un pago con esta tarjeta…».",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-11-17c",
     fecha: "17/11/2026",
     titulo: "El pago del IVA se sigue por Compras",
