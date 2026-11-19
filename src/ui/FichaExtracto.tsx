@@ -6,6 +6,8 @@ import React, { useMemo, useState } from "react";
 import type { FichaExtracto as FichaMes, MovimientoFicha } from "../domain/fichaExtracto";
 import { TITULO_COMISIONES_CUENTA } from "../domain/fichaTarjeta";
 import { BuscadorVinculo, IconoEstado, ItemMenu, MenuFicha, SepMenu, TituloMenu, Z_FICHA, ddmm, type OpcionVinculo } from "./VinculoUi";
+import { ImpuestosDelGrupo, type ImpuestosDeLaFicha } from "./ImpuestosDelGrupo";
+import type { GrupoImpuestos } from "../domain/impuestosBancarios";
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 700, padding: "4px 6px", borderBottom: "1px solid #e2e8f0" };
 const td: React.CSSProperties = { padding: "4px 6px", borderBottom: "1px solid #f1f5f9", fontSize: 12.5, verticalAlign: "top" };
@@ -46,6 +48,10 @@ export type FichaExtractoProps = {
   onNota: (movId: number, nota: string) => void;
   onAdjunto: (movId: number, file: File | null) => void;
   sugerenciaRenglon: (mov: MovimientoFicha["mov"]) => string | null;
+  // 18/11/2026 (Nicolas): "impuestos y comisiones eso sí lo quiero dentro de las fichas". Los del mes que
+  // se esta mirando, con su tilde de pagado: antes estaban en un bloque aparte con los de todos los meses.
+  impuestosDelMes?: (f: { company: string; bank: string; currency: string; mes: string }) => ImpuestosDeLaFicha | null;
+  onImpuestosPagados?: (g: GrupoImpuestos, pagado: boolean) => void;
 };
 
 export function FichaExtracto(p: FichaExtractoProps) {
@@ -82,7 +88,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
           <div>
             <div style={{ fontSize: 19, fontWeight: 800 }}>🏦 {p.titulo}</div>
             <div style={{ fontSize: 12.5, color: "#64748b" }}>
-              El extracto constata, no carga: cada movimiento se linkea con lo que ya está en el sistema. Los impuestos, comisiones e intereses van a «{TITULO_COMISIONES_CUENTA}». Lo que no reconocés, marcalo como desconocido para reclamarlo. Click derecho en un movimiento.
+              El extracto constata, no carga: cada movimiento se linkea con lo que ya está en el sistema. Los impuestos, comisiones e intereses se juntan solos abajo, en «{TITULO_COMISIONES_CUENTA} de este mes», y ahí mismo se tildan pagados. Lo que no reconocés, marcalo como desconocido para reclamarlo. Click derecho en un movimiento.
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
@@ -120,9 +126,18 @@ export function FichaExtracto(p: FichaExtractoProps) {
               {ficha.completo && <span style={{ background: "#166534", color: "#fff", borderRadius: 999, padding: "3px 10px", fontWeight: 800, fontSize: 12.5 }}>✓ revisado y linkeado</span>}
               {!ficha.obligatorio && !ficha.completo && <span style={{ fontSize: 12, color: "#64748b" }}>anterior al 1/11/2026: no es obligatorio</span>}
             </div>
-            <div style={{ fontSize: 12.5, color: "#7c3aed" }}>
-              {TITULO_COMISIONES_CUENTA}: {p.money(ficha.comisionesArs)} (se tildan pagados en «Impuestos y comisiones»).
-            </div>
+            {p.impuestosDelMes && p.onImpuestosPagados ? (
+              <ImpuestosDelGrupo
+                titulo={`${TITULO_COMISIONES_CUENTA} de este mes`}
+                datos={p.impuestosDelMes(ficha)}
+                money={(n) => p.money(n)}
+                onPagado={p.onImpuestosPagados}
+              />
+            ) : (
+              <div style={{ fontSize: 12.5, color: "#7c3aed" }}>
+                {TITULO_COMISIONES_CUENTA}: {p.money(ficha.comisionesArs)}
+              </div>
+            )}
             {sugeridosDelMes.length > 0 && (
               <div>
                 <button

@@ -6,6 +6,8 @@ import React, { useMemo, useState } from "react";
 import type { FichaResumen, RenglonFicha, TarjetaF, PagoF } from "../domain/fichaTarjeta";
 import { TITULO_COMISIONES_TARJETA, cuotaDelTexto, montoCuota, esPagoDeComisiones } from "../domain/fichaTarjeta";
 import { BuscadorVinculo, IconoEstado, ItemMenu, MenuFicha, SepMenu, TituloMenu, Z_FICHA, ddmm, type OpcionVinculo } from "./VinculoUi";
+import { ImpuestosDelGrupo, type ImpuestosDeLaFicha } from "./ImpuestosDelGrupo";
+import type { GrupoImpuestos } from "../domain/impuestosBancarios";
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 700, padding: "4px 6px", borderBottom: "1px solid #e2e8f0" };
 const td: React.CSSProperties = { padding: "4px 6px", borderBottom: "1px solid #f1f5f9", fontSize: 12.5, verticalAlign: "top" };
@@ -37,6 +39,15 @@ export type FichaTarjetaProps = {
   // vencimientos" lo reemplaza esta ficha.
   onAgregarResumen?: () => void;
   onQuitarResumen?: (statementId: number) => void;
+  // 18/11/2026 (Nicolas): "tarjetas e impuestos y comisiones eso sí lo quiero dentro de las fichas".
+  // Los datos de la tarjeta (empresa, nombre, banco, digitos, cuenta, responsable, activa, notas) se
+  // editaban en el bloque "Tarjetas" de la solapa, que esta ficha reemplaza.
+  onTarjeta: (cardId: number, campo: string, valor: any) => void;
+  onQuitarTarjeta?: (cardId: number) => void;
+  empresas: Array<{ value: string; short: string }>;
+  // Los impuestos y comisiones DE ESTE RESUMEN, con su tilde de pagado.
+  impuestosDelResumen?: (statementId: number) => ImpuestosDeLaFicha | null;
+  onImpuestosPagados?: (g: GrupoImpuestos, pagado: boolean) => void;
   onCerrar: () => void;
 };
 
@@ -159,6 +170,17 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
               Agregar resumen
             </button>
           )}
+          {p.onQuitarTarjeta && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`¿Quitar la tarjeta "${p.cuenta.name}"? Se van sus resúmenes y sus renglones.`)) p.onQuitarTarjeta!(p.cuenta.id);
+              }}
+              style={{ border: "1px solid #fecaca", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", color: "#b91c1c" }}
+            >
+              Quitar la tarjeta
+            </button>
+          )}
           {p.onQuitarResumen && ficha && (
             <button
               type="button"
@@ -176,32 +198,112 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
           </div>
         </div>
 
+        {/* 18/11/2026 (Nicolas): "tarjetas ... eso sí lo quiero dentro de las fichas". Estos campos se
+            editaban en el bloque "Tarjetas" de la solapa, que esta ficha reemplaza. */}
+        <details style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: "6px 10px" }}>
+          <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 13 }}>
+            Datos de la tarjeta {p.cuenta.active === false ? "· INACTIVA" : ""}
+          </summary>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 8, marginTop: 8 }}>
+            <label style={campo}>
+              <span style={rotulo}>Empresa (la titular)</span>
+              <select style={inputMini} value={p.cuenta.company} onChange={(e) => p.onTarjeta(p.cuenta.id, "company", e.target.value)}>
+                {p.empresas.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.short}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={campo}>
+              <span style={rotulo}>Nombre</span>
+              <input style={inputMini} defaultValue={p.cuenta.name || ""} onBlur={(e) => e.target.value !== (p.cuenta.name || "") && p.onTarjeta(p.cuenta.id, "name", e.target.value)} />
+            </label>
+            <label style={campo}>
+              <span style={rotulo}>Banco</span>
+              <input style={inputMini} defaultValue={p.cuenta.bank || ""} onBlur={(e) => e.target.value !== (p.cuenta.bank || "") && p.onTarjeta(p.cuenta.id, "bank", e.target.value)} />
+            </label>
+            <label style={campo}>
+              <span style={rotulo}>Últimos dígitos</span>
+              <input style={inputMini} defaultValue={p.cuenta.lastDigits || ""} onBlur={(e) => e.target.value !== (p.cuenta.lastDigits || "") && p.onTarjeta(p.cuenta.id, "lastDigits", e.target.value)} />
+            </label>
+            <label style={campo}>
+              <span style={rotulo}>N.º de cuenta</span>
+              <input style={inputMini} defaultValue={p.cuenta.numeroCuenta || ""} onBlur={(e) => e.target.value !== (p.cuenta.numeroCuenta || "") && p.onTarjeta(p.cuenta.id, "numeroCuenta", e.target.value)} />
+            </label>
+            <label style={campo}>
+              <span style={rotulo}>Responsable</span>
+              <input style={inputMini} defaultValue={p.cuenta.responsable || ""} onBlur={(e) => e.target.value !== (p.cuenta.responsable || "") && p.onTarjeta(p.cuenta.id, "responsable", e.target.value)} />
+            </label>
+            <label style={campo}>
+              <span style={rotulo}>Números anteriores</span>
+              <input style={inputMini} defaultValue={p.cuenta.numerosAnteriores || ""} onBlur={(e) => e.target.value !== (p.cuenta.numerosAnteriores || "") && p.onTarjeta(p.cuenta.id, "numerosAnteriores", e.target.value)} />
+            </label>
+            <label style={{ ...campo, justifyContent: "flex-end" }}>
+              <span style={rotulo}>Activa</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5 }}>
+                <input type="checkbox" checked={p.cuenta.active !== false} onChange={(e) => p.onTarjeta(p.cuenta.id, "active", e.target.checked)} />
+                {p.cuenta.active !== false ? "Sí, se usa" : "No, de baja"}
+              </span>
+            </label>
+          </div>
+          <label style={{ ...campo, marginTop: 8 }}>
+            <span style={rotulo}>Notas</span>
+            <input style={inputMini} defaultValue={p.cuenta.notes || ""} onBlur={(e) => e.target.value !== (p.cuenta.notes || "") && p.onTarjeta(p.cuenta.id, "notes", e.target.value)} />
+          </label>
+        </details>
+
         <div>
           <div style={{ fontWeight: 800, marginBottom: 4 }}>Tarjetas físicas y responsables</div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
                 <th style={th}>Número</th>
+                <th style={th}>Nombre</th>
                 <th style={th}>Responsable</th>
                 <th style={th}>Números anteriores (si el banco cambió el plástico)</th>
+                <th style={th}>Activa</th>
+                <th style={th}></th>
               </tr>
             </thead>
             <tbody>
               {p.plasticos.length === 0 && (
                 <tr>
-                  <td style={td} colSpan={3}>
+                  <td style={td} colSpan={6}>
                     Sin tarjetas físicas: se dan de alta solas al leer el resumen.
                   </td>
                 </tr>
               )}
               {p.plasticos.map((t) => (
                 <tr key={t.id}>
-                  <td style={{ ...td, width: 90, fontWeight: 700 }}>{t.lastDigits || "—"}</td>
+                  <td style={{ ...td, width: 90 }}>
+                    <input style={inputMini} defaultValue={t.lastDigits || ""} onBlur={(e) => e.target.value !== (t.lastDigits || "") && p.onPlastico(t.id, { lastDigits: e.target.value })} />
+                  </td>
+                  <td style={td}>
+                    <input style={inputMini} defaultValue={t.name || ""} onBlur={(e) => e.target.value !== (t.name || "") && p.onTarjeta(t.id, "name", e.target.value)} />
+                  </td>
                   <td style={td}>
                     <input style={inputMini} defaultValue={t.responsable || ""} placeholder={t.name} onBlur={(e) => e.target.value !== (t.responsable || "") && p.onPlastico(t.id, { responsable: e.target.value })} />
                   </td>
                   <td style={td}>
                     <input style={inputMini} defaultValue={t.numerosAnteriores || ""} placeholder="ej. 7301" onBlur={(e) => e.target.value !== (t.numerosAnteriores || "") && p.onPlastico(t.id, { numerosAnteriores: e.target.value })} />
+                  </td>
+                  <td style={{ ...td, width: 60, textAlign: "center" }}>
+                    <input type="checkbox" checked={t.active !== false} onChange={(e) => p.onTarjeta(t.id, "active", e.target.checked)} />
+                  </td>
+                  <td style={{ ...td, width: 40, textAlign: "right" }}>
+                    {p.onQuitarTarjeta && (
+                      <button
+                        type="button"
+                        title="Quitar esta tarjeta física"
+                        onClick={() => {
+                          if (window.confirm(`¿Quitar la tarjeta "${t.name}"?`)) p.onQuitarTarjeta!(t.id);
+                        }}
+                        style={{ border: "1px solid #fecaca", background: "#fff", borderRadius: 6, padding: "2px 6px", cursor: "pointer", color: "#b91c1c" }}
+                      >
+                        🗑
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -336,6 +438,15 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
                 {tabla(g.renglones)}
               </div>
             ))}
+
+            {p.impuestosDelResumen && p.onImpuestosPagados && (
+              <ImpuestosDelGrupo
+                titulo={`${TITULO_COMISIONES_TARJETA} de este resumen`}
+                datos={p.impuestosDelResumen(ficha.resumen.id)}
+                money={(n) => p.money(n)}
+                onPagado={p.onImpuestosPagados}
+              />
+            )}
 
             <div>
               <div style={{ fontWeight: 800, margin: "4px 0", color: "#7c3aed" }}>

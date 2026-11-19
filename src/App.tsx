@@ -73,6 +73,7 @@ import { PagosInamovibles } from "./tabs/PagosInamovibles";
 import { impuestosDeExtractos, impuestosDeResumenes, type GrupoImpuestos } from "./domain/impuestosBancarios";
 import { cuotasEsperadas } from "./domain/controlTarjetas";
 import { ImpuestosBancariosPanel } from "./ui/ImpuestosBancariosPanel";
+import { type ImpuestosDeLaFicha } from "./ui/ImpuestosDelGrupo";
 import {
   cuentaDeTarjeta,
   cuentasDeTarjeta,
@@ -18041,6 +18042,21 @@ Escribi CERRAR para confirmar:`
     [alcanceEmpresa, visibleBankStatementEntries, costEntries, resumenesF, tarjetasF]
   );
   const claveCuenta = (f: { company: string; bank: string; currency: string }) => `${f.company}||${f.bank}||${f.currency}`;
+  // LOS IMPUESTOS Y COMISIONES DE UNA FICHA (18/11/2026). Antes estaban todos juntos en el bloque
+  // "Impuestos y comisiones del extracto y la tarjeta"; ahora cada ficha muestra y tilda EL SUYO: la de la
+  // cuenta el del mes que se esta mirando, la de la tarjeta el del resumen. Ver ui/ImpuestosDelGrupo.tsx.
+  const impuestosDeLaFicha = (g: GrupoImpuestos | undefined): ImpuestosDeLaFicha | null => {
+    if (!g) return null;
+    const pago = pagoDeImpuestos(g.clave);
+    const cuenta = cuentaDeImpuestos(g);
+    return { grupo: g, pago: pago ? { fecha: pago.date } : null, cuenta: cuenta ? { id: cuenta.id, nombre: cuenta.nombre } : null };
+  };
+  const impuestosDelResumen = (statementId: number) =>
+    impuestosDeLaFicha(gruposImpuestos.find((g) => g.origen === "tarjeta" && g.statementId === statementId && g.moneda === "ARS"));
+  const impuestosDelMes = (f: { company: string; bank: string; currency: string; mes: string }) =>
+    impuestosDeLaFicha(
+      gruposImpuestos.find((g) => g.origen === "banco" && g.company === f.company && g.banco === f.bank && g.moneda === f.currency && g.mes === f.mes)
+    );
   // Lo que se ve es el ejercicio elegido. Se corta por MES entero, asi que la cadena de saldos de cada mes
   // que si se ve queda igual que antes.
   const fichasCuentasDelEjercicio = useMemo(
@@ -18061,7 +18077,8 @@ Escribi CERRAR para confirmar:`
   const filasPanelTarjetas = useMemo(
     () =>
       cuentasDeTarjeta(tarjetasF, resumenesF)
-        .filter((t) => fichasResumenDelEjercicio.some((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === t.id))
+        // 18/11/2026: se listan TODAS, aunque no tengan resumen: el bloque "Tarjetas" se escondio y esta
+        // es la unica puerta a la ficha (una tarjeta nueva tiene que poder abrirse para cargarle el primero).
         .map((t) => {
           const fs = fichasResumenDelEjercicio
             .filter((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === t.id)
@@ -24290,6 +24307,14 @@ Escribi CERRAR para confirmar:`
               onResumen={(sid, campo, valor) => updateCreditCardStatement(sid, campo as keyof CreditCardStatement, valor)}
               onAgregarResumen={addCreditCardStatement}
               onQuitarResumen={removeCreditCardStatement}
+              onTarjeta={(cardId, campo, valor) => updateCreditCard(cardId, campo as keyof CreditCard, valor)}
+              onQuitarTarjeta={(cardId) => {
+                removeCreditCard(cardId);
+                if (cardId === cuenta.id) setFichaTarjetaAbierta(null);
+              }}
+              empresas={COMPANY_OPTIONS.filter((c: any) => c.value !== "General").map((c: any) => ({ value: String(c.value), short: c.short }))}
+              impuestosDelResumen={impuestosDelResumen}
+              onImpuestosPagados={setImpuestosPagados}
               onCerrar={() => setFichaTarjetaAbierta(null)}
             />
           );
@@ -24320,6 +24345,8 @@ Escribi CERRAR para confirmar:`
               onNota={(movId, nota) => updateBankStatementEntry(movId, "assignmentNote", nota)}
               onAdjunto={uploadBankStatementFile}
               sugerenciaRenglon={(m) => (!m.conceptKey && !m.assignedJobBudget ? suggestCalendarConcept(m.concept || "") : null)}
+              impuestosDelMes={impuestosDelMes}
+              onImpuestosPagados={setImpuestosPagados}
               onCerrar={() => {
                 setFichaCuentaAbierta(null);
                 setFichaCuentaMes(undefined);
@@ -25023,6 +25050,11 @@ Escribi CERRAR para confirmar:`
             />
           }
         />
+        {/* ESCONDIDO 18/11/2026 (Nicolas): "impuestos y comisiones eso sí lo quiero dentro de las fichas".
+            Cada ficha muestra y tilda EL SUYO: la de la cuenta el del mes que se esta mirando, la de la
+            tarjeta el del resumen (ui/ImpuestosDelGrupo.tsx). Arriba, en el bloque "Bancos y tarjetas",
+            queda el aviso de cuanto hay sin pagar. Para volver a ver la lista entera, sacar el `false &&`. */}
+        {false && (
         <ImpuestosBancariosPanel
           grupos={gruposImpuestos}
           pagadoDe={(clave) => {
@@ -25037,6 +25069,7 @@ Escribi CERRAR para confirmar:`
           money={money}
           onPagado={setImpuestosPagados}
         />
+        )}
         <FichasLinkeoPanel
           tarjetas={filasPanelTarjetas}
           cuentas={filasPanelCuentas}

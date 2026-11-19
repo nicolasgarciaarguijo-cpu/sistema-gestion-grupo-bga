@@ -46,6 +46,8 @@ export type TarjetaF = {
   numeroCuenta?: string;
   responsable?: string;
   numerosAnteriores?: string;
+  // 18/11/2026: los datos de la tarjeta se editan en ESTA ficha (antes, en el bloque "Tarjetas").
+  notes?: string;
 };
 // 2026-11-14 (Nicolas): los datos del resumen se corrigen en ESTA ficha (antes se tipeaban en la fila de la
 // solapa Tarjetas), asi que la ficha necesita todos los campos, no solo los del linkeo.

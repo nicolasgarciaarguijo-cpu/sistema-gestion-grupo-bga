@@ -230,6 +230,11 @@ export function TarjetasTab({
         );
       })()}
     <>
+      {/* ESCONDIDO 18/11/2026: con los bloques de la solapa adentro de las fichas, no queda nada que
+          filtrar por empresa ni que explicar aca (la ficha de la tarjeta lo dice). Vuelve junto con
+          cualquiera de los bloques de abajo: sacar el `false &&`. */}
+      {false && (
+        <>
       <div style={{ ...styles.sectionNote, marginBottom: 12 }}>
         Las tarjetas sirven para <strong>identificar costos fijos y variables</strong> a partir de los
         consumos, para <strong>cotizar</strong> y preparar los marcadores. <strong>No suman al estado
@@ -252,11 +257,19 @@ export function TarjetasTab({
           ))}
         </select>
       </div>
+        </>
+      )}
 
       {/* "Costos de tarjeta para cotización" se mudó a la ficha "Cuentas y costos de bancos y tarjetas"
           (ui/CostosTarjetaCotizacion.tsx). 18/11/2026. */}
 
       {/* --- Tarjetas --- */}
+      {/* ESCONDIDO 18/11/2026 (Nicolas): "tarjetas e impuestos y comisiones eso sí lo quiero dentro de las
+          fichas". Los datos de cada tarjeta (empresa, nombre, banco, digitos,
+          cuenta, responsable, numeros anteriores, activa y notas), los plasticos y el alta/baja estan en la
+          ficha de la tarjeta (ui/FichaTarjeta.tsx), que se abre desde el bloque "Bancos y tarjetas".
+          El codigo queda: para volver a verlo, sacar el `false &&`. */}
+      {false && (
       <Panel
         title="Tarjetas"
         span="full"
@@ -351,6 +364,7 @@ export function TarjetasTab({
           </div>
         )}
       </Panel>
+      )}
 
       {/* --- Resúmenes / cierres --- */}
       {/* ESCONDIDO 18/11/2026 (Nicolas): "las fichas que aglomeran toda la informacion de los bloques

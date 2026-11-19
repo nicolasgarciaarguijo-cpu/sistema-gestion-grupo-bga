@@ -63,7 +63,17 @@ const renglones: RenglonF[] = [
   { id: 101, statementId: 10, cardId: 1, date: "2026-10-05", description: "Pinturería", amount: 1500000, installments: "", currency: "ARS" } as any,
 ];
 
-const ficha = (cb: { agregar?: () => void; quitar?: (id: number) => void; resumen?: (sid: number, campo: string, valor: any) => void } = {}) =>
+type Cb = {
+  agregar?: () => void;
+  quitar?: (id: number) => void;
+  resumen?: (sid: number, campo: string, valor: any) => void;
+  tarjeta?: (cardId: number, campo: string, valor: any) => void;
+  quitarTarjeta?: (cardId: number) => void;
+  impuestos?: any;
+  pagados?: (g: any, pagado: boolean) => void;
+};
+
+const ficha = (cb: Cb = {}) =>
   montar(
     <FichaTarjeta
       cuenta={card}
@@ -82,6 +92,11 @@ const ficha = (cb: { agregar?: () => void; quitar?: (id: number) => void; resume
       onResumen={cb.resumen || (() => {})}
       onAgregarResumen={cb.agregar}
       onQuitarResumen={cb.quitar}
+      onTarjeta={cb.tarjeta || (() => {})}
+      onQuitarTarjeta={cb.quitarTarjeta}
+      empresas={[{ value: "BGA", short: "BGA" }, { value: "De Raiz", short: "DR" }]}
+      impuestosDelResumen={cb.impuestos}
+      onImpuestosPagados={cb.pagados}
       onCerrar={() => {}}
     />
   );
@@ -136,11 +151,94 @@ describe("Resúmenes de tarjeta: la ficha reemplaza al bloque", () => {
   it("marcar pagado sale de la ficha, no de la fila", () => {
     const cambios: Array<[number, string, any]> = [];
     const { div, root } = ficha({ resumen: (sid, campo, valor) => cambios.push([sid, campo, valor]) });
-    const chk = div.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    // El de "Pagado", no el de "Activa" de los datos de la tarjeta.
+    const chk = Array.from(div.querySelectorAll('input[type="checkbox"]')).find((c) => {
+      const l = c.closest("label");
+      return !!l && (l.textContent || "").includes("Todavía no");
+    }) as HTMLInputElement;
     act(() => {
       chk.click();
     });
     expect(cambios).toContainEqual([10, "paid", true]);
+    act(() => root.unmount());
+  });
+
+  it("la solapa ya no muestra el bloque de tarjetas", () => {
+    const { div, root } = solapa();
+    expect(div.querySelector('tr[title^="Click: abrir la ficha de la tarjeta"]')).toBeNull();
+    expect(div.textContent).not.toContain("Agregar tarjeta");
+    act(() => root.unmount());
+  });
+
+  it("los datos de la tarjeta se editan en la ficha", () => {
+    const cambios: Array<[number, string, any]> = [];
+    const { div, root } = ficha({ tarjeta: (id, campo, valor) => cambios.push([id, campo, valor]) });
+    expect(div.textContent).toContain("Datos de la tarjeta");
+    const banco = Array.from(div.querySelectorAll("input")).find((i) => (i as HTMLInputElement).defaultValue === "Santander") as HTMLInputElement;
+    expect(banco).toBeTruthy();
+    banco.value = "Patagonia";
+    act(() => banco.dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
+    expect(cambios).toContainEqual([1, "bank", "Patagonia"]);
+    act(() => root.unmount());
+  });
+
+  it("la empresa de la tarjeta sale de las opciones que se le pasan", () => {
+    const { div, root } = ficha();
+    const sel = Array.from(div.querySelectorAll("select")).find((x) => (x.textContent || "").includes("DR"))!;
+    expect(sel).toBeTruthy();
+    expect((sel as HTMLSelectElement).value).toBe("BGA");
+    act(() => root.unmount());
+  });
+
+  it("la tarjeta se quita desde la ficha", () => {
+    (window as any).confirm = () => true;
+    const quitadas: number[] = [];
+    const { div, root } = ficha({ quitarTarjeta: (id) => quitadas.push(id) });
+    const btn = Array.from(div.querySelectorAll("button")).find((b) => (b.textContent || "").trim() === "Quitar la tarjeta")!;
+    act(() => btn.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(quitadas).toEqual([1]);
+    act(() => root.unmount());
+  });
+
+  it("los impuestos del resumen se tildan pagados en la ficha", () => {
+    const tildados: Array<[string, boolean]> = [];
+    const grupo = {
+      clave: "tarjeta:10",
+      origen: "tarjeta",
+      company: "BGA",
+      titulo: "Resumen octubre",
+      banco: "Santander",
+      moneda: "ARS",
+      mes: "2026-10",
+      fecha: "2026-11-10",
+      total: 48000,
+      porCategoria: { impuestos: 30000, comisiones: 18000, intereses: 0 },
+      lineas: [{ id: 1, fecha: "2026-10-20", descripcion: "IVA 21%", categoria: "impuestos", monto: 30000 }],
+    };
+    const { div, root } = ficha({
+      impuestos: () => ({ grupo, pago: null, cuenta: { id: "c1", nombre: "Santander BGA $" } }),
+      pagados: (g, pagado) => tildados.push([g.clave, pagado]),
+    });
+    expect(div.textContent).toContain("de este resumen");
+    expect(div.textContent).toContain("Sale de Santander BGA $");
+    const chk = Array.from(div.querySelectorAll('input[type="checkbox"]')).find((c) => {
+      const l = c.closest("label");
+      return !!l && (l.textContent || "").includes("vence");
+    }) as HTMLInputElement;
+    act(() => chk.click());
+    expect(tildados).toEqual([["tarjeta:10", true]]);
+    act(() => root.unmount());
+  });
+
+  it("sin cuenta de ese banco, el tilde no se puede usar", () => {
+    const grupo = { clave: "tarjeta:10", origen: "tarjeta", company: "BGA", titulo: "x", banco: "Santander", moneda: "ARS", mes: "2026-10", fecha: "2026-11-10", total: 1, porCategoria: { impuestos: 1, comisiones: 0, intereses: 0 }, lineas: [] };
+    const { div, root } = ficha({ impuestos: () => ({ grupo, pago: null, cuenta: null }), pagados: () => {} });
+    expect(div.textContent).toContain("Sin cuenta de Santander");
+    const chk = Array.from(div.querySelectorAll('input[type="checkbox"]')).find((c) => {
+      const l = c.closest("label");
+      return !!l && (l.textContent || "").includes("vence");
+    }) as HTMLInputElement;
+    expect(chk.disabled).toBe(true);
     act(() => root.unmount());
   });
 });

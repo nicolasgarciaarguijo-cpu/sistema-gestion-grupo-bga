@@ -16,6 +16,37 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-19a",
+    fecha: "19/11/2026",
+    titulo: "Las tarjetas y sus impuestos, adentro de las fichas",
+    items: [
+      {
+        titulo: "Los datos de la tarjeta se editan en su ficha",
+        que: "El bloque «Tarjetas» de la solapa dejó de verse. Empresa, nombre, banco, últimos dígitos, n.º de cuenta, responsable, números anteriores, activa y notas están ahora en la ficha de la tarjeta, en «Datos de la tarjeta». Había DOS fichas para una tarjeta (una con los datos y otra con los resúmenes); ahora es una sola.",
+        como: "Bancos y tarjetas → Abrir ficha. El bloque de datos está plegado arriba; si la tarjeta está de baja, el título lo dice.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Las tarjetas físicas se editan enteras, y se dan de baja",
+        que: "En «Tarjetas físicas y responsables» ahora se corrigen también el número y el nombre de cada plástico, se lo marca activo o inactivo y se lo quita. Antes solo se podía tocar el responsable y los números anteriores.",
+        como: "La misma ficha. «Quitar la tarjeta», arriba al lado de Cerrar, borra la tarjeta entera con sus resúmenes.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Los impuestos y comisiones se tildan en la ficha donde salieron",
+        que: "El bloque «Impuestos y comisiones del extracto y la tarjeta» era una lista de todos los meses de todos los bancos. Ahora cada ficha muestra EL SUYO: la de la cuenta, el del mes que estás mirando; la de la tarjeta, el del resumen. Con el detalle de cada débito, de qué cuenta sale y el tilde de pagado.",
+        como: "Tildarlo asienta el pago desde la cuenta de ese banco y baja su saldo, igual que antes. Si falta la cuenta del banco, el tilde no se puede usar y te lo dice.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Las tarjetas sin resumen también se ven",
+        que: "La lista de tarjetas del bloque «Bancos y tarjetas» muestra todas, aunque no tengan ningún resumen cargado. Antes solo aparecían las que ya tenían uno.",
+        como: "Hacía falta: ahora es la única puerta a la ficha, así que una tarjeta nueva tiene que poder abrirse para cargarle el primer resumen.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-11-18d",
     fecha: "18/11/2026",
     titulo: "El ejercicio anterior ya no se ve: queda guardado en su ejercicio",
