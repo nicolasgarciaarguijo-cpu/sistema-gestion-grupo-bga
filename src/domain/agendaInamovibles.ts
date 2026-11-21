@@ -75,6 +75,8 @@ export type ItemInamovible = {
   comprobante?: { fileName: string; storagePath?: string };
   reprogramadoDe?: string; // fecha original, si se reprogramo
   estadoPago?: "programado" | "estimado" | "inamovible"; // elegido a mano (marca)
+  // Resumen de tarjeta: renglones que todavia no se linkearon con un pago cargado (ver sinConciliar).
+  sinLinkear?: number;
   estado: "pagado" | "vencido" | "hoy" | "proximo" | "en_ventana" | "futuro";
   diasRestantes: number;
   alerta: boolean;
@@ -141,7 +143,7 @@ export type FuentesInamovibles = {
     // Moneda de la deuda (2026-11-14): su cuota vence en esa moneda. Ausente = pesos.
     currency?: "ARS" | "USD";
   }>;
-  tarjetas: Array<{ id: number; company: string; dueDate: string; totalArs: number; totalUsd: number; paid: boolean; nombre: string }>;
+  tarjetas: Array<{ id: number; company: string; dueDate: string; totalArs: number; totalUsd: number; paid: boolean; nombre: string; sinLinkear?: number }>;
   pagosCashflow: Array<{
     id: number;
     company: string;
@@ -267,11 +269,17 @@ export function agendaInamovibles(f: FuentesInamovibles, desde: string, hasta: s
       pagado: !!t.paid,
       pagadoComo: t.paid ? "en Tarjetas" : "",
     };
-    if (Number(t.totalArs || 0) > 0 || !(Number(t.totalUsd || 0) > 0)) {
-      out.push(conEstado({ ...base, clave: `tarjeta:${t.id}`, detalle: "resumen", monto: Number(t.totalArs || 0), currency: "ARS" }, hoy));
+    // CONCILIAR ANTES DE PAGAR (Nicolas, 18/11/2026): el aviso hablaba de pagar el resumen, no de linkearlo.
+    // Lo que falta linkear viaja en el renglon de pesos (uno solo por resumen, para no contarlo dos veces).
+    const falta = Math.max(0, Math.floor(Number(t.sinLinkear || 0)));
+    const enPesos = Number(t.totalArs || 0) > 0 || !(Number(t.totalUsd || 0) > 0);
+    const conFalta = (detalle: string, lleva: boolean) =>
+      lleva && falta > 0 ? { detalle: `${detalle} · ${textoSinLinkear(falta)}`, sinLinkear: falta } : { detalle };
+    if (enPesos) {
+      out.push(conEstado({ ...base, clave: `tarjeta:${t.id}`, ...conFalta("resumen", true), monto: Number(t.totalArs || 0), currency: "ARS" }, hoy));
     }
     if (Number(t.totalUsd || 0) > 0) {
-      out.push(conEstado({ ...base, clave: `tarjeta-usd:${t.id}`, detalle: "resumen en dólares", monto: Number(t.totalUsd || 0), currency: "USD" }, hoy));
+      out.push(conEstado({ ...base, clave: `tarjeta-usd:${t.id}`, ...conFalta("resumen en dólares", !enPesos), monto: Number(t.totalUsd || 0), currency: "USD" }, hoy));
     }
   });
 
@@ -537,6 +545,16 @@ export function pagosAReclamar(items: ItemInamovible[], desde = RECLAMO_DESDE): 
       i.fechaLimite >= desde &&
       (i.origen !== "factura" || i.fechaLimite >= RECLAMO_FACTURAS_DESDE)
   );
+}
+
+export const textoSinLinkear = (n: number) => `${n} ${n === 1 ? "renglón" : "renglones"} sin linkear`;
+
+/**
+ * Los resumenes de tarjeta que estan por vencer (o vencidos) SIN PAGAR y con renglones sin linkear: hay que
+ * conciliarlos antes de pagarlos. Un resumen ya pagado no entra: su falta se ve en Bancos y tarjetas.
+ */
+export function sinConciliar(items: ItemInamovible[]): ItemInamovible[] {
+  return items.filter((i) => i.origen === "tarjeta" && i.alerta && !i.pagado && (i.sinLinkear || 0) > 0);
 }
 
 /** Lo que tiene que sonar hoy: impago y vencido, que vence hoy, o dentro de su aviso/ventana. */

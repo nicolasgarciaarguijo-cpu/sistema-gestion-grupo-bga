@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-21a",
+    fecha: "21/11/2026",
+    titulo: "El resumen de tarjeta avisa si falta conciliarlo antes de pagarlo",
+    items: [
+      {
+        titulo: "El aviso del encabezado dice cuántos renglones faltan linkear",
+        que: "Cinco días antes del vencimiento de un resumen de tarjeta, el aviso amarillo de arriba ya decía que había que pagarlo. Ahora además dice cuántos renglones del resumen siguen sin linkear con un pago cargado, para conciliarlo ANTES de pagarlo. Vale para los resúmenes desde el 1/11/2026; cuando está todo linkeado, el aviso vuelve a hablar solo del pago.",
+        como: "Tocá la etiqueta roja «N renglones sin linkear · conciliar» y se abre la ficha de ese resumen. El mismo dato figura en Pagos programados, debajo del nombre de la tarjeta.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
     id: "2026-11-19a",
     fecha: "19/11/2026",
     titulo: "Las tarjetas y sus impuestos, adentro de las fichas",

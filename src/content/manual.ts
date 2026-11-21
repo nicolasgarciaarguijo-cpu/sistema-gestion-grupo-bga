@@ -1221,7 +1221,8 @@ export const MANUAL_ENTRIES: ManualEntry[] = [
         heading: "Pagos programados",
         blocks: [
           { type: "p", text: "Arriba de la planilla: el calendario de lo que se viene (tarjetas, cuotas, seguros, sueldos, facturas de proveedores, vencimientos)." },
-          { type: "steps", items: ["Click derecho sobre un pago → elegí su estado: programado (verde agua), estimado (violeta) o inamovible (rojo).", "Cuando se paga, marcalo pagado o subí el comprobante."] }
+          { type: "steps", items: ["Click derecho sobre un pago → elegí su estado: programado (verde agua), estimado (violeta) o inamovible (rojo).", "Cuando se paga, marcalo pagado o subí el comprobante."] },
+          { type: "p", text: "Resumen de tarjeta: cinco días antes del vencimiento el aviso del encabezado dice también cuántos renglones siguen sin linkear ('N renglones sin linkear · conciliar'). Tocalo y se abre la ficha de ese resumen, para conciliarlo antes de pagarlo. Solo para los resúmenes desde el 1/11/2026." }
         ],
       },
       {

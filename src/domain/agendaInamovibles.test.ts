@@ -1,4 +1,4 @@
-import { agendaInamovibles, alertasActivas, pagosAReclamar, sumarMeses, type FuentesInamovibles } from "./agendaInamovibles";
+import { agendaInamovibles, alertasActivas, pagosAReclamar, sinConciliar, sumarMeses, type FuentesInamovibles } from "./agendaInamovibles";
 import { realPorRenglonMes } from "./vencimientos";
 
 const vacio = (): FuentesInamovibles => ({
@@ -217,5 +217,64 @@ describe("calendario de PAGOS, no de facturas (28/10/2026)", () => {
     const a = agendaInamovibles(f, "2026-10-01", "2026-12-31", "2026-10-29").filter(esPago);
     expect(a.find((i) => i.clave === "factura:7")).toMatchObject({ estado: "hoy", monto: 44630.61 });
     expect(a.find((i) => i.clave === "factura:8")).toBeUndefined();
+  });
+});
+
+// CONCILIAR ANTES DE PAGAR (Nicolas, 18/11/2026): el aviso de 5 dias hablaba de pagar el resumen, no de
+// linkear sus renglones. Ahora el mismo aviso dice cuantos faltan.
+describe("agendaInamovibles · resumen de tarjeta sin conciliar", () => {
+  const tarjeta = (extra: Partial<FuentesInamovibles["tarjetas"][number]> = {}) => ({
+    id: 3, company: "De Raíz", dueDate: "2026-10-11", totalArs: 800000, totalUsd: 0, paid: false, nombre: "Visa", ...extra,
+  });
+
+  it("el resumen por vencer dice cuantos renglones faltan linkear", () => {
+    const f = vacio();
+    f.tarjetas = [tarjeta({ sinLinkear: 12 })];
+    const a = agendaInamovibles(f, ...RANGO, HOY);
+    expect(a[0].sinLinkear).toBe(12);
+    expect(a[0].detalle).toBe("resumen · 12 renglones sin linkear");
+    expect(sinConciliar(a).map((i) => i.clave)).toEqual(["tarjeta:3"]);
+  });
+
+  it("uno solo va en singular", () => {
+    const f = vacio();
+    f.tarjetas = [tarjeta({ sinLinkear: 1 })];
+    expect(agendaInamovibles(f, ...RANGO, HOY)[0].detalle).toBe("resumen · 1 renglón sin linkear");
+  });
+
+  it("todo linkeado: no avisa nada de conciliar y el detalle queda igual", () => {
+    const f = vacio();
+    f.tarjetas = [tarjeta({ sinLinkear: 0 }), tarjeta({ id: 4 })];
+    const a = agendaInamovibles(f, ...RANGO, HOY);
+    expect(a.map((i) => i.detalle)).toEqual(["resumen", "resumen"]);
+    expect(a.every((i) => i.sinLinkear === undefined)).toBe(true);
+    expect(sinConciliar(a)).toEqual([]);
+  });
+
+  it("lejos del vencimiento todavia no suena; vencido sin pagar sigue sonando", () => {
+    const f = vacio();
+    f.tarjetas = [tarjeta({ sinLinkear: 5, dueDate: "2026-11-20" }), tarjeta({ id: 4, sinLinkear: 2, dueDate: "2026-10-05" })];
+    const a = agendaInamovibles(f, ...RANGO, HOY);
+    expect(sinConciliar(a).map((i) => i.clave)).toEqual(["tarjeta:4"]);
+  });
+
+  it("un resumen ya pagado no reclama conciliar", () => {
+    const f = vacio();
+    f.tarjetas = [tarjeta({ sinLinkear: 7, paid: true })];
+    expect(sinConciliar(agendaInamovibles(f, ...RANGO, HOY))).toEqual([]);
+  });
+
+  it("con pesos y dolares la falta se cuenta una sola vez, en el renglon de pesos", () => {
+    const f = vacio();
+    f.tarjetas = [tarjeta({ sinLinkear: 4, totalUsd: 50 })];
+    const a = agendaInamovibles(f, ...RANGO, HOY);
+    expect(a.map((i) => [i.clave, i.sinLinkear])).toEqual([["tarjeta:3", 4], ["tarjeta-usd:3", undefined]]);
+  });
+
+  it("un resumen solo en dolares la lleva en su unico renglon", () => {
+    const f = vacio();
+    f.tarjetas = [tarjeta({ sinLinkear: 4, totalArs: 0, totalUsd: 50 })];
+    const a = agendaInamovibles(f, ...RANGO, HOY);
+    expect(a.map((i) => [i.clave, i.sinLinkear])).toEqual([["tarjeta-usd:3", 4]]);
   });
 });

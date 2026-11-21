@@ -18955,6 +18955,7 @@ Escribi CERRAR para confirmar:`
       meses.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`);
     }
     const tarjetaNombre = (cardId: number) => visibleCreditCards.find((c) => c.id === cardId)?.name || "";
+    const sinLinkearDelResumen = new Map(fichasResumen.filter((f) => f.obligatorio).map((f) => [f.resumen.id, f.pendientes]));
     // Sueldos: cada empresa con gente activa, el 4to dia habil del mes siguiente a cada periodo.
     // Arranca en el periodo anterior al mes en curso (el que se paga ESTE mes): los sueldos de meses
     // viejos ya se pagaron y no tienen que sonar como vencidos.
@@ -18988,6 +18989,8 @@ Escribi CERRAR para confirmar:`
           totalUsd: t.totalUsd,
           paid: t.paid,
           nombre: tarjetaNombre(t.cardId),
+          // Lo que falta linkear (solo los resumenes desde el 1/11/2026: los historicos no obligan).
+          sinLinkear: sinLinkearDelResumen.get(t.id) || 0,
         })),
         // Solo lo vinculado (2026-10-21): un pago cargado a mano en la planilla vieja ya no se programa.
         pagosCashflow: visibleFinancialItems.filter((f) => financieroAlimentaCashFlow(f)),
@@ -19029,7 +19032,7 @@ Escribi CERRAR para confirmar:`
       hasta,
       hoyIso
     );
-  }, [alcanceEmpresa, vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries, purchaseInvoicesWithBankLink, suppliers, facturasEnConvenioMap]);
+  }, [alcanceEmpresa, vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries, purchaseInvoicesWithBankLink, suppliers, facturasEnConvenioMap, fichasResumen]);
 
   // ANALISIS DE GASTOS (Compras y analisis de gastos): todos los egresos del sistema, los realizados (lo
   // mismo que alimenta el Calendario) y lo que viene (Pagos programados). Ver domain/analisisGastos.
@@ -23181,6 +23184,11 @@ Escribi CERRAR para confirmar:`
               items={alertasInamovibles}
               companyShort={(company) => COMPANY_OPTIONS.find((c) => c.value === company)?.short || company}
               onOpen={() => setActiveTab("calendarioAnual")}
+              onConciliar={(item) => {
+                const st = resumenesF.find((r) => r.id === Number(item.refId));
+                if (!st) return setActiveTab("bancos" as TabKey);
+                setFichaTarjetaAbierta({ cuentaId: cuentaDeTarjeta(st.cardId, tarjetasF, resumenesF), statementId: st.id });
+              }}
             />
           )}
         </div>
