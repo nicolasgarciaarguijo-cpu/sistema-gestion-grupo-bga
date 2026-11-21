@@ -188,9 +188,9 @@ export function RetirosSocietariosPanel({
           const traba = !!bloqueado?.(r.company, r.fecha);
           const campos: CampoFicha[] = [
             { key: "company", label: "Empresa de la que sale la plata", tipo: "empresa", soloLectura: traba },
-            { key: "fecha", label: "Fecha", tipo: "fecha", soloLectura: traba },
-            { key: "socio", label: "Socio que retira", tipo: "texto", sugerencias: socios, soloLectura: traba, ancho: "completo" },
-            { key: "monto", label: "Monto", tipo: "numero", soloLectura: traba },
+            { key: "fecha", label: "Fecha", tipo: "fecha", soloLectura: traba, obligatorio: true },
+            { key: "socio", label: "Socio que retira", tipo: "texto", sugerencias: socios, soloLectura: traba, ancho: "completo", obligatorio: true },
+            { key: "monto", label: "Monto", tipo: "numero", soloLectura: traba, obligatorio: true },
             {
               key: "moneda",
               label: "Moneda",

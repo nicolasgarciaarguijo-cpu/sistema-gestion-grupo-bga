@@ -96,12 +96,12 @@ export function InversionesTab({
         if (!i) return null;
         const campos: CampoFicha[] = [
           { key: "company", label: "Empresa", tipo: "empresa" },
-          { key: "tipo", label: "Tipo", tipo: "texto", sugerencias: [...TIPOS_INVERSION_SUGERIDOS] },
+          { key: "tipo", label: "Tipo", tipo: "texto", sugerencias: [...TIPOS_INVERSION_SUGERIDOS], obligatorio: true },
           { key: "descripcion", label: "Detalle", tipo: "texto" },
           { key: "moneda", label: "Moneda", tipo: "select", opciones: [{ value: "ARS", label: "Pesos" }, { value: "USD", label: "Dólares" }] },
-          { key: "montoInvertido", label: "Monto invertido", tipo: "numero" },
+          { key: "montoInvertido", label: "Monto invertido", tipo: "numero", obligatorio: true },
           { key: "valorActual", label: "Valor actual", tipo: "numero" },
-          { key: "fechaInicio", label: "Inicio", tipo: "fecha" },
+          { key: "fechaInicio", label: "Inicio", tipo: "fecha", obligatorio: true },
           { key: "fechaFin", label: "Fin", tipo: "fecha" },
           { key: "estado", label: "Estado", tipo: "select", opciones: [{ value: "activa", label: "Activa" }, { value: "cerrada", label: "Cerrada" }] },
           { key: "administration", label: "Blanco / negro", tipo: "select", opciones: [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }] },

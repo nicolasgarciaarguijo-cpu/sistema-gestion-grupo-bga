@@ -398,9 +398,9 @@ export function MovimientosInternosTab({
           titulo = valores?.description || "Efectivo";
           campos = [
             ...comunes("Empresa"),
-            { key: "date", label: "Fecha", tipo: "fecha" },
+            { key: "date", label: "Fecha", tipo: "fecha", obligatorio: true },
             { key: "kind", label: "Entra / sale", tipo: "select", opciones: [{ value: "ingreso", label: "Entra" }, { value: "egreso", label: "Sale" }] },
-            { key: "amount", label: "Monto", tipo: "numero" },
+            { key: "amount", label: "Monto", tipo: "numero", obligatorio: true },
             { key: "currency", label: "Moneda", tipo: "select", opciones: mon },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
             campoCuenta(valores, valores?.kind === "egreso" ? "De qué cuenta sale" : "A qué cuenta entra"),
@@ -413,8 +413,8 @@ export function MovimientosInternosTab({
           titulo = valores ? `${valores.kind === "prestamo" ? "Préstamo" : "Aporte"} · ${valores.origin || ""}` : "Aporte / préstamo";
           campos = [
             ...comunes("Empresa (la que recibe o devuelve)"),
-            { key: "date", label: "Fecha", tipo: "fecha" },
-            { key: "origin", label: "De quién", tipo: "texto" },
+            { key: "date", label: "Fecha", tipo: "fecha", obligatorio: true },
+            { key: "origin", label: "De quién", tipo: "texto", obligatorio: true },
             // Ya en Desendeudamiento: es un prestamo recibido, la devolucion se maneja alla.
             ...((valores?.deudaId != null
               ? []
@@ -422,7 +422,7 @@ export function MovimientosInternosTab({
                   { key: "kind", label: "Tipo", tipo: "select", opciones: [{ value: "aporte", label: "Aporte (no vuelve)" }, { value: "prestamo", label: "Préstamo (vuelve)" }] },
                   { key: "direction", label: "Sentido", tipo: "select", opciones: [{ value: "recibido", label: "Entró plata" }, { value: "devuelto", label: "Se devolvió" }] },
                 ]) as CampoFicha[]),
-            { key: "amount", label: "Monto", tipo: "numero" },
+            { key: "amount", label: "Monto", tipo: "numero", obligatorio: true },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
             campoCuenta(valores, valores?.direction === "devuelto" ? "De qué cuenta sale" : "A qué cuenta entra"),
             // Valor en U$S de referencia (2026-11-14): estaba solo en la fila, ahora vive en la ficha.
@@ -435,10 +435,10 @@ export function MovimientosInternosTab({
           titulo = valores ? `${valores.person || "Persona"} · ${valores.kind === "haber" ? "haber" : "debe"}` : "Cuenta con la gente";
           campos = [
             ...comunes("Empresa"),
-            { key: "person", label: "Persona", tipo: "texto" },
-            { key: "date", label: "Fecha", tipo: "fecha" },
+            { key: "person", label: "Persona", tipo: "texto", obligatorio: true },
+            { key: "date", label: "Fecha", tipo: "fecha", obligatorio: true },
             { key: "kind", label: "Debe / haber", tipo: "select", opciones: [{ value: "debe", label: "Debe" }, { value: "haber", label: "Haber" }] },
-            { key: "amount", label: "Monto", tipo: "numero" },
+            { key: "amount", label: "Monto", tipo: "numero", obligatorio: true },
             { key: "color", label: "Blanco / negro", tipo: "select", opciones: bn },
             // Medio del reintegro (2026-11-14): estaba solo en la fila. En efectivo baja la caja; por
             // banco no, porque ya salio por el extracto.

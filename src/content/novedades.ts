@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-21f",
+    fecha: "21/11/2026",
+    titulo: "Las fichas avisan lo que les falta",
+    items: [
+      {
+        titulo: "Validación en las fichas de retiros, inversiones, seguros, movimientos internos y facturas emitidas",
+        que: "Estas fichas guardan cada cambio al momento, así que no tienen un botón Guardar que se pueda frenar. Ahora marcan en rojo, con el motivo, lo que falta o está mal: la fecha, el monto, el socio o la persona, un monto negativo, una fecha imposible, un CUIT incompleto, un día de débito fuera de 1 a 31. Arriba de la ficha queda la lista de lo que hay que completar.",
+        como: "Si falta algo, el botón para salir dice «Cerrar igual (faltan N datos)». Se puede cerrar igual: lo cargado ya quedó guardado, pero la ficha queda marcada hasta completarla.",
+        tab: "movimientosInternos",
+      },
+    ],
+  },
+  {
     id: "2026-11-21e",
     fecha: "21/11/2026",
     titulo: "Validación al cargar, historial de cambios y resumen del día",

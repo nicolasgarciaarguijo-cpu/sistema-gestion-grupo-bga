@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
 import { EmpresaSelect } from "./EmpresaSelect";
+import { problemasDeFicha } from "../domain/validaciones";
 
 // FICHA DE UN REGISTRO (Nicolas, 31/10/2026: "todo lo quiero armado con fichas y dentro de las fichas seleccionamos las
 // empresas, ahi se hace la separacion"). Una ventana emergente con todos los datos del registro y su empresa arriba. La usan
@@ -17,8 +18,14 @@ export type CampoFicha = {
   ancho?: "completo";
   ayuda?: string;
   soloLectura?: boolean;
-  // Select que hay que completar sí o sí (la cuenta de un movimiento de plata): vacío queda en rojo.
+  // Dato que hay que completar sí o sí: vacío (o en cero, si es un número) queda en rojo y la ficha lo avisa.
   obligatorio?: boolean;
+  // VALIDACION (21/11/2026, domain/validaciones.problemasDeFicha): un número negativo es un error salvo que se
+  // permita; `cuit` pide los 11 dígitos; `minimo` / `maximo` acotan un número (el día del mes).
+  permiteNegativo?: boolean;
+  cuit?: boolean;
+  minimo?: number;
+  maximo?: number;
   vacio?: string; // texto de la opción vacía de un select obligatorio
 };
 
@@ -50,6 +57,11 @@ export function FichaRegistro({
     window.addEventListener("keydown", tecla);
     return () => window.removeEventListener("keydown", tecla);
   }, [onCerrar]);
+  // Lo que falta o está mal. La ficha guarda cada cambio al momento, así que no hay un "Guardar" que frenar:
+  // se marca el campo en rojo con el motivo, se lista arriba y el botón de salir lo dice.
+  const problemas = problemasDeFicha(campos, valores);
+  const problemaDe = (key: string) => problemas.find((p) => p.key === key);
+  const rojo: React.CSSProperties = { borderColor: "#f87171", background: "#fef2f2" };
   const control = (c: CampoFicha) => {
     const v = valores[c.key];
     if (c.tipo === "empresa")
@@ -75,7 +87,7 @@ export function FichaRegistro({
     return (
       <>
         <input
-          style={{ ...input, textAlign: c.tipo === "numero" ? "right" : undefined }}
+          style={{ ...input, textAlign: c.tipo === "numero" ? "right" : undefined, ...(problemaDe(c.key) ? rojo : {}) }}
           type={c.tipo === "numero" ? "number" : c.tipo === "fecha" ? "date" : "text"}
           {...(c.tipo === "fecha" ? { min: "2015-01-01", max: "2100-12-31" } : {})}
           value={v ?? ""}
@@ -100,15 +112,26 @@ export function FichaRegistro({
             <div style={{ fontSize: 17, fontWeight: 800 }}>{titulo || "Sin nombre"}</div>
             {subtitulo && <div style={{ fontSize: 12.5, color: "#64748b" }}>{subtitulo}</div>}
           </div>
-          <button type="button" onClick={onCerrar} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 8, padding: "4px 10px", cursor: "pointer" }}>
-            Listo
+          <button
+            type="button"
+            data-cerrar-ficha
+            onClick={onCerrar}
+            style={{ border: `1px solid ${problemas.length ? "#f59e0b" : "#cbd5e1"}`, background: problemas.length ? "#fffbeb" : "#fff", color: problemas.length ? "#92400e" : undefined, borderRadius: 8, padding: "4px 10px", cursor: "pointer", fontWeight: problemas.length ? 700 : undefined, whiteSpace: "nowrap" }}
+          >
+            {problemas.length ? `Cerrar igual (${problemas.length === 1 ? "falta 1 dato" : `faltan ${problemas.length} datos`})` : "Listo"}
           </button>
         </div>
+        {problemas.length > 0 && (
+          <div data-problemas-ficha style={{ fontSize: 12.5, color: "#991b1b", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 8, padding: "6px 10px" }}>
+            <strong>Para que esta ficha quede bien cargada:</strong> {problemas.map((p) => `${p.label} (${p.texto})`).join(" · ")}
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
           {campos.map((c) => (
             <label key={c.key} style={{ ...etiqueta, gridColumn: c.ancho === "completo" || c.tipo === "area" ? "1 / -1" : undefined }} title={c.ayuda}>
               {c.label}
               {control(c)}
+              {problemaDe(c.key) && <span data-problema={c.key} style={{ color: "#b91c1c", fontWeight: 600, fontSize: 11.5 }}>{problemaDe(c.key)!.texto}</span>}
             </label>
           ))}
         </div>

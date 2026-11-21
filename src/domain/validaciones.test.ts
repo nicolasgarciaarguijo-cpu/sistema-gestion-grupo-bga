@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { claveDeComprobante, comprobanteRepetido, comprobantesRepetidos, facturasConFechaMala, fechaMala, validarFacturaCompra, type ComprobanteCargado } from "./validaciones";
+import { claveDeComprobante, comprobanteRepetido, comprobantesRepetidos, facturasConFechaMala, fechaMala, problemasDeFicha, validarFacturaCompra, type CampoParaValidar, type ComprobanteCargado } from "./validaciones";
 
 // Nicolas, 21/11/2026: que la ficha no deje guardar un dato imposible, y diga cual es.
 const factura = (extra: Partial<ComprobanteCargado> = {}): ComprobanteCargado => ({
@@ -111,5 +111,46 @@ describe("los campos de fecha no dejan escribir un año imposible", () => {
       }
     });
     expect(sinTope).toEqual([]);
+  });
+});
+
+// FICHAS DE GUARDADO AUTOMATICO: marcan lo que falta o esta mal.
+describe("problemas de una ficha", () => {
+  const campos: CampoParaValidar[] = [
+    { key: "fecha", label: "Fecha", tipo: "fecha", obligatorio: true },
+    { key: "socio", label: "Socio que retira", tipo: "texto", obligatorio: true },
+    { key: "monto", label: "Monto", tipo: "numero", obligatorio: true },
+    { key: "motivo", label: "Motivo", tipo: "texto" },
+    { key: "dia", label: "Día de débito", tipo: "numero", minimo: 1, maximo: 31 },
+    { key: "cuit", label: "CUIT", tipo: "texto", cuit: true },
+    { key: "total", label: "Total", tipo: "numero", soloLectura: true, obligatorio: true },
+  ];
+  const bien = { fecha: "2026-11-10", socio: "Nicolás", monto: 2500000, motivo: "", dia: 10, cuit: "30-71769540-9", total: 0 };
+
+  it("una ficha completa no tiene problemas", () => {
+    expect(problemasDeFicha(campos, bien)).toEqual([]);
+  });
+
+  it("lo obligatorio vacio falta; lo opcional vacio no", () => {
+    const r = problemasDeFicha(campos, { ...bien, fecha: "", socio: "  ", monto: 0, cuit: "", dia: 0 });
+    expect(r.map((p) => [p.key, p.texto])).toEqual([["fecha", "falta"], ["socio", "falta"], ["monto", "falta"]]);
+  });
+
+  it("fecha mal tipeada, monto negativo, numero fuera de rango y CUIT incompleto", () => {
+    const r = problemasDeFicha(campos, { ...bien, fecha: "22026-11-10", monto: -500, dia: 40, cuit: "30-7176954" });
+    expect(r.map((p) => [p.key, p.texto])).toEqual([
+      ["fecha", "no es una fecha válida"],
+      ["monto", "no puede ser negativo"],
+      ["dia", "tiene que ser 31 o menos"],
+      ["cuit", "tiene que tener 11 dígitos"],
+    ]);
+  });
+
+  it("lo de solo lectura no se valida (lo calcula el sistema)", () => {
+    expect(problemasDeFicha(campos, bien).some((p) => p.key === "total")).toBe(false);
+  });
+
+  it("un numero que admite negativos no se marca", () => {
+    expect(problemasDeFicha([{ key: "ajuste", label: "Ajuste", tipo: "numero", permiteNegativo: true }], { ajuste: -10 })).toEqual([]);
   });
 });

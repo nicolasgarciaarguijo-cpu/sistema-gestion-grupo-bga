@@ -31,7 +31,7 @@ export function camposFacturaEmitida(opts?: {
       ]
     : [
         { key: "businessName", label: "Nombre / razón social del cliente", tipo: "texto", ancho: "completo", sugerencias: opts?.clientes },
-        { key: "taxId", label: "CUIT / CUIL del cliente", tipo: "texto", ayuda: "Los 11 dígitos: sin él no se puede cruzar con ARCA." },
+        { key: "taxId", label: "CUIT / CUIL del cliente", tipo: "texto", ayuda: "Los 11 dígitos: sin él no se puede cruzar con ARCA.", cuit: true },
       ];
   return [
     {
@@ -43,12 +43,12 @@ export function camposFacturaEmitida(opts?: {
       opciones: TIPOS_FACTURA_EMITIDA.map((t) => ({ value: t, label: t })),
       ayuda: "Como lo nombra ARCA. Lo cargado antes decía solo la letra: elegilo de la lista para poder cruzarlo.",
     },
-    { key: "pointOfSale", label: "Punto de venta", tipo: "texto", ayuda: "El que figura en la factura (ej. 1 o 0003)." },
-    { key: "invoiceNumber", label: "Número", tipo: "texto", ayuda: "Solo el número del comprobante. Si son varias facturas, cargá una ficha por cada una." },
-    { key: "invoiceDate", label: "Fecha de la factura", tipo: "fecha" },
+    { key: "pointOfSale", label: "Punto de venta", tipo: "texto", ayuda: "El que figura en la factura (ej. 1 o 0003).", obligatorio: true },
+    { key: "invoiceNumber", label: "Número", tipo: "texto", ayuda: "Solo el número del comprobante. Si son varias facturas, cargá una ficha por cada una.", obligatorio: true },
+    { key: "invoiceDate", label: "Fecha de la factura", tipo: "fecha", obligatorio: true },
     ...receptor,
     { key: "currency", label: "Moneda", tipo: "select", opciones: MONEDAS_FACTURA_EMITIDA },
-    { key: "subtotal", label: "Neto gravado", tipo: "numero" },
+    { key: "subtotal", label: "Neto gravado", tipo: "numero", obligatorio: true },
     { key: "vatRate", label: "Alícuota %", tipo: "numero" },
     { key: "vat", label: "IVA (se calcula desde el neto y la alícuota)", tipo: "numero" },
     { key: "total", label: "Total (neto + IVA)", tipo: "numero", soloLectura: true },

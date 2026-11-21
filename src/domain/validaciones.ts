@@ -106,3 +106,48 @@ export function facturasConFechaMala(facturas: ComprobanteCargado[]): DatoPorCor
     .filter((f) => f.id != null && fechaMala(f.invoiceDate))
     .map((f) => ({ clave: `fecha-${f.id}`, tipo: "fecha_mala" as const, company: f.company, texto: `${f.supplier} · factura con la fecha mal (${f.invoiceDate})`, facturaId: f.id }));
 }
+
+// FICHAS DE GUARDADO AUTOMATICO (seguros, inversiones, movimientos internos, retiros, facturas emitidas...).
+// Estas fichas guardan cada cambio al momento: no tienen un boton "Guardar" que se pueda frenar. La validacion
+// ahi es marcar EN LA FICHA lo que falta o esta mal, en rojo y con el motivo, y que el boton de salir lo diga.
+export type CampoParaValidar = {
+  key: string;
+  label: string;
+  tipo: string;
+  soloLectura?: boolean;
+  obligatorio?: boolean;
+  // Numero que puede ser negativo (un ajuste). Por defecto un monto negativo es un error de tipeo.
+  permiteNegativo?: boolean;
+  // Texto que tiene que ser un CUIT de 11 digitos (si se cargo).
+  cuit?: boolean;
+  // Rango de un numero (ej. el dia del mes: 1 a 31).
+  minimo?: number;
+  maximo?: number;
+};
+export type ProblemaDeFicha = { key: string; label: string; texto: string };
+
+const vacio = (v: any) => v === undefined || v === null || String(v).trim() === "";
+
+export function problemasDeFicha(campos: CampoParaValidar[], valores: Record<string, any>): ProblemaDeFicha[] {
+  const out: ProblemaDeFicha[] = [];
+  campos.forEach((c) => {
+    if (c.soloLectura || c.tipo === "check" || c.tipo === "area") return;
+    const v = valores[c.key];
+    const poner = (texto: string) => out.push({ key: c.key, label: c.label, texto });
+    if (c.tipo === "numero") {
+      const n = Number(v || 0);
+      if (c.obligatorio && !(Math.abs(n) > 0)) return poner("falta");
+      if (n < 0 && !c.permiteNegativo) return poner("no puede ser negativo");
+      if (c.minimo != null && Math.abs(n) > 0 && n < c.minimo) return poner(`tiene que ser ${c.minimo} o más`);
+      if (c.maximo != null && n > c.maximo) return poner(`tiene que ser ${c.maximo} o menos`);
+      return;
+    }
+    if (vacio(v)) {
+      if (c.obligatorio) poner("falta");
+      return;
+    }
+    if (c.tipo === "fecha" && fechaMala(String(v))) return poner("no es una fecha válida");
+    if (c.cuit && soloDigitos(String(v)).length !== 11) return poner("tiene que tener 11 dígitos");
+  });
+  return out;
+}

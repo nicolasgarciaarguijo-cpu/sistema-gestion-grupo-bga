@@ -93,12 +93,12 @@ export function SegurosTab({
         const valoresDeLaFicha = { ...s, alimentaPlanilla: s.alimentaPlanilla ?? !esArtSeguro(s.tipo) };
         const campos: CampoFicha[] = [
           { key: "company", label: "Empresa (la que paga)", tipo: "empresa" },
-          { key: "tipo", label: "Tipo", tipo: "texto", sugerencias: [...TIPOS_SEGURO_SUGERIDOS] },
+          { key: "tipo", label: "Tipo", tipo: "texto", sugerencias: [...TIPOS_SEGURO_SUGERIDOS], obligatorio: true },
           { key: "descripcion", label: "Bien asegurado / detalle", tipo: "texto" },
           { key: "aseguradora", label: "Aseguradora", tipo: "texto" },
           { key: "numeroPoliza", label: "N.º de póliza", tipo: "texto" },
-          { key: "costoMensual", label: "Costo mensual", tipo: "numero" },
-          { key: "diaDebito", label: "Día de débito", tipo: "numero" },
+          { key: "costoMensual", label: "Costo mensual", tipo: "numero", obligatorio: true },
+          { key: "diaDebito", label: "Día de débito", tipo: "numero", minimo: 1, maximo: 31 },
           { key: "vigenciaDesde", label: "Vigencia desde", tipo: "fecha" },
           { key: "vigenciaHasta", label: "Vigencia hasta", tipo: "fecha" },
           { key: "administration", label: "Blanco / negro", tipo: "select", opciones: [{ value: "blanco", label: "Blanco" }, { value: "negro", label: "Negro" }] },
