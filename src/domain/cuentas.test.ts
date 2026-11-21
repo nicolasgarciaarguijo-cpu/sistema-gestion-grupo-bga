@@ -1,6 +1,7 @@
 import {
   armarCuentas,
   controlContraExtracto,
+  cuentasSinControl,
   cuentaPorDefecto,
   idCajaPersona,
   idCuentaBanco,
@@ -178,5 +179,47 @@ describe("control: cuenta de la otra empresa (2026-11-10)", () => {
     const p = mov({ refId: "pase-1", company: "BGA", sentido: "pase", amount: 1000, cuentaId: santander, cuentaDestinoId: galicia });
     expect(movimientosPorCuenta([p], dos)).toHaveLength(2);
     expect(movimientosConCuentaAjena([p], dos)).toEqual([]);
+  });
+});
+
+// CUENTAS SIN CONTROL (21/11/2026): el banco corrobora solo si se sube el extracto.
+describe("cuentas sin extracto de control", () => {
+  const santander = idCuentaBanco("BGA", "Santander", "ARS");
+  const pago = (date: string) => movimientosPorCuenta([mov({ date, sentido: "sale", amount: 100000, cuentaId: santander })], cuentas);
+  const extracto = (date: string) => [{ company: "BGA", bank: "Santander", currency: "ARS" as const, date }];
+
+  it("movimientos cargados y mas de 35 dias sin extracto: avisa desde cuando y cuantos", () => {
+    const r = cuentasSinControl(cuentas, pago("2026-10-05"), [], "2026-11-21");
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ cuentaId: santander, controladaHasta: CORTE, porExtracto: false, movimientos: 1, monto: 100000 });
+    expect(r[0].dias).toBe(84);
+  });
+
+  it("con un extracto reciente no avisa", () => {
+    expect(cuentasSinControl(cuentas, pago("2026-10-05"), extracto("2026-10-31"), "2026-11-21")).toEqual([]);
+  });
+
+  it("cuenta desde el ultimo extracto y solo lo cargado despues", () => {
+    const movs = [...pago("2026-09-10"), ...pago("2026-10-20")];
+    const r = cuentasSinControl(cuentas, movs, extracto("2026-09-30"), "2026-11-21");
+    expect(r[0]).toMatchObject({ controladaHasta: "2026-09-30", porExtracto: true, movimientos: 1, dias: 52 });
+  });
+
+  it("una cuenta sin movimientos despues del control no tiene nada que corroborar", () => {
+    expect(cuentasSinControl(cuentas, pago("2026-08-20"), [], "2026-11-21")).toEqual([]);
+    expect(cuentasSinControl(cuentas, [], [], "2026-11-21")).toEqual([]);
+  });
+
+  it("los pagos con fecha futura todavia no cuentan", () => {
+    expect(cuentasSinControl(cuentas, pago("2026-12-10"), [], "2026-11-21")).toEqual([]);
+  });
+
+  it("dentro de la tolerancia no avisa", () => {
+    expect(cuentasSinControl(cuentas, pago("2026-09-10"), [], "2026-09-30")).toEqual([]);
+  });
+
+  it("el efectivo y las cajas no se controlan contra un extracto", () => {
+    const efectivo = movimientosPorCuenta([mov({ date: "2026-10-05", sentido: "sale", metodo: "efectivo" })], cuentas);
+    expect(cuentasSinControl(cuentas, efectivo, [], "2026-11-21")).toEqual([]);
   });
 });

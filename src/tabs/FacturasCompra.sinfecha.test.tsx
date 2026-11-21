@@ -126,3 +126,47 @@ describe("Facturas impagas sin fecha de pago", () => {
     act(() => root.unmount());
   });
 });
+
+// PAGOS SIN GRUPO DE COSTO (21/11/2026): caen en el renglon "Sin grupo" del cash flow.
+describe("Facturas de compra · pagos sin grupo de costo", () => {
+  const pintar = (pagos: any[], onAbrirPagoSinGrupo: any = () => {}) => {
+    const div = document.createElement("div");
+    document.body.appendChild(div);
+    act(() =>
+      createRoot(div).render(
+        <FacturasCompraPanel
+          {...({
+            filas: [],
+            companyOptions: [{ value: "De Raiz", short: "De Raíz" }],
+            money: (n: number) => "$" + Math.round(n),
+            onNueva: () => {},
+            onAbrir: () => {},
+            onAsignarPago: () => {},
+            onFichaProveedor: () => {},
+            onEliminar: () => {},
+            onImportarArca: async () => "",
+            pagosSinGrupo: pagos,
+            onAbrirPagoSinGrupo,
+          } as any)}
+        />
+      )
+    );
+    return div;
+  };
+  const pago = (extra: any = {}) => ({ clave: "cost-1", pagoId: 1, cajaChica: false, proveedor: "Dac", company: "De Raiz", date: "2026-11-10", amount: 1500000, ...extra });
+
+  it("avisa el total, cuantos son, y abre el pago al tocarlo", () => {
+    const abrir = jest.fn();
+    const div = pintar([pago(), pago({ clave: "cost-2", pagoId: 2, proveedor: "Magliola", amount: 500000 })], abrir);
+    const aviso = div.querySelector('[data-aviso="sin-grupo"]') as HTMLElement;
+    expect(aviso.textContent).toContain("$2000000 en 2 pago(s) SIN GRUPO DE COSTO");
+    const botones = aviso.querySelectorAll("button");
+    expect(botones).toHaveLength(2);
+    act(() => botones[1].dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(abrir).toHaveBeenCalledWith(2);
+  });
+
+  it("sin pagos sin grupo, el aviso no aparece", () => {
+    expect(pintar([]).querySelector('[data-aviso="sin-grupo"]')).toBeNull();
+  });
+});

@@ -47,7 +47,8 @@ export const periodoDeLaFactura = (f: FacturaDeIva): string =>
   mesValido(f.ivaPeriodoMes) ? String(f.ivaPeriodoMes) : mesAnterior(f.invoiceDate);
 
 // Es un pago del IVA para el tablero: tiene periodo aclarado y esta pagada.
-export const esPagoDeIva = (f: FacturaDeIva): boolean => mesValido(f.ivaPeriodoMes) && !!f.pagadaEl;
+// Solo las del fisco: el campo del periodo lo usa tambien la boleta del sindicato (21/11/2026), que no es IVA.
+export const esPagoDeIva = (f: FacturaDeIva): boolean => esProveedorDelFisco(f.supplier) && mesValido(f.ivaPeriodoMes) && !!f.pagadaEl;
 
 export type VepDeFactura = { company: string; date: string; amount: number; periodoMes: string };
 

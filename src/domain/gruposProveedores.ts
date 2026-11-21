@@ -119,3 +119,42 @@ export function aRenglonDeProveedores(
   }
   return null;
 }
+
+// PAGOS SIN GRUPO DE COSTO (Nicolas, 21/11/2026: "todo debe estar asentado correctamente"). Un pago a
+// proveedor que no tiene grupo ni en el pago, ni en su factura, ni en el proveedor cae en el renglon
+// "Sin grupo" del cash flow: la plata esta, pero no dice en que se gasto. Se juntan por pago (una compra
+// en cuotas con tarjeta son varios tramos del mismo pago).
+export const esRenglonSinGrupo = (conceptKey?: string) => !!conceptKey && conceptKey.startsWith("prov:") && conceptKey.endsWith(":|Sin grupo");
+
+export type PagoSinGrupo = { clave: string; pagoId: number | null; cajaChica: boolean; proveedor: string; company: string; date: string; amount: number };
+
+export function pagosSinGrupo(
+  entradas: Array<{ id: string; conceptKey?: string; title: string; company: string; date: string; amount: number }>
+): PagoSinGrupo[] {
+  const porPago = new Map<string, PagoSinGrupo>();
+  entradas.forEach((e) => {
+    if (!esRenglonSinGrupo(e.conceptKey)) return;
+    const id = String(e.id);
+    const esCosto = id.startsWith("cost-");
+    const esCaja = id.startsWith("petty-cash-");
+    if (!esCosto && !esCaja) return;
+    const numero = Number((esCosto ? id.slice(5) : id.slice(11)).split("-")[0]);
+    const clave = `${esCosto ? "cost" : "caja"}-${numero}`;
+    const previo = porPago.get(clave);
+    if (previo) {
+      previo.amount = Math.round((previo.amount + Math.abs(Number(e.amount || 0))) * 100) / 100;
+      if (e.date < previo.date) previo.date = e.date;
+      return;
+    }
+    porPago.set(clave, {
+      clave,
+      pagoId: Number.isFinite(numero) ? numero : null,
+      cajaChica: esCaja,
+      proveedor: e.title || "",
+      company: e.company,
+      date: e.date,
+      amount: Math.abs(Number(e.amount || 0)),
+    });
+  });
+  return Array.from(porPago.values()).sort((a, b) => b.amount - a.amount || a.date.localeCompare(b.date));
+}

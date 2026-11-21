@@ -1,4 +1,4 @@
-import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseRenglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./gruposProveedores";
+import { aRenglonDeProveedores, claveGrupo, esRenglonSinGrupo, etiquetaGrupo, pagosSinGrupo, parseRenglonProveedor, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./gruposProveedores";
 
 const seccion = (ck: string) =>
   ({ ga_contable_cusmano: "gastos_admin", cm_materiales: "compra_materiales", imp_iva_mensual: "impuestos", log_internet: "logistica", b_com_paquete: "bancos", seg_vehiculo: "seguros" } as Record<string, string>)[ck];
@@ -70,5 +70,39 @@ describe("candado y caja chica", () => {
     const g = aRenglonDeProveedores({ id: "petty-cash-5", kind: "caja-chica", title: "Ferretería" }, seccion, { proveedor: "Ferretería X", grupoDelPago: "variable|Compras y materiales", cuentaCorriente: false })!;
     expect(parseRenglonProveedor(g.conceptKey)).toEqual({ seccion: SECCION_PROVEEDORES, grupo: "variable|Compras y materiales" });
     expect(g.title).toBe("Ferretería X");
+  });
+});
+
+// PAGOS SIN GRUPO DE COSTO (21/11/2026): caen en el renglon "Sin grupo" del cash flow.
+describe("pagosSinGrupo", () => {
+  const sinGrupo = renglonProveedor(SECCION_PROVEEDORES, "");
+  const e = (extra: any) => ({ id: "cost-1", conceptKey: sinGrupo, title: "Dac", company: "De Raiz", date: "2026-11-10", amount: 100, ...extra });
+
+  it("reconoce el renglon sin grupo de las dos secciones, y no los que tienen grupo", () => {
+    expect(esRenglonSinGrupo(sinGrupo)).toBe(true);
+    expect(esRenglonSinGrupo(renglonProveedor(SECCION_CTACTE, ""))).toBe(true);
+    expect(esRenglonSinGrupo(renglonProveedor(SECCION_PROVEEDORES, "variable|Materiales"))).toBe(false);
+    expect(esRenglonSinGrupo("imp_iva_mensual")).toBe(false);
+    expect(esRenglonSinGrupo(undefined)).toBe(false);
+  });
+
+  it("lista los pagos sin grupo, el mas grande primero", () => {
+    const r = pagosSinGrupo([e({ id: "cost-1", amount: 100 }), e({ id: "cost-2", amount: 900, title: "Magliola" }), e({ id: "cost-3", conceptKey: renglonProveedor(SECCION_PROVEEDORES, "fijo|Alquiler") })]);
+    expect(r.map((p: any) => [p.pagoId, p.proveedor, p.amount])).toEqual([[2, "Magliola", 900], [1, "Dac", 100]]);
+  });
+
+  it("las cuotas de una compra con tarjeta son UN pago: suma los tramos y toma la primera fecha", () => {
+    const r = pagosSinGrupo([e({ id: "cost-7-c2", amount: 50, date: "2026-12-11" }), e({ id: "cost-7-c1", amount: 50, date: "2026-11-11" })]);
+    expect(r).toHaveLength(1);
+    expect(r[0]).toMatchObject({ pagoId: 7, amount: 100, date: "2026-11-11", cajaChica: false });
+  });
+
+  it("un gasto rendido de caja chica tambien cuenta, y dice que es de caja", () => {
+    const r = pagosSinGrupo([e({ id: "petty-cash-12", amount: -300 })]);
+    expect(r[0]).toMatchObject({ pagoId: 12, cajaChica: true, amount: 300 });
+  });
+
+  it("cobros, comisiones y movimientos del banco no entran", () => {
+    expect(pagosSinGrupo([e({ id: "bank-5" }), e({ id: "financial-9" }), e({ id: "comm-3" })])).toEqual([]);
   });
 });

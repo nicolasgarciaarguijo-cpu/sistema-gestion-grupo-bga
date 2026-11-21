@@ -102,6 +102,14 @@ import { CuentasYCostos } from "./ui/CuentasYCostos";
 import { CostosTarjetaCotizacion } from "./ui/CostosTarjetaCotizacion";
 import { ImportarResumenTarjetaModal, type DecisionImportacion } from "./ui/ImportarResumenTarjetaModal";
 import type { PagoSinTarjetaF } from "./domain/fichaTarjeta";
+import { cuotaBajaLaCuenta, pagosDeResumenes, repartoDeResumenes } from "./domain/pagoResumenTarjeta";
+import { aporteSindical, esProveedorSindicato, obligacionMensual, planDeObligacion, type DocObligacion, type PlanObligacion } from "./domain/obligacionMensual";
+import { esProveedorDelFisco } from "./domain/pagoDeIva";
+import { creditoIncompleto } from "./domain/vatBalance";
+import { SeccionMensual, type DetalleMes, type EmpresaSeccion } from "./ui/SeccionMensual";
+import { controlarContraCargado, leerComprobante } from "./domain/lectorComprobantePago";
+import { periodoDelDoc } from "./domain/obligacionMensual";
+import { textoPorOcrDelPdf } from "./lib/ocr";
 import { RevisionArcaModal } from "./ui/RevisionArcaModal";
 import { nombreParecido } from "./domain/arcaCruce";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
@@ -110,6 +118,7 @@ import { ElegirEmpresa } from "./ui/ElegirEmpresa";
 import {
   armarCuentas,
   controlContraExtracto,
+  cuentasSinControl,
   movimientosPorCuenta,
   movimientosConCuentaAjena,
   saldosDeCuentas,
@@ -460,7 +469,7 @@ import { libroXlsx, descargarXlsx } from "./lib/xlsx";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { nuevoProveedor } from "./domain/altaProveedor";
 import { ProveedoresPanel, ProveedorModal, formDeProveedor, formProveedorVacio, type ProveedorForm } from "./tabs/Proveedores";
-import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES } from "./domain/gruposProveedores";
+import { aRenglonDeProveedores, claveGrupo, etiquetaGrupo, pagosSinGrupo, parseClaveGrupo, renglonProveedor, SECCION_CTACTE, SECCION_PROVEEDORES, SECCIONES_REEMPLAZADAS } from "./domain/gruposProveedores";
 import { programadosEnRenglones } from "./domain/programadosEnRenglones";
 import { anticipoPorCircuito, precargaCobros } from "./domain/precargaCobros";
 import { ResumenMovimientos, type FilaResumen } from "./ui/ResumenMovimientos";
@@ -5041,6 +5050,10 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
       }),
     [comprasConTarjeta, resumenesF, tarjetasF, renglonesF]
   );
+  // EL PAGO DEL RESUMEN (21/11/2026): marcado pagado, el resumen baja la cuenta por su TOTAL el dia del
+  // vencimiento; el linkeo es control. Ver domain/pagoResumenTarjeta.ts (resumenes que cierran desde el 1/11).
+  const repartoResumenes = useMemo(() => repartoDeResumenes(resumenesF as any, cuotasDeTarjeta), [resumenesF, cuotasDeTarjeta]);
+  const resumenPorId = useMemo(() => new Map(resumenesF.map((r) => [r.id, r])), [resumenesF]);
 
   // --- Silos por mes (vista filtrada por fecha) ---
   // Las solapas mensuales muestran/editan SOLO los items del mes activo. El dato vivo sigue
@@ -16190,6 +16203,26 @@ Escribi CERRAR para confirmar:`
       });
     });
 
+    // RESUMEN DE TARJETA PAGADO (21/11/2026): lo linkeado ya entro arriba, en el renglon de cada proveedor.
+    // El RESTO sin linkear (falto cargar, o no es nuestro y hay que descargarlo) va a Financieros, para que
+    // el dia del vencimiento el cash flow sume lo que dice el resumen. Ver domain/pagoResumenTarjeta.ts.
+    pagosDeResumenes(repartoResumenes).forEach((r) => {
+      const st = resumenPorId.get(r.statementId);
+      if (!st || !(r.resto > 0) || !r.fecha.startsWith(String(analysisYear)) || !canAccessCompany(st.company as CompanyName)) return;
+      const cuenta = tarjetasF.find((t) => t.id === cuentaDeTarjeta(st.cardId, tarjetasF, resumenesF));
+      entries.push({
+        id: `resumen-${r.statementId}`,
+        date: r.fecha,
+        company: st.company as CompanyName,
+        title: `Tarjeta ${cuenta?.name || ""} · sin linkear del resumen`.replace(/\s+/g, " "),
+        kind: "gasto",
+        amount: r.resto,
+        statusLabel: "debito",
+        conceptKey: renglonProveedor(SECCION_PROVEEDORES, SECCIONES_REEMPLAZADAS.bancos),
+        administration: "blanco",
+      });
+    });
+
     // CAJA CHICA. Regla del usuario (2026-08-26): la plata se considera gastada cuando se le ASIGNA el
     // fondo a alguien, no cuando rinde los tickets. Entonces:
     //   - la asignación del fondo entra como EGRESO en el renglón "Caja chica";
@@ -16334,7 +16367,7 @@ Escribi CERRAR para confirmar:`
     }).forEach((e) => entries.push({ ...e, company: e.company as CompanyName }));
 
     return entries.sort((a, b) => a.date.localeCompare(b.date));
-  }, [alcanceEmpresa, cuotasDeTarjeta,
+  }, [repartoResumenes, resumenPorId, tarjetasF, resumenesF, alcanceEmpresa, cuotasDeTarjeta,
     retirosSocietarios,
     inversiones,
     visibleViaticos,
@@ -17532,6 +17565,12 @@ Escribi CERRAR para confirmar:`
     return salida;
   }, [cashFlowEntries, costEntries, purchaseInvoices, suppliers, costGroups, pettyCashExpenses]);
 
+  // PAGOS SIN GRUPO DE COSTO (21/11/2026): los que caen en el renglon "Sin grupo". Se avisan en Compras.
+  const pagosSinGrupoTodos = useMemo(
+    () => pagosSinGrupo(cashFlowEntriesPlanilla.map((e: any) => ({ id: String(e.id), conceptKey: e.conceptKey, title: e.title || "", company: String(e.company || ""), date: e.date || "", amount: Number(e.amount || 0) }))),
+    [cashFlowEntriesPlanilla]
+  );
+
   // RESPONSABLE / FIRMANTE de cada numero de la planilla: se busca en la solapa duena del movimiento por
   // el prefijo del id. Solo para mostrarlo (click derecho sobre el numero); no cambia ningun monto.
   const cashFlowEntriesConFirmante = useMemo(() => {
@@ -18256,11 +18295,29 @@ Escribi CERRAR para confirmar:`
           // Compras con tarjeta: cada cuota sale de la cuenta el dia del vencimiento de su resumen. Sin resumen
           // cargado todavia, queda en la tarjeta (no baja ninguna cuenta).
           ...cuotasDeTarjeta
-            .filter((q) => q.dueDate)
+            // Las de un resumen que se paga por su total NO bajan la cuenta: la baja el resumen (abajo).
+            .filter((q) => q.dueDate && cuotaBajaLaCuenta(q, resumenPorId))
             .map((q) => {
               const c = costEntries.find((x) => x.id === q.compraId)!;
               return { ...c, id: `${c.id}-c${q.cuota}` as any, date: q.dueDate as string, amount: q.monto, description: `${c.description || ""}${q.de > 1 ? ` · cuota ${q.cuota}/${q.de}` : ""}` };
             }),
+          // RESUMEN DE TARJETA PAGADO: sale su total de la cuenta del banco de la tarjeta, el dia del vencimiento.
+          ...pagosDeResumenes(repartoResumenes).map((r) => {
+            const st = resumenPorId.get(r.statementId)!;
+            const cuenta = tarjetasF.find((t) => t.id === cuentaDeTarjeta(st.cardId, tarjetasF, resumenesF));
+            return {
+              id: `resumen-${r.statementId}`,
+              company: st.company,
+              date: r.fecha,
+              amount: r.total,
+              administration: "blanco",
+              source: "manual",
+              paymentMethod: "debito",
+              description: `Resumen de tarjeta ${cuenta?.name || ""} · cierre ${st.closingDate.slice(8, 10)}/${st.closingDate.slice(5, 7)}`.replace(/\s+/g, " "),
+              supplier: "",
+              cuentaId: cuentaDelBanco(String(st.company), cuenta?.bank || "", "ARS")?.id,
+            };
+          }),
           // Viaticos eventuales: salen de su cuenta como un gasto (los fijos van con los haberes).
           ...visibleViaticos.map((v) => ({
             id: v.id,
@@ -18290,7 +18347,7 @@ Escribi CERRAR para confirmar:`
           cuentaId: inversiones.find((i) => `inv-coloc-${i.id}` === e.id || `inv-rescate-${i.id}` === e.id)?.cuentaId,
         })),
       }),
-    [alcanceEmpresa, cuotasDeTarjeta, visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos, retirosSocietarios]
+    [repartoResumenes, resumenPorId, tarjetasF, resumenesF, cuentasSistema, alcanceEmpresa, cuotasDeTarjeta, visibleApprovedJobs, costEntries, visibleFinancialItems, cashFlowEntries, visiblePettyCashFunds, visiblePettyCashExpenses, visibleInternalTransfers, visibleCashHoldings, visiblePersonLedgerEntries, visibleCapitalEntries, visibleIvaVepPayments, inversiones, visibleViaticos, retirosSocietarios]
   );
   const movimientosDeCuentas = useMemo(
     () => movimientosPorCuenta(plataMovidaSistema, cuentasSistema),
@@ -18348,6 +18405,23 @@ Escribi CERRAR para confirmar:`
     );
   }, [cuentasSistema, movimientosDeCuentas, visibleBankStatementEntries]);
 
+  // CUENTAS SIN CONTROL (21/11/2026): bancos con movimientos cargados y sin extracto que los corrobore.
+  const cuentasBancoSinControl = useMemo(
+    () =>
+      cuentasSinControl(
+        cuentasSistema,
+        movimientosDeCuentas,
+        latestBankBalancesByAccount(visibleBankStatementEntries).map((b) => ({
+          company: String(b.company),
+          bank: b.bank,
+          currency: b.currency === "USD" ? ("USD" as const) : ("ARS" as const),
+          date: b.date,
+        })),
+        todayIso()
+      ),
+    [cuentasSistema, movimientosDeCuentas, visibleBankStatementEntries]
+  );
+
   // PLATA DISPONIBLE del encabezado, desde las cuentas: bancos (con el control del extracto), efectivo
   // blanco y negro, dolares y las cajas por persona. Lo demas (a cobrar, IVA, deudas) sigue igual.
   const plataDisponibleConCuentas = useMemo(
@@ -18364,6 +18438,10 @@ Escribi CERRAR para confirmar:`
             currency: c.moneda,
             balance: c.saldo,
             control: ctrl ? { fecha: ctrl.fecha, saldoExtracto: ctrl.saldoExtracto, diferencia: ctrl.diferencia, cierra: ctrl.cierra } : undefined,
+            sinControl: (() => {
+              const s = cuentasBancoSinControl.find((x) => x.cuentaId === c.id);
+              return s ? { desde: s.controladaHasta, movimientos: s.movimientos } : undefined;
+            })(),
           };
         });
         const bancoArs = suma((c) => c.tipo === "banco" && c.moneda === "ARS");
@@ -18389,7 +18467,7 @@ Escribi CERRAR para confirmar:`
           negroUsd,
         };
       }),
-    [plataDisponibleByCompany, saldosCuentasHoy, controlExtractoCuentas]
+    [plataDisponibleByCompany, saldosCuentasHoy, controlExtractoCuentas, cuentasBancoSinControl]
   );
 
   // La plata disponible DIA POR DIA de la planilla: hasta la fecha de corte, la de siempre (extracto y
@@ -18774,6 +18852,8 @@ Escribi CERRAR para confirmar:`
   // Guarda el pago a cuenta: es un gasto comun (cash flow, cuenta) marcado aCuenta, del grupo del proveedor.
   // EDITAR UN PAGO desde la ficha del proveedor (Nicolas, 2026-10-16: "todo debo poder editarlo por si
   // surgio algun error"). Usa la misma ventana que el pago sin factura.
+  // Lo que se ve es el ejercicio elegido y las empresas que la sesion puede operar.
+  const pagosSinGrupoDelEjercicio = pagosSinGrupoTodos.filter((p) => canAccessCompany(p.company as CompanyName) && !deOtroEjercicio(p.date));
   const abrirEditarPago = (pagoId: number) => {
     const c = costEntries.find((x) => x.id === pagoId);
     if (!c) {
@@ -19034,6 +19114,13 @@ Escribi CERRAR para confirmar:`
     );
   }, [alcanceEmpresa, vencimientos, vencimientoMarcas, visibleDebtPlans, visibleCreditCardStatements, visibleCreditCards, visibleFinancialItems, seguros, visibleEmployees, realPorRenglon, hoyIso, fichasHaberes, facturasAPagar, costEntries, purchaseInvoicesWithBankLink, suppliers, facturasEnConvenioMap, fichasResumen]);
 
+  // La PREVISION de un resumen sin pagar es solo su resto sin linkear: lo linkeado ya esta en el cash flow,
+  // en el renglon de cada proveedor, el mismo dia. (En Pagos programados el resumen sigue por su total.)
+  const conRestoDeTarjeta = <T extends ItemInamovible>(i: T): T => {
+    if (i.origen !== "tarjeta" || i.currency !== "ARS") return i;
+    const r = repartoResumenes.get(Number(i.refId));
+    return r ? { ...i, monto: r.resto } : i;
+  };
   // ANALISIS DE GASTOS (Compras y analisis de gastos): todos los egresos del sistema, los realizados (lo
   // mismo que alimenta el Calendario) y lo que viene (Pagos programados). Ver domain/analisisGastos.
   const egresosDelSistema = useMemo<Egreso[]>(
@@ -19041,9 +19128,9 @@ Escribi CERRAR para confirmar:`
       [
         ...cashFlowEntriesPlanilla.map((e: any) => egresoDeEntrada(e as any)),
         // El cheque entregado ya es un pago cargado (esta en las entradas): no se suma otra vez.
-        ...agendaInamoviblesItems.filter((p) => esPago(p) && p.origen !== "cheque" && p.origen !== "pago").map((p) => egresoDePrevisto(p as any)),
+        ...agendaInamoviblesItems.filter((p) => esPago(p) && p.origen !== "cheque" && p.origen !== "pago").map(conRestoDeTarjeta).filter((p) => p.monto > 0 || p.origen !== "tarjeta").map((p) => egresoDePrevisto(p as any)),
       ].filter((e): e is Egreso => !!e),
-    [cashFlowEntriesPlanilla, agendaInamoviblesItems]
+    [cashFlowEntriesPlanilla, agendaInamoviblesItems, repartoResumenes]
   );
   // El calendario de Pagos programados (y sus avisos) muestra solo PAGOS, no facturas (Nicolas, 28/10/2026).
   const agendaDePagos = useMemo(() => agendaInamoviblesItems.filter(esPago), [agendaInamoviblesItems]);
@@ -19351,10 +19438,10 @@ Escribi CERRAR para confirmar:`
       // LAS FACTURAS NO CARGAN EL CASH FLOW (Nicolas, 28/10/2026): lo cargan los cobros y los pagos; la factura solo se
       // asocia a ellos como constancia. Una factura sin pago no se ve en el cash flow, salvo que se le haya PROGRAMADO el
       // pago del saldo (fecha elegida + cuenta): eso es un pago programado y va como egreso (esPago, 29/10/2026).
-      ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => esPago(i) && i.origen !== "cheque" && i.origen !== "pago"), filaDeFactura, filaDeDeuda, filaDeSueldo).filter((p) => p.date >= desde && p.date <= hasta),
+      ...programadosEnRenglones(agendaInamoviblesItems.filter((i) => esPago(i) && i.origen !== "cheque" && i.origen !== "pago").map(conRestoDeTarjeta), filaDeFactura, filaDeDeuda, filaDeSueldo).filter((p) => p.date >= desde && p.date <= hasta),
       // Puesta al dia: lo previsto antes del 1/10 se da por pagado, ya no se dibuja "≈".
     ].filter((p) => p.date >= PUESTA_AL_DIA_PAGADO_ANTES_DE);
-  }, [alcanceEmpresa, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans, inversiones, employees]);
+  }, [alcanceEmpresa, segurosPrevisiones, vencimientos, balanceFiscalStartYear, agendaInamoviblesItems, purchaseInvoices, suppliers, debtPlans, inversiones, employees, repartoResumenes]);
 
   // Marcar pagado: si el origen tiene su propio "pagado", se usa ESE (queda vinculado en las dos
   // solapas); si no, se guarda una marca.
@@ -22801,6 +22888,8 @@ Escribi CERRAR para confirmar:`
       filas={filasFacturas.filter((x) => !deOtroEjercicio(x.invoiceDate) && !(x.pagada && ocultoPorCierre(x.company, x.invoiceDate)))}
       onAbrirResumen={(cuentaId, statementId) => setFichaTarjetaAbierta({ cuentaId, statementId })}
       ivaSinPeriodo={ivaSinPeriodo.map((f) => ({ id: f.id, company: f.company, supplier: f.supplier, invoiceDate: f.invoiceDate, total: f.total }))}
+      pagosSinGrupo={pagosSinGrupoDelEjercicio}
+      onAbrirPagoSinGrupo={(pagoId) => abrirEditarPago(pagoId)}
       companyOptions={COMPANY_OPTIONS.filter((c) => canAccessCompany(c.value as CompanyName)) as any}
       money={money}
       onExportarEstudio={({ empresa, desde, hasta }) => {
@@ -22886,6 +22975,243 @@ Escribi CERRAR para confirmar:`
     setCostEntries((prev) => prev.map((x) => (x.supplier && esDeEl(x.supplier) ? { ...x, supplier: datos.name } : x)));
     setPettyCashExpenses((prev) => prev.map((x) => (x.supplier && esDeEl(x.supplier) ? { ...x, supplier: datos.name } : x)));
     setCreditNotes((prev) => prev.map(renombrar as any));
+  };
+  // SECCIONES IVA Y SINDICATO de Pago a proveedores (Nicolas, 21/11/2026). El bloque son solo numeros mes a
+  // mes; el detalle va en la ficha del mes. La boleta real (el VEP, la boleta del sindicato) es una factura
+  // del proveedor en Compras, y el plan de pago es la deuda de Desendeudamiento que la incluye: no hay
+  // fichas paralelas. Ver domain/obligacionMensual.ts y ui/SeccionMensual.tsx.
+  const renderSeccionesFiscales = () => {
+    const hoy = todayIso();
+    const mesOk = (m?: string) => /^\d{4}-\d{2}$/.test(String(m || ""));
+    const planDeFactura = (facturaId: number): PlanObligacion | undefined => {
+      const d = facturasEnConvenioMap.get(facturaId) as any;
+      if (!d) return undefined;
+      const r = resumenDeuda(d, hoy);
+      const capital = ((d.facturaIds || []) as number[]).reduce((a, id) => a + Number(purchaseInvoices.find((i) => i.id === Number(id))?.total || 0), 0);
+      return planDeObligacion({ deudaId: d.id, concepto: d.concept || d.acreedor || "", capital, total: r.total, cuotas: r.cuotas, cuotasPagadas: r.cuotasPagadas, pagado: r.pagado, pendiente: r.pendiente });
+    };
+    const docsDe = (es: (supplier?: string) => boolean, soloConPeriodo: boolean): DocObligacion[] =>
+      facturasDeIva
+        .filter((f) => es(f.supplier) && (!soloConPeriodo || mesOk(f.ivaPeriodoMes)))
+        .map((f) => ({ id: f.id, company: f.company, supplier: f.supplier, fecha: f.invoiceDate, total: f.total, periodo: f.ivaPeriodoMes, pagadaEl: f.pagadaEl, plan: planDeFactura(f.id) }));
+    const empresasOperables = COMPANY_OPTIONS.filter((c) => (c.value as string) !== "General" && canAccessCompany(c.value as CompanyName));
+    const abrirBoleta = (id: number) => {
+      const f = facturaDeId(id);
+      if (f) setFacturaModal(f);
+    };
+    const cargarBoleta = (proveedor: string, etiqueta: string) => (company: string, mes: string) => {
+      const prov = visibleSuppliers.find((s) => (proveedor === "fisco" ? esProveedorDelFisco(s.name) : esProveedorSindicato(s.name)) && (String(s.company) === company || String(s.company) === "General"));
+      const nombre = prov?.name || (proveedor === "fisco" ? "ARCA" : "");
+      setFacturaModal({ ...facturaVacia(nombre, prov?.taxId || "", company), ivaPeriodoMes: mes, notes: `${etiqueta} de ${mes.slice(5, 7)}/${mes.slice(0, 4)}` });
+    };
+    // LECTOR DE PDF del VEP / del comprobante del sindicato (21/11/2026): "de ahi va a tomar el pago. O lo
+    // cargamos a mano o con el lector. Despues siempre la edicion manual gana. Pero tambien nos sirve para
+    // comprobar que no estamos cargando algo mal". Si el mes ya tiene algo cargado, CONTROLA y no toca nada;
+    // si no, abre la ficha con lo leido para revisar y guardar.
+    const leerPdfDelPago = (proveedor: "fisco" | "sindicato", etiqueta: string) => async (company: string, mes: string, file: File): Promise<string> => {
+      const esPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
+      let leido = leerComprobante(esPdf ? await lineasDelPdf(file).catch(() => [] as string[]) : [], file.name);
+      let porOcr = false;
+      if (!leido.legible) {
+        try {
+          const texto = esPdf ? await textoPorOcrDelPdf(file) : (await readTicket(file)).rawText;
+          const otro = leerComprobante(String(texto || "").split(/\r?\n/), file.name);
+          if (otro.legible) {
+            leido = otro;
+            porOcr = true;
+          }
+        } catch (err) {
+          console.error("[lector de pagos] OCR:", err);
+        }
+      }
+      const lindo = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
+      const periodo = leido.periodo || mes;
+      const es = proveedor === "fisco" ? esProveedorDelFisco : esProveedorSindicato;
+      const yaCargados = docsDe(es, proveedor === "fisco").filter((d) => d.company === company && periodoDelDoc(d) === periodo);
+      const extras = [
+        porOcr ? "El PDF no traía texto: se leyó como imagen, revisá bien el importe." : "",
+        periodo !== mes ? `Ojo: el PDF es de ${lindo(periodo)}, no de ${lindo(mes)}.` : "",
+        leido.porcentaje > 0 ? `La planilla cobra el ${String(leido.porcentaje).replace(".", ",")}% sobre la remuneración.` : "",
+        ...leido.avisos,
+      ].filter(Boolean);
+      if (yaCargados.length) {
+        const cargado = yaCargados.reduce((a, d) => a + Number(d.total || 0), 0);
+        const control = controlarContraCargado(leido, cargado, (n) => money(n));
+        return [control ? `${control.coincide ? "✓" : "⚠"} ${control.texto}` : `Ya hay ${money(cargado)} cargado para ${lindo(periodo)}, y del PDF no pude sacar el importe para compararlo.`, ...extras].join("\n");
+      }
+      const prov = visibleSuppliers.find((s) => es(s.name) && (String(s.company) === company || String(s.company) === "General"));
+      const total = Number(leido.total || 0);
+      const fecha = leido.fecha || todayIso();
+      setFacturaModal({
+        ...facturaVacia(prov?.name || (proveedor === "fisco" ? "ARCA" : leido.beneficiario || ""), prov?.taxId || (proveedor === "sindicato" ? leido.cuit : ""), company),
+        altaProveedor: !prov && proveedor === "sindicato" && !!leido.beneficiario,
+        receiptKind: proveedor === "fisco" ? "VEP" : "Otro",
+        receiptLetter: "X",
+        invoiceNumber: leido.numero,
+        invoiceDate: fecha,
+        vatRate: 0,
+        net21: 0,
+        vat: 0,
+        exemptAmount: total,
+        total,
+        ivaPeriodoMes: periodo,
+        notes: `${etiqueta} de ${lindo(periodo)} · leído de ${file.name}`,
+        attachmentName: file.name,
+        // "De ahi va a tomar el pago": el pago viene armado con la fecha y el monto leidos; falta elegir la
+        // cuenta. Sigue al total si se corrige a mano.
+        pagos: total > 0 ? [{ key: `n${newId()}`, fecha, monto: total, metodo: leido.tipo === "echeq" ? "cheque" : "transferencia", administration: "blanco" } as any] : [],
+        pagoSigueTotal: true,
+      });
+      return [total > 0 ? `Leído: ${money(total)} · ${lindo(periodo)}${leido.fecha ? ` · pagado el ${leido.fecha.split("-").reverse().join("/")}` : ""}. Se abrió la ficha con eso: revisala, elegí de qué cuenta salió y guardá. Lo que corrijas a mano es lo que vale.` : "Se abrió la ficha para completarla a mano.", ...extras].join("\n");
+    };
+    const sacarPlan = () => {
+      window.alert("El plan de pago se carga en Desendeudamiento, tal como lo armaron: poné al acreedor, las cuotas y elegí este comprobante para que quede unido al mes. Lo que cargues ahí es lo que vale.");
+      setActiveTab("desendeudamiento" as TabKey);
+    };
+
+    // ---- IVA ----
+    const docsIva = docsDe(esProveedorDelFisco, true);
+    const empresasIva: EmpresaSeccion[] = empresasOperables.map((c) => {
+      const company = String(c.value);
+      const anual = ivaDeEmpresa(company, balanceFiscalStartYear);
+      const extra: EmpresaSeccion["extra"] = {};
+      const avisos: Record<string, string> = {};
+      anual.meses.forEach((m) => {
+        extra[m.mes] = { debito: m.debito, credito: m.credito, arrastre: m.arrastre };
+        if (creditoIncompleto(m)) avisos[m.mes] = "Este mes tiene IVA de ventas y NADA de IVA de compras: faltan cargar las facturas de compra, así que el «a pagar» sale de más.";
+      });
+      return {
+        company,
+        short: c.short,
+        color: c.primary,
+        datos: obligacionMensual({ company, meses: anual.meses.map((m) => ({ mes: m.mes, calculado: m.aPagar })), docs: docsIva, hoy }),
+        extra,
+        avisos,
+      };
+    });
+    const detalleIva = (company: string, mes: string): DetalleMes => {
+      const delMes = (iso?: string) => String(iso || "").slice(0, 7) === mes;
+      const ventas = approvedJobs
+        .filter((j) => String(j.company) === company)
+        .flatMap((j) => (j.invoices || []).filter((inv) => delMes(inv.invoiceDate)).map((inv) => ({ fecha: String(inv.invoiceDate), texto: `Factura ${(inv as any).invoiceNumber || (inv as any).number || "s/n"} · presupuesto ${j.budgetNumber} · ${j.client}`, monto: Number(inv.vat || 0) })));
+      const entreEmpresas = issuedInvoices
+        .filter((inv) => String(inv.company) === company && delMes(inv.date))
+        .map((inv) => ({ fecha: String(inv.date), texto: `Factura emitida (padrón / entre empresas) · ${(inv as any).receiverName || (inv as any).client || ""}`, monto: Number(inv.vat || 0) }));
+      const compras = [
+        ...visiblePurchaseInvoices
+          .filter((p) => String(p.company) === company && delMes(p.invoiceDate) && p.administration !== "negro" && Math.abs(Number(p.vat || 0)) > 0.005)
+          .map((p) => ({ fecha: p.invoiceDate, texto: `${p.supplier} · ${[p.receiptLetter, p.invoiceNumber].filter(Boolean).join(" ") || "s/n"}`, monto: Number(p.vat || 0) })),
+        ...visibleCreditNotes
+          .filter((n) => String(n.company) === company && delMes(n.date) && n.administration !== "negro")
+          .map((n) => ({ fecha: n.date, texto: `Nota de crédito · ${(n as any).supplier || ""}`, monto: -Number(n.vat || 0) })),
+      ];
+      const orden = (l: Array<{ fecha: string; texto: string; monto: number }>) => l.sort((a, b) => a.fecha.localeCompare(b.fecha));
+      const suma = (l: Array<{ monto: number }>) => l.reduce((a, x) => a + x.monto, 0);
+      return [
+        { titulo: "IVA ventas · facturas emitidas en los trabajos", total: suma(ventas), filas: orden(ventas) },
+        ...(entreEmpresas.length ? [{ titulo: "IVA ventas · facturas del padrón y entre empresas", total: suma(entreEmpresas), filas: orden(entreEmpresas), nota: "Si una de estas también está cargada en un trabajo, el sistema la cuenta una sola vez." }] : []),
+        { titulo: "IVA compras · facturas de compra en blanco", total: suma(compras), filas: orden(compras) },
+      ];
+    };
+
+    // ---- SINDICATO ---- el aporte es un porcentaje (editable) sobre el neto en blanco de los trabajadores.
+    const pct = Number((employeeBaseConfig as any).sindicatoPct || 0);
+    const docsSindicato = docsDe(esProveedorSindicato, false);
+    const basePorEmpresaMes = new Map<string, Map<string, Array<{ nombre: string; neto: number }>>>();
+    visibleEmployees.forEach((emp) => {
+      (fichasHaberes.get(emp.id)?.periodos || []).forEach((p) => {
+        const neto = Number(p.correspondeBlanco || 0);
+        if (!(neto > 0)) return;
+        const porMes = basePorEmpresaMes.get(String(emp.company)) || new Map();
+        porMes.set(p.periodo, [...(porMes.get(p.periodo) || []), { nombre: emp.name, neto }]);
+        basePorEmpresaMes.set(String(emp.company), porMes);
+      });
+    });
+    const empresasSindicato: EmpresaSeccion[] = empresasOperables
+      .map((c) => {
+        const company = String(c.value);
+        const porMes = basePorEmpresaMes.get(company) || new Map<string, Array<{ nombre: string; neto: number }>>();
+        const mesesDelEjercicio = (empresasIva.find((e) => e.company === company)?.datos.meses || []).map((m) => m.mes);
+        const extra: EmpresaSeccion["extra"] = {};
+        const meses = mesesDelEjercicio.map((mes) => {
+          const base = (porMes.get(mes) || []).reduce((a: number, x: { neto: number }) => a + x.neto, 0);
+          extra[mes] = { base };
+          return { mes, calculado: aporteSindical(base, pct) };
+        });
+        return { company, short: c.short, color: c.primary, datos: obligacionMensual({ company, meses, docs: docsSindicato, hoy }), extra };
+      })
+      .filter((e) => e.datos.meses.some((m) => (e.extra[m.mes]?.base || 0) > 0 || m.docs.length > 0));
+    const detalleSindicato = (company: string, mes: string): DetalleMes => {
+      const filas = ((basePorEmpresaMes.get(company)?.get(mes) || []) as Array<{ nombre: string; neto: number }>).map((x) => ({ fecha: `${mes}-01`, texto: x.nombre, monto: x.neto }));
+      return [{ titulo: "Base · neto en blanco de los trabajadores", total: filas.reduce((a, x) => a + x.monto, 0), filas, nota: `Sobre esta base se aplica el ${pct}% cargado arriba. Sale de lo que le corresponde a cada persona en su ficha de haberes.` }];
+    };
+
+    return (
+      <>
+        <SeccionMensual
+          titulo="IVA"
+          nombreBoleta="VEP"
+          nombreCalculado="A pagar (sistema)"
+          empresas={empresasIva}
+          columnas={[
+            { clave: "debito", titulo: "IVA ventas", ayuda: "IVA de las facturas emitidas del mes" },
+            { clave: "credito", titulo: "IVA compras", ayuda: "IVA de las facturas de compra en blanco del mes" },
+            { clave: "arrastre", titulo: "A favor que viene", ayuda: "Saldo a favor del mes anterior, que se descuenta" },
+          ]}
+          money={money}
+          detalle={detalleIva}
+          onAbrirBoleta={abrirBoleta}
+          onCargarBoleta={cargarBoleta("fisco", "IVA")}
+          onLeerPdf={leerPdfDelPago("fisco", "IVA")}
+          onAbrirPlan={irADeuda}
+          onSacarPlan={sacarPlan}
+          encabezado={
+            ivaSinPeriodo.length > 0 ? (
+              <div style={{ fontSize: 12.5, color: "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+                {ivaSinPeriodo.length} factura(s) de ARCA no dicen qué período de IVA pagan, así que no figuran acá como VEP. Se arregla abriendo cada una en Compras y cargándole el período.
+              </div>
+            ) : undefined
+          }
+        />
+        <SeccionMensual
+          titulo="Sindicato"
+          nombreBoleta="boleta"
+          nombreCalculado="Aporte (sistema)"
+          empresas={empresasSindicato}
+          columnas={[{ clave: "base", titulo: "Neto en blanco", ayuda: "Lo que les corresponde en blanco a los trabajadores en el mes" }]}
+          money={money}
+          detalle={detalleSindicato}
+          onAbrirBoleta={abrirBoleta}
+          onCargarBoleta={cargarBoleta("sindicato", "Sindicato")}
+          onLeerPdf={leerPdfDelPago("sindicato", "Sindicato")}
+          onAbrirPlan={irADeuda}
+          onSacarPlan={sacarPlan}
+          encabezado={
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 12.5, marginBottom: 10 }}>
+              <label style={{ fontWeight: 700 }}>
+                Porcentaje sobre el neto de los trabajadores:{" "}
+                <input
+                  data-sindicato-pct
+                  type="text"
+                  inputMode="decimal"
+                  defaultValue={pct ? String(pct).replace(".", ",") : ""}
+                  placeholder="0"
+                  onBlur={(e) => {
+                    const v = Number(String(e.target.value).replace(",", ".").replace(/[^0-9.]/g, ""));
+                    setEmployeeBaseConfig((prev) => ({ ...prev, sindicatoPct: Number.isFinite(v) ? v : 0 } as any));
+                  }}
+                  style={{ width: 70, padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 6, textAlign: "right" }}
+                />{" "}
+                %
+              </label>
+              <span style={{ color: "#64748b" }}>
+                {pct > 0 ? "El aporte de cada mes es este porcentaje sobre el neto en blanco." : "Cargá el porcentaje para que el sistema calcule el aporte de cada mes."} La boleta es la factura del sindicato en Compras.
+              </span>
+            </div>
+          }
+        />
+      </>
+    );
   };
   const renderProveedores = () => (
     <ProveedoresPanel
@@ -23005,7 +23331,7 @@ Escribi CERRAR para confirmar:`
   const renderCostos = (vista: "pagoProveedores" | "composicion" | "grupos") => (
         <CostosTab
           vista={vista}
-          proveedoresSlot={vista === "pagoProveedores" ? renderProveedores() : undefined}
+          proveedoresSlot={vista === "pagoProveedores" ? <>{renderProveedores()}{renderSeccionesFiscales()}</> : undefined}
           cuentas={cuentasSistema}
           fiscalLabel={costsFiscalLabel}
           months={costsMonths}
@@ -24299,6 +24625,7 @@ Escribi CERRAR para confirmar:`
               fichas={fichasResumenDelEjercicio.filter((f) => cuentaDeTarjeta(f.resumen.cardId, tarjetasF, resumenesF) === cuenta.id)}
               pagos={pagosDeLaCuenta(cuenta.id, cuenta.company)}
               etiquetaPago={etiquetaPago}
+              repartoDelResumen={(sid) => repartoResumenes.get(sid) || null}
               pagoComisiones={(sid) => {
                 const c = costEntries.find((x) => x.impuestosClave === claveComisionesTarjeta(sid));
                 return c ? { amount: Number(c.amount || 0), date: c.date, supplier: c.supplier || "el banco" } : null;
@@ -25084,6 +25411,16 @@ Escribi CERRAR para confirmar:`
           leyendo={leyendoPdf}
           onLeerPdf={leerPdfTarjeta}
           onAbrirTarjeta={(id) => setFichaTarjetaAbierta({ cuentaId: id })}
+          sinControl={cuentasBancoSinControl.map((s) => ({
+            cuentaId: s.cuentaId,
+            nombre: s.nombre,
+            empresa: getCompanyMeta(s.company as CompanyName).short,
+            desde: s.controladaHasta,
+            porExtracto: s.porExtracto,
+            dias: s.dias,
+            movimientos: s.movimientos,
+            monto: money(s.monto, s.moneda),
+          }))}
           onAgregarTarjeta={addCreditCard}
           escondido={
             <AvisoEscondidoPorEjercicio

@@ -16,6 +16,62 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-21c",
+    fecha: "21/11/2026",
+    titulo: "IVA y Sindicato en Pago a proveedores, y el resumen de tarjeta pagado baja la cuenta",
+    items: [
+      {
+        titulo: "Sección IVA: mes a mes, en Pago a proveedores",
+        que: "El IVA se mudó de Balance a una sección propia de Pago a proveedores. El bloque es solo una tabla de números por empresa: IVA ventas, IVA compras, lo que el sistema dice que hay que pagar, el VEP cargado, lo pagado, lo que fue a un plan y la diferencia. Lo que vale es el VEP cargado: lo que calcula el sistema es informativo y la diferencia se muestra sin alarma. Arriba, «Por pagar sin VEP»: lo calculado de los meses que todavía no tienen VEP; al cargarlo, ese mes sale del contador.",
+        como: "Tocá un mes para abrir su ficha: de qué facturas sale cada número, el VEP real y cómo se resolvió. «+ Cargar VEP» abre la factura de ARCA de siempre, con el período ya puesto.",
+        tab: "costos",
+      },
+      {
+        titulo: "Pagado o plan de pago, con sus intereses",
+        que: "Cada mes dice si el VEP se pagó o si se sacó un plan. El plan es la deuda de Desendeudamiento que incluye ese VEP, cargada tal como la armaron: lo que diga el plan es lo que vale. La ficha del mes muestra el total del plan, cuántas cuotas van y cuánto falta. Arriba se ve la costumbre: cuántos meses al contado y cuántos en plan.",
+        como: "Para sacar un plan: Desendeudamiento → nueva deuda con ARCA → cargá las cuotas y elegí el VEP para que quede unido a su mes.",
+        tab: "costos",
+      },
+      {
+        titulo: "Sección Sindicato",
+        que: "Igual que el IVA: el sistema calcula el aporte de cada mes como un porcentaje sobre el neto en blanco de los trabajadores, y lo muestra al lado de la boleta cargada (el comprobante del sindicato en Compras). Lo que vale es el pago cargado; el cálculo es informativo. El porcentaje se edita arriba de la sección.",
+        como: "Cargá el porcentaje. En la factura del sindicato aparece ahora «período que paga» (vacío = el mes anterior a la fecha).",
+        tab: "costos",
+      },
+      {
+        titulo: "Lector de PDF para el VEP y el pago del sindicato",
+        que: "En la ficha de cada mes (IVA y Sindicato) hay un lector de PDF. Si el mes no tiene nada cargado, lee el comprobante y abre la ficha con el importe, el período, la fecha y el pago ya armados, para revisar. Si el mes ya tiene el pago cargado, compara el PDF contra lo cargado y dice si coincide, sin cambiar nada. Lee el VEP, la transferencia y el ECHEQ del banco, y la planilla de la cuota sindical (de ahí también saca el porcentaje que cobra el sindicato).",
+        como: "Ficha del mes → «Leer el PDF del pago» o «Controlar con el PDF». Lo que corrijas a mano en la ficha es lo que vale. La boleta de USIMRA no trae texto legible: el sistema intenta leerla como imagen y, si no puede, te pide el importe a mano.",
+        tab: "costos",
+      },
+      {
+        titulo: "Resumen de tarjeta pagado: sale el total de la cuenta",
+        que: "Al marcar un resumen como pagado, su total se descuenta de la cuenta del banco de la tarjeta el día del vencimiento. El linkeo con las facturas pasa a ser solo control: lo linkeado sigue en el renglón de cada proveedor del cash flow y lo que quedó sin linkear va a Financieros como «sin linkear del resumen», para descargarlo después. Vale para los resúmenes que cierran desde el 1/11/2026; los anteriores quedan como estaban.",
+        como: "La ficha del resumen dice cuánto sale, de eso cuánto está linkeado y cuánto queda sin linkear. Solo pesos: el total en dólares no se imputa.",
+        tab: "bancos",
+      },
+    ],
+  },
+  {
+    id: "2026-11-21b",
+    fecha: "21/11/2026",
+    titulo: "Dos avisos para que el cash flow diga la verdad",
+    items: [
+      {
+        titulo: "Cuentas del banco sin extracto de control",
+        que: "El saldo de cada banco sale de lo que se carga en el sistema, y el extracto lo corrobora. Si una cuenta tiene movimientos cargados y pasaron más de 35 días sin subirle un extracto, ahora lo avisa: en el tablero de plata disponible, debajo del saldo del banco, y arriba de todo en Bancos y tarjetas, con desde cuándo está sin control y cuántos movimientos faltan corroborar.",
+        como: "Bancos y tarjetas → «Importar el extracto del banco». Al subirlo el aviso se va solo.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Pagos sin grupo de costo",
+        que: "Un pago que no tiene grupo de costo (ni en el pago, ni en su factura, ni en el proveedor) cae en el renglón «Sin grupo» del cash flow: la plata está, pero no dice en qué se gastó. Compras ahora los lista arriba, con el total.",
+        como: "Tocá el pago para abrirlo y ponerle el grupo. Si le cargás el grupo de costo al proveedor en su ficha, se arreglan todos sus pagos juntos.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-11-21a",
     fecha: "21/11/2026",
     titulo: "El resumen de tarjeta avisa si falta conciliarlo antes de pagarlo",

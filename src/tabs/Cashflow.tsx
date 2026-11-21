@@ -780,7 +780,12 @@ export function CashflowTab({
             })()}
           </Panel>
 
-          <Panel title="Posicion de IVA · mes a mes, alineada al calendario" span="wide">
+          <Panel title="Posicion de IVA del mes y conteo de blanqueo" span="wide">
+            {/* 21/11/2026 (Nicolas): el IVA mes a mes, los VEP y el cruce se mudaron a Pago a proveedores → IVA.
+                Aca queda el mes en curso y el conteo de blanqueo. Lo demas esta escondido detras de `false &&`. */}
+            <div data-iva-mudado style={{ fontSize: 12.5, color: "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 10px", marginBottom: 8 }}>
+              El IVA mes a mes, la carga del VEP y el cruce contra lo calculado están ahora en <strong>Pago a proveedores → IVA</strong>.
+            </div>
             <div style={{ ...styles.muted, marginBottom: 10 }}>
               Cada mes calendario: debito (IVA de ventas emitidas) menos credito (IVA de compras en blanco); el saldo a favor pasa
               al mes siguiente. Arriba, el <strong>mes en curso</strong>: positivo = <strong>a pagar</strong> (conviene comprar en
@@ -819,7 +824,7 @@ export function CashflowTab({
                       tone={v.posicion > 1 ? "warn" : "strong"}
                     />
                   </div>
-                  {v.anual && (
+                  {false && v.anual && (
                     <div style={{ marginTop: 8 }}>
                       <div style={{ ...styles.muted, fontSize: 12, marginBottom: 4 }}>
                         <strong>El ejercicio</strong> desde {formatDateDisplay(v.anual.desde)}, mes por mes, con el control de cada VEP.
@@ -945,6 +950,7 @@ export function CashflowTab({
               ))
             )}
 
+            {false && (<>
             <div style={{ ...balanceSection, marginTop: 8 }}>
               VEP de pago de IVA (controla el mes que paga: tiene que coincidir con lo que el sistema dice a pagar)
             </div>
@@ -1016,6 +1022,7 @@ export function CashflowTab({
                 </div>
               ))
             )}
+            </>)}
           </Panel>
 
 <Panel title="Desendeudamiento" span="full">

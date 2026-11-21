@@ -136,6 +136,12 @@ export async function extractTicketText(file: File): Promise<string> {
   return imageToText(file);
 }
 
+// La primera hoja de un PDF pasada por el OCR: para los PDF cuyo texto no se puede leer (la boleta de USIMRA
+// trae una fuente que devuelve basura). Ver domain/lectorComprobantePago.ts.
+export async function textoPorOcrDelPdf(file: File): Promise<string> {
+  return imageToText(await hojaDelPdfComoImagen(file, 1));
+}
+
 export async function readTicket(file: File): Promise<TicketData> {
   const rawText = await extractTicketText(file);
   return { ...parseTicket(rawText), rawText };

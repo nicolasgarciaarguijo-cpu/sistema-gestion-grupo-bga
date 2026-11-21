@@ -11,6 +11,8 @@ export type PlataDisponibleBank = {
   balance: number; // saldo que calcula el sistema con lo cargado
   // CONTROL contra el ultimo resumen del banco (el extracto ya no carga: corrobora).
   control?: { fecha: string; saldoExtracto: number; diferencia: number; cierra: boolean };
+  // Sin extracto que corrobore lo cargado desde esa fecha (domain/cuentas.cuentasSinControl).
+  sinControl?: { desde: string; movimientos: number };
 };
 export type PlataDisponibleCompany = {
   company: string;
@@ -200,6 +202,14 @@ export function PlataDisponible({
                             {b.control.cierra
                               ? `✓ coincide con el extracto (${b.control.fecha.slice(8, 10)}/${b.control.fecha.slice(5, 7)})`
                               : `≠ extracto ${b.control.fecha.slice(8, 10)}/${b.control.fecha.slice(5, 7)}: dif. ${money(b.control.diferencia)}`}
+                          </div>
+                        )}
+                        {b.sinControl && (
+                          <div
+                            style={{ fontSize: 10.5, marginTop: 2, color: "#fcd34d" }}
+                            title="Hay movimientos cargados en el sistema que ningún extracto corroboró. Subí el extracto en Bancos y tarjetas."
+                          >
+                            ⚠ sin extracto{b.sinControl.desde ? ` desde ${b.sinControl.desde.slice(8, 10)}/${b.sinControl.desde.slice(5, 7)}` : ""} · {b.sinControl.movimientos} mov. sin controlar
                           </div>
                         )}
                       </div>

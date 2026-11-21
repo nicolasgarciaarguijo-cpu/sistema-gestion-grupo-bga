@@ -11,6 +11,7 @@ import { FirmanteFijo } from "./FirmanteSelect";
 import { SelectorTarjeta, esPagoConTarjeta, type TarjetaOpt } from "./SelectorTarjeta";
 import NumInput from "./NumInput";
 import { esProveedorDelFisco } from "../domain/pagoDeIva";
+import { esProveedorSindicato } from "../domain/obligacionMensual";
 
 export type MedioPago = "efectivo" | "transferencia" | "cheque" | "tarjeta_debito" | "tarjeta_credito" | "debito";
 export const MEDIOS_PAGO: Array<{ value: MedioPago; label: string }> = [
@@ -478,9 +479,9 @@ export function FacturaCompraModal({
           </label>
           {/* PAGO DEL IVA (17/11/2026): si la factura es de ARCA, de que periodo es el IVA que paga. Con
               eso el tablero de la Posicion de IVA la cuenta como el VEP de ese mes. */}
-          {(esProveedorDelFisco(f.supplier) || !!f.ivaPeriodoMes) && (
+          {(esProveedorDelFisco(f.supplier) || esProveedorSindicato(f.supplier) || !!f.ivaPeriodoMes) && (
             <label style={{ ...lbl, marginTop: 8 }}>
-              ¿Es el pago del IVA? Período que paga
+              {esProveedorSindicato(f.supplier) ? "Boleta del sindicato: período que paga" : "¿Es el pago del IVA? Período que paga"}
               <input
                 style={input}
                 type="month"
@@ -488,8 +489,9 @@ export function FacturaCompraModal({
                 onChange={(e) => set({ ivaPeriodoMes: e.target.value || undefined })}
               />
               <span style={{ fontWeight: 400, fontSize: 11.5, color: "#64748b" }}>
-                Ej. 2026-08 para el IVA de agosto. Con esto la Posición de IVA toma esta factura como el pago
-                de ese mes (si no, el tablero va a decir «sin VEP» para siempre). Dejalo vacío si no es IVA.
+                {esProveedorSindicato(f.supplier)
+                  ? "El mes de sueldos que paga esta boleta. Vacío = el mes anterior a la fecha. Con esto figura en Pago a proveedores → Sindicato."
+                  : "Ej. 2026-08 para el IVA de agosto. Con esto figura como el VEP de ese mes en Pago a proveedores → IVA (si no, el mes va a decir que falta la boleta). Dejalo vacío si no es IVA."}
               </span>
             </label>
           )}

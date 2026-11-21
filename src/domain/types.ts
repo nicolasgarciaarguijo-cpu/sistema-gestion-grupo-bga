@@ -1722,6 +1722,9 @@ export type EmployeeBaseProvisionTemplate = {
 };
 
 export type EmployeeBaseConfig = {
+  // SINDICATO (Nicolas, 21/11/2026): porcentaje sobre el neto en blanco de los trabajadores con el que el
+  // sistema calcula el aporte de cada mes (seccion Sindicato de Pago a proveedores). Editable ahi.
+  sindicatoPct?: number;
   // PRECARGA DE HORAS (Nicolas, 2026-10-08): encendida = las horas se calculan solas desde la entrada y
   // la salida (al llegar del reloj y al editarlas); apagada = se cargan a mano, y el boton "Precargar
   // horas del mes" las calcula solo cuando se lo aprieta. Ausente = encendida (como venia funcionando).

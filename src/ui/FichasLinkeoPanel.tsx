@@ -6,6 +6,8 @@ import { Panel, ButtonLike } from "./primitives";
 import { ddmm } from "./VinculoUi";
 
 export type FilaTarjeta = { id: number; nombre: string; empresa: string; resumenes: number; pendientes: number; ultimo?: { closingDate: string; completo: boolean; obligatorio: boolean } };
+// Cuenta del banco con movimientos cargados y sin extracto que los corrobore (domain/cuentas.cuentasSinControl).
+export type CuentaSinControlFila = { cuentaId: string; nombre: string; empresa: string; desde: string; porExtracto: boolean; dias: number; movimientos: number; monto: string };
 export type FilaCuenta = { clave: string; nombre: string; empresa: string; meses: number; pendientes: number; ultimo?: { mes: string; completo: boolean; obligatorio: boolean } };
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 700, padding: "4px 6px", borderBottom: "1px solid #e2e8f0" };
@@ -26,7 +28,10 @@ export function FichasLinkeoPanel({
   onAgregarTarjeta,
   impuestosPendientes,
   escondido,
+  sinControl,
 }: {
+  // 21/11/2026: el banco corrobora solo si se sube el extracto. Estas cuentas tienen plata movida sin control.
+  sinControl?: CuentaSinControlFila[];
   tarjetas: FilaTarjeta[];
   cuentas: FilaCuenta[];
   leyendo: string;
@@ -76,6 +81,23 @@ export function FichasLinkeoPanel({
           <summary style={{ cursor: "pointer", fontWeight: 800, fontSize: 13 }}>📥 Importar el extracto del banco</summary>
           <div style={{ marginTop: 8 }}>{importarExtracto}</div>
         </details>
+      )}
+      {sinControl && sinControl.length > 0 && (
+        <div data-aviso="sin-control" style={{ fontSize: 12.5, color: "#7f1d1d", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>
+          <strong>
+            {sinControl.length === 1 ? "1 cuenta del banco sin extracto de control" : `${sinControl.length} cuentas del banco sin extracto de control`}
+          </strong>
+          {" · el saldo sale solo de lo cargado y nada lo corrobora. Subí el extracto acá arriba."}
+          <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>
+            {sinControl.map((s) => (
+              <li key={s.cuentaId}>
+                <b>{s.nombre}</b> · {s.empresa} ·{" "}
+                {s.desde ? `${s.porExtracto ? "último extracto" : "saldo anclado"} el ${s.desde.split("-").reverse().join("/")} (hace ${s.dias} días)` : "nunca se le subió un extracto"} ·{" "}
+                {s.movimientos} movimiento{s.movimientos === 1 ? "" : "s"} sin controlar por {s.monto}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
       {impuestosPendientes && impuestosPendientes.cantidad > 0 && (
         <div style={{ fontSize: 12.5, color: "#92400e", background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 8, padding: "6px 10px", marginBottom: 10 }}>

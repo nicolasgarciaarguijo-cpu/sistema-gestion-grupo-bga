@@ -263,6 +263,60 @@ export function controlContraExtracto(
     .filter((x): x is NonNullable<typeof x> => !!x);
 }
 
+// CUENTAS SIN CONTROL (Nicolas, 21/11/2026): el banco corrobora, pero solo si se sube el extracto. Una cuenta
+// bancaria esta "controlada hasta" su ultimo extracto (o su apertura, que se anclo al banco). Si despues de
+// esa fecha el sistema le cargo movimientos y pasaron mas de DIAS_SIN_CONTROL dias, nadie los corroboro.
+export const DIAS_SIN_CONTROL = 35; // un extracto mensual, con unos dias para bajarlo
+const diasDe = (a: string, b: string) =>
+  Math.round((Date.UTC(+b.slice(0, 4), +b.slice(5, 7) - 1, +b.slice(8, 10)) - Date.UTC(+a.slice(0, 4), +a.slice(5, 7) - 1, +a.slice(8, 10))) / 86400000);
+export type CuentaSinControl = {
+  cuentaId: string;
+  nombre: string;
+  company: string;
+  moneda: Moneda;
+  controladaHasta: string; // ultimo extracto o apertura
+  porExtracto: boolean; // false = nunca se le subio un extracto despues de la apertura
+  dias: number;
+  movimientos: number; // cargados en el sistema despues, sin corroborar
+  monto: number; // suma de sus importes en valor absoluto
+};
+export function cuentasSinControl(
+  cuentas: Cuenta[],
+  movimientos: MovimientoCuenta[],
+  ultimosExtractos: Array<{ company: string; bank: string; currency: Moneda; date: string }>,
+  hoy: string,
+  tolerancia = DIAS_SIN_CONTROL
+): CuentaSinControl[] {
+  const ultimo = new Map<string, string>();
+  ultimosExtractos.forEach((e) => {
+    const id = idCuentaBanco(e.company, e.bank, e.currency);
+    if (e.date && e.date > (ultimo.get(id) || "")) ultimo.set(id, e.date);
+  });
+  return cuentas
+    .filter((c) => c.tipo === "banco" && c.activa)
+    .map((c) => {
+      const extracto = ultimo.get(c.id) || "";
+      const porExtracto = !!extracto && extracto > (c.fechaApertura || "");
+      const controladaHasta = porExtracto ? extracto : c.fechaApertura || "";
+      const sinCorroborar = movimientos.filter((m) => m.cuentaId === c.id && m.date > controladaHasta && m.date <= hoy);
+      // Sin fecha de apertura ni extracto no hay desde cuando contar: cuentan los dias del movimiento mas viejo.
+      const desde = controladaHasta || sinCorroborar.map((m) => m.date).sort()[0] || hoy;
+      return {
+        cuentaId: c.id,
+        nombre: c.nombre,
+        company: c.company,
+        moneda: c.moneda,
+        controladaHasta,
+        porExtracto,
+        dias: diasDe(desde, hoy),
+        movimientos: sinCorroborar.length,
+        monto: Math.round(sinCorroborar.reduce((a, m) => a + Math.abs(m.amount), 0) * 100) / 100,
+      };
+    })
+    .filter((x) => x.movimientos > 0 && x.dias > tolerancia)
+    .sort((a, b) => b.dias - a.dias || a.nombre.localeCompare(b.nombre));
+}
+
 /** Saldo de cada cuenta dia por dia (para la planilla). */
 export function saldosDiarios(
   cuentas: Cuenta[],

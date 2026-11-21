@@ -22,6 +22,9 @@ export type FichaTarjetaProps = {
   pagos: PagoF[]; // pagos con tarjeta de esta cuenta (para linkear a mano)
   etiquetaPago: (pagoId: number) => string; // "Pintureria · factura A 3-5001"
   pagoComisiones: (statementId: number) => { amount: number; date: string; supplier: string } | null;
+  // EL PAGO DEL RESUMEN (21/11/2026): pagado, baja la cuenta por su total el dia del vencimiento. null = resumen
+  // anterior al 1/11/2026, que sigue como estaba. Ver domain/pagoResumenTarjeta.ts.
+  repartoDelResumen?: (statementId: number) => { total: number; linkeado: number; resto: number; deMas: number; pagado: boolean; fecha: string } | null;
   companyShort: (c: string) => string;
   money: (n: number, moneda?: string) => string;
   statementInicial?: number | null;
@@ -346,6 +349,20 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
               <div style={{ fontSize: 13 }}>
                 {ficha.linkeados} linkeado(s) · {ficha.pendientes} sin linkear
               </div>
+              {(() => {
+                const r = p.repartoDelResumen?.(ficha.resumen.id);
+                if (!r) return null;
+                return (
+                  <div data-pago-resumen style={{ fontSize: 12.5, flexBasis: "100%", color: r.pagado ? "#166534" : "#475569" }}>
+                    {r.pagado
+                      ? <>✓ Pagado: <b>{p.money(r.total)}</b> salieron de la cuenta del banco el {ddmm(r.fecha)}.</>
+                      : <>Al marcarlo pagado salen <b>{p.money(r.total)}</b> de la cuenta del banco el {ddmm(r.fecha)}.</>}{" "}
+                    Linkeado con pagos cargados: <b>{p.money(r.linkeado)}</b>
+                    {r.resto > 0 && <> · <span style={{ color: "#b45309" }}>sin linkear: <b>{p.money(r.resto)}</b> (falta cargar o no es nuestro: descargo pendiente)</span></>}
+                    {r.deMas > 0 && <> · <span style={{ color: "#b91c1c" }}>lo cargado supera al resumen en <b>{p.money(r.deMas)}</b>: revisar si hay algo dos veces</span></>}
+                  </div>
+                );
+              })()}
               {ficha.completo ? (
                 <span style={{ background: "#166534", color: "#fff", borderRadius: 999, padding: "3px 10px", fontWeight: 800, fontSize: 12.5 }}>✓ revisado y linkeado</span>
               ) : !ficha.obligatorio ? (

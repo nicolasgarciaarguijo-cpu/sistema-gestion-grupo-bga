@@ -56,7 +56,13 @@ export function FacturasCompraPanel({
   onExportarEstudio,
   onAbrirResumen,
   ivaSinPeriodo = [],
+  pagosSinGrupo = [],
+  onAbrirPagoSinGrupo,
 }: {
+  // Pagos que caen en el renglon "Sin grupo" del cash flow (21/11/2026): la plata esta, pero no dice en que
+  // se gasto. Se arregla poniendole el grupo de costo al proveedor (arregla todos los suyos) o al pago.
+  pagosSinGrupo?: Array<{ clave: string; pagoId: number | null; cajaChica: boolean; proveedor: string; company: string; date: string; amount: number }>;
+  onAbrirPagoSinGrupo?: (pagoId: number) => void;
   filas: FilaFactura[];
   companyOptions: Array<{ value: string; short?: string }>;
   money: (n: number) => string;
@@ -249,6 +255,36 @@ export function FacturasCompraPanel({
                 · <strong>{money(Number(f.total || 0))}</strong> {f.supplier} · {shortDe(f.company)} · del {fmt(f.invoiceDate)}
               </button>
             ))}
+          </div>
+        </div>
+      )}
+      {pagosSinGrupo.length > 0 && (
+        <div
+          data-aviso="sin-grupo"
+          style={{
+            border: "1px solid #fcd34d", background: "#fffbeb", borderRadius: 8, padding: "8px 10px",
+            marginBottom: 8, fontSize: 12.5, color: "#92400e",
+          }}
+        >
+          <strong>
+            ⚠ {money(pagosSinGrupo.reduce((a, p) => a + p.amount, 0))} en {pagosSinGrupo.length} pago(s) SIN GRUPO DE COSTO:
+          </strong>{" "}
+          en el cash flow caen en el renglón «Sin grupo», así que no dicen en qué se gastó. Se arregla poniéndole
+          el grupo de costo al proveedor en su ficha (arregla todos sus pagos) o al pago.
+          <div style={{ marginTop: 4, display: "grid", gap: 2 }}>
+            {pagosSinGrupo.slice(0, 8).map((p) => (
+              <button
+                key={p.clave}
+                type="button"
+                onClick={() => p.pagoId != null && onAbrirPagoSinGrupo?.(p.pagoId)}
+                style={{ border: "none", background: "none", padding: 0, textAlign: "left", cursor: "pointer", color: "#92400e", fontSize: 12.5 }}
+                title="Abrir el pago para ponerle el grupo de costo"
+              >
+                · <strong>{money(p.amount)}</strong> {p.proveedor || "sin proveedor"} · {shortDe(p.company)} · {fmt(p.date)}
+                {p.cajaChica ? " · caja chica" : ""}
+              </button>
+            ))}
+            {pagosSinGrupo.length > 8 && <span>· y {pagosSinGrupo.length - 8} más</span>}
           </div>
         </div>
       )}
