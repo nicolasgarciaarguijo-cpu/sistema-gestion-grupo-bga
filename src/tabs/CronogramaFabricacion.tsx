@@ -150,7 +150,7 @@ export function CronogramaFabricacion({
                     </td>
                     <td style={{ ...tdDato, padding: 0 }}>
                       <input
-                        type="date"
+                        type="date" min="2015-01-01" max="2100-12-31"
                         value={r.inicio}
                         onChange={(ev) => ev.target.value && onGuardarFabricacion(r.jobId, { inicio: ev.target.value })}
                         style={{ border: "none", background: "transparent", fontSize: 12.5, width: "100%", padding: "2px 4px" }}

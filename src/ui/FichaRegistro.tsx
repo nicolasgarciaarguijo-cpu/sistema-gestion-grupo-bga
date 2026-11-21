@@ -77,6 +77,7 @@ export function FichaRegistro({
         <input
           style={{ ...input, textAlign: c.tipo === "numero" ? "right" : undefined }}
           type={c.tipo === "numero" ? "number" : c.tipo === "fecha" ? "date" : "text"}
+          {...(c.tipo === "fecha" ? { min: "2015-01-01", max: "2100-12-31" } : {})}
           value={v ?? ""}
           readOnly={c.soloLectura}
           list={listId}

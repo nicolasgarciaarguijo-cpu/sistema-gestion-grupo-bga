@@ -70,7 +70,7 @@ export function PagoACuentaModal({
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
           <label style={lbl}>Fecha del pago
-            <input style={input} type="date" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
+            <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
           </label>
           <label style={lbl}>Monto
             <NumInput style={input} value={f.monto || ""} onChange={(e) => set({ monto: Number(e.target.value) || 0 })} autoFocus />

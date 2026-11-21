@@ -919,7 +919,7 @@ export function AprobadosTab({
                     <Field label="Fecha aprobacion">
                       <input
                         style={styles.input}
-                        type="date"
+                        type="date" min="2015-01-01" max="2100-12-31"
                         value={selectedApprovedJob.approvalDate}
                         onChange={(e) =>
                           updateApprovedJob(selectedApprovedJob.id, "approvalDate", e.target.value)
@@ -929,7 +929,7 @@ export function AprobadosTab({
                     <Field label="Fecha inicio">
                       <input
                         style={styles.input}
-                        type="date"
+                        type="date" min="2015-01-01" max="2100-12-31"
                         value={selectedApprovedJob.startDate}
                         onChange={(e) =>
                           updateApprovedJob(selectedApprovedJob.id, "startDate", e.target.value)
@@ -948,7 +948,7 @@ export function AprobadosTab({
                     <Field label="Fecha entrega">
                       <input
                         style={styles.input}
-                        type="date"
+                        type="date" min="2015-01-01" max="2100-12-31"
                         value={selectedApprovedJob.deliveryDate}
                         onChange={(e) =>
                           updateApprovedJob(selectedApprovedJob.id, "deliveryDate", e.target.value)
@@ -2055,7 +2055,7 @@ export function AprobadosTab({
                           <Field label="Fecha">
                             <input
                               style={styles.input}
-                              type="date"
+                              type="date" min="2015-01-01" max="2100-12-31"
                               value={item.date}
                               onChange={(e) => updateAdditional(selectedApprovedJob.id, item.id, "date", e.target.value)}
                             />
@@ -2227,7 +2227,7 @@ export function AprobadosTab({
                           <Field label="Fecha">
                             <input
                               style={styles.input}
-                              type="date"
+                              type="date" min="2015-01-01" max="2100-12-31"
                               value={item.date}
                               onChange={(e) => updateDiscount(selectedApprovedJob.id, item.id, "date", e.target.value)}
                             />
@@ -2405,7 +2405,7 @@ export function AprobadosTab({
                         <Field label="Fecha">
                           <input
                             style={styles.input}
-                            type="date"
+                            type="date" min="2015-01-01" max="2100-12-31"
                             value={retention.retentionDate}
                             onChange={(e) =>
                               updateRetention(selectedApprovedJob.id, retention.id, "retentionDate", e.target.value)

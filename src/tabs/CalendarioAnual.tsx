@@ -4387,7 +4387,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   Día <span style={{ color: "#94a3b8", fontSize: 11, fontWeight: 400 }}>(opcional: mover el importe a otra columna)</span>
                   <input
                     style={styles.input}
-                    type="date"
+                    type="date" min="2015-01-01" max="2100-12-31"
                     value={linkForm.moveDate}
                     onChange={(e) => setLinkForm({ ...linkForm, moveDate: e.target.value })}
                   />
@@ -4423,7 +4423,7 @@ Si este cobro sale de un trabajo${ppto ? ` (${ppto})` : ""}, también se borra e
                   Día <span style={{ color: "#94a3b8", fontSize: 11, fontWeight: 400 }}>(cambialo para mover el importe a otra columna)</span>
                   <input
                     style={styles.input}
-                    type="date"
+                    type="date" min="2015-01-01" max="2100-12-31"
                     value={addForm.date}
                     onChange={(e) => setAddForm({ ...addForm, date: e.target.value })}
                   />

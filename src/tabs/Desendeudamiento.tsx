@@ -489,7 +489,7 @@ export function DesendeudamientoTab({
                       </b>
                       <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap" }}>
                         <label style={lbl}>Fecha de acreditación
-                          <input style={input} type="date" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
+                          <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
                         </label>
                         <label style={lbl}>Monto que entró
                           <NumInput style={{ ...input, width: 150 }} value={f.monto || ""} onChange={(e) => set({ monto: Number(e.target.value) || 0 })} />
@@ -620,7 +620,7 @@ export function DesendeudamientoTab({
                           <td style={td}>
                             <input
                               style={{ ...input, padding: "2px 5px" }}
-                              type="date"
+                              type="date" min="2015-01-01" max="2100-12-31"
                               value={c.fecha}
                               disabled={pagada}
                               onChange={(e) => setCuotas(d, (cs) => cs.map((x) => (x.id === c.id ? { ...x, fecha: e.target.value } : x)))}
@@ -716,7 +716,7 @@ export function DesendeudamientoTab({
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end", flexWrap: "wrap", fontSize: 12 }}>
                   <b style={{ color: "#475569" }}>Estipular cuotas:</b>
                   <label style={lbl}>Primera
-                    <input style={input} type="date" value={est.fecha} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, fecha: e.target.value } }))} />
+                    <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={est.fecha} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, fecha: e.target.value } }))} />
                   </label>
                   <label style={lbl}>Cantidad
                     <NumInput style={{ ...input, width: 80 }} value={est.cantidad} onChange={(e) => setEstipular((p) => ({ ...p, [d.id]: { ...est, cantidad: Number(e.target.value) || 0 } }))} />
@@ -895,7 +895,7 @@ export function DesendeudamientoTab({
             {pago.form.modo !== "vincular" ? (
               <div style={grid}>
                 <label style={lbl}>Fecha
-                  <input style={input} type="date" value={pago.form.fecha} onChange={(e) => setPago({ ...pago, form: { ...pago.form, fecha: e.target.value } })} />
+                  <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={pago.form.fecha} onChange={(e) => setPago({ ...pago, form: { ...pago.form, fecha: e.target.value } })} />
                 </label>
                 {mon(pago.deuda) === "USD" ? (
                   <>

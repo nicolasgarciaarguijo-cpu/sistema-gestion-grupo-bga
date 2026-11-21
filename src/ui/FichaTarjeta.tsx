@@ -404,11 +404,11 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
                 </label>
                 <label style={campo}>
                   <span style={rotulo}>Cierre</span>
-                  <input style={inputMini} type="date" value={ficha.resumen.closingDate || ""} onChange={(e) => p.onResumen(ficha.resumen.id, "closingDate", e.target.value)} />
+                  <input style={inputMini} type="date" min="2015-01-01" max="2100-12-31" value={ficha.resumen.closingDate || ""} onChange={(e) => p.onResumen(ficha.resumen.id, "closingDate", e.target.value)} />
                 </label>
                 <label style={campo}>
                   <span style={rotulo}>Vencimiento (el día que se paga)</span>
-                  <input style={inputMini} type="date" value={ficha.resumen.dueDate || ""} onChange={(e) => p.onResumen(ficha.resumen.id, "dueDate", e.target.value)} />
+                  <input style={inputMini} type="date" min="2015-01-01" max="2100-12-31" value={ficha.resumen.dueDate || ""} onChange={(e) => p.onResumen(ficha.resumen.id, "dueDate", e.target.value)} />
                 </label>
                 <label style={campo}>
                   <span style={rotulo}>Total a pagar $</span>

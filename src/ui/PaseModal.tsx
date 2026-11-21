@@ -71,7 +71,7 @@ export function PaseModal({
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
           <label style={lbl}>
             Fecha
-            <input style={input} type="date" value={f.date} onChange={(e) => set({ date: e.target.value })} />
+            <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={f.date} onChange={(e) => set({ date: e.target.value })} />
           </label>
           <label style={lbl}>
             Monto

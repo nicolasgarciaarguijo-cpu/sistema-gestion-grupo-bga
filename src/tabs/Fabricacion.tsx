@@ -235,7 +235,7 @@ export function FabricacionTab({
                         <input
                           style={{ ...inputCelda, padding: "1px 6px" }}
                           {...focoCelda}
-                          type="date"
+                          type="date" min="2015-01-01" max="2100-12-31"
                           value={job.startDate}
                           onChange={(e) => updateApprovedJob(job.id, "startDate", e.target.value)}
                         />
@@ -244,7 +244,7 @@ export function FabricacionTab({
                         <input
                           style={{ ...inputCelda, padding: "1px 6px" }}
                           {...focoCelda}
-                          type="date"
+                          type="date" min="2015-01-01" max="2100-12-31"
                           value={job.deliveryDate}
                           onChange={(e) => updateApprovedJob(job.id, "deliveryDate", e.target.value)}
                         />

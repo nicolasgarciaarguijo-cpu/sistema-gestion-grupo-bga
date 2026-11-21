@@ -588,7 +588,7 @@ export function FacturacionTab({
                 <Field label="Fecha">
                   <input
                     style={styles.input}
-                    type="date"
+                    type="date" min="2015-01-01" max="2100-12-31"
                     value={selectedFinancialItem.date}
                     onChange={(e) =>
                       updateFinancialItem(selectedFinancialItem.id, "date", e.target.value)

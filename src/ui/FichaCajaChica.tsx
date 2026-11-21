@@ -451,7 +451,7 @@ export function FichaCajaChica({
                 <div style={{ fontSize: 12.5, fontWeight: 700, color: "#334155" }}>Paga {companyShort(pagoDeuda.company)}</div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 8 }}>
                   <label style={{ display: "grid", gap: 3, fontSize: 12, fontWeight: 600, color: "#475569" }}>Fecha
-                    <input type="date" style={inputPago} value={pagoDeuda.fecha} onChange={(e) => setPagoDeuda({ ...pagoDeuda, fecha: e.target.value })} />
+                    <input type="date" min="2015-01-01" max="2100-12-31" style={inputPago} value={pagoDeuda.fecha} onChange={(e) => setPagoDeuda({ ...pagoDeuda, fecha: e.target.value })} />
                   </label>
                   <label style={{ display: "grid", gap: 3, fontSize: 12, fontWeight: 600, color: "#475569" }}>Monto
                     <NumInput style={inputPago} value={pagoDeuda.monto || ""} onChange={(e) => setPagoDeuda({ ...pagoDeuda, monto: Number(e.target.value) || 0 })} />

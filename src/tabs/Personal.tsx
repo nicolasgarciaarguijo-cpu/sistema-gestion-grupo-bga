@@ -359,7 +359,7 @@ export function PersonalTab(props: PersonalTabProps) {
                   <TwoCol>
                     <Field label="Fecha de baja">
                       <input
-                        type="date"
+                        type="date" min="2015-01-01" max="2100-12-31"
                         style={styles.input}
                         value={bajaDraft.date}
                         onChange={(e) =>
@@ -1965,7 +1965,7 @@ export function PersonalTab(props: PersonalTabProps) {
                           <Field label="Fecha de ingreso">
                             <input
                               style={styles.input}
-                              type="date"
+                              type="date" min="2015-01-01" max="2100-12-31"
                               value={selectedEmployee.hireDate || ""}
                               onChange={(e) => updateEmployeeField(selectedEmployee.id, "hireDate", e.target.value)}
                             />
@@ -2195,7 +2195,7 @@ export function PersonalTab(props: PersonalTabProps) {
                             <Field label="En el sistema desde (editable)">
                               <input
                                 style={styles.input}
-                                type="date"
+                                type="date" min="2015-01-01" max="2100-12-31"
                                 value={(selectedEmployee.createdAt || "").slice(0, 10)}
                                 onChange={(e) =>
                                   updateEmployeeField(selectedEmployee.id, "createdAt", e.target.value)
@@ -2278,7 +2278,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                     <Field label="Vencimiento">
                                       <input
                                         style={styles.input}
-                                        type="date"
+                                        type="date" min="2015-01-01" max="2100-12-31"
                                         value={doc.dueDate}
                                         onChange={(e) =>
                                           updateEmployeeDocument(
@@ -2376,7 +2376,7 @@ export function PersonalTab(props: PersonalTabProps) {
                                     <Field label="Vigencia / vence">
                                       <input
                                         style={styles.input}
-                                        type="date"
+                                        type="date" min="2015-01-01" max="2100-12-31"
                                         value={item.dueDate}
                                         onChange={(e) =>
                                           updateEmployeeProvisionItem(selectedEmployee.id, item.id, "dueDate", e.target.value)

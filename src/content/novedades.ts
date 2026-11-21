@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-21e",
+    fecha: "21/11/2026",
+    titulo: "Validación al cargar, historial de cambios y resumen del día",
+    items: [
+      {
+        titulo: "Resumen del día en una ventana",
+        que: "Al entrar aparece, una vez por día, una ventana arriba a la derecha con lo que hay para mirar hoy: cobros para confirmar, pagos que vencen, cuentas sin extracto, resúmenes de tarjeta sin conciliar y datos por corregir. No tapa la pantalla.",
+        como: "Cada renglón tiene un botón que lleva a la solapa donde se resuelve. «Seguir trabajando» la cierra hasta mañana; queda el botón «Hoy» para volver a abrirla.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "La ficha de compras no deja guardar un comprobante repetido ni una fecha imposible",
+        que: "Si el mismo proveedor ya tiene cargado ese número de comprobante, la ficha lo dice (con la fecha y el monto del que ya está) y no deja guardar. Tampoco con una fecha mal tipeada. Además, todos los campos de fecha del sistema dejaron de aceptar años de más de cuatro cifras.",
+        como: "Abajo de la ficha dice qué falta o qué hay que corregir. Los comprobantes que ya estaban repetidos aparecen en el resumen del día.",
+        tab: "compras",
+      },
+      {
+        titulo: "Historial de cambios",
+        que: "El sistema anota quién cargó, cambió o borró cada dato, qué tenía antes y qué tiene ahora: pagos, facturas, cobros de los trabajos, proveedores, cajas, deudas, tarjetas. Empieza a guardarse hoy; lo anterior no está.",
+        como: "Acceso → Datos y guardado → «Historial de cambios» (solo administradores). Se puede buscar por cliente, proveedor o persona.",
+        tab: "acceso",
+      },
+    ],
+  },
+  {
     id: "2026-11-21d",
     fecha: "21/11/2026",
     titulo: "Los cobros programados avisan y piden confirmación",

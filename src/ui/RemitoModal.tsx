@@ -124,7 +124,7 @@ export function RemitoModal({
               </select>
             </label>
             <label style={lbl}>Fecha
-              <input style={input} type="date" value={r.fecha} onChange={(e) => set({ fecha: e.target.value })} />
+              <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={r.fecha} onChange={(e) => set({ fecha: e.target.value })} />
             </label>
             <label style={lbl}>{r.tipo === "recepcion" ? "N.º del remito del proveedor" : "N.º de remito"}
               <input style={input} value={r.numero} onChange={(e) => set({ numero: e.target.value })} />

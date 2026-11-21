@@ -395,9 +395,9 @@ function PlanDelTrabajo({
                   {p.horas == null && sug > 0 && <button type="button" style={{ ...btn(), marginLeft: 3 }} title={`${fmt(cant)} x ${tipo?.horasEstimadas} h estándar`} onClick={() => onCambiar(r.id, { horas: sug })}>usar {fmt(sug)}</button>}
                   {diasH > 0 && <div style={{ fontSize: 10.5, color: "#64748b" }}>{diasH} día(s) hábil(es)</div>}
                 </td>
-                <td style={td}><input style={input} type="date" value={p.desde || ""} onChange={(e) => onCambiar(r.id, { desde: e.target.value || undefined })} /></td>
+                <td style={td}><input style={input} type="date" min="2015-01-01" max="2100-12-31" value={p.desde || ""} onChange={(e) => onCambiar(r.id, { desde: e.target.value || undefined })} /></td>
                 <td style={td}>
-                  <input style={input} type="date" value={p.hasta || ""} onChange={(e) => onCambiar(r.id, { hasta: e.target.value || undefined })} />
+                  <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={p.hasta || ""} onChange={(e) => onCambiar(r.id, { hasta: e.target.value || undefined })} />
                   {!p.hasta && fin && <div style={{ fontSize: 10.5, color: "#64748b" }}>sugerido {ddmm(fin)}</div>}
                 </td>
                 <td style={{ ...td, textAlign: "center" }}>

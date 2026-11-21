@@ -461,7 +461,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 <Field label="Fecha">
                   <input
                     style={styles.input}
-                    type="date"
+                    type="date" min="2015-01-01" max="2100-12-31"
                     value={budget.date}
                     onChange={(e) => setBudget({ ...budget, date: e.target.value })}
                   />
@@ -666,7 +666,7 @@ export function PresupuestoTab(props: PresupuestoTabProps) {
                 <Field label="Fecha maxima requerimiento">
                   <input
                     style={styles.input}
-                    type="date"
+                    type="date" min="2015-01-01" max="2100-12-31"
                     value={budget.maxRequirementDate}
                     onChange={(e) => setBudget({ ...budget, maxRequirementDate: e.target.value })}
                   />

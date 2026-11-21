@@ -322,7 +322,7 @@ export function CajaChicaListado({
                   <td style={td} colSpan={11}>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12.5 }}>
                       <strong>{v.persona || "sin persona"} · viático</strong>
-                      <input type="date" style={{ ...styles.input, width: "auto" }} value={editViatico.fecha} onChange={(e) => setEditViatico({ ...editViatico, fecha: e.target.value })} />
+                      <input type="date" min="2015-01-01" max="2100-12-31" style={{ ...styles.input, width: "auto" }} value={editViatico.fecha} onChange={(e) => setEditViatico({ ...editViatico, fecha: e.target.value })} />
                       <NumInput style={{ ...styles.input, width: 130 }} value={editViatico.monto || ""} onChange={(e) => setEditViatico({ ...editViatico, monto: Number(e.target.value) || 0 })} />
                       <select style={{ ...styles.input, width: "auto" }} value={editViatico.administration} onChange={(e) => setEditViatico({ ...editViatico, administration: e.target.value as "blanco" | "negro" })}>
                         <option value="blanco">Blanco</option>

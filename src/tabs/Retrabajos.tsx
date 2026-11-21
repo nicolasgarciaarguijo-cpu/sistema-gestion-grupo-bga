@@ -178,7 +178,7 @@ export function Retrabajos({
               </label>
               <label style={campo}>
                 Fecha
-                <input style={input} type="date" value={e.fecha} onChange={(ev) => setEditando({ ...e, fecha: ev.target.value })} />
+                <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={e.fecha} onChange={(ev) => setEditando({ ...e, fecha: ev.target.value })} />
               </label>
               <label style={campo}>
                 Tarea

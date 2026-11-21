@@ -12,6 +12,7 @@ import { SelectorTarjeta, esPagoConTarjeta, type TarjetaOpt } from "./SelectorTa
 import NumInput from "./NumInput";
 import { esProveedorDelFisco } from "../domain/pagoDeIva";
 import { esProveedorSindicato } from "../domain/obligacionMensual";
+import { validarFacturaCompra, type ComprobanteCargado } from "../domain/validaciones";
 
 export type MedioPago = "efectivo" | "transferencia" | "cheque" | "tarjeta_debito" | "tarjeta_credito" | "debito";
 export const MEDIOS_PAGO: Array<{ value: MedioPago; label: string }> = [
@@ -117,6 +118,7 @@ export function FacturaCompraModal({
   tarjetas = [],
   inicial,
   proveedores,
+  existentes,
   cuentas,
   companyOptions,
   renglonesEgreso,
@@ -134,6 +136,8 @@ export function FacturaCompraModal({
   tarjetas?: TarjetaOpt[];
   inicial: FacturaForm;
   proveedores: ProveedorOpt[];
+  // VALIDACION AL CARGAR (21/11/2026): las facturas ya cargadas, para no dejar guardar un comprobante repetido.
+  existentes?: ComprobanteCargado[];
   cuentas: Array<{ id: string; company: string; nombre: string; moneda?: string; activa?: boolean }>;
   companyOptions: Array<{ value: string; label?: string; short?: string }>;
   renglonesEgreso: Array<{ key: string; label: string }>; // grupos de costo: key "tipo|nombre"
@@ -292,6 +296,8 @@ export function FacturaCompraModal({
   if (f.pagos.some((p) => esPagoConTarjeta(p.metodo) && p.administration !== "negro" && !p.tarjetaId)) faltan.push("la tarjeta de cada pago con tarjeta");
   if (!f.porBanco && saldo > 1 && f.saldo.fechaPrevista && !f.saldo.cuentaId) faltan.push("de qué cuenta sale lo que falta");
   if (pagado > Number(f.total || 0) + 1) faltan.push(`que los pagos no pasen el total (sobran ${money(pagado - Number(f.total || 0))})`);
+  // Datos imposibles: fechas mal tipeadas, comprobante ya cargado, importes negativos (domain/validaciones.ts).
+  faltan.push(...validarFacturaCompra(f, existentes || []));
 
   return (
     <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: 4600, display: "flex", alignItems: "flex-start", justifyContent: "center", overflowY: "auto", padding: "30px 12px" }}>
@@ -411,7 +417,7 @@ export function FacturaCompraModal({
               <input style={input} value={f.invoiceNumber} placeholder="0001-00001234" onChange={(e) => set({ invoiceNumber: e.target.value })} />
             </label>
             <label style={lbl}>Fecha de la factura
-              <input style={input} type="date" value={f.invoiceDate} onChange={(e) => set({ invoiceDate: e.target.value })} />
+              <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={f.invoiceDate} onChange={(e) => set({ invoiceDate: e.target.value })} />
             </label>
           </div>
           <div style={{ ...grid, marginTop: 10 }}>
@@ -533,7 +539,7 @@ export function FacturaCompraModal({
                 </div>
                 <div style={grid}>
                   <label style={lbl}>Fecha del pago
-                    <input style={input} type="date" value={p.fecha} onChange={(e) => setPagoN(p.key, { fecha: e.target.value })} />
+                    <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={p.fecha} onChange={(e) => setPagoN(p.key, { fecha: e.target.value })} />
                   </label>
                   <label style={lbl}>Monto
                     <NumInput style={input} value={p.monto || ""} onChange={(e) => setPagoN(p.key, { monto: Number(e.target.value) || 0 })} />
@@ -677,7 +683,7 @@ export function FacturaCompraModal({
           {saldo > 1 && !f.porBanco && (
             <div style={{ ...grid, marginTop: 10 }}>
               <label style={lbl}>Fecha prevista del saldo
-                <input style={input} type="date" value={f.saldo.fechaPrevista || ""} onChange={(e) => setF((x) => ({ ...x, saldo: { ...x.saldo, fechaPrevista: e.target.value || undefined } }))} />
+                <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={f.saldo.fechaPrevista || ""} onChange={(e) => setF((x) => ({ ...x, saldo: { ...x.saldo, fechaPrevista: e.target.value || undefined } }))} />
               </label>
               <label style={lbl}>Estado del pago
                 <select style={input} value={f.saldo.estadoPrevisto} onChange={(e) => setF((x) => ({ ...x, saldo: { ...x.saldo, estadoPrevisto: e.target.value as any } }))}>
@@ -736,7 +742,7 @@ export function FacturaCompraModal({
           );
         })()}
 
-        {faltan.length > 0 && <div style={{ fontSize: 12.5, color: "#b45309" }}>Falta: {faltan.join(", ")}.</div>}
+        {faltan.length > 0 && <div data-faltan style={{ fontSize: 12.5, color: "#b45309" }}>Para guardar falta o hay que corregir: {faltan.join("; ")}.</div>}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
           <div>
             {f.id && onBorrar && (

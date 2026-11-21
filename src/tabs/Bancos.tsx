@@ -391,7 +391,7 @@ export function BancosTab({
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
             <span>El extracto alimenta el calendario hasta:</span>
             <input
-              type="date"
+              type="date" min="2015-01-01" max="2100-12-31"
               style={{ ...styles.input, width: 170 }}
               value={bankLoadsUntil || ""}
               onChange={(e) => onBankLoadsUntilChange(e.target.value)}

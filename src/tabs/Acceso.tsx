@@ -47,6 +47,8 @@ type AccesoTabProps = {
   restoreFromSupabaseSave: () => void | Promise<void>;
   saveToSupabaseNow: () => void | Promise<void>;
   downloadBackupFile: () => void;
+  // Historial de cambios (21/11/2026): quien cargo, cambio o borro cada dato. Solo administradores.
+  onVerHistorial?: () => void;
   importBackupFile: (file: File | null) => void;
   clearLocalSave: () => void;
   onMigrateImages: () => void;
@@ -93,6 +95,7 @@ export function AccesoTab({
   restoreFromSupabaseSave,
   saveToSupabaseNow,
   downloadBackupFile,
+  onVerHistorial,
   importBackupFile,
   clearLocalSave,
   onMigrateImages,
@@ -456,6 +459,11 @@ export function AccesoTab({
                   <ButtonLike onClick={downloadBackupFile} secondary>
                     Descargar backup
                   </ButtonLike>
+                  {onVerHistorial && (
+                    <ButtonLike onClick={onVerHistorial} secondary>
+                      Historial de cambios
+                    </ButtonLike>
+                  )}
                   <label style={styles.buttonLikeLabel}>
                     Cargar backup
                     <input

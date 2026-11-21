@@ -185,9 +185,9 @@ export function FacturasCompraPanel({
                 <input type="radio" checked={exportar.modo === "rango"} onChange={() => setExportar({ ...exportar, modo: "rango", aviso: "" })} />
                 Un rango de fechas:
               </label>
-              <input style={caja} type="date" value={exportar.desde} disabled={exportar.modo !== "rango"} onChange={(e) => setExportar({ ...exportar, desde: e.target.value, aviso: "" })} />
+              <input style={caja} type="date" min="2015-01-01" max="2100-12-31" value={exportar.desde} disabled={exportar.modo !== "rango"} onChange={(e) => setExportar({ ...exportar, desde: e.target.value, aviso: "" })} />
               <span>al</span>
-              <input style={caja} type="date" value={exportar.hasta} disabled={exportar.modo !== "rango"} onChange={(e) => setExportar({ ...exportar, hasta: e.target.value, aviso: "" })} />
+              <input style={caja} type="date" min="2015-01-01" max="2100-12-31" value={exportar.hasta} disabled={exportar.modo !== "rango"} onChange={(e) => setExportar({ ...exportar, hasta: e.target.value, aviso: "" })} />
               <select style={caja} value={exportar.empresa} onChange={(e) => setExportar({ ...exportar, empresa: e.target.value, aviso: "" })}>
                 {companyOptions.filter((c) => c.value !== "General").map((c) => (
                   <option key={c.value} value={c.value}>{c.short || c.value}</option>

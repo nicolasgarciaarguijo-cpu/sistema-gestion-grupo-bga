@@ -443,10 +443,10 @@ function FichaDeMaquina({
             <div key={p.id} style={{ display: "grid", gridTemplateColumns: "2fr 80px 130px 130px 1.5fr 70px auto", gap: 6, alignItems: "end", opacity: p.activo === false ? 0.5 : 1 }}>
               <label style={campo}>Qué se hace<input style={input} value={p.descripcion} onChange={(e) => setPlan({ ...p, descripcion: e.target.value })} /></label>
               <label style={campo}>Cada (días)<input type="number" min={1} style={input} value={p.cadaDias} onChange={(e) => setPlan({ ...p, cadaDias: Math.max(1, Number(e.target.value) || 1) })} /></label>
-              <label style={campo}>Último hecho<input type="date" style={input} value={p.ultimaFecha || ""} onChange={(e) => setPlan({ ...p, ultimaFecha: e.target.value || undefined })} /></label>
+              <label style={campo}>Último hecho<input type="date" min="2015-01-01" max="2100-12-31" style={input} value={p.ultimaFecha || ""} onChange={(e) => setPlan({ ...p, ultimaFecha: e.target.value || undefined })} /></label>
               <label style={campo} title="Se calcula sola; si la fijás, manda la tuya">
                 Próximo {d != null && <span style={{ color: colorNivel[nivelVencimiento(d)] }}>({textoDias(d)})</span>}
-                <input type="date" style={input} value={prox || ""} onChange={(e) => setPlan({ ...p, proximaFecha: e.target.value || undefined })} />
+                <input type="date" min="2015-01-01" max="2100-12-31" style={input} value={prox || ""} onChange={(e) => setPlan({ ...p, proximaFecha: e.target.value || undefined })} />
               </label>
               <label style={campo}>
                 Tarea del catálogo
@@ -503,7 +503,7 @@ function FichaDeMaquina({
         )}
         {registro ? (
           <div style={{ display: "grid", gridTemplateColumns: "130px 130px 1.4fr 2fr 1fr 100px auto", gap: 6, alignItems: "end", background: "#f8fafc", padding: 8, borderRadius: 8 }}>
-            <label style={campo}>Fecha<input type="date" style={input} value={registro.fecha} onChange={(e) => setRegistro({ ...registro, fecha: e.target.value })} /></label>
+            <label style={campo}>Fecha<input type="date" min="2015-01-01" max="2100-12-31" style={input} value={registro.fecha} onChange={(e) => setRegistro({ ...registro, fecha: e.target.value })} /></label>
             <label style={campo}>
               Tipo
               <select style={input} value={registro.tipo} onChange={(e) => setRegistro({ ...registro, tipo: e.target.value as TipoRegistro })}>
@@ -624,7 +624,7 @@ function ProgramarTarea({
           <label style={campo}>Qué hay que hacer<input style={input} value={descripcion} onChange={(e) => setDescripcion(e.target.value)} placeholder="Ej.: cambiar rodamiento" /></label>
         )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 100px", gap: 8 }}>
-          <label style={campo}>Día<input type="date" style={input} value={fecha} onChange={(e) => setFecha(e.target.value)} /></label>
+          <label style={campo}>Día<input type="date" min="2015-01-01" max="2100-12-31" style={input} value={fecha} onChange={(e) => setFecha(e.target.value)} /></label>
           <label style={campo}>Horas<input type="number" min={0.25} step={0.25} style={input} value={horas} onChange={(e) => setHoras(Number(e.target.value) || 1)} /></label>
         </div>
         <label style={campo}>

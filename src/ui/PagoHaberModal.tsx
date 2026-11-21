@@ -66,7 +66,7 @@ export function PagoHaberModal({
             <input style={input} type="month" value={f.periodo} onChange={(e) => set({ periodo: e.target.value })} />
           </label>
           <label style={lbl}>Fecha del pago
-            <input style={input} type="date" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
+            <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={f.fecha} onChange={(e) => set({ fecha: e.target.value })} />
           </label>
           <label style={lbl}>Administración
             <select style={{ ...input, background: f.administration === "negro" ? "#1f2937" : "#fff", color: f.administration === "negro" ? "#fff" : "#0f172a" }} value={f.administration} onChange={(e) => {

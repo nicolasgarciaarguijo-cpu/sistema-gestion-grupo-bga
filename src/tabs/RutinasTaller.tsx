@@ -63,7 +63,7 @@ export function RutinasTaller({
       title="Mantenimiento, orden y limpieza"
       actions={
         <span style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          <input type="date" value={dia} onChange={(ev) => setDia(ev.target.value)} style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: "4px 6px", fontSize: 12.5 }} />
+          <input type="date" min="2015-01-01" max="2100-12-31" value={dia} onChange={(ev) => setDia(ev.target.value)} style={{ border: "1px solid #cbd5e1", borderRadius: 8, padding: "4px 6px", fontSize: 12.5 }} />
           <ButtonLike secondary disabled={!dia || !rutinas.some((r) => r.activa !== false)} onClick={() => setResultado(onCompletarDia(dia))}>
             Completar huecos del día
           </ButtonLike>

@@ -303,7 +303,7 @@ export function StockTab({
                       <td style={tdDato}>
                         <input
                           style={{ ...styles.input, padding: "2px 4px", fontSize: 12 }}
-                          type="date"
+                          type="date" min="2015-01-01" max="2100-12-31"
                           value={job.startDate}
                           onChange={(e) => updateApprovedJob(job.id, "startDate", e.target.value)}
                         />

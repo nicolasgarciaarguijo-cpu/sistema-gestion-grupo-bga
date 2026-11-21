@@ -986,7 +986,7 @@ export function CashflowTab({
                     <Field label="Fecha del VEP">
                       <input
                         style={styles.input}
-                        type="date"
+                        type="date" min="2015-01-01" max="2100-12-31"
                         value={v.date}
                         onChange={(e) => updateIvaVepPayment(v.id, "date", e.target.value)}
                       />
@@ -1114,7 +1114,7 @@ function RegularizacionManual({
       ))}
       {abierto ? (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
-          <input style={input} type="date" value={d.date} onChange={(e) => setD({ ...d, date: e.target.value })} />
+          <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={d.date} onChange={(e) => setD({ ...d, date: e.target.value })} />
           <NumInput style={{ ...input, width: 130 }} placeholder="Monto (con IVA)" value={d.amount || ""} onChange={(e) => setD({ ...d, amount: Number(e.target.value) || 0 })} />
           <input style={{ ...input, minWidth: 240 }} placeholder="Motivo (cómo se regularizó)" value={d.motivo} onChange={(e) => setD({ ...d, motivo: e.target.value })} />
           <button

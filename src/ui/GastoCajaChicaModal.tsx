@@ -157,7 +157,7 @@ export function GastoCajaChicaModal({
           <div style={titulo}>3 · Gasto</div>
           <div style={grid}>
             <label style={lbl}>Fecha
-              <input style={input} type="date" value={g.date} onChange={(e) => set({ date: e.target.value })} />
+              <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={g.date} onChange={(e) => set({ date: e.target.value })} />
             </label>
             <label style={lbl}>Monto
               <NumInput style={{ ...input, fontWeight: 800 }} value={g.amount || ""} onChange={(e) => set({ amount: Number(e.target.value) || 0 })} />

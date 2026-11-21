@@ -607,7 +607,7 @@ export function ComprasTab({
                       />
                     </Field>
                     <Field label="Fecha">
-                      <input style={styles.input} type="date" value={invoice.invoiceDate} onChange={(e) => updatePurchaseInvoice(invoice.id, "invoiceDate", e.target.value)} />
+                      <input style={styles.input} type="date" min="2015-01-01" max="2100-12-31" value={invoice.invoiceDate} onChange={(e) => updatePurchaseInvoice(invoice.id, "invoiceDate", e.target.value)} />
                     </Field>
                     <Field label="Moneda">
                       <select

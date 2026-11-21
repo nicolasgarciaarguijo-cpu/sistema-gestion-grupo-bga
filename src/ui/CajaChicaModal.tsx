@@ -150,7 +150,7 @@ export function CajaChicaModal({
               </select>
             </label>
             <label style={lbl}>Fecha de asignación
-              <input style={input} type="date" value={f.deliveredDate} onChange={(e) => set({ deliveredDate: e.target.value })} />
+              <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={f.deliveredDate} onChange={(e) => set({ deliveredDate: e.target.value })} />
             </label>
             <label style={lbl}>Monto en BLANCO
               <NumInput style={input} value={f.assignedWhite || ""} onChange={(e) => set({ assignedWhite: Number(e.target.value) || 0 })} />

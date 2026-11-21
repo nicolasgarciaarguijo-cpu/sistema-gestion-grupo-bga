@@ -63,7 +63,7 @@ export function NotaCreditoModal({
             <input style={input} value={n.number} placeholder="0003-00001234" onChange={(e) => set({ number: e.target.value })} />
           </label>
           <label style={lbl}>Fecha
-            <input style={input} type="date" value={n.date} onChange={(e) => set({ date: e.target.value })} />
+            <input style={input} type="date" min="2015-01-01" max="2100-12-31" value={n.date} onChange={(e) => set({ date: e.target.value })} />
           </label>
           <label style={lbl}>Neto
             <NumInput style={input} value={n.net || ""} onChange={(e) => setImporte({ net: Number(e.target.value) || 0 })} />

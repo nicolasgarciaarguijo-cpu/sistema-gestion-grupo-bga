@@ -114,6 +114,12 @@ import { RevisionArcaModal } from "./ui/RevisionArcaModal";
 import { nombreParecido } from "./domain/arcaCruce";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
 import { AlertasCobros } from "./ui/AlertasCobros";
+import { diferencias, juntarCambios, type CambioDeRegistro } from "./domain/historialCambios";
+import { guardarCambios, leerHistorial } from "./lib/registroCambios";
+import { VentanaHistorial } from "./ui/VentanaHistorial";
+import { ResumenDelDia, type RenglonResumen } from "./ui/ResumenDelDia";
+import { comprobantesRepetidos, facturasConFechaMala } from "./domain/validaciones";
+import { sinConciliar } from "./domain/agendaInamovibles";
 import { cobrosConFechaMala, cobrosParaAvisar, cobrosProgramados, conFuturosComoEstimados, puedeSerRealizado } from "./domain/cobrosProgramados";
 import { ReclamoPagosVencidos } from "./ui/ReclamoPagosVencidos";
 import { ElegirEmpresa } from "./ui/ElegirEmpresa";
@@ -3262,6 +3268,26 @@ export default function App() {
       );
     }, 0);
   };
+  // HISTORIAL DE CAMBIOS (21/11/2026): lo que cambia en cada coleccion se junta unos segundos (tipear un monto es
+  // un cambio por tecla) y se agrega a la tabla `registro_cambios`. Ver domain/historialCambios.ts. No frena nada:
+  // si no se puede guardar, el trabajo sigue.
+  const colaHistorialRef = useRef<CambioDeRegistro[]>([]);
+  const timerHistorialRef = useRef<number | null>(null);
+  const historialActivoRef = useRef(false);
+  const volcarHistorial = () => {
+    if (timerHistorialRef.current != null) window.clearTimeout(timerHistorialRef.current);
+    timerHistorialRef.current = null;
+    const lote = juntarCambios(colaHistorialRef.current);
+    colaHistorialRef.current = [];
+    if (lote.length) void guardarCambios(lote, usuarioBorradoRef.current);
+  };
+  const anotarCambios = (cambios: CambioDeRegistro[]) => {
+    if (!cambios.length || !historialActivoRef.current) return;
+    colaHistorialRef.current.push(...cambios);
+    if (timerHistorialRef.current != null) window.clearTimeout(timerHistorialRef.current);
+    // Se espera a que deje de tocar ese dato; con muchos cambios juntos no se espera mas.
+    timerHistorialRef.current = window.setTimeout(volcarHistorial, colaHistorialRef.current.length > 60 ? 0 : 8000);
+  };
   // Envuelve el setter de una coleccion. Solo mira los cambios con funcion (los del usuario); la carga desde la base
   // (arrays) pasa directo.
   function vigilar<T extends { id: number | string }>(coleccion: string, crudo: React.Dispatch<React.SetStateAction<T[]>>, hijos?: string[]) {
@@ -3274,6 +3300,14 @@ export default function App() {
         const sellado = sellarAltas(prev as any, next as any, ahora, hijos) as any as T[];
         const { lista, bloqueados } = separarBorrado(coleccion, prev as any, sellado as any, { puedeTodo: esSuperadminRef.current, ahora, hijos });
         if (bloqueados.length) encolarBloqueados(bloqueados);
+        // Se compara contra lo que QUEDO (lo bloqueado se repuso: un borrado no autorizado no es un borrado).
+        if (lista !== prev) {
+          try {
+            anotarCambios(diferencias(coleccion, prev as any, lista as any, hijos));
+          } catch (err) {
+            console.warn("[historial] no se pudo comparar:", err);
+          }
+        }
         return lista as any as T[];
       });
     }) as React.Dispatch<React.SetStateAction<T[]>>;
@@ -5123,6 +5157,8 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
   const esAutorizadorBorrados = isSupabaseAdmin && supabaseSession?.user?.id === AUTORIZADOR_BORRADOS_ID;
   esSuperadminRef.current = esAutorizadorBorrados;
   usuarioBorradoRef.current = usuarioFirmante;
+  // El historial se anota con una sesion iniciada y los datos ya traidos de la base (no la carga inicial).
+  historialActivoRef.current = isSupabaseLoggedIn && supabaseHydratedOkRef.current;
   const firma = () => ({ firmante: usuarioFirmante, firmadoEn: new Date().toISOString() });
   const guardarAsignacionDiaria = (a: AsignacionDiaria) => {
     const conFirma = { ...a, ...firma() };
@@ -19278,6 +19314,15 @@ Escribi CERRAR para confirmar:`
   // El reclamo de pagos vencidos es solo recordatorio (2026-10-26): el pago se gestiona en la ficha
   // del proveedor o en la solapa de donde sale. Ver ui/ReclamoPagosVencidos.
   const canSeeInamovibles = effectiveIsAdmin || supabaseAllowedTabs.includes("calendarioAnual");
+  const [verHistorial, setVerHistorial] = useState(false);
+  const leerHistorialFiltrado = useCallback((texto: string) => leerHistorial({ texto, limite: 200 }), []);
+  // Al cerrar la pestaña, lo que quedo en espera se manda igual.
+  useEffect(() => {
+    const alSalir = () => volcarHistorial();
+    window.addEventListener("pagehide", alSalir);
+    return () => window.removeEventListener("pagehide", alSalir);
+    // eslint-disable-next-line
+  }, []);
   // COBROS PROGRAMADOS (21/11/2026): avisan cuando estan por entrar y, llegado el dia, piden confirmar que se
   // cobro o cambiar la fecha. Nunca pasan a realizados solos. Ver domain/cobrosProgramados.ts.
   const canSeeCobros = effectiveIsAdmin || supabaseAllowedTabs.includes("aprobados" as any);
@@ -19287,6 +19332,47 @@ Escribi CERRAR para confirmar:`
   );
   const cobrosPorAvisar = useMemo(() => cobrosParaAvisar(cobrosProgramados(trabajosParaCobros, todayIso())), [trabajosParaCobros]);
   const cobrosFechaMala = useMemo(() => cobrosConFechaMala(trabajosParaCobros, todayIso()), [trabajosParaCobros]);
+  // RESUMEN DEL DIA (21/11/2026): una ventana emergente al entrar, con lo que hay para mirar hoy. Cada renglon
+  // lleva a donde se resuelve. Solo junta lo que ya calculan las otras reglas.
+  const resumenDelDia = useMemo<RenglonResumen[]>(() => {
+    const out: RenglonResumen[] = [];
+    const ir = (tab: string) => () => setActiveTab(tab as TabKey);
+    const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`;
+    if (canSeeCobros) {
+      const aResolver = cobrosPorAvisar.filter((c) => c.situacion === "vencido" || c.situacion === "hoy" || c.situacion === "sin_fecha");
+      const porEntrar = cobrosPorAvisar.filter((c) => c.situacion === "proximo");
+      if (aResolver.length)
+        out.push({ clave: "cobros", icono: "💰", tono: "urgente", titulo: `${plural(aResolver.length, "cobro programado", "cobros programados")} para confirmar o cambiar la fecha`, detalle: `${money(aResolver.filter((c) => c.moneda === "ARS").reduce((a, c) => a + c.monto, 0))} · no cuentan como plata hasta confirmarlos`, ir: ir("aprobados"), irTexto: "Trabajos" });
+      if (porEntrar.length)
+        out.push({ clave: "cobros-proximos", icono: "💰", tono: "info", titulo: `${plural(porEntrar.length, "cobro entra", "cobros entran")} en los próximos días`, detalle: money(porEntrar.filter((c) => c.moneda === "ARS").reduce((a, c) => a + c.monto, 0)), ir: ir("aprobados"), irTexto: "Trabajos" });
+      if (cobrosFechaMala.length)
+        out.push({ clave: "cobros-fecha", icono: "⚠", tono: "urgente", titulo: `${plural(cobrosFechaMala.length, "cobro", "cobros")} con la fecha mal`, detalle: "Sin fecha, mal tipeada o futura: no mueven ninguna cuenta hasta corregirlos", ir: ir("aprobados"), irTexto: "Trabajos" });
+    }
+    if (canSeeInamovibles) {
+      const vencidos = alertasInamovibles.filter((p) => p.estado === "vencido" || p.estado === "hoy");
+      const proximos = alertasInamovibles.filter((p) => p.estado === "proximo");
+      const suma = (l: typeof alertasInamovibles) => money(l.filter((p) => p.currency === "ARS").reduce((a, p) => a + p.monto, 0));
+      if (vencidos.length) out.push({ clave: "pagos-vencidos", icono: "📅", tono: "urgente", titulo: `${plural(vencidos.length, "pago programado vencido o que vence hoy", "pagos programados vencidos o que vencen hoy")}`, detalle: suma(vencidos), ir: ir("calendarioAnual"), irTexto: "Calendario" });
+      if (proximos.length) out.push({ clave: "pagos-proximos", icono: "📅", tono: "aviso", titulo: `${plural(proximos.length, "pago vence", "pagos vencen")} en los próximos 5 días`, detalle: suma(proximos), ir: ir("calendarioAnual"), irTexto: "Calendario" });
+      const sinLinkear = sinConciliar(alertasInamovibles);
+      if (sinLinkear.length) out.push({ clave: "tarjetas", icono: "💳", tono: "aviso", titulo: `${plural(sinLinkear.length, "resumen de tarjeta por vencer", "resúmenes de tarjeta por vencer")} con renglones sin linkear`, detalle: `${sinLinkear.reduce((a, t) => a + (t.sinLinkear || 0), 0)} renglones para conciliar antes de pagar`, ir: ir("bancos"), irTexto: "Bancos" });
+    }
+    if (effectiveIsAdmin || supabaseAllowedTabs.includes("bancos" as any)) {
+      if (cuentasBancoSinControl.length)
+        out.push({ clave: "extractos", icono: "🏦", tono: "aviso", titulo: `${plural(cuentasBancoSinControl.length, "cuenta del banco", "cuentas del banco")} sin extracto de control`, detalle: `${cuentasBancoSinControl.reduce((a, c) => a + c.movimientos, 0)} movimientos cargados que ningún extracto corroboró`, ir: ir("bancos"), irTexto: "Bancos" });
+    }
+    if (effectiveIsAdmin || supabaseAllowedTabs.includes("compras" as any)) {
+      const facturas = visiblePurchaseInvoices.map((i) => ({ id: i.id, company: String(i.company), supplier: i.supplier, taxId: i.taxId, receiptLetter: i.receiptLetter, invoiceNumber: i.invoiceNumber, invoiceDate: i.invoiceDate, total: Number(i.total || 0) }));
+      const repetidos = comprobantesRepetidos(facturas);
+      const fechas = facturasConFechaMala(facturas);
+      if (repetidos.length) out.push({ clave: "repetidos", icono: "🧾", tono: "aviso", titulo: `${plural(repetidos.length, "comprobante cargado dos veces", "comprobantes cargados dos veces")}`, detalle: repetidos.slice(0, 2).map((r) => r.texto.replace(" está cargado dos veces", "")).join(" · "), ir: ir("compras"), irTexto: "Compras" });
+      if (fechas.length) out.push({ clave: "facturas-fecha", icono: "🧾", tono: "aviso", titulo: `${plural(fechas.length, "factura de compra", "facturas de compra")} con la fecha mal`, ir: ir("compras"), irTexto: "Compras" });
+      if (pagosSinGrupoDelEjercicio.length)
+        out.push({ clave: "sin-grupo", icono: "🏷", tono: "info", titulo: `${plural(pagosSinGrupoDelEjercicio.length, "pago", "pagos")} sin grupo de costo`, detalle: `${money(pagosSinGrupoDelEjercicio.reduce((a, p) => a + p.amount, 0))} · en el cash flow caen en «Sin grupo»`, ir: ir("compras"), irTexto: "Compras" });
+    }
+    return out;
+    // eslint-disable-next-line
+  }, [canSeeCobros, cobrosPorAvisar, cobrosFechaMala, canSeeInamovibles, alertasInamovibles, cuentasBancoSinControl, visiblePurchaseInvoices, pagosSinGrupoTodos, effectiveIsAdmin, supabaseAllowedTabs, rangoEjercicio]);
 
   // NOVEDADES: al iniciar sesion, lo nuevo que esa persona todavia no vio (solo de sus solapas). Se
   // abre una vez por sesion, cuando ya cargaron los datos y los permisos. "Visto" queda en el navegador.
@@ -24124,6 +24210,7 @@ Escribi CERRAR para confirmar:`
       )}
       {activeTab === "acceso" && (
         <AccesoTab
+          onVerHistorial={effectiveIsAdmin ? () => { volcarHistorial(); setVerHistorial(true); } : undefined}
           isSupabaseLoggedIn={isSupabaseLoggedIn}
           budget={budget}
           isSupabaseRecoveryMode={isSupabaseRecoveryMode}
@@ -24224,6 +24311,16 @@ Escribi CERRAR para confirmar:`
         >
           🗑 {pedidosBorradoPendientes.length} {pedidosBorradoPendientes.length === 1 ? "borrado" : "borrados"} por autorizar
         </button>
+      )}
+      {isSupabaseLoggedIn && supabaseHydratedTick > 0 && !novedadesAbiertas && (
+        <ResumenDelDia renglones={resumenDelDia} hoy={todayIso()} usuario={String(supabaseSession?.user?.id || usuarioFirmante)} />
+      )}
+      {verHistorial && (
+        <VentanaHistorial
+          leer={leerHistorialFiltrado}
+          empresaCorta={(c) => (c === "General" ? "General" : getCompanyMeta(c as CompanyName).short || c)}
+          onCerrar={() => setVerHistorial(false)}
+        />
       )}
       {esAutorizadorBorrados && verPedidosBorrado && !novedadesAbiertas && (
         <VentanaPedidosBorrado
@@ -24423,6 +24520,7 @@ Escribi CERRAR para confirmar:`
           }}
           fechaSegunCondicion={(supplier, taxId, fecha) => fechaDePago(fecha, (buscarProveedor(suppliers as any, supplier, taxId) as any)?.condicionPago)}
           money={money}
+          existentes={purchaseInvoices.map((i) => ({ id: i.id, company: String(i.company), supplier: i.supplier, taxId: i.taxId, receiptLetter: i.receiptLetter, invoiceNumber: i.invoiceNumber, invoiceDate: i.invoiceDate, total: Number(i.total || 0) }))}
           onGuardar={guardarFacturaCompra}
           onBorrar={(id) => borrarFacturaPreguntando(id, false)}
           onCerrar={() => setFacturaModal(null)}
