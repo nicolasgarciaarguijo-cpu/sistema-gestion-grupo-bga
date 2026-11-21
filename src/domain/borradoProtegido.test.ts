@@ -72,3 +72,48 @@ describe("borrado protegido", () => {
     expect(esReciente(undefined, ahora)).toBe(false);
   });
 });
+
+// MOVER NO ES BORRAR (21/11/2026). Encontrado probando en la copia de prueba: confirmar un cobro programado
+// (pasa de cobrosPrevistos a payments) no hacia nada si el cobro tenia mas de una hora, y dejaba un pedido de
+// borrado. Lo mismo al pasar un cobro realizado a estimado.
+describe("mover un cobro entre las listas del trabajo no es borrarlo", () => {
+  const { separarBorrado } = require("./borradoProtegido");
+  const AHORA = Date.parse("2026-11-21T20:00:00Z");
+  const viejo = "2026-11-01T10:00:00.000Z";
+  const hijos = ["payments", "cobrosPrevistos"];
+  const trabajo = (extra: any) => ({ id: 1, company: "BGA", client: "Contract Rent", payments: [], cobrosPrevistos: [], ...extra });
+  const cobro = { id: 12, amount: 2974474, paymentDate: "2026-11-06", estado: "estimado", creadoEn: viejo };
+
+  it("confirmar un cobro programado viejo lo pasa a realizado, sin pedido de borrado", () => {
+    const prev = [trabajo({ cobrosPrevistos: [cobro] })];
+    const next = [trabajo({ payments: [{ ...cobro, estado: undefined, paymentDate: "2026-11-20" }], cobrosPrevistos: [] })];
+    const r = separarBorrado("approvedJobs", prev, next, { puedeTodo: false, ahora: AHORA, hijos });
+    expect(r.bloqueados).toEqual([]);
+    expect(r.lista[0].cobrosPrevistos).toEqual([]);
+    expect(r.lista[0].payments.map((p: any) => p.id)).toEqual([12]);
+  });
+
+  it("pasar un cobro realizado viejo a estimado tampoco se bloquea", () => {
+    const prev = [trabajo({ payments: [{ ...cobro, estado: undefined }] })];
+    const next = [trabajo({ payments: [], cobrosPrevistos: [cobro] })];
+    const r = separarBorrado("approvedJobs", prev, next, { puedeTodo: false, ahora: AHORA, hijos });
+    expect(r.bloqueados).toEqual([]);
+    expect(r.lista[0].payments).toEqual([]);
+    expect(r.lista[0].cobrosPrevistos.map((p: any) => p.id)).toEqual([12]);
+  });
+
+  it("borrarlo de verdad (no queda en ninguna lista) sigue pidiendo autorizacion", () => {
+    const prev = [trabajo({ cobrosPrevistos: [cobro] })];
+    const next = [trabajo({ cobrosPrevistos: [] })];
+    const r = separarBorrado("approvedJobs", prev, next, { puedeTodo: false, ahora: AHORA, hijos });
+    expect(r.bloqueados).toHaveLength(1);
+    expect(r.lista[0].cobrosPrevistos.map((p: any) => p.id)).toEqual([12]);
+  });
+
+  it("moverlo a OTRO trabajo no cuenta como seguir existiendo: se bloquea", () => {
+    const prev = [trabajo({ cobrosPrevistos: [cobro] }), trabajo({ id: 2 })];
+    const next = [trabajo({ cobrosPrevistos: [] }), trabajo({ id: 2, payments: [cobro] })];
+    const r = separarBorrado("approvedJobs", prev, next, { puedeTodo: false, ahora: AHORA, hijos });
+    expect(r.bloqueados).toHaveLength(1);
+  });
+});

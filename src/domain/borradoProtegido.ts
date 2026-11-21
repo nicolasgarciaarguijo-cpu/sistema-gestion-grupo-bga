@@ -134,11 +134,17 @@ export function separarBorrado<T extends ConId>(
       const anterior = prevPorId.get(padre.id);
       if (!anterior || anterior === padre) return padre;
       let p = padre;
+      // MOVER NO ES BORRAR (21/11/2026). Un cobro que pasa de "previsto" a "realizado" sale de `cobrosPrevistos` y
+      // entra en `payments` del MISMO trabajo: sigue existiendo. Antes se tomaba como un borrado, asi que confirmar
+      // un cobro programado cargado hacia mas de una hora no hacia nada y dejaba un pedido de borrado. Lo que sigue
+      // estando en CUALQUIERA de las listas del padre no se bloquea.
+      const enAlgunaLista = new Set<number | string>();
+      hijos.forEach((h) => (Array.isArray((padre as any)[h]) ? (padre as any)[h] : []).forEach((x: ConId) => x && x.id != null && enAlgunaLista.add(x.id)));
       hijos.forEach((h) => {
         const antes: ConId[] = Array.isArray((anterior as any)[h]) ? (anterior as any)[h] : [];
         const ahoraL: ConId[] = Array.isArray((p as any)[h]) ? (p as any)[h] : [];
         const siguen = new Set(ahoraL.map((x) => x?.id));
-        const bloq = antes.filter((x) => x && x.id != null && !siguen.has(x.id) && !esReciente(x.creadoEn, opciones.ahora));
+        const bloq = antes.filter((x) => x && x.id != null && !siguen.has(x.id) && !enAlgunaLista.has(x.id) && !esReciente(x.creadoEn, opciones.ahora));
         if (!bloq.length) return;
         bloq.forEach((x) =>
           bloqueados.push({

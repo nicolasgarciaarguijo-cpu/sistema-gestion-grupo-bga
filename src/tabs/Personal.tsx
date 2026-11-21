@@ -2595,14 +2595,25 @@ export function PersonalTab(props: PersonalTabProps) {
                                               ? "Con candado: el fichero no lo toca, aunque esté en blanco. Si corregís la entrada o la salida a mano, las horas se recalculan. Click para desbloquear."
                                               : "Sin candado: el conteo de horas puede recalcularlo desde el fichero. Click para bloquear."
                                           }
-                                          onClick={() =>
+                                          onClick={() => {
+                                            // QUITAR el candado se confirma (21/11/2026). Corregir las horas a mano ya
+                                            // deja el dia con candado; si despues se apretaba el candado "para cerrarlo",
+                                            // en realidad se ABRIA, y el fichero volvia a calcular las horas encima de
+                                            // la correccion. Poner el candado no pregunta nada.
+                                            if (
+                                              isLocked &&
+                                              !window.confirm(
+                                                "Este día YA tiene candado (se pone solo al corregir las horas a mano). ¿Querés QUITARLO? Sin candado, el fichero vuelve a calcular las horas de este día y pisa lo que corregiste."
+                                              )
+                                            )
+                                              return;
                                             updateAttendanceRecord(
                                               selectedEmployee.id,
                                               day.key,
                                               "locked",
                                               !isLocked
-                                            )
-                                          }
+                                            );
+                                          }}
                                           style={{
                                             border: "none",
                                             background: "transparent",
