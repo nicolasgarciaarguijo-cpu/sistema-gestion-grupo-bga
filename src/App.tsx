@@ -113,6 +113,8 @@ import { textoPorOcrDelPdf } from "./lib/ocr";
 import { RevisionArcaModal } from "./ui/RevisionArcaModal";
 import { nombreParecido } from "./domain/arcaCruce";
 import { AlertasInamovibles } from "./ui/AlertasInamovibles";
+import { AlertasCobros } from "./ui/AlertasCobros";
+import { cobrosConFechaMala, cobrosParaAvisar, cobrosProgramados, conFuturosComoEstimados, puedeSerRealizado } from "./domain/cobrosProgramados";
 import { ReclamoPagosVencidos } from "./ui/ReclamoPagosVencidos";
 import { ElegirEmpresa } from "./ui/ElegirEmpresa";
 import {
@@ -12065,6 +12067,16 @@ Escribi CERRAR para confirmar:`
     estado: "realizado" | "estimado" | "inamovible",
     fecha?: string
   ) => {
+    // UN COBRO CON FECHA FUTURA ES ESTIMADO (21/11/2026): no se puede marcar realizado algo que todavia no entro,
+    // aunque sea un cheque, un echeq o una transferencia programada. Se confirma a mano cuando entra.
+    if (estado === "realizado") {
+      const trabajo = approvedJobs.find((j) => j.id === jobId);
+      const cobro = trabajo ? [...(trabajo.cobrosPrevistos || []), ...trabajo.payments].find((p) => p.id === paymentId) : undefined;
+      if (!puedeSerRealizado(fecha || cobro?.paymentDate, todayIso())) {
+        window.alert("Ese cobro tiene fecha futura: hasta que la plata no entre es un cobro estimado y no cuenta. Cuando entre, confirmalo con la fecha en que se cobró.");
+        return;
+      }
+    }
     setApprovedJobs((prev) =>
       prev.map((job) => {
         if (job.id !== jobId) return job;
@@ -12092,19 +12104,23 @@ Escribi CERRAR para confirmar:`
     setApprovedJobs((prev) =>
       prev.map((job) =>
         job.id === jobId
-          ? {
-              ...job,
-              payments: job.payments.map((payment) =>
-                payment.id === paymentId ? { ...payment, [field]: value, ...firma() } : payment
-              ),
-              ...(job.cobrosPrevistos
-                ? {
-                    cobrosPrevistos: job.cobrosPrevistos.map((payment) =>
-                      payment.id === paymentId ? { ...payment, [field]: value, ...firma() } : payment
-                    ),
-                  }
-                : {}),
-            }
+          ? // Si al cambiar la fecha un cobro realizado queda en el futuro, pasa a estimado (21/11/2026).
+            (conFuturosComoEstimados(
+              {
+                ...job,
+                payments: job.payments.map((payment) =>
+                  payment.id === paymentId ? { ...payment, [field]: value, ...firma() } : payment
+                ),
+                ...(job.cobrosPrevistos
+                  ? {
+                      cobrosPrevistos: job.cobrosPrevistos.map((payment) =>
+                        payment.id === paymentId ? { ...payment, [field]: value, ...firma() } : payment
+                      ),
+                    }
+                  : {}),
+              } as any,
+              field === "paymentDate" ? todayIso() : "9999-12-31"
+            ) as typeof job)
           : job
       )
     );
@@ -19262,6 +19278,15 @@ Escribi CERRAR para confirmar:`
   // El reclamo de pagos vencidos es solo recordatorio (2026-10-26): el pago se gestiona en la ficha
   // del proveedor o en la solapa de donde sale. Ver ui/ReclamoPagosVencidos.
   const canSeeInamovibles = effectiveIsAdmin || supabaseAllowedTabs.includes("calendarioAnual");
+  // COBROS PROGRAMADOS (21/11/2026): avisan cuando estan por entrar y, llegado el dia, piden confirmar que se
+  // cobro o cambiar la fecha. Nunca pasan a realizados solos. Ver domain/cobrosProgramados.ts.
+  const canSeeCobros = effectiveIsAdmin || supabaseAllowedTabs.includes("aprobados" as any);
+  const trabajosParaCobros = useMemo(
+    () => visibleApprovedJobs.map((j) => ({ id: j.id, company: String(j.company), budgetNumber: String(j.budgetNumber), client: j.client, payments: j.payments as any, cobrosPrevistos: j.cobrosPrevistos as any })),
+    [visibleApprovedJobs]
+  );
+  const cobrosPorAvisar = useMemo(() => cobrosParaAvisar(cobrosProgramados(trabajosParaCobros, todayIso())), [trabajosParaCobros]);
+  const cobrosFechaMala = useMemo(() => cobrosConFechaMala(trabajosParaCobros, todayIso()), [trabajosParaCobros]);
 
   // NOVEDADES: al iniciar sesion, lo nuevo que esa persona todavia no vio (solo de sus solapas). Se
   // abre una vez por sesion, cuando ya cargaron los datos y los permisos. "Visto" queda en el navegador.
@@ -23502,6 +23527,27 @@ Escribi CERRAR para confirmar:`
                 if (item.proveedor) return abrirFichaProveedor(item.proveedor);
                 const tab: Record<string, string> = { deuda: "desendeudamiento", tarjeta: "bancos", sueldos: "personal", seguro: "seguros", factura: "costos", cheque: "costos" };
                 setActiveTab((tab[item.origen] || "calendarioAnual") as TabKey);
+              }}
+            />
+          )}
+          {canSeeCobros && (
+            <AlertasCobros
+              cobros={cobrosPorAvisar}
+              fechasMalas={cobrosFechaMala}
+              cuentas={cuentasSistema}
+              hoy={todayIso()}
+              companyShort={(company) => COMPANY_OPTIONS.find((c) => c.value === company)?.short || company}
+              money={money}
+              onConfirmar={(c, fecha, cuentaId) => {
+                // Recien aca pasa a realizado (y suma): con la fecha real y la cuenta donde entro.
+                setPaymentEstado(c.jobId, c.paymentId, "realizado", fecha);
+                updatePayment(c.jobId, c.paymentId, "cuentaId" as any, cuentaId);
+              }}
+              onReprogramar={(c, fecha) => updatePayment(c.jobId, c.paymentId, "paymentDate", fecha)}
+              onPasarAEstimado={(f) => setPaymentEstado(f.jobId, f.paymentId, "estimado")}
+              onAbrirTrabajo={(jobId) => {
+                setSelectedApprovedJobId(jobId);
+                setActiveTab("aprobados" as TabKey);
               }}
             />
           )}

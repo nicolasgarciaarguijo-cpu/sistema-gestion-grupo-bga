@@ -16,6 +16,31 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-21d",
+    fecha: "21/11/2026",
+    titulo: "Los cobros programados avisan y piden confirmación",
+    items: [
+      {
+        titulo: "Aviso de cobros programados en el encabezado",
+        que: "Un cobro cargado como estimado o inamovible en un trabajo ahora avisa arriba, en todas las solapas: cinco días antes («entra en 3 días»), el día que entra y después («debía entrar hace 15 días»). Nunca pasa a cobrado solo: mientras no lo confirmes no suma en el trabajo ni en ninguna cuenta. Cuando hay cobros que ya tendrían que haber entrado aparece además una ventana abajo a la derecha, que no tapa la pantalla: podés seguir trabajando con ella abierta o cerrarla con «Seguir trabajando».",
+        como: "Tocá el cobro en el aviso o «Resolver» en la ventana. «Se cobró»: poné la fecha en que entró y a qué cuenta, y recién ahí queda como realizado. «Todavía no entró»: poné la nueva fecha prevista.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Un cobro con fecha futura es estimado",
+        que: "Hasta que la plata no entra, no cuenta: vale también para un cheque, un echeq o una transferencia programada. Si a un cobro le ponés una fecha futura pasa solo a estimado, y no se puede marcar como realizado un cobro cuya fecha todavía no llegó.",
+        como: "Cuando la plata entra, confirmalo a mano desde el aviso, con la fecha real y la cuenta.",
+        tab: "aprobados",
+      },
+      {
+        titulo: "Cobros con la fecha mal",
+        que: "El mismo aviso lista los cobros que figuran como realizados con la fecha vacía, mal tipeada (un año como 0026 o 22026) o futura. Un cobro con la fecha rota ya no mueve ninguna cuenta: antes uno con el año de cinco cifras le sumaba plata al banco y al borrarlo se la sacaba. El campo de fecha de los cobros ya no deja escribir un año de más de cuatro cifras.",
+        como: "Tocá el cobro para abrir su trabajo y corregirle la fecha. Si figura cobrado con fecha futura y la plata todavía no entró, pasalo a estimado.",
+        tab: "aprobados",
+      },
+    ],
+  },
+  {
     id: "2026-11-21c",
     fecha: "21/11/2026",
     titulo: "IVA y Sindicato en Pago a proveedores, y el resumen de tarjeta pagado baja la cuenta",

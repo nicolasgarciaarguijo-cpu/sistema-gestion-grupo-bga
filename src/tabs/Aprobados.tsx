@@ -1787,7 +1787,7 @@ export function AprobadosTab({
                       >
                         <div style={styles.inlineActions}>
                           <select
-                            title="Realizado = la plata entró y suma. Estimado (violeta) e Inamovible (rojo) = fecha prevista: se ven en la planilla pero NO suman hasta pasarlos a Realizado."
+                            title="Realizado = la plata entró y suma. Estimado (violeta) e Inamovible (rojo) = fecha prevista: se ven en la planilla pero NO suman hasta pasarlos a Realizado. Un cobro con fecha futura es siempre estimado (aunque sea un cheque, un echeq o una transferencia programada): cuando entra, se confirma a mano."
                             value={est}
                             onChange={(e) => setPaymentEstado(selectedApprovedJob.id, payment.id, e.target.value as any)}
                             style={{
@@ -1847,6 +1847,10 @@ export function AprobadosTab({
                             <input
                               style={styles.input}
                               type="date"
+                              // Con minimo y maximo el campo no deja escribir un año de 5 o 6 cifras (21/11/2026: habia
+                              // cobros fechados en "22026" y "0026"). Ver domain/cobrosProgramados.fechaIsoValida.
+                              min="2015-01-01"
+                              max="2100-12-31"
                               value={payment.paymentDate}
                               onChange={(e) =>
                                 updatePayment(selectedApprovedJob.id, payment.id, "paymentDate", e.target.value)
@@ -2297,6 +2301,8 @@ export function AprobadosTab({
                             <input
                               style={styles.input}
                               type="date"
+                              min="2015-01-01"
+                              max="2100-12-31"
                               value={payment.paymentDate}
                               onChange={(e) => updateCommissionPayment(selectedApprovedJob.id, payment.id, "paymentDate", e.target.value)}
                             />

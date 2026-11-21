@@ -13,6 +13,7 @@
 // efectivo o es negro; si no, la cuenta bancaria principal de la empresa en esa moneda.
 // Funciones puras y testeadas.
 
+import { fechaIsoValida } from "./cobrosProgramados";
 export type TipoCuenta = "banco" | "efectivo" | "persona";
 export type Moneda = "ARS" | "USD";
 export type Color = "blanco" | "negro";
@@ -134,7 +135,9 @@ export function movimientosPorCuenta(plata: PlataMovida[], cuentas: Cuenta[]): M
   const out: MovimientoCuenta[] = [];
   plata.forEach((p) => {
     const monto = Math.abs(Number(p.amount || 0));
-    if (!(monto > 0) || !p.date) return;
+    // Sin fecha, o con la fecha ROTA (21/11/2026: un cobro con el año "22026" le sumaba plata a la cuenta, y
+    // al borrarlo se la sacaba): un movimiento que no se puede ubicar en el tiempo no mueve ninguna cuenta.
+    if (!(monto > 0) || !fechaIsoValida(p.date)) return;
     // CUENTA DE LA OTRA EMPRESA (Nicolas, 14/11/2026): la plata se asienta donde REALMENTE está (la cuenta
     // elegida, aunque sea de la otra empresa) y el cruce queda como deuda entre las dos (intercompany.ts,
     // girosDePlataEnCuentaAjena). Antes no sumaba en ningun lado y la plata se perdia de vista.
