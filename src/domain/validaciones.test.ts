@@ -153,4 +153,10 @@ describe("problemas de una ficha", () => {
   it("un numero que admite negativos no se marca", () => {
     expect(problemasDeFicha([{ key: "ajuste", label: "Ajuste", tipo: "numero", permiteNegativo: true }], { ajuste: -10 })).toEqual([]);
   });
+
+  it("un error que trae la solapa se marca; si el dato falta, gana el falta", () => {
+    const c: CampoParaValidar[] = [{ key: "code", label: "Código", tipo: "texto", obligatorio: true, error: "repetido en Aluminio 2 mm" }];
+    expect(problemasDeFicha(c, { code: "ALU-001" }).map((p) => p.texto)).toEqual(["repetido en Aluminio 2 mm"]);
+    expect(problemasDeFicha(c, { code: "" }).map((p) => p.texto)).toEqual(["falta"]);
+  });
 });

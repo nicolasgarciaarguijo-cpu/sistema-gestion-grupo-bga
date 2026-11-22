@@ -210,21 +210,21 @@ export function MarcadoresTab({
                 { value: "__add_group__", label: "+ Agregar grupo..." },
               ],
             },
-            { key: "description", label: "Concepto", tipo: "texto" }, { key: "amount", label: "Monto mensual", tipo: "numero" }, ...fin] },
+            { key: "description", label: "Concepto", tipo: "texto", obligatorio: true }, { key: "amount", label: "Monto mensual", tipo: "numero", obligatorio: true }, ...fin] },
           insumo: { lista: supplyMarkers, setter: setSupplyMarkers, titulo: (x) => x.description || "Insumo", campos: [...base, tipoTrabajo,
             // 16/11/2026: estaba solo en la fila.
             { key: "subtype", label: "Tipo de insumo", tipo: "select", opciones: SUPPLY_MARKER_SUBTYPES.map((t) => ({ value: t, label: t })) },
-            { key: "description", label: "Insumo", tipo: "texto" }, { key: "qty", label: "Cantidad", tipo: "numero" }, { key: "unit", label: "Unidad", tipo: "texto" },
-            { key: "unitPrice", label: "Precio unitario", tipo: "numero" }, ...fin] },
+            { key: "description", label: "Insumo", tipo: "texto", obligatorio: true }, { key: "qty", label: "Cantidad", tipo: "numero", obligatorio: true }, { key: "unit", label: "Unidad", tipo: "texto" },
+            { key: "unitPrice", label: "Precio unitario", tipo: "numero", obligatorio: true }, ...fin] },
           mano: { lista: laborMarkers, setter: setLaborMarkers, titulo: (x) => x.category || "Mano de obra", campos: [...base, tipoTrabajo,
-            { key: "category", label: "Categoría", tipo: "texto" }, { key: "employees", label: "Personas", tipo: "numero" },
+            { key: "category", label: "Categoría", tipo: "texto", obligatorio: true }, { key: "employees", label: "Personas", tipo: "numero", obligatorio: true },
             { key: "monthlyHoursPerEmployee", label: "Horas por mes c/u", tipo: "numero" }, { key: "hourlyRate", label: "Valor hora", tipo: "numero" },
             { key: "hoursBase", label: "Horas base", tipo: "numero" }, ...fin] },
           provision: { lista: personalProvisionMarkers, setter: setPersonalProvisionMarkers, titulo: (x) => x.description || x.kind || "Provisión", campos: [...base,
             // 16/11/2026: estaba solo en la fila.
             { key: "kind", label: "Tipo de provisión", tipo: "select", opciones: PERSONAL_PROVISION_KINDS.map((k) => ({ value: k, label: k })) },
-            { key: "description", label: "Detalle", tipo: "texto" }, { key: "amountPerDelivery", label: "Monto por entrega", tipo: "numero" },
-            { key: "periodicityMonths", label: "Cada cuántos meses", tipo: "numero" }, { key: "shared", label: "Compartido", tipo: "check" }, ...fin] },
+            { key: "description", label: "Detalle", tipo: "texto", obligatorio: true }, { key: "amountPerDelivery", label: "Monto por entrega", tipo: "numero", obligatorio: true },
+            { key: "periodicityMonths", label: "Cada cuántos meses", tipo: "numero", obligatorio: true, minimo: 1 }, { key: "shared", label: "Compartido", tipo: "check" }, ...fin] },
         };
         const d = def[ficha.tipo];
         const valores = d?.lista.find((x: any) => x.id === ficha.id);

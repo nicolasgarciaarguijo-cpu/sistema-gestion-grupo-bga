@@ -13,6 +13,7 @@ import { matchStockForMaterial } from "../domain/stockMatch";
 import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
 import NumInput from "../ui/NumInput";
+import { BotonPlanillaStock } from "../ui/PlanillaStock";
 type StockTabProps = {
   stockSemaphoreSummary: any;
   approvedJobsSummary: any[];
@@ -45,6 +46,8 @@ type StockTabProps = {
   exportPrint: (mode: PrintMode) => void;
   updateApprovedJob: (jobId: number, field: keyof ApprovedJob, value: string | number) => void;
   applyStockIncrease: () => void;
+  // 21/11/2026: precios leidos de la planilla de costos vinculada (solo lo que el usuario dejo tildado).
+  aplicarPreciosDePlanilla: (cambios: Array<{ id: number; despues: number }>) => void;
   addStockItem: () => void;
   registerStockMovement: (
     itemId: number,
@@ -102,6 +105,7 @@ export function StockTab({
   exportPrint,
   updateApprovedJob,
   applyStockIncrease,
+  aplicarPreciosDePlanilla,
   addStockItem,
   registerStockMovement,
   updateStockItem,
@@ -207,6 +211,9 @@ export function StockTab({
             key: "code",
             label: "Código",
             tipo: "texto",
+            obligatorio: true,
+            // VALIDACION 21/11/2026: el codigo repetido ya no es solo una ayuda, la ficha lo marca como problema.
+            error: otrosConElCodigo(it).length > 0 ? "está repetido en otro artículo" : undefined,
             ayuda:
               otrosConElCodigo(it).length > 0
                 ? `⚠ este código ya está en ${otrosConElCodigo(it)
@@ -214,10 +221,10 @@ export function StockTab({
                     .join(" · ")}. El material del presupuesto cruza por código: corregí uno de los dos.`
                 : "Con este código el material del presupuesto encuentra el artículo.",
           },
-          { key: "description", label: "Descripción", tipo: "texto", ancho: "completo" },
+          { key: "description", label: "Descripción", tipo: "texto", ancho: "completo", obligatorio: true },
           { key: "group", label: "Grupo", tipo: "select", opciones: STOCK_GENERAL_GROUP_OPTIONS.map((g) => ({ value: g, label: g })) },
           { key: "location", label: "Ubicación", tipo: "texto" },
-          { key: "unit", label: "Unidad", tipo: "texto" },
+          { key: "unit", label: "Unidad", tipo: "texto", obligatorio: true },
           { key: "quantity", label: "Cantidad", tipo: "numero" },
           { key: "unitPrice", label: "Precio unitario", tipo: "numero" },
           { key: "active", label: "Activo", tipo: "check" },
@@ -351,6 +358,7 @@ export function StockTab({
                 <ButtonLike onClick={anchosStock.toggleCompacto} secondary>
                   {anchosStock.esCompacto ? "Ancho normal" : "Compacto"}
                 </ButtonLike>
+                <BotonPlanillaStock articulos={visibleStockItems} onAplicar={aplicarPreciosDePlanilla} />
                 <span style={styles.muted}>Aumento %</span>
                 <NumInput
                   style={{ ...styles.input, width: 120 }}

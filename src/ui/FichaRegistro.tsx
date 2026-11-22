@@ -26,6 +26,8 @@ export type CampoFicha = {
   cuit?: boolean;
   minimo?: number;
   maximo?: number;
+  // Un error que solo conoce la solapa (un código repetido). Si viene, el campo queda marcado con ese texto.
+  error?: string;
   vacio?: string; // texto de la opción vacía de un select obligatorio
 };
 

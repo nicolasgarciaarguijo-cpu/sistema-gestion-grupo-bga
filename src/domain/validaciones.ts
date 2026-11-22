@@ -123,6 +123,8 @@ export type CampoParaValidar = {
   // Rango de un numero (ej. el dia del mes: 1 a 31).
   minimo?: number;
   maximo?: number;
+  // Un error que solo conoce la solapa (ej. el codigo de stock repetido en otro articulo). Si viene, se marca.
+  error?: string;
 };
 export type ProblemaDeFicha = { key: string; label: string; texto: string };
 
@@ -134,6 +136,7 @@ export function problemasDeFicha(campos: CampoParaValidar[], valores: Record<str
     if (c.soloLectura || c.tipo === "check" || c.tipo === "area") return;
     const v = valores[c.key];
     const poner = (texto: string) => out.push({ key: c.key, label: c.label, texto });
+    if (c.error && !(c.obligatorio && c.tipo !== "numero" && vacio(v))) return poner(c.error);
     if (c.tipo === "numero") {
       const n = Number(v || 0);
       if (c.obligatorio && !(Math.abs(n) > 0)) return poner("falta");

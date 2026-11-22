@@ -474,6 +474,7 @@ import { FacturaCompraModal, ALICUOTAS_IVA, ivaDe, type FacturaForm, type MedioP
 import { estadoDePagos, pagosDeFactura, pagosVinculados, vinculoDePagos } from "./domain/pagosDeFactura";
 import { filasParaEstudio, ANCHOS_ESTUDIO } from "./domain/facturasParaEstudio";
 import { libroXlsx, descargarXlsx } from "./lib/xlsx";
+import { aplicarPrecios } from "./domain/planillaStock";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { nuevoProveedor } from "./domain/altaProveedor";
 import { ProveedoresPanel, ProveedorModal, formDeProveedor, formProveedorVacio, type ProveedorForm } from "./tabs/Proveedores";
@@ -14756,6 +14757,12 @@ Escribi CERRAR para confirmar:`
     );
   };
 
+  // PLANILLA DE PRECIOS VINCULADA (Nicolas, 21/11/2026): el boton de Stock lee la planilla de costos y aca llegan
+  // solo los precios que el usuario dejo tildados. No toca cantidades, descripciones ni otros articulos.
+  const aplicarPreciosDePlanilla = (cambios: Array<{ id: number; despues: number }>) => {
+    setStockItems((prev) => aplicarPrecios(prev, cambios));
+  };
+
   const applyStockIncrease = () => {
     if (!Number.isFinite(stockIncreasePct) || stockIncreasePct === 0) return;
     setStockItems((prev) =>
@@ -26244,6 +26251,7 @@ Escribi CERRAR para confirmar:`
           exportPrint={exportPrint}
           updateApprovedJob={updateApprovedJob}
           applyStockIncrease={applyStockIncrease}
+          aplicarPreciosDePlanilla={aplicarPreciosDePlanilla}
           addStockItem={addStockItem}
           updateStockItem={updateStockItem}
           removeStockItem={removeStockItem}

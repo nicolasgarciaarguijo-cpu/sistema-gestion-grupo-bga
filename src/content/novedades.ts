@@ -16,6 +16,32 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-21h",
+    fecha: "21/11/2026",
+    titulo: "El stock lee los precios de la planilla de costos",
+    items: [
+      {
+        titulo: "Botón «Leer planilla y actualizar precios» en Stock",
+        que: "El stock queda vinculado con la planilla de costos de Excel. El botón la lee y muestra, artículo por artículo, qué precio sube, cuál baja y cuáles quedan igual, cruzando por código. Solo toca precios: no da de alta artículos, no borra y no cambia cantidades.",
+        como: "Stock → Inventario y alertas → «Leer planilla y actualizar precios». La primera vez se elige la planilla y queda vinculada: las siguientes se lee sola (en Chrome o Edge). Leer no cambia nada: se actualiza lo que quede tildado. Las subas vienen tildadas; las bajas no, porque un precio no debería bajar. Si la planilla cambió desde la última lectura, el botón lo avisa en amarillo.",
+        tab: "stock",
+      },
+    ],
+  },
+  {
+    id: "2026-11-21g",
+    fecha: "21/11/2026",
+    titulo: "Validación también en Marcadores, Stock y Tarjetas",
+    items: [
+      {
+        titulo: "Las fichas de marcadores, artículos de stock y tarjetas avisan lo que les falta",
+        que: "Igual que las de retiros, inversiones y seguros: marcan en rojo lo que falta o está mal. En Stock piden código, descripción y unidad, y el código repetido en otro artículo ahora figura como un dato a corregir (el material del presupuesto cruza por código). En Tarjetas piden nombre, banco y últimos dígitos. En Marcadores, el concepto y el monto o la cantidad de cada uno.",
+        como: "Se puede cerrar igual: el botón dice cuántos datos faltan y la ficha queda marcada hasta completarla.",
+        tab: "stock",
+      },
+    ],
+  },
+  {
     id: "2026-11-21f",
     fecha: "21/11/2026",
     titulo: "Las fichas avisan lo que les falta",

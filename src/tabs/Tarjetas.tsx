@@ -208,9 +208,9 @@ export function TarjetasTab({
         if (!c) return null;
         const campos: CampoFicha[] = [
           { key: "company", label: "Empresa (la titular)", tipo: "empresa" },
-          { key: "name", label: "Nombre", tipo: "texto" },
-          { key: "bank", label: "Banco", tipo: "texto" },
-          { key: "lastDigits", label: "Últimos dígitos", tipo: "texto" },
+          { key: "name", label: "Nombre", tipo: "texto", obligatorio: true },
+          { key: "bank", label: "Banco", tipo: "texto", obligatorio: true },
+          { key: "lastDigits", label: "Últimos dígitos", tipo: "texto", obligatorio: true },
           { key: "numeroCuenta", label: "N.º de cuenta", tipo: "texto" },
           { key: "responsable", label: "Responsable", tipo: "texto" },
           { key: "numerosAnteriores", label: "Números anteriores", tipo: "texto" },
