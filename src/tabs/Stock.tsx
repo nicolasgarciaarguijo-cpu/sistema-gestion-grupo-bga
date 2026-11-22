@@ -14,6 +14,7 @@ import type { CompanyName, PrintMode, ApprovedJob } from "../domain/types";
 
 import NumInput from "../ui/NumInput";
 import { BotonPlanillaStock } from "../ui/PlanillaStock";
+import { BotonSincronizarPlanilla } from "../ui/PlanillaCantidades";
 type StockTabProps = {
   stockSemaphoreSummary: any;
   approvedJobsSummary: any[];
@@ -48,6 +49,7 @@ type StockTabProps = {
   applyStockIncrease: () => void;
   // 21/11/2026: precios leidos de la planilla de costos vinculada (solo lo que el usuario dejo tildado).
   aplicarPreciosDePlanilla: (cambios: Array<{ id: number; despues: number }>) => void;
+  aplicarRecuentosDePlanilla: (cambios: Array<{ id: number; enPlanilla: number }>) => void;
   addStockItem: () => void;
   registerStockMovement: (
     itemId: number,
@@ -106,6 +108,7 @@ export function StockTab({
   updateApprovedJob,
   applyStockIncrease,
   aplicarPreciosDePlanilla,
+  aplicarRecuentosDePlanilla,
   addStockItem,
   registerStockMovement,
   updateStockItem,
@@ -359,6 +362,7 @@ export function StockTab({
                   {anchosStock.esCompacto ? "Ancho normal" : "Compacto"}
                 </ButtonLike>
                 <BotonPlanillaStock articulos={visibleStockItems} onAplicar={aplicarPreciosDePlanilla} />
+                <BotonSincronizarPlanilla articulos={visibleStockItems} onRecuentos={aplicarRecuentosDePlanilla} />
                 <span style={styles.muted}>Aumento %</span>
                 <NumInput
                   style={{ ...styles.input, width: 120 }}

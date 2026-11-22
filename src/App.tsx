@@ -475,6 +475,7 @@ import { estadoDePagos, pagosDeFactura, pagosVinculados, vinculoDePagos } from "
 import { filasParaEstudio, ANCHOS_ESTUDIO } from "./domain/facturasParaEstudio";
 import { libroXlsx, descargarXlsx } from "./lib/xlsx";
 import { aplicarPrecios } from "./domain/planillaStock";
+import { aplicarRecuentos } from "./domain/planillaCantidades";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { nuevoProveedor } from "./domain/altaProveedor";
 import { ProveedoresPanel, ProveedorModal, formDeProveedor, formProveedorVacio, type ProveedorForm } from "./tabs/Proveedores";
@@ -14763,6 +14764,12 @@ Escribi CERRAR para confirmar:`
     setStockItems((prev) => aplicarPrecios(prev, cambios));
   };
 
+  // CANTIDADES CORREGIDAS EN LA PLANILLA (Nicolas, 22/11/2026): llegan solo las que el usuario eligio en la ventana.
+  // La diferencia queda anotada como movimiento del articulo.
+  const aplicarRecuentosDePlanilla = (cambios: Array<{ id: number; enPlanilla: number }>) => {
+    setStockItems((prev) => aplicarRecuentos(prev, cambios, todayIso(), newId));
+  };
+
   const applyStockIncrease = () => {
     if (!Number.isFinite(stockIncreasePct) || stockIncreasePct === 0) return;
     setStockItems((prev) =>
@@ -26252,6 +26259,7 @@ Escribi CERRAR para confirmar:`
           updateApprovedJob={updateApprovedJob}
           applyStockIncrease={applyStockIncrease}
           aplicarPreciosDePlanilla={aplicarPreciosDePlanilla}
+          aplicarRecuentosDePlanilla={aplicarRecuentosDePlanilla}
           addStockItem={addStockItem}
           updateStockItem={updateStockItem}
           removeStockItem={removeStockItem}

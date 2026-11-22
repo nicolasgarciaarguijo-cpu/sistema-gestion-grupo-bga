@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-22a",
+    fecha: "22/11/2026",
+    titulo: "Las cantidades del stock se corrigen también desde la planilla",
+    items: [
+      {
+        titulo: "Botón «Sincronizar cantidades con la planilla» en Stock",
+        que: "La cantidad de cada artículo se puede corregir en el sistema o en la planilla de Excel. El botón compara las dos y muestra lo que se corrigió en la planilla; lo que se acepta entra al stock y queda anotado como movimiento del artículo. A la vez el sistema escribe en la planilla la ubicación, la cantidad y los artículos que le falten. No toca precios, descripciones ni unidades.",
+        como: "Stock → Inventario y alertas → «Sincronizar cantidades con la planilla». En cada renglón se elige «Vale la planilla», «Vale el sistema» o «Después»; nada cambia hasta apretar Sincronizar. En el Excel se corrige la columna «Cantidad»; la columna «Cantidad sistema» la escribe el sistema y no se toca a mano. La planilla tiene que estar cerrada en Excel al sincronizar.",
+        tab: "stock",
+      },
+    ],
+  },
+  {
     id: "2026-11-21h",
     fecha: "21/11/2026",
     titulo: "El stock lee los precios de la planilla de costos",
