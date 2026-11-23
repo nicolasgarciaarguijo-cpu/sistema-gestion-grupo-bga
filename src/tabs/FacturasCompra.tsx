@@ -24,6 +24,8 @@ export type FilaFactura = {
   tipoProveedor: "ctacte" | "habitual" | "nuevo";
   // Factura pagada con una CAJA CHICA: quien la rindio (se ve como pill y la fila abre el gasto).
   cajaResponsable?: string;
+  // Falta informacion de la factura (23/11/2026): el texto de lo que falta; presente = avisa.
+  faltaInfo?: string;
   // Tiene un pago cargado en el sistema (CostEntry) vinculado: al eliminar se puede llevar tambien.
   tienePagoCargado?: boolean;
   // ARCA: "importada" = vino del listado (no la tenemos en mano); "cruzada" = la cargada se encontro en ARCA.
@@ -355,6 +357,11 @@ export function FacturasCompraPanel({
                     {f.arca === "cruzada" && (
                       <span style={{ ...pill("#166534", "#dcfce7"), marginRight: 4 }} title="Cargada y encontrada en el listado de ARCA">
                         ✓ ARCA
+                      </span>
+                    )}
+                    {f.faltaInfo != null && (
+                      <span data-falta-info-pill style={{ ...pill("#92400e", "#fef3c7"), marginRight: 4 }} title={f.faltaInfo || "Falta información de esta factura: abrila para completarla"}>
+                        ⚠ falta información
                       </span>
                     )}
                     {f.source === "caja_chica" && (

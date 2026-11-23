@@ -153,6 +153,7 @@ import { armarPreCierre, type PreCierre } from "./domain/preCierre";
 import { cargasDePlanilla, type FilaCarga } from "./domain/cargasPlanilla";
 import { pagosSinFactura, resumenPagosSinFactura } from "./domain/pagosACuenta";
 import { PagoACuentaModal, type PagoACuentaForm } from "./ui/PagoACuentaModal";
+import { camposDeImpuesto, esImpuestoDeTarjeta, esperanConciliacion, faltaElVep, TITULO_CONCILIA, TITULO_VEP } from "./domain/impuestoManual";
 import { UsuarioFirmanteContext } from "./ui/FirmanteSelect";
 import { resumenCaja } from "./domain/cajaChicaFicha";
 import {
@@ -5077,6 +5078,7 @@ Se puede mirar todo, pero no editarlo: para corregir algo de un ano cerrado hace
           description: c.description || "",
           supplier: c.supplier || "",
           impuestosClave: c.impuestosClave,
+          impuestoBanco: !!c.impuestoBanco,
         })),
     [alcanceEmpresa, costEntries, effectiveIsAdmin, isSupabaseLoggedIn, allowedCompaniesForSession]
   );
@@ -18147,7 +18149,7 @@ Escribi CERRAR para confirmar:`
         visibleBankStatementEntries.map((b) => ({ ...b, company: String(b.company) })) as any,
         costEntries
           .filter((c) => canAccessCompany(c.company) && c.paymentMethod !== "tarjeta_credito")
-          .map((c) => ({ id: c.id, company: String(c.company), date: c.date, amount: Number(c.amount || 0), supplier: c.supplier || "", description: c.description || "", paymentMethod: c.paymentMethod, bankEntryId: c.bankEntryId })),
+          .map((c) => ({ id: c.id, company: String(c.company), date: c.date, amount: Number(c.amount || 0), supplier: c.supplier || "", description: c.description || "", paymentMethod: c.paymentMethod, bankEntryId: c.bankEntryId, impuestoBanco: !!c.impuestoBanco, cuentaId: c.cuentaId })),
         resumenesF.map((x) => ({ ...x, nombre: tarjetasF.find((t) => t.id === x.cardId)?.name || "Tarjeta" }))
       ),
     [alcanceEmpresa, visibleBankStatementEntries, costEntries, resumenesF, tarjetasF]
@@ -18971,9 +18973,50 @@ Escribi CERRAR para confirmar:`
       administration: c.administration === "negro" ? "negro" : "blanco",
       pagadoPor: c.pagadoPor,
       notas: c.notes || "",
+      impuestoBanco: !!c.impuestoBanco,
+      impuestoTipo: c.impuestoTipo,
+      conciliaFinDeMes: !!c.conciliaFinDeMes,
+      esperaVep: !!c.esperaVep,
     });
   };
+  // IMPUESTOS, TASAS E INTERESES DEL BANCO cargados a mano (Nicolas, 23/11/2026): mismo formulario que el pago sin
+  // factura. El proveedor es el banco de la cuenta (o de la tarjeta) y no queda esperando factura.
+  const guardarImpuestoBanco = (f: PagoACuentaForm) => {
+    const actual = f.id != null ? costEntries.find((c) => c.id === f.id) : undefined;
+    if (f.id != null && !actual) return setPagoACuentaModal(null);
+    if ((actual && bloqueadoPorCierre(actual.company, actual.date)) || bloqueadoPorCierre(f.company as CompanyName, f.fecha)) {
+      window.alert("Esa fecha cae en un ejercicio cerrado: no se puede guardar.");
+      return;
+    }
+    const deTarjeta = esImpuestoDeTarjeta(f.metodo);
+    const cuenta = cuentasSistema.find((c) => c.id === f.cuentaId);
+    const nombreBanco = (deTarjeta ? creditCards.find((t) => t.id === f.tarjetaId)?.bank : cuenta?.banco) || cuenta?.banco || cuenta?.nombre || "";
+    // La ficha es la misma para todos los proveedores (Nicolas, 23/11/2026): desde la de un banco el cargo va al banco de
+    // la cuenta; desde la de otro proveedor (los intereses de un plan de pago de ARCA) queda en ESE proveedor y en su grupo.
+    const otro = f.supplier.trim() && !/\bbanco\b/i.test(f.supplier) ? (buscarProveedor(suppliers as any, f.supplier, f.taxId) as any) : null;
+    const grupoOtro = otro ? parseClaveGrupo(otro.grupoCosto) : null;
+    const banco = otro ? { supplier: { name: f.supplier, id: otro.id } as any, nuevo: false } : proveedorBanco(nombreBanco);
+    if (banco.nuevo) setSuppliers((prev) => [...prev, banco.supplier]);
+    const monto = Number(f.monto) || 0;
+    const datos = {
+      ...camposDeImpuesto({ metodo: f.metodo, tipo: f.impuestoTipo, descripcion: f.notas }),
+      ...(grupoOtro ? { group: grupoOtro.nombre, groupKind: grupoOtro.tipo } : {}),
+      company: f.company as CompanyName,
+      date: f.fecha,
+      amount: monto,
+      cuentaId: f.cuentaId,
+      ...datosTarjeta({ metodo: f.metodo, administration: "blanco", tarjetaId: f.tarjetaId, cuotas: 1 }),
+      supplier: banco.supplier.name,
+      supplierId: banco.supplier.id,
+      pagadoPor: undefined,
+      antesDeApertura: decidirAntesDeApertura(actual as any, f.cuentaId, f.fecha, monto, "El cargo del banco"),
+      ...firma(),
+    };
+    setCostEntries((prev) => (actual ? prev.map((c) => (c.id === actual.id ? ({ ...c, ...datos } as CostEntry) : c)) : [{ id: newId(), source: "manual", ...datos } as CostEntry, ...prev]));
+    setPagoACuentaModal(null);
+  };
   const guardarPagoACuenta = (f: PagoACuentaForm) => {
+    if (f.impuestoBanco) return guardarImpuestoBanco(f);
     asegurarCajaDePersona(f.company, f.cuentaId, f.fecha, new Set());
     const prov = buscarProveedor(suppliers as any, f.supplier, f.taxId) as any;
     const grupo = parseClaveGrupo(prov?.grupoCosto);
@@ -19021,10 +19064,13 @@ Escribi CERRAR para confirmar:`
         supplierId: prov?.id,
         group: grupo?.nombre || "",
         groupKind: grupo?.tipo,
-        description: "Pago a cuenta · sin factura",
+        description: f.conciliaFinDeMes ? `${TITULO_CONCILIA} · ${f.notas.trim()}` : f.esperaVep ? `${TITULO_VEP} · falta cargar el VEP` : "Pago a cuenta · sin factura",
+        esperaVep: f.esperaVep && !f.conciliaFinDeMes ? true : undefined,
         notes: f.notas || "",
         source: "manual",
-        aCuenta: true,
+        // Conciliacion a fin de mes: no espera factura, espera el extracto o el resumen.
+        aCuenta: !f.conciliaFinDeMes,
+        conciliaFinDeMes: f.conciliaFinDeMes ? true : undefined,
         antesDeApertura: decidirAntesDeApertura(undefined, f.cuentaId, f.fecha, Number(f.monto) || 0, "El pago sin factura"),
         ...firma(),
         pagadoPor: f.metodo === "efectivo" && f.administration === "negro" ? f.pagadoPor || undefined : undefined,
@@ -19387,6 +19433,12 @@ Escribi CERRAR para confirmar:`
       const fechas = facturasConFechaMala(facturas);
       if (repetidos.length) out.push({ clave: "repetidos", icono: "🧾", tono: "aviso", titulo: `${plural(repetidos.length, "comprobante cargado dos veces", "comprobantes cargados dos veces")}`, detalle: repetidos.slice(0, 2).map((r) => r.texto.replace(" está cargado dos veces", "")).join(" · "), ir: ir("compras"), irTexto: "Compras" });
       if (fechas.length) out.push({ clave: "facturas-fecha", icono: "🧾", tono: "aviso", titulo: `${plural(fechas.length, "factura de compra", "facturas de compra")} con la fecha mal`, ir: ir("compras"), irTexto: "Compras" });
+      const sinConciliar = esperanConciliacion(costEntries.filter((c) => canAccessCompany(c.company) && !deOtroEjercicio(c.date)), new Set(creditCardConsumptions.filter((r) => r.pagoId != null).map((r) => Number(r.pagoId))));
+      if (sinConciliar.length) out.push({ clave: "a-conciliar", icono: "🏦", tono: "info", titulo: `${plural(sinConciliar.length, "pago espera", "pagos esperan")} el extracto o el resumen para conciliar`, detalle: `${money(sinConciliar.reduce((a, p) => a + Number(p.amount || 0), 0))} · cargados en el día, falta linkearlos`, ir: ir("bancos"), irTexto: "Bancos y tarjetas" });
+      const sinVep = faltaElVep(costEntries.filter((c) => canAccessCompany(c.company) && !deOtroEjercicio(c.date)), new Set(purchaseInvoices.flatMap((i) => pagosDeFactura(i))));
+      if (sinVep.length) out.push({ clave: "falta-vep", icono: "🧾", tono: "aviso", titulo: `${plural(sinVep.length, "pago a ARCA", "pagos a ARCA")} sin su VEP cargado`, detalle: `${money(sinVep.reduce((a, p) => a + Number(p.amount || 0), 0))} · cargá el VEP en Compras y vinculale el pago`, ir: ir("compras"), irTexto: "Compras" });
+      const incompletas = visiblePurchaseInvoices.filter((i) => i.faltaInfo);
+      if (incompletas.length) out.push({ clave: "facturas-incompletas", icono: "🧾", tono: "aviso", titulo: plural(incompletas.length, "factura con información faltante", "facturas con información faltante"), detalle: incompletas.slice(0, 2).map((i) => i.supplier).join(" · "), ir: ir("compras"), irTexto: "Compras" });
       if (pagosSinGrupoDelEjercicio.length)
         out.push({ clave: "sin-grupo", icono: "🏷", tono: "info", titulo: `${plural(pagosSinGrupoDelEjercicio.length, "pago", "pagos")} sin grupo de costo`, detalle: `${money(pagosSinGrupoDelEjercicio.reduce((a, p) => a + p.amount, 0))} · en el cash flow caen en «Sin grupo»`, ir: ir("compras"), irTexto: "Compras" });
     }
@@ -22337,6 +22389,7 @@ Escribi CERRAR para confirmar:`
         estadoPrevisto: marca?.estadoPago,
         tipoProveedor: prov ? (prov.currentAccount ? "ctacte" : "habitual") : "nuevo",
         cajaResponsable: cajaResponsable || undefined,
+        faltaInfo: inv.faltaInfo ? inv.faltaInfoNota || "" : undefined,
         tienePagoCargado: estadoPagos.ids.length > 0,
         arca: purchaseInvoiceOrigin(inv) === "arca" ? "importada" : inv.arcaCruzada ? "cruzada" : undefined,
         resumenTarjeta: resumenDeLaFactura(inv, estadoPagos.ids),
@@ -22417,6 +22470,8 @@ Escribi CERRAR para confirmar:`
       administration: inv.administration === "negro" ? "negro" : "blanco",
       grupoCosto: inv.grupoCosto,
       notes: inv.notes || "",
+      faltaInfo: !!inv.faltaInfo,
+      faltaInfoNota: inv.faltaInfoNota || "",
       remitoIds: remitos.filter((r) => r.purchaseInvoiceId === id).map((r) => r.id),
       pagos,
       // Solo la fecha PROGRAMADA a mano: si se rellenara con la de la condicion del proveedor, al guardar quedaria como
@@ -22568,6 +22623,8 @@ Escribi CERRAR para confirmar:`
       iibb: Number(f.iibb) || 0,
       total: Number(f.total) || 0,
       notes: f.notes,
+      faltaInfo: f.faltaInfo ? true : undefined,
+      faltaInfoNota: f.faltaInfo ? f.faltaInfoNota?.trim() || undefined : undefined,
       descripcion: f.descripcion?.trim() || undefined,
       ...(f.attachmentName ? { attachmentName: f.attachmentName } : {}),
       extractedAutomatically: existente?.extractedAutomatically ?? false,
@@ -24530,7 +24587,7 @@ Escribi CERRAR para confirmar:`
                 id: c.id,
                 date: c.date,
                 amount: Number(c.amount || 0),
-                description: `${c.aCuenta ? "⏳ PAGO A CUENTA (espera factura) · " : ""}${c.description || c.supplier || "Pago"}`,
+                description: `${c.aCuenta ? (c.esperaVep ? "⏳ FALTA CARGAR EL VEP · " : "⏳ PAGO A CUENTA (espera factura) · ") : ""}${c.description || c.supplier || "Pago"}`,
                 company: String(c.company),
                 paymentMethod: c.paymentMethod,
                 administration: c.administration === "negro" ? ("negro" as const) : ("blanco" as const),
@@ -24691,6 +24748,8 @@ Escribi CERRAR para confirmar:`
                 metodo: "transferencia",
                 administration: "blanco",
                 notas: "",
+                // Desde la ficha de un banco, lo habitual es un cargo del banco: arranca en esa opcion.
+                ...(/\bbanco\b/i.test(prov?.name || fichaProveedor.nombre || "") ? { impuestoBanco: true, metodo: "debito" as const } : {}),
               })
             }
           />

@@ -16,6 +16,43 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-23b",
+    fecha: "23/11/2026",
+    titulo: "Los impuestos del banco se cargan en el día",
+    items: [
+      {
+        titulo: "Pago sin factura: «Impuestos, tasas e intereses»",
+        que: "Los impuestos, comisiones e intereses que cobra el banco ya no esperan al extracto: se cargan el día que se cobran y la cuenta queda al día. No piden factura, el proveedor es el banco de la cuenta y suman a su cuenta corriente. La misma opción sirve en la ficha de cualquier proveedor: por ejemplo, los intereses de un plan de pago de ARCA quedan en ARCA, para saber cuánto se paga de intereses. Los de la cuenta bajan ese mismo día; los de la tarjeta de crédito van aparte y se pagan al vencimiento del resumen, no antes.",
+        como: "Pago a proveedores → ficha del proveedor → «Pago sin factura» → opción «Impuestos, tasas e intereses (sin factura)» (desde la ficha de un banco ya viene elegida). Se completa fecha, monto, dónde se cobró (cuenta o tarjeta), el tipo de cargo y una descripción, que es obligatoria para reconocer el gasto después.",
+        tab: "costos",
+      },
+      {
+        titulo: "El extracto y el resumen sugieren el cargo ya cargado",
+        que: "Al subir un extracto (también uno parcial, a mitad de mes) o un resumen de tarjeta, cada cargo del banco que ya estaba cargado a mano aparece como «Sugerido». Al aceptarlo queda linkeado y no se suma otra vez a «Comisiones, tasas e intereses». Lo que no se había cargado sigue yendo ahí solo, como antes.",
+        como: "Bancos y Tarjetas → ficha de la cuenta o del resumen → aceptar la sugerencia en cada renglón. En la tarjeta, mandar el renglón «a comisiones» descarta la sugerencia.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Pago sin factura: «Conciliación a fin de mes»",
+        que: "Para lo que no lleva factura y se corrobora con el extracto o el resumen: un débito automático, el pago de la tarjeta. Baja la cuenta el día que se carga, no figura como falta de factura, y queda avisando en el resumen del día que espera el extracto o el resumen hasta que se linkee.",
+        como: "Ficha del proveedor → «Pago sin factura» → «Conciliación a fin de mes». La descripción es obligatoria. Al subir el extracto, el movimiento lo sugiere y al aceptarlo queda conciliado.",
+        tab: "costos",
+      },
+      {
+        titulo: "Pago sin factura: «Constatación contra VEP»",
+        que: "Para un pago a ARCA del que todavía no está cargado el VEP (por ejemplo, un débito automático que no se sabe a qué corresponde). Baja la cuenta al cargarlo y queda avisando «falta cargar el VEP» en la ficha de ARCA y en el resumen del día.",
+        como: "Ficha de ARCA → «Pago sin factura» → «Constatación contra VEP». Cuando tengas el VEP, cargalo en Compras y elegí «Vincular un pago ya cargado»: ahí deja de avisar.",
+        tab: "costos",
+      },
+      {
+        titulo: "Factura con información faltante",
+        que: "Un gasto con factura se puede cargar aunque la factura todavía no esté en mano (se extravió, la mandan por mail). Alcanza con proveedor, fecha y total. Queda marcada con «⚠ falta información» en Compras y avisa en el resumen del día hasta que se complete.",
+        como: "En la ficha de la factura, debajo de Notas, tildá «Falta información de esta factura» y escribí qué falta. Cuando llegue, abrí la factura, completá los datos y destildalo.",
+        tab: "compras",
+      },
+    ],
+  },
+  {
     id: "2026-11-23a",
     fecha: "23/11/2026",
     titulo: "El stock muestra quién vende más barato",

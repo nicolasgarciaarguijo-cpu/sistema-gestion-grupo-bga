@@ -664,6 +664,10 @@ export type PurchaseInvoice = {
   conceptKey?: string;
   // Fecha de pago elegida para esta factura (si no, la de la condicion del proveedor).
   fechaPagoPrevista?: string;
+  // FALTA INFORMACION (Nicolas, 23/11/2026): el gasto existe y tiene factura, pero la factura todavia no esta en
+  // mano (se extravio, llega por mail). Se carga igual con lo que se sabe y queda avisando hasta completarla.
+  faltaInfo?: boolean;
+  faltaInfoNota?: string;
   // Grupo de costo de ESTA factura ("tipo|nombre"); si no, el del proveedor.
   grupoCosto?: string;
   // TODOS los pagos de la factura (varios pagos parciales, 2026-10-20). Ver domain/pagosDeFactura.ts.
@@ -1229,6 +1233,18 @@ export type CostEntry = {
   cuotasTarjeta?: number;
   // Pago de una deuda de IMPUESTOS del extracto o del resumen (domain/impuestosBancarios): su clave.
   impuestosClave?: string;
+  // IMPUESTOS, TASAS E INTERESES CARGADOS A MANO (Nicolas, 23/11/2026): para tener el banco al dia sin esperar el
+  // extracto. Va a la deuda del banco como cualquier otro cargo y despues se linkea con el extracto (bankEntryId) o
+  // con el renglon del resumen de la tarjeta. Ver domain/impuestoManual.
+  impuestoBanco?: boolean;
+  impuestoTipo?: string;
+  // CONCILIACION A FIN DE MES (Nicolas, 23/11/2026): un pago que no lleva factura y se corrobora con el extracto o
+  // el resumen (debito automatico, pago de la tarjeta, impuestos del banco). No avisa "falta la factura"; mientras no
+  // este linkeado avisa que falta el extracto o el resumen. Ver domain/impuestoManual.
+  conciliaFinDeMes?: boolean;
+  // CONSTATACION CONTRA VEP (Nicolas, 23/11/2026): un pago a ARCA del que todavia no se cargo el VEP. Es un pago a
+  // cuenta (aCuenta) que en vez de "falta la factura" avisa "falta cargar el VEP" hasta que se le vincule.
+  esperaVep?: boolean;
 };
 
 // "debito" = debito automatico de la cuenta (lo viejo). Tarjeta de debito y de credito se suman el 2026-10-20.

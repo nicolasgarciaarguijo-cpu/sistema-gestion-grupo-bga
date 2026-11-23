@@ -79,6 +79,8 @@ export type PagoF = {
   supplier: string;
   description: string;
   impuestosClave?: string;
+  // Impuesto, tasa o interes de la tarjeta cargado a mano (23/11/2026): se linkea con el CARGO del resumen.
+  impuestoBanco?: boolean;
 };
 
 // PAGOS QUE NO DICEN TARJETA (Nicolas, 18/11/2026). El gasto se pago con la tarjeta pero se cargo como
@@ -166,11 +168,12 @@ export type Sugerencia = {
 // Sugerencia para un renglon: un pago con una tarjeta de esta cuenta, cuya cuota sea el monto del renglon y
 // cuya fecha de compra este cerca de la del renglon (en las cuotas el resumen repite la fecha de la compra).
 // `ocupados` = "pagoId:cuota" ya linkeados en cualquier resumen.
-export function sugerirPago(r: RenglonF, cuentaId: number, pagos: PagoF[], tarjetas: TarjetaF[], resumenes: ResumenF[], ocupados: Set<string>): Sugerencia | null {
+// soloImpuestos: para los CARGOS del resumen se miran solo los impuestos cargados a mano; para las compras, nunca.
+export function sugerirPago(r: RenglonF, cuentaId: number, pagos: PagoF[], tarjetas: TarjetaF[], resumenes: ResumenF[], ocupados: Set<string>, soloImpuestos = false): Sugerencia | null {
   if (r.currency !== "ARS" || !(Number(r.amount) > 0)) return null;
   const q = cuotaDelTexto(r.installments);
   const cand = pagos
-    .filter((p) => !esPagoDeComisiones(p) && p.company === r.company && cuentaDeTarjeta(p.tarjetaId, tarjetas, resumenes) === cuentaId)
+    .filter((p) => !esPagoDeComisiones(p) && !!p.impuestoBanco === soloImpuestos && p.company === r.company && cuentaDeTarjeta(p.tarjetaId, tarjetas, resumenes) === cuentaId)
     .map((p) => {
       const n = Math.max(1, Math.floor(Number(p.cuotas) || 1));
       const cuota = q ? q.cuota : 1;
@@ -262,8 +265,17 @@ export function fichaDelResumen(
       if (pago) return { renglon: r, estado: "linkeado" as const, pago, cuota: r.cuotaNro || 1 };
     }
     // Sin tarjeta fisica = cargo del resumen; o mandado a mano a comisiones.
-    if (r.aComisiones || (esCargo(r, leido) && r.aComisiones !== false)) return { renglon: r, estado: "comision" as const };
     const tomados = new Set([...Array.from(ocupados), ...Array.from(sugeridos)]);
+    // Un cargo que ya se cargo a mano (impuesto, tasa o interes): se sugiere linkearlo, asi no se suma dos veces.
+    // Mandarlo "a comisiones" a mano descarta la sugerencia.
+    if (!r.aComisiones && esCargo(r, leido) && r.aComisiones !== false) {
+      const cargado = sugerirPago(r, cuentaId, pagos, tarjetas, resumenes, tomados, true);
+      if (cargado) {
+        sugeridos.add(`${cargado.pagoId}:${cargado.cuota}`);
+        return { renglon: r, estado: "sugerido" as const, sugerencia: cargado };
+      }
+    }
+    if (r.aComisiones || (esCargo(r, leido) && r.aComisiones !== false)) return { renglon: r, estado: "comision" as const };
     // Primero el pago que YA dice esta tarjeta; si no hay, el que esta cargado con otro medio.
     const sug = sugerirPago(r, cuentaId, pagos, tarjetas, resumenes, tomados) || sugerirPagoSinTarjeta(r, pagosSinTarjeta, tomados);
     if (sug) {

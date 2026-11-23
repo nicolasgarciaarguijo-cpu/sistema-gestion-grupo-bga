@@ -82,6 +82,9 @@ export type FacturaForm = {
   // Un gasto de caja chica cargado con la ficha vieja: al guardar pasa a esta (factura + pago con la caja).
   convierteGastoCajaId?: number;
   attachmentName?: string;
+  // Falta informacion: se guarda igual y queda avisando hasta completarla (23/11/2026).
+  faltaInfo?: boolean;
+  faltaInfoNota?: string;
 };
 
 // El unico pago de una rendicion de caja chica acompaña al total mientras nadie lo toque a mano.
@@ -505,6 +508,20 @@ export function FacturaCompraModal({
             <input style={input} value={f.notes} onChange={(e) => set({ notes: e.target.value })} />
           </label>
           {f.attachmentName && <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>📎 {f.attachmentName}</div>}
+          <div data-falta-info style={{ marginTop: 8, padding: "8px 10px", borderRadius: 8, border: `1px solid ${f.faltaInfo ? "#fcd34d" : "#e2e8f0"}`, background: f.faltaInfo ? "#fffbeb" : "#f8fafc" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: f.faltaInfo ? "#92400e" : "#475569", cursor: "pointer" }}>
+              <input type="checkbox" data-falta-info-check checked={!!f.faltaInfo} onChange={(e) => set({ faltaInfo: e.target.checked })} />
+              ⚠ Falta información de esta factura (se completa después)
+            </label>
+            {f.faltaInfo && (
+              <>
+                <div style={{ fontSize: 12, color: "#92400e", margin: "4px 0" }}>
+                  Cargala con lo que sepas (proveedor, fecha y total alcanzan). Queda avisando en Compras y en el resumen del día hasta que la completes y destildes esto.
+                </div>
+                <input data-falta-info-nota style={input} value={f.faltaInfoNota || ""} onChange={(e) => set({ faltaInfoNota: e.target.value })} placeholder="Qué falta: ej. la factura se extravió, la mandan por mail; falta el número y el IVA" />
+              </>
+            )}
+          </div>
         </div>
 
         <div style={caja}>

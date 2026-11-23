@@ -47,7 +47,8 @@ export type MovimientoF = {
   assignedCardStatementId?: number | null;
   desconocido?: { firmante: string; fecha: string; nota: string } | null;
 };
-export type PagoBancoF = { id: number; company: string; date: string; amount: number; supplier: string; description: string; paymentMethod?: string; bankEntryId?: number | null };
+// impuestoBanco: un impuesto, tasa o interes cargado a mano el dia que se cobro (23/11/2026). cuentaId dice de que banco.
+export type PagoBancoF = { id: number; company: string; date: string; amount: number; supplier: string; description: string; paymentMethod?: string; bankEntryId?: number | null; impuestoBanco?: boolean; cuentaId?: string };
 export type ResumenTarjetaF = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; nombre: string };
 
 export type EstadoMovimiento = "linkeado" | "comision" | "sugerido" | "pendiente" | "desconocido";
@@ -117,6 +118,22 @@ function sugerir(m: MovimientoF, pagos: PagoBancoF[], ocupados: Set<number>, res
   return undefined;
 }
 
+// El cargo del banco que ya se cargo a mano el dia que se cobro: mismo banco, mismo monto y fecha a <= 5 dias. Se
+// SUGIERE (no se linkea solo): al aceptarlo, el cargo deja de sumarse a la deuda de comisiones del extracto.
+const soloBanco = (t: string) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/banco/g, "").replace(/[^a-z0-9]+/g, "");
+export function sugerirImpuestoCargado(m: MovimientoF, pagos: PagoBancoF[], ocupados: Set<number>): SugerenciaMov | undefined {
+  if (m.movementType !== "debito") return undefined;
+  const monto = Math.abs(Number(m.amount || 0));
+  const banco = soloBanco(m.bank);
+  const p = pagos
+    .filter((x) => x.impuestoBanco && x.company === m.company && !ocupados.has(x.id) && Math.abs(Number(x.amount || 0) - monto) <= TOL)
+    .filter((x) => !x.cuentaId || !banco || soloBanco(x.cuentaId).includes(banco))
+    .map((x) => ({ x, d: diasEntre(x.date, m.date) }))
+    .filter((y) => y.d <= 5)
+    .sort((a, b) => a.d - b.d)[0];
+  return p ? { tipo: "pago", pagoId: p.x.id, texto: `${p.x.description || p.x.supplier} · cargado el ${p.x.date.split("-").reverse().join("/")}` } : undefined;
+}
+
 export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resumenes: ResumenTarjetaF[]): FichaExtracto[] {
   const pagoPorMov = new Map<number, PagoBancoF>();
   pagos.forEach((p) => {
@@ -176,6 +193,12 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
         return;
       }
       if (m.movementType === "debito" && categoriaDeDebito(m.conceptKey, m.concept)) {
+        const cargado = sugerirImpuestoCargado(m, pagos, new Set([...Array.from(ocupados), ...Array.from(sugeridosPago)]));
+        if (cargado?.tipo === "pago") {
+          sugeridosPago.add(cargado.pagoId);
+          f.movimientos.push({ mov: m, estado: "sugerido", detalle: `Sugerido: ${cargado.texto}`, sugerencia: cargado, rompe: corta });
+          return;
+        }
         if (m.currency !== "USD") f.comisionesArs = r2(f.comisionesArs + monto);
         f.movimientos.push({ mov: m, estado: "comision", detalle: "Comisiones, tasas e intereses (cuenta)", rompe: corta });
         return;
