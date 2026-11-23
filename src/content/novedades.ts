@@ -21,6 +21,12 @@ export const NOVEDADES: TandaNovedades[] = [
     titulo: "Los impuestos del banco se cargan en el día",
     items: [
       {
+        titulo: "Control de comisiones en la ficha de la cuenta",
+        que: "Cada mes de la ficha del extracto suma todo lo que cobró el banco (impuestos, comisiones e intereses) y lo compara con lo cargado: cuánto está cargado y linkeado, cuánto está cargado pero falta linkear y qué cargos faltan cargar. Cada cargo cuenta una sola vez. Cuando todo está cargado y linkeado aparece «coincide con el banco».",
+        como: "Bancos y tarjetas → ficha de la cuenta → el mes. En «Control de comisiones» usá «Linkear» para los que ya cargaste y «Cargar y linkear» para los que faltan: se cargan con la fecha, el importe y el concepto del extracto. El tilde del mes queda bloqueado mientras haya cargos ya cargados sin linkear, para que no se descuenten dos veces.",
+        tab: "bancos",
+      },
+      {
         titulo: "Pago sin factura: «Impuestos, tasas e intereses»",
         que: "Los impuestos, comisiones e intereses que cobra el banco ya no esperan al extracto: se cargan el día que se cobran y la cuenta queda al día. No piden factura, el proveedor es el banco de la cuenta y suman a su cuenta corriente. La misma opción sirve en la ficha de cualquier proveedor: por ejemplo, los intereses de un plan de pago de ARCA quedan en ARCA, para saber cuánto se paga de intereses. Los de la cuenta bajan ese mismo día; los de la tarjeta de crédito van aparte y se pagan al vencimiento del resumen, no antes.",
         como: "Pago a proveedores → ficha del proveedor → «Pago sin factura» → opción «Impuestos, tasas e intereses (sin factura)» (desde la ficha de un banco ya viene elegida). Se completa fecha, monto, dónde se cobró (cuenta o tarjeta), el tipo de cargo y una descripción, que es obligatoria para reconocer el gasto después.",

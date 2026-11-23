@@ -219,3 +219,36 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
     })
     .sort((a, b) => b.mes.localeCompare(a.mes) || a.company.localeCompare(b.company) || a.bank.localeCompare(b.bank));
 }
+
+// CONTROL DE COMISIONES DEL MES (Nicolas, 23/11/2026): "al finalizar el resumen sumar todos los valores de comisiones
+// y asegurarse que sea el correcto [...] nos muestra un total, no suma 2 veces, y si alguna no se cargo marca que
+// falta la carga y brinda el acceso para ir directo a cargarla para poder linkearla y asi la conciliacion cierra".
+// El TOTAL es lo que cobro el banco segun el extracto. Cada cargo esta en uno solo de tres estados: cargado y
+// linkeado, cargado pero sin linkear (sugerido) o sin cargar. total = linkeadas + sugeridas + faltan, siempre.
+export type ControlComisiones = {
+  total: number;
+  cantidad: number;
+  linkeadas: { n: number; monto: number };
+  sugeridas: MovimientoFicha[];
+  sugeridasMonto: number;
+  faltan: MovimientoFicha[];
+  faltaMonto: number;
+  cierra: boolean; // todas cargadas y linkeadas: lo cargado coincide con lo que cobro el banco
+};
+export function controlDeComisiones(f: Pick<FichaExtracto, "movimientos">): ControlComisiones {
+  const cargos = f.movimientos.filter((x) => x.mov.movementType === "debito" && !x.mov.desconocido && !!categoriaDeDebito(x.mov.conceptKey, x.mov.concept));
+  const monto = (l: MovimientoFicha[]) => r2(l.reduce((a, x) => a + Math.abs(Number(x.mov.amount || 0)), 0));
+  const linkeadas = cargos.filter((x) => x.estado === "linkeado");
+  const sugeridas = cargos.filter((x) => x.estado === "sugerido");
+  const faltan = cargos.filter((x) => x.estado !== "linkeado" && x.estado !== "sugerido");
+  return {
+    total: monto(cargos),
+    cantidad: cargos.length,
+    linkeadas: { n: linkeadas.length, monto: monto(linkeadas) },
+    sugeridas,
+    sugeridasMonto: monto(sugeridas),
+    faltan,
+    faltaMonto: monto(faltan),
+    cierra: cargos.length > 0 && sugeridas.length === 0 && faltan.length === 0,
+  };
+}

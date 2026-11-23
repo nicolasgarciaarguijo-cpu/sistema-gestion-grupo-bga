@@ -18288,6 +18288,48 @@ Escribi CERRAR para confirmar:`
       setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "cobro" as const, assignedJobBudget: id, assignedParty: job?.client || x.assignedParty, desconocido: null } : x)));
     }
   };
+  // CARGAR LA COMISION QUE FALTA, DESDE EL CONTROL DE LA FICHA (Nicolas, 23/11/2026): "si alguna no se cargo marca que
+  // falta la carga y brinda el acceso para ir directo a cargarla para poder linkearla". Crea el cargo del banco con los
+  // datos del extracto (fecha, importe y concepto), firmado por quien lo carga, y lo deja linkeado a su movimiento.
+  const cargarComisionesDelExtracto = (movIds: number[]) => {
+    const yaLinkeados = new Set(costEntries.filter((c) => c.bankEntryId != null).map((c) => Number(c.bankEntryId)));
+    const movs = bankStatementEntries.filter((b) => movIds.includes(b.id) && b.movementType === "debito" && !yaLinkeados.has(b.id) && tienePermisoEmpresa(b.company));
+    if (!movs.length) return;
+    const cerrados = movs.filter((b) => bloqueadoPorCierre(b.company, b.date));
+    const abiertos = movs.filter((b) => !bloqueadoPorCierre(b.company, b.date));
+    if (!abiertos.length) {
+      window.alert("Esos cargos caen en un ejercicio cerrado: ya están dentro del saldo del cierre y no se cargan.");
+      return;
+    }
+    const b0 = abiertos[0];
+    const cuenta = cuentaDelBanco(String(b0.company), b0.bank || "", b0.currency === "USD" ? "USD" : "ARS");
+    if (!cuenta) {
+      window.alert(`Primero creá la cuenta de ${b0.bank || "ese banco"} en Cuentas.`);
+      return;
+    }
+    const banco = proveedorBanco(b0.bank || "");
+    if (banco.nuevo) setSuppliers((prev) => [...prev, banco.supplier]);
+    const nuevos = abiertos.map(
+      (b) =>
+        ({
+          id: newId(),
+          source: "manual",
+          ...camposDeImpuesto({ metodo: "debito", descripcion: b.concept || "" }),
+          company: b.company,
+          date: b.date,
+          amount: Math.abs(Number(b.amount || 0)),
+          cuentaId: cuenta.id,
+          supplier: banco.supplier.name,
+          supplierId: banco.supplier.id,
+          bankEntryId: b.id,
+          ...firma(),
+        } as CostEntry)
+    );
+    const ids = new Set(abiertos.map((b) => b.id));
+    setCostEntries((prev) => [...nuevos, ...prev]);
+    setBankStatementEntries((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, assignedKind: "pago" as const, assignedParty: banco.supplier.name, desconocido: null } : x)));
+    if (cerrados.length) window.alert(`${cerrados.length} cargo(s) caen en un ejercicio cerrado y no se cargaron.`);
+  };
   const tipoMovimiento = (movId: number, kind: "interno" | "aporte" | "otro") => {
     if (!movimientoEditable(movId)) return;
     setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: kind, desconocido: null } : x)));
@@ -24905,6 +24947,7 @@ Escribi CERRAR para confirmar:`
               sugerenciaRenglon={(m) => (!m.conceptKey && !m.assignedJobBudget ? suggestCalendarConcept(m.concept || "") : null)}
               impuestosDelMes={impuestosDelMes}
               onImpuestosPagados={setImpuestosPagados}
+              onCargarComisiones={cargarComisionesDelExtracto}
               onCerrar={() => {
                 setFichaCuentaAbierta(null);
                 setFichaCuentaMes(undefined);

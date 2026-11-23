@@ -3,7 +3,7 @@
 // de saldos cerrada, el mes lleva el tilde verde "revisado y linkeado". Click derecho en el movimiento.
 // Ver domain/fichaExtracto.ts.
 import React, { useMemo, useState } from "react";
-import type { FichaExtracto as FichaMes, MovimientoFicha } from "../domain/fichaExtracto";
+import { controlDeComisiones, type FichaExtracto as FichaMes, type MovimientoFicha } from "../domain/fichaExtracto";
 import { TITULO_COMISIONES_CUENTA } from "../domain/fichaTarjeta";
 import { BuscadorVinculo, IconoEstado, ItemMenu, MenuFicha, SepMenu, TituloMenu, Z_FICHA, ddmm, type OpcionVinculo } from "./VinculoUi";
 import { ImpuestosDelGrupo, type ImpuestosDeLaFicha } from "./ImpuestosDelGrupo";
@@ -52,6 +52,8 @@ export type FichaExtractoProps = {
   // se esta mirando, con su tilde de pagado: antes estaban en un bloque aparte con los de todos los meses.
   impuestosDelMes?: (f: { company: string; bank: string; currency: string; mes: string }) => ImpuestosDeLaFicha | null;
   onImpuestosPagados?: (g: GrupoImpuestos, pagado: boolean) => void;
+  // 23/11/2026: cargar (y dejar linkeada) la comisión del extracto que nunca se cargó.
+  onCargarComisiones?: (movIds: number[]) => void;
 };
 
 export function FichaExtracto(p: FichaExtractoProps) {
@@ -126,12 +128,14 @@ export function FichaExtracto(p: FichaExtractoProps) {
               {ficha.completo && <span style={{ background: "#166534", color: "#fff", borderRadius: 999, padding: "3px 10px", fontWeight: 800, fontSize: 12.5 }}>✓ revisado y linkeado</span>}
               {!ficha.obligatorio && !ficha.completo && <span style={{ fontSize: 12, color: "#64748b" }}>anterior al 1/11/2026: no es obligatorio</span>}
             </div>
+            <ControlDeComisiones ficha={ficha} money={(n) => p.money(n, ficha.currency)} pagadoPorMes={!!p.impuestosDelMes?.(ficha)?.pago} onAceptar={(x) => x.sugerencia?.tipo === "pago" && p.onLink(x.mov.id, "pago", String(x.sugerencia.pagoId))} onCargar={p.onCargarComisiones} />
             {p.impuestosDelMes && p.onImpuestosPagados ? (
               <ImpuestosDelGrupo
                 titulo={`${TITULO_COMISIONES_CUENTA} de este mes`}
                 datos={p.impuestosDelMes(ficha)}
                 money={(n) => p.money(n)}
                 onPagado={p.onImpuestosPagados}
+                bloqueo={controlDeComisiones(ficha).sugeridas.length > 0 && !p.impuestosDelMes(ficha)?.pago ? "Primero aceptá los cargos ya cargados (arriba): si lo tildás ahora se descuentan dos veces." : undefined}
               />
             ) : (
               <div style={{ fontSize: 12.5, color: "#7c3aed" }}>
@@ -363,6 +367,74 @@ export function FichaExtracto(p: FichaExtractoProps) {
           }}
           onCerrar={() => setBuscar(null)}
         />
+      )}
+    </div>
+  );
+}
+
+// CONTROL DE COMISIONES DEL MES (Nicolas, 23/11/2026): el total que cobro el banco, cuanto de eso ya esta cargado y
+// linkeado, cuanto esta cargado pero falta linkear y que cargos faltan cargar, con el boton para cargarlos ahi mismo.
+function ControlDeComisiones({ ficha, money, pagadoPorMes, onAceptar, onCargar }: { ficha: FichaMes; money: (n: number) => string; pagadoPorMes: boolean; onAceptar: (x: MovimientoFicha) => void; onCargar?: (movIds: number[]) => void }) {
+  const c = controlDeComisiones(ficha);
+  if (!c.cantidad) return null;
+  const cubierto = pagadoPorMes && c.sugeridas.length === 0;
+  const ok = c.cierra || cubierto;
+  const boton: React.CSSProperties = { border: "1px solid #7c3aed", background: "#fff", color: "#5b21b6", borderRadius: 7, padding: "2px 9px", cursor: "pointer", fontSize: 12, fontWeight: 700 };
+  const fila: React.CSSProperties = { display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, padding: "3px 0", borderTop: "1px solid #ede9fe" };
+  return (
+    <div data-control-comisiones style={{ background: ok ? "#f0fdf4" : "#faf5ff", border: `1px solid ${ok ? "#bbf7d0" : "#ddd6fe"}`, borderRadius: 10, padding: 10, display: "grid", gap: 6 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "center", fontSize: 12.5 }}>
+        <b style={{ fontSize: 13, color: "#5b21b6" }}>Control de comisiones · el banco cobró {money(c.total)}</b>
+        <span style={{ color: "#64748b" }}>{c.cantidad} cargo(s)</span>
+        <span style={{ color: "#166534" }}>✓ cargado y linkeado {money(c.linkeadas.monto)}</span>
+        {c.sugeridas.length > 0 && <span style={{ color: "#b45309" }}>cargado, falta linkear {money(c.sugeridasMonto)}</span>}
+        {c.faltan.length > 0 && <b style={{ color: cubierto ? "#166534" : "#b91c1c" }}>{cubierto ? `pagado con el tilde del mes ${money(c.faltaMonto)}` : `FALTA CARGAR ${money(c.faltaMonto)}`}</b>}
+        {ok && <span style={{ background: "#166534", color: "#fff", borderRadius: 999, padding: "2px 9px", fontWeight: 800, fontSize: 12 }}>✓ coincide con el banco</span>}
+      </div>
+      {c.sugeridas.length > 0 && (
+        <div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, fontWeight: 700, color: "#b45309" }}>
+            Ya están cargados; falta linkearlos ({c.sugeridas.length})
+            <button type="button" data-aceptar-todas style={boton} onClick={() => c.sugeridas.forEach(onAceptar)}>
+              Linkear los {c.sugeridas.length}
+            </button>
+          </div>
+          {c.sugeridas.map((x) => (
+            <div key={x.mov.id} style={fila}>
+              <span style={{ width: 74 }}>{ddmm(x.mov.date)}</span>
+              <span style={{ flex: 1 }}>{x.mov.concept}</span>
+              <span style={{ color: "#64748b" }}>{x.sugerencia?.texto}</span>
+              <b style={{ width: 120, textAlign: "right" }}>{money(Math.abs(Number(x.mov.amount)))}</b>
+              <button type="button" style={boton} onClick={() => onAceptar(x)}>
+                Linkear
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+      {c.faltan.length > 0 && !cubierto && (
+        <div>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>
+            Falta la carga ({c.faltan.length})
+            {onCargar && (
+              <button type="button" data-cargar-todas style={boton} onClick={() => onCargar(c.faltan.map((x) => x.mov.id))}>
+                Cargar y linkear los {c.faltan.length}
+              </button>
+            )}
+          </div>
+          {c.faltan.map((x) => (
+            <div key={x.mov.id} style={fila}>
+              <span style={{ width: 74 }}>{ddmm(x.mov.date)}</span>
+              <span style={{ flex: 1 }}>{x.mov.concept}</span>
+              <b style={{ width: 120, textAlign: "right" }}>{money(Math.abs(Number(x.mov.amount)))}</b>
+              {onCargar && (
+                <button type="button" data-cargar={x.mov.id} style={boton} onClick={() => onCargar([x.mov.id])}>
+                  Cargar y linkear
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

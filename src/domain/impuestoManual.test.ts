@@ -118,3 +118,29 @@ describe("constatacion contra VEP", () => {
     expect(faltaElVep(pagos, new Set([2])).map((p: any) => p.id)).toEqual([1]);
   });
 });
+
+// Nicolas, 23/11/2026: "sumar todos los valores de comisiones y asegurarse que sea el correcto [...] no suma 2 veces
+// [...] si alguna no se cargo marca que falta la carga".
+describe("control de comisiones del mes", () => {
+  const { controlDeComisiones } = require("./fichaExtracto");
+  const mov = (id: number, amount: number, concept: string, balance: number): MovimientoF => ({ id, company: "BGA", bank: "Santander", currency: "ARS", date: "2026-11-16", concept, movementType: "debito", amount, balance });
+  const movs = [mov(1, 100, "IMPUESTO LEY 25.413 DEBITO 0,6%", 900), mov(2, 50, "IMPUESTO LEY 25.413 CREDITO 0,6%", 850), mov(3, 30, "IVA 21%", 820), mov(4, 500, "TRANSFERENCIA A PEREZ", 320)];
+  const pago = (id: number, amount: number, extra: Partial<PagoBancoF> = {}): PagoBancoF => ({ id, company: "BGA", date: "2026-11-16", amount, supplier: "Banco Santander", description: "cargo", paymentMethod: "debito", impuestoBanco: true, cuentaId: "banco|BGA|santander|ARS", ...extra });
+
+  it("el total es lo que cobro el banco y cada cargo cuenta una sola vez", () => {
+    const [f] = fichasDeExtracto(movs, [pago(10, 100, { bankEntryId: 1 }), pago(11, 50)], []);
+    const c = controlDeComisiones(f);
+    expect(c.total).toBe(180);
+    expect(c.linkeadas).toEqual({ n: 1, monto: 100 });
+    expect(c.sugeridasMonto).toBe(50);
+    expect(c.faltan.map((x: any) => x.mov.id)).toEqual([3]);
+    expect(c.linkeadas.monto + c.sugeridasMonto + c.faltaMonto).toBe(c.total);
+    expect(c.cierra).toBe(false);
+  });
+
+  it("cierra cuando todas estan cargadas y linkeadas; la transferencia no entra", () => {
+    const [f] = fichasDeExtracto(movs, [pago(10, 100, { bankEntryId: 1 }), pago(11, 50, { bankEntryId: 2 }), pago(12, 30, { bankEntryId: 3 })], []);
+    const c = controlDeComisiones(f);
+    expect(c).toMatchObject({ total: 180, cantidad: 3, faltaMonto: 0, cierra: true });
+  });
+});

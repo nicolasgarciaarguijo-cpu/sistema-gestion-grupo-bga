@@ -24,11 +24,14 @@ export function ImpuestosDelGrupo({
   datos,
   money,
   onPagado,
+  bloqueo,
 }: {
   titulo: string; // "Comisiones, tasas e intereses (cuenta)" / "(tarjeta)"
   datos: ImpuestosDeLaFicha | null;
   money: (n: number) => string;
   onPagado: (g: GrupoImpuestos, pagado: boolean) => void;
+  // Motivo por el que todavia no se puede tildar (ej. hay cargos ya cargados sin linkear: se descontarian dos veces).
+  bloqueo?: string;
 }) {
   const [abierto, setAbierto] = useState(false);
   if (!datos) return null;
@@ -61,7 +64,7 @@ export function ImpuestosDelGrupo({
         >
           <input
             type="checkbox"
-            disabled={!cuenta && !pago}
+            disabled={(!cuenta && !pago) || (!!bloqueo && !pago)}
             checked={!!pago}
             onChange={(e) => {
               if (!e.target.checked && !window.confirm("¿Destildar? Se borra el pago asentado y la cuenta vuelve a tener esa plata.")) return;
@@ -71,6 +74,7 @@ export function ImpuestosDelGrupo({
           {pago ? `✓ pagado el ${ddmm(pago.fecha)}` : `pagado · vence ${ddmm(g.fecha)}`}
         </label>
       </div>
+      {bloqueo && !pago && <div style={{ fontSize: 12, color: "#b45309", fontWeight: 700 }}>{bloqueo}</div>}
       <div style={{ fontSize: 12, color: cuenta ? "#64748b" : "#b91c1c" }}>
         {cuenta ? `Sale de ${cuenta.nombre}.` : `Sin cuenta de ${g.banco || "ese banco"}: creala en Cuentas para poder asentar el pago.`}
       </div>
