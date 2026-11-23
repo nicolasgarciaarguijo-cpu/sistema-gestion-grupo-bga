@@ -474,7 +474,7 @@ import { FacturaCompraModal, ALICUOTAS_IVA, ivaDe, type FacturaForm, type MedioP
 import { estadoDePagos, pagosDeFactura, pagosVinculados, vinculoDePagos } from "./domain/pagosDeFactura";
 import { filasParaEstudio, ANCHOS_ESTUDIO } from "./domain/facturasParaEstudio";
 import { libroXlsx, descargarXlsx } from "./lib/xlsx";
-import { aplicarPrecios } from "./domain/planillaStock";
+import { aplicarPrecios, aplicarReferencias } from "./domain/planillaStock";
 import { aplicarRecuentos } from "./domain/planillaCantidades";
 import { FacturasCompraPanel, type FilaFactura } from "./tabs/FacturasCompra";
 import { nuevoProveedor } from "./domain/altaProveedor";
@@ -14764,6 +14764,12 @@ Escribi CERRAR para confirmar:`
     setStockItems((prev) => aplicarPrecios(prev, cambios));
   };
 
+  // REFERENCIA DE "MAS BARATO" (Nicolas, 23/11/2026): precio mas bajo visto y quien lo vende. Solo se anota en el
+  // articulo: el precio con que se cotiza (unitPrice) no se toca.
+  const aplicarReferenciasDePlanilla = (referencias: Array<{ id: number; masBarato: number | null; proveedor: string }>) => {
+    setStockItems((prev) => aplicarReferencias(prev, referencias));
+  };
+
   // CANTIDADES CORREGIDAS EN LA PLANILLA (Nicolas, 22/11/2026): llegan solo las que el usuario eligio en la ventana.
   // La diferencia queda anotada como movimiento del articulo.
   const aplicarRecuentosDePlanilla = (cambios: Array<{ id: number; enPlanilla: number }>) => {
@@ -26260,6 +26266,7 @@ Escribi CERRAR para confirmar:`
           applyStockIncrease={applyStockIncrease}
           aplicarPreciosDePlanilla={aplicarPreciosDePlanilla}
           aplicarRecuentosDePlanilla={aplicarRecuentosDePlanilla}
+          aplicarReferenciasDePlanilla={aplicarReferenciasDePlanilla}
           addStockItem={addStockItem}
           updateStockItem={updateStockItem}
           removeStockItem={removeStockItem}

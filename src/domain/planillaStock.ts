@@ -10,7 +10,9 @@
 // Solo se tocan PRECIOS. La planilla no crea articulos, no borra, no cambia cantidades ni descripciones.
 
 export type HojaPlanilla = { nombre: string; filas: any[][] };
-export type FilaPlanilla = { hoja: string; fila: number; codigo: string; descripcion: string; unidad: string; precio: number | null };
+// masBarato / proveedorMasBarato (23/11/2026): "el precio mas bajo y quien es el proveedor que lo vende". Son las dos
+// columnas de referencia de la planilla. undefined = la hoja no trae esas columnas (no se toca lo que haya anotado).
+export type FilaPlanilla = { hoja: string; fila: number; codigo: string; descripcion: string; unidad: string; precio: number | null; masBarato?: number | null; proveedorMasBarato?: string };
 
 const norm = (v: any) =>
   String(v ?? "")
@@ -78,6 +80,9 @@ export function leerPlanilla(hojas: HojaPlanilla[]): { filas: FilaPlanilla[]; ho
     // asi: 663 formulas sin valor guardado), se hace la misma cuenta aca.
     const cKg = enc.findIndex((t) => t.startsWith("kg/barra") || t.startsWith("kg / barra"));
     const cPorKg = enc.findIndex((t) => t.includes("$/kg"));
+    const cProveedor = enc.findIndex((t) => t.startsWith("proveedor mas barato"));
+    const cMasBarato = enc.findIndex((t) => t.startsWith("mas barato"));
+    const conReferencia = cProveedor >= 0 && cMasBarato >= 0;
     hojasLeidas.push(hoja.nombre);
     for (let i = iEnc + 1; i < hoja.filas.length; i++) {
       const f = hoja.filas[i] || [];
@@ -96,13 +101,22 @@ export function leerPlanilla(hojas: HojaPlanilla[]): { filas: FilaPlanilla[]; ho
         descripcion: cDesc >= 0 ? String(f[cDesc] ?? "").trim() : "",
         unidad: cUnidad >= 0 ? String(f[cUnidad] ?? "").trim() : "",
         precio: precio != null && precio > 0 ? Math.round(precio * 100) / 100 : null,
+        ...(conReferencia
+          ? (() => {
+              const mb = aNumero(f[cMasBarato]);
+              return { masBarato: mb != null && mb > 0 ? Math.round(mb * 100) / 100 : null, proveedorMasBarato: String(f[cProveedor] ?? "").trim() };
+            })()
+          : {}),
       });
     }
   });
   return { filas, hojasLeidas, hojasSalteadas };
 }
 
-export type ArticuloConPrecio = { id: number; code?: string; description?: string; unitPrice?: number };
+export type ArticuloConPrecio = { id: number; code?: string; description?: string; unitPrice?: number; cheapestPrice?: number; cheapestSupplier?: string };
+// La referencia de "mas barato" que la planilla trae distinta de la anotada en el articulo. masBarato null = la
+// planilla la dejo vacia (se borra la anotada).
+export type ReferenciaMasBarato = { id: number; masBarato: number | null; proveedor: string };
 export type CambioDePrecio = {
   id: number;
   codigo: string;
@@ -124,12 +138,14 @@ export type ComparacionPlanilla = {
   noAplicables: NoAplicable[];
   // Articulos del sistema con codigo que la planilla no trae.
   faltanEnPlanilla: number;
+  // Referencias de "mas barato" a anotar. No son precios: no cambian con que se cotiza.
+  referencias?: ReferenciaMasBarato[];
 };
 
 const soloLetrasYNumeros = (v: any) => norm(v).replace(/[^a-z0-9]+/g, "");
 
 export function compararPlanilla(filas: FilaPlanilla[], articulos: ArticuloConPrecio[]): ComparacionPlanilla {
-  const out: ComparacionPlanilla = { suben: [], bajan: [], iguales: 0, noAplicables: [], faltanEnPlanilla: 0 };
+  const out: ComparacionPlanilla = { suben: [], bajan: [], iguales: 0, noAplicables: [], faltanEnPlanilla: 0, referencias: [] };
   const porCodigo = new Map<string, ArticuloConPrecio[]>();
   articulos.forEach((a) => {
     const c = String(a.code || "").trim().toUpperCase();
@@ -149,6 +165,12 @@ export function compararPlanilla(filas: FilaPlanilla[], articulos: ArticuloConPr
     if (arts.length === 0) return no("no está en el stock del sistema (la planilla no da de alta artículos)");
     if (arts.length > 1) return no(`el código está en ${arts.length} artículos del sistema: hay que corregirlo antes`);
     const a = arts[0];
+    if (f.masBarato !== undefined && grupo.length === 1) {
+      const proveedor = f.masBarato != null ? f.proveedorMasBarato || "" : "";
+      const anotado = Number(a.cheapestPrice || 0) > 0 ? Math.round(Number(a.cheapestPrice) * 100) / 100 : null;
+      const distinto = f.masBarato == null ? anotado != null : anotado == null || Math.abs(anotado - f.masBarato) >= 0.005;
+      if (distinto || proveedor !== String(a.cheapestSupplier || "")) out.referencias!.push({ id: a.id, masBarato: f.masBarato, proveedor });
+    }
     const antes = Math.round(Number(a.unitPrice || 0) * 100) / 100;
     const despues = f.precio;
     if (Math.abs(despues - antes) < 0.005) {
@@ -188,4 +210,15 @@ export function aplicarPrecios<T extends { id: number; unitPrice?: number }>(art
   const nuevo = new Map(cambios.map((c) => [c.id, c.despues]));
   if (nuevo.size === 0) return articulos;
   return articulos.map((a) => (nuevo.has(a.id) ? { ...a, unitPrice: nuevo.get(a.id)! } : a));
+}
+
+/** Anota la referencia de "mas barato" en los articulos. Es informativa: el precio con que se cotiza no se toca. */
+export function aplicarReferencias<T extends { id: number; cheapestPrice?: number; cheapestSupplier?: string }>(articulos: T[], referencias: ReferenciaMasBarato[]): T[] {
+  const nuevo = new Map(referencias.map((r) => [r.id, r]));
+  if (nuevo.size === 0) return articulos;
+  return articulos.map((a) => {
+    const r = nuevo.get(a.id);
+    if (!r) return a;
+    return { ...a, cheapestPrice: r.masBarato ?? undefined, cheapestSupplier: r.masBarato != null ? r.proveedor : undefined };
+  });
 }

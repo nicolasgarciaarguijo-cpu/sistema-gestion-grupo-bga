@@ -50,6 +50,8 @@ type StockTabProps = {
   // 21/11/2026: precios leidos de la planilla de costos vinculada (solo lo que el usuario dejo tildado).
   aplicarPreciosDePlanilla: (cambios: Array<{ id: number; despues: number }>) => void;
   aplicarRecuentosDePlanilla: (cambios: Array<{ id: number; enPlanilla: number }>) => void;
+  // 23/11/2026: la referencia de "mas barato" (precio y proveedor) que trae la planilla. Informativa.
+  aplicarReferenciasDePlanilla: (referencias: Array<{ id: number; masBarato: number | null; proveedor: string }>) => void;
   addStockItem: () => void;
   registerStockMovement: (
     itemId: number,
@@ -109,6 +111,7 @@ export function StockTab({
   applyStockIncrease,
   aplicarPreciosDePlanilla,
   aplicarRecuentosDePlanilla,
+  aplicarReferenciasDePlanilla,
   addStockItem,
   registerStockMovement,
   updateStockItem,
@@ -230,6 +233,8 @@ export function StockTab({
           { key: "unit", label: "Unidad", tipo: "texto", obligatorio: true },
           { key: "quantity", label: "Cantidad", tipo: "numero" },
           { key: "unitPrice", label: "Precio unitario", tipo: "numero" },
+          { key: "cheapestPrice", label: "Más barato visto (sin IVA)", tipo: "numero" },
+          { key: "cheapestSupplier", label: "Proveedor más barato", tipo: "texto" },
           { key: "active", label: "Activo", tipo: "check" },
         ];
         return (
@@ -361,7 +366,7 @@ export function StockTab({
                 <ButtonLike onClick={anchosStock.toggleCompacto} secondary>
                   {anchosStock.esCompacto ? "Ancho normal" : "Compacto"}
                 </ButtonLike>
-                <BotonPlanillaStock articulos={visibleStockItems} onAplicar={aplicarPreciosDePlanilla} />
+                <BotonPlanillaStock articulos={visibleStockItems} onAplicar={aplicarPreciosDePlanilla} onReferencias={aplicarReferenciasDePlanilla} />
                 <BotonSincronizarPlanilla articulos={visibleStockItems} onRecuentos={aplicarRecuentosDePlanilla} />
                 <span style={styles.muted}>Aumento %</span>
                 <NumInput
@@ -426,6 +431,8 @@ export function StockTab({
                 <col style={colDato} />
                 <col style={colDato} />
                 <col style={colDato} />
+                <col style={colDato} />
+                <col style={colDato} />
                 <col style={colFlexible} />
                 <col style={colAcciones} />
               </colgroup>
@@ -448,6 +455,8 @@ export function StockTab({
                   </th>
                   <th style={{ ...thColumna, textAlign: "right" }}>$ Unit.</th>
                   <th style={{ ...thColumna, textAlign: "right" }}>Valor stock</th>
+                  <th style={{ ...thColumna, textAlign: "right" }} title="El precio más bajo que se vio en el mercado, sin IVA. Es una referencia: se cotiza con $ Unit.">Más barato</th>
+                  <th style={thColumna} title="Quién lo vende a ese precio">Proveedor más barato</th>
                   <th style={thFlexible}>Grupo · ubicacion · empresa</th>
                   <th style={thAcciones} />
                 </tr>
@@ -455,7 +464,7 @@ export function StockTab({
               <tbody>
                 {filteredGeneralStock.length === 0 && (
                   <tr>
-                    <td colSpan={7} style={{ ...styles.muted, textAlign: "center", padding: 12 }}>
+                    <td colSpan={9} style={{ ...styles.muted, textAlign: "center", padding: 12 }}>
                       No hay materiales que coincidan con el filtro.
                     </td>
                   </tr>
@@ -506,6 +515,17 @@ export function StockTab({
                     <td style={{ ...tdDato, textAlign: "right", fontWeight: 700 }}>
                       {money(Number(item.quantity || 0) * Number(item.unitPrice || 0))}
                     </td>
+                    {(() => {
+                      const mb = Number((item as any).cheapestPrice || 0);
+                      const prov = String((item as any).cheapestSupplier || "");
+                      const conviene = mb > 0 && mb < Number(item.unitPrice || 0) - 0.005 && !prov.startsWith("Lista actual");
+                      return (
+                        <>
+                          <td data-mas-barato={item.code} style={{ ...tdDato, textAlign: "right", color: conviene ? "#166534" : "#94a3b8", fontWeight: conviene ? 700 : 400 }}>{mb > 0 ? money(mb) : "—"}</td>
+                          <td style={{ ...tdDato, color: conviene ? "#166534" : "#94a3b8" }} title={prov}>{prov || "—"}</td>
+                        </>
+                      );
+                    })()}
                     <td style={{ ...tdFlexible, color: "#64748b" }}>
                       <span style={{ display: "inline-flex", gap: 10, alignItems: "center" }}>
                         <span title="Grupo">{item.group || "—"}</span>

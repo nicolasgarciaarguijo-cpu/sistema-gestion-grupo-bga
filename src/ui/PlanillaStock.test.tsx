@@ -61,3 +61,26 @@ describe("ventana de la planilla de precios", () => {
     expect(div.querySelector("[data-resumen-planilla]")!.textContent).toContain("No encontré ninguna hoja");
   });
 });
+
+// 23/11/2026: las referencias de "mas barato" se anotan con su propio boton y no son precios.
+describe("referencias de mas barato en la ventana", () => {
+  const refs = [{ id: 1, masBarato: 900, proveedor: "All Sur (-10 %)" }];
+  it("se anotan aparte, aunque no haya ningun precio para actualizar", () => {
+    const onReferencias = jest.fn();
+    const onAplicar = jest.fn();
+    const div = document.createElement("div");
+    document.body.appendChild(div);
+    const c: ComparacionPlanilla = { suben: [], bajan: [], iguales: 40, noAplicables: [], faltanEnPlanilla: 0, referencias: refs };
+    act(() => createRoot(div).render(<VentanaPlanillaStock nombre="P.xlsx" comparacion={c} hojasLeidas={["Herrajes"]} onAplicar={onAplicar} onReferencias={onReferencias} onCerrar={() => {}} />));
+    expect(div.querySelector("[data-referencias-planilla]")!.textContent).toContain("no cambian el precio con que se cotiza");
+    act(() => (div.querySelector("[data-anotar-referencias]") as HTMLButtonElement).click());
+    expect(onReferencias).toHaveBeenCalledWith(refs);
+    expect(onAplicar).not.toHaveBeenCalled();
+    expect(div.querySelector("[data-referencias-planilla]")!.textContent).toContain("1 anotada");
+    expect(div.querySelector("[data-anotar-referencias]")).toBeNull();
+  });
+  it("sin referencias no aparece el bloque", () => {
+    const { div } = pintar(comparacion);
+    expect(div.querySelector("[data-referencias-planilla]")).toBeNull();
+  });
+});

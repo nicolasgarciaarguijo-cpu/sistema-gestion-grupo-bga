@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-23a",
+    fecha: "23/11/2026",
+    titulo: "El stock muestra quién vende más barato",
+    items: [
+      {
+        titulo: "Columnas «Más barato» y «Proveedor más barato» en Stock",
+        que: "Cada artículo puede llevar anotado el precio más bajo que se vio en el mercado (sin IVA) y quién lo vende. Es solo una referencia para saber dónde conviene comprar: se sigue cotizando con el precio unitario de siempre. En verde, los artículos donde hay un proveedor más barato que el precio cargado.",
+        como: "La planilla de costos trae dos columnas nuevas, «Más barato (sin IVA)» y «Proveedor más barato». En Stock → «Leer planilla y actualizar precios» aparece un aviso amarillo con el botón «Anotar las referencias»: eso las copia al stock sin tocar ningún precio. También se corrigen a mano desde la ficha del artículo.",
+        tab: "stock",
+      },
+    ],
+  },
+  {
     id: "2026-11-22a",
     fecha: "22/11/2026",
     titulo: "Las cantidades del stock se corrigen también desde la planilla",

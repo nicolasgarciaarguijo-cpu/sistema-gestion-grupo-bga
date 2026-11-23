@@ -1,7 +1,7 @@
 // LEER LA PLANILLA DE PRECIOS DEL STOCK (Nicolas, 21/11/2026). El boton lee la planilla vinculada y muestra que
 // cambiaria; recien al apretar "Actualizar" se tocan los precios. Reglas en domain/planillaStock.ts.
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { compararPlanilla, leerPlanilla, tildadosPorDefecto, type ArticuloConPrecio, type CambioDePrecio, type ComparacionPlanilla } from "../domain/planillaStock";
+import { compararPlanilla, leerPlanilla, tildadosPorDefecto, type ArticuloConPrecio, type CambioDePrecio, type ComparacionPlanilla, type ReferenciaMasBarato } from "../domain/planillaStock";
 import { anotarLectura, archivoDe, desvincularPlanilla, elegirPlanilla, hojasDelExcel, planillaVinculada, sePuedeVincular, ultimaLectura, type UltimaLectura } from "../lib/planillaVinculada";
 
 const plata = (n: number) => `$ ${n.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -65,16 +65,20 @@ export function VentanaPlanillaStock({
   onAplicar,
   onCerrar,
   onCambiarPlanilla,
+  onReferencias,
 }: {
   nombre: string;
   comparacion: ComparacionPlanilla;
   hojasLeidas: string[];
+  onReferencias?: (referencias: ReferenciaMasBarato[]) => void;
   onAplicar: (cambios: Array<{ id: number; despues: number }>) => void;
   onCerrar: () => void;
   onCambiarPlanilla?: () => void;
 }) {
   const [tildados, setTildados] = useState<Set<number>>(() => new Set(tildadosPorDefecto(comparacion)));
   const [verNo, setVerNo] = useState(false);
+  const [anotadas, setAnotadas] = useState(0);
+  const referencias = comparacion.referencias || [];
   const alTildar = (id: number) =>
     setTildados((prev) => {
       const s = new Set(prev);
@@ -120,6 +124,29 @@ export function VentanaPlanillaStock({
             <div style={{ color: "#64748b", fontSize: 12, marginTop: 2 }}>{comparacion.faltanEnPlanilla} artículos del sistema no figuran en la planilla: quedan como están.</div>
           )}
         </div>
+
+        {onReferencias && referencias.length > 0 && (
+          <div data-referencias-planilla style={{ marginTop: 10, padding: "8px 10px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <span>
+              La planilla trae <b>{referencias.length}</b> referencia{referencias.length === 1 ? "" : "s"} de «más barato» (precio y proveedor). Son solo para saber dónde conviene comprar: <b>no cambian el precio con que se cotiza</b>.
+            </span>
+            {anotadas > 0 ? (
+              <span style={{ marginLeft: "auto", color: "#166534", fontWeight: 700 }}>✓ {anotadas} anotada{anotadas === 1 ? "" : "s"}</span>
+            ) : (
+              <button
+                type="button"
+                data-anotar-referencias
+                style={{ ...btn, marginLeft: "auto" }}
+                onClick={() => {
+                  onReferencias(referencias);
+                  setAnotadas(referencias.length);
+                }}
+              >
+                Anotar las referencias
+              </button>
+            )}
+          </div>
+        )}
 
         <Tabla titulo="Suben" color="#166534" filas={comparacion.suben} tildados={tildados} alTildar={alTildar} alTildarTodos={alTildarTodos} />
         <Tabla
@@ -176,7 +203,7 @@ const fechaCorta = (ms: number | string) => {
 };
 
 /** El boton de la solapa Stock: lee la planilla vinculada (o pide elegirla) y abre la ventana con los cambios. */
-export function BotonPlanillaStock({ articulos, onAplicar }: { articulos: ArticuloConPrecio[]; onAplicar: (cambios: Array<{ id: number; despues: number }>) => void }) {
+export function BotonPlanillaStock({ articulos, onAplicar, onReferencias }: { articulos: ArticuloConPrecio[]; onReferencias?: (referencias: ReferenciaMasBarato[]) => void; onAplicar: (cambios: Array<{ id: number; despues: number }>) => void }) {
   const [leyendo, setLeyendo] = useState(false);
   const [error, setError] = useState("");
   const [vista, setVista] = useState<null | { nombre: string; modificado: number; comparacion: ComparacionPlanilla; hojasLeidas: string[] }>(null);
@@ -279,6 +306,7 @@ export function BotonPlanillaStock({ articulos, onAplicar }: { articulos: Articu
           comparacion={vista.comparacion}
           hojasLeidas={vista.hojasLeidas}
           onCerrar={() => cerrar(0)}
+          onReferencias={onReferencias}
           onCambiarPlanilla={
             sePuedeVincular()
               ? async () => {

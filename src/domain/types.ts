@@ -1015,6 +1015,9 @@ export type StockItem = {
   unit: string;
   quantity: number;
   unitPrice: number;
+  // 23/11/2026: referencia de mercado que trae la planilla de costos. Es informativa: NO se cotiza con esto.
+  cheapestPrice?: number;
+  cheapestSupplier?: string;
   periodicityMonths: number;
   active: boolean;
 };

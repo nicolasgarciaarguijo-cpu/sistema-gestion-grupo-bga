@@ -113,3 +113,55 @@ describe("comparar contra el stock", () => {
     expect(aplicarPrecios(stock, [])).toBe(stock);
   });
 });
+
+// Nicolas, 23/11/2026: "quiero 2 columnas mas: el precio mas bajo y quien es el proveedor que lo vende. De todas formas
+// cotizaremos con el precio que escojamos".
+describe("referencia de mas barato", () => {
+  const { aplicarReferencias } = require("./planillaStock");
+  const conRef: HojaPlanilla[] = [
+    {
+      nombre: "Herrajes",
+      filas: [
+        ["Código", "Descripción", "Unidad", "Costo neto", "Más barato (sin IVA)", "Proveedor más barato"],
+        ["HER-001", "Bisagra", "u", 1000, 900, "All Sur (-10 %)"],
+        ["HER-002", "Corredera", "u", 2000, 2000, "Lista actual (el más barato que vi: Cima, +9 %)"],
+        ["HER-003", "Tirador", "u", 3000, "", ""],
+      ],
+    },
+  ];
+  const stock = [
+    { id: 1, code: "HER-001", description: "Bisagra", unitPrice: 1000 },
+    { id: 2, code: "HER-002", description: "Corredera", unitPrice: 2000, cheapestPrice: 2000, cheapestSupplier: "Lista actual (el más barato que vi: Cima, +9 %)" },
+    { id: 3, code: "HER-003", description: "Tirador", unitPrice: 3000, cheapestPrice: 2500, cheapestSupplier: "Viejo" },
+  ];
+
+  it("la columna de mas barato no se confunde con la de precio", () => {
+    const { filas } = leerPlanilla(conRef);
+    expect(filas.map((f) => [f.codigo, f.precio, f.masBarato, f.proveedorMasBarato])).toEqual([
+      ["HER-001", 1000, 900, "All Sur (-10 %)"],
+      ["HER-002", 2000, 2000, "Lista actual (el más barato que vi: Cima, +9 %)"],
+      ["HER-003", 3000, null, ""],
+    ]);
+  });
+
+  it("propone solo las referencias que cambian, y no toca los precios", () => {
+    const c = compararPlanilla(leerPlanilla(conRef).filas, stock);
+    expect(c.suben).toEqual([]);
+    expect(c.bajan).toEqual([]);
+    expect(c.iguales).toBe(3);
+    expect(c.referencias).toEqual([
+      { id: 1, masBarato: 900, proveedor: "All Sur (-10 %)" },
+      { id: 3, masBarato: null, proveedor: "" }, // la planilla la vacio: se borra la anotada
+    ]);
+    const r = aplicarReferencias(stock, c.referencias);
+    expect(r[0]).toEqual({ ...stock[0], cheapestPrice: 900, cheapestSupplier: "All Sur (-10 %)" });
+    expect(r[1]).toBe(stock[1]);
+    expect(r[2].cheapestPrice).toBeUndefined();
+    expect(r.map((a: any) => a.unitPrice)).toEqual([1000, 2000, 3000]);
+  });
+
+  it("una planilla sin esas columnas no borra lo anotado", () => {
+    const sin: HojaPlanilla[] = [{ nombre: "Herrajes", filas: [["Código", "Descripción", "Unidad", "Costo neto"], ["HER-003", "Tirador", "u", 3000]] }];
+    expect(compararPlanilla(leerPlanilla(sin).filas, stock).referencias).toEqual([]);
+  });
+});
