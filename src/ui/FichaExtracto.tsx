@@ -16,7 +16,7 @@ const nombreMes = (m: string) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(
 
 // Se linkea contra el PAGO cargado (que ya dice su factura), no contra la factura sola: desde el 1/11 el banco
 // constata, asi que un debito linkeado a una factura sin pago dejaria la plata sin salir del sistema.
-export type TipoLink = "pago" | "resumen" | "trabajo" | "interno";
+export type TipoLink = "pago" | "resumen" | "trabajo" | "interno" | "cobro";
 
 // Seccion de renglones del Calendario anual, igual que la que usa el bloque del banco.
 export type SeccionRenglon = { key: string; label: string; items: { key: string; label: string }[] };
@@ -62,6 +62,8 @@ export type FichaExtractoProps = {
   puedeVerInternos?: boolean;
   // 25/11/2026: una transferencia que cancela varias facturas se linkea con varios pagos que suman su importe.
   onLinkVarios?: (movId: number, pagoIds: number[]) => void;
+  // 25/11/2026: el credito del banco se linkea con el cobro (o los cobros) cargados en los trabajos.
+  onLinkCobros?: (movId: number, cobroIds: number[]) => void;
 };
 
 export function FichaExtracto(p: FichaExtractoProps) {
@@ -70,6 +72,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
   const [menu, setMenu] = useState<null | { x: number; y: number; m: MovimientoFicha }>(null);
   const [buscar, setBuscar] = useState<null | { tipo: TipoLink; m: MovimientoFicha }>(null);
   const [varios, setVarios] = useState<null | MovimientoFicha>(null);
+  const [cobrosDe, setCobrosDe] = useState<null | MovimientoFicha>(null);
   // Elegir el renglon del Calendario para este movimiento (buscador, no un select suelto en la fila).
   const [renglonDe, setRenglonDe] = useState<null | MovimientoFicha>(null);
   const opcionesRenglon = useMemo<OpcionVinculo[]>(
@@ -90,7 +93,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
     // Solo depende del mes que se esta mirando; la sugerencia es pura.
     [ficha, p.sugerenciaRenglon]
   );
-  const TITULOS: Record<TipoLink, string> = { pago: "Linkear con un pago cargado (y su factura)", resumen: "Pago del resumen de una tarjeta", trabajo: "Cobro de un trabajo", interno: "Movimiento interno: elegir la operación exacta" };
+  const TITULOS: Record<TipoLink, string> = { pago: "Linkear con un pago cargado (y su factura)", resumen: "Pago del resumen de una tarjeta", trabajo: "Cobro de un trabajo", interno: "Movimiento interno: elegir la operación exacta", cobro: "Cobros cargados en los trabajos" };
 
   return (
     <div onClick={p.onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: Z_FICHA, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "30px 12px", overflowY: "auto" }}>
@@ -228,6 +231,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
               onClick={() => {
                 const s = menu.m.sugerencia!;
                 if (s.tipo === "pagos") p.onLinkVarios?.(menu.m.mov.id, s.pagoIds);
+                else if (s.tipo === "cobros") p.onLinkCobros?.(menu.m.mov.id, s.cobroIds);
                 else p.onLink(menu.m.mov.id, s.tipo === "pago" ? "pago" : "resumen", String(s.tipo === "pago" ? s.pagoId : s.statementId));
                 setMenu(null);
               }}
@@ -246,6 +250,16 @@ export function FichaExtracto(p: FichaExtractoProps) {
               🔗 {TITULOS[t]}…
             </ItemMenu>
           ))}
+          {menu.m.mov.movementType === "credito" && p.onLinkCobros && (
+            <ItemMenu
+              onClick={() => {
+                setCobrosDe(menu.m);
+                setMenu(null);
+              }}
+            >
+              🔗 Linkear con el cobro cargado (uno o varios que suman)…
+            </ItemMenu>
+          )}
           {menu.m.mov.movementType === "debito" && p.onLinkVarios && (
             <ItemMenu
               onClick={() => {
@@ -403,6 +417,20 @@ export function FichaExtracto(p: FichaExtractoProps) {
             setRenglonDe(null);
           }}
           onCerrar={() => setRenglonDe(null)}
+        />
+      )}
+      {cobrosDe && p.onLinkCobros && (
+        <BuscadorVarios
+          cobros
+          titulo={`Cobros · ${cobrosDe.mov.concept}`}
+          opciones={p.opciones("cobro", cobrosDe)}
+          objetivo={Math.abs(Number(cobrosDe.mov.amount))}
+          money={(n) => p.money(n, cobrosDe.mov.currency)}
+          onElegir={(ids) => {
+            p.onLinkCobros!(cobrosDe.mov.id, ids.map(Number));
+            setCobrosDe(null);
+          }}
+          onCerrar={() => setCobrosDe(null)}
         />
       )}
       {varios && p.onLinkVarios && (

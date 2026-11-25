@@ -53,6 +53,9 @@ export type MovimientoF = {
 };
 // impuestoBanco: un impuesto, tasa o interes cargado a mano el dia que se cobro (23/11/2026). cuentaId dice de que banco.
 export type PagoBancoF = { id: number; company: string; date: string; amount: number; supplier: string; description: string; paymentMethod?: string; bankEntryId?: number | null; impuestoBanco?: boolean; cuentaId?: string; haberes?: boolean };
+// Un COBRO cargado en un trabajo (Nicolas, 25/11/2026: "que el credito de banco se linkee con cada cobro"). El credito del
+// extracto se une con el cobro (o los cobros) que lo forman, igual que el debito con sus pagos.
+export type CobroF = { id: number; company: string; date: string; amount: number; trabajo: string; cliente: string; metodo?: string; cuentaId?: string; bankEntryId?: number | null; moneda?: "ARS" | "USD" };
 // Una operacion de Movimientos internos (un pase entre cuentas o entre empresas).
 export type PaseF = { id: number; date: string; amount: number; description: string };
 // MOVIMIENTO INTERNO SIN SU OPERACION (Nicolas, 25/11/2026): "en movimientos internos quiero linkear el movimiento exacto
@@ -67,7 +70,9 @@ export type SugerenciaMov =
   | { tipo: "pago"; pagoId: number; texto: string }
   | { tipo: "resumen"; statementId: number; texto: string }
   // Varios pagos del mismo proveedor que, sumados, dan el movimiento (una transferencia que cancela dos facturas).
-  | { tipo: "pagos"; pagoIds: number[]; texto: string };
+  | { tipo: "pagos"; pagoIds: number[]; texto: string }
+  // Uno o varios cobros cargados en los trabajos que dan el credito del banco.
+  | { tipo: "cobros"; cobroIds: number[]; texto: string };
 export type MovimientoFicha = { mov: MovimientoF; estado: EstadoMovimiento; detalle: string; sugerencia?: SugerenciaMov; rompe: boolean };
 
 export type FichaExtracto = {
@@ -99,7 +104,7 @@ const ETIQUETA_TIPO: Record<string, string> = {
 };
 
 // Por que un movimiento ya esta linkeado (o null si no lo esta).
-function linkDe(m: MovimientoF, pagosLinkeados: PagoBancoF[] | undefined, resumenes: ResumenTarjetaF[], pases: PaseF[] = []): string | null {
+function linkDe(m: MovimientoF, pagosLinkeados: PagoBancoF[] | undefined, resumenes: ResumenTarjetaF[], pases: PaseF[] = [], cobrosLinkeados?: CobroF[]): string | null {
   const pagoLinkeado = pagosLinkeados && pagosLinkeados.length === 1 ? pagosLinkeados[0] : undefined;
   // VARIOS PAGOS QUE SUMAN EL MOVIMIENTO (25/11/2026): una transferencia que cancela dos facturas del mismo proveedor.
   if (pagosLinkeados && pagosLinkeados.length > 1 && m.assignedTransferId == null) {
@@ -119,6 +124,12 @@ function linkDe(m: MovimientoF, pagosLinkeados: PagoBancoF[] | undefined, resume
   if (m.assignedCardStatementId != null) {
     const s = resumenes.find((x) => x.id === m.assignedCardStatementId);
     return `Paga el resumen · ${s ? `${s.nombre} cierre ${s.closingDate.split("-").reverse().join("/")}` : "tarjeta"}`;
+  }
+  if (cobrosLinkeados && cobrosLinkeados.length) {
+    const suma = r2(cobrosLinkeados.reduce((a, c) => a + Number(c.amount || 0), 0));
+    const quien = Array.from(new Set(cobrosLinkeados.map((c) => [c.trabajo, c.cliente].filter(Boolean).join(" · ")))).slice(0, 3).join(", ");
+    const dif = Math.abs(suma - Math.abs(Number(m.amount || 0))) > TOL;
+    return `${cobrosLinkeados.length === 1 ? "Cobro cargado" : `${cobrosLinkeados.length} cobros cargados`} · ${quien}${dif ? ` · ⚠ suman ${suma}, no el importe del movimiento` : ""}`;
   }
   const k = m.assignedKind || "";
   if (k === "cobro") return m.assignedJobBudget || m.assignedParty ? `Cobro · ${[m.assignedJobBudget, m.assignedParty].filter(Boolean).join(" · ")}` : null;
@@ -142,6 +153,36 @@ export function pagoEsDeLaCuenta(pago: { company: string; cuentaId?: string }, m
   const a = soloNombreBanco(banco);
   const b = soloNombreBanco(m.bank);
   return company === m.company && !!a && !!b && (a.includes(b) || b.includes(a)) && moneda === (m.currency === "USD" ? "USD" : "ARS");
+}
+
+// El cobro (o los cobros del mismo cliente) que dan un credito: de esta cuenta, no en efectivo y a pocos dias.
+export function cobrosQueSuman(m: MovimientoF, cobros: CobroF[], ocupados: Set<number>): CobroF[] | undefined {
+  const monto = Math.abs(Number(m.amount || 0));
+  if (!(monto > 0)) return undefined;
+  const moneda = m.currency === "USD" ? "USD" : "ARS";
+  const cand = cobros.filter((c) => pagoEsDeLaCuenta(c, m) && (c.moneda || "ARS") === moneda && c.metodo !== "efectivo" && c.bankEntryId == null && !ocupados.has(c.id) && Number(c.amount || 0) > 0 && diasEntre(c.date, m.date) <= 5);
+  const exacto = cand.filter((c) => Math.abs(Number(c.amount || 0) - monto) <= TOL).sort((a, b) => diasEntre(a.date, m.date) - diasEntre(b.date, m.date))[0];
+  if (exacto) return [exacto];
+  const porCliente = new Map<string, CobroF[]>();
+  cand.filter((c) => Number(c.amount || 0) < monto && !!(c.cliente || "").trim()).forEach((c) => {
+    const k = soloNombreBanco(c.cliente);
+    porCliente.set(k, [...(porCliente.get(k) || []), c]);
+  });
+  for (const lista of Array.from(porCliente.values())) {
+    if (lista.length < 2 || lista.length > 12) continue;
+    const buscar = (desde: number, elegidos: CobroF[], suma: number): CobroF[] | undefined => {
+      if (elegidos.length >= 2 && Math.abs(suma - monto) <= TOL) return elegidos;
+      if (elegidos.length >= 4 || suma > monto + TOL) return undefined;
+      for (let i = desde; i < lista.length; i++) {
+        const r = buscar(i + 1, [...elegidos, lista[i]], suma + Number(lista[i].amount || 0));
+        if (r) return r;
+      }
+      return undefined;
+    };
+    const hallado = buscar(0, [], 0);
+    if (hallado) return hallado;
+  }
+  return undefined;
 }
 
 function sugerir(m: MovimientoF, pagos: PagoBancoF[], ocupados: Set<number>, resumenes: ResumenTarjetaF[], resumenesOcupados: Set<number>): SugerenciaMov | undefined {
@@ -218,7 +259,12 @@ export function sugerirImpuestoCargado(m: MovimientoF, pagos: PagoBancoF[], ocup
   return p ? { tipo: "pago", pagoId: p.x.id, texto: `${p.x.description || p.x.supplier} · cargado el ${p.x.date.split("-").reverse().join("/")}` } : undefined;
 }
 
-export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resumenes: ResumenTarjetaF[], pases: PaseF[] = []): FichaExtracto[] {
+export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resumenes: ResumenTarjetaF[], pases: PaseF[] = [], cobros: CobroF[] = []): FichaExtracto[] {
+  const cobroPorMov = new Map<number, CobroF[]>();
+  cobros.forEach((c) => {
+    if (c.bankEntryId != null) cobroPorMov.set(Number(c.bankEntryId), [...(cobroPorMov.get(Number(c.bankEntryId)) || []), c]);
+  });
+  const sugeridosCobro = new Set<number>();
   const pagoPorMov = new Map<number, PagoBancoF[]>();
   pagos.forEach((p) => {
     if (p.bankEntryId != null) pagoPorMov.set(Number(p.bankEntryId), [...(pagoPorMov.get(Number(p.bankEntryId)) || []), p]);
@@ -275,7 +321,7 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
         f.movimientos.push({ mov: m, estado: "desconocido", detalle: `Desconocido${m.desconocido.nota ? ` · ${m.desconocido.nota}` : ""} (${m.desconocido.firmante})`, rompe: corta });
         return;
       }
-      const link = linkDe(m, pagoPorMov.get(m.id), resumenes, pases);
+      const link = linkDe(m, pagoPorMov.get(m.id), resumenes, pases, cobroPorMov.get(m.id));
       if (link) {
         f.movimientos.push({ mov: m, estado: "linkeado", detalle: link, rompe: corta });
         return;
@@ -290,6 +336,15 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
         if (m.currency !== "USD") f.comisionesArs = r2(f.comisionesArs + monto);
         f.movimientos.push({ mov: m, estado: "comision", detalle: "Comisiones, tasas e intereses (cuenta)", rompe: corta });
         return;
+      }
+      if (m.movementType === "credito") {
+        const hallados = cobrosQueSuman(m, cobros, sugeridosCobro);
+        if (hallados) {
+          hallados.forEach((c) => sugeridosCobro.add(c.id));
+          const texto = hallados.length === 1 ? `cobro de ${[hallados[0].trabajo, hallados[0].cliente].filter(Boolean).join(" · ")} · ${hallados[0].date.split("-").reverse().join("/")}` : `${hallados.length} cobros de ${hallados[0].cliente} que suman el importe`;
+          f.movimientos.push({ mov: m, estado: "sugerido", detalle: `Sugerido: ${texto}`, sugerencia: { tipo: "cobros", cobroIds: hallados.map((c) => c.id), texto }, rompe: corta });
+          return;
+        }
       }
       const sug = sugerir(m, pagos, new Set([...Array.from(ocupados), ...Array.from(sugeridosPago)]), resumenes, new Set([...Array.from(resumenesOcupados), ...Array.from(sugeridosResumen)]));
       if (sug?.tipo === "pago") sugeridosPago.add(sug.pagoId);

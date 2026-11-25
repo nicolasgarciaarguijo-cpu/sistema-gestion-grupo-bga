@@ -423,6 +423,8 @@ export type Payment = {
   // e "inamovible" (rojo) son cobros PREVISTOS: viven en ApprovedJob.cobrosPrevistos, no en payments,
   // y no suman en el cobrado, ni en la planilla, ni en la plata disponible hasta pasar a realizado.
   estado?: "realizado" | "estimado" | "inamovible";
+  // El credito del extracto con el que quedo linkeado este cobro (25/11/2026). Solo control: no mueve plata.
+  bankEntryId?: number;
   // Responsable / firmante del movimiento (persona de la nomina). Obligatorio al cargar o editar (Nicolas, 2026-10-16).
   firmante?: string;
   firmadoEn?: string; // cuando firmo (ISO): ultimo responsable del movimiento

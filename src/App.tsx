@@ -88,7 +88,7 @@ import {
   type PagoF,
   type TarjetaF,
 } from "./domain/fichaTarjeta";
-import { fichasDeExtracto, pagoEsDeLaCuenta, type MovimientoFicha } from "./domain/fichaExtracto";
+import { fichasDeExtracto, pagoEsDeLaCuenta, type CobroF, type MovimientoFicha } from "./domain/fichaExtracto";
 import { leerResumenTarjeta, type ResumenLeido } from "./domain/lectorResumenTarjeta";
 import { lineasDelPdf, pareceTexto, textoDelPdf } from "./lib/pdfLineas";
 import { proveedorDeArca, accionPorDefecto, sugerenciaDe, type RenglonRevision } from "./domain/arcaRevision";
@@ -18165,6 +18165,16 @@ Escribi CERRAR para confirmar:`
   };
 
   // FICHAS DEL EXTRACTO: por cuenta y mes.
+  // Los cobros REALIZADOS de los trabajos, para linkearlos con los creditos del extracto (25/11/2026).
+  const cobrosParaExtracto = useMemo<CobroF[]>(
+    () =>
+      visibleApprovedJobs.flatMap((j) =>
+        (j.payments || [])
+          .filter((p) => !p.estado || p.estado === "realizado")
+          .map((p) => ({ id: p.id, company: String(j.company), date: p.paymentDate, amount: Number(p.amount || 0), trabajo: String(j.budgetNumber || ""), cliente: j.client || "", metodo: p.transactionType, cuentaId: p.cuentaId, bankEntryId: p.bankEntryId, moneda: p.currency === "USD" ? ("USD" as const) : ("ARS" as const) }))
+      ),
+    [visibleApprovedJobs]
+  );
   const fichasCuentas = useMemo(
     () =>
       fichasDeExtracto(
@@ -18173,9 +18183,10 @@ Escribi CERRAR para confirmar:`
           .filter((c) => canAccessCompany(c.company) && c.paymentMethod !== "tarjeta_credito")
           .map((c) => ({ id: c.id, company: String(c.company), date: c.date, amount: Number(c.amount || 0), supplier: c.supplier || "", description: c.description || "", paymentMethod: c.paymentMethod, bankEntryId: c.bankEntryId, impuestoBanco: !!c.impuestoBanco, cuentaId: c.cuentaId, haberes: c.employeeId != null })),
         resumenesF.map((x) => ({ ...x, nombre: tarjetasF.find((t) => t.id === x.cardId)?.name || "Tarjeta" })),
-        internalTransfers.map((t) => ({ id: t.id, date: t.date, amount: Number(t.amount || 0), description: t.description || t.bank || "" }))
+        internalTransfers.map((t) => ({ id: t.id, date: t.date, amount: Number(t.amount || 0), description: t.description || t.bank || "" })),
+        cobrosParaExtracto
       ),
-    [alcanceEmpresa, visibleBankStatementEntries, costEntries, resumenesF, tarjetasF, internalTransfers]
+    [alcanceEmpresa, visibleBankStatementEntries, costEntries, resumenesF, tarjetasF, internalTransfers, cobrosParaExtracto]
   );
   const claveCuenta = (f: { company: string; bank: string; currency: string }) => `${f.company}||${f.bank}||${f.currency}`;
   // LOS IMPUESTOS Y COMISIONES DE UNA FICHA (18/11/2026). Antes estaban todos juntos en el bloque
@@ -18256,6 +18267,12 @@ Escribi CERRAR para confirmar:`
       return costEntries
         .filter((c) => pagoEsDeLaCuenta({ company: String(c.company), cuentaId: c.cuentaId }, m.mov) && c.paymentMethod !== "efectivo" && c.paymentMethod !== "tarjeta_credito" && (c.bankEntryId == null || c.bankEntryId === m.mov.id))
         .map((c) => ({ id: String(c.id), texto: `${etiquetaPago(c.id)} · ${money(Number(c.amount || 0))}`, detalle: `${ddmmCorta(c.date)} · ${c.description || c.group || ""}`, destacada: Math.abs(Number(c.amount || 0) - monto) <= 1, monto: Number(c.amount || 0), grupo: c.employeeId != null ? "Haberes" : c.supplier || "" }));
+    // COBROS cargados en los trabajos (25/11/2026): los de esta cuenta que todavia no estan unidos a otro credito.
+    if (tipo === "cobro")
+      return cobrosParaExtracto
+        .filter((c) => pagoEsDeLaCuenta(c, m.mov) && (c.moneda || "ARS") === (m.mov.currency === "USD" ? "USD" : "ARS") && c.metodo !== "efectivo" && (c.bankEntryId == null || c.bankEntryId === m.mov.id))
+        .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+        .map((c) => ({ id: String(c.id), texto: `${c.trabajo} · ${c.cliente} · ${money(c.amount)}`, detalle: ddmmCorta(c.date), destacada: Math.abs(c.amount - monto) <= 1, monto: c.amount, grupo: c.cliente }));
     // MOVIMIENTO INTERNO: la operacion exacta de Movimientos internos (25/11/2026). Las de esta empresa, de salida o de entrada.
     if (tipo === "interno")
       return visibleInternalTransfers
@@ -18307,6 +18324,21 @@ Escribi CERRAR para confirmar:`
     const primero = costEntries.find((c) => ids.has(c.id));
     setCostEntries((prev) => prev.map((c) => (ids.has(c.id) ? { ...c, bankEntryId: movId } : c.bankEntryId === movId ? { ...c, bankEntryId: undefined } : c)));
     setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "pago" as const, assignedParty: primero?.supplier || x.assignedParty, assignedTransferId: null, desconocido: null, cerradoSinLink: null } : x)));
+  };
+  // EL CREDITO DEL BANCO CON SUS COBROS (Nicolas, 25/11/2026: "que el credito de banco se linkee con cada cobro"). El cobro
+  // sigue en su trabajo, tal como se cargo; aca solo queda unido al movimiento del extracto. No crea ni cambia plata.
+  const linkearCobros = (movId: number, cobroIds: number[]) => {
+    if (!movimientoEditable(movId) || !cobroIds.length) return;
+    const ids = new Set(cobroIds);
+    const primero = cobrosParaExtracto.find((c) => ids.has(c.id));
+    setApprovedJobs((prev) =>
+      prev.map((j) =>
+        (j.payments || []).some((p) => ids.has(p.id) || p.bankEntryId === movId)
+          ? { ...j, payments: j.payments.map((p) => (ids.has(p.id) ? { ...p, bankEntryId: movId } : p.bankEntryId === movId ? { ...p, bankEntryId: undefined } : p)) }
+          : j
+      )
+    );
+    setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "cobro" as const, assignedJobBudget: primero?.trabajo || x.assignedJobBudget, assignedParty: primero?.cliente || x.assignedParty, assignedTransferId: null, desconocido: null, cerradoSinLink: null } : x)));
   };
   const linkearMovimiento = (movId: number, tipo: TipoLink, id: string) => {
     const b = movimientoEditable(movId);
@@ -18394,6 +18426,8 @@ Escribi CERRAR para confirmar:`
   const soltarMovimiento = (movId: number) => {
     if (!movimientoEditable(movId)) return;
     setCostEntries((prev) => prev.map((c) => (c.bankEntryId === movId ? { ...c, bankEntryId: undefined } : c)));
+    if (approvedJobs.some((j) => (j.payments || []).some((p) => p.bankEntryId === movId)))
+      setApprovedJobs((prev) => prev.map((j) => ((j.payments || []).some((p) => p.bankEntryId === movId) ? { ...j, payments: j.payments.map((p) => (p.bankEntryId === movId ? { ...p, bankEntryId: undefined } : p)) } : j)));
     setBankStatementEntries((prev) =>
       prev.map((x) => (x.id === movId ? { ...x, assignedKind: undefined, assignedJobBudget: undefined, assignedPurchaseInvoiceId: null, assignedCardStatementId: null, assignedTransferId: null } : x))
     );
@@ -25069,6 +25103,7 @@ Escribi CERRAR para confirmar:`
               opciones={opcionesMovimiento}
               onLink={linkearMovimiento}
               onLinkVarios={linkearVariosPagos}
+              onLinkCobros={linkearCobros}
               onTipo={tipoMovimiento}
               onDesconocer={desconocerMovimiento}
               esAdmin={effectiveIsAdmin}

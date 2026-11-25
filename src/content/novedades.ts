@@ -39,6 +39,12 @@ export const NOVEDADES: TandaNovedades[] = [
         tab: "costos",
       },
       {
+        titulo: "El crédito del banco se linkea con cada cobro",
+        que: "Un crédito del extracto ahora se une con el cobro cargado en el trabajo, no solo con el trabajo. Si un cliente paga dos facturas con una transferencia, se tildan los dos cobros y el sistema controla que sumen el crédito. Sugiere solo el cobro del mismo importe, o los del mismo cliente que suman. El cobro sigue en su trabajo tal como se cargó: no mueve plata.",
+        como: "Bancos y tarjetas → ficha de la cuenta → click derecho en el crédito → «Linkear con el cobro cargado (uno o varios que suman)». Solo aparecen los cobros de esa cuenta que no están en efectivo.",
+        tab: "bancos",
+      },
+      {
         titulo: "Una transferencia que cancela varias facturas",
         que: "Cuando con una sola transferencia se pagan dos o más facturas del mismo proveedor, cada factura sigue con su propio pago y el movimiento del banco se linkea con todos esos pagos juntos. La ventana muestra la suma de lo tildado contra el importe de la transferencia y solo deja confirmar cuando coincide. Si el sistema encuentra pagos del mismo proveedor que suman justo ese importe, los sugiere juntos. Sirve igual para los sueldos: la transferencia que junta todos los haberes se linkea tildando el pago de cada persona, y si los haberes de ese día suman justo el importe, los propone todos. No mueve plata: es solo control.",
         como: "Bancos y tarjetas → ficha de la cuenta → click derecho en la transferencia → «Linkear con VARIOS pagos que suman este importe». Tildá los pagos y confirmá.",
