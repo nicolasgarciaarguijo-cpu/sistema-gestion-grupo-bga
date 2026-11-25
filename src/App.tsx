@@ -210,6 +210,7 @@ import {
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
 import { suggestCalendarConcept } from "./domain/calendarBankRules";
+import { prepararCargaDeExtracto } from "./domain/cargaExtracto";
 import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, type CalendarRowConfig } from "./domain/calendarStructure";
 import { buildLoanLines, lenderFromLabel, type CalendarLoan } from "./domain/loanLines";
 import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
@@ -21038,32 +21039,29 @@ Escribi CERRAR para confirmar:`
   };
 
   // Clave de deduplicación: misma empresa+banco+moneda+fecha+tipo+monto+concepto = mismo movimiento.
-  const bankDupKey = (
-    company: string, bank: string, currency: string,
-    date: string, movementType: string, amount: number, concept: string
-  ) => `${company}|${bank}|${currency}|${date}|${movementType}|${Math.round(amount * 100)}|${(concept || "").trim().toLowerCase()}`;
-
+  // LA CARGA COMO LA HACIA A MANO (Nicolas, 25/11/2026): orden cronologico, repetidos por saldo, cargos del banco
+  // marcados y aviso si no encadena. Ver domain/cargaExtracto.ts.
+  const cargaDelExtracto = useMemo(
+    () => prepararCargaDeExtracto({ leidos: bankMirrorRaw, existentes: bankStatementEntries as any, company: String(bankMirrorCompany), bank: bankMirrorBank, currency: bankMirrorCurrency === "USD" ? "USD" : "ARS" }),
+    [bankMirrorRaw, bankStatementEntries, bankMirrorCompany, bankMirrorBank, bankMirrorCurrency]
+  );
   const bankMirrorPreview = useMemo(() => {
-    const existing = new Set(
-      bankStatementEntries.map((e) =>
-        bankDupKey(String(e.company), e.bank || "", e.currency || "ARS", e.date, e.movementType, Number(e.amount || 0), e.concept)
-      )
-    );
-    const seenInBatch = new Set<string>();
+    const nuevos = new Set(cargaDelExtracto.nuevos.map((r) => `${r.date}|${r.movementType}|${Math.round(r.amount * 100)}|${r.concept}|${Math.round(r.balance * 100)}`));
+    const vistos = new Set<string>();
     return bankMirrorRaw.map((r) => {
-      const key = bankDupKey(bankMirrorCompany, bankMirrorBank, bankMirrorCurrency, r.date, r.movementType, r.amount, r.concept);
-      const dup = existing.has(key) || seenInBatch.has(key);
-      seenInBatch.add(key);
+      const k = `${r.date}|${r.movementType}|${Math.round(r.amount * 100)}|${r.concept}|${Math.round(r.balance * 100)}`;
+      const dup = !nuevos.has(k) || vistos.has(k);
+      vistos.add(k);
       return { ...r, dup };
     });
-  }, [bankMirrorRaw, bankStatementEntries, bankMirrorCompany, bankMirrorBank, bankMirrorCurrency]);
+  }, [bankMirrorRaw, cargaDelExtracto]);
 
   const commitBankMirrorDraft = () => {
     if (!bankMirrorBank.trim()) {
       setBankMirrorMessage("Elegí el banco antes de cargar (ej: Patagonia, Santander).");
       return;
     }
-    const nuevos = bankMirrorPreview.filter((r) => !r.dup);
+    const nuevos = cargaDelExtracto.nuevos;
     if (nuevos.length === 0) {
       setBankMirrorMessage("No hay movimientos nuevos para cargar (todos ya estaban o el archivo está vacío).");
       return;
@@ -21078,15 +21076,25 @@ Escribi CERRAR para confirmar:`
       amount: r.amount,
       balance: r.balance,
       currency: bankMirrorCurrency,
-      notes: "Importado del extracto (espejo)",
+      notes: `Importado del extracto ${todayIso().split("-").reverse().join("/")}`,
       extractedAutomatically: true,
+      ...(r.conceptKey ? { conceptKey: r.conceptKey } : {}),
     }));
-    setBankStatementEntries((prev) => [...entries, ...prev]);
-    const dups = bankMirrorPreview.length - nuevos.length;
+    // AL FINAL y en orden cronologico: asi la cadena de saldos de la ficha queda en el orden real del banco.
+    setBankStatementEntries((prev) => [...prev, ...entries]);
+    const { repetidos: dups, cargos, encadena, mes } = cargaDelExtracto;
     setBankMirrorRaw([]);
     setBankMirrorMessage(
-      `Cargué ${entries.length} movimiento(s) al espejo de ${bankMirrorBank.trim()}${dups > 0 ? ` (omití ${dups} duplicado(s))` : ""}.`
+      [
+        `Cargué ${entries.length} movimiento(s) de ${bankMirrorBank.trim()}${dups > 0 ? ` (${dups} ya estaban y no se repitieron)` : ""}.`,
+        cargos.cantidad > 0 ? `Reconocí ${cargos.cantidad} impuesto(s), comisión(es) o interés(es) por ${money(cargos.total)}: la ficha te ofrece cargarlos.` : "",
+        encadena === false ? "⚠ Entre lo que ya estaba cargado y este archivo falta algún movimiento: el saldo no continúa. Subí el tramo que falta." : "",
+        "Se abrió la ficha de la cuenta para linkear lo que falta.",
+      ].filter(Boolean).join(" ")
     );
+    // SOLO PREPARA LA FICHA: se abre en el mes cargado, con lo pendiente de linkear y el control de comisiones.
+    setFichaCuentaMes(mes || undefined);
+    setFichaCuentaAbierta(`${bankMirrorCompany}||${bankMirrorBank.trim()}||${bankMirrorCurrency === "USD" ? "USD" : "ARS"}`);
   };
 
   const discardBankMirrorDraft = () => {

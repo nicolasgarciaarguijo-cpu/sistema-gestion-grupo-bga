@@ -73,10 +73,30 @@ export function splitDelimitedLine(line: string, separator: string): string[] {
 }
 
 export function detectSeparator(text: string): string {
-  const sample = text.split(/\r?\n/).slice(0, 5).join("\n");
-  if (sample.includes(";")) return ";";
+  // 25/11/2026: el .xls de Santander es texto separado por TABS, con varias lineas de titulo antes y comas en los
+  // importes. Mirando solo 5 lineas se elegia la coma y no se leia nada. Se cuenta en las primeras 40 lineas: si hay
+  // tabs, gana el tab; despues el punto y coma; la coma queda para lo que no tiene otra cosa.
+  const sample = text.split(/\r?\n/).slice(0, 40).join("\n");
+  const cuenta = (c: string) => sample.split(c).length - 1;
+  if (cuenta("\t") >= 3) return "\t";
+  if (cuenta(";") >= 3) return ";";
   if (sample.includes("\t")) return "\t";
+  if (sample.includes(";")) return ";";
   return ",";
+}
+
+// El texto del archivo: UTF-8 si es valido; si no, latin-1 (asi exportan los bancos y si no los acentos salen rotos).
+export async function textoDelArchivo(file: File): Promise<string> {
+  try {
+    const buf = await file.arrayBuffer();
+    try {
+      return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+    } catch {
+      return new TextDecoder("latin1").decode(buf);
+    }
+  } catch {
+    return file.text();
+  }
 }
 
 export function parseDelimitedStatement(text: string): string[][] {
@@ -138,13 +158,17 @@ export function rowsToStatementEntries(rows: string[][]): BankStatementRow[] {
   const detected = detectColumns(rows);
   if (!detected) return [];
   const { headerIndex, columns } = detected;
+  // 25/11/2026: como la carga a mano del 23/11. Si el banco trae Descripcion y Referencia (Patagonia), el concepto es las
+  // dos juntas: con la referencia se reconoce el movimiento (el numero de la tarjeta, el CUIT de la transferencia).
+  const encabezados = rows[headerIndex].map(normalizeHeader);
+  const iReferencia = encabezados[columns.concept] === "descripcion" ? encabezados.findIndex((h) => h === "referencia") : -1;
 
   const entries: BankStatementRow[] = [];
   for (let i = headerIndex + 1; i < rows.length; i += 1) {
     const row = rows[i];
     const date = parseStatementDate(cellAt(row, columns.date));
     if (!date) continue;
-    const concept = cellAt(row, columns.concept).trim();
+    const concept = [cellAt(row, columns.concept).trim(), iReferencia >= 0 ? cellAt(row, iReferencia).trim() : ""].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
 
     let amount = 0;
     let movementType: "credito" | "debito" = "debito";
@@ -270,7 +294,7 @@ export async function readBankStatement(file: File): Promise<BankStatementParseR
     }
     if (entries.length === 0) {
       try {
-        const text = await file.text();
+        const text = await textoDelArchivo(file);
         entries = rowsToStatementEntries(parseDelimitedStatement(text));
       } catch {
         /* se maneja abajo */
@@ -299,7 +323,7 @@ export async function readBankStatement(file: File): Promise<BankStatementParseR
   }
 
   // csv / tsv / txt
-  const text = await file.text();
+  const text = await textoDelArchivo(file);
   const entries = rowsToStatementEntries(parseDelimitedStatement(text));
   if (entries.length === 0) {
     throw new Error(
