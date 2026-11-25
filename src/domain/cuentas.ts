@@ -245,6 +245,19 @@ export function armarCuentas(input: {
 }
 
 /**
+ * CAJAS CON SU EMPRESA (Nicolas, 25/11/2026): una persona puede tener una caja chica en BGA y otra en De Raiz, y al
+ * elegir de donde sale un pago las dos se llamaban igual ("Caja de Nicolas"): se elegia la equivocada y el gasto
+ * terminaba cargado dos veces. Toda caja de persona muestra a que empresa pertenece. Solo cambia el nombre que se ve.
+ */
+export function cajasConEmpresa<T extends { id: string; company: string; nombre: string }>(cuentas: T[], corto: (company: string) => string): T[] {
+  return cuentas.map((c) => {
+    if (!c.id.startsWith("persona|")) return c;
+    const sufijo = ` · ${corto(c.company) || c.company}`;
+    return c.nombre.endsWith(sufijo) ? c : { ...c, nombre: `${c.nombre}${sufijo}` };
+  });
+}
+
+/**
  * CONTROL contra el extracto: para cada cuenta bancaria, el saldo que calcula el sistema vs el ultimo
  * saldo del resumen (a la fecha de ese resumen). Diferencia ≠ 0 (con $1 de tolerancia) = algo que se
  * movio en el banco y no esta cargado en el sistema, o al reves.

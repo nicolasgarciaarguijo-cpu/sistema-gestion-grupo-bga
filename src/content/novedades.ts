@@ -16,6 +16,19 @@ export type TandaNovedades = { id: string; fecha: string; titulo: string; items:
 
 export const NOVEDADES: TandaNovedades[] = [
   {
+    id: "2026-11-25",
+    fecha: "25/11/2026",
+    titulo: "Las cajas chicas muestran su empresa",
+    items: [
+      {
+        titulo: "Caja chica de BGA o de De Raíz",
+        que: "Cuando una persona tiene una caja chica en cada empresa, las dos se llamaban igual y al elegir de dónde sale un pago no se sabía cuál era. Ahora cada caja dice su empresa al lado del nombre.",
+        como: "Al cargar un pago, en «De qué cuenta salió» elegí la caja mirando la empresa: por ejemplo «Caja de Nicolás (negro) · BGA» o «Caja de Nicolás (negro) · De Raíz».",
+        tab: "cajaChica",
+      },
+    ],
+  },
+  {
     id: "2026-11-23b",
     fecha: "23/11/2026",
     titulo: "Los impuestos del banco se cargan en el día",

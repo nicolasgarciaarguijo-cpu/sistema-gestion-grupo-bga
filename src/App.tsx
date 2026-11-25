@@ -134,6 +134,7 @@ import {
   type Cuenta,
   cuentaImplicita,
   idCajaPersona,
+  cajasConEmpresa,
 } from "./domain/cuentas";
 import { plataDelSistema } from "./domain/plataDelSistema";
 import { CuentasPanel } from "./tabs/CuentasPanel";
@@ -17718,6 +17719,7 @@ Escribi CERRAR para confirmar:`
   // Apertura de cada cuenta = su saldo a la fecha de corte del banco (29/08/2026): el banco segun el
   // extracto, el efectivo segun la reserva. Desde ahi, lo que mueve las cuentas es lo CARGADO; el
   // extracto queda como control.
+  const cortoDeEmpresa = (company: string) => getCompanyMeta(company as CompanyName)?.short || company;
   const cuentasSistema = useMemo(() => {
     // Despues de un CIERRE con arqueo, cada cuenta arranca el ejercicio nuevo con la plata CONTADA.
     const conArqueo = (cuentas: Cuenta[]): Cuenta[] =>
@@ -17734,7 +17736,7 @@ Escribi CERRAR para confirmar:`
       if (Number(f.assignedBlack || 0) > 0) colores.push("negro");
       return colores.map((color) => ({ company: String(f.company), persona: f.responsible || "", color }));
     });
-    return conArqueo(armarCuentas({
+    return cajasConEmpresa(conArqueo(armarCuentas({
       companies,
       guardadas: cuentasGuardadas.filter((c) => canAccessCompany(c.company as CompanyName)),
       fechaCorte: bankLoadsUntil,
@@ -17746,7 +17748,7 @@ Escribi CERRAR para confirmar:`
       })),
       efectivoApertura: plataDisponibleByCompany.flatMap((p: any) => p.efectivoApertura || []),
       personas: responsables,
-    }));
+    })), cortoDeEmpresa);
   }, [alcanceEmpresa, plataDisponibleByCompany, visiblePettyCashFunds, cuentasGuardadas, bankLoadsUntil, visibleBankStatementEntries, fiscalClosings]);
   // CUENTAS PARA PAGAR (13/11/2026): para elegir de donde sale un pago se ofrecen las cuentas y cajas de TODAS las empresas que
   // el usuario tiene permitidas, aunque este mirando una sola: asi se puede pagar un gasto de BGA con la caja chica de De Raiz
@@ -17775,7 +17777,7 @@ Escribi CERRAR para confirmar:`
       efectivoApertura: [],
       personas,
     });
-    return [...cuentasSistema, ...extra.filter((c) => !ya.has(c.id))];
+    return [...cuentasSistema, ...cajasConEmpresa(extra.filter((c) => !ya.has(c.id)), cortoDeEmpresa)];
   }, [cuentasSistema, pettyCashFunds, cuentasGuardadas, bankLoadsUntil, bankStatementEntries, isSupabaseLoggedIn, effectiveIsAdmin, allowedCompaniesForSession]);
 
   // FACTURA PAGADA CON LA CAJA CHICA (Nicolas, 2026-10-21): un pago cargado en Compras cuya cuenta es la caja

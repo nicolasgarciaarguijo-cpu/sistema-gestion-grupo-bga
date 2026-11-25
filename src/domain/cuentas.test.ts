@@ -223,3 +223,24 @@ describe("cuentas sin extracto de control", () => {
     expect(cuentasSinControl(cuentas, efectivo, [], "2026-11-21")).toEqual([]);
   });
 });
+
+// Nicolas, 25/11/2026: "no se diferencia la caja chica de la persona si es de BGA o De Raiz".
+describe("cajasConEmpresa", () => {
+  const { cajasConEmpresa, idCajaPersona: idCaja } = require("./cuentas");
+  const corto = (c: string) => (c === "BGA srl" ? "BGA" : "De Raíz");
+  it("la caja de la misma persona en dos empresas se distingue por la empresa", () => {
+    const r = cajasConEmpresa(
+      [
+        { id: idCaja("BGA srl", "Nicolas", "negro"), company: "BGA srl", nombre: "Caja de Nicolas (negro)" },
+        { id: idCaja("De raiz", "Nicolas", "negro"), company: "De raiz", nombre: "Caja de Nicolas (negro)" },
+        { id: "banco|BGA srl|santander|ARS", company: "BGA srl", nombre: "Santander $" },
+      ],
+      corto
+    );
+    expect(r.map((c: any) => c.nombre)).toEqual(["Caja de Nicolas (negro) · BGA", "Caja de Nicolas (negro) · De Raíz", "Santander $"]);
+  });
+  it("no repite la empresa si el nombre ya la trae", () => {
+    const una = [{ id: idCaja("BGA srl", "Nicolas", "blanco"), company: "BGA srl", nombre: "Caja de Nicolas · BGA" }];
+    expect(cajasConEmpresa(una, corto)[0].nombre).toBe("Caja de Nicolas · BGA");
+  });
+});
