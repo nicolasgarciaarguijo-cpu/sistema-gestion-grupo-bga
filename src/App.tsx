@@ -18171,7 +18171,7 @@ Escribi CERRAR para confirmar:`
         visibleBankStatementEntries.map((b) => ({ ...b, company: String(b.company) })) as any,
         costEntries
           .filter((c) => canAccessCompany(c.company) && c.paymentMethod !== "tarjeta_credito")
-          .map((c) => ({ id: c.id, company: String(c.company), date: c.date, amount: Number(c.amount || 0), supplier: c.supplier || "", description: c.description || "", paymentMethod: c.paymentMethod, bankEntryId: c.bankEntryId, impuestoBanco: !!c.impuestoBanco, cuentaId: c.cuentaId })),
+          .map((c) => ({ id: c.id, company: String(c.company), date: c.date, amount: Number(c.amount || 0), supplier: c.supplier || "", description: c.description || "", paymentMethod: c.paymentMethod, bankEntryId: c.bankEntryId, impuestoBanco: !!c.impuestoBanco, cuentaId: c.cuentaId, haberes: c.employeeId != null })),
         resumenesF.map((x) => ({ ...x, nombre: tarjetasF.find((t) => t.id === x.cardId)?.name || "Tarjeta" })),
         internalTransfers.map((t) => ({ id: t.id, date: t.date, amount: Number(t.amount || 0), description: t.description || t.bank || "" }))
       ),
@@ -18255,7 +18255,7 @@ Escribi CERRAR para confirmar:`
     if (tipo === "pago")
       return costEntries
         .filter((c) => pagoEsDeLaCuenta({ company: String(c.company), cuentaId: c.cuentaId }, m.mov) && c.paymentMethod !== "efectivo" && c.paymentMethod !== "tarjeta_credito" && (c.bankEntryId == null || c.bankEntryId === m.mov.id))
-        .map((c) => ({ id: String(c.id), texto: `${etiquetaPago(c.id)} · ${money(Number(c.amount || 0))}`, detalle: `${ddmmCorta(c.date)} · ${c.description || c.group || ""}`, destacada: Math.abs(Number(c.amount || 0) - monto) <= 1 }));
+        .map((c) => ({ id: String(c.id), texto: `${etiquetaPago(c.id)} · ${money(Number(c.amount || 0))}`, detalle: `${ddmmCorta(c.date)} · ${c.description || c.group || ""}`, destacada: Math.abs(Number(c.amount || 0) - monto) <= 1, monto: Number(c.amount || 0), grupo: c.employeeId != null ? "Haberes" : c.supplier || "" }));
     // MOVIMIENTO INTERNO: la operacion exacta de Movimientos internos (25/11/2026). Las de esta empresa, de salida o de entrada.
     if (tipo === "interno")
       return visibleInternalTransfers
@@ -18298,6 +18298,15 @@ Escribi CERRAR para confirmar:`
   const circuitoMovimiento = (movId: number, circuito: "blanco" | "negro" | null) => {
     if (!movimientoEditable(movId)) return;
     setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, administration: circuito || undefined } : x)));
+  };
+  // VARIOS PAGOS PARA UN MOVIMIENTO (Nicolas, 25/11/2026): una transferencia que cancela dos facturas. Cada factura sigue
+  // con su pago; aca solo quedan unidos al mismo movimiento del banco. No crea ni cambia plata.
+  const linkearVariosPagos = (movId: number, pagoIds: number[]) => {
+    if (!movimientoEditable(movId) || !pagoIds.length) return;
+    const ids = new Set(pagoIds);
+    const primero = costEntries.find((c) => ids.has(c.id));
+    setCostEntries((prev) => prev.map((c) => (ids.has(c.id) ? { ...c, bankEntryId: movId } : c.bankEntryId === movId ? { ...c, bankEntryId: undefined } : c)));
+    setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "pago" as const, assignedParty: primero?.supplier || x.assignedParty, assignedTransferId: null, desconocido: null, cerradoSinLink: null } : x)));
   };
   const linkearMovimiento = (movId: number, tipo: TipoLink, id: string) => {
     const b = movimientoEditable(movId);
@@ -25059,6 +25068,7 @@ Escribi CERRAR para confirmar:`
               money={money}
               opciones={opcionesMovimiento}
               onLink={linkearMovimiento}
+              onLinkVarios={linkearVariosPagos}
               onTipo={tipoMovimiento}
               onDesconocer={desconocerMovimiento}
               esAdmin={effectiveIsAdmin}

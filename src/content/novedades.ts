@@ -39,6 +39,12 @@ export const NOVEDADES: TandaNovedades[] = [
         tab: "costos",
       },
       {
+        titulo: "Una transferencia que cancela varias facturas",
+        que: "Cuando con una sola transferencia se pagan dos o más facturas del mismo proveedor, cada factura sigue con su propio pago y el movimiento del banco se linkea con todos esos pagos juntos. La ventana muestra la suma de lo tildado contra el importe de la transferencia y solo deja confirmar cuando coincide. Si el sistema encuentra pagos del mismo proveedor que suman justo ese importe, los sugiere juntos. Sirve igual para los sueldos: la transferencia que junta todos los haberes se linkea tildando el pago de cada persona, y si los haberes de ese día suman justo el importe, los propone todos. No mueve plata: es solo control.",
+        como: "Bancos y tarjetas → ficha de la cuenta → click derecho en la transferencia → «Linkear con VARIOS pagos que suman este importe». Tildá los pagos y confirmá.",
+        tab: "bancos",
+      },
+      {
         titulo: "Movimiento interno: se linkea con la operación exacta",
         que: "Un movimiento del banco que es un pase entre cuentas o entre empresas ahora se linkea con la operación exacta cargada en Movimientos internos, no solo con la etiqueta «interno». Quien no ve la solapa Movimientos internos lo puede marcar como interno igual: queda un recordatorio en la ficha de la cuenta para que el administrador lo una con su operación. Además, cada cuenta muestra su empresa (por ejemplo «Patagonia $ · BGA»), y el extracto de una cuenta solo ofrece los pagos que salieron de esa cuenta: ya no se mezclan Patagonia de BGA y Patagonia de De Raíz.",
         como: "Bancos y tarjetas → ficha de la cuenta → click derecho en el movimiento → «Movimiento interno: linkear con la operación exacta». El aviso «movimientos internos sin su operación» aparece arriba del mes.",

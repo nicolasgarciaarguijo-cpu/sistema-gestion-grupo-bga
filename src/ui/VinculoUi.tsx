@@ -59,7 +59,63 @@ export const TituloMenu = ({ children }: { children: React.ReactNode }) => (
   <div style={{ fontSize: 11, color: "#64748b", padding: "4px 8px", fontWeight: 700 }}>{children}</div>
 );
 
-export type OpcionVinculo = { id: string; texto: string; detalle?: string; destacada?: boolean };
+// monto y grupo (el proveedor) sirven para elegir VARIOS pagos que suman un movimiento (25/11/2026).
+export type OpcionVinculo = { id: string; texto: string; detalle?: string; destacada?: boolean; monto?: number; grupo?: string };
+
+// ELEGIR VARIOS PAGOS QUE SUMAN (Nicolas, 25/11/2026): "desde 1 solo pago se cancelan 2 facturas [...] necesito poder
+// seleccionar mas de un pago, para que sumados den el total de la transferencia". Cada factura sigue con su pago; aca se
+// tildan los que, sumados, dan el movimiento del banco. Solo deja confirmar cuando la suma coincide.
+export function BuscadorVarios({ titulo, opciones, objetivo, money, onElegir, onCerrar }: { titulo: string; opciones: OpcionVinculo[]; objetivo: number; money: (n: number) => string; onElegir: (ids: string[]) => void; onCerrar: () => void }) {
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState<string[]>([]);
+  const lista = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    return opciones.filter((o) => sel.includes(o.id) || !t || `${o.texto} ${o.detalle || ""}`.toLowerCase().includes(t)).slice(0, 120);
+  }, [opciones, q, sel]);
+  const elegidas = opciones.filter((o) => sel.includes(o.id));
+  const suma = Math.round(elegidas.reduce((a, o) => a + Number(o.monto || 0), 0) * 100) / 100;
+  const dif = Math.round((objetivo - suma) * 100) / 100;
+  const coincide = elegidas.length >= 1 && Math.abs(dif) <= 1;
+  const grupos = Array.from(new Set(elegidas.map((o) => (o.grupo || "").trim().toLowerCase()).filter(Boolean)));
+  return (
+    <div onClick={onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.35)", zIndex: Z_FICHA + 40, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "60px 12px" }}>
+      <div data-buscador-varios onClick={(e) => e.stopPropagation()} style={{ background: "#fff", borderRadius: 12, width: "min(660px, 100%)", padding: 14, display: "grid", gap: 8, boxShadow: "0 20px 50px rgba(0,0,0,0.25)" }}>
+        <div style={{ fontWeight: 800 }}>{titulo}</div>
+        <div style={{ fontSize: 12.5, color: "#475569" }}>Tildá los pagos que, sumados, dan el movimiento del banco. Cada factura queda con su pago; esto solo los une para el control.</div>
+        <input autoFocus placeholder="Buscar…" value={q} onChange={(e) => setQ(e.target.value)} style={{ padding: "7px 9px", border: "1px solid #cbd5e1", borderRadius: 8, fontSize: 13 }} />
+        <div style={{ maxHeight: "48vh", overflowY: "auto", display: "grid", gap: 4 }}>
+          {lista.length === 0 && <div style={{ fontSize: 13, color: "#64748b", padding: 8 }}>No hay pagos para linkear.</div>}
+          {lista.map((o) => {
+            const on = sel.includes(o.id);
+            return (
+              <label key={o.id} data-opcion={o.id} style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "7px 9px", border: `1px solid ${on ? "#86efac" : "#e2e8f0"}`, background: on ? "#f0fdf4" : "#fff", borderRadius: 8, cursor: "pointer", fontSize: 13 }}>
+                <input type="checkbox" checked={on} onChange={() => setSel((prev) => (on ? prev.filter((x) => x !== o.id) : [...prev, o.id]))} />
+                <span>
+                  <div style={{ fontWeight: 700 }}>{o.texto}</div>
+                  {o.detalle && <div style={{ fontSize: 12, color: "#64748b" }}>{o.detalle}</div>}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <div data-suma style={{ fontSize: 13, display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+          <span>Movimiento del banco: <b>{money(objetivo)}</b></span>
+          <span>Tildado ({elegidas.length}): <b>{money(suma)}</b></span>
+          {coincide ? <b style={{ color: "#166534" }}>✓ coincide</b> : <b style={{ color: "#b91c1c" }}>{dif > 0 ? `faltan ${money(dif)}` : `sobran ${money(-dif)}`}</b>}
+          {grupos.length > 1 && <span style={{ color: "#b45309", fontWeight: 700 }}>⚠ son pagos de proveedores distintos</span>}
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+          <button type="button" onClick={onCerrar} style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", cursor: "pointer" }}>
+            Cancelar
+          </button>
+          <button type="button" data-confirmar disabled={!coincide} onClick={() => onElegir(sel)} style={{ padding: "6px 12px", borderRadius: 8, border: "none", background: coincide ? "#166534" : "#cbd5e1", color: "#fff", cursor: coincide ? "pointer" : "default", fontWeight: 700 }}>
+            Linkear {elegidas.length > 1 ? `los ${elegidas.length} pagos` : "el pago"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // Ventana chica para elegir una opcion (pago, factura, resumen, trabajo) con busqueda. Las destacadas (las
 // que coinciden en monto) van primero.

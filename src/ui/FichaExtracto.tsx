@@ -5,7 +5,7 @@
 import React, { useMemo, useState } from "react";
 import { controlDeComisiones, type FichaExtracto as FichaMes, type MovimientoFicha } from "../domain/fichaExtracto";
 import { TITULO_COMISIONES_CUENTA } from "../domain/fichaTarjeta";
-import { BuscadorVinculo, IconoEstado, ItemMenu, MenuFicha, SepMenu, TituloMenu, Z_FICHA, ddmm, type OpcionVinculo } from "./VinculoUi";
+import { BuscadorVarios, BuscadorVinculo, IconoEstado, ItemMenu, MenuFicha, SepMenu, TituloMenu, Z_FICHA, ddmm, type OpcionVinculo } from "./VinculoUi";
 import { ImpuestosDelGrupo, type ImpuestosDeLaFicha } from "./ImpuestosDelGrupo";
 import type { GrupoImpuestos } from "../domain/impuestosBancarios";
 
@@ -60,6 +60,8 @@ export type FichaExtractoProps = {
   // 25/11/2026: quien ve la solapa Movimientos internos elige la operacion exacta; quien no, solo lo marca como interno
   // y queda el recordatorio para el administrador.
   puedeVerInternos?: boolean;
+  // 25/11/2026: una transferencia que cancela varias facturas se linkea con varios pagos que suman su importe.
+  onLinkVarios?: (movId: number, pagoIds: number[]) => void;
 };
 
 export function FichaExtracto(p: FichaExtractoProps) {
@@ -67,6 +69,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
   const [sel, setSel] = useState<string>(p.mesInicial || meses[0]?.mes || "");
   const [menu, setMenu] = useState<null | { x: number; y: number; m: MovimientoFicha }>(null);
   const [buscar, setBuscar] = useState<null | { tipo: TipoLink; m: MovimientoFicha }>(null);
+  const [varios, setVarios] = useState<null | MovimientoFicha>(null);
   // Elegir el renglon del Calendario para este movimiento (buscador, no un select suelto en la fila).
   const [renglonDe, setRenglonDe] = useState<null | MovimientoFicha>(null);
   const opcionesRenglon = useMemo<OpcionVinculo[]>(
@@ -224,7 +227,8 @@ export function FichaExtracto(p: FichaExtractoProps) {
             <ItemMenu
               onClick={() => {
                 const s = menu.m.sugerencia!;
-                p.onLink(menu.m.mov.id, s.tipo === "pago" ? "pago" : "resumen", String(s.tipo === "pago" ? s.pagoId : s.statementId));
+                if (s.tipo === "pagos") p.onLinkVarios?.(menu.m.mov.id, s.pagoIds);
+                else p.onLink(menu.m.mov.id, s.tipo === "pago" ? "pago" : "resumen", String(s.tipo === "pago" ? s.pagoId : s.statementId));
                 setMenu(null);
               }}
             >
@@ -242,6 +246,16 @@ export function FichaExtracto(p: FichaExtractoProps) {
               🔗 {TITULOS[t]}…
             </ItemMenu>
           ))}
+          {menu.m.mov.movementType === "debito" && p.onLinkVarios && (
+            <ItemMenu
+              onClick={() => {
+                setVarios(menu.m);
+                setMenu(null);
+              }}
+            >
+              🔗 Linkear con VARIOS pagos que suman este importe…
+            </ItemMenu>
+          )}
           <ItemMenu
             onClick={() => {
               if (p.puedeVerInternos) setBuscar({ tipo: "interno", m: menu.m });
@@ -389,6 +403,19 @@ export function FichaExtracto(p: FichaExtractoProps) {
             setRenglonDe(null);
           }}
           onCerrar={() => setRenglonDe(null)}
+        />
+      )}
+      {varios && p.onLinkVarios && (
+        <BuscadorVarios
+          titulo={`Varios pagos · ${varios.mov.concept}`}
+          opciones={p.opciones("pago", varios)}
+          objetivo={Math.abs(Number(varios.mov.amount))}
+          money={(n) => p.money(n, varios.mov.currency)}
+          onElegir={(ids) => {
+            p.onLinkVarios!(varios.mov.id, ids.map(Number));
+            setVarios(null);
+          }}
+          onCerrar={() => setVarios(null)}
         />
       )}
       {buscar && (
