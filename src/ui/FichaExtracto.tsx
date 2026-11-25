@@ -16,7 +16,7 @@ const nombreMes = (m: string) => `${MESES[Number(m.slice(5, 7)) - 1]} ${m.slice(
 
 // Se linkea contra el PAGO cargado (que ya dice su factura), no contra la factura sola: desde el 1/11 el banco
 // constata, asi que un debito linkeado a una factura sin pago dejaria la plata sin salir del sistema.
-export type TipoLink = "pago" | "resumen" | "trabajo";
+export type TipoLink = "pago" | "resumen" | "trabajo" | "interno";
 
 // Seccion de renglones del Calendario anual, igual que la que usa el bloque del banco.
 export type SeccionRenglon = { key: string; label: string; items: { key: string; label: string }[] };
@@ -57,6 +57,9 @@ export type FichaExtractoProps = {
   // 25/11/2026: cerrar un movimiento sin link (con motivo y firma). Solo el administrador ve la opción.
   esAdmin?: boolean;
   onCerrarSinLink?: (movId: number, motivo: string | null) => void;
+  // 25/11/2026: quien ve la solapa Movimientos internos elige la operacion exacta; quien no, solo lo marca como interno
+  // y queda el recordatorio para el administrador.
+  puedeVerInternos?: boolean;
 };
 
 export function FichaExtracto(p: FichaExtractoProps) {
@@ -84,7 +87,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
     // Solo depende del mes que se esta mirando; la sugerencia es pura.
     [ficha, p.sugerenciaRenglon]
   );
-  const TITULOS: Record<TipoLink, string> = { pago: "Linkear con un pago cargado (y su factura)", resumen: "Pago del resumen de una tarjeta", trabajo: "Cobro de un trabajo" };
+  const TITULOS: Record<TipoLink, string> = { pago: "Linkear con un pago cargado (y su factura)", resumen: "Pago del resumen de una tarjeta", trabajo: "Cobro de un trabajo", interno: "Movimiento interno: elegir la operación exacta" };
 
   return (
     <div onClick={p.onCerrar} style={{ position: "fixed", inset: 0, background: "rgba(15,23,42,0.5)", zIndex: Z_FICHA, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "30px 12px", overflowY: "auto" }}>
@@ -127,6 +130,9 @@ export function FichaExtracto(p: FichaExtractoProps) {
               <span>Débitos {p.money(ficha.debitos, ficha.currency)}</span>
               <span>{ficha.pendientes} sin linkear</span>
               {ficha.desconocidos > 0 && <b style={{ color: "#b91c1c" }}>{ficha.desconocidos} desconocido(s)</b>}
+              {ficha.internosSinOperacion > 0 && (p.esAdmin || p.puedeVerInternos) && (
+                <b data-internos-sin-operacion style={{ color: "#b45309" }}>⚠ {ficha.internosSinOperacion} movimiento(s) interno(s) sin su operación: linkealos con click derecho</b>
+              )}
               <span style={{ color: ficha.cadenaCierra ? "#166534" : "#b91c1c", fontWeight: 700 }}>{ficha.cadenaCierra ? "cadena de saldos ✓" : "la cadena de saldos no cierra: falta o sobra un movimiento"}</span>
               {ficha.completo && <span style={{ background: "#166534", color: "#fff", borderRadius: 999, padding: "3px 10px", fontWeight: 800, fontSize: 12.5 }}>✓ revisado y linkeado</span>}
               {!ficha.obligatorio && !ficha.completo && <span style={{ fontSize: 12, color: "#64748b" }}>anterior al 1/11/2026: no es obligatorio</span>}
@@ -238,11 +244,12 @@ export function FichaExtracto(p: FichaExtractoProps) {
           ))}
           <ItemMenu
             onClick={() => {
-              p.onTipo(menu.m.mov.id, "interno");
+              if (p.puedeVerInternos) setBuscar({ tipo: "interno", m: menu.m });
+              else p.onTipo(menu.m.mov.id, "interno");
               setMenu(null);
             }}
           >
-            ⇄ Movimiento interno (entre cuentas o empresas)
+            {p.puedeVerInternos ? "⇄ Movimiento interno: linkear con la operación exacta…" : "⇄ Movimiento interno (queda para que el administrador linkee la operación)"}
           </ItemMenu>
           <SepMenu />
           <ItemMenu

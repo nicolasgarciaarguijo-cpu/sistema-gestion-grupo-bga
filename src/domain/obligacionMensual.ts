@@ -11,6 +11,8 @@
 //
 // Puro. El App junta el calculo de cada mes, las facturas y las deudas.
 
+import { esProveedorDelFisco } from "./pagoDeIva";
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const mesValido = (m?: string): boolean => /^\d{4}-\d{2}$/.test(String(m || ""));
 
@@ -50,6 +52,8 @@ export type DocObligacion = {
   periodo?: string; // el mes que paga ("2026-10"); sin aclarar, el anterior al de la factura
   pagadaEl?: string;
   plan?: PlanObligacion;
+  // Con que se comprueba el pago: "VEP" o "Comprobante de pago" (25/11/2026). Solo para mostrarlo.
+  tipo?: string;
 };
 
 export const periodoDelDoc = (d: Pick<DocObligacion, "periodo" | "fecha">): string => (mesValido(d.periodo) ? String(d.periodo) : mesAnteriorA(d.fecha));
@@ -131,6 +135,25 @@ export function obligacionMensual(params: { company: string; meses: Array<{ mes:
   };
 }
 
+// QUE OBLIGACION PAGA UN COMPROBANTE (Nicolas, 25/11/2026): "cargas sociales esta vinculado con el proveedor ARCA
+// tambien, pero lo quiero ver por separado cargas sociales e IVA". Y el sindicato son dos pagos: uno por VEP y otro por
+// transferencia. Lo que se eligio en la ficha manda; si no se eligio nada, lo dice el proveedor (ARCA = IVA).
+export type Obligacion = "iva" | "cargas_sociales" | "sindicato";
+export const NOMBRE_OBLIGACION: Record<Obligacion, string> = { iva: "IVA", cargas_sociales: "Cargas sociales", sindicato: "Sindicato" };
+export const TIPO_VEP = "VEP";
+export const TIPO_COMPROBANTE_PAGO = "Comprobante de pago";
+// Las dos formas de comprobar un pago: el VEP, o el comprobante del pago (transferencia, cheque).
+export const TIPOS_DE_COMPROBACION = [
+  { clave: "vep", titulo: TIPO_VEP },
+  { clave: "comprobante", titulo: TIPO_COMPROBANTE_PAGO },
+] as const;
+export function obligacionDeFactura(f: { supplier?: string; obligacion?: string }): Obligacion | null {
+  if (f.obligacion === "iva" || f.obligacion === "cargas_sociales" || f.obligacion === "sindicato") return f.obligacion;
+  if (esProveedorSindicato(f.supplier)) return "sindicato";
+  if (esProveedorDelFisco(f.supplier)) return "iva";
+  return null;
+}
+
 // SINDICATO: el aporte es un porcentaje sobre lo que cobran los trabajadores. El porcentaje se edita.
 export const aporteSindical = (base: number, porcentaje: number): number => r2((Math.max(0, Number(base || 0)) * Math.max(0, Number(porcentaje || 0))) / 100);
 
@@ -140,4 +163,6 @@ const norm = (v?: string): string =>
     .replace(/[̀-ͯ]/g, "")
     .toLowerCase();
 // El proveedor es un sindicato: por el nombre (USIMRA, UOCRA, "Sindicato...").
-export const esProveedorSindicato = (supplier?: string): boolean => /\b(usimra|uocra|uom|sindicato|sindical|gremio)\b/.test(norm(supplier));
+export function esProveedorSindicato(supplier?: string): boolean {
+  return /\b(usimra|uocra|uom|sindicato|sindical|gremio)\b/.test(norm(supplier));
+}

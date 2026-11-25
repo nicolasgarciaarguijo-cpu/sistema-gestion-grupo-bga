@@ -27,6 +27,30 @@ export const NOVEDADES: TandaNovedades[] = [
         tab: "cajaChica",
       },
       {
+        titulo: "Cargas sociales: bloque propio, separado del IVA",
+        que: "En Pago a proveedores hay un bloque nuevo «Cargas sociales», igual al de IVA y Sindicato. Las cargas sociales se pagan a ARCA, como el IVA, pero se ven por separado: cada comprobante dice en su ficha qué paga (IVA, Cargas sociales o Sindicato) y va al bloque que corresponde.",
+        como: "Pago a proveedores → Cargas sociales → click en el mes → «Cargar VEP» o «Cargar Comprobante de pago». En la ficha del comprobante, «Qué paga este comprobante» decide en qué bloque figura. El porcentaje de arriba es solo para estimar; lo que vale es lo cargado.",
+        tab: "costos",
+      },
+      {
+        titulo: "Sindicato y cargas sociales: VEP o comprobante de pago",
+        que: "El sindicato son dos pagos, uno por VEP y otro por transferencia. Ahora en la ficha del mes de Sindicato y de Cargas sociales se puede cargar cualquiera de los dos: el VEP o el comprobante de pago. Cada uno queda con su tipo a la vista, y el lector de PDF reconoce cuál es. Además se arregló que el período elegido en la ficha del comprobante no se guardaba.",
+        como: "Pago a proveedores → Sindicato (o Cargas sociales) → click en el mes. Hay un botón para cada forma de comprobar, y «Leer el PDF del pago» para que lo cargue o lo controle el lector.",
+        tab: "costos",
+      },
+      {
+        titulo: "Movimiento interno: se linkea con la operación exacta",
+        que: "Un movimiento del banco que es un pase entre cuentas o entre empresas ahora se linkea con la operación exacta cargada en Movimientos internos, no solo con la etiqueta «interno». Quien no ve la solapa Movimientos internos lo puede marcar como interno igual: queda un recordatorio en la ficha de la cuenta para que el administrador lo una con su operación. Además, cada cuenta muestra su empresa (por ejemplo «Patagonia $ · BGA»), y el extracto de una cuenta solo ofrece los pagos que salieron de esa cuenta: ya no se mezclan Patagonia de BGA y Patagonia de De Raíz.",
+        como: "Bancos y tarjetas → ficha de la cuenta → click derecho en el movimiento → «Movimiento interno: linkear con la operación exacta». El aviso «movimientos internos sin su operación» aparece arriba del mes.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Linkear el extracto no mueve plata",
+        que: "Unir el débito del banco con el resumen de la tarjeta ya no marca el resumen como pagado. El linkeo queda solo como control de que lo que cobró el banco está cargado en el sistema. El resumen se marca pagado únicamente con su tilde, en la ficha de la tarjeta.",
+        como: "Bancos y tarjetas → ficha de la cuenta → click derecho en el movimiento → linkear. No cambia ningún saldo.",
+        tab: "bancos",
+      },
+      {
         titulo: "Comisiones de la tarjeta: sin cajita de pago",
         que: "Las comisiones, tasas e impuestos del resumen se siguen mostrando aparte, con su total, para saber cuánto se fue en eso. Ya no tienen una cajita para tildar «pagado»: esa cajita generaba un pago extra, y esos cargos ya salen con el pago de la tarjeta. Si quedó un pago hecho con la cajita anterior, la ficha lo avisa en rojo y deja quitarlo.",
         como: "Bancos y tarjetas → ficha de la tarjeta → el resumen. Abajo de todo está «Comisiones, tasas e intereses (tarjeta)» con su total y sus renglones. Si cargaste alguno a mano, el sistema te sugiere linkearlo.",
@@ -34,7 +58,7 @@ export const NOVEDADES: TandaNovedades[] = [
       },
       {
         titulo: "Resumen pagado por menos del total",
-        que: "Al lado del tilde «Pagado» del resumen hay un campo «Monto pagado». Si se pagó menos que el total, se carga ahí y de la cuenta sale solo eso; el resto queda financiado y viene en el resumen siguiente. La ficha muestra «Queda por pagar» con ese importe, y el cash flow baja lo que se pagó de la tarjeta, no el total de las compras. Vacío significa que se pagó el total. Si linkeás el débito del banco con el resumen y el importe es distinto al total, el monto pagado se completa solo.",
+        que: "Al lado del tilde «Pagado» del resumen hay un campo «Monto pagado». Si se pagó menos que el total, se carga ahí y de la cuenta sale solo eso; el resto queda financiado y viene en el resumen siguiente. La ficha muestra «Queda por pagar» con ese importe, y el cash flow baja lo que se pagó de la tarjeta, no el total de las compras. Vacío significa que se pagó el total.",
         como: "Bancos y tarjetas → ficha de la tarjeta → el resumen → «Datos del resumen»: tildá «Pagado» y, si no fue el total, escribí el monto en «Monto pagado $». Vale para los resúmenes que cierran desde el 1/11/2026.",
         tab: "bancos",
       },

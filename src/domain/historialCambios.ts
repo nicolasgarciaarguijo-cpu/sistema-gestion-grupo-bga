@@ -257,6 +257,7 @@ export const NOMBRE_CAMPO: Record<string, string> = {
   locked: "candado",
   lista: "pasó de",
   ivaPeriodoMes: "período que paga",
+  obligacion: "qué paga (IVA, cargas sociales o sindicato)",
   condicionPago: "condición de pago",
   vat: "IVA",
   net21: "neto",

@@ -250,8 +250,16 @@ export function armarCuentas(input: {
  * terminaba cargado dos veces. Toda caja de persona muestra a que empresa pertenece. Solo cambia el nombre que se ve.
  */
 export function cajasConEmpresa<T extends { id: string; company: string; nombre: string }>(cuentas: T[], corto: (company: string) => string): T[] {
+  return cuentasConEmpresa(cuentas, corto, true);
+}
+
+/**
+ * TODAS LAS CUENTAS CON SU EMPRESA (Nicolas, 25/11/2026: "esta mezclando Patagonia BGA y Patagonia De Raiz"). Las dos
+ * empresas tienen cuenta en Patagonia y se llamaban igual ("Patagonia $"). Bancos, efectivo y cajas muestran su empresa.
+ */
+export function cuentasConEmpresa<T extends { id: string; company: string; nombre: string }>(cuentas: T[], corto: (company: string) => string, soloCajas = false): T[] {
   return cuentas.map((c) => {
-    if (!c.id.startsWith("persona|")) return c;
+    if (soloCajas && !c.id.startsWith("persona|")) return c;
     const sufijo = ` · ${corto(c.company) || c.company}`;
     return c.nombre.endsWith(sufijo) ? c : { ...c, nombre: `${c.nombre}${sufijo}` };
   });

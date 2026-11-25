@@ -205,3 +205,51 @@ describe("SeccionMensual · el lector de PDF", () => {
     expect(div.querySelector("[data-leer-pdf]")).toBeNull();
   });
 });
+
+// Nicolas, 25/11/2026: "el sindicato son 2 pagos diferentes, uno por VEP y otro por transferencia, y las cargas
+// sociales son por VEP [...] quiero en estas situaciones 2 opciones de comprobacion: o VEP o comprobantes de pago".
+describe("SeccionMensual · dos formas de comprobar el pago", () => {
+  const tipos = [{ clave: "vep", titulo: "VEP" }, { clave: "comprobante", titulo: "Comprobante de pago" }];
+
+  it("con tipos, la ficha del mes ofrece cargar el VEP o el comprobante de pago", () => {
+    const cargas: any[] = [];
+    const div = pintar({ titulo: "Sindicato", nombreBoleta: "boleta", tipos, onCargarBoleta: (...a: any[]) => cargas.push(a) });
+    click(div.querySelector('tr[data-mes="2026-10"]')!);
+    const vep = div.querySelector('[data-cargar-tipo="vep"]') as HTMLButtonElement;
+    const comp = div.querySelector('[data-cargar-tipo="comprobante"]') as HTMLButtonElement;
+    expect(vep.textContent).toContain("Cargar VEP de 10/2026");
+    expect(comp.textContent).toContain("Cargar Comprobante de pago de 10/2026");
+    click(vep);
+    click(comp);
+    expect(cargas.map((a) => [a[0], a[1], a[3]])).toEqual([["De Raiz", "2026-10", "vep"], ["De Raiz", "2026-10", "comprobante"]]);
+    div.remove();
+  });
+
+  it("sin tipos sigue habiendo un solo botón (el IVA es siempre VEP)", () => {
+    const div = pintar();
+    click(div.querySelector('tr[data-mes="2026-10"]')!);
+    expect(div.querySelector("[data-cargar-tipo]")).toBeNull();
+    expect(boton(div, "Cargar VEP de 10/2026 a mano")).toBeTruthy();
+    div.remove();
+  });
+
+  it("cada comprobante cargado dice con qué se comprobó", () => {
+    const empresaCon: EmpresaSeccion = {
+      ...empresa(),
+      datos: obligacionMensual({
+        company: "De Raiz",
+        meses: [{ mes: "2026-10", calculado: 100 }],
+        docs: [
+          { id: 21, company: "De Raiz", supplier: "USIMRA", fecha: "2026-11-05", total: 60, periodo: "2026-10", tipo: "VEP" },
+          { id: 22, company: "De Raiz", supplier: "USIMRA", fecha: "2026-11-05", total: 40, periodo: "2026-10", tipo: "Comprobante de pago" },
+        ],
+        hoy: "2026-11-21",
+      }),
+    };
+    const div = pintar({ titulo: "Sindicato", nombreBoleta: "boleta", tipos, empresas: [empresaCon] });
+    click(div.querySelector('tr[data-mes="2026-10"]')!);
+    const vistos = Array.from(div.querySelectorAll("[data-tipo-comprobante]")).map((e) => e.textContent);
+    expect(vistos).toEqual(["VEP", "Comprobante de pago"]);
+    div.remove();
+  });
+});

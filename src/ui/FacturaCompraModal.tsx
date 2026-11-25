@@ -11,7 +11,7 @@ import { FirmanteFijo } from "./FirmanteSelect";
 import { SelectorTarjeta, esPagoConTarjeta, type TarjetaOpt } from "./SelectorTarjeta";
 import NumInput from "./NumInput";
 import { esProveedorDelFisco } from "../domain/pagoDeIva";
-import { esProveedorSindicato } from "../domain/obligacionMensual";
+import { esProveedorSindicato, obligacionDeFactura, NOMBRE_OBLIGACION, type Obligacion } from "../domain/obligacionMensual";
 import { validarFacturaCompra, type ComprobanteCargado } from "../domain/validaciones";
 
 export type MedioPago = "efectivo" | "transferencia" | "cheque" | "tarjeta_debito" | "tarjeta_credito" | "debito";
@@ -40,7 +40,7 @@ export type PagoFactura = {
   cuotas?: number;
 };
 
-export const TIPOS_COMPROBANTE = ["Factura", "Nota de débito", "Ticket factura", "Recibo", "Otro"];
+export const TIPOS_COMPROBANTE = ["Factura", "Nota de débito", "Ticket factura", "Recibo", "VEP", "Comprobante de pago", "Otro"];
 export const ALICUOTAS_IVA = [21, 10.5, 27, 5, 2.5, 0];
 
 export type FacturaForm = {
@@ -77,6 +77,8 @@ export type FacturaForm = {
   descripcion?: string;
   // Pago del IVA por Compras (17/11/2026): el periodo que paga esta factura de ARCA.
   ivaPeriodoMes?: string;
+  // Que obligacion paga: IVA, cargas sociales o sindicato (25/11/2026). Vacio = lo dice el proveedor.
+  obligacion?: "iva" | "cargas_sociales" | "sindicato";
   cajaDe?: string;
   pagoSigueTotal?: boolean;
   // Un gasto de caja chica cargado con la ficha vieja: al guardar pasa a esta (factura + pago con la caja).
@@ -488,9 +490,20 @@ export function FacturaCompraModal({
           </label>
           {/* PAGO DEL IVA (17/11/2026): si la factura es de ARCA, de que periodo es el IVA que paga. Con
               eso el tablero de la Posicion de IVA la cuenta como el VEP de ese mes. */}
-          {(esProveedorDelFisco(f.supplier) || esProveedorSindicato(f.supplier) || !!f.ivaPeriodoMes) && (
+          {(esProveedorDelFisco(f.supplier) || esProveedorSindicato(f.supplier) || !!f.obligacion) && (
+            <label data-que-paga style={{ ...lbl, marginTop: 8 }}>
+              Qué paga este comprobante
+              <select style={input} value={obligacionDeFactura(f) || "iva"} onChange={(e) => set({ obligacion: e.target.value as Obligacion })}>
+                {(Object.keys(NOMBRE_OBLIGACION) as Obligacion[]).map((o) => (
+                  <option key={o} value={o}>{NOMBRE_OBLIGACION[o]}</option>
+                ))}
+              </select>
+              <span style={{ fontWeight: 400, fontSize: 11.5, color: "#64748b" }}>Dice en qué bloque de Pago a proveedores figura: IVA, Cargas sociales o Sindicato.</span>
+            </label>
+          )}
+          {(esProveedorDelFisco(f.supplier) || esProveedorSindicato(f.supplier) || !!f.ivaPeriodoMes || !!f.obligacion) && (
             <label style={{ ...lbl, marginTop: 8 }}>
-              {esProveedorSindicato(f.supplier) ? "Boleta del sindicato: período que paga" : "¿Es el pago del IVA? Período que paga"}
+              {obligacionDeFactura(f) === "sindicato" ? "Boleta del sindicato: período que paga" : obligacionDeFactura(f) === "cargas_sociales" ? "Cargas sociales: período que paga" : "¿Es el pago del IVA? Período que paga"}
               <input
                 style={input}
                 type="month"
@@ -498,7 +511,9 @@ export function FacturaCompraModal({
                 onChange={(e) => set({ ivaPeriodoMes: e.target.value || undefined })}
               />
               <span style={{ fontWeight: 400, fontSize: 11.5, color: "#64748b" }}>
-                {esProveedorSindicato(f.supplier)
+                {obligacionDeFactura(f) === "cargas_sociales"
+                  ? "El mes de sueldos que pagan estas cargas sociales. Vacío = el mes anterior a la fecha. Con esto figura en Pago a proveedores → Cargas sociales."
+                  : obligacionDeFactura(f) === "sindicato"
                   ? "El mes de sueldos que paga esta boleta. Vacío = el mes anterior a la fecha. Con esto figura en Pago a proveedores → Sindicato."
                   : "Ej. 2026-08 para el IVA de agosto. Con esto figura como el VEP de ese mes en Pago a proveedores → IVA (si no, el mes va a decir que falta la boleta). Dejalo vacío si no es IVA."}
               </span>

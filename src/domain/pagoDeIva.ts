@@ -17,6 +17,8 @@ export type FacturaDeIva = {
   invoiceDate: string;
   total: number;
   ivaPeriodoMes?: string; // "2026-08"
+  // Que paga (25/11/2026): ARCA tambien cobra las cargas sociales, que NO son IVA. Vacio = IVA.
+  obligacion?: string;
   // Pagada: si no se pago, todavia no es un pago del IVA (es deuda con ARCA).
   pagadaEl?: string;
 };
@@ -48,7 +50,8 @@ export const periodoDeLaFactura = (f: FacturaDeIva): string =>
 
 // Es un pago del IVA para el tablero: tiene periodo aclarado y esta pagada.
 // Solo las del fisco: el campo del periodo lo usa tambien la boleta del sindicato (21/11/2026), que no es IVA.
-export const esPagoDeIva = (f: FacturaDeIva): boolean => esProveedorDelFisco(f.supplier) && mesValido(f.ivaPeriodoMes) && !!f.pagadaEl;
+const esDeIva = (f: FacturaDeIva): boolean => esProveedorDelFisco(f.supplier) && (!f.obligacion || f.obligacion === "iva");
+export const esPagoDeIva = (f: FacturaDeIva): boolean => esDeIva(f) && mesValido(f.ivaPeriodoMes) && !!f.pagadaEl;
 
 export type VepDeFactura = { company: string; date: string; amount: number; periodoMes: string };
 
@@ -65,5 +68,5 @@ export function vepsDesdeFacturas(facturas: FacturaDeIva[]): VepDeFactura[] {
 // Una factura de ARCA sin periodo aclarado: puede ser el pago del IVA y el tablero no lo sabe. La ficha
 // lo pregunta y Compras lo avisa.
 export function facturasDelFiscoSinPeriodo(facturas: FacturaDeIva[]): FacturaDeIva[] {
-  return facturas.filter((f) => esProveedorDelFisco(f.supplier) && !mesValido(f.ivaPeriodoMes));
+  return facturas.filter((f) => esDeIva(f) && !mesValido(f.ivaPeriodoMes));
 }

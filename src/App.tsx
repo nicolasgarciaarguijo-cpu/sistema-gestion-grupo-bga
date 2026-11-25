@@ -88,7 +88,7 @@ import {
   type PagoF,
   type TarjetaF,
 } from "./domain/fichaTarjeta";
-import { fichasDeExtracto, type MovimientoFicha } from "./domain/fichaExtracto";
+import { fichasDeExtracto, pagoEsDeLaCuenta, type MovimientoFicha } from "./domain/fichaExtracto";
 import { leerResumenTarjeta, type ResumenLeido } from "./domain/lectorResumenTarjeta";
 import { lineasDelPdf, pareceTexto, textoDelPdf } from "./lib/pdfLineas";
 import { proveedorDeArca, accionPorDefecto, sugerenciaDe, type RenglonRevision } from "./domain/arcaRevision";
@@ -103,7 +103,7 @@ import { CostosTarjetaCotizacion } from "./ui/CostosTarjetaCotizacion";
 import { ImportarResumenTarjetaModal, type DecisionImportacion } from "./ui/ImportarResumenTarjetaModal";
 import type { PagoSinTarjetaF } from "./domain/fichaTarjeta";
 import { cuotaBajaLaCuenta, factorPagado, pagosDeResumenes, repartoDeResumenes } from "./domain/pagoResumenTarjeta";
-import { aporteSindical, esProveedorSindicato, obligacionMensual, planDeObligacion, type DocObligacion, type PlanObligacion } from "./domain/obligacionMensual";
+import { aporteSindical, esProveedorSindicato, obligacionDeFactura, obligacionMensual, planDeObligacion, TIPOS_DE_COMPROBACION, TIPO_COMPROBANTE_PAGO, TIPO_VEP, type DocObligacion, type Obligacion, type PlanObligacion } from "./domain/obligacionMensual";
 import { esProveedorDelFisco } from "./domain/pagoDeIva";
 import { creditoIncompleto } from "./domain/vatBalance";
 import { SeccionMensual, type DetalleMes, type EmpresaSeccion } from "./ui/SeccionMensual";
@@ -134,7 +134,7 @@ import {
   type Cuenta,
   cuentaImplicita,
   idCajaPersona,
-  cajasConEmpresa,
+  cuentasConEmpresa,
 } from "./domain/cuentas";
 import { plataDelSistema } from "./domain/plataDelSistema";
 import { CuentasPanel } from "./tabs/CuentasPanel";
@@ -15323,6 +15323,8 @@ Escribi CERRAR para confirmar:`
           invoiceDate: inv.invoiceDate,
           total: Number(inv.total || 0),
           ivaPeriodoMes: inv.ivaPeriodoMes,
+          obligacion: inv.obligacion,
+          receiptKind: inv.receiptKind,
           pagadaEl: pago?.date || (inv.paidByBankEntryId != null ? inv.invoiceDate : undefined),
         };
       }),
@@ -17740,7 +17742,7 @@ Escribi CERRAR para confirmar:`
       if (Number(f.assignedBlack || 0) > 0) colores.push("negro");
       return colores.map((color) => ({ company: String(f.company), persona: f.responsible || "", color }));
     });
-    return cajasConEmpresa(conArqueo(armarCuentas({
+    return cuentasConEmpresa(conArqueo(armarCuentas({
       companies,
       guardadas: cuentasGuardadas.filter((c) => canAccessCompany(c.company as CompanyName)),
       fechaCorte: bankLoadsUntil,
@@ -17781,7 +17783,7 @@ Escribi CERRAR para confirmar:`
       efectivoApertura: [],
       personas,
     });
-    return [...cuentasSistema, ...cajasConEmpresa(extra.filter((c) => !ya.has(c.id)), cortoDeEmpresa)];
+    return [...cuentasSistema, ...cuentasConEmpresa(extra.filter((c) => !ya.has(c.id)), cortoDeEmpresa)];
   }, [cuentasSistema, pettyCashFunds, cuentasGuardadas, bankLoadsUntil, bankStatementEntries, isSupabaseLoggedIn, effectiveIsAdmin, allowedCompaniesForSession]);
 
   // FACTURA PAGADA CON LA CAJA CHICA (Nicolas, 2026-10-21): un pago cargado en Compras cuya cuenta es la caja
@@ -18170,9 +18172,10 @@ Escribi CERRAR para confirmar:`
         costEntries
           .filter((c) => canAccessCompany(c.company) && c.paymentMethod !== "tarjeta_credito")
           .map((c) => ({ id: c.id, company: String(c.company), date: c.date, amount: Number(c.amount || 0), supplier: c.supplier || "", description: c.description || "", paymentMethod: c.paymentMethod, bankEntryId: c.bankEntryId, impuestoBanco: !!c.impuestoBanco, cuentaId: c.cuentaId })),
-        resumenesF.map((x) => ({ ...x, nombre: tarjetasF.find((t) => t.id === x.cardId)?.name || "Tarjeta" }))
+        resumenesF.map((x) => ({ ...x, nombre: tarjetasF.find((t) => t.id === x.cardId)?.name || "Tarjeta" })),
+        internalTransfers.map((t) => ({ id: t.id, date: t.date, amount: Number(t.amount || 0), description: t.description || t.bank || "" }))
       ),
-    [alcanceEmpresa, visibleBankStatementEntries, costEntries, resumenesF, tarjetasF]
+    [alcanceEmpresa, visibleBankStatementEntries, costEntries, resumenesF, tarjetasF, internalTransfers]
   );
   const claveCuenta = (f: { company: string; bank: string; currency: string }) => `${f.company}||${f.bank}||${f.currency}`;
   // LOS IMPUESTOS Y COMISIONES DE UNA FICHA (18/11/2026). Antes estaban todos juntos en el bloque
@@ -18251,8 +18254,14 @@ Escribi CERRAR para confirmar:`
     const monto = Math.abs(Number(m.mov.amount || 0));
     if (tipo === "pago")
       return costEntries
-        .filter((c) => String(c.company) === m.mov.company && c.paymentMethod !== "efectivo" && c.paymentMethod !== "tarjeta_credito" && (c.bankEntryId == null || c.bankEntryId === m.mov.id))
+        .filter((c) => pagoEsDeLaCuenta({ company: String(c.company), cuentaId: c.cuentaId }, m.mov) && c.paymentMethod !== "efectivo" && c.paymentMethod !== "tarjeta_credito" && (c.bankEntryId == null || c.bankEntryId === m.mov.id))
         .map((c) => ({ id: String(c.id), texto: `${etiquetaPago(c.id)} · ${money(Number(c.amount || 0))}`, detalle: `${ddmmCorta(c.date)} · ${c.description || c.group || ""}`, destacada: Math.abs(Number(c.amount || 0) - monto) <= 1 }));
+    // MOVIMIENTO INTERNO: la operacion exacta de Movimientos internos (25/11/2026). Las de esta empresa, de salida o de entrada.
+    if (tipo === "interno")
+      return visibleInternalTransfers
+        .filter((t) => String(t.company) === m.mov.company || String((t as any).companyDestino || "") === m.mov.company)
+        .sort((a, b) => (b.date || "").localeCompare(a.date || ""))
+        .map((t) => ({ id: String(t.id), texto: `${ddmmCorta(t.date)} · ${t.description || t.bank || "Pase"} · ${money(Number(t.amount || 0))}`, detalle: `${cuentasSistema.find((c) => c.id === t.cuentaId)?.nombre || ""} → ${cuentasSistema.find((c) => c.id === t.cuentaDestinoId)?.nombre || ""}`, destacada: Math.abs(Number(t.amount || 0) - monto) <= 1 }));
     if (tipo === "resumen")
       return resumenesF
         .filter((x) => x.company === m.mov.company)
@@ -18293,6 +18302,11 @@ Escribi CERRAR para confirmar:`
   const linkearMovimiento = (movId: number, tipo: TipoLink, id: string) => {
     const b = movimientoEditable(movId);
     if (!b) return;
+    if (tipo === "interno") {
+      // Solo queda unido a la operacion: no crea ni cambia ningun movimiento de plata.
+      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "interno" as const, assignedTransferId: Number(id), desconocido: null, cerradoSinLink: null } : x)));
+      return;
+    }
     if (tipo === "pago") {
       const pagoId = Number(id);
       const pago = costEntries.find((c) => c.id === pagoId);
@@ -18302,11 +18316,9 @@ Escribi CERRAR para confirmar:`
       const sid = Number(id);
       const st = creditCardStatements.find((x) => x.id === sid);
       setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedCardStatementId: sid, assignedKind: "pago" as const, assignedParty: creditCards.find((t) => t.id === st?.cardId)?.name || x.assignedParty, desconocido: null, cerradoSinLink: null } : x)));
-      // Linkear el debito del banco marca el resumen pagado; si el banco debito OTRO monto que el total, ese es el monto
-      // realmente pagado (25/11/2026).
-      const debitado = Math.abs(Number(bankStatementEntries.find((x) => x.id === movId)?.amount || 0));
-      const parcial = st && debitado > 0 && Math.abs(debitado - Number(st.totalArs || 0)) > 1 ? debitado : undefined;
-      if (st && (!st.paid || parcial != null)) setCreditCardStatements((prev) => prev.map((x) => (x.id === sid ? { ...x, paid: true, ...(parcial != null ? { paidAmountArs: parcial } : {}) } : x)));
+      // EL LINKEO NO MUEVE PLATA (Nicolas, 25/11/2026): "el linkeo es para asegurarse que todo lo que se cobro en los bancos
+      // o tarjetas este cargado en el sistema, nada mas, es un doble chequeo". Antes, unir el debito con el resumen lo marcaba
+      // pagado (y el resumen pagado baja la cuenta). Ahora solo queda unido: pagado se tilda en la ficha de la tarjeta.
     } else {
       const job = visibleApprovedJobs.find((j) => String(j.budgetNumber) === id);
       setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "cobro" as const, assignedJobBudget: id, assignedParty: job?.client || x.assignedParty, desconocido: null, cerradoSinLink: null } : x)));
@@ -18374,7 +18386,7 @@ Escribi CERRAR para confirmar:`
     if (!movimientoEditable(movId)) return;
     setCostEntries((prev) => prev.map((c) => (c.bankEntryId === movId ? { ...c, bankEntryId: undefined } : c)));
     setBankStatementEntries((prev) =>
-      prev.map((x) => (x.id === movId ? { ...x, assignedKind: undefined, assignedJobBudget: undefined, assignedPurchaseInvoiceId: null, assignedCardStatementId: null } : x))
+      prev.map((x) => (x.id === movId ? { ...x, assignedKind: undefined, assignedJobBudget: undefined, assignedPurchaseInvoiceId: null, assignedCardStatementId: null, assignedTransferId: null } : x))
     );
   };
 
@@ -22527,6 +22539,10 @@ Escribi CERRAR para confirmar:`
       supplier: inv.supplier || "",
       taxId: inv.taxId || "",
       altaProveedor: false,
+      // El periodo y la obligacion que paga (IVA, cargas sociales, sindicato): antes no se traian ni se guardaban, asi
+      // que lo elegido en la ficha se perdia al guardar (25/11/2026).
+      ivaPeriodoMes: inv.ivaPeriodoMes,
+      obligacion: inv.obligacion,
       receiptKind: inv.receiptKind || "Factura",
       receiptLetter: inv.receiptLetter || "A",
       invoiceNumber: inv.invoiceNumber || "",
@@ -22698,6 +22714,8 @@ Escribi CERRAR para confirmar:`
       faltaInfo: f.faltaInfo ? true : undefined,
       faltaInfoNota: f.faltaInfo ? f.faltaInfoNota?.trim() || undefined : undefined,
       descripcion: f.descripcion?.trim() || undefined,
+      ivaPeriodoMes: f.ivaPeriodoMes || undefined,
+      obligacion: f.obligacion || undefined,
       ...(f.attachmentName ? { attachmentName: f.attachmentName } : {}),
       extractedAutomatically: existente?.extractedAutomatically ?? false,
       grupoCosto: f.grupoCosto,
@@ -23250,25 +23268,36 @@ Escribi CERRAR para confirmar:`
       const capital = ((d.facturaIds || []) as number[]).reduce((a, id) => a + Number(purchaseInvoices.find((i) => i.id === Number(id))?.total || 0), 0);
       return planDeObligacion({ deudaId: d.id, concepto: d.concept || d.acreedor || "", capital, total: r.total, cuotas: r.cuotas, cuotasPagadas: r.cuotasPagadas, pagado: r.pagado, pendiente: r.pendiente });
     };
-    const docsDe = (es: (supplier?: string) => boolean, soloConPeriodo: boolean): DocObligacion[] =>
+    // Cada comprobante va al bloque de la obligacion que paga (25/11/2026): lo elegido en la ficha, o el proveedor.
+    const docsDe = (obl: Obligacion, soloConPeriodo: boolean): DocObligacion[] =>
       facturasDeIva
-        .filter((f) => es(f.supplier) && (!soloConPeriodo || mesOk(f.ivaPeriodoMes)))
-        .map((f) => ({ id: f.id, company: f.company, supplier: f.supplier, fecha: f.invoiceDate, total: f.total, periodo: f.ivaPeriodoMes, pagadaEl: f.pagadaEl, plan: planDeFactura(f.id) }));
+        .filter((f) => obligacionDeFactura(f) === obl && (!soloConPeriodo || mesOk(f.ivaPeriodoMes)))
+        .map((f) => ({ id: f.id, company: f.company, supplier: f.supplier, fecha: f.invoiceDate, total: f.total, periodo: f.ivaPeriodoMes, pagadaEl: f.pagadaEl, plan: planDeFactura(f.id), tipo: f.receiptKind === TIPO_VEP || f.receiptKind === TIPO_COMPROBANTE_PAGO ? f.receiptKind : undefined }));
+    const proveedorDe = (obl: Obligacion, company: string) =>
+      visibleSuppliers.find((s) => (obl === "sindicato" ? esProveedorSindicato(s.name) : esProveedorDelFisco(s.name)) && (String(s.company) === company || String(s.company) === "General"));
     const empresasOperables = COMPANY_OPTIONS.filter((c) => (c.value as string) !== "General" && canAccessCompany(c.value as CompanyName));
     const abrirBoleta = (id: number) => {
       const f = facturaDeId(id);
       if (f) setFacturaModal(f);
     };
-    const cargarBoleta = (proveedor: string, etiqueta: string) => (company: string, mes: string) => {
-      const prov = visibleSuppliers.find((s) => (proveedor === "fisco" ? esProveedorDelFisco(s.name) : esProveedorSindicato(s.name)) && (String(s.company) === company || String(s.company) === "General"));
-      const nombre = prov?.name || (proveedor === "fisco" ? "ARCA" : "");
-      setFacturaModal({ ...facturaVacia(nombre, prov?.taxId || "", company), ivaPeriodoMes: mes, notes: `${etiqueta} de ${mes.slice(5, 7)}/${mes.slice(0, 4)}` });
+    // Cargar a mano: el VEP o el comprobante de pago (transferencia, cheque). El tipo queda en la ficha.
+    const cargarBoleta = (obl: Obligacion, etiqueta: string) => (company: string, mes: string, _sugerido?: number, tipo?: string) => {
+      const prov = proveedorDe(obl, company);
+      const nombre = prov?.name || (obl === "sindicato" ? "" : "ARCA");
+      const kind = tipo === "comprobante" ? TIPO_COMPROBANTE_PAGO : tipo === "vep" || obl !== "sindicato" ? TIPO_VEP : undefined;
+      setFacturaModal({
+        ...facturaVacia(nombre, prov?.taxId || "", company),
+        ...(kind ? { receiptKind: kind, receiptLetter: "X", vatRate: 0 } : {}),
+        obligacion: obl,
+        ivaPeriodoMes: mes,
+        notes: `${etiqueta} de ${mes.slice(5, 7)}/${mes.slice(0, 4)}${kind ? ` · ${kind}` : ""}`,
+      });
     };
     // LECTOR DE PDF del VEP / del comprobante del sindicato (21/11/2026): "de ahi va a tomar el pago. O lo
     // cargamos a mano o con el lector. Despues siempre la edicion manual gana. Pero tambien nos sirve para
     // comprobar que no estamos cargando algo mal". Si el mes ya tiene algo cargado, CONTROLA y no toca nada;
     // si no, abre la ficha con lo leido para revisar y guardar.
-    const leerPdfDelPago = (proveedor: "fisco" | "sindicato", etiqueta: string) => async (company: string, mes: string, file: File): Promise<string> => {
+    const leerPdfDelPago = (obl: Obligacion, etiqueta: string) => async (company: string, mes: string, file: File): Promise<string> => {
       const esPdf = /pdf$/i.test(file.type) || /\.pdf$/i.test(file.name);
       let leido = leerComprobante(esPdf ? await lineasDelPdf(file).catch(() => [] as string[]) : [], file.name);
       let porOcr = false;
@@ -23286,8 +23315,8 @@ Escribi CERRAR para confirmar:`
       }
       const lindo = (m: string) => `${m.slice(5, 7)}/${m.slice(0, 4)}`;
       const periodo = leido.periodo || mes;
-      const es = proveedor === "fisco" ? esProveedorDelFisco : esProveedorSindicato;
-      const yaCargados = docsDe(es, proveedor === "fisco").filter((d) => d.company === company && periodoDelDoc(d) === periodo);
+      const proveedor = obl === "sindicato" ? "sindicato" : "fisco";
+      const yaCargados = docsDe(obl, obl === "iva").filter((d) => d.company === company && periodoDelDoc(d) === periodo);
       const extras = [
         porOcr ? "El PDF no traía texto: se leyó como imagen, revisá bien el importe." : "",
         periodo !== mes ? `Ojo: el PDF es de ${lindo(periodo)}, no de ${lindo(mes)}.` : "",
@@ -23299,13 +23328,15 @@ Escribi CERRAR para confirmar:`
         const control = controlarContraCargado(leido, cargado, (n) => money(n));
         return [control ? `${control.coincide ? "✓" : "⚠"} ${control.texto}` : `Ya hay ${money(cargado)} cargado para ${lindo(periodo)}, y del PDF no pude sacar el importe para compararlo.`, ...extras].join("\n");
       }
-      const prov = visibleSuppliers.find((s) => es(s.name) && (String(s.company) === company || String(s.company) === "General"));
+      const prov = proveedorDe(obl, company);
       const total = Number(leido.total || 0);
       const fecha = leido.fecha || todayIso();
       setFacturaModal({
         ...facturaVacia(prov?.name || (proveedor === "fisco" ? "ARCA" : leido.beneficiario || ""), prov?.taxId || (proveedor === "sindicato" ? leido.cuit : ""), company),
         altaProveedor: !prov && proveedor === "sindicato" && !!leido.beneficiario,
-        receiptKind: proveedor === "fisco" ? "VEP" : "Otro",
+        // VEP o comprobante de pago: lo dice el PDF (el IVA es siempre VEP).
+        receiptKind: obl === "iva" || leido.tipo === "vep" ? TIPO_VEP : TIPO_COMPROBANTE_PAGO,
+        obligacion: obl,
         receiptLetter: "X",
         invoiceNumber: leido.numero,
         invoiceDate: fecha,
@@ -23330,7 +23361,7 @@ Escribi CERRAR para confirmar:`
     };
 
     // ---- IVA ----
-    const docsIva = docsDe(esProveedorDelFisco, true);
+    const docsIva = docsDe("iva", true);
     const empresasIva: EmpresaSeccion[] = empresasOperables.map((c) => {
       const company = String(c.value);
       const anual = ivaDeEmpresa(company, balanceFiscalStartYear);
@@ -23376,7 +23407,7 @@ Escribi CERRAR para confirmar:`
 
     // ---- SINDICATO ---- el aporte es un porcentaje (editable) sobre el neto en blanco de los trabajadores.
     const pct = Number((employeeBaseConfig as any).sindicatoPct || 0);
-    const docsSindicato = docsDe(esProveedorSindicato, false);
+    const docsSindicato = docsDe("sindicato", false);
     const basePorEmpresaMes = new Map<string, Map<string, Array<{ nombre: string; neto: number }>>>();
     visibleEmployees.forEach((emp) => {
       (fichasHaberes.get(emp.id)?.periodos || []).forEach((p) => {
@@ -23406,6 +23437,30 @@ Escribi CERRAR para confirmar:`
       return [{ titulo: "Base · neto en blanco de los trabajadores", total: filas.reduce((a, x) => a + x.monto, 0), filas, nota: `Sobre esta base se aplica el ${pct}% cargado arriba. Sale de lo que le corresponde a cada persona en su ficha de haberes.` }];
     };
 
+    // ---- CARGAS SOCIALES (Nicolas, 25/11/2026) ---- "vinculado con el proveedor ARCA tambien, pero lo quiero ver por
+    // separado cargas sociales e IVA". Mismo bloque y misma ficha que el IVA; el comprobante es el de ARCA que en su
+    // ficha dice que paga cargas sociales. El calculo es un porcentaje estimado (editable) sobre el neto en blanco.
+    const pctCargas = Number((employeeBaseConfig as any).cargasSocialesPct || 0);
+    const docsCargas = docsDe("cargas_sociales", false);
+    const empresasCargas: EmpresaSeccion[] = empresasOperables
+      .map((c) => {
+        const company = String(c.value);
+        const porMes = basePorEmpresaMes.get(company) || new Map<string, Array<{ nombre: string; neto: number }>>();
+        const mesesDelEjercicio = (empresasIva.find((e) => e.company === company)?.datos.meses || []).map((m) => m.mes);
+        const extra: EmpresaSeccion["extra"] = {};
+        const meses = mesesDelEjercicio.map((mes) => {
+          const base = (porMes.get(mes) || []).reduce((a: number, x: { neto: number }) => a + x.neto, 0);
+          extra[mes] = { base };
+          return { mes, calculado: aporteSindical(base, pctCargas) };
+        });
+        return { company, short: c.short, color: c.primary, datos: obligacionMensual({ company, meses, docs: docsCargas, hoy }), extra };
+      })
+      .filter((e) => e.datos.meses.some((m) => (e.extra[m.mes]?.base || 0) > 0 || m.docs.length > 0));
+    const detalleCargas = (company: string, mes: string): DetalleMes => {
+      const filas = ((basePorEmpresaMes.get(company)?.get(mes) || []) as Array<{ nombre: string; neto: number }>).map((x) => ({ fecha: `${mes}-01`, texto: x.nombre, monto: x.neto }));
+      return [{ titulo: "Base · neto en blanco de los trabajadores", total: filas.reduce((a, x) => a + x.monto, 0), filas, nota: `Sobre esta base se aplica el ${pctCargas}% estimado cargado arriba. Es informativo: lo que vale es el VEP o el comprobante que se cargue.` }];
+    };
+
     return (
       <>
         <SeccionMensual
@@ -23421,8 +23476,8 @@ Escribi CERRAR para confirmar:`
           money={money}
           detalle={detalleIva}
           onAbrirBoleta={abrirBoleta}
-          onCargarBoleta={cargarBoleta("fisco", "IVA")}
-          onLeerPdf={leerPdfDelPago("fisco", "IVA")}
+          onCargarBoleta={cargarBoleta("iva", "IVA")}
+          onLeerPdf={leerPdfDelPago("iva", "IVA")}
           onAbrirPlan={irADeuda}
           onSacarPlan={sacarPlan}
           encabezado={
@@ -23434,6 +23489,44 @@ Escribi CERRAR para confirmar:`
           }
         />
         <SeccionMensual
+          titulo="Cargas sociales"
+          nombreBoleta="VEP"
+          nombreCalculado="Estimado (sistema)"
+          empresas={empresasCargas}
+          columnas={[{ clave: "base", titulo: "Neto en blanco", ayuda: "Lo que les corresponde en blanco a los trabajadores en el mes" }]}
+          money={money}
+          detalle={detalleCargas}
+          tipos={TIPOS_DE_COMPROBACION}
+          onAbrirBoleta={abrirBoleta}
+          onCargarBoleta={cargarBoleta("cargas_sociales", "Cargas sociales")}
+          onLeerPdf={leerPdfDelPago("cargas_sociales", "Cargas sociales")}
+          onAbrirPlan={irADeuda}
+          onSacarPlan={sacarPlan}
+          encabezado={
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, fontSize: 12.5, marginBottom: 10 }}>
+              <label style={{ fontWeight: 700 }}>
+                Porcentaje estimado sobre el neto de los trabajadores:{" "}
+                <input
+                  data-cargas-pct
+                  type="text"
+                  inputMode="decimal"
+                  defaultValue={pctCargas ? String(pctCargas).replace(".", ",") : ""}
+                  placeholder="0"
+                  onBlur={(e) => {
+                    const v = Number(String(e.target.value).replace(",", ".").replace(/[^0-9.]/g, ""));
+                    setEmployeeBaseConfig((prev) => ({ ...prev, cargasSocialesPct: Number.isFinite(v) ? v : 0 } as any));
+                  }}
+                  style={{ width: 70, padding: "3px 6px", border: "1px solid #cbd5e1", borderRadius: 6, textAlign: "right" }}
+                />{" "}
+                %
+              </label>
+              <span style={{ color: "#64748b" }}>
+                Se pagan a ARCA, igual que el IVA, pero se ven acá por separado. El pago se comprueba con el VEP o con el comprobante de pago. El porcentaje es solo para estimar; lo que vale es lo cargado.
+              </span>
+            </div>
+          }
+        />
+        <SeccionMensual
           titulo="Sindicato"
           nombreBoleta="boleta"
           nombreCalculado="Aporte (sistema)"
@@ -23442,6 +23535,7 @@ Escribi CERRAR para confirmar:`
           money={money}
           detalle={detalleSindicato}
           onAbrirBoleta={abrirBoleta}
+          tipos={TIPOS_DE_COMPROBACION}
           onCargarBoleta={cargarBoleta("sindicato", "Sindicato")}
           onLeerPdf={leerPdfDelPago("sindicato", "Sindicato")}
           onAbrirPlan={irADeuda}
@@ -23465,7 +23559,7 @@ Escribi CERRAR para confirmar:`
                 %
               </label>
               <span style={{ color: "#64748b" }}>
-                {pct > 0 ? "El aporte de cada mes es este porcentaje sobre el neto en blanco." : "Cargá el porcentaje para que el sistema calcule el aporte de cada mes."} La boleta es la factura del sindicato en Compras.
+                {pct > 0 ? "El aporte de cada mes es este porcentaje sobre el neto en blanco." : "Cargá el porcentaje para que el sistema calcule el aporte de cada mes."} Son dos pagos: el del VEP y el de la transferencia; cada uno se comprueba con su VEP o con su comprobante de pago.
               </span>
             </div>
           }
@@ -24969,6 +25063,7 @@ Escribi CERRAR para confirmar:`
               onDesconocer={desconocerMovimiento}
               esAdmin={effectiveIsAdmin}
               onCerrarSinLink={cerrarMovimientoSinLink}
+              puedeVerInternos={effectiveIsAdmin || supabaseAllowedTabs.includes("movimientosInternos" as any)}
               onSoltar={soltarMovimiento}
               renglones={renglonesDelBanco}
               etiquetaRenglon={etiquetaRenglonDelBanco}

@@ -115,3 +115,56 @@ describe("cerrar sin link y desconocer: el resumen de la tarjeta", () => {
     expect(f.completo).toBe(true);
   });
 });
+
+// Nicolas, 25/11/2026: "tambien esta mezclando Patagonia BGA y Patagonia De Raiz".
+describe("el extracto de una cuenta solo ofrece los pagos de esa cuenta", () => {
+  const { pagoEsDeLaCuenta } = require("../domain/fichaExtracto");
+  const movBga = { company: "BGA", bank: "Patagonia", currency: "ARS" };
+
+  it("un pago de la Patagonia de De Raíz no se ofrece en la Patagonia de BGA", () => {
+    expect(pagoEsDeLaCuenta({ company: "De Raiz", cuentaId: "banco|De Raiz|patagonia|ARS" }, movBga)).toBe(false);
+    expect(pagoEsDeLaCuenta({ company: "BGA", cuentaId: "banco|BGA|patagonia|ARS" }, movBga)).toBe(true);
+  });
+
+  it("tampoco uno de otro banco de la misma empresa", () => {
+    expect(pagoEsDeLaCuenta({ company: "BGA", cuentaId: "banco|BGA|santander|ARS" }, movBga)).toBe(false);
+  });
+
+  it("un pago cruzado aparece en la cuenta de donde salió la plata", () => {
+    expect(pagoEsDeLaCuenta({ company: "De Raiz", cuentaId: "banco|BGA|patagonia|ARS" }, movBga)).toBe(true);
+  });
+
+  it("sin cuenta de banco elegida vale la empresa del pago", () => {
+    expect(pagoEsDeLaCuenta({ company: "BGA" }, movBga)).toBe(true);
+    expect(pagoEsDeLaCuenta({ company: "De Raiz" }, movBga)).toBe(false);
+  });
+
+  it("la sugerencia respeta la cuenta", () => {
+    const m = mov(1, { bank: "Patagonia", concept: "Transferencia a proveedor", amount: 500 });
+    const pagoOtraCuenta = { id: 9, company: "BGA", date: "2026-11-16", amount: 500, supplier: "X", description: "", paymentMethod: "transferencia", cuentaId: "banco|BGA|santander|ARS" };
+    expect(fichasDeExtracto([m], [pagoOtraCuenta], [])[0].movimientos[0].estado).toBe("pendiente");
+    expect(fichasDeExtracto([m], [{ ...pagoOtraCuenta, cuentaId: "banco|BGA|patagonia|ARS" }], [])[0].movimientos[0].estado).toBe("sugerido");
+  });
+});
+
+// Nicolas, 25/11/2026: "en movimientos internos quiero linkear el movimiento exacto que se hizo con la operacion" y
+// "cuando alguien sin autorizacion linkea con alguna solapa que no pueda ver, que quede el recordatorio para el admin".
+describe("movimiento interno: la operación exacta", () => {
+  const { TEXTO_INTERNO_SIN_OPERACION } = require("../domain/fichaExtracto");
+  const pase = { id: 77, date: "2026-11-04", amount: 100, description: "PASE ENTRE BANCOS" };
+
+  it("linkeado con su operación, dice cuál es y no deja recordatorio", () => {
+    const f = fichasDeExtracto([mov(1, { assignedKind: "interno", assignedTransferId: 77 })], [], [], [pase])[0];
+    expect(f.movimientos[0].estado).toBe("linkeado");
+    expect(f.movimientos[0].detalle).toContain("PASE ENTRE BANCOS");
+    expect(f.movimientos[0].detalle).toContain("04/11/2026");
+    expect(f.internosSinOperacion).toBe(0);
+  });
+
+  it("marcado como interno sin operación: queda el recordatorio para el administrador", () => {
+    const f = fichasDeExtracto([mov(1, { assignedKind: "interno" })], [], [], [pase])[0];
+    expect(f.movimientos[0].detalle).toBe(TEXTO_INTERNO_SIN_OPERACION);
+    expect(f.internosSinOperacion).toBe(1);
+    expect(f.pendientes).toBe(0);
+  });
+});

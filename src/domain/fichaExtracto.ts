@@ -45,12 +45,21 @@ export type MovimientoF = {
   assignedParty?: string;
   assignedPurchaseInvoiceId?: number | null;
   assignedCardStatementId?: number | null;
+  // La operacion de Movimientos internos con la que se linkeo (25/11/2026).
+  assignedTransferId?: number | null;
   desconocido?: { firmante: string; fecha: string; nota: string } | null;
   // Cerrado sin link por el administrador (25/11/2026): con motivo y firma, deja de contar como pendiente.
   cerradoSinLink?: { firmante: string; fecha: string; motivo: string } | null;
 };
 // impuestoBanco: un impuesto, tasa o interes cargado a mano el dia que se cobro (23/11/2026). cuentaId dice de que banco.
 export type PagoBancoF = { id: number; company: string; date: string; amount: number; supplier: string; description: string; paymentMethod?: string; bankEntryId?: number | null; impuestoBanco?: boolean; cuentaId?: string };
+// Una operacion de Movimientos internos (un pase entre cuentas o entre empresas).
+export type PaseF = { id: number; date: string; amount: number; description: string };
+// MOVIMIENTO INTERNO SIN SU OPERACION (Nicolas, 25/11/2026): "en movimientos internos quiero linkear el movimiento exacto
+// que se hizo con la operacion" y "cuando alguien sin autorizacion linkea con alguna solapa que no pueda ver, que quede
+// el recordatorio para el admin". Quien no ve Movimientos internos lo marca como interno; queda este aviso para que el
+// administrador lo una con la operacion exacta.
+export const TEXTO_INTERNO_SIN_OPERACION = "Movimiento interno · falta linkear la operación exacta (administrador)";
 export type ResumenTarjetaF = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; nombre: string };
 
 export type EstadoMovimiento = "linkeado" | "comision" | "sugerido" | "pendiente" | "desconocido" | "cerrado";
@@ -69,6 +78,8 @@ export type FichaExtracto = {
   movimientos: MovimientoFicha[];
   pendientes: number;
   desconocidos: number;
+  // Marcados como movimiento interno pero sin la operacion exacta: recordatorio para el administrador.
+  internosSinOperacion: number;
   comisionesArs: number;
   cadenaCierra: boolean;
   completo: boolean; // el tilde verde: todo linkeado, nada desconocido y la cadena cierra
@@ -86,7 +97,11 @@ const ETIQUETA_TIPO: Record<string, string> = {
 };
 
 // Por que un movimiento ya esta linkeado (o null si no lo esta).
-function linkDe(m: MovimientoF, pagoLinkeado: PagoBancoF | undefined, resumenes: ResumenTarjetaF[]): string | null {
+function linkDe(m: MovimientoF, pagoLinkeado: PagoBancoF | undefined, resumenes: ResumenTarjetaF[], pases: PaseF[] = []): string | null {
+  if (m.assignedTransferId != null) {
+    const t = pases.find((x) => x.id === m.assignedTransferId);
+    if (t) return `Movimiento interno · ${t.description || "pase"} · ${t.date.split("-").reverse().join("/")}`;
+  }
   if (pagoLinkeado) return `Pago cargado · ${pagoLinkeado.supplier || pagoLinkeado.description || "sin proveedor"}`;
   if (m.assignedPurchaseInvoiceId != null) return `Paga la factura · ${m.assignedParty || ""}`.trim();
   if (m.assignedCardStatementId != null) {
@@ -97,8 +112,24 @@ function linkDe(m: MovimientoF, pagoLinkeado: PagoBancoF | undefined, resumenes:
   if (k === "cobro") return m.assignedJobBudget || m.assignedParty ? `Cobro · ${[m.assignedJobBudget, m.assignedParty].filter(Boolean).join(" · ")}` : null;
   // Un pago necesita su pago cargado o su factura: el banco no carga, constata.
   if (k === "pago") return null;
+  if (k === "interno") return TEXTO_INTERNO_SIN_OPERACION;
   if (k) return ETIQUETA_TIPO[k] || k;
   return null;
+}
+
+// EL PAGO ES DE ESTA CUENTA (Nicolas, 25/11/2026: "esta mezclando Patagonia BGA y Patagonia De Raiz"). Un pago que dice
+// de que cuenta del banco salio solo se ofrece para los movimientos de ESA cuenta: misma empresa, mismo banco y misma
+// moneda. Asi un pago de De Raiz no aparece en el extracto de BGA (ni uno de Santander en el de Patagonia), y un pago
+// cruzado (gasto de una empresa pagado con la cuenta de la otra) aparece en la cuenta de donde salio de verdad.
+// Si el pago no dice cuenta de banco, vale la empresa del pago, como antes.
+const soloNombreBanco = (t: string) => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/banco/g, "").replace(/[^a-z0-9]+/g, "");
+export function pagoEsDeLaCuenta(pago: { company: string; cuentaId?: string }, m: { company: string; bank: string; currency?: string }): boolean {
+  const partes = String(pago.cuentaId || "").split("|");
+  if (partes[0] !== "banco" || partes.length < 4) return pago.company === m.company;
+  const [, company, banco, moneda] = partes;
+  const a = soloNombreBanco(banco);
+  const b = soloNombreBanco(m.bank);
+  return company === m.company && !!a && !!b && (a.includes(b) || b.includes(a)) && moneda === (m.currency === "USD" ? "USD" : "ARS");
 }
 
 function sugerir(m: MovimientoF, pagos: PagoBancoF[], ocupados: Set<number>, resumenes: ResumenTarjetaF[], resumenesOcupados: Set<number>): SugerenciaMov | undefined {
@@ -112,7 +143,7 @@ function sugerir(m: MovimientoF, pagos: PagoBancoF[], ocupados: Set<number>, res
     if (s) return { tipo: "resumen", statementId: s.id, texto: `${s.nombre} cierre ${s.closingDate.split("-").reverse().join("/")}` };
   }
   const p = pagos
-    .filter((x) => x.company === m.company && x.paymentMethod !== "efectivo" && !ocupados.has(x.id) && Math.abs(Number(x.amount || 0) - monto) <= TOL)
+    .filter((x) => pagoEsDeLaCuenta(x, m) && x.paymentMethod !== "efectivo" && !ocupados.has(x.id) && Math.abs(Number(x.amount || 0) - monto) <= TOL)
     .map((x) => ({ x, d: diasEntre(x.date, m.date) }))
     .filter((y) => y.d <= (y.x.paymentMethod === "cheque" ? 120 : 5))
     .sort((a, b) => a.d - b.d)[0];
@@ -128,7 +159,7 @@ export function sugerirImpuestoCargado(m: MovimientoF, pagos: PagoBancoF[], ocup
   const monto = Math.abs(Number(m.amount || 0));
   const banco = soloBanco(m.bank);
   const p = pagos
-    .filter((x) => x.impuestoBanco && x.company === m.company && !ocupados.has(x.id) && Math.abs(Number(x.amount || 0) - monto) <= TOL)
+    .filter((x) => x.impuestoBanco && pagoEsDeLaCuenta(x, m) && !ocupados.has(x.id) && Math.abs(Number(x.amount || 0) - monto) <= TOL)
     .filter((x) => !x.cuentaId || !banco || soloBanco(x.cuentaId).includes(banco))
     .map((x) => ({ x, d: diasEntre(x.date, m.date) }))
     .filter((y) => y.d <= 5)
@@ -136,7 +167,7 @@ export function sugerirImpuestoCargado(m: MovimientoF, pagos: PagoBancoF[], ocup
   return p ? { tipo: "pago", pagoId: p.x.id, texto: `${p.x.description || p.x.supplier} · cargado el ${p.x.date.split("-").reverse().join("/")}` } : undefined;
 }
 
-export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resumenes: ResumenTarjetaF[]): FichaExtracto[] {
+export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resumenes: ResumenTarjetaF[], pases: PaseF[] = []): FichaExtracto[] {
   const pagoPorMov = new Map<number, PagoBancoF>();
   pagos.forEach((p) => {
     if (p.bankEntryId != null) pagoPorMov.set(Number(p.bankEntryId), p);
@@ -178,7 +209,7 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
       const clave = `${k}||${mes}`;
       let f = fichas.get(clave);
       if (!f) {
-        f = { clave, company, bank, currency: currency as "ARS" | "USD", mes, obligatorio: `${mes}-01` >= LINKEO_OBLIGATORIO_DESDE, movimientos: [], pendientes: 0, desconocidos: 0, comisionesArs: 0, cadenaCierra: true, completo: false, creditos: 0, debitos: 0 };
+        f = { clave, company, bank, currency: currency as "ARS" | "USD", mes, obligatorio: `${mes}-01` >= LINKEO_OBLIGATORIO_DESDE, movimientos: [], pendientes: 0, desconocidos: 0, internosSinOperacion: 0, comisionesArs: 0, cadenaCierra: true, completo: false, creditos: 0, debitos: 0 };
         fichas.set(clave, f);
       }
       const monto = Math.abs(Number(m.amount || 0));
@@ -193,7 +224,7 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
         f.movimientos.push({ mov: m, estado: "desconocido", detalle: `Desconocido${m.desconocido.nota ? ` · ${m.desconocido.nota}` : ""} (${m.desconocido.firmante})`, rompe: corta });
         return;
       }
-      const link = linkDe(m, pagoPorMov.get(m.id), resumenes);
+      const link = linkDe(m, pagoPorMov.get(m.id), resumenes, pases);
       if (link) {
         f.movimientos.push({ mov: m, estado: "linkeado", detalle: link, rompe: corta });
         return;
@@ -221,7 +252,8 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
       const desconocidos = f.movimientos.filter((x) => x.estado === "desconocido").length;
       // La primera linea del mes se compara contra el ultimo saldo del mes anterior: si ahi corta, falta algo.
       const cadenaCierra = !f.movimientos.some((x) => x.rompe);
-      return { ...f, pendientes, desconocidos, cadenaCierra, completo: f.movimientos.length > 0 && pendientes === 0 && desconocidos === 0 && cadenaCierra };
+      const internosSinOperacion = f.movimientos.filter((x) => x.estado === "linkeado" && x.detalle === TEXTO_INTERNO_SIN_OPERACION).length;
+      return { ...f, pendientes, desconocidos, internosSinOperacion, cadenaCierra, completo: f.movimientos.length > 0 && pendientes === 0 && desconocidos === 0 && cadenaCierra };
     })
     .sort((a, b) => b.mes.localeCompare(a.mes) || a.company.localeCompare(b.company) || a.bank.localeCompare(b.bank));
 }

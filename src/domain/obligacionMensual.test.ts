@@ -91,3 +91,29 @@ describe("sindicato", () => {
     expect(esProveedorSindicato("Maderas DAC")).toBe(false);
   });
 });
+
+// Nicolas, 25/11/2026: "cargas sociales esta vinculado con el proveedor arca tambien, pero lo quiero ver por separado
+// cargas sociales e iva".
+describe("que obligacion paga un comprobante", () => {
+  const { obligacionDeFactura } = require("./obligacionMensual");
+  const { esPagoDeIva, facturasDelFiscoSinPeriodo, vepsDesdeFacturas } = require("./pagoDeIva");
+
+  it("sin elegir nada lo dice el proveedor: ARCA es IVA, el sindicato es sindicato", () => {
+    expect(obligacionDeFactura({ supplier: "ARCA" })).toBe("iva");
+    expect(obligacionDeFactura({ supplier: "USIMRA CABA" })).toBe("sindicato");
+    expect(obligacionDeFactura({ supplier: "Pinturería" })).toBeNull();
+  });
+
+  it("lo elegido en la ficha manda: ARCA puede ser cargas sociales, o el VEP del sindicato", () => {
+    expect(obligacionDeFactura({ supplier: "ARCA", obligacion: "cargas_sociales" })).toBe("cargas_sociales");
+    expect(obligacionDeFactura({ supplier: "ARCA", obligacion: "sindicato" })).toBe("sindicato");
+  });
+
+  it("las cargas sociales pagadas a ARCA no cuentan como el VEP del IVA", () => {
+    const base = { id: 1, company: "BGA", supplier: "ARCA", invoiceDate: "2026-11-10", total: 500, ivaPeriodoMes: "2026-10", pagadaEl: "2026-11-10" };
+    expect(esPagoDeIva(base)).toBe(true);
+    expect(esPagoDeIva({ ...base, obligacion: "cargas_sociales" })).toBe(false);
+    expect(vepsDesdeFacturas([base, { ...base, id: 2, obligacion: "cargas_sociales" }])).toHaveLength(1);
+    expect(facturasDelFiscoSinPeriodo([{ ...base, ivaPeriodoMes: undefined, obligacion: "cargas_sociales" }])).toHaveLength(0);
+  });
+});

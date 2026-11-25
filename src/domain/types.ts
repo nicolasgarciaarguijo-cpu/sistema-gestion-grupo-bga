@@ -685,6 +685,9 @@ export type PurchaseInvoice = {
   // de la posicion de IVA de ESTE periodo ("2026-08"): con eso el tablero de la Posicion de IVA la cuenta
   // como su VEP y deja de decir "sin VEP". Ver domain/pagoDeIva.ts.
   ivaPeriodoMes?: string;
+  // QUE OBLIGACION PAGA (Nicolas, 25/11/2026): ARCA cobra el IVA y tambien las cargas sociales, y el sindicato se paga
+  // con un VEP y con una transferencia. Esto dice en que bloque de Pago a proveedores figura. Vacio = por el proveedor.
+  obligacion?: "iva" | "cargas_sociales" | "sindicato";
 };
 
 // VIATICO EVENTUAL: anticipo a una persona por un viaje o un trabajo (solapa Caja chica y viaticos).
@@ -993,6 +996,8 @@ export type BankStatementEntry = {
   // no se reconoce (queda marcado para reclamarlo al banco). Ver domain/fichaExtracto.ts.
   assignedCardStatementId?: number | null;
   desconocido?: { firmante: string; fecha: string; nota: string } | null;
+  // LA OPERACION EXACTA de Movimientos internos con la que se linkeo este movimiento (25/11/2026). Solo control.
+  assignedTransferId?: number | null;
   // CERRADO SIN LINK (Nicolas, 25/11/2026): el administrador lo da por cerrado con motivo y firma; deja de reclamar.
   cerradoSinLink?: { firmante: string; fecha: string; motivo: string } | null;
 };

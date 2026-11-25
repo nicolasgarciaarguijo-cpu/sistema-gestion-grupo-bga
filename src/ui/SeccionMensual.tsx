@@ -57,6 +57,7 @@ export function SeccionMensual({
   onSacarPlan,
   onLeerPdf,
   encabezado,
+  tipos,
 }: {
   titulo: string; // "IVA" / "Sindicato"
   nombreBoleta: string; // "VEP" / "boleta"
@@ -68,9 +69,12 @@ export function SeccionMensual({
   detalle: (company: string, mes: string) => DetalleMes;
   // La boleta ES la factura de Compras: se abre esa misma ficha.
   onAbrirBoleta: (facturaId: number) => void;
-  onCargarBoleta: (company: string, mes: string, sugerido: number) => void;
+  onCargarBoleta: (company: string, mes: string, sugerido: number, tipo?: string) => void;
   onAbrirPlan: (deudaId: number) => void;
   onSacarPlan: () => void;
+  // DOS FORMAS DE COMPROBAR EL PAGO (Nicolas, 25/11/2026): "quiero en estas situaciones 2 opciones de comprobacion: o VEP
+  // o comprobantes de pago". Con esto la ficha del mes ofrece un boton por cada una. Sin esto, uno solo (el IVA).
+  tipos?: ReadonlyArray<{ clave: string; titulo: string }>;
   // LECTOR DE PDF (21/11/2026): lee el VEP / el comprobante del pago y abre la ficha con lo leido, o controla
   // lo ya cargado. Devuelve lo que hay que decirle al usuario. La edicion a mano siempre gana.
   onLeerPdf?: (company: string, mes: string, file: File) => Promise<string>;
@@ -167,7 +171,8 @@ export function SeccionMensual({
           money={money}
           detalle={detalle(empresaAbierta.company, mesAbierto.mes)}
           onAbrirBoleta={onAbrirBoleta}
-          onCargarBoleta={() => onCargarBoleta(empresaAbierta.company, mesAbierto.mes, mesAbierto.calculado)}
+          tipos={tipos}
+          onCargarBoleta={(tipo) => (tipo ? onCargarBoleta(empresaAbierta.company, mesAbierto.mes, mesAbierto.calculado, tipo) : onCargarBoleta(empresaAbierta.company, mesAbierto.mes, mesAbierto.calculado))}
           onAbrirPlan={onAbrirPlan}
           onSacarPlan={onSacarPlan}
           onLeerPdf={onLeerPdf ? (file) => onLeerPdf(empresaAbierta.company, mesAbierto.mes, file) : undefined}
@@ -195,8 +200,9 @@ function PlanResumen({ plan, money, onAbrir }: { plan: PlanObligacion; money: (n
 }
 
 function FichaMes({
-  titulo, nombreBoleta, nombreCalculado, empresa, mes, columnas, money, detalle, onAbrirBoleta, onCargarBoleta, onAbrirPlan, onSacarPlan, onLeerPdf, onCerrar,
+  titulo, nombreBoleta, nombreCalculado, empresa, mes, columnas, money, detalle, onAbrirBoleta, onCargarBoleta, onAbrirPlan, onSacarPlan, onLeerPdf, onCerrar, tipos,
 }: {
+  tipos?: ReadonlyArray<{ clave: string; titulo: string }>;
   onLeerPdf?: (file: File) => Promise<string>;
   titulo: string;
   nombreBoleta: string;
@@ -207,7 +213,7 @@ function FichaMes({
   money: (n: number) => string;
   detalle: DetalleMes;
   onAbrirBoleta: (facturaId: number) => void;
-  onCargarBoleta: () => void;
+  onCargarBoleta: (tipo?: string) => void;
   onAbrirPlan: (deudaId: number) => void;
   onSacarPlan: () => void;
   onCerrar: () => void;
@@ -253,7 +259,7 @@ function FichaMes({
           <div style={{ display: "grid", gap: 6, marginBottom: 6 }}>
             {mes.docs.map((d) => (
               <div key={d.id} data-boleta={d.id} style={{ border: "1px solid #e2e8f0", borderRadius: 8, padding: "6px 10px", fontSize: 12.5 }}>
-                <b>{money(d.total)}</b> · {nombreBoleta === "boleta" ? "boleta" : nombreBoleta} de {d.supplier} · del {fechaLinda(d.fecha)} ·{" "}
+                <b>{money(d.total)}</b> · <span data-tipo-comprobante>{d.tipo || (nombreBoleta === "boleta" ? "boleta" : nombreBoleta)}</span> de {d.supplier} · del {fechaLinda(d.fecha)} ·{" "}
                 {d.plan ? (
                   <span style={{ color: "#1d4ed8", fontWeight: 700 }}>fue a un plan de pago</span>
                 ) : d.pagadaEl ? (
@@ -277,9 +283,17 @@ function FichaMes({
           </div>
         )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginBottom: lectura ? 6 : 12 }}>
-          <button type="button" style={{ ...btn, background: "#0f172a", color: "#fff", border: "none" }} onClick={onCargarBoleta}>
-            + Cargar {nombreBoleta} de {mesLindo(mes.mes)} a mano
-          </button>
+          {tipos && tipos.length ? (
+            tipos.map((t) => (
+              <button key={t.clave} type="button" data-cargar-tipo={t.clave} style={{ ...btn, background: "#0f172a", color: "#fff", border: "none" }} onClick={() => onCargarBoleta(t.clave)}>
+                + Cargar {t.titulo} de {mesLindo(mes.mes)}
+              </button>
+            ))
+          ) : (
+            <button type="button" style={{ ...btn, background: "#0f172a", color: "#fff", border: "none" }} onClick={() => onCargarBoleta()}>
+              + Cargar {nombreBoleta} de {mesLindo(mes.mes)} a mano
+            </button>
+          )}
           {onLeerPdf && (
             <>
               <button
