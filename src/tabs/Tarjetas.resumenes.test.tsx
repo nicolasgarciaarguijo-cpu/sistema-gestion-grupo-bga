@@ -200,45 +200,44 @@ describe("Resúmenes de tarjeta: la ficha reemplaza al bloque", () => {
     act(() => root.unmount());
   });
 
-  it("los impuestos del resumen se tildan pagados en la ficha", () => {
+  // Nicolas, 25/11/2026: "primero saquemos la cajita [...] no quiero que genere ningun egreso".
+  const grupoTarjeta = { clave: "tarjeta:10", origen: "tarjeta", company: "BGA", titulo: "Resumen octubre", banco: "Santander", moneda: "ARS", mes: "2026-10", fecha: "2026-11-10", total: 48000, porCategoria: { impuestos: 30000, comisiones: 18000, intereses: 0 }, lineas: [] };
+
+  it("las comisiones de la tarjeta ya no tienen cajita de pago", () => {
     const tildados: Array<[string, boolean]> = [];
-    const grupo = {
-      clave: "tarjeta:10",
-      origen: "tarjeta",
-      company: "BGA",
-      titulo: "Resumen octubre",
-      banco: "Santander",
-      moneda: "ARS",
-      mes: "2026-10",
-      fecha: "2026-11-10",
-      total: 48000,
-      porCategoria: { impuestos: 30000, comisiones: 18000, intereses: 0 },
-      lineas: [{ id: 1, fecha: "2026-10-20", descripcion: "IVA 21%", categoria: "impuestos", monto: 30000 }],
-    };
     const { div, root } = ficha({
-      impuestos: () => ({ grupo, pago: null, cuenta: { id: "c1", nombre: "Santander BGA $" } }),
+      impuestos: () => ({ grupo: grupoTarjeta, pago: null, cuenta: { id: "c1", nombre: "Santander BGA $" } }),
       pagados: (g, pagado) => tildados.push([g.clave, pagado]),
     });
-    expect(div.textContent).toContain("de este resumen");
-    expect(div.textContent).toContain("Sale de Santander BGA $");
+    expect(div.textContent).not.toContain("Sale de Santander BGA $");
     const chk = Array.from(div.querySelectorAll('input[type="checkbox"]')).find((c) => {
       const l = c.closest("label");
       return !!l && (l.textContent || "").includes("vence");
-    }) as HTMLInputElement;
-    act(() => chk.click());
-    expect(tildados).toEqual([["tarjeta:10", true]]);
+    });
+    expect(chk).toBeUndefined();
+    expect(div.querySelector("[data-pago-comisiones-viejo]")).toBeNull();
+    expect(tildados).toEqual([]);
     act(() => root.unmount());
   });
 
-  it("sin cuenta de ese banco, el tilde no se puede usar", () => {
-    const grupo = { clave: "tarjeta:10", origen: "tarjeta", company: "BGA", titulo: "x", banco: "Santander", moneda: "ARS", mes: "2026-10", fecha: "2026-11-10", total: 1, porCategoria: { impuestos: 1, comisiones: 0, intereses: 0 }, lineas: [] };
-    const { div, root } = ficha({ impuestos: () => ({ grupo, pago: null, cuenta: null }), pagados: () => {} });
-    expect(div.textContent).toContain("Sin cuenta de Santander");
-    const chk = Array.from(div.querySelectorAll('input[type="checkbox"]')).find((c) => {
-      const l = c.closest("label");
-      return !!l && (l.textContent || "").includes("vence");
-    }) as HTMLInputElement;
-    expect(chk.disabled).toBe(true);
+  it("si quedó un pago hecho con la cajita vieja, avisa y deja quitarlo", () => {
+    const tildados: Array<[string, boolean]> = [];
+    const { div, root } = ficha({
+      impuestos: () => ({ grupo: grupoTarjeta, pago: { fecha: "2026-11-10" }, cuenta: { id: "c1", nombre: "Santander BGA $" } }),
+      pagados: (g, pagado) => tildados.push([g.clave, pagado]),
+    });
+    const aviso = div.querySelector("[data-pago-comisiones-viejo]") as HTMLElement;
+    expect(aviso).toBeTruthy();
+    expect(aviso.textContent).toContain("descuenta dos veces");
+    act(() => (aviso.querySelector("button") as HTMLButtonElement).click());
+    expect(tildados).toEqual([["tarjeta:10", false]]);
+    act(() => root.unmount());
+  });
+
+  it("al lado de «Pagado» hay un monto pagado para cuando no fue el total", () => {
+    const { div, root } = ficha();
+    expect(div.querySelector("[data-monto-pagado]")).toBeTruthy();
+    expect(div.textContent).toContain("Monto pagado $ (si no fue el total)");
     act(() => root.unmount());
   });
 });

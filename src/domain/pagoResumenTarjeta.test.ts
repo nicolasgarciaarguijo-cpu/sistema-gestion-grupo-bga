@@ -69,3 +69,66 @@ describe("pago del resumen de tarjeta", () => {
     expect(r.linkeado + r.resto).toBe(r.total);
   });
 });
+
+// Nicolas, 25/11/2026: "existe la situacion donde paguemos menos del costo total de la tarjeta [...] al tildarla solo
+// impacte el monto real que se pago si no fue el total".
+describe("pago parcial del resumen", () => {
+  const { repartoDeResumenes: reparto, pagosDeResumenes: pagos, montoPagadoDelResumen: monto } = require("./pagoResumenTarjeta");
+  const base = { id: 1, company: "BGA", cardId: 9, closingDate: "2026-11-26", dueDate: "2026-12-10", totalArs: 1000, paid: true };
+
+  it("sin monto cargado, sale el total", () => {
+    expect(monto(base)).toBe(1000);
+    const r = reparto([base], [{ statementId: 1, monto: 600 }]).get(1);
+    expect(r.montoPagado).toBe(1000);
+    expect(r.financiado).toBe(0);
+    expect(r.restoPagado).toBe(400);
+    expect(pagos(reparto([base], []))).toHaveLength(1);
+  });
+
+  it("con monto pagado menor, sale solo eso y el resto queda financiado", () => {
+    const r = reparto([{ ...base, paidAmountArs: 700 }], [{ statementId: 1, monto: 600 }]).get(1);
+    expect(r.montoPagado).toBe(700);
+    expect(r.financiado).toBe(300);
+    expect(r.restoPagado).toBe(100);
+    expect(r.total).toBe(1000);
+  });
+
+  it("si lo linkeado supera lo pagado, no va nada extra al cash flow", () => {
+    const r = reparto([{ ...base, paidAmountArs: 500 }], [{ statementId: 1, monto: 600 }]).get(1);
+    expect(r.restoPagado).toBe(0);
+    expect(r.financiado).toBe(500);
+  });
+
+  it("sin tildar pagado no mueve nada, tenga o no monto", () => {
+    expect(pagos(reparto([{ ...base, paid: false, paidAmountArs: 700 }], []))).toHaveLength(0);
+  });
+});
+
+// Nicolas, 25/11/2026: "no quiero que baje el total de las compras sino el total pagado de la tarjeta".
+describe("pago parcial en el cash flow", () => {
+  const { factorPagado: factor, repartoDeResumenes: reparto } = require("./pagoResumenTarjeta");
+  const base = { id: 1, company: "BGA", cardId: 9, closingDate: "2026-11-26", dueDate: "2026-12-10", totalArs: 1000, paid: true };
+  const cuotas = [{ statementId: 1, monto: 600 }, { statementId: 1, monto: 200 }];
+
+  it("pagado el total, cada compra entra entera", () => {
+    expect(factor(reparto([base], cuotas).get(1))).toBe(1);
+    expect(factor(undefined)).toBe(1);
+  });
+
+  it("pagado menos que las compras, entre todas suman lo pagado", () => {
+    const r = reparto([{ ...base, paidAmountArs: 400 }], cuotas).get(1);
+    const f = factor(r);
+    expect(Math.round((600 * f + 200 * f + r.restoPagado) * 100) / 100).toBe(400);
+  });
+
+  it("pagado más que las compras pero menos que el total: compras enteras y el resto aparte", () => {
+    const r = reparto([{ ...base, paidAmountArs: 900 }], cuotas).get(1);
+    expect(factor(r)).toBe(1);
+    expect(800 + r.restoPagado).toBe(900);
+    expect(r.financiado).toBe(100);
+  });
+
+  it("sin pagar no se achica nada", () => {
+    expect(factor(reparto([{ ...base, paid: false, paidAmountArs: 400 }], cuotas).get(1))).toBe(1);
+  });
+});

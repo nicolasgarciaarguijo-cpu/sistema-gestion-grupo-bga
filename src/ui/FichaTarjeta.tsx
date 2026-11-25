@@ -6,7 +6,7 @@ import React, { useMemo, useState } from "react";
 import type { FichaResumen, RenglonFicha, TarjetaF, PagoF } from "../domain/fichaTarjeta";
 import { TITULO_COMISIONES_TARJETA, cuotaDelTexto, montoCuota, esPagoDeComisiones } from "../domain/fichaTarjeta";
 import { BuscadorVinculo, IconoEstado, ItemMenu, MenuFicha, SepMenu, TituloMenu, Z_FICHA, ddmm, type OpcionVinculo } from "./VinculoUi";
-import { ImpuestosDelGrupo, type ImpuestosDeLaFicha } from "./ImpuestosDelGrupo";
+import type { ImpuestosDeLaFicha } from "./ImpuestosDelGrupo";
 import type { GrupoImpuestos } from "../domain/impuestosBancarios";
 
 const th: React.CSSProperties = { textAlign: "left", fontSize: 11.5, color: "#64748b", fontWeight: 700, padding: "4px 6px", borderBottom: "1px solid #e2e8f0" };
@@ -24,7 +24,7 @@ export type FichaTarjetaProps = {
   pagoComisiones: (statementId: number) => { amount: number; date: string; supplier: string } | null;
   // EL PAGO DEL RESUMEN (21/11/2026): pagado, baja la cuenta por su total el dia del vencimiento. null = resumen
   // anterior al 1/11/2026, que sigue como estaba. Ver domain/pagoResumenTarjeta.ts.
-  repartoDelResumen?: (statementId: number) => { total: number; linkeado: number; resto: number; deMas: number; pagado: boolean; fecha: string } | null;
+  repartoDelResumen?: (statementId: number) => { total: number; linkeado: number; resto: number; deMas: number; pagado: boolean; fecha: string; montoPagado: number; financiado: number } | null;
   companyShort: (c: string) => string;
   money: (n: number, moneda?: string) => string;
   statementInicial?: number | null;
@@ -51,6 +51,10 @@ export type FichaTarjetaProps = {
   // Los impuestos y comisiones DE ESTE RESUMEN, con su tilde de pagado.
   impuestosDelResumen?: (statementId: number) => ImpuestosDeLaFicha | null;
   onImpuestosPagados?: (g: GrupoImpuestos, pagado: boolean) => void;
+  // 25/11/2026, solo el administrador: marcar un renglón como desconocido o cerrarlo sin link (motivo y firma).
+  esAdmin?: boolean;
+  onDesconocer?: (renglonId: number, nota: string | null) => void;
+  onCerrarSinLink?: (renglonId: number, motivo: string | null) => void;
   onCerrar: () => void;
 };
 
@@ -102,6 +106,8 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
         </span>
       );
     } else if (f.estado === "comision") detalle = <span style={{ color: "#7c3aed" }}>{TITULO_COMISIONES_TARJETA}</span>;
+    else if (f.estado === "cerrado") detalle = <span style={{ color: "#64748b" }}>Cerrado sin link · {r.cerradoSinLink?.motivo} ({r.cerradoSinLink?.firmante})</span>;
+    else if (f.estado === "desconocido") detalle = <b style={{ color: "#b91c1c" }}>Desconocido{r.desconocido?.nota ? ` · ${r.desconocido.nota}` : ""} ({r.desconocido?.firmante})</b>;
     else if (f.estado === "pago_resumen") detalle = <span style={{ color: "#64748b" }}>pago del resumen anterior (se ve en el banco)</span>;
     else detalle = <b style={{ color: "#b91c1c" }}>falta linkear: buscá el pago con esta tarjeta o mandalo a comisiones</b>;
     return (
@@ -112,7 +118,7 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
           e.stopPropagation();
           setMenu({ x: e.clientX, y: e.clientY, f });
         }}
-        style={{ cursor: "context-menu", background: f.estado === "pendiente" ? "#fef2f2" : f.estado === "sugerido" ? "#fffbeb" : undefined }}
+        style={{ cursor: "context-menu", background: f.estado === "pendiente" || f.estado === "desconocido" ? "#fef2f2" : f.estado === "sugerido" ? "#fffbeb" : undefined }}
       >
         <td style={{ ...td, width: 28 }}>
           <IconoEstado estado={f.estado} />
@@ -355,8 +361,9 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
                 return (
                   <div data-pago-resumen style={{ fontSize: 12.5, flexBasis: "100%", color: r.pagado ? "#166534" : "#475569" }}>
                     {r.pagado
-                      ? <>✓ Pagado: <b>{p.money(r.total)}</b> salieron de la cuenta del banco el {ddmm(r.fecha)}.</>
-                      : <>Al marcarlo pagado salen <b>{p.money(r.total)}</b> de la cuenta del banco el {ddmm(r.fecha)}.</>}{" "}
+                      ? <>✓ Pagado: <b>{p.money(r.montoPagado)}</b> salieron de la cuenta del banco el {ddmm(r.fecha)}.</>
+                      : <>Al marcarlo pagado salen <b>{p.money(r.montoPagado)}</b> de la cuenta del banco el {ddmm(r.fecha)}.</>}{" "}
+                    {r.financiado > 0 && <span data-financiado style={{ color: "#b45309" }}>Se pagó menos que el total: <b>{p.money(r.financiado)}</b> quedan financiados y vienen en el resumen siguiente. </span>}
                     Linkeado con pagos cargados: <b>{p.money(r.linkeado)}</b>
                     {r.resto > 0 && <> · <span style={{ color: "#b45309" }}>sin linkear: <b>{p.money(r.resto)}</b> (falta cargar o no es nuestro: descargo pendiente)</span></>}
                     {r.deMas > 0 && <> · <span style={{ color: "#b91c1c" }}>lo cargado supera al resumen en <b>{p.money(r.deMas)}</b>: revisar si hay algo dos veces</span></>}
@@ -433,6 +440,29 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
                     {ficha.resumen.paid ? "Sí, ya se pagó" : "Todavía no"}
                   </span>
                 </label>
+                <label style={campo} title="Si se pagó menos que el total del resumen, poné acá lo que realmente se pagó: es lo único que sale de la cuenta. Vacío = se pagó el total.">
+                  <span style={rotulo}>Monto pagado $ (si no fue el total)</span>
+                  <input
+                    data-monto-pagado
+                    style={inputMini}
+                    type="number"
+                    min={0}
+                    placeholder={String(Number(ficha.resumen.totalArs || 0))}
+                    value={Number(ficha.resumen.paidAmountArs || 0) > 0 ? Number(ficha.resumen.paidAmountArs) : ""}
+                    onChange={(e) => p.onResumen(ficha.resumen.id, "paidAmountArs", Math.max(0, Number(e.target.value) || 0))}
+                  />
+                </label>
+                {(() => {
+                  const total = Number(ficha.resumen.totalArs || 0);
+                  const pagado = Number(ficha.resumen.paidAmountArs || 0);
+                  const queda = ficha.resumen.paid ? (pagado > 0 ? Math.max(0, Math.round((total - pagado) * 100) / 100) : 0) : total;
+                  return (
+                    <div data-queda-por-pagar style={campo} title="Lo que falta pagar de este resumen. Si se pagó menos que el total, es lo que quedó financiado: viene en el resumen siguiente.">
+                      <span style={rotulo}>Queda por pagar $</span>
+                      <b style={{ fontSize: 14, color: queda > 0 ? "#b91c1c" : "#166534" }}>{p.money(queda)}</b>
+                    </div>
+                  );
+                })()}
               </div>
               <label style={campo}>
                 <span style={rotulo}>Notas</span>
@@ -456,14 +486,23 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
               </div>
             ))}
 
-            {p.impuestosDelResumen && p.onImpuestosPagados && (
-              <ImpuestosDelGrupo
-                titulo={`${TITULO_COMISIONES_TARJETA} de este resumen`}
-                datos={p.impuestosDelResumen(ficha.resumen.id)}
-                money={(n) => p.money(n)}
-                onPagado={p.onImpuestosPagados}
-              />
-            )}
+            {/* SIN CAJITA DE PAGO (Nicolas, 25/11/2026): "no quiero que genere ningun egreso". Las comisiones de la tarjeta se
+                pagan con el resumen: aca solo se suman aparte y se linkean. Si quedo un pago hecho con la cajita vieja, se
+                avisa y se puede quitar (duplica lo que ya salio con el pago de la tarjeta). */}
+            {(() => {
+              const viejo = p.impuestosDelResumen?.(ficha.resumen.id);
+              if (!viejo?.pago || !p.onImpuestosPagados) return null;
+              return (
+                <div data-pago-comisiones-viejo style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 10, padding: 10, fontSize: 12.5, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <span>
+                    ⚠ Este resumen tiene un pago de comisiones por <b>{p.money(viejo.grupo.total)}</b> generado con la cajita anterior (débito del {ddmm(viejo.pago.fecha)}). Las comisiones ya se pagan con la tarjeta: ese pago descuenta dos veces.
+                  </span>
+                  <button type="button" onClick={() => p.onImpuestosPagados!(viejo.grupo, false)} style={{ border: "1px solid #b91c1c", background: "#fff", color: "#b91c1c", borderRadius: 7, padding: "3px 10px", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>
+                    Quitar ese pago
+                  </button>
+                </div>
+              );
+            })()}
 
             <div>
               <div style={{ fontWeight: 800, margin: "4px 0", color: "#7c3aed" }}>
@@ -474,7 +513,7 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
                   ? `Deuda con ${comisiones.supplier}, asentada pagada con esta tarjeta: vence ${ddmm(ficha.resumen.dueDate)} por ${p.money(comisiones.amount)}.`
                   : ficha.obligatorio
                   ? "Sin comisiones en este resumen."
-                  : "Resumen anterior al ejercicio nuevo: sus impuestos siguen en «Impuestos y comisiones» (se tildan pagados ahí)."}
+                  : "Se muestran aparte para saber cuánto se fue en esto. No generan un pago: ya salen con el pago de la tarjeta."}
               </div>
               {ficha.comisiones.length > 0 && tabla(ficha.comisiones)}
             </div>
@@ -554,6 +593,42 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
             >
               Sacar de comisiones
             </ItemMenu>
+          )}
+          {p.esAdmin && (menu.f.estado === "pendiente" || menu.f.estado === "sugerido" || menu.f.estado === "desconocido" || menu.f.estado === "cerrado") && (
+            <>
+              <SepMenu />
+              {p.onDesconocer && menu.f.estado !== "cerrado" && (
+                <ItemMenu
+                  onClick={() => {
+                    if (menu.f.estado === "desconocido") p.onDesconocer!(menu.f.renglon.id, null);
+                    else {
+                      const nota = window.prompt("¿Por qué no lo reconocés? (queda para reclamarlo al banco)", "");
+                      if (nota !== null) p.onDesconocer!(menu.f.renglon.id, nota);
+                    }
+                    setMenu(null);
+                  }}
+                >
+                  {menu.f.estado === "desconocido" ? "Ya lo reconozco (sacar el desconocido)" : "! Desconocer este consumo (administrador)"}
+                </ItemMenu>
+              )}
+              {p.onCerrarSinLink && (
+                <ItemMenu
+                  onClick={() => {
+                    if (menu.f.estado === "cerrado") p.onCerrarSinLink!(menu.f.renglon.id, null);
+                    else {
+                      const motivo = window.prompt("Cerrar sin link (solo administrador).\n¿Por qué no se va a linkear? Queda guardado con tu firma y deja de reclamarse.", "");
+                      if (motivo !== null) {
+                        if (motivo.trim()) p.onCerrarSinLink!(menu.f.renglon.id, motivo.trim());
+                        else window.alert("Hace falta escribir el motivo para cerrarlo.");
+                      }
+                    }
+                    setMenu(null);
+                  }}
+                >
+                  {menu.f.estado === "cerrado" ? "↺ Reabrir (vuelve a pedir el link)" : "🔒 Cerrar sin link (administrador)…"}
+                </ItemMenu>
+              )}
+            </>
           )}
           {menu.f.estado === "linkeado" && (
             <>

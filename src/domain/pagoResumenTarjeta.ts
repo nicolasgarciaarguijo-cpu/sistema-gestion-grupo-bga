@@ -22,7 +22,7 @@ export const PAGO_RESUMEN_DESDE = LINKEO_OBLIGATORIO_DESDE;
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-export type ResumenParaPago = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; paid?: boolean };
+export type ResumenParaPago = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; paid?: boolean; paidAmountArs?: number };
 export type CuotaParaPago = { statementId: number | null; monto: number };
 
 /** El resumen se paga por su total (regla nueva) o lo bajan sus compras una por una (los anteriores). */
@@ -36,6 +36,20 @@ export type RepartoResumen = {
   deMas: number; // lo cargado supera al resumen: hay algo cargado dos veces o en el resumen equivocado
   pagado: boolean;
   fecha: string; // cuando se imputa: el vencimiento (o el cierre si no tiene)
+  // PAGO PARCIAL (Nicolas, 25/11/2026): "existe la situacion donde paguemos menos del costo total de la tarjeta [...] al
+  // tildarla solo impacte el monto real que se pago". Lo que sale de la cuenta: el monto pagado si se cargo uno, si no
+  // el total. `financiado` = lo que quedo sin pagar (viene en el resumen siguiente, con sus intereses).
+  montoPagado: number;
+  financiado: number;
+  // Lo que va al cash flow como "sin linkear": de lo que se pago, lo que no esta en ningun proveedor.
+  restoPagado: number;
+};
+
+/** Lo que sale de la cuenta al pagar un resumen: el monto cargado (si es menor o distinto al total) o el total. */
+export const montoPagadoDelResumen = (r: { totalArs?: number; paidAmountArs?: number }): number => {
+  const total = r2(Number(r.totalArs || 0));
+  const pagado = r2(Number(r.paidAmountArs || 0));
+  return pagado > 0 ? pagado : total;
 };
 
 /** El reparto de cada resumen de la regla nueva, por id. */
@@ -49,7 +63,11 @@ export function repartoDeResumenes(resumenes: ResumenParaPago[], cuotas: CuotaPa
   resumenes.filter(pagaElTotal).forEach((r) => {
     const total = r2(Number(r.totalArs || 0));
     const link = r2(linkeado.get(r.id) || 0);
+    const montoPagado = montoPagadoDelResumen(r);
     out.set(r.id, {
+      montoPagado,
+      financiado: r2(Math.max(0, total - montoPagado)),
+      restoPagado: r2(Math.max(0, montoPagado - link)),
       statementId: r.id,
       total,
       linkeado: link,
@@ -62,11 +80,20 @@ export function repartoDeResumenes(resumenes: ResumenParaPago[], cuotas: CuotaPa
   return out;
 }
 
+/**
+ * PAGO PARCIAL EN EL CASH FLOW (Nicolas, 25/11/2026): "si pague menos [...] no quiero que baje el total de las compras
+ * sino el total pagado de la tarjeta". Si el resumen esta pagado por menos de lo que suman sus compras linkeadas, cada
+ * compra entra al cash flow en proporcion a lo pagado (1 = entra entera). Lo que no se pago queda financiado y aparece
+ * en el resumen siguiente, que lo trae en su total.
+ */
+export const factorPagado = (r: Pick<RepartoResumen, "pagado" | "linkeado" | "montoPagado"> | undefined | null): number =>
+  r && r.pagado && r.linkeado > 0 && r.montoPagado < r.linkeado ? r.montoPagado / r.linkeado : 1;
+
 /** La cuota de una compra con tarjeta baja la cuenta SOLO si su resumen es de los anteriores. */
 export const cuotaBajaLaCuenta = (q: { statementId: number | null }, resumenPorId: Map<number, { closingDate?: string }>): boolean =>
   q.statementId == null || !pagaElTotal(resumenPorId.get(q.statementId));
 
-/** Los pagos de resumen que mueven una cuenta: los marcados pagados, por su total, en el vencimiento. */
+/** Los pagos de resumen que mueven una cuenta: los marcados pagados, por lo que se pago (montoPagado), en el vencimiento. */
 export function pagosDeResumenes(reparto: Map<number, RepartoResumen>): RepartoResumen[] {
-  return Array.from(reparto.values()).filter((r) => r.pagado && r.total > 0 && !!r.fecha);
+  return Array.from(reparto.values()).filter((r) => r.pagado && r.montoPagado > 0 && !!r.fecha);
 }

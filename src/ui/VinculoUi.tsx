@@ -110,6 +110,7 @@ export function IconoEstado({ estado }: { estado: string }) {
     sugerido: ["?", "#b45309", "Hay una sugerencia: confirmala con click derecho"],
     pendiente: ["D", "#b91c1c", "Falta linkear"],
     desconocido: ["!", "#b91c1c", "Desconocido: reclamar al banco"],
+    cerrado: ["–", "#64748b", "Cerrado sin link por el administrador: no se reclama más"],
     pago_resumen: ["·", "#64748b", "Pago del resumen anterior (se ve en el banco)"],
   };
   const [t, c, tip] = m[estado] || ["", "#64748b", ""];

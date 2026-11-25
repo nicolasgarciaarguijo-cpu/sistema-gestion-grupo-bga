@@ -46,12 +46,14 @@ export type MovimientoF = {
   assignedPurchaseInvoiceId?: number | null;
   assignedCardStatementId?: number | null;
   desconocido?: { firmante: string; fecha: string; nota: string } | null;
+  // Cerrado sin link por el administrador (25/11/2026): con motivo y firma, deja de contar como pendiente.
+  cerradoSinLink?: { firmante: string; fecha: string; motivo: string } | null;
 };
 // impuestoBanco: un impuesto, tasa o interes cargado a mano el dia que se cobro (23/11/2026). cuentaId dice de que banco.
 export type PagoBancoF = { id: number; company: string; date: string; amount: number; supplier: string; description: string; paymentMethod?: string; bankEntryId?: number | null; impuestoBanco?: boolean; cuentaId?: string };
 export type ResumenTarjetaF = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; nombre: string };
 
-export type EstadoMovimiento = "linkeado" | "comision" | "sugerido" | "pendiente" | "desconocido";
+export type EstadoMovimiento = "linkeado" | "comision" | "sugerido" | "pendiente" | "desconocido" | "cerrado";
 export type SugerenciaMov =
   | { tipo: "pago"; pagoId: number; texto: string }
   | { tipo: "resumen"; statementId: number; texto: string };
@@ -183,6 +185,10 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
       if (m.movementType === "credito") f.creditos = r2(f.creditos + monto);
       else f.debitos = r2(f.debitos + monto);
       const corta = rompe.has(m.id);
+      if (m.cerradoSinLink) {
+        f.movimientos.push({ mov: m, estado: "cerrado", detalle: `Cerrado sin link · ${m.cerradoSinLink.motivo} (${m.cerradoSinLink.firmante})`, rompe: corta });
+        return;
+      }
       if (m.desconocido) {
         f.movimientos.push({ mov: m, estado: "desconocido", detalle: `Desconocido${m.desconocido.nota ? ` · ${m.desconocido.nota}` : ""} (${m.desconocido.firmante})`, rompe: corta });
         return;
@@ -236,7 +242,7 @@ export type ControlComisiones = {
   cierra: boolean; // todas cargadas y linkeadas: lo cargado coincide con lo que cobro el banco
 };
 export function controlDeComisiones(f: Pick<FichaExtracto, "movimientos">): ControlComisiones {
-  const cargos = f.movimientos.filter((x) => x.mov.movementType === "debito" && !x.mov.desconocido && !!categoriaDeDebito(x.mov.conceptKey, x.mov.concept));
+  const cargos = f.movimientos.filter((x) => x.mov.movementType === "debito" && !x.mov.desconocido && !x.mov.cerradoSinLink && !!categoriaDeDebito(x.mov.conceptKey, x.mov.concept));
   const monto = (l: MovimientoFicha[]) => r2(l.reduce((a, x) => a + Math.abs(Number(x.mov.amount || 0)), 0));
   const linkeadas = cargos.filter((x) => x.estado === "linkeado");
   const sugeridas = cargos.filter((x) => x.estado === "sugerido");

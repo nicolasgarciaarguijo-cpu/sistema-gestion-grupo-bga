@@ -102,7 +102,7 @@ import { CuentasYCostos } from "./ui/CuentasYCostos";
 import { CostosTarjetaCotizacion } from "./ui/CostosTarjetaCotizacion";
 import { ImportarResumenTarjetaModal, type DecisionImportacion } from "./ui/ImportarResumenTarjetaModal";
 import type { PagoSinTarjetaF } from "./domain/fichaTarjeta";
-import { cuotaBajaLaCuenta, pagosDeResumenes, repartoDeResumenes } from "./domain/pagoResumenTarjeta";
+import { cuotaBajaLaCuenta, factorPagado, pagosDeResumenes, repartoDeResumenes } from "./domain/pagoResumenTarjeta";
 import { aporteSindical, esProveedorSindicato, obligacionMensual, planDeObligacion, type DocObligacion, type PlanObligacion } from "./domain/obligacionMensual";
 import { esProveedorDelFisco } from "./domain/pagoDeIva";
 import { creditoIncompleto } from "./domain/vatBalance";
@@ -16245,7 +16245,11 @@ Escribi CERRAR para confirmar:`
       const enTarjeta = item.paymentMethod === "tarjeta_credito" && item.tarjetaId != null;
       const cuotasItem = enTarjeta ? cuotasDeTarjeta.filter((q) => q.compraId === item.id && q.dueDate) : [];
       const tramos = cuotasItem.length
-        ? cuotasItem.map((q) => ({ id: `cost-${item.id}-c${q.cuota}`, date: q.dueDate as string, amount: q.monto, sufijo: q.de > 1 ? ` · cuota ${q.cuota}/${q.de}` : "" }))
+        ? cuotasItem.map((q) => {
+            // Resumen pagado por menos que sus compras: entra lo pagado, no el total de las compras (25/11/2026).
+            const factor = factorPagado(q.statementId != null ? repartoResumenes.get(q.statementId) : undefined);
+            return { id: `cost-${item.id}-c${q.cuota}`, date: q.dueDate as string, amount: Math.round(q.monto * factor * 100) / 100, sufijo: `${q.de > 1 ? ` · cuota ${q.cuota}/${q.de}` : ""}${factor < 1 ? " · pago parcial de la tarjeta" : ""}` };
+          })
         : [{ id: `cost-${item.id}`, date: item.date, amount: Number(item.amount || 0), sufijo: "" }];
       tramos.forEach((tramo) => {
       if (!tramo.date || !tramo.date.startsWith(String(analysisYear))) return;
@@ -16283,7 +16287,7 @@ Escribi CERRAR para confirmar:`
     // el dia del vencimiento el cash flow sume lo que dice el resumen. Ver domain/pagoResumenTarjeta.ts.
     pagosDeResumenes(repartoResumenes).forEach((r) => {
       const st = resumenPorId.get(r.statementId);
-      if (!st || !(r.resto > 0) || !r.fecha.startsWith(String(analysisYear)) || !canAccessCompany(st.company as CompanyName)) return;
+      if (!st || !(r.restoPagado > 0) || !r.fecha.startsWith(String(analysisYear)) || !canAccessCompany(st.company as CompanyName)) return;
       const cuenta = tarjetasF.find((t) => t.id === cuentaDeTarjeta(st.cardId, tarjetasF, resumenesF));
       entries.push({
         id: `resumen-${r.statementId}`,
@@ -16291,7 +16295,7 @@ Escribi CERRAR para confirmar:`
         company: st.company as CompanyName,
         title: `Tarjeta ${cuenta?.name || ""} · sin linkear del resumen`.replace(/\s+/g, " "),
         kind: "gasto",
-        amount: r.resto,
+        amount: r.restoPagado,
         statusLabel: "debito",
         conceptKey: renglonProveedor(SECCION_PROVEEDORES, SECCIONES_REEMPLAZADAS.bancos),
         administration: "blanco",
@@ -17827,6 +17831,8 @@ Escribi CERRAR para confirmar:`
       return;
     }
     if (previo) return;
+    // 25/11/2026: las comisiones de la TARJETA no generan un egreso aparte (ya salen con el pago del resumen).
+    if (g.origen === "tarjeta") return;
     const cuenta = cuentaDeImpuestos(g);
     if (!cuenta) return;
     const pago: CostEntry = {
@@ -17990,11 +17996,23 @@ Escribi CERRAR para confirmar:`
     );
   const linkearRenglon = (id: number, pagoId: number, cuota: number, cuentaTarjetaId?: number) => {
     if (cuentaTarjetaId != null) pasarPagoATarjeta(pagoId, cuentaTarjetaId);
-    actualizarRenglones((c) => (c.id === id ? { ...c, pagoId, cuotaNro: cuota, aComisiones: false } : null));
+    actualizarRenglones((c) => (c.id === id ? { ...c, pagoId, cuotaNro: cuota, aComisiones: false, desconocido: null, cerradoSinLink: null } : null));
   };
   const soltarRenglon = (id: number) => actualizarRenglones((c) => (c.id === id ? { ...c, pagoId: null, cuotaNro: undefined } : null));
   const renglonAComisiones = (id: number, si: boolean) =>
     actualizarRenglones((c) => (c.id === id ? { ...c, aComisiones: si, ...(si ? { pagoId: null, cuotaNro: undefined } : {}) } : null));
+  // SOLO EL ADMINISTRADOR (Nicolas, 25/11/2026): un consumo del resumen que no se reconoce (sigue reclamando) o que
+  // nunca se va a poder linkear (se cierra con motivo y firma y deja de reclamar). Pasar null lo deshace.
+  const desconocerRenglon = (id: number, nota: string | null) => {
+    if (!effectiveIsAdmin) return;
+    actualizarRenglones((c) => (c.id === id ? { ...c, desconocido: nota === null ? null : { firmante: usuarioFirmante, fecha: todayIso(), nota } } : null));
+  };
+  const cerrarRenglonSinLink = (id: number, motivo: string | null) => {
+    if (!effectiveIsAdmin) return;
+    actualizarRenglones((c) =>
+      c.id === id ? { ...c, cerradoSinLink: motivo === null ? null : { firmante: usuarioFirmante, fecha: todayIso(), motivo }, ...(motivo === null ? {} : { pagoId: null, cuotaNro: undefined }) } : null
+    );
+  };
   const aceptarSugerencias = (statementId: number) => {
     const f = fichasResumen.find((x) => x.resumen.id === statementId);
     if (!f) return;
@@ -18021,7 +18039,7 @@ Escribi CERRAR para confirmar:`
     }
     actualizarRenglones((c) => {
       const x = sug.get(c.id);
-      return x ? { ...c, pagoId: x.pagoId, cuotaNro: x.cuota, aComisiones: false } : null;
+      return x ? { ...c, pagoId: x.pagoId, cuotaNro: x.cuota, aComisiones: false, desconocido: null, cerradoSinLink: null } : null;
     });
   };
 
@@ -18279,15 +18297,19 @@ Escribi CERRAR para confirmar:`
       const pagoId = Number(id);
       const pago = costEntries.find((c) => c.id === pagoId);
       setCostEntries((prev) => prev.map((c) => (c.id === pagoId ? { ...c, bankEntryId: movId } : c.bankEntryId === movId ? { ...c, bankEntryId: undefined } : c)));
-      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "pago" as const, assignedParty: pago?.supplier || x.assignedParty, desconocido: null } : x)));
+      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "pago" as const, assignedParty: pago?.supplier || x.assignedParty, desconocido: null, cerradoSinLink: null } : x)));
     } else if (tipo === "resumen") {
       const sid = Number(id);
       const st = creditCardStatements.find((x) => x.id === sid);
-      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedCardStatementId: sid, assignedKind: "pago" as const, assignedParty: creditCards.find((t) => t.id === st?.cardId)?.name || x.assignedParty, desconocido: null } : x)));
-      if (st && !st.paid) setCreditCardStatements((prev) => prev.map((x) => (x.id === sid ? { ...x, paid: true } : x)));
+      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedCardStatementId: sid, assignedKind: "pago" as const, assignedParty: creditCards.find((t) => t.id === st?.cardId)?.name || x.assignedParty, desconocido: null, cerradoSinLink: null } : x)));
+      // Linkear el debito del banco marca el resumen pagado; si el banco debito OTRO monto que el total, ese es el monto
+      // realmente pagado (25/11/2026).
+      const debitado = Math.abs(Number(bankStatementEntries.find((x) => x.id === movId)?.amount || 0));
+      const parcial = st && debitado > 0 && Math.abs(debitado - Number(st.totalArs || 0)) > 1 ? debitado : undefined;
+      if (st && (!st.paid || parcial != null)) setCreditCardStatements((prev) => prev.map((x) => (x.id === sid ? { ...x, paid: true, ...(parcial != null ? { paidAmountArs: parcial } : {}) } : x)));
     } else {
       const job = visibleApprovedJobs.find((j) => String(j.budgetNumber) === id);
-      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "cobro" as const, assignedJobBudget: id, assignedParty: job?.client || x.assignedParty, desconocido: null } : x)));
+      setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: "cobro" as const, assignedJobBudget: id, assignedParty: job?.client || x.assignedParty, desconocido: null, cerradoSinLink: null } : x)));
     }
   };
   // CARGAR LA COMISION QUE FALTA, DESDE EL CONTROL DE LA FICHA (Nicolas, 23/11/2026): "si alguna no se cargo marca que
@@ -18329,17 +18351,23 @@ Escribi CERRAR para confirmar:`
     );
     const ids = new Set(abiertos.map((b) => b.id));
     setCostEntries((prev) => [...nuevos, ...prev]);
-    setBankStatementEntries((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, assignedKind: "pago" as const, assignedParty: banco.supplier.name, desconocido: null } : x)));
+    setBankStatementEntries((prev) => prev.map((x) => (ids.has(x.id) ? { ...x, assignedKind: "pago" as const, assignedParty: banco.supplier.name, desconocido: null, cerradoSinLink: null } : x)));
     if (cerrados.length) window.alert(`${cerrados.length} cargo(s) caen en un ejercicio cerrado y no se cargaron.`);
   };
   const tipoMovimiento = (movId: number, kind: "interno" | "aporte" | "otro") => {
     if (!movimientoEditable(movId)) return;
-    setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: kind, desconocido: null } : x)));
+    setBankStatementEntries((prev) => prev.map((x) => (x.id === movId ? { ...x, assignedKind: kind, desconocido: null, cerradoSinLink: null } : x)));
   };
   const desconocerMovimiento = (movId: number, nota: string | null) => {
     if (!movimientoEditable(movId)) return;
     setBankStatementEntries((prev) =>
       prev.map((x) => (x.id === movId ? { ...x, desconocido: nota === null ? null : { firmante: usuarioFirmante, fecha: todayIso(), nota } } : x))
+    );
+  };
+  const cerrarMovimientoSinLink = (movId: number, motivo: string | null) => {
+    if (!effectiveIsAdmin || !movimientoEditable(movId)) return;
+    setBankStatementEntries((prev) =>
+      prev.map((x) => (x.id === movId ? { ...x, cerradoSinLink: motivo === null ? null : { firmante: usuarioFirmante, fecha: todayIso(), motivo } } : x))
     );
   };
   const soltarMovimiento = (movId: number) => {
@@ -18427,7 +18455,7 @@ Escribi CERRAR para confirmar:`
               id: `resumen-${r.statementId}`,
               company: st.company,
               date: r.fecha,
-              amount: r.total,
+              amount: r.montoPagado,
               administration: "blanco",
               source: "manual",
               paymentMethod: "debito",
@@ -24904,6 +24932,9 @@ Escribi CERRAR para confirmar:`
               cuentaTarjetaId={cuenta.id}
               onSoltar={soltarRenglon}
               onComisiones={renglonAComisiones}
+              esAdmin={effectiveIsAdmin}
+              onDesconocer={desconocerRenglon}
+              onCerrarSinLink={cerrarRenglonSinLink}
               onAceptarSugerencias={aceptarSugerencias}
               onPlastico={(id, patch) => Object.entries(patch).forEach(([k, v]) => updateCreditCard(id, k as keyof CreditCard, v))}
               onResumen={(sid, campo, valor) => updateCreditCardStatement(sid, campo as keyof CreditCardStatement, valor)}
@@ -24936,6 +24967,8 @@ Escribi CERRAR para confirmar:`
               onLink={linkearMovimiento}
               onTipo={tipoMovimiento}
               onDesconocer={desconocerMovimiento}
+              esAdmin={effectiveIsAdmin}
+              onCerrarSinLink={cerrarMovimientoSinLink}
               onSoltar={soltarMovimiento}
               renglones={renglonesDelBanco}
               etiquetaRenglon={etiquetaRenglonDelBanco}

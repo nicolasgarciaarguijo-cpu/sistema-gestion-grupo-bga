@@ -51,7 +51,7 @@ export type TarjetaF = {
 };
 // 2026-11-14 (Nicolas): los datos del resumen se corrigen en ESTA ficha (antes se tipeaban en la fila de la
 // solapa Tarjetas), asi que la ficha necesita todos los campos, no solo los del linkeo.
-export type ResumenF = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; totalUsd?: number; saldoAnteriorArs?: number; minPaymentArs?: number; paid?: boolean; archivo?: string; notes?: string };
+export type ResumenF = { id: number; company: string; cardId: number; closingDate: string; dueDate: string; totalArs: number; totalUsd?: number; saldoAnteriorArs?: number; minPaymentArs?: number; paid?: boolean; paidAmountArs?: number; archivo?: string; notes?: string };
 export type RenglonF = {
   id: number;
   company: string;
@@ -67,6 +67,10 @@ export type RenglonF = {
   pagoId?: number | null;
   cuotaNro?: number;
   aComisiones?: boolean;
+  // 25/11/2026, solo el administrador. Desconocido: no es nuestro, sigue contando como pendiente hasta resolverlo.
+  // Cerrado sin link: se da por cerrado con motivo y firma y deja de reclamar.
+  desconocido?: { firmante: string; fecha: string; nota: string } | null;
+  cerradoSinLink?: { firmante: string; fecha: string; motivo: string } | null;
 };
 // Un pago cargado con tarjeta de credito (CostEntry con medio tarjeta y su tarjeta).
 export type PagoF = {
@@ -218,7 +222,7 @@ export function sugerirPagoSinTarjeta(
   };
 }
 
-export type EstadoRenglon = "linkeado" | "comision" | "sugerido" | "pendiente" | "pago_resumen";
+export type EstadoRenglon = "linkeado" | "comision" | "sugerido" | "pendiente" | "pago_resumen" | "desconocido" | "cerrado";
 export type RenglonFicha = { renglon: RenglonF; estado: EstadoRenglon; pago?: PagoF; cuota?: number; sugerencia?: Sugerencia };
 export type GrupoPlastico = { clave: string; digits: string; holder: string; tarjeta?: TarjetaF; renglones: RenglonFicha[]; total: number };
 export type FichaResumen = {
@@ -264,6 +268,8 @@ export function fichaDelResumen(
       const pago = pagos.find((p) => p.id === r.pagoId);
       if (pago) return { renglon: r, estado: "linkeado" as const, pago, cuota: r.cuotaNro || 1 };
     }
+    if (r.cerradoSinLink) return { renglon: r, estado: "cerrado" as const };
+    if (r.desconocido) return { renglon: r, estado: "desconocido" as const };
     // Sin tarjeta fisica = cargo del resumen; o mandado a mano a comisiones.
     const tomados = new Set([...Array.from(ocupados), ...Array.from(sugeridos)]);
     // Un cargo que ya se cargo a mano (impuesto, tasa o interes): se sugiere linkearlo, asi no se suma dos veces.
@@ -304,7 +310,7 @@ export function fichaDelResumen(
   if (sueltos.length) grupos.set("sin", { clave: "sin", digits: "", holder: "Sin tarjeta física", renglones: sueltos, total: r2(sueltos.reduce((a, f) => a + (f.renglon.currency === "ARS" ? Number(f.renglon.amount) : 0), 0)) });
   const comisiones = filas.filter((f) => f.estado === "comision");
   const comisionesArs = r2(comisiones.filter((f) => f.renglon.currency === "ARS").reduce((a, f) => a + Number(f.renglon.amount || 0), 0));
-  const pendientes = filas.filter((f) => f.estado === "pendiente" || f.estado === "sugerido").length;
+  const pendientes = filas.filter((f) => f.estado === "pendiente" || f.estado === "sugerido" || f.estado === "desconocido").length;
   // Cuotas cargadas que caerian en este resumen (orden de cierres de la cuenta) y nadie linkeo.
   const cierres = resumenes.filter((s) => cuentaDeTarjeta(s.cardId, tarjetas, resumenes) === cuentaId).sort((a, b) => a.closingDate.localeCompare(b.closingDate));
   const idx = cierres.findIndex((s) => s.id === resumen.id);

@@ -993,6 +993,8 @@ export type BankStatementEntry = {
   // no se reconoce (queda marcado para reclamarlo al banco). Ver domain/fichaExtracto.ts.
   assignedCardStatementId?: number | null;
   desconocido?: { firmante: string; fecha: string; nota: string } | null;
+  // CERRADO SIN LINK (Nicolas, 25/11/2026): el administrador lo da por cerrado con motivo y firma; deja de reclamar.
+  cerradoSinLink?: { firmante: string; fecha: string; motivo: string } | null;
 };
 
 export type StockMovement = {
@@ -1286,6 +1288,9 @@ export type CreditCardStatement = {
   totalUsd: number; // saldo actual U$S
   minPaymentArs: number;
   paid: boolean;
+  // MONTO REALMENTE PAGADO (Nicolas, 25/11/2026): si se pago menos que el total del resumen, lo que sale de la cuenta
+  // es esto. Vacio o 0 = se pago el total. El resto queda financiado y viene en el resumen siguiente.
+  paidAmountArs?: number;
   notes: string;
   // Saldo anterior y archivo leido (lector de resumenes, 2026-10-31): para verificar que el resumen cierre.
   saldoAnteriorArs?: number;
@@ -1319,6 +1324,9 @@ export type CreditCardConsumption = {
   pagoId?: number | null;
   cuotaNro?: number;
   aComisiones?: boolean;
+  // 25/11/2026, solo el administrador: no reconocido (sigue reclamando) o cerrado sin link (deja de reclamar).
+  desconocido?: { firmante: string; fecha: string; nota: string } | null;
+  cerradoSinLink?: { firmante: string; fecha: string; motivo: string } | null;
 };
 
 // REGLA DE CLASIFICACION con memoria: cuando el usuario clasifica un gasto a un grupo, se aprende una

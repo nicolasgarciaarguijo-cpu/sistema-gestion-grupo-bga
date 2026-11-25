@@ -54,6 +54,9 @@ export type FichaExtractoProps = {
   onImpuestosPagados?: (g: GrupoImpuestos, pagado: boolean) => void;
   // 23/11/2026: cargar (y dejar linkeada) la comisión del extracto que nunca se cargó.
   onCargarComisiones?: (movIds: number[]) => void;
+  // 25/11/2026: cerrar un movimiento sin link (con motivo y firma). Solo el administrador ve la opción.
+  esAdmin?: boolean;
+  onCerrarSinLink?: (movId: number, motivo: string | null) => void;
 };
 
 export function FichaExtracto(p: FichaExtractoProps) {
@@ -200,7 +203,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
                         </div>
                       )}
                     </td>
-                    <td style={{ ...td, color: x.estado === "linkeado" ? "#166534" : x.estado === "comision" ? "#7c3aed" : x.estado === "sugerido" ? "#b45309" : "#b91c1c" }}>{x.detalle}</td>
+                    <td style={{ ...td, color: x.estado === "linkeado" ? "#166534" : x.estado === "comision" ? "#7c3aed" : x.estado === "sugerido" ? "#b45309" : x.estado === "cerrado" ? "#64748b" : "#b91c1c" }}>{x.detalle}</td>
                   </tr>
                 ))}
               </tbody>
@@ -306,6 +309,30 @@ export function FichaExtracto(p: FichaExtractoProps) {
               }}
             >
               Ya lo reconozco (sacar el desconocido)
+            </ItemMenu>
+          )}
+          {p.esAdmin && p.onCerrarSinLink && menu.m.estado === "cerrado" && (
+            <ItemMenu
+              onClick={() => {
+                p.onCerrarSinLink!(menu.m.mov.id, null);
+                setMenu(null);
+              }}
+            >
+              ↺ Reabrir (vuelve a pedir el link)
+            </ItemMenu>
+          )}
+          {p.esAdmin && p.onCerrarSinLink && (menu.m.estado === "pendiente" || menu.m.estado === "sugerido" || menu.m.estado === "desconocido") && (
+            <ItemMenu
+              onClick={() => {
+                const motivo = window.prompt("Cerrar sin link (solo administrador).\n¿Por qué no se va a linkear? Queda guardado con tu firma y deja de reclamarse.", "");
+                if (motivo !== null) {
+                  if (motivo.trim()) p.onCerrarSinLink!(menu.m.mov.id, motivo.trim());
+                  else window.alert("Hace falta escribir el motivo para cerrarlo.");
+                }
+                setMenu(null);
+              }}
+            >
+              🔒 Cerrar sin link (administrador)…
             </ItemMenu>
           )}
           {menu.m.estado === "linkeado" && (

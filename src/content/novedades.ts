@@ -26,6 +26,24 @@ export const NOVEDADES: TandaNovedades[] = [
         como: "Al cargar un pago, en «De qué cuenta salió» elegí la caja mirando la empresa: por ejemplo «Caja de Nicolás (negro) · BGA» o «Caja de Nicolás (negro) · De Raíz».",
         tab: "cajaChica",
       },
+      {
+        titulo: "Comisiones de la tarjeta: sin cajita de pago",
+        que: "Las comisiones, tasas e impuestos del resumen se siguen mostrando aparte, con su total, para saber cuánto se fue en eso. Ya no tienen una cajita para tildar «pagado»: esa cajita generaba un pago extra, y esos cargos ya salen con el pago de la tarjeta. Si quedó un pago hecho con la cajita anterior, la ficha lo avisa en rojo y deja quitarlo.",
+        como: "Bancos y tarjetas → ficha de la tarjeta → el resumen. Abajo de todo está «Comisiones, tasas e intereses (tarjeta)» con su total y sus renglones. Si cargaste alguno a mano, el sistema te sugiere linkearlo.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Resumen pagado por menos del total",
+        que: "Al lado del tilde «Pagado» del resumen hay un campo «Monto pagado». Si se pagó menos que el total, se carga ahí y de la cuenta sale solo eso; el resto queda financiado y viene en el resumen siguiente. La ficha muestra «Queda por pagar» con ese importe, y el cash flow baja lo que se pagó de la tarjeta, no el total de las compras. Vacío significa que se pagó el total. Si linkeás el débito del banco con el resumen y el importe es distinto al total, el monto pagado se completa solo.",
+        como: "Bancos y tarjetas → ficha de la tarjeta → el resumen → «Datos del resumen»: tildá «Pagado» y, si no fue el total, escribí el monto en «Monto pagado $». Vale para los resúmenes que cierran desde el 1/11/2026.",
+        tab: "bancos",
+      },
+      {
+        titulo: "Cerrar sin link (solo el administrador)",
+        que: "Cuando un movimiento del banco o un consumo de la tarjeta no se va a poder linkear nunca, el administrador lo puede cerrar: pide el motivo, queda con su firma y la fecha, y deja de contarse como pendiente. En las tarjetas también puede marcar un consumo como desconocido, que sigue reclamándose hasta resolverlo.",
+        como: "Bancos y tarjetas → ficha de la cuenta o de la tarjeta → click derecho en el renglón → «Cerrar sin link (administrador)». Para deshacerlo, click derecho → «Reabrir». Los demás usuarios no ven estas opciones.",
+        tab: "bancos",
+      },
     ],
   },
   {
