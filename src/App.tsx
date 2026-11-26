@@ -210,7 +210,7 @@ import {
 import { findSupplierInText, reconcilePayments } from "./domain/suppliers";
 import { suggestGroupFromRules, learnCostRule } from "./domain/costRules";
 import { suggestCalendarConcept } from "./domain/calendarBankRules";
-import { prepararCargaDeExtracto } from "./domain/cargaExtracto";
+import { detectarCuentaDelExtracto, prepararCargaDeExtracto, type CargaDeExtracto } from "./domain/cargaExtracto";
 import { CALENDAR_SECTIONS, CALENDAR_ITEM_INDEX, DEFAULT_CALENDAR_ROW_CONFIG, esCobranzaReal, type CalendarRowConfig } from "./domain/calendarStructure";
 import { buildLoanLines, lenderFromLabel, type CalendarLoan } from "./domain/loanLines";
 import { fieldsThatWouldBeEmptied, describeEmptied } from "./domain/saveGuard";
@@ -21024,11 +21024,20 @@ Escribi CERRAR para confirmar:`
     setBankMirrorMessage("");
     try {
       const result = await readBankStatement(file);
+      // SIN LISTADO NI CONFIRMACION (Nicolas, 25/11/2026): "quiero que cuando cargue el extracto directamente me envie a la
+      // ficha con las cosas faltantes cargadas". Se reconoce de que cuenta es por lo que ya esta cargado y se carga solo.
+      // Solo si no se puede saber la cuenta (la primera vez de un banco nuevo) se pregunta empresa y banco.
+      const cuenta = detectarCuentaDelExtracto(result.entries, bankStatementEntries.filter((e) => tienePermisoEmpresa(e.company)) as any);
+      if (cuenta) {
+        setBankMirrorRaw([]);
+        cargarExtractoEn(prepararCargaDeExtracto({ leidos: result.entries, existentes: bankStatementEntries as any, ...cuenta }), cuenta.company, cuenta.bank, cuenta.currency);
+        return;
+      }
       setBankMirrorRaw(result.entries);
       // Autodetección de moneda por el nombre del archivo (USD / U$S / dolares).
       if (/usd|u\$s|dolar/i.test(file.name)) setBankMirrorCurrency("USD");
       setBankMirrorMessage(
-        `Leí ${result.entries.length} movimiento(s) del ${result.sourceType.toUpperCase()}. Elegí empresa, banco y moneda; reviso duplicados y confirmás.`
+        `Leí ${result.entries.length} movimiento(s), pero no pude reconocer de qué cuenta son (no coinciden con nada ya cargado). Elegí empresa, banco y moneda y confirmá: es solo esta vez.`
       );
     } catch (err) {
       setBankMirrorRaw([]);
@@ -21061,32 +21070,54 @@ Escribi CERRAR para confirmar:`
       setBankMirrorMessage("Elegí el banco antes de cargar (ej: Patagonia, Santander).");
       return;
     }
-    const nuevos = cargaDelExtracto.nuevos;
-    if (nuevos.length === 0) {
-      setBankMirrorMessage("No hay movimientos nuevos para cargar (todos ya estaban o el archivo está vacío).");
-      return;
+    cargarExtractoEn(cargaDelExtracto, String(bankMirrorCompany), bankMirrorBank.trim(), bankMirrorCurrency === "USD" ? "USD" : "ARS");
+  };
+  // SUBIR EL EXTRACTO DESDE LA FICHA DE LA CUENTA (Nicolas, 25/11/2026): "que en el banco correspondiente yo le suba su
+  // respectivo extracto". Va directo a ESA cuenta. Si el archivo es de otra cuenta (coincide con lo cargado en otra), no
+  // lo carga y dice de cual es, para no mezclar bancos.
+  const [subiendoExtracto, setSubiendoExtracto] = useState(false);
+  const subirExtractoDeCuenta = async (file: File, company: string, banco: string, moneda: "ARS" | "USD") => {
+    setSubiendoExtracto(true);
+    try {
+      const result = await readBankStatement(file);
+      const otra = detectarCuentaDelExtracto(result.entries, bankStatementEntries.filter((e) => tienePermisoEmpresa(e.company)) as any);
+      if (otra && (otra.company !== company || otra.bank.toLowerCase() !== banco.toLowerCase() || otra.currency !== moneda)) {
+        setBankMirrorMessage(`Ese archivo es de ${otra.bank} · ${getCompanyMeta(otra.company as CompanyName).short}, no de esta cuenta. No cargué nada: subilo en su ficha.`);
+        return;
+      }
+      cargarExtractoEn(prepararCargaDeExtracto({ leidos: result.entries, existentes: bankStatementEntries as any, company, bank: banco, currency: moneda }), company, banco, moneda);
+    } catch (err) {
+      setBankMirrorMessage(err instanceof Error ? err.message : "No se pudo leer el extracto.");
+    } finally {
+      setSubiendoExtracto(false);
     }
+  };
+  // La carga en si: agrega lo nuevo al final, en orden, y abre la ficha de la cuenta. No carga ningun pago.
+  const cargarExtractoEn = (carga: CargaDeExtracto, company: string, banco: string, moneda: "ARS" | "USD") => {
+    const nuevos = carga.nuevos;
     const entries: BankStatementEntry[] = nuevos.map((r) => ({
       id: newId(),
-      company: bankMirrorCompany as CompanyName,
+      company: company as CompanyName,
       date: r.date,
-      bank: bankMirrorBank.trim(),
+      bank: banco,
       movementType: r.movementType,
       concept: r.concept,
       amount: r.amount,
       balance: r.balance,
-      currency: bankMirrorCurrency,
+      currency: moneda,
       notes: `Importado del extracto ${todayIso().split("-").reverse().join("/")}`,
       extractedAutomatically: true,
       ...(r.conceptKey ? { conceptKey: r.conceptKey } : {}),
     }));
     // AL FINAL y en orden cronologico: asi la cadena de saldos de la ficha queda en el orden real del banco.
-    setBankStatementEntries((prev) => [...prev, ...entries]);
-    const { repetidos: dups, cargos, encadena, mes } = cargaDelExtracto;
+    if (entries.length) setBankStatementEntries((prev) => [...prev, ...entries]);
+    const { repetidos: dups, cargos, encadena } = carga;
+    // Sin nada nuevo se abre igual, en el ultimo mes de la cuenta.
+    const mes = carga.mes;
     setBankMirrorRaw([]);
     setBankMirrorMessage(
       [
-        `Cargué ${entries.length} movimiento(s) de ${bankMirrorBank.trim()}${dups > 0 ? ` (${dups} ya estaban y no se repitieron)` : ""}.`,
+        entries.length ? `Cargué ${entries.length} movimiento(s) nuevos de ${banco} · ${getCompanyMeta(company as CompanyName).short}${dups > 0 ? ` (${dups} ya estaban y no se repitieron)` : ""}.` : `${banco} · ${getCompanyMeta(company as CompanyName).short}: los ${dups} movimiento(s) del archivo ya estaban cargados, no había nada nuevo.`,
         cargos.cantidad > 0 ? `Reconocí ${cargos.cantidad} impuesto(s), comisión(es) o interés(es) por ${money(cargos.total)}: la ficha te ofrece cargarlos.` : "",
         encadena === false ? "⚠ Entre lo que ya estaba cargado y este archivo falta algún movimiento: el saldo no continúa. Subí el tramo que falta." : "",
         "Se abrió la ficha de la cuenta para linkear lo que falta.",
@@ -21094,7 +21125,7 @@ Escribi CERRAR para confirmar:`
     );
     // SOLO PREPARA LA FICHA: se abre en el mes cargado, con lo pendiente de linkear y el control de comisiones.
     setFichaCuentaMes(mes || undefined);
-    setFichaCuentaAbierta(`${bankMirrorCompany}||${bankMirrorBank.trim()}||${bankMirrorCurrency === "USD" ? "USD" : "ARS"}`);
+    setFichaCuentaAbierta(`${company}||${banco}||${moneda}`);
   };
 
   const discardBankMirrorDraft = () => {
@@ -25084,6 +25115,12 @@ Escribi CERRAR para confirmar:`
               onPlastico={(id, patch) => Object.entries(patch).forEach(([k, v]) => updateCreditCard(id, k as keyof CreditCard, v))}
               onResumen={(sid, campo, valor) => updateCreditCardStatement(sid, campo as keyof CreditCardStatement, valor)}
               onAgregarResumen={addCreditCardStatement}
+              onSubirResumen={(files) => {
+                // La ventana que pregunta empresa y tarjetas va por debajo de la ficha: se cierra y, al confirmar, se
+                // vuelve a abrir en el resumen recien leido.
+                setFichaTarjetaAbierta(null);
+                leerPdfTarjeta(files);
+              }}
               onQuitarResumen={removeCreditCardStatement}
               onTarjeta={(cardId, campo, valor) => updateCreditCard(cardId, campo as keyof CreditCard, valor)}
               onQuitarTarjeta={(cardId) => {
@@ -25112,6 +25149,9 @@ Escribi CERRAR para confirmar:`
               onLink={linkearMovimiento}
               onLinkVarios={linkearVariosPagos}
               onLinkCobros={linkearCobros}
+              onSubirExtracto={(file) => subirExtractoDeCuenta(file, meses[0].company, meses[0].bank, meses[0].currency === "USD" ? "USD" : "ARS")}
+              subiendo={subiendoExtracto}
+              aviso={bankMirrorMessage}
               onTipo={tipoMovimiento}
               onDesconocer={desconocerMovimiento}
               esAdmin={effectiveIsAdmin}

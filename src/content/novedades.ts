@@ -41,7 +41,7 @@ export const NOVEDADES: TandaNovedades[] = [
       {
         titulo: "Subir el extracto prepara la ficha para linkear",
         que: "Al subir un extracto del banco, el sistema carga los movimientos en el orden real, saltea los que ya estaban (se puede subir todos los días), reconoce los impuestos, comisiones e intereses y abre la ficha de la cuenta en el mes cargado, con lo que falta linkear y el control de comisiones listo para cargar lo que falte. También avisa si entre lo que ya estaba y lo nuevo falta un tramo. Ahora lee bien el archivo de Santander y suma la referencia de Patagonia al concepto.",
-        como: "Bancos y tarjetas → subir el extracto → elegir empresa, banco y moneda → confirmar. Se abre sola la ficha de la cuenta. No carga ningún pago: solo deja el extracto listo para linkear.",
+        como: "Bancos y tarjetas → abrí la ficha de la cuenta → «Subir extracto». Carga directo lo que falta, sin listado ni confirmación, y queda la ficha lista para linkear. El resumen de la tarjeta se sube igual, desde la ficha de la tarjeta, con «Subir resumen (PDF)». Los impuestos que ya estaban cargados se reconocen y se ofrecen para linkear, no para cargar de nuevo. No carga ningún pago.",
         tab: "bancos",
       },
       {

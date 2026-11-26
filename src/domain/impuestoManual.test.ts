@@ -42,11 +42,11 @@ describe("el extracto sugiere el impuesto ya cargado", () => {
     expect(f.comisionesArs).toBe(500);
   });
 
-  it("no sugiere el de otro banco, el de otra fecha lejana ni un pago que no es impuesto", () => {
+  it("no sugiere el de otro banco ni el de otra fecha lejana; el que se cargó sin la marca de impuesto sí (25/11/2026)", () => {
     const estado = (p: PagoBancoF) => fichasDeExtracto(movs, [p], [])[0].movimientos.find((x) => x.mov.id === 1)!.estado;
     expect(estado(pago({ cuentaId: "banco|BGA|patagonia|ARS" }))).toBe("comision");
     expect(estado(pago({ date: "2026-11-02" }))).toBe("comision");
-    expect(estado(pago({ impuestoBanco: false }))).toBe("comision");
+    expect(estado(pago({ impuestoBanco: false }))).toBe("sugerido");
   });
 
   it("sirve con un extracto parcial: lo cargado despues del ultimo movimiento subido no molesta", () => {

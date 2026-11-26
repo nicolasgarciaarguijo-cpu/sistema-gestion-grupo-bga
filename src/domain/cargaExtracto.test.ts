@@ -60,6 +60,36 @@ describe("carga del extracto desde la app", () => {
   });
 });
 
+// Nicolas, 25/11/2026: "no quiero otra confirmacion [...] quiero que cuando cargue el extracto directamente me envie a la
+// ficha con las cosas faltantes cargadas".
+describe("reconocer de qué cuenta es el archivo, sin preguntar", () => {
+  const { detectarCuentaDelExtracto } = require("./cargaExtracto");
+  const deRaiz = { company: "De Raiz", bank: "Patagonia", currency: "ARS" };
+  const otraCuenta = [{ ...m("2026-11-10", "CREDITO", 900, "credito", 900), ...deRaiz }];
+
+  it("es la cuenta que ya tiene movimientos de ese archivo (al subir a diario se pisan)", () => {
+    const existentes = [...otraCuenta, ...archivo.slice(2).map(yaCargado)];
+    expect(detectarCuentaDelExtracto(archivo, existentes)).toEqual(base);
+  });
+
+  it("el mismo movimiento escrito distinto (espacios, acentos) sigue siendo el mismo", () => {
+    const existentes = archivo.slice(2).map((x) => yaCargado({ ...x, concept: `  ${x.concept.toUpperCase()}   REF ` }));
+    const r = prepararCargaDeExtracto({ leidos: archivo, existentes, ...base });
+    expect(r.repetidos).toBe(3);
+    expect(r.nuevos).toHaveLength(2);
+  });
+
+  it("sin movimientos repetidos, es la única cuenta cuyo saldo continúa", () => {
+    const existentes = [...otraCuenta, yaCargado(m("2026-11-15", "CREDITO", 1000, "credito", 1000))];
+    expect(detectarCuentaDelExtracto(archivo, existentes)).toEqual(base);
+  });
+
+  it("si no se puede saber, no adivina", () => {
+    expect(detectarCuentaDelExtracto(archivo, otraCuenta)).toBeNull();
+    expect(detectarCuentaDelExtracto(archivo, [])).toBeNull();
+  });
+});
+
 describe("lectura del archivo del banco", () => {
   it("el .xls de Santander es texto separado por tabs aunque tenga comas en los importes", () => {
     const texto = "Últimos movimientos\nCuenta 123\n\nFecha\tSucursal\tConcepto\tImporte\tSaldo\n24/11/2026\t000\tImpuesto ley 25.413\t-18.758,00\t140.568,21\n";

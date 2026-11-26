@@ -41,6 +41,8 @@ export type FichaTarjetaProps = {
   // 18/11/2026: cargar y quitar resumenes se hace aca, porque el bloque "Resúmenes · cierres y
   // vencimientos" lo reemplaza esta ficha.
   onAgregarResumen?: () => void;
+  // SUBIR EL RESUMEN DESDE ACA (Nicolas, 25/11/2026): el PDF del resumen se sube en la ficha de su tarjeta.
+  onSubirResumen?: (files: File[]) => void;
   onQuitarResumen?: (statementId: number) => void;
   // 18/11/2026 (Nicolas): "tarjetas e impuestos y comisiones eso sí lo quiero dentro de las fichas".
   // Los datos de la tarjeta (empresa, nombre, banco, digitos, cuenta, responsable, activa, notas) se
@@ -174,6 +176,22 @@ export function FichaTarjeta(p: FichaTarjetaProps) {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
+          {p.onSubirResumen && (
+            <label data-subir-resumen title="Subí el PDF del resumen de ESTA tarjeta: lo lee y abre el resumen para linkear" style={{ border: "1px solid #0f172a", background: "#0f172a", color: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>
+              ⬆ Subir resumen (PDF)
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                multiple
+                style={{ display: "none" }}
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  e.target.value = "";
+                  if (files.length) p.onSubirResumen!(files);
+                }}
+              />
+            </label>
+          )}
           {p.onAgregarResumen && (
             <button type="button" onClick={p.onAgregarResumen} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
               Agregar resumen

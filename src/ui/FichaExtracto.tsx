@@ -64,6 +64,11 @@ export type FichaExtractoProps = {
   onLinkVarios?: (movId: number, pagoIds: number[]) => void;
   // 25/11/2026: el credito del banco se linkea con el cobro (o los cobros) cargados en los trabajos.
   onLinkCobros?: (movId: number, cobroIds: number[]) => void;
+  // SUBIR EL EXTRACTO DESDE ACA (Nicolas, 25/11/2026): "que en el banco correspondiente yo le suba su respectivo extracto
+  // [...] que se carguen dentro de las fichas de cada uno". Carga lo nuevo en ESTA cuenta, sin listado ni confirmacion.
+  onSubirExtracto?: (file: File) => void;
+  subiendo?: boolean;
+  aviso?: string; // lo que paso con la ultima carga
 };
 
 export function FichaExtracto(p: FichaExtractoProps) {
@@ -106,6 +111,22 @@ export function FichaExtracto(p: FichaExtractoProps) {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
+            {p.onSubirExtracto && (
+              <label data-subir-extracto title="Subí el archivo del banco de ESTA cuenta: carga solo lo que falta y te deja linkear" style={{ border: "1px solid #0f172a", background: "#0f172a", color: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>
+                {p.subiendo ? "Leyendo…" : "⬆ Subir extracto"}
+                <input
+                  type="file"
+                  accept=".xls,.xlsx,.csv,.txt,.pdf"
+                  disabled={p.subiendo}
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    if (file) p.onSubirExtracto!(file);
+                  }}
+                />
+              </label>
+            )}
             {p.onAgregarMovimiento && (
               <button type="button" onClick={p.onAgregarMovimiento} style={{ border: "1px solid #cbd5e1", background: "#fff", borderRadius: 8, padding: "6px 12px", cursor: "pointer" }}>
                 Agregar movimiento
@@ -116,6 +137,9 @@ export function FichaExtracto(p: FichaExtractoProps) {
             </button>
           </div>
         </div>
+        {p.aviso && (
+          <div data-aviso-carga style={{ fontSize: 12.5, color: "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 8, padding: "6px 10px" }}>{p.aviso}</div>
+        )}
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {meses.map((f) => (
             <button
@@ -143,7 +167,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
               {ficha.completo && <span style={{ background: "#166534", color: "#fff", borderRadius: 999, padding: "3px 10px", fontWeight: 800, fontSize: 12.5 }}>✓ revisado y linkeado</span>}
               {!ficha.obligatorio && !ficha.completo && <span style={{ fontSize: 12, color: "#64748b" }}>anterior al 1/11/2026: no es obligatorio</span>}
             </div>
-            <ControlDeComisiones ficha={ficha} money={(n) => p.money(n, ficha.currency)} pagadoPorMes={!!p.impuestosDelMes?.(ficha)?.pago} onAceptar={(x) => x.sugerencia?.tipo === "pago" && p.onLink(x.mov.id, "pago", String(x.sugerencia.pagoId))} onCargar={p.onCargarComisiones} />
+            <ControlDeComisiones ficha={ficha} money={(n) => p.money(n, ficha.currency)} pagadoPorMes={!!p.impuestosDelMes?.(ficha)?.pago} onAceptar={(x) => x.sugerencia?.tipo === "pago" && p.onLink(x.mov.id, "pago", String(x.sugerencia.pagoId))} onCargar={p.onCargarComisiones} onBuscar={(x) => setBuscar({ tipo: "pago", m: x })} />
             {p.impuestosDelMes && p.onImpuestosPagados ? (
               <ImpuestosDelGrupo
                 titulo={`${TITULO_COMISIONES_CUENTA} de este mes`}
@@ -463,7 +487,7 @@ export function FichaExtracto(p: FichaExtractoProps) {
 
 // CONTROL DE COMISIONES DEL MES (Nicolas, 23/11/2026): el total que cobro el banco, cuanto de eso ya esta cargado y
 // linkeado, cuanto esta cargado pero falta linkear y que cargos faltan cargar, con el boton para cargarlos ahi mismo.
-function ControlDeComisiones({ ficha, money, pagadoPorMes, onAceptar, onCargar }: { ficha: FichaMes; money: (n: number) => string; pagadoPorMes: boolean; onAceptar: (x: MovimientoFicha) => void; onCargar?: (movIds: number[]) => void }) {
+function ControlDeComisiones({ ficha, money, pagadoPorMes, onAceptar, onCargar, onBuscar }: { ficha: FichaMes; money: (n: number) => string; pagadoPorMes: boolean; onAceptar: (x: MovimientoFicha) => void; onCargar?: (movIds: number[]) => void; onBuscar?: (x: MovimientoFicha) => void }) {
   const c = controlDeComisiones(ficha);
   if (!c.cantidad) return null;
   const cubierto = pagadoPorMes && c.sugeridas.length === 0;
@@ -516,6 +540,11 @@ function ControlDeComisiones({ ficha, money, pagadoPorMes, onAceptar, onCargar }
               <span style={{ width: 74 }}>{ddmm(x.mov.date)}</span>
               <span style={{ flex: 1 }}>{x.mov.concept}</span>
               <b style={{ width: 120, textAlign: "right" }}>{money(Math.abs(Number(x.mov.amount)))}</b>
+              {onBuscar && (
+                <button type="button" data-buscar={x.mov.id} style={boton} title="Ya está cargado en el sistema: elegí cuál es y queda linkeado, sin cargar nada nuevo" onClick={() => onBuscar(x)}>
+                  Ya está cargado: linkear…
+                </button>
+              )}
               {onCargar && (
                 <button type="button" data-cargar={x.mov.id} style={boton} onClick={() => onCargar([x.mov.id])}>
                   Cargar y linkear

@@ -294,6 +294,37 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
 
   const fichas = new Map<string, FichaExtracto>();
   const sugeridosPago = new Set<number>();
+  // LOS CARGOS DEL BANCO YA CARGADOS (Nicolas, 25/11/2026: "no esta reconociendo impuestos que ya existen y solicita cargar y
+  // linkearlos sin dejarme simplemente linkearlos"). Dos fallas:
+  //   1. Un impuesto cargado como factura del banco en Compras no lleva la marca de impuesto, y no se lo buscaba.
+  //   2. Cada cargo tomaba el primer pago del mismo importe: una comision del 30/10 se quedaba con el pago del 03/11 y al
+  //      cargo del 03/11, que era el suyo, le decia "falta cargar".
+  // Ahora se arma el reparto ANTES: cada cargo sin linkear con cada pago de su cuenta, del mismo importe y a 5 dias o menos;
+  // se asignan del mas cercano en fecha al mas lejano (primero los marcados como impuesto), un pago por cargo.
+  const reservas = new Map<number, PagoBancoF>();
+  {
+    const pares: Array<{ m: MovimientoF; p: PagoBancoF; d: number; orden: number }> = [];
+    movs.forEach((m) => {
+      if (!m || !m.date || m.movementType !== "debito" || m.desconocido || m.cerradoSinLink || pagoPorMov.has(m.id)) return;
+      if (m.assignedCardStatementId != null || m.assignedTransferId != null || m.assignedPurchaseInvoiceId != null) return;
+      if (!categoriaDeDebito(m.conceptKey, m.concept)) return;
+      const monto = Math.abs(Number(m.amount || 0));
+      pagos.forEach((p) => {
+        if (ocupados.has(p.id) || p.paymentMethod === "efectivo" || !pagoEsDeLaCuenta(p, m) || Math.abs(Number(p.amount || 0) - monto) > TOL) return;
+        const d = diasEntre(p.date, m.date);
+        if (d <= 5) pares.push({ m, p, d, orden: p.impuestoBanco ? 0 : 1 });
+      });
+    });
+    const usados = new Set<number>();
+    pares
+      .sort((x, y) => x.d - y.d || x.orden - y.orden)
+      .forEach(({ m, p }) => {
+        if (reservas.has(m.id) || usados.has(p.id)) return;
+        reservas.set(m.id, p);
+        usados.add(p.id);
+        sugeridosPago.add(p.id);
+      });
+  }
   const sugeridosResumen = new Set<number>();
   porCuenta.forEach((list, k) => {
     const orden = list
@@ -327,10 +358,11 @@ export function fichasDeExtracto(movs: MovimientoF[], pagos: PagoBancoF[], resum
         return;
       }
       if (m.movementType === "debito" && categoriaDeDebito(m.conceptKey, m.concept)) {
-        const cargado = sugerirImpuestoCargado(m, pagos, new Set([...Array.from(ocupados), ...Array.from(sugeridosPago)]));
-        if (cargado?.tipo === "pago") {
-          sugeridosPago.add(cargado.pagoId);
-          f.movimientos.push({ mov: m, estado: "sugerido", detalle: `Sugerido: ${cargado.texto}`, sugerencia: cargado, rompe: corta });
+        // El pago que ya tiene reservado este cargo (ver `reservas` arriba): el mas cercano en fecha, uno por cargo.
+        const reservado = reservas.get(m.id);
+        if (reservado) {
+          const texto = `${reservado.description || reservado.supplier} · cargado el ${reservado.date.split("-").reverse().join("/")}`;
+          f.movimientos.push({ mov: m, estado: "sugerido", detalle: `Sugerido: ${texto}`, sugerencia: { tipo: "pago", pagoId: reservado.id, texto }, rompe: corta });
           return;
         }
         if (m.currency !== "USD") f.comisionesArs = r2(f.comisionesArs + monto);
